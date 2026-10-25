@@ -533,6 +533,7 @@ pub(crate) fn generate_with_part(
     };
     let entry_safety = entry_geometry.as_ref().map(|(target, body, protected)| {
         openchuck_path::entry_safety::EntrySafety {
+            rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
             target,
             body,
             protected,

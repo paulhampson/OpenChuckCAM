@@ -277,7 +277,10 @@ impl Entry {
     ) -> Result<()> {
         let safety=input.entry_safety.ok_or_else(|| PathError::Strategy("back-and-forth ramp needs whole-target, complete-tool and machine clearance inputs".into()))?;
         let d = direction_at_start(b, points).ok_or_else(|| {
-            PathError::Strategy("back-and-forth ramp has no usable straight entry direction".into())
+            PathError::Strategy(format!(
+                "pass {}: back-and-forth ramp has no usable straight entry direction",
+                pass + 1
+            ))
         })?;
         let goal = b.rotary.to_axis(head.tip, head.a);
         let radius = input.stock.max_radius().ok_or_else(|| {
@@ -329,9 +332,13 @@ impl Entry {
             if e == super::ramp::Refusal::Cancelled {
                 PathError::Cancelled
             } else {
-                PathError::Strategy(format!(
-                    "back-and-forth ramp cannot make bounded progress: {e:?}"
-                ))
+                let reason=match e {
+                    super::ramp::Refusal::TooMany=>"needs more than 10000 descending legs",
+                    super::ramp::Refusal::NoProgress=>"cannot make a descending move at the supported output precision",
+                    super::ramp::Refusal::TooShort=>"has less than one cutting diameter of usable travel",
+                    _=>"has invalid descent dimensions",
+                };
+                PathError::Strategy(format!("pass {}: back-and-forth ramp {reason}; choose another entry or change the entry geometry",pass+1))
             }
         })?;
         let mut motions = Vec::new();
@@ -360,19 +367,6 @@ impl Entry {
                 &mut budget,
                 context,
             )?;
-            let positions = [
-                b.rotary.to_axis(previous.tip, head.a),
-                b.rotary.to_axis(end.tip, head.a),
-            ];
-            if let Some(g) = self.gouge(b, input, head.a, &positions) {
-                return Err(self.refuse(
-                    input,
-                    pass,
-                    "back-and-forth ramp",
-                    "a verified descending leg",
-                    g,
-                ));
-            }
             motions.push((MoveKind::LeadIn, end));
             previous = end;
         }
@@ -386,6 +380,36 @@ impl Entry {
             context,
         )?;
         motions.push((MoveKind::LeadIn, end));
+        // Retain the existing target/refusal checks for approach, every leg,
+        // reversal and final connection, in addition to the continuous proof.
+        // Chunking bounds cancellation latency in the older parallel query.
+        let mut previous = b.pose;
+        for (_, end) in &motions {
+            let from = b.rotary.to_axis(previous.tip, head.a);
+            let to = b.rotary.to_axis(end.tip, head.a);
+            let distance = (to.along - from.along).hypot(to.across - from.across);
+            let positions =
+                lerp_positions(from, to, distance / (0.25 * input.tool.cutting_radius()));
+            if positions.len() > budget {
+                return Err(PathError::Strategy(
+                    "back-and-forth ramp clearance budget exhausted by target checks".into(),
+                ));
+            }
+            budget -= positions.len();
+            for chunk in positions.chunks(64) {
+                context.check_cancelled()?;
+                if let Some(g) = self.gouge(b, input, head.a, chunk) {
+                    return Err(self.refuse(
+                        input,
+                        pass,
+                        "back-and-forth ramp",
+                        "a verified entry move",
+                        g,
+                    ));
+                }
+            }
+            previous = *end;
+        }
         // All geometry is established before any part of this entry is emitted.
         for (kind, end) in motions {
             context.check_cancelled()?;

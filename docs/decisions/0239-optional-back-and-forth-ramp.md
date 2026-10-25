@@ -4,7 +4,7 @@
 - **Date:** 24 October 2026.
 - **Lane / issue:** ROUGHPATH, #291; rotary boundaries follow accepted 0238.
 - **Requirements:** OP-03, OP-11/12/13/14, SET-09, OP-21, GC-07, NFR-04/06/07/12 and configured machine/post limits.
-- **Allocation:** provisional 0239 under the owner's lane-numbering direction. Current main, fetched unmerged branch records and repository issue/PR comments were checked; no other 0239 claim was found. Merge Manager resolves collisions. No OI or project-schema number is claimed by this proposal.
+- **Allocation:** provisional 0239 under the owner's lane-numbering direction. Current main, fetched unmerged branch records and repository issue/PR comments were checked; no other 0239 claim was found. Later merged OUTPUT-1 work also uses 0239; Merge Manager has been notified in PR320 comment6398493524 and will resolve the metadata collision at merge under the owner's numbering direction. Substantive acceptance is unchanged. No OI or project-schema number is claimed by this proposal.
 
 ## Evidence
 

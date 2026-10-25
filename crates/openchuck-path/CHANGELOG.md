@@ -4,6 +4,9 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- **Breaking (0.21.0, ROUGHPATH):** `StrategyInput` adds `entry_safety: Option<&EntrySafety>`; hosts without optional reversing ramp support pass `None`. `EntryParameters` adds `back_and_forth`, false by default. To support it, supply the whole mesh target, protected solids, complete convex cutter/shank body, matching machine profile and `RotaryPrecision` valid for all output posts. The certificate reserves written coordinate precision and controller float uncertainty. Hosts must write at least three XYZ/A decimals and, for `Float32`, bound connection/reset offsets from certified canonical A to 720 degrees or recertify the contextual path. Missing or unsupported certificates refuse the enabled option. `program::connect_group` assembles explicit timed inter-operation links from canonical groups; never reconnect a previously connected group as canonical input.
+- Optional `ramp_back_and_forth` uses a verified corridor of at least one cutting diameter, fixed A, plunge feed and bounded/cancellable descending legs. Original single-line behavior is retained when absent/false. Roughing uses clearance-height links for this option; no low-link shortcut is used before the stock-clear approach.
+
 - Version 0.21.0 with the library family (decision 0238): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Warning measurement checks cancellation between surface queries (UI-09, INT-04); a cancel request no longer waits for all watched surfaces of the path to be measured. No public API change.

@@ -381,3 +381,9 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 - The reference job set (parts, stock, tools) for gates 4 and 5 is chosen in work breakdown slice 6.
 - A safe-practice checklist for first machine trials is written in work breakdown slice 20 and reviewed by whoever operates the Makera Z1.
 - P2 groups (COL, VC, INT) have outline verification only; detailed test design waits until their designs exist.
+
+### ROUGHPATH boundary and reversing-entry checks
+
+Accepted decisions 0238/0239 (provisional identifiers pending Merge Manager collision resolution) amend shared OP-11/13/14/15 behavior. Requirement-first checks distinguish physical rotary travel from a controller counter reset, cover both accumulated-turn directions, exact equivalent-angle ties, complete-group A limits, required orientations, safe tool-change links, file splits and cache independence. Playback, simulation and replay compare explicit timed physical links; a reset consumes no physical segment.
+
+The optional ramp checks use a whole-target/tool certificate separate from selected/warn-only surfaces. Thin obstacles between clear endpoints, later lower legs, reversals, shank-only collisions and final connections must refuse. Verify per-leg descent/feed/fixed A/final depth, inclusive diameter minimum, bounded generation, cancellation, unsupported certificate refusals and save/load behavior. Check actual application posting on both shipped posts, indexed roughing through the shared module, 1/2/available-N determinism and absent-versus-false byte identity at the same version/rotary policy. The historical blisk need not generate when no valid entry direction exists: report its precise refusal without weakening the rule or claiming machining verification.

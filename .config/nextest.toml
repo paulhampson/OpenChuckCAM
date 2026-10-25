@@ -170,6 +170,13 @@ priority = 79
 # ROUGHPATH 24 Oct 2026, four test workers: req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2, 97.045 s uninstrumented.
 # ROUGHPATH 24 Oct 2026, four test workers: req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target, 80.216 s uninstrumented.
 # ROUGHPATH 24 Oct 2026, four test workers: req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab, 76.749 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region, 62.241 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files, 104.948 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock, 60.580 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab, 81.905 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_op_21_the_deviation_report_counts_them_as_part, 65.227 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_op_04_every_hand_made_case_offsets_correctly_from_the_original, 71.884 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads, 96.086 s uninstrumented.
 [profile.coverage]
 # The narrow avoid-patch regression took 67.238 s uninstrumented in the
 # SWARF3 cloud container (23 Oct 2026); keep it in default and nightly tests.
@@ -197,6 +204,13 @@ default-filter = '''not (
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
   | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
 )'''
 
 [profile.long]
@@ -225,4 +239,11 @@ default-filter = '''
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
   | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
 '''

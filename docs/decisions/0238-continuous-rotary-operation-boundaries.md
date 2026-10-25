@@ -4,7 +4,7 @@
 - **Date:** 24 October 2026.
 - **Lane / issue:** ROUGHPATH, #292. The optional ramp (#291) has a separate decision.
 - **Requirements:** OP-03, OP-11, OP-13, OP-14, OP-15, SET-01/06/09, OP-21, GC-04/07/09/10, NFR-06/07/12.
-- **Numbering:** provisional 0238, selected under the owner's lane-numbering authority. Published branch records, open PRs and coordination comments were checked: 0234–0236 are in use and FACING claims 0237; no 0238 claim was found. Merge Manager resolves collisions. No new OI or project-schema number is claimed.
+- **Numbering:** provisional 0238, selected under the owner's lane-numbering authority. Published branch records, open PRs and coordination comments were checked: 0234–0236 are in use and FACING claims 0237; no 0238 claim was found. Later merged SIMUI work also uses 0238; Merge Manager has been notified in PR320 comment6398493524 and will resolve the metadata collision at merge under the owner's numbering direction. Substantive acceptance is unchanged. No new OI or project-schema number is claimed.
 
 ## Evidence
 

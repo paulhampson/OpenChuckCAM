@@ -12,6 +12,17 @@ use openchuck_types::kinematics::{
 use openchuck_types::machine::MachineProfile;
 use openchuck_types::tool::RevolvedProfile;
 
+/// Additional controller coordinate precision beyond written decimals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RotaryPrecision {
+    /// The controller preserves the written A to double precision.
+    Decimal,
+    /// The controller stores A as a single-precision float. Reserve a full
+    /// ULP at the canonical counter magnitude plus 721 degrees. Hosts must
+    /// bound the connected/controller offset to at most 720 degrees or recertify.
+    Float32,
+}
+
 /// Explicit whole-target inputs, separate from selected or warn-only surfaces.
 /// The body must enclose the entire configured cutter and shank, measured
 /// from the cutting tip. Mesh certificates apply to that mesh target only.
@@ -25,11 +36,17 @@ pub struct EntrySafety<'a> {
     pub body: &'a RevolvedProfile,
     /// Machine frame and configured travel constraints.
     pub machine: &'a MachineProfile,
+    /// Precision bound valid for every post that will consume this path.
+    pub rotary_precision: RotaryPrecision,
 }
 
 impl EntrySafety<'_> {
     /// Proves a straight machine-XYZ, fixed-A sweep. `budget` is shared by
-    /// every leg and connection of one entry. No endpoints-only acceptance.
+    /// every leg and connection of one entry. Hosts must post XYZ and A to
+    /// at least three decimal places; rounding is included in the bound.
+    /// For `Float32`, the posted counter must differ from these canonical
+    /// coordinates by at most 720 degrees, including any reset offset.
+    /// No endpoints-only acceptance.
     #[allow(clippy::too_many_arguments)]
     pub fn verify(
         &self,
@@ -71,6 +88,33 @@ impl EntrySafety<'_> {
         {
             return Err(refuse("A exceeds the machine limit"));
         }
+        // This certificate requires at least three written decimals on XYZ
+        // and A. Bound linear rounding plus the displacement of the entire
+        // tool under the half-unit rotary rounding error.
+        let radial = |p: Point3| p.y.hypot(p.z);
+        let controller_error = match self.rotary_precision {
+            RotaryPrecision::Decimal => 0.0,
+            RotaryPrecision::Float32 => {
+                // Nearest-equivalent connection plus the firmware
+                // non-reset at exactly +/-360 can shift the counter by
+                // 720 degrees. One extra degree covers written rounding
+                // across a float exponent boundary.
+                #[allow(clippy::cast_possible_truncation)]
+                let word = (from.a.0.abs().max(to.a.0.abs()) + 721.0) as f32;
+                if !word.is_finite() {
+                    return Err(refuse("A exceeds the controller's numeric representation"));
+                }
+                let next = f32::from_bits(word.to_bits() + 1);
+                let ulp = f64::from(next) - f64::from(word);
+                if !ulp.is_finite() {
+                    return Err(refuse("A has no finite controller-precision bound"));
+                }
+                ulp
+            }
+        };
+        let written_margin = 0.002
+            + (radial(from.tip).max(radial(to.tip)) + self.body.top() + self.body.cutting_radius())
+                * (0.0005 + controller_error).to_radians();
         let start = machine_xyz(&frame, from.tip, from.a);
         let end = machine_xyz(&frame, to.tip, to.a);
         if !self.machine.travel.contains(start) || !self.machine.travel.contains(end) {
@@ -78,7 +122,7 @@ impl EntrySafety<'_> {
         }
         // Bounds of the whole configured tool at every point of the segment.
         // The radial cube is conservative at any supported axis orientation.
-        let r = self.body.cutting_radius();
+        let r = self.body.cutting_radius() + written_margin;
         let extension = axis.get() * self.body.top();
         let low = Vec3::new(
             extension.x.min(0.0) - r,
@@ -127,7 +171,7 @@ impl EntrySafety<'_> {
         // from its midpoint. Minkowski growth therefore certifies continuous
         // motion, including arbitrarily thin obstacles between query points.
         let padding = distance / (2.0 * steps as f64);
-        let offset = leave + padding;
+        let offset = leave + padding + written_margin;
         let grown = grow_profile(self.body, offset)?;
         for i in 0..steps {
             context.check_cancelled()?;

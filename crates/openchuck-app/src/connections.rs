@@ -67,9 +67,12 @@ pub(crate) fn connect(
         &options,
         context,
     )
-    .map_err(|e| AppError::Operation {
-        name: operation.name.clone(),
-        reason: e.to_string(),
+    .map_err(|e| match e {
+        openchuck_path::PathError::Cancelled => AppError::Path(e),
+        other => AppError::Operation {
+            name: operation.name.clone(),
+            reason: other.to_string(),
+        },
     })
 }
 
@@ -103,4 +106,29 @@ pub(crate) fn assemble(
         result.groups.push(linked.group);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use openchuck_types::job::{CancelToken, NoProgress};
+    #[test]
+    fn req_nfr_04_req_ui_09_connection_preserves_cancellation_kind() {
+        let mut p = crate::test_project::TestProject::new("cancel-connection");
+        p.add_operation("Finish", "helical_finishing");
+        let run = p.app.regenerate().unwrap();
+        let cancel = CancelToken::new();
+        cancel.cancel();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let error = connect(
+            p.app.project(),
+            None,
+            &run.canonical_toolpath.groups[0],
+            run.groups[0].part_bounds,
+            &context,
+        )
+        .unwrap_err();
+        assert!(error.is_cancelled(), "{error}");
+    }
 }

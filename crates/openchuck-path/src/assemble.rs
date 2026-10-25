@@ -417,6 +417,7 @@ pub fn assemble_with_entry(
         notes: Vec::new(),
     };
 
+    let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
     for (i, points) in placed.iter().enumerate() {
@@ -431,8 +432,10 @@ pub fn assemble_with_entry(
             // above that stock, where the whole link is clear of it, instead
             // of at the clearance cylinder (OP-14, decision record 0033).
             let local = match stocks.get(i).and_then(Option::as_ref) {
-                Some(_) => local_link_height(&b, stock.stock, common, head, link_height),
-                None => None,
+                Some(_) if !reversing_ramp => {
+                    local_link_height(&b, stock.stock, common, head, link_height)
+                }
+                _ => None,
             };
             let height = local.unwrap_or(link_height);
             leave(&mut b, view(&stocks, i - 1, input), common, height)?;

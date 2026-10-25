@@ -39,25 +39,43 @@ pub(super) fn plan(
         return Err(Refusal::TooShort);
     }
     let slope = angle.to_radians().tan();
-    let max_drop = length * slope;
+    // Both endpoints may round by half a written unit. Reserve the full
+    // difference at 3 dp plus the supported float-controller uncertainty
+    // (ULP <=0.0001 mm per word). An exact one-unit drop can otherwise
+    // round to equal endpoints at a half-unit tie.
+    const WRITTEN_Z: f64 = 0.0012;
+    const WRITTEN_XY: f64 = 0.0022;
+    let max_drop = (length - WRITTEN_XY) * slope - WRITTEN_Z;
+    if rise < WRITTEN_Z || !max_drop.is_finite() || max_drop < WRITTEN_Z {
+        return Err(Refusal::NoProgress);
+    }
     let count = (rise / max_drop).ceil();
     if !count.is_finite() || count > 10_000.0 {
         return Err(Refusal::TooMany);
     }
+    // Distribute descent rather than leaving an arbitrarily tiny final
+    // drop which a controller would round into a horizontal reversal.
+    let full_drop = rise / count;
+    if full_drop < WRITTEN_Z {
+        return Err(Refusal::NoProgress);
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let count = count as usize;
     let mut legs = Vec::new();
     let mut remaining = rise;
     let mut from = 0.0;
     let mut forward = true;
-    while remaining > 0.0 {
+    for index in 0..count {
         if cancelled() {
             return Err(Refusal::Cancelled);
         }
         if legs.len() >= 10_000 {
             return Err(Refusal::TooMany);
         }
-        let drop = remaining.min(max_drop);
-        let distance = if remaining <= max_drop {
-            remaining / slope
+        let last = index + 1 == count;
+        let drop = if last { remaining } else { full_drop };
+        let distance = if last {
+            (drop + WRITTEN_Z) / slope + WRITTEN_XY
         } else {
             length
         };
@@ -101,6 +119,68 @@ mod tests {
         assert!(height.abs() < 1e-12);
         let last = legs.last().unwrap();
         assert!((last.to - last.from).abs() < 3.175);
+    }
+
+    #[test]
+    fn req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle() {
+        let written = |v: f64| format!("{v:.3}").parse::<f64>().unwrap();
+        for rise in [0.01, 1.0, 2.0, 6.0] {
+            let legs = plan(rise, 3.175, 3.175, 3.0, || false).unwrap();
+            let mut height = 20.0;
+            for leg in legs {
+                let next = height - leg.drop;
+                let run = (written(leg.to) - written(leg.from)).abs();
+                let drop = written(height) - written(next);
+                assert!(
+                    drop <= run * 3.0_f64.to_radians().tan() + 1e-12,
+                    "written slope exceeds 3 degrees: run={run} drop={drop}"
+                );
+                height = next;
+            }
+        }
+    }
+
+    #[test]
+    fn req_op_11_every_written_leg_descends_and_sub_resolution_entries_refuse() {
+        let written = |v: f64| format!("{v:.3}").parse::<f64>().unwrap();
+        let almost_multiple =
+            ((3.175 - 0.002) * 3.0_f64.to_radians().tan() - 0.001) * 4.0 + 0.00001;
+        let mut height = 20.0;
+        for leg in plan(almost_multiple, 3.175, 3.175, 3.0, || false).unwrap() {
+            let next = height - leg.drop;
+            assert!(
+                written(next) < written(height),
+                "a reversal leg lost all descent at written precision"
+            );
+            height = next;
+        }
+        assert_eq!(
+            plan(0.0001, 3.175, 3.175, 3.0, || false),
+            Err(Refusal::NoProgress)
+        );
+        assert_eq!(
+            plan(1.0, 0.001, 0.001, 3.0, || false),
+            Err(Refusal::NoProgress)
+        );
+    }
+
+    #[test]
+    fn req_op_11_half_unit_rounding_must_not_remove_all_descent() {
+        assert_eq!(
+            plan(0.001, 3.175, 3.175, 3.0, || false),
+            Err(Refusal::NoProgress)
+        );
+        let written = |v: f64| f64::from(format!("{v:.3}").parse::<f32>().unwrap());
+        for start in [0.0095, 20.0005, 50.0005, 800.0005] {
+            let mut z = start;
+            for leg in plan(0.0013, 3.175, 3.175, 3.0, || false).unwrap() {
+                let next = z - leg.drop;
+                assert!(written(next) < written(z));
+                let run = (written(leg.to) - written(leg.from)).abs();
+                assert!(written(z) - written(next) <= run * 3.0_f64.to_radians().tan() + 1e-12);
+                z = next;
+            }
+        }
     }
 
     #[test]

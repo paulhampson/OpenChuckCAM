@@ -220,6 +220,10 @@ pub fn parameter_form(
     {
         notes.insert(0, format!("{}.", reason.replacen("swarf", "Swarf", 1)));
     }
+    let reversing_inactive = matches!(
+        op.parameters.get(names::RAMP_BACK_AND_FORTH),
+        Some(ParameterValue::Flag(true))
+    ) && !matches!(op.parameters.get(names::ENTRY),Some(ParameterValue::Text(style)) if style=="ramp");
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
     let fields = schema
         .parameters
@@ -283,7 +287,11 @@ pub fn parameter_form(
             Field {
                 section: FormSection::of(&spec.name),
                 name: spec.name.clone(),
-                label: spec.label.clone(),
+                label: if spec.name == names::RAMP_BACK_AND_FORTH && reversing_inactive {
+                    format!("{} (inactive)", spec.label)
+                } else {
+                    spec.label.clone()
+                },
                 description: spec.description.clone(),
                 kind,
                 set,

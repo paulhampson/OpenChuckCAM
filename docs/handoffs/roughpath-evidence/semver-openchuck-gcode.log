@@ -1,0 +1,13 @@
+     Cloning 1a90435654c734c05e4fa3f110c4a7f3f8e5859f
+    Building openchuck-gcode v0.21.0 (current)
+       Built [   4.566s] (current)
+     Parsing openchuck-gcode v0.21.0 (current)
+      Parsed [   0.003s] (current)
+    Building openchuck-gcode v0.20.0 (baseline)
+       Built [   4.646s] (baseline)
+     Parsing openchuck-gcode v0.20.0 (baseline)
+      Parsed [   0.003s] (baseline)
+    Checking openchuck-gcode v0.20.0 -> v0.21.0 (major change)
+     Checked [   0.000s] 0 checks: 0 pass, 260 skip
+     Summary no semver update required
+    Finished [  13.158s] openchuck-gcode

@@ -1,4 +1,6 @@
-# ROUGHPATH handoff — paused by owner, 24 October 2026
+# ROUGHPATH historical checkpoint — 24 October 2026
+
+**Resumed by the owner on 25 October 2026.** This document preserves the published paused checkpoint (`3c8b10a`); its remaining-work list and test status are historical. Use the [implementation, integration and verification report](../roughpath-verification.md) for the resumed work and current limitations. No replacement branch or implementation was created. The environment/network observations below describe the original checkpoint, not a fresh assertion about the resumed runtime.
 
 ## Workspace and authorization
 

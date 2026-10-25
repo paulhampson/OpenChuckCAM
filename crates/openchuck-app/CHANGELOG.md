@@ -4,6 +4,10 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
+
+- ROUGHPATH maps optional reversing-ramp clearance from the whole STL target and configured full cutter/shank body, retaining held regions/tabs independently of selections. Unsupported exact STEP certificates and shanks wider than the cutting profile refuse the option. The entry form identifies the ramp-only flag, labels a retained true flag inactive for other styles, and explains full-width-slot engagement. Optional-ramp posting refuses uncertified low decimal precision or float-controller WCS/MCS magnitudes; it never changes the work zero.
+
 - Version 0.21.0 with the library family (decision 0238): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Lane SWARF3 (decisions 0228 and 0229, OI-634 and OI-637; OP-02, NFR-12): the avoid and check sets of rotary roughing and helical, axial, indexed and simultaneous finishing take their choice (schema 14's `on_break`), on a mesh part and as face sets on a STEP part: Cut short is the path as before, Warn only keeps the whole path with a warning naming the set and how far the tool breaks it, and Ignore leaves the set out with the warning that it limits nothing. Their boundary set takes no options. `Application::strategy_set_options` and `SetOptionsShown` (which options the Geometry section shows: the boundary's limits for swarf only, each avoid or check set's choice for every strategy that takes a region, and whether Cut short lifts the tool over a check set) replace `Application::strategy_takes_set_options` (breaking).
