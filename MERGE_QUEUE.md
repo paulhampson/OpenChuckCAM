@@ -23,8 +23,9 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; correction authorised for Windows Clippy blocker; awaiting one correction push and fresh full CI/CodeRabbit |
-| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft NEXT behind released #342 |
+| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; corrected head `8f67dd1f85700af5cb06f9609185ae516ca119d3`; awaiting fresh full CI/CodeRabbit |
+| 2 | CI-MACSHARD | [#345](https://github.com/paulhampson/OpenChuckCAM/pull/345) | `codex/ci-macos-test-shards` | Draft; owner-prioritised NEXT after #342; amends decision0052, no new allocation |
+| 3 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft behind #345 |
 
 ## SWARF3 / #320 — MERGED
 
@@ -476,3 +477,12 @@ Released integration head `31964ad95eb7fbd60e52e3145a8f5d88a0db9424` includes la
 CI40232949059 completed FAILURE with one genuine blocker: Windows shard1 Clippy rejects unused `dir` in `sync_dir` because its use is Unix-only; required aggregator fails consequentially. Every other CI job passed, including final macOS. End-to-end40232948955 SUCCESS. Both required reports are therefore complete.
 
 [Coordinator comment6403691172](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6403691172) authorises ONE bundled correction push limited to `#[cfg(not(unix))] let _ = dir;` inside the existing helper. No lint allowance, I/O/durability/schema/format/dependency/allocation/record/product change and no CodeRabbit Minor may ride. Lane must preserve its strict non-Unix red/green probe, formatting, records/conflicts/whitespace, workspace Clippy, 166 project tests and coverage evidence; report exact corrected head and wait for fresh full CI and CodeRabbit, including actual Windows success. No merge/auto-merge. #321 remains next/draft. Automatic monitoring remains paused.
+
+
+## CI-MACSHARD #345 — owner-priority intake, 25 October 2026
+
+Owner instructed: **“Add 345 to the queue to go next after 342.”** Verified owner-authored draft #345, GitHub ID528002, created `2026-10-25T22:01:53Z`, intake head `7c7063b9f892112779ce068deecb60cc34c5d902`, branch `codex/ci-macos-test-shards`, based on `dafef455d5c31a2db032cff5eeaa4b689821247a`. It is added exactly once at active position2, immediately after released #342 and ahead of #321. This explicit priority supersedes #321's former next position; #321 remains completed/eligible at position3.
+
+#345 shards macOS build/test nextest execution into two hash partitions and amends existing decision0052/NFR-02/NFR-08. It claims no new decision, OI or schema allocation. [Coordinator comment6403964720](https://github.com/paulhampson/OpenChuckCAM/pull/345#issuecomment-6403964720) confirms intake and instructs the lane to remain draft without main update/push until #342 completes. At release: READY FIRST, integrate then-current main, refresh allocation audit, preserve all tests/nonempty-count safeguards/shard caches/required aggregation and one-time auxiliary steps, run full CI and CodeRabbit, one push/exact-head report. No acceptance inferred beyond the existing decision0052 amendment scope.
+
+#342's authorised blocker-only correction has now been pushed at `8f67dd1f85700af5cb06f9609185ae516ca119d3`; fresh full CI and CodeRabbit are pending. It remains sole ready. Automatic monitoring remains paused; follow-up is manual.
