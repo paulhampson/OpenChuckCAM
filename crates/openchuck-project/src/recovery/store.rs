@@ -109,6 +109,8 @@ fn state(dir: &Path) -> Result<State, ProjectError> {
 }
 
 fn sync_dir(dir: &Path) -> Result<(), ProjectError> {
+    #[cfg(not(unix))]
+    let _ = dir;
     // Windows does not expose directory handles through File::open. File
     // contents are flushed there; power-loss durability has that limitation.
     #[cfg(unix)]

@@ -8,7 +8,7 @@ Merge Manager released the lane in [comment 6402459401](https://github.com/paulh
 
 Only the app/project changelogs and work-breakdown lane rows conflicted. Both sides were retained. The decision-index union was reordered numerically; accepted ROUGHPATH 0241/0242 and CHECKPOINT 0243 remain distinct. Executable files merged automatically, preserving BUG-EDIT guards, ROUGHPATH and playback synchronization.
 
-The project model, project file codec and both recovery codec/storage source blobs are byte-identical to the pre-integration head `b2e4f859a03108036d955f3f249005558b1982d7`. Project schema stays **18** and independent recovery container format stays **1**; there is no new schema allocation or migration. The workspace version is now main's **0.21.0**. Canonical generation paths and rotary boundaries are generated state, outside checkpoint contents.
+At released integration head `31964ad95eb7fbd60e52e3145a8f5d88a0db9424`, the project model, project file codec and both recovery codec/storage source blobs are byte-identical to the pre-integration head `b2e4f859a03108036d955f3f249005558b1982d7`. Project schema stays **18** and independent recovery container format stays **1**; there is no new schema allocation or migration. The workspace version is now main's **0.21.0**. Canonical generation paths and rotary boundaries are generated state, outside checkpoint contents.
 
 The new requirement-based compatibility case migrates a schema-1 fixture, verifies omitted/false/true `ramp_back_and_forth` values survive complete schema-18 project-text and format-1 snapshot round trips, and rejects a future project schema even when the container checksum is valid. Existing incompatible-container, partial/corrupt input, process-kill, publication/rotation, Save/close/instance and model-reference cases are retained. The selected compatibility case passed in 0.030 seconds before the full integration run.
 
@@ -133,3 +133,38 @@ claim; OI-989 remains open.
 ## Native and reference verification
 
 This environment provides x86_64 Linux only. Windows/macOS native interaction, OS/filesystem behavior and owner reference-hardware responsiveness are unavailable locally and remain **OI-989 OPEN**. Default-feature integration does not execute OCCT-gated STEP tests. Existing CI platform jobs and human hardware confirmation are distinct evidence; no native success, universal power-loss durability or 17 ms reference-hardware claim is made. The original issue requires `awaiting-fix-feedback` at merge unless that human evidence is supplied.
+
+
+## Windows Clippy correction after completed CI
+
+On released head `31964ad95eb7fbd60e52e3145a8f5d88a0db9424`, CI run
+40232949059 completed with one underlying failure: Windows build/test shard 1
+job 121288421897 stopped at Clippy because `sync_dir` used its `dir` argument
+only inside `#[cfg(unix)]`. Windows therefore reported an unused variable,
+and `-D warnings` made that error blocking. The required-check aggregator
+failed as a consequence. All other CI jobs succeeded, including macOS build
+and tests, Windows shard 2, all three platform STEP/kernel and UI-smoke jobs,
+all fuzz groups, all Gate 3 shares, library checks and fast checks. End-to-end
+run 40232948955 and CodeRabbit also completed successfully on the exact head.
+
+The correction explicitly discards the path argument under `#[cfg(not(unix))]`.
+It adds no lint allowance and preserves the existing behavior: Unix flushes the
+directory; non-Unix platforms flush file contents without a directory flush.
+No checksum, publication/rotation/retirement behavior, public API, dependency,
+project schema, recovery format, allocation or owner policy changes.
+
+Validation of this narrow correction: a strict compile probe of the actual
+non-Unix function body reproduced the unused-variable error before and passed
+after. It selected the non-Unix cfg body on Linux and is not a native Windows
+runtime/filesystem claim. Workspace all-target Clippy with warnings denied and
+formatting pass. All 166 project tests pass uninstrumented in 0.841 seconds;
+the fresh own-project coverage run also passes 166 tests in 0.865 seconds,
+covering 3,821/4,221 source lines (90.52%). Existing missing-line gaps remain;
+instrumented artifacts were cleaned. Actual Windows CI must verify the eventual
+corrected head.
+
+CodeRabbit's two Minor findings (handled staging-failure cleanup and bounded
+busy-lock retry) remain deferred under Merge Manager's correction-batch policy.
+No new durability or native/reference-hardware success is inferred from these
+automated CI results. OI-989 remains OPEN and the owner feedback requirement
+for issue #295 is unchanged.
