@@ -780,6 +780,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - scale and theme;
   - display units;
   - recent projects;
+  - recovery checkpoint interval, three minutes by default and configurable from one to fifteen whole minutes (PRJ-08; owner's CHECKPOINT policy). Settings explains that three periodic checkpoints are retained independently of a single interim checkpoint updated after fifteen seconds without a confirmed project change;
   - remembered sections;
   - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
@@ -789,6 +790,10 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 - **Format.** One `settings.toml`, written with the `toml` crate already in the workspace. Not eframe persistence, which would bring the `directories` crate that decision 0029 declined.
 - **When the file is bad.** A missing or unreadable file gives defaults and a message, never a crash (NFR-07).
 - **How a project is identified** for the acknowledgement: by its canonical folder path on that computer (OI-165, closed). Moving or renaming the folder asks again; no project file changes.
+
+### 13.1 Recovery checkpoints
+
+Recovery (PRJ-08; accepted CHECKPOINT policy, accepted design record 0243) presents an unexpected session's retained choices with the captured project name, project folder, UTC capture time and Periodic/Interim label, newest published state first. No checkpoint is restored automatically: choose one and use **Recover selected**. Explain that recovery is unsaved and ordinary explicit Save is needed. **Keep saved project** opens the saved project without deleting checkpoints; **Discard recovery data…** requires a separate deletion confirmation. Show damaged-checkpoint errors alongside remaining valid choices and preserve damaged/partial data. Missing or changed model references give clear warnings. A moved/inaccessible location offers a folder-path **Locate** control, checked against the recovery identity; a failed lookup retains the choice for retry. A timestamp outside the supported display calendar is labelled clearly without losing recovery choices. Cancel from the existing pending-field or unsaved-project warning stops close; after Save/discard is resolved, close waits asynchronously for recovery retirement. Report checkpoint failures in Messages without interrupting normal editing.
 
 ## 14. Visual design
 

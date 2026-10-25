@@ -360,6 +360,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "openchuck-fuzz"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "libfuzzer-sys",
  "openchuck-gcode",
  "openchuck-geom",
@@ -368,11 +369,12 @@ dependencies = [
  "openchuck-project",
  "openchuck-types",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "openchuck-types",
  "serde",
@@ -382,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-geom"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "openchuck-types",
  "parry3d-f64",
@@ -390,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-import"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-types",
@@ -402,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-post"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "minijinja",
  "openchuck-types",
@@ -413,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-project"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -425,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "serde",
  "thiserror",

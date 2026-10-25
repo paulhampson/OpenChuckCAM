@@ -50,6 +50,7 @@ use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
 mod actions;
+mod checkpoints;
 mod dock;
 mod frame;
 mod inspector;
@@ -59,6 +60,8 @@ mod pending;
 mod pending_pick;
 mod tree;
 
+#[cfg(test)]
+mod checkpoint_tests;
 #[cfg(test)]
 mod pending_edit_tests;
 
@@ -99,6 +102,7 @@ enum Next {
     New,
     Open,
     Quit,
+    Recovery,
 }
 
 /// A dialog in front of the window.
@@ -139,6 +143,8 @@ enum Dialog {
 
 /// The shell's state.
 pub struct Shell {
+    recovery: checkpoints::State,
+    recovery_project: Option<(Application, Vec<String>, bool)>,
     edit_context: Option<egui::Context>,
     edit_guard: pending::Guard,
     app: Option<Application>,
@@ -255,6 +261,13 @@ impl Shell {
             None => (UserSettings::default(), None),
         };
         let mut shell = Self {
+            recovery: checkpoints::State::new(
+                settings
+                    .as_ref()
+                    .and_then(|s| s.file().parent())
+                    .map(Path::to_owned),
+            ),
+            recovery_project: None,
             edit_context: None,
             edit_guard: pending::Guard::default(),
             app: None,
@@ -413,6 +426,11 @@ impl Shell {
     }
 
     fn set_app(&mut self, app: Application) {
+        self.recovery.attach(
+            app.location(),
+            self.app.as_ref().map_or(0, Application::revision),
+            self.settings.checkpoint_minutes,
+        );
         if let Some(ctx) = &self.edit_context {
             crate::pending_edits::clear(ctx);
         }
@@ -498,6 +516,14 @@ impl Shell {
         let Some(app) = &self.app else {
             if self.overview_dirty {
                 self.overview = Overview::no_project();
+                if let Some(problem) = &self.recovery.problem {
+                    self.overview.push(Message::new(
+                        Severity::Warning,
+                        problem.clone(),
+                        None,
+                        None,
+                    ));
+                }
                 self.overview_dirty = false;
             }
             return;
@@ -547,6 +573,9 @@ impl Shell {
             if let Some(problem) = &self.settings_problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
             }
+            if let Some(problem) = &self.recovery.problem {
+                overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            }
             self.overview = overview;
             self.overview_dirty = false;
             self.highlight = None;
@@ -591,6 +620,7 @@ impl Shell {
         let Some(app) = &self.app else { return true };
         match app.save() {
             Ok(()) => {
+                self.recovery.saved(app.revision());
                 self.status = format!("Saved {}", app.location().display());
                 true
             }
@@ -655,6 +685,15 @@ impl Shell {
     }
 
     fn proceed(&mut self, next: Next, ctx: &egui::Context) {
+        if next == Next::Quit
+            && self
+                .recovery
+                .close(next, self.app.as_ref().map_or(0, Application::revision))
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.request_repaint();
+            return;
+        }
         match next {
             Next::New | Next::Open => {
                 self.dialog = Some(Dialog::Folder {
@@ -667,6 +706,20 @@ impl Shell {
                 self.save_settings();
                 self.quitting = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Next::Recovery => {
+                if let Some((app, warnings, recovered)) = self.recovery_project.take() {
+                    self.set_app(app);
+                    self.recovery.finish_install();
+                    if recovered {
+                        self.status =
+                            "Recovered checkpoint. Save explicitly to keep these changes.".into();
+                    }
+                    if !warnings.is_empty() {
+                        self.recovery.problem = Some(warnings.join("\n"));
+                        self.overview_dirty = true;
+                    }
+                }
             }
         }
     }
@@ -1796,6 +1849,15 @@ impl Shell {
             }
             Dialog::Settings => {
                 ui.heading("Settings");
+                let mut minutes=self.settings.checkpoint_minutes;
+                ui.horizontal(|ui| {
+                    ui.label("Recovery checkpoint interval (minutes)");
+                    if ui.add(egui::DragValue::new(&mut minutes).range(1..=15)).changed() {
+                        self.settings.checkpoint_minutes=minutes;
+                        self.settings_touched();
+                    }
+                });
+                ui.label("Keeps three periodic checkpoints and one interim checkpoint after 15 seconds without a confirmed change. Recovery never saves over your project automatically.");
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
@@ -1932,7 +1994,17 @@ impl Shell {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.dialog = Some(Dialog::Unsaved(Next::Quit));
             } else {
-                self.save_settings();
+                if !self.quitting
+                    && self.recovery.close(
+                        Next::Quit,
+                        self.app.as_ref().map_or(0, Application::revision),
+                    )
+                {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                    ctx.request_repaint();
+                } else {
+                    self.save_settings();
+                }
             }
         }
     }
@@ -2150,6 +2222,11 @@ impl Shell {
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.edit_context = Some(ctx.clone());
+        if self.recovery.is_closing() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.checkpoint_frame(&ctx);
+            return;
+        }
         if let Some(target) = crate::pending_edits::begin(&ctx) {
             let deferred_ctx = ctx.clone();
             self.defer(move |_| deferred_ctx.memory_mut(|m| m.request_focus(target)));
@@ -2163,7 +2240,9 @@ impl Shell {
         // in the frame after the change that made it out of date.
         self.follow_out_of_date();
         self.bench_frame(&ctx);
-        self.shortcuts(&ctx);
+        if !self.recovery.blocks_input() {
+            self.shortcuts(&ctx);
+        }
         self.layout(ui);
         self.workholding_view_frame(&ctx);
         self.pick_frame(&ctx);
@@ -2174,6 +2253,14 @@ impl Shell {
         self.pending_dialog(&ctx);
         self.keep_simulate_settings();
         self.settings_frame(&ctx);
+        if self.recovery_project.is_some()
+            && self.dialog.is_none()
+            && !self.edit_guard.active()
+            && let Some((app, _, _)) = self.recovery_project.take()
+        {
+            self.recovery.cancel_install(app.location());
+        }
+        self.checkpoint_frame(&ctx);
         self.text_had_focus = ctx.egui_wants_keyboard_input();
         self.record_actions_frame(&ctx);
     }

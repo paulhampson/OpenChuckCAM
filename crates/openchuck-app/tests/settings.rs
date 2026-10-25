@@ -9,6 +9,26 @@ use std::path::PathBuf;
 use openchuck_app::settings::{SettingsFile, ThemeChoice, UserSettings};
 use openchuck_app::{Acknowledgements, Application, Threads};
 
+#[test]
+fn req_ui_15_req_prj_08_checkpoint_interval_is_personal_and_survives_restart() {
+    let config = folder("checkpoint-interval");
+    let file = SettingsFile::in_folder(&config);
+    assert_eq!(file.load().settings.checkpoint_minutes, 3);
+    let mut settings = UserSettings {
+        checkpoint_minutes: 7,
+        ..UserSettings::default()
+    };
+    file.save(&settings).unwrap();
+    assert_eq!(file.load().settings.checkpoint_minutes, 7);
+    settings.checkpoint_minutes = 0;
+    assert_eq!(settings.clone().clamped().checkpoint_minutes, 1);
+    settings.checkpoint_minutes = u16::MAX;
+    assert_eq!(settings.clamped().checkpoint_minutes, 15);
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    assert_eq!(file.load().settings.checkpoint_minutes, 3);
+    std::fs::remove_dir_all(config).unwrap();
+}
+
 fn folder(name: &str) -> PathBuf {
     let dir =
         std::env::temp_dir().join(format!("openchuck-settings-{name}-{}", std::process::id()));

@@ -16,6 +16,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "=0.4.13"
 serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+toml = "=1.1.8"
+blake3 = "=1.8.7"
 openchuck-types = { path = "../crates/openchuck-types" }
 openchuck-project = { path = "../crates/openchuck-project" }
 openchuck-geom = { path = "../crates/openchuck-geom" }
@@ -50,6 +52,13 @@ bench = false
 [[bin]]
 name = "project_files"
 path = "fuzz_targets/project_files.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_recovery"
+path = "fuzz_targets/project_recovery.rs"
 test = false
 doc = false
 bench = false

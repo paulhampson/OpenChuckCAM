@@ -4,6 +4,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
+
 - Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
 
 - ROUGHPATH maps optional reversing-ramp clearance from the whole STL target and configured full cutter/shank body, retaining held regions/tabs independently of selections. Unsupported exact STEP certificates and shanks wider than the cutting profile refuse the option. The entry form identifies the ramp-only flag, labels a retained true flag inactive for other styles, and explains full-width-slot engagement. Optional-ramp posting refuses uncertified low decimal precision or float-controller WCS/MCS magnitudes; it never changes the work zero.

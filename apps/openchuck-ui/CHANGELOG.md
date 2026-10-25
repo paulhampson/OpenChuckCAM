@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- CHECKPOINT, PRJ-08, issue #295: configure a per-user recovery interval,
+  retain three scheduled checkpoints plus a separate fifteen-second interim,
+  and choose recovery into unsaved memory. Startup discovery, moved-folder
+  location, model warnings and asynchronous Save/close handling preserve the
+  pending-edit guard. See accepted decision 0243 and OI-989 for native checks.
+
 - OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
   is administratively renumbered from original 0238 by Merge Manager to
   resolve the SIMUI collision; substantive content and owner acceptance are
