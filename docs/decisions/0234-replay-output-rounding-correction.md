@@ -1,6 +1,6 @@
 # 0234: Replay output correction for combined linear and rotary rounding (OI-984; issue #324)
 
-- **Status:** proposed implementation record, 24 Oct 2026 (Europe/London). The correction policy is already accepted in decision 0211: preserve the existing tip-error limit and correct the output, checking controller support before any precision change. The owner subsequently instructed "Complete all steps and also include changes for #324 in this work", authorising this correction in STEPALL-M / PR #321. The implementation below is reviewable; this record has not been accepted.
+- **Status:** accepted by the project owner, directly in this lane session on 25 Oct 2026 (Europe/London), after the complete final record and verification results were shown: "Accept 0234". The correction policy was already accepted in decision 0211; the owner separately authorised implementation in STEPALL-M / PR #321. This acceptance records the implementation and its evidence; it grants no methodology waiver, tessellation default or lane release.
 - **Date:** 24 Oct 2026 (Europe/London).
 - **Requirements:** GC-09, GC-10, GC-07, NFR-06, NFR-12; verification plan 4.1 and replay gate 2.
 - **Builds on:** [accepted decision 0211](0211-step-accuracy-measured.md), its form-a replay diagnostic and the owner's individual choice to preserve the limit and correct the output.
@@ -59,7 +59,7 @@ The completed five-run full-sequence M3 on 25 Oct 2026 is reported in [0211](021
 
 The owner's instruction to include #324 in this work supersedes the former pending-lane restriction for this correction. It does not authorise STEPALL-T/X implementation or a tessellation default. Keep OI-839 in STEPALL-X and keep sampling, accuracy allocation and performance verification separate.
 
-PR #321 stays draft. Decision 0211 is accepted, but that acceptance and the instruction to implement this correction do not accept this implementation record, release the PR to the Merge Manager, mark it ready, merge it or enable auto-merge. Present the complete final record before requesting its acceptance, after the other decisions and verification results.
+PR #321 stays draft. The owner accepted this complete final implementation record directly on 25 Oct 2026, after the other decisions and verification results were presented, with "Accept 0234". Decision 0211 is already accepted. Neither acceptance releases the PR to the Merge Manager, marks it ready, merges it or enables auto-merge. The separate sampling, tessellation and performance qualifications and later-main integration remain outstanding.
 
 ## Consequences
 
