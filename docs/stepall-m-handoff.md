@@ -1,5 +1,7 @@
 # STEPALL-M handoff — paused 24 Oct 2026
 
+**Update, 25 Oct 2026:** the owner resumed work. All six M3 batches have now completed in one fresh runtime (30 successful timed trials), including the three single-thread batches listed as pending in the historical handoff below. [Final M3 report and raw evidence](decisions/0211-step-accuracy-measured.md#full-sequence-m3-completed-25-oct-2026) supersede the pause status: current c/b job generation 1.779127 passes; rest 2.006793 fails its per-operation limit. Replay/M4 pass; M2 sampling and candidate qualification remain unresolved. STL pencil scaling is tracked in [issue #344](https://github.com/paulhampson/OpenChuckCAM/issues/344) / OI-990. PR #321 stays draft. The remaining follow-up is record 0234 owner acceptance, owner/coordinator disposition of the reported gates, and integration against later main at release; no release is inferred.
+
 The owner paused work for handover, then explicitly requested this handoff be pushed to the existing branch. No benchmark is running. This is a progress checkpoint, not a release or a waiver of outstanding criteria.
 
 ## Branch and authority

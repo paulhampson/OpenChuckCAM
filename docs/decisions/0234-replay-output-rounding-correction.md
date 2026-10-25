@@ -53,6 +53,8 @@ On the saved form-a quick-stepover project that reproduced the defect, the produ
 
 The corrected lobed LinuxCNC reference also passes gate 3 in LinuxCNC 2.9.10: all 1,806 moves reached, no fault, 105.6 s of motion. The simulator/replay comparison's largest sampled difference is 0.0552 against its existing 0.1 threshold; that gate-3 metric is separate from gate 2's model-tip rounding limit. The geometry measurements were paused during the real-time replay. The exact command, image digest and report hash are in [the evidence file](0234-replay-output-evidence.txt).
 
+The completed five-run full-sequence M3 on 25 Oct 2026 is reported in [0211](0211-step-accuracy-measured.md) with complete raw evidence. All 30 timed trials succeeded at one/four threads on a/b/c; whole-job generation is 1.779127 times the import baseline, but rest machining is 2.006793 times and fails the unchanged per-operation criterion. Physical sampling and tessellation qualifications remain unresolved. Those separate failures do not undo the corrected replay result or qualify a setting. The correction and full M4 evidence were published at checkpoint `b375262`; the final measurement report accompanies this record.
+
 ## Scope and release
 
 The owner's instruction to include #324 in this work supersedes the former pending-lane restriction for this correction. It does not authorise STEPALL-T/X implementation or a tessellation default. Keep OI-839 in STEPALL-X and keep sampling, accuracy allocation and performance verification separate.

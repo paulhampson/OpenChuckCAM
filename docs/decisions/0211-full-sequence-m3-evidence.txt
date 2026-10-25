@@ -1,0 +1,782 @@
+Full-sequence M3, 25 Oct 2026 (Europe/London)
+Measured source eee448609348e7ecc5bbfe71e8b3377d91170b32.
+Release executable SHA256 f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e.
+AMD EPYC 9V74, 4 CPU quota, 16 GiB RAM, Rust 1.97.0, static OCCT7.8.1.
+No concurrent compilation, tests or coverage during timing.
+
+Runtime restarted after the 24 Oct owner pause. The old completed all-thread
+results remain in docs/handoffs/stepall-m-2026-10-24. All six batches below were
+rerun in one current runtime, using the same pinned executable and inputs;
+no cross-runtime sample was used in medians or thread comparisons.
+
+Six successful operations, in stock-carrying order, full stepovers; excludes
+known simultaneous refusal explicitly. Not a seven-operation benchmark.
+Original finer-mesh candidate .01 mm/.02 rad. Not the tighter M1 investigation.
+Five successful timed repetitions per form/thread count, one untimed
+all-thread warm-up per batch. Job-generation median is computed from each
+run's complete sum, not a sum of operation medians. Job elapsed time starts
+at stock construction, includes generation/simulation/bookkeeping, excludes
+pool creation/import/post/replay. Drop/fitting times are inclusive sums;
+nested and parallel scopes overlap and are not additive wall-time components.
+Roughing has no fitting scope (zero expected). Exact query counts are zero.
+No performance budget waiver. A near-limit overrun is still a failure.
+
+Environment/worker/input hashes and provenance:
+
+m3-resume-provenance.json
+{
+  "resumed_utc": "2026-10-25T13:50:24.200516+00:00",
+  "reason": "Runtime restarted; preserve previous results and rerun both thread counts in current runtime rather than presume same physical host",
+  "cpu": "AMD EPYC 9V74",
+  "cpu_quota": "400000/100000",
+  "ram_bytes": 17179869184,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+full-m3-manifest.json
+{
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e",
+  "scope": "six successful operations in original sequence; simultaneous refusal excluded explicitly; not a seven-operation benchmark",
+  "runs": 5,
+  "rayon_threads": 4
+}
+01b0997bb43e7f1aeb5d05e988731f7444bee41f4595086c0590b902fc1408b9  /workspace/OpenChuckCAM/target/release/openchuck-step-worker
+0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646  /workspace/OpenChuckCAM/testdata/step/valid/blisk.step
+48351f42635f05eea09aaf77dd685e7b2bd564cd087b4a336fb29554a7e33f37  /workspace/owner-blisk.stl
+
+Commands and orchestration (argv also in run-full-m3.py):
+import hashlib, json, math, os, pathlib, subprocess, time
+root=pathlib.Path('/workspace/OpenChuckCAM')
+pathlib.Path('/workspace/stepall-evidence/full-m3-runner.pid').write_text(str(os.getpid()))
+out=pathlib.Path('/workspace/stepall-evidence')
+binary=out/'m3-step-accuracy'
+source='eee448609348e7ecc5bbfe71e8b3377d91170b32'
+manifest={'source':subprocess.check_output(['git','rev-parse',source],cwd=root,text=True).strip(), 'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(), 'scope':'six successful operations in original sequence; simultaneous refusal excluded explicitly; not a seven-operation benchmark', 'runs':5, 'rayon_threads':4}
+(out/'full-m3-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+# M1/M4 are correctness investigations, not timing samples. Wait for them and
+# the separate real-time simulator check before measuring benchmark time.
+while not (out/'allow-full-m3').exists() or any(pathlib.Path(f'/proc/{pid}').exists() for pid in [62744,108771]):
+ time.sleep(5)
+env=os.environ.copy();env['OPENCHUCK_STEP_WORKER']=str(root/'target/release/openchuck-step-worker');env['RAYON_NUM_THREADS']='4'
+for threads in ['all','1']:
+ for form in ['b','c','a']:
+  key=f'{form}-{threads}'; log=out/f'full-m3-{key}.log'; done=out/f'full-m3-{key}.done'
+  if done.exists(): continue
+  args=[str(binary),'--only','m3','--forms',form,'--ops','roughing,rest,pencil,helical,axial,indexed','--runs','5','--threads',threads,'--skip-probe','--fine','0.01','--angular','0.02']
+  if form=='a':args+=['--stl','/workspace/owner-blisk.stl']
+  start=time.time();(out/'full-m3-status.json').write_text(json.dumps({'batch':key,'state':'running','started_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'argv':args},indent=2)+'\n')
+  rejected=None
+  with log.open('w') as f:
+   with subprocess.Popen(args,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True) as child:
+    for line in child.stdout:
+     f.write(line);f.flush()
+     fields=[v.strip() for v in line.split('|')]
+     if fields[0].startswith('run ') and len(fields)==11:
+      values=list(map(float,fields[3:10]))
+      if fields[10]!='success' or not all(math.isfinite(v) and v>=0 for v in values):
+       rejected='unsuccessful or invalid operation timing'
+      elif values[6]<=0 or (fields[1]!='roughing' and values[5]<=0):
+       rejected='missing fitting or assembly timing in successful finishing work'
+      if rejected:
+       child.terminate()
+    exit_code=child.wait()
+  text=log.read_text()
+  if rejected or exit_code or 'job wall median' not in text or 'unavailable' in text or 'REFUSED' in text:
+   (out/'full-m3-status.json').write_text(json.dumps({'batch':key,'state':'failed','exit':exit_code,'reason':rejected},indent=2)+'\n');raise SystemExit(1)
+  done.write_text(json.dumps({'elapsed_s':time.time()-start,'exit':0,'source':manifest['source'],'binary_sha256':manifest['binary_sha256']},indent=2)+'\n')
+(out/'full-m3-status.json').write_text(json.dumps({'state':'complete'},indent=2)+'\n')
+
+Independent audit:
+import json, math, pathlib, statistics, sys
+root=pathlib.Path('/workspace/stepall-evidence')
+ops=['roughing','rest','pencil','helical','axial','indexed']
+all_data={}
+manifest=json.loads((root/'full-m3-manifest.json').read_text())
+for form in 'abc':
+ for threads in ['1','all']:
+  name=f'{form}-{threads}'; done=root/f'full-m3-{name}.done'
+  if not done.exists():
+   if '--partial' in sys.argv: continue
+   raise SystemExit(f'Incomplete benchmark: {name}')
+  completed=json.loads(done.read_text())
+  assert completed['exit']==0 and all(completed[k]==manifest[k] for k in ['source','binary_sha256']),name
+  expected_threads='1' if threads=='1' else 'all (4)'
+  lines=(root/f'full-m3-{name}.log').read_text().splitlines()
+  assert 'cores: 4' in lines and 'form c deflection: 0.01 mm and 0.02 rad' in lines,name
+  rows={op:{} for op in ops}; wall={}; medians={}; reported={}
+  for line in lines:
+   cols=[c.strip() for c in line.split('|')]
+   if cols[0].startswith('run '):
+    run=int(cols[0].split()[1])
+    assert cols[2]==expected_threads,line
+    if cols[1]=='job wall time':
+     assert cols[4]=='success'; wall[run]=float(cols[3].split()[0]); continue
+    assert cols[1] in ops and cols[10]=='success',line
+    assert run not in rows[cols[1]],line
+    rows[cols[1]][run]=list(map(float,cols[3:10]))
+    assert all(math.isfinite(v) and v>=0 for v in rows[cols[1]][run]),line
+    assert rows[cols[1]][run][6]>0 and (cols[1]=='roughing' or rows[cols[1]][run][5]>0),(name,line,'missing stage timing')
+   elif cols[0] in ops:
+    assert cols[1]==expected_threads,line
+    reported[cols[0]]=list(map(float,cols[2:]))
+   elif cols[0] in ['job generation median','job wall median']:
+    assert cols[1]==expected_threads,line
+    reported[cols[0]]=float(cols[2].split()[0])
+  assert set(wall)==set(range(1,6)),name
+  for op in ops:
+   assert set(rows[op])==set(range(1,6)),(name,op)
+   medians[op]=[statistics.median(v[i] for v in rows[op].values()) for i in range(7)]
+   # Drop count and query count must agree across equivalent repetitions.
+   assert len({v[1] for v in rows[op].values()})==1,(name,op,'drop count')
+   assert len({v[3] for v in rows[op].values()})==1,(name,op,'query count')
+   assert all(abs(a-b)<0.0000011 for a,b in zip(medians[op],reported[op])),(name,op,'median')
+  for run in range(1,6):
+   assert math.isfinite(wall[run]) and wall[run]+0.0001>=sum(rows[op][run][0]+rows[op][run][4] for op in ops),(name,run,'job wall encloses generation and simulation')
+  generation=statistics.median(sum(rows[op][run][0] for op in ops) for run in range(1,6))
+  assert abs(generation-reported['job generation median'])<0.00001,(name,'job generation')
+  assert abs(statistics.median(wall.values())-reported['job wall median'])<0.0000011,(name,'job wall')
+  all_data[name]={'operations':medians,'generation':reported['job generation median'],'wall':reported['job wall median']}
+  print(name,'complete: five equivalent successful runs;', 'generation', reported['job generation median'],'wall',reported['job wall median'])
+for form in 'abc':
+ if form+'-1' in all_data and form+'-all' in all_data:
+  one, many=all_data[form+'-1'],all_data[form+'-all']
+  for op in ops:
+   assert all(one['operations'][op][i]==many['operations'][op][i] for i in [1,3]),(form,op,'thread-count changes drop/query counts')
+   print('speedup',form,op,one['operations'][op][0]/many['operations'][op][0])
+if 'b-all' in all_data and 'c-all' in all_data:
+ b,c=all_data['b-all'],all_data['c-all']
+ print('c/b job generation',c['generation']/b['generation'])
+ print('c/b job wall',c['wall']/b['wall'])
+ for op in ops: print('c/b operation generation',op,c['operations'][op][0]/b['operations'][op][0])
+(root/'full-m3-summary.json').write_text(json.dumps(all_data,indent=2)+'\n')
+
+Audit output:
+a-1 complete: five equivalent successful runs; generation 59.759198 wall 531.051965
+a-all complete: five equivalent successful runs; generation 31.328877 wall 164.431033
+b-1 complete: five equivalent successful runs; generation 52.68573 wall 1069.024855
+b-all complete: five equivalent successful runs; generation 18.44627 wall 309.201656
+c-1 complete: five equivalent successful runs; generation 94.319588 wall 1095.738741
+c-all complete: five equivalent successful runs; generation 32.818249 wall 320.630199
+speedup a roughing 1.8001202338137072
+speedup a rest 2.5768644362066233
+speedup a pencil 1.0036629275860045
+speedup a helical 2.4522489903040845
+speedup a axial 1.7233368097324862
+speedup a indexed 1.8067277658521534
+speedup b roughing 1.4183276293997036
+speedup b rest 2.4996290984619947
+speedup b pencil 1.9947414680261455
+speedup b helical 3.0941783300534547
+speedup b axial 3.4216479322476308
+speedup b indexed 1.8447501325371802
+speedup c roughing 1.861722537222441
+speedup c rest 2.726891408210325
+speedup c pencil 1.9658113146502176
+speedup c helical 3.596051973177236
+speedup c axial 3.1081999732024013
+speedup c indexed 2.650106820049302
+c/b job generation 1.7791265659669953
+c/b job wall 1.036961454695443
+c/b operation generation roughing 1.2412707075530693
+c/b operation generation rest 2.00679302913334
+c/b operation generation pencil 1.5168279895730432
+c/b operation generation helical 1.957802435266911
+c/b operation generation axial 1.8185228642487314
+c/b operation generation indexed 1.6978710343480565
+
+=== full-m3-a-1.done ===
+{
+  "elapsed_s": 2964.885148048401,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-a-1.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+owner's blisk.stl moved by Vec3 { x: 10.0, y: 0.0, z: 0.0 } to sit on the STEP part
+owner's blisk.stl: 6386 triangles, vertices up to 0.0313 mm from the exact faces
+form c deflection: 0.01 mm and 0.02 rad
+
+## form a (owner's blisk.stl): 6386 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | 1 | 1.699037 | 10081 | 0.901199 | 0 | 17.131871 | 0.000000 | 0.482742 | success
+run 1 | rest | 1 | 15.358371 | 234045 | 14.779314 | 0 | 49.201930 | 13.047950 | 0.069109 | success
+run 1 | pencil | 1 | 6.700495 | 410107 | 6.463430 | 0 | 0.355273 | 0.169033 | 0.107423 | success
+run 1 | helical | 1 | 14.902895 | 234045 | 14.741257 | 0 | 31.523827 | 12.947712 | 0.067971 | success
+run 1 | axial | 1 | 20.523973 | 556420 | 19.873075 | 0 | 367.743398 | 17.996799 | 0.420505 | success
+run 1 | indexed | 1 | 0.145657 | 2512 | 0.137297 | 0 | 0.184356 | 0.125510 | 0.007291 | success
+run 1 | job wall time | 1 | 525.495678 s | success
+run 2 | roughing | 1 | 1.779252 | 10081 | 0.966544 | 0 | 16.970090 | 0.000000 | 0.470847 | success
+run 2 | rest | 1 | 15.836622 | 234045 | 15.246440 | 0 | 51.247840 | 13.540315 | 0.073889 | success
+run 2 | pencil | 1 | 6.620525 | 410107 | 6.383954 | 0 | 0.363426 | 0.169907 | 0.108978 | success
+run 2 | helical | 1 | 14.852384 | 234045 | 14.691557 | 0 | 31.639217 | 12.813643 | 0.067597 | success
+run 2 | axial | 1 | 20.532648 | 556420 | 19.857276 | 0 | 371.109883 | 17.983534 | 0.444383 | success
+run 2 | indexed | 1 | 0.139358 | 2512 | 0.131387 | 0 | 0.182199 | 0.119062 | 0.006902 | success
+run 2 | job wall time | 1 | 531.282062 s | success
+run 3 | roughing | 1 | 1.700427 | 10081 | 0.919100 | 0 | 17.372888 | 0.000000 | 0.471327 | success
+run 3 | rest | 1 | 15.783857 | 234045 | 15.177426 | 0 | 49.082121 | 13.328292 | 0.066653 | success
+run 3 | pencil | 1 | 6.620239 | 410107 | 6.385409 | 0 | 0.351147 | 0.169990 | 0.104551 | success
+run 3 | helical | 1 | 14.877005 | 234045 | 14.715520 | 0 | 31.562059 | 12.909302 | 0.066986 | success
+run 3 | axial | 1 | 20.637111 | 556420 | 19.946785 | 0 | 367.274835 | 18.064739 | 0.459868 | success
+run 3 | indexed | 1 | 0.140558 | 2512 | 0.132107 | 0 | 0.181063 | 0.120985 | 0.007147 | success
+run 3 | job wall time | 1 | 525.602997 s | success
+run 4 | roughing | 1 | 1.709783 | 10081 | 0.932947 | 0 | 17.121374 | 0.000000 | 0.467126 | success
+run 4 | rest | 1 | 15.836476 | 234045 | 15.210303 | 0 | 49.348425 | 13.473323 | 0.070036 | success
+run 4 | pencil | 1 | 6.658339 | 410107 | 6.423335 | 0 | 0.347892 | 0.174423 | 0.104833 | success
+run 4 | helical | 1 | 14.699032 | 234045 | 14.535002 | 0 | 31.803284 | 12.756679 | 0.071002 | success
+run 4 | axial | 1 | 20.546135 | 556420 | 19.893636 | 0 | 382.494922 | 18.016494 | 0.419029 | success
+run 4 | indexed | 1 | 0.149950 | 2512 | 0.140832 | 0 | 0.195624 | 0.128615 | 0.007954 | success
+run 4 | job wall time | 1 | 540.919087 s | success
+run 5 | roughing | 1 | 1.805189 | 10081 | 0.926592 | 0 | 17.759913 | 0.000000 | 0.537026 | success
+run 5 | rest | 1 | 16.274996 | 234045 | 15.644442 | 0 | 48.769785 | 13.964702 | 0.081391 | success
+run 5 | pencil | 1 | 6.498812 | 410107 | 6.267853 | 0 | 0.353231 | 0.165701 | 0.107026 | success
+run 5 | helical | 1 | 14.905001 | 234045 | 14.743972 | 0 | 32.297173 | 12.921226 | 0.066090 | success
+run 5 | axial | 1 | 20.737219 | 556420 | 20.089787 | 0 | 371.329091 | 18.208030 | 0.412392 | success
+run 5 | indexed | 1 | 0.135248 | 2512 | 0.127287 | 0 | 0.178299 | 0.116142 | 0.006916 | success
+run 5 | job wall time | 1 | 531.051965 s | success
+roughing | 1 | 1.709783 | 10081 | 0.926592 | 0 | 17.131871 | 0.000000 | 0.471327
+rest | 1 | 15.836476 | 234045 | 15.210303 | 0 | 49.201930 | 13.473323 | 0.070036
+pencil | 1 | 6.620525 | 410107 | 6.385409 | 0 | 0.353231 | 0.169907 | 0.107026
+helical | 1 | 14.877005 | 234045 | 14.715520 | 0 | 31.639217 | 12.909302 | 0.067597
+axial | 1 | 20.546135 | 556420 | 19.893636 | 0 | 371.109883 | 18.016494 | 0.420505
+indexed | 1 | 0.140558 | 2512 | 0.132107 | 0 | 0.182199 | 0.120985 | 0.007147
+job generation median | 1 | 59.759198 s
+job wall median | 1 | 531.051965 s
+
+=== full-m3-a-all.done ===
+{
+  "elapsed_s": 1126.6225504875183,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-a-all.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+owner's blisk.stl moved by Vec3 { x: 10.0, y: 0.0, z: 0.0 } to sit on the STEP part
+owner's blisk.stl: 6386 triangles, vertices up to 0.0313 mm from the exact faces
+form c deflection: 0.01 mm and 0.02 rad
+
+## form a (owner's blisk.stl): 6386 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | all (4) | 0.988168 | 10081 | 1.174645 | 0 | 5.251005 | 0.000000 | 0.467753 | success
+run 1 | rest | all (4) | 6.145638 | 234045 | 23.207164 | 0 | 17.321837 | 5.056036 | 0.075726 | success
+run 1 | pencil | all (4) | 6.596363 | 410107 | 18.671917 | 0 | 0.156928 | 0.173337 | 0.115859 | success
+run 1 | helical | all (4) | 5.847709 | 234045 | 22.822991 | 0 | 10.457699 | 5.043575 | 0.074340 | success
+run 1 | axial | all (4) | 11.369230 | 556420 | 43.103655 | 0 | 99.752362 | 38.933317 | 0.508371 | success
+run 1 | indexed | all (4) | 0.077797 | 2512 | 0.230952 | 0 | 0.052436 | 0.209993 | 0.009174 | success
+run 1 | job wall time | all (4) | 164.026548 s | success
+run 2 | roughing | all (4) | 0.925895 | 10081 | 0.991991 | 0 | 5.108756 | 0.000000 | 0.462464 | success
+run 2 | rest | all (4) | 6.766426 | 234045 | 25.644577 | 0 | 18.311420 | 5.494094 | 0.067262 | success
+run 2 | pencil | all (4) | 6.836373 | 410107 | 20.291088 | 0 | 0.166478 | 0.176528 | 0.111195 | success
+run 2 | helical | all (4) | 6.066678 | 234045 | 23.794625 | 0 | 10.103312 | 5.223598 | 0.069092 | success
+run 2 | axial | all (4) | 12.005493 | 556420 | 43.889919 | 0 | 100.895911 | 39.714064 | 0.422971 | success
+run 2 | indexed | all (4) | 0.061366 | 2512 | 0.160437 | 0 | 0.052814 | 0.145481 | 0.009771 | success
+run 2 | job wall time | all (4) | 167.309329 s | success
+run 3 | roughing | all (4) | 0.949816 | 10081 | 0.945722 | 0 | 5.328292 | 0.000000 | 0.484339 | success
+run 3 | rest | all (4) | 6.288092 | 234045 | 23.758112 | 0 | 17.399285 | 5.185140 | 0.073933 | success
+run 3 | pencil | all (4) | 7.445782 | 410107 | 22.553032 | 0 | 0.168525 | 0.175861 | 0.107530 | success
+run 3 | helical | all (4) | 6.263665 | 234045 | 24.430417 | 0 | 10.637770 | 5.414806 | 0.073688 | success
+run 3 | axial | all (4) | 8.651361 | 556420 | 30.693474 | 0 | 101.153965 | 27.811099 | 0.457999 | success
+run 3 | indexed | all (4) | 0.077658 | 2512 | 0.219697 | 0 | 0.058428 | 0.199188 | 0.009041 | success
+run 3 | job wall time | all (4) | 164.431033 s | success
+run 4 | roughing | all (4) | 0.923453 | 10081 | 0.915581 | 0 | 5.211820 | 0.000000 | 0.476565 | success
+run 4 | rest | all (4) | 5.913317 | 234045 | 22.276038 | 0 | 18.090481 | 5.040741 | 0.071316 | success
+run 4 | pencil | all (4) | 6.310753 | 410107 | 18.503831 | 0 | 0.158445 | 0.172371 | 0.116559 | success
+run 4 | helical | all (4) | 6.234096 | 234045 | 24.425208 | 0 | 11.900353 | 5.340148 | 0.070524 | success
+run 4 | axial | all (4) | 11.922298 | 556420 | 45.631627 | 0 | 99.084772 | 41.233171 | 0.427289 | success
+run 4 | indexed | all (4) | 0.083556 | 2512 | 0.242887 | 0 | 0.050969 | 0.218962 | 0.010605 | success
+run 4 | job wall time | all (4) | 165.896199 s | success
+run 5 | roughing | all (4) | 1.028748 | 10081 | 1.130971 | 0 | 5.371096 | 0.000000 | 0.521398 | success
+run 5 | rest | all (4) | 5.793911 | 234045 | 21.685178 | 0 | 16.090346 | 4.563114 | 0.070349 | success
+run 5 | pencil | all (4) | 6.280544 | 410107 | 18.528021 | 0 | 0.166448 | 0.167621 | 0.111462 | success
+run 5 | helical | all (4) | 5.698262 | 234045 | 22.173172 | 0 | 9.290205 | 4.821680 | 0.070244 | success
+run 5 | axial | all (4) | 12.447606 | 556420 | 45.280950 | 0 | 97.484195 | 40.931348 | 0.449193 | success
+run 5 | indexed | all (4) | 0.079805 | 2512 | 0.237153 | 0 | 0.052111 | 0.213728 | 0.008895 | success
+run 5 | job wall time | all (4) | 159.793277 s | success
+roughing | all (4) | 0.949816 | 10081 | 0.991991 | 0 | 5.251005 | 0.000000 | 0.476565
+rest | all (4) | 6.145638 | 234045 | 23.207164 | 0 | 17.399285 | 5.056036 | 0.071316
+pencil | all (4) | 6.596363 | 410107 | 18.671917 | 0 | 0.166448 | 0.173337 | 0.111462
+helical | all (4) | 6.066678 | 234045 | 23.794625 | 0 | 10.457699 | 5.223598 | 0.070524
+axial | all (4) | 11.922298 | 556420 | 43.889919 | 0 | 99.752362 | 39.714064 | 0.449193
+indexed | all (4) | 0.077797 | 2512 | 0.230952 | 0 | 0.052436 | 0.209993 | 0.009174
+job generation median | all (4) | 31.328877 s
+job wall median | all (4) | 164.431033 s
+
+=== full-m3-b-1.done ===
+{
+  "elapsed_s": 5647.479091644287,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-b-1.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | 1 | 1.072514 | 10369 | 0.317704 | 0 | 17.226461 | 0.000000 | 0.457605 | success
+run 1 | rest | 1 | 8.062352 | 256235 | 7.377427 | 0 | 50.949090 | 6.837266 | 0.078041 | success
+run 1 | pencil | 1 | 7.836667 | 359338 | 2.274820 | 0 | 0.191178 | 0.061304 | 0.039229 | success
+run 1 | helical | 1 | 7.224524 | 256205 | 7.050903 | 0 | 32.672797 | 6.385970 | 0.074679 | success
+run 1 | axial | 1 | 28.105033 | 828608 | 27.215484 | 0 | 916.665442 | 25.669165 | 0.559198 | success
+run 1 | indexed | 1 | 0.066114 | 2372 | 0.058574 | 0 | 0.159512 | 0.053994 | 0.006593 | success
+run 1 | job wall time | 1 | 1070.241880 s | success
+run 2 | roughing | 1 | 1.141561 | 10369 | 0.340090 | 0 | 17.371510 | 0.000000 | 0.479277 | success
+run 2 | rest | 1 | 7.739732 | 256235 | 7.110299 | 0 | 50.439821 | 6.542253 | 0.080287 | success
+run 2 | pencil | 1 | 7.885842 | 359338 | 2.484556 | 0 | 0.184766 | 0.072122 | 0.040570 | success
+run 2 | helical | 1 | 7.325904 | 256205 | 7.140172 | 0 | 33.955337 | 6.485590 | 0.080562 | success
+run 2 | axial | 1 | 28.517083 | 828608 | 27.633887 | 0 | 914.960362 | 26.064604 | 0.548191 | success
+run 2 | indexed | 1 | 0.075607 | 2372 | 0.066834 | 0 | 0.172693 | 0.061819 | 0.007642 | success
+run 2 | job wall time | 1 | 1069.783567 s | success
+run 3 | roughing | 1 | 1.178128 | 10369 | 0.343967 | 0 | 17.574686 | 0.000000 | 0.494880 | success
+run 3 | rest | 1 | 7.682840 | 256235 | 7.059079 | 0 | 50.684018 | 6.522455 | 0.080455 | success
+run 3 | pencil | 1 | 7.999258 | 359338 | 2.279208 | 0 | 0.183764 | 0.062804 | 0.039903 | success
+run 3 | helical | 1 | 7.177357 | 256205 | 7.003809 | 0 | 32.325430 | 6.334445 | 0.075792 | success
+run 3 | axial | 1 | 28.714925 | 828608 | 27.814112 | 0 | 910.020153 | 26.233701 | 0.558537 | success
+run 3 | indexed | 1 | 0.069468 | 2372 | 0.061679 | 0 | 0.171549 | 0.057232 | 0.006738 | success
+run 3 | job wall time | 1 | 1063.792816 s | success
+run 4 | roughing | 1 | 1.122690 | 10369 | 0.332821 | 0 | 17.203804 | 0.000000 | 0.475690 | success
+run 4 | rest | 1 | 7.582680 | 256235 | 6.965001 | 0 | 51.455395 | 6.388744 | 0.074713 | success
+run 4 | pencil | 1 | 7.737621 | 359338 | 2.252996 | 0 | 0.179058 | 0.060820 | 0.037773 | success
+run 4 | helical | 1 | 7.182281 | 256205 | 7.006501 | 0 | 32.643493 | 6.365411 | 0.076013 | success
+run 4 | axial | 1 | 29.318836 | 828608 | 28.387137 | 0 | 910.386289 | 26.791070 | 0.577716 | success
+run 4 | indexed | 1 | 0.064844 | 2372 | 0.057400 | 0 | 0.158039 | 0.052821 | 0.006499 | success
+run 4 | job wall time | 1 | 1065.061323 s | success
+run 5 | roughing | 1 | 1.076473 | 10369 | 0.319849 | 0 | 17.209294 | 0.000000 | 0.457818 | success
+run 5 | rest | 1 | 7.560738 | 256235 | 6.950383 | 0 | 51.251298 | 6.432304 | 0.073082 | success
+run 5 | pencil | 1 | 7.798795 | 359338 | 2.213682 | 0 | 0.182587 | 0.060877 | 0.038353 | success
+run 5 | helical | 1 | 7.137841 | 256205 | 6.960331 | 0 | 33.084222 | 6.271240 | 0.076911 | success
+run 5 | axial | 1 | 28.619026 | 828608 | 27.692256 | 0 | 914.854744 | 26.123043 | 0.586172 | success
+run 5 | indexed | 1 | 0.065541 | 2372 | 0.058527 | 0 | 0.160886 | 0.053700 | 0.006075 | success
+run 5 | job wall time | 1 | 1069.024855 s | success
+roughing | 1 | 1.122690 | 10369 | 0.332821 | 0 | 17.226461 | 0.000000 | 0.475690
+rest | 1 | 7.682840 | 256235 | 7.059079 | 0 | 50.949090 | 6.522455 | 0.078041
+pencil | 1 | 7.836667 | 359338 | 2.274820 | 0 | 0.183764 | 0.061304 | 0.039229
+helical | 1 | 7.182281 | 256205 | 7.006501 | 0 | 32.672797 | 6.365411 | 0.076013
+axial | 1 | 28.619026 | 828608 | 27.692256 | 0 | 914.854744 | 26.123043 | 0.559198
+indexed | 1 | 0.066114 | 2372 | 0.058574 | 0 | 0.160886 | 0.053994 | 0.006593
+job generation median | 1 | 52.685730 s
+job wall median | 1 | 1069.024855 s
+
+=== full-m3-b-all.done ===
+{
+  "elapsed_s": 1867.6564083099365,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-b-all.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | all (4) | 0.818497 | 10369 | 0.399148 | 0 | 5.129876 | 0.000000 | 0.483999 | success
+run 1 | rest | all (4) | 2.771302 | 256235 | 9.393175 | 0 | 16.438885 | 2.152239 | 0.078299 | success
+run 1 | pencil | all (4) | 3.236321 | 359338 | 3.326627 | 0 | 0.066700 | 0.060472 | 0.041188 | success
+run 1 | helical | all (4) | 2.051471 | 256205 | 7.701571 | 0 | 10.520774 | 1.760616 | 0.075299 | success
+run 1 | axial | all (4) | 8.180344 | 828608 | 28.286795 | 0 | 261.018537 | 26.736266 | 0.540074 | success
+run 1 | indexed | all (4) | 0.027884 | 2372 | 0.059159 | 0 | 0.050824 | 0.055002 | 0.010016 | success
+run 1 | job wall time | all (4) | 310.325337 s | success
+run 2 | roughing | all (4) | 0.780554 | 10369 | 0.317959 | 0 | 5.424818 | 0.000000 | 0.479861 | success
+run 2 | rest | all (4) | 3.073592 | 256235 | 10.520996 | 0 | 15.984602 | 2.323167 | 0.089468 | success
+run 2 | pencil | all (4) | 4.004571 | 359338 | 4.492449 | 0 | 0.067976 | 0.064470 | 0.045303 | success
+run 2 | helical | all (4) | 2.502207 | 256205 | 9.498170 | 0 | 10.703121 | 2.188248 | 0.079714 | success
+run 2 | axial | all (4) | 10.253396 | 828608 | 34.902172 | 0 | 258.531861 | 32.939016 | 0.560079 | success
+run 2 | indexed | all (4) | 0.035839 | 2372 | 0.085328 | 0 | 0.048075 | 0.079541 | 0.008149 | success
+run 2 | job wall time | all (4) | 311.424881 s | success
+run 3 | roughing | all (4) | 0.791559 | 10369 | 0.438705 | 0 | 5.021052 | 0.000000 | 0.467532 | success
+run 3 | rest | all (4) | 3.418047 | 256235 | 12.088274 | 0 | 15.730446 | 2.768760 | 0.074566 | success
+run 3 | pencil | all (4) | 3.928663 | 359338 | 5.860338 | 0 | 0.075996 | 0.060710 | 0.041068 | success
+run 3 | helical | all (4) | 2.699963 | 256205 | 10.239603 | 0 | 10.232239 | 2.268583 | 0.075338 | success
+run 3 | axial | all (4) | 8.364106 | 828608 | 30.708448 | 0 | 253.531185 | 29.010833 | 0.578705 | success
+run 3 | indexed | all (4) | 0.036478 | 2372 | 0.081079 | 0 | 0.047441 | 0.073658 | 0.009273 | success
+run 3 | job wall time | all (4) | 303.889406 s | success
+run 4 | roughing | all (4) | 0.785922 | 10369 | 0.377709 | 0 | 5.122914 | 0.000000 | 0.479936 | success
+run 4 | rest | all (4) | 3.269592 | 256235 | 11.405048 | 0 | 16.348554 | 2.627662 | 0.077261 | success
+run 4 | pencil | all (4) | 4.183328 | 359338 | 5.926275 | 0 | 0.072800 | 0.069883 | 0.040341 | success
+run 4 | helical | all (4) | 2.321224 | 256205 | 8.799417 | 0 | 10.343617 | 1.925505 | 0.074868 | success
+run 4 | axial | all (4) | 7.856378 | 828608 | 27.118820 | 0 | 258.793420 | 25.649856 | 0.563466 | success
+run 4 | indexed | all (4) | 0.029825 | 2372 | 0.069639 | 0 | 0.060929 | 0.064882 | 0.008856 | success
+run 4 | job wall time | all (4) | 309.201656 s | success
+run 5 | roughing | all (4) | 0.795311 | 10369 | 0.428995 | 0 | 5.212357 | 0.000000 | 0.466556 | success
+run 5 | rest | all (4) | 3.064701 | 256235 | 10.619226 | 0 | 15.682640 | 2.426557 | 0.075970 | success
+run 5 | pencil | all (4) | 3.092709 | 359338 | 3.065862 | 0 | 0.076800 | 0.066833 | 0.040344 | success
+run 5 | helical | all (4) | 2.076367 | 256205 | 7.839516 | 0 | 10.366212 | 1.784326 | 0.075608 | success
+run 5 | axial | all (4) | 8.821420 | 828608 | 32.495413 | 0 | 256.183260 | 30.670124 | 0.583775 | success
+run 5 | indexed | all (4) | 0.037063 | 2372 | 0.072709 | 0 | 0.047510 | 0.067665 | 0.011020 | success
+run 5 | job wall time | all (4) | 305.468971 s | success
+roughing | all (4) | 0.791559 | 10369 | 0.399148 | 0 | 5.129876 | 0.000000 | 0.479861
+rest | all (4) | 3.073592 | 256235 | 10.619226 | 0 | 15.984602 | 2.426557 | 0.077261
+pencil | all (4) | 3.928663 | 359338 | 4.492449 | 0 | 0.072800 | 0.064470 | 0.041068
+helical | all (4) | 2.321224 | 256205 | 8.799417 | 0 | 10.366212 | 1.925505 | 0.075338
+axial | all (4) | 8.364106 | 828608 | 30.708448 | 0 | 258.531861 | 29.010833 | 0.563466
+indexed | all (4) | 0.035839 | 2372 | 0.072709 | 0 | 0.048075 | 0.067665 | 0.009273
+job generation median | all (4) | 18.446270 s
+job wall median | all (4) | 309.201656 s
+
+=== full-m3-c-1.done ===
+{
+  "elapsed_s": 5808.486743450165,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-c-1.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+
+## form c (STEP, finer tessellation): 106928 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | 1 | 1.831189 | 10369 | 1.057375 | 0 | 17.283524 | 0.000000 | 0.471204 | success
+run 1 | rest | 1 | 16.894634 | 238007 | 16.218673 | 0 | 49.627317 | 14.846894 | 0.070804 | success
+run 1 | pencil | 1 | 11.823364 | 359232 | 5.442857 | 0 | 0.197621 | 0.156784 | 0.039347 | success
+run 1 | helical | 1 | 16.577267 | 237977 | 16.404474 | 0 | 32.835727 | 14.896076 | 0.074088 | success
+run 1 | axial | 1 | 47.733881 | 810532 | 46.822999 | 0 | 902.102717 | 43.963980 | 0.559834 | success
+run 1 | indexed | 1 | 0.161747 | 2304 | 0.153870 | 0 | 0.160673 | 0.142917 | 0.006807 | success
+run 1 | job wall time | 1 | 1097.246491 s | success
+run 2 | roughing | 1 | 1.855191 | 10369 | 1.076984 | 0 | 16.623934 | 0.000000 | 0.475891 | success
+run 2 | rest | 1 | 16.744427 | 238007 | 16.106082 | 0 | 50.412308 | 14.775992 | 0.068340 | success
+run 2 | pencil | 1 | 12.007450 | 359232 | 5.409146 | 0 | 0.191136 | 0.156461 | 0.037033 | success
+run 2 | helical | 1 | 16.481206 | 237977 | 16.313879 | 0 | 32.147328 | 14.794329 | 0.068018 | success
+run 2 | axial | 1 | 47.276710 | 810532 | 46.384577 | 0 | 900.701496 | 43.603307 | 0.536468 | success
+run 2 | indexed | 1 | 0.157758 | 2304 | 0.150266 | 0 | 0.157368 | 0.139361 | 0.006539 | success
+run 2 | job wall time | 1 | 1094.770333 s | success
+run 3 | roughing | 1 | 1.829215 | 10369 | 1.073049 | 0 | 16.915267 | 0.000000 | 0.456231 | success
+run 3 | rest | 1 | 16.667262 | 238007 | 16.018170 | 0 | 49.645952 | 14.631516 | 0.068962 | success
+run 3 | pencil | 1 | 11.687193 | 359232 | 5.366561 | 0 | 0.194417 | 0.153857 | 0.036726 | success
+run 3 | helical | 1 | 16.306272 | 237977 | 16.138530 | 0 | 32.914858 | 14.661283 | 0.069114 | success
+run 3 | axial | 1 | 47.668458 | 810532 | 46.761931 | 0 | 901.567275 | 43.945457 | 0.556648 | success
+run 3 | indexed | 1 | 0.161188 | 2304 | 0.153396 | 0 | 0.173449 | 0.141794 | 0.006769 | success
+run 3 | job wall time | 1 | 1095.738741 s | success
+run 4 | roughing | 1 | 1.809529 | 10369 | 1.052648 | 0 | 16.812632 | 0.000000 | 0.456111 | success
+run 4 | rest | 1 | 16.819638 | 238007 | 16.168721 | 0 | 50.153576 | 14.787011 | 0.068860 | success
+run 4 | pencil | 1 | 11.714478 | 359232 | 5.261888 | 0 | 0.190639 | 0.150141 | 0.035420 | success
+run 4 | helical | 1 | 15.896135 | 237977 | 15.733852 | 0 | 32.449596 | 14.280545 | 0.068844 | success
+run 4 | axial | 1 | 46.417961 | 810532 | 45.525363 | 0 | 902.368340 | 42.792690 | 0.552171 | success
+run 4 | indexed | 1 | 0.161259 | 2304 | 0.153766 | 0 | 0.161173 | 0.142912 | 0.006541 | success
+run 4 | job wall time | 1 | 1094.963532 s | success
+run 5 | roughing | 1 | 1.820126 | 10369 | 1.047571 | 0 | 17.199122 | 0.000000 | 0.469118 | success
+run 5 | rest | 1 | 16.910813 | 238007 | 16.247988 | 0 | 50.124229 | 14.818990 | 0.066498 | success
+run 5 | pencil | 1 | 11.713725 | 359232 | 5.299414 | 0 | 0.184724 | 0.151361 | 0.035944 | success
+run 5 | helical | 1 | 16.342251 | 237977 | 16.176142 | 0 | 32.353862 | 14.681691 | 0.067035 | success
+run 5 | axial | 1 | 46.990497 | 810532 | 46.120113 | 0 | 905.874104 | 43.340774 | 0.522928 | success
+run 5 | indexed | 1 | 0.161565 | 2304 | 0.153753 | 0 | 0.184303 | 0.141409 | 0.006754 | success
+run 5 | job wall time | 1 | 1099.871513 s | success
+roughing | 1 | 1.829215 | 10369 | 1.057375 | 0 | 16.915267 | 0.000000 | 0.469118
+rest | 1 | 16.819638 | 238007 | 16.168721 | 0 | 50.124229 | 14.787011 | 0.068860
+pencil | 1 | 11.714478 | 359232 | 5.366561 | 0 | 0.191136 | 0.153857 | 0.036726
+helical | 1 | 16.342251 | 237977 | 16.176142 | 0 | 32.449596 | 14.681691 | 0.068844
+axial | 1 | 47.276710 | 810532 | 46.384577 | 0 | 902.102717 | 43.603307 | 0.552171
+indexed | 1 | 0.161259 | 2304 | 0.153753 | 0 | 0.161173 | 0.141794 | 0.006754
+job generation median | 1 | 94.319588 s
+job wall median | 1 | 1095.738741 s
+
+=== full-m3-c-all.done ===
+{
+  "elapsed_s": 1937.3181083202362,
+  "exit": 0,
+  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
+  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e"
+}
+
+=== full-m3-c-all.log ===
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+
+## form c (STEP, finer tessellation): 106928 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | all (4) | 0.950828 | 10369 | 1.139225 | 0 | 5.249696 | 0.000000 | 0.456096 | success
+run 1 | rest | all (4) | 6.297756 | 238007 | 23.468277 | 0 | 15.704883 | 5.151682 | 0.068196 | success
+run 1 | pencil | all (4) | 6.256445 | 359232 | 8.965802 | 0 | 0.079771 | 0.156466 | 0.041201 | success
+run 1 | helical | all (4) | 5.060686 | 237977 | 19.512289 | 0 | 9.939668 | 4.379388 | 0.069473 | success
+run 1 | axial | all (4) | 16.807354 | 810532 | 63.963020 | 0 | 256.980803 | 59.959053 | 0.544796 | success
+run 1 | indexed | all (4) | 0.065626 | 2304 | 0.185643 | 0 | 0.044790 | 0.172468 | 0.010255 | success
+run 1 | job wall time | all (4) | 323.450385 s | success
+run 2 | roughing | all (4) | 0.986161 | 10369 | 1.072297 | 0 | 5.313411 | 0.000000 | 0.480227 | success
+run 2 | rest | all (4) | 5.323502 | 238007 | 19.541868 | 0 | 15.779092 | 4.375563 | 0.070826 | success
+run 2 | pencil | all (4) | 5.959106 | 359232 | 8.371706 | 0 | 0.077607 | 0.161860 | 0.037979 | success
+run 2 | helical | all (4) | 4.544498 | 237977 | 17.719893 | 0 | 10.384212 | 4.042301 | 0.069145 | success
+run 2 | axial | all (4) | 14.170388 | 810532 | 53.985381 | 0 | 257.580322 | 50.718754 | 0.553356 | success
+run 2 | indexed | all (4) | 0.060850 | 2304 | 0.169560 | 0 | 0.047136 | 0.157785 | 0.009037 | success
+run 2 | job wall time | all (4) | 320.238492 s | success
+run 3 | roughing | all (4) | 0.982539 | 10369 | 1.090714 | 0 | 5.065489 | 0.000000 | 0.491360 | success
+run 3 | rest | all (4) | 6.607510 | 238007 | 24.519270 | 0 | 15.425249 | 5.381507 | 0.069528 | success
+run 3 | pencil | all (4) | 5.817184 | 359232 | 7.812859 | 0 | 0.072816 | 0.167224 | 0.041011 | success
+run 3 | helical | all (4) | 4.416908 | 237977 | 17.114541 | 0 | 10.098061 | 3.802269 | 0.069309 | success
+run 3 | axial | all (4) | 15.210318 | 810532 | 51.918026 | 0 | 256.808225 | 48.804544 | 0.544149 | success
+run 3 | indexed | all (4) | 0.062126 | 2304 | 0.187173 | 0 | 0.051916 | 0.174612 | 0.008146 | success
+run 3 | job wall time | all (4) | 320.630199 s | success
+run 4 | roughing | all (4) | 1.005964 | 10369 | 1.187858 | 0 | 5.126490 | 0.000000 | 0.480161 | success
+run 4 | rest | all (4) | 6.168063 | 238007 | 22.898353 | 0 | 15.953722 | 5.305160 | 0.069048 | success
+run 4 | pencil | all (4) | 5.608229 | 359232 | 7.311658 | 0 | 0.079962 | 0.152029 | 0.039953 | success
+run 4 | helical | all (4) | 4.682428 | 237977 | 18.037963 | 0 | 10.228861 | 4.082109 | 0.067373 | success
+run 4 | axial | all (4) | 15.296769 | 810532 | 53.531137 | 0 | 260.269096 | 50.355354 | 0.543915 | success
+run 4 | indexed | all (4) | 0.056796 | 2304 | 0.162348 | 0 | 0.048860 | 0.150284 | 0.009620 | success
+run 4 | job wall time | all (4) | 324.536844 s | success
+run 5 | roughing | all (4) | 0.970420 | 10369 | 1.157904 | 0 | 5.014120 | 0.000000 | 0.464961 | success
+run 5 | rest | all (4) | 5.289690 | 238007 | 19.483182 | 0 | 15.657364 | 4.332882 | 0.068446 | success
+run 5 | pencil | all (4) | 6.532203 | 359232 | 9.410128 | 0 | 0.076493 | 0.153795 | 0.039456 | success
+run 5 | helical | all (4) | 4.517573 | 237977 | 17.566854 | 0 | 9.852108 | 3.923876 | 0.072216 | success
+run 5 | axial | all (4) | 14.087905 | 810532 | 49.373674 | 0 | 256.928071 | 46.434838 | 0.560752 | success
+run 5 | indexed | all (4) | 0.059653 | 2304 | 0.175084 | 0 | 0.043862 | 0.162511 | 0.008408 | success
+run 5 | job wall time | all (4) | 319.038517 s | success
+roughing | all (4) | 0.982539 | 10369 | 1.139225 | 0 | 5.126490 | 0.000000 | 0.480161
+rest | all (4) | 6.168063 | 238007 | 22.898353 | 0 | 15.704883 | 5.151682 | 0.069048
+pencil | all (4) | 5.959106 | 359232 | 8.371706 | 0 | 0.077607 | 0.156466 | 0.039953
+helical | all (4) | 4.544498 | 237977 | 17.719893 | 0 | 10.098061 | 4.042301 | 0.069309
+axial | all (4) | 15.210318 | 810532 | 53.531137 | 0 | 256.980803 | 50.355354 | 0.544796
+indexed | all (4) | 0.060850 | 2304 | 0.175084 | 0 | 0.047136 | 0.162511 | 0.009037
+job generation median | all (4) | 32.818249 s
+job wall median | all (4) | 320.630199 s
+
+=== Tracking-number audit, 25 Oct 2026 ===
+All remote branch heads explicitly fetched, then main/local/remote docs scanned. Highest decision0243, highest OI989, so tracking OI990 claimed for issue344; no new decision or schema.
+[
+  {
+    "ref": "refs/heads/claude/lane-stepall-m-measure",
+    "head": "b375262526492737ff609a6968a5501fe6d88b8e",
+    "decision_max": 234,
+    "oi_max": 984
+  },
+  {
+    "ref": "refs/heads/work",
+    "head": "a2605495d4e05d323d4cc3f85a4f4d6be118072f",
+    "decision_max": 231,
+    "oi_max": 982
+  },
+  {
+    "ref": "refs/remotes/origin/HEAD",
+    "head": "ab863f6531d1e8fab8c2562e88d92b9277937c3f",
+    "decision_max": 242,
+    "oi_max": 989
+  },
+  {
+    "ref": "refs/remotes/origin/cla-signatures",
+    "head": "55d93fb3659b0c57f6a7cf1d106ee10db48d3e0f",
+    "decision_max": 0,
+    "oi_max": 0
+  },
+  {
+    "ref": "refs/remotes/origin/claude/ci-speed-up-libs-nextest",
+    "head": "af6a09bc6d3c777a069a32154b2790fc582c493c",
+    "decision_max": 49,
+    "oi_max": 210
+  },
+  {
+    "ref": "refs/remotes/origin/claude/coordinator-notes-owner-test-list",
+    "head": "226e082e61f1f4a8e875bf62b276498037582f0f",
+    "decision_max": 158,
+    "oi_max": 542
+  },
+  {
+    "ref": "refs/remotes/origin/claude/docs-gates-4-5-test-instructions",
+    "head": "9573685001117c4e71a236c555f34138fb21cbad",
+    "decision_max": 232,
+    "oi_max": 937
+  },
+  {
+    "ref": "refs/remotes/origin/claude/lane-stepall-m-measure",
+    "head": "b375262526492737ff609a6968a5501fe6d88b8e",
+    "decision_max": 234,
+    "oi_max": 984
+  },
+  {
+    "ref": "refs/remotes/origin/claude/upbeat-davinci-jk46yd",
+    "head": "c92fa236ccc8862e5a52e80eade69c73b835d7e0",
+    "decision_max": 129,
+    "oi_max": 805
+  },
+  {
+    "ref": "refs/remotes/origin/codex/bug-simsync-333",
+    "head": "14cdd9c7981288cfb93c80643268409664b3ed67",
+    "decision_max": 242,
+    "oi_max": 989
+  },
+  {
+    "ref": "refs/remotes/origin/codex/lane-bug-edit-pending-edits",
+    "head": "cb35309c27e2386ddec8bea0ee21938491c8a751",
+    "decision_max": 233,
+    "oi_max": 983
+  },
+  {
+    "ref": "refs/remotes/origin/codex/lane-checkpoint-crash-recovery",
+    "head": "b2e4f859a03108036d955f3f249005558b1982d7",
+    "decision_max": 243,
+    "oi_max": 989
+  },
+  {
+    "ref": "refs/remotes/origin/dependabot/cargo/ui-graphics-49e8759968",
+    "head": "5f16937630190956027ee9b5f638f8bbdc45c9a0",
+    "decision_max": 231,
+    "oi_max": 982
+  },
+  {
+    "ref": "refs/remotes/origin/docs/decision-0016-sp-9-exact-surfaces",
+    "head": "68789930b1eaebdc91f64f33de6e77de46a2ea31",
+    "decision_max": 16,
+    "oi_max": 72
+  },
+  {
+    "ref": "refs/remotes/origin/main",
+    "head": "ab863f6531d1e8fab8c2562e88d92b9277937c3f",
+    "decision_max": 242,
+    "oi_max": 989
+  },
+  {
+    "ref": "refs/remotes/origin/management/merge-queue",
+    "head": "b295308379def3871e092499302f11ece6fca2f6",
+    "decision_max": 231,
+    "oi_max": 982
+  },
+  {
+    "ref": "refs/remotes/origin/spike/linuxcnc-fixture-checks",
+    "head": "92dd315d11ed0c85c5b4ee50466af5dd595a3bbc",
+    "decision_max": 7,
+    "oi_max": 41
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-1-step-kernel",
+    "head": "f4a7d04db83c33e9cb4ea5f03ded1b9bbaa62834",
+    "decision_max": 0,
+    "oi_max": 0
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-10-template-engine",
+    "head": "a27134ebc0373714b5dcf10a5b879269c0868840",
+    "decision_max": 17,
+    "oi_max": 76
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-11-swarf",
+    "head": "d88f11077c1ac41a18115120a5b27e9d173baaf6",
+    "decision_max": 19,
+    "oi_max": 87
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-12-z1-conventions",
+    "head": "4b1ea01d5eb772e2663e6e6d8698ae671b2ff898",
+    "decision_max": 4,
+    "oi_max": 30
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-13-tool-profiles",
+    "head": "cc24ea2848920c6fb4d23a40b9fb2a66a445eded",
+    "decision_max": 9,
+    "oi_max": 48
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-14-short-moves",
+    "head": "69d532f0723b89667ae792a90a4d4a571300fe39",
+    "decision_max": 219,
+    "oi_max": 891
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-2-viewport",
+    "head": "d911116d86d5ca369de851991087f933359bd7e4",
+    "decision_max": 0,
+    "oi_max": 0
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-3-wrapped-path-gcode",
+    "head": "0e251d2d40973cbc043d31e8672a6932ff3228d3",
+    "decision_max": 0,
+    "oi_max": 0
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-4-ray-cast-sweep",
+    "head": "e5ffcd8daaaae4797ed69326fa7783409b36215e",
+    "decision_max": 13,
+    "oi_max": 60
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-5-gcode-reader",
+    "head": "0fee6129e5a7051a36e49ec26781c2bda493422d",
+    "decision_max": 3,
+    "oi_max": 0
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-6-simulation-stock",
+    "head": "7156bc1d196ab0038fa92389b0cbc176a5d13d96",
+    "decision_max": 19,
+    "oi_max": 87
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-7-2d-offsets",
+    "head": "1f54adde2d9dc46ee4ed5dfcea8e513075921ac2",
+    "decision_max": 15,
+    "oi_max": 67
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-8-project-format",
+    "head": "db95e1558b0d34aeaa46272012e79674dcc06422",
+    "decision_max": 4,
+    "oi_max": 30
+  },
+  {
+    "ref": "refs/remotes/origin/spike/sp-9-exact-surfaces",
+    "head": "b0dca8b57621b23245992d5db6e70510ee0ec918",
+    "decision_max": 15,
+    "oi_max": 67
+  }
+]
+
+=== Completion checks, 25 Oct 2026 ===
+All six batches exit0; independent summarize-full-m3.py audit passes.
+cargo fmt --all -- --check: PASS
+cargo xtask records: PASS
+cargo xtask conflicts: PASS
+cargo xtask testdata: PASS
+git diff --check: PASS
+0211 relative links: all existing targets.
+No product code changed after the measured eee4486 source; this completion is evidence/documentation only. Prior product validation retains its recorded source. No new 95% coverage, full-platform CI, current-main or release claim.

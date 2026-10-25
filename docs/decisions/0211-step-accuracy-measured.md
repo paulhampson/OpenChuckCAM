@@ -388,7 +388,7 @@ The owner instructed: "Complete all steps and also include changes for #324 in t
 
 The post now rounds A first, transforms the original model tip at that written angle, then rounds XYZ. Precision and replay limits are unchanged. The original saved form-a quick project passes production CLI replay: 66,076 moves, maximum tip error printed as 0.0008 mm against the unchanged 0.000867 mm limit. The direct regression covers both axes/senses and both posts, including a fed move; a separate reader test still rejects the original bad output. The two lobed reference goldens are updated for corrected Y/Z rounding and the corresponding feed calculation, and pass the independent golden audit. See [correction evidence](0234-replay-output-evidence.txt).
 
-This fixes the demonstrated output defect; it does not turn the earlier quick measurements into full-stepover evidence or establish the geometric error budget. The completed full-stepover M4 and uncapped M1 investigation are recorded in this report; the isolated full-sequence timings follow when complete. PR 321 remains draft.
+This fixes the demonstrated output defect; it does not turn the earlier quick measurements into full-stepover evidence or establish the geometric error budget. The completed full-stepover M4 and uncapped M1 investigation are recorded in this report; the completed isolated full-sequence timings follow below. PR 321 remains draft.
 
 ## Full-stepover M4 after the replay correction (24 Oct 2026)
 
@@ -399,6 +399,111 @@ The full run completed with **exit 0**, without `--quick`, at the requested orig
 - Simultaneous finishing is explicitly disabled for each application job after its library refusal. The application checks cover the six successful operations, with their original stepovers and stock carried in sequence; they do not establish a successful seven-operation job.
 
 This passes the previously failing form-a replay check under the **unchanged** gate-2 tip/angular limits. The corrected saved quick-project CLI result and independent regression/golden checks remain separate supporting evidence. The M4 binary's correction source is `f052ee8`, built before the optional timing hooks and later main integration; integrated-source tests are reported above. This run overlapped other correctness work and was paused for LinuxCNC replay, so its printed application durations are not the required M3 medians. M3 remains an isolated five-run measurement on the integrated source. The M2 sampling failure and tessellation qualifications remain unchanged; PR 321 stays draft.
+
+## Full-sequence M3 completed (25 Oct 2026)
+
+The measured main integration remains `1a90435` (24 Oct). The remote main advanced during the pause; later integration, including ROUGHPATH, is not attributed to these measurements. Any release integration must preserve this provenance and revalidate relevant changed behaviour. No moving-main performance claim is made.
+
+All **30 timed trials succeeded**: five repetitions for each form at one/four threads, full stepovers, six operations in their original stock-carrying order. Simultaneous finishing's known refusal is excluded explicitly; no successful seven-operation benchmark is claimed. The original finer-mesh candidate remains 0.01 mm / 0.02 rad. Measured integrated source is `eee448609348e7ecc5bbfe71e8b3377d91170b32`, executable SHA-256 `f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e`.
+
+The runtime restarted after the owner-requested pause. To meet the same-machine comparison requirement, all six batches were rerun in the current runtime; the three completed four-thread batches from 24 Oct remain archived in [the handoff checkpoint](../handoffs/stepall-m-2026-10-24/). Their c/b generation ratio was 1.792762, with helical 2.454932 and indexed 2.047368 over 2. None of those samples is combined with this run. Differences between the runs remain visible; no further repetitions were selected to seek a pass.
+
+Same AMD EPYC 9V74 model, four-CPU quota and 16 GiB RAM, pinned release executable and worker/input hashes; no compilation, tests or coverage overlapped timing. One untimed all-thread warm-up per batch. [Complete commands, provenance, every raw trial and independent audit](0211-full-sequence-m3-evidence.txt). The audit checks five successful equivalent trials, stage presence, finite values, consistent drop/query counts within repetitions and across thread counts, medians and job-time enclosure. All checks pass.
+
+### Whole-job medians
+
+| Form | Generation, 1 thread s | Generation, 4 threads s | Elapsed incl simulation, 1 thread s | Elapsed incl simulation, 4 threads s |
+| --- | ---: | ---: | ---: | ---: |
+| a | 59.759198 | 31.328877 | 531.051965 | 164.431033 |
+| b | 52.685730 | 18.446270 | 1069.024855 | 309.201656 |
+| c | 94.319588 | 32.818249 | 1095.738741 | 320.630199 |
+
+Job-generation medians use each complete run's generation total; they are not sums of operation medians. Elapsed job time includes stock construction, generation, simulation and bookkeeping, and excludes pool creation/import/post/replay. The accepted 2-times criterion compares **generation** at all threads against form b, with the additional per-operation criterion below; elapsed time is separately reported.
+
+### Operation generation and thread benefit
+
+| Form | Operation | Generation, 1 thread s | Generation, 4 threads s | Speedup |
+| --- | --- | ---: | ---: | ---: |
+| a | roughing | 1.709783 | 0.949816 | 1.800 |
+| a | rest | 15.836476 | 6.145638 | 2.577 |
+| a | pencil | 6.620525 | 6.596363 | 1.004 |
+| a | helical | 14.877005 | 6.066678 | 2.452 |
+| a | axial | 20.546135 | 11.922298 | 1.723 |
+| a | indexed | 0.140558 | 0.077797 | 1.807 |
+| b | roughing | 1.122690 | 0.791559 | 1.418 |
+| b | rest | 7.682840 | 3.073592 | 2.500 |
+| b | pencil | 7.836667 | 3.928663 | 1.995 |
+| b | helical | 7.182281 | 2.321224 | 3.094 |
+| b | axial | 28.619026 | 8.364106 | 3.422 |
+| b | indexed | 0.066114 | 0.035839 | 1.845 |
+| c | roughing | 1.829215 | 0.982539 | 1.862 |
+| c | rest | 16.819638 | 6.168063 | 2.727 |
+| c | pencil | 11.714478 | 5.959106 | 1.966 |
+| c | helical | 16.342251 | 4.544498 | 3.596 |
+| c | axial | 47.276710 | 15.210318 | 3.108 |
+| c | indexed | 0.161259 | 0.060850 | 2.650 |
+
+### Measured stages
+
+These are per-operation medians, in seconds. Fitting and drop durations are inclusive summed scopes and overlap, including parallel work. Do not sum them or subtract them from generation to invent an exclusive wall-time breakdown. Roughing has no fitting scope. B-rep pencil preparation remains inside generation. Drop/query counts and raw simulations are also in the evidence; exact-query counts are zero throughout this mesh-based benchmark.
+
+| Form | Threads | Operation | Drop sum s | Fitting sum s | Assembly s | Simulation s |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| a | 1 | roughing | 0.926592 | 0.000000 | 0.471327 | 17.131871 |
+| a | 1 | rest | 15.210303 | 13.473323 | 0.070036 | 49.201930 |
+| a | 1 | pencil | 6.385409 | 0.169907 | 0.107026 | 0.353231 |
+| a | 1 | helical | 14.715520 | 12.909302 | 0.067597 | 31.639217 |
+| a | 1 | axial | 19.893636 | 18.016494 | 0.420505 | 371.109883 |
+| a | 1 | indexed | 0.132107 | 0.120985 | 0.007147 | 0.182199 |
+| a | 4 | roughing | 0.991991 | 0.000000 | 0.476565 | 5.251005 |
+| a | 4 | rest | 23.207164 | 5.056036 | 0.071316 | 17.399285 |
+| a | 4 | pencil | 18.671917 | 0.173337 | 0.111462 | 0.166448 |
+| a | 4 | helical | 23.794625 | 5.223598 | 0.070524 | 10.457699 |
+| a | 4 | axial | 43.889919 | 39.714064 | 0.449193 | 99.752362 |
+| a | 4 | indexed | 0.230952 | 0.209993 | 0.009174 | 0.052436 |
+| b | 1 | roughing | 0.332821 | 0.000000 | 0.475690 | 17.226461 |
+| b | 1 | rest | 7.059079 | 6.522455 | 0.078041 | 50.949090 |
+| b | 1 | pencil | 2.274820 | 0.061304 | 0.039229 | 0.183764 |
+| b | 1 | helical | 7.006501 | 6.365411 | 0.076013 | 32.672797 |
+| b | 1 | axial | 27.692256 | 26.123043 | 0.559198 | 914.854744 |
+| b | 1 | indexed | 0.058574 | 0.053994 | 0.006593 | 0.160886 |
+| b | 4 | roughing | 0.399148 | 0.000000 | 0.479861 | 5.129876 |
+| b | 4 | rest | 10.619226 | 2.426557 | 0.077261 | 15.984602 |
+| b | 4 | pencil | 4.492449 | 0.064470 | 0.041068 | 0.072800 |
+| b | 4 | helical | 8.799417 | 1.925505 | 0.075338 | 10.366212 |
+| b | 4 | axial | 30.708448 | 29.010833 | 0.563466 | 258.531861 |
+| b | 4 | indexed | 0.072709 | 0.067665 | 0.009273 | 0.048075 |
+| c | 1 | roughing | 1.057375 | 0.000000 | 0.469118 | 16.915267 |
+| c | 1 | rest | 16.168721 | 14.787011 | 0.068860 | 50.124229 |
+| c | 1 | pencil | 5.366561 | 0.153857 | 0.036726 | 0.191136 |
+| c | 1 | helical | 16.176142 | 14.681691 | 0.068844 | 32.449596 |
+| c | 1 | axial | 46.384577 | 43.603307 | 0.552171 | 902.102717 |
+| c | 1 | indexed | 0.153753 | 0.141794 | 0.006754 | 0.161173 |
+| c | 4 | roughing | 1.139225 | 0.000000 | 0.480161 | 5.126490 |
+| c | 4 | rest | 22.898353 | 5.151682 | 0.069048 | 15.704883 |
+| c | 4 | pencil | 8.371706 | 0.156466 | 0.039953 | 0.077607 |
+| c | 4 | helical | 17.719893 | 4.042301 | 0.069309 | 10.098061 |
+| c | 4 | axial | 53.531137 | 50.355354 | 0.544796 | 256.980803 |
+| c | 4 | indexed | 0.175084 | 0.162511 | 0.009037 | 0.047136 |
+
+### Accepted performance criterion
+
+The whole six-operation job's form-c/form-b generation ratio is **1.779127 times**, within 2. Its elapsed-time ratio is 1.036961; that does not replace the generation criterion.
+
+| Operation | c/b generation ratio at 4 threads | Within 2 times? |
+| --- | ---: | --- |
+| roughing | 1.241271 | Yes |
+| rest | 2.006793 | **No** |
+| pencil | 1.516828 | Yes |
+| helical | 1.957802 | Yes |
+| axial | 1.818523 | Yes |
+| indexed | 1.697871 | Yes |
+
+**Overall performance qualification fails:** rest machining is 2.006793 times, narrowly above 2. No over-limit waiver, short-operation exemption or additional sampling to seek a pass is applied. The earlier runtime exceeded the per-operation limit on different operations; the variation reinforces that this candidate has not established robust compliance. OI-835 stays open. These measurements concern the original candidate; the tighter M1 setting cannot inherit them.
+
+In the full stock-carrying sequence, STEP pencil benefits by 1.995 times on form b and 1.966 times on form c. STL pencil has **no meaningful threading benefit**: 6.620525 s at one thread against 6.596363 s at four (1.004 times). This supersedes the broader conclusion from the isolated initial-stock remeasurement; stock history matters. The lane recommends separate tracking and opened [issue #344](https://github.com/paulhampson/OpenChuckCAM/issues/344) / OI-990 for this STL finding, without starting its implementation. The owner was offered separate tracking versus OI-835-only; with no reply during completion, the recommended tracking disposition was used as a routine follow-up, not reported as an owner acceptance. Its c/b generation ratio is 1.516828, within the mesh criterion in this run; general candidate performance concerns remain in OI-835.
+
+**Remaining criteria:** a proven sub-0.001 mm physical sampling bound/replacement M2 checker; resolution of the original candidate's 0.005 mm tessellation allocation and trim-query qualifications; and a candidate satisfying every per-operation performance limit. M4/replay passes and this completed M3 method do not establish full decision-0209 qualification or adopt a setting. OI-839 remains STEPALL-X. The authorised measuring/correction work is reported with those failures; PR 321 stays draft pending owner/coordinator release, with no waiver or T/X implementation.
 
 ## Owner choices made before record acceptance (24 Oct 2026)
 
@@ -449,7 +554,7 @@ This section incorporates the owner's substantive selections. The owner accepted
    A fixed finer toolpath mesh is the selected interim direction, subject to item 2's verification conditions and the unmet tessellation share. This refines STEPALL-X's internal order; coordinator scheduling and lane release remain separate, and this session does not start X.
 4. **Require both whole-job and per-operation 2-times limits (OI-835; owner selected A).** Retain decision 0209's whole-job limit and add a limit of 2 times the baseline for each operation. Compare medians of five successful runs with equivalent settings, on the same machine at all threads, against the import's tessellation baseline; retain the existing one-thread/all-thread reporting requirements. Both the whole-job and each operation's limit must pass before release. An unsuccessful operation's time to refusal cannot supply a successful job or operation benchmark. No absolute-time exemption was selected for short operations. The current report does not establish compliance: historical timings use fewer runs and include an unsuccessful operation in the 1.24-times total. Four successful historical operations are below 2 times, pencil clean-up (3.6) and indexed finishing (2.2) are above it; the successful rows sum to about 1.78 times. These are historical observations, not current passes or failures under the required method. The estimated 150 µs exact-drop allowance is a historical engineering estimate, not an accepted strategy budget.
 5. **At acceptance, no tested tessellation of the blisk met the verification plan's 0.005 mm share (4.1)** (historical M1). The later uncapped tighter-candidate investigation above places its underlying-surface station measurements within that share; its trim/sampling and full toolpath/performance verification remain separate and no setting is adopted. Form (c)'s historical sampled cut and contact-gap readings are below 0.01 mm (0.006 mm deepest, 0.0067 mm largest gap); the refreshed quick readings are 0.0066 mm and 0.0060 mm, with the sampling limits above. That does not establish the entire tolerance budget. An exact drop has not yet been built or verified by this lane; its accuracy remains to be demonstrated by STEPALL-X. The owner chose to retain all verification requirements: establish the sampling bound, complete the required five-run and per-stage timings, verify full-stepover determinism, and resolve the accuracy allocation before release. Record acceptance documents outstanding gates; it does not certify a setting or waive any criterion.
-6. **Disposition of findings outside #257, selected by the owner.** Simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2, reproduced in the refreshed quick run). The owner chose B: retain this documented limitation without requesting separate tracking or scheduling an investigation. The refusal protection remains. Historical pencil clean-up gained nothing from 4 threads on any form (M3 item 5; NFR-04), with the later isolated B-rep pencil remeasurement reported above; the full-sequence comparison remains separate. The owner chose A: remeasure it as part of the required five-run timing work, then decide whether separate performance tracking is warranted. No new number is taken for either finding. The separate replay defect is now tracked as OI-984 / issue #324 / proposed implementation record 0234 and is now implemented in this owner-authorised work, preserving its existing limit as selected above; verification is reported in the follow-up section.
+6. **Disposition of findings outside #257, selected by the owner.** Simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2, reproduced in the refreshed quick run). The owner chose B: retain this documented limitation without requesting separate tracking or scheduling an investigation. The refusal protection remains. Historical pencil clean-up gained nothing from 4 threads on any form (M3 item 5; NFR-04), with the later isolated B-rep pencil remeasurement reported above; the full-sequence comparison remains separate. The owner chose A: remeasure it as part of the required five-run timing work, then decide whether separate performance tracking is warranted. No new number was taken for either finding at acceptance. The later full-sequence STL pencil result is now separately tracked as OI-990 / issue #344 in the completed M3 section. The separate replay defect is now tracked as OI-984 / issue #324 / proposed implementation record 0234 and is now implemented in this owner-authorised work, preserving its existing limit as selected above; verification is reported in the follow-up section.
 7. **The import notice stays as decision 0209 item 4.4 has it** (OI-830, lane STEPALL-F): with form (c) a STEP part's toolpaths are still computed on a tessellation, finer than the display's, and its notes should say which.
 
 ## Alternatives considered
