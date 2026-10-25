@@ -25,6 +25,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 | --- | --- | --- | --- | --- |
 | 1 | ROUGHPATH | [#340](https://github.com/paulhampson/OpenChuckCAM/pull/340) | `codex/lane-roughpath-unwind-and-ramp` | RELEASED / sole ready slot; head `32d081254489a02709671c2f63c3f2b6f0d07158`; awaiting latest-main integration, one push, full CI and CodeRabbit |
 | 2 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | Draft; owner says ready; queued behind #340 |
+| 3 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | Draft; decision collision assigned replacement 0243; awaiting one metadata-only correction push |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -412,3 +413,12 @@ The owner directly confirmed acceptance after the coordinator presented each com
 No other PR was ready. The coordinator successfully marked #340 READY FIRST, making it the sole release slot, then posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400352887). The lane must integrate latest main `dc610e26dd260d69b5fc859270e7bf5fc913a3bb`, resolve and review semantic unions, re-audit allocations across main/all unmerged refs/persisted reservations, run records/traceability and all applicable required integration/security/coverage/semver checks, and push ONCE with the exact head and results. Current allocation map keeps held STEPALL 0234/OI-984, merged 0235–0238 and 0240, FINSTEP reservation 0239, and ROUGHPATH 0241/0242 with no OI/schema claim.
 
 Wait for both full CI and CodeRabbit on that exact integrated head before any one bundled correction request. Do not merge or enable auto-merge. At eventual merge, assess original issues #292/#291 and add `awaiting-fix-feedback` where material/hardware confirmation remains. #341 stays draft second; #321 remains held until explicit owner readiness notice. Automatic monitoring remains paused by owner instruction; subsequent checks are manual triggers only.
+
+
+## CHECKPOINT #342 — intake and allocation reconciliation, 25 October 2026
+
+Bounded post-cutoff owner-PR search returned nine entries, below the 100-result bound, adding newly opened owner draft **#342** exactly once after #341 in creation order. Verified author `paulhampson`, GitHub ID 528002; created `2026-10-25T16:51:37Z`; intake head `64568528dd618aa1719b51db8b5cf9bb6f52df98`; branch `codex/lane-checkpoint-crash-recovery`; draft. Implements original issue #295. #340 remains the sole ready PR, #341 remains second/draft, and #321 remains held.
+
+The PR reports owner full-record acceptance of project-recovery decision under lane-selected number 0241, but #340 already holds persisted accepted allocations 0241/0242. The immediately preceding complete 27-ref audit had exhausted the cursor and found no claim beyond 0242; adding #342's refs leaves **0243** as the audited replacement. **OI-989** remains free and is reserved for #342 native/reference verification. Project schema remains 18; recovery container format 1 is separate and is not a project-schema allocation.
+
+[Coordinator comment6400705065](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6400705065) authorises ONE metadata-only draft push to renumber decision 0241 to **0243** throughout all records, indexes, specifications, work breakdown, verification, comments, links and PR metadata; preserve the substantive record and original acceptance provenance unchanged. Lane must report exact corrected head, normalized before/after content hash, full allocation result, records/conflicts/format/whitespace checks, and confirmation that no executable/schema/dependency/configuration change occurred. No ready transition, main update or product change is authorised. Automatic monitoring remains paused; follow-up is manual.
