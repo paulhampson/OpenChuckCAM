@@ -23,8 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | RELEASED / sole ready slot; awaiting latest-main integration, one push, full CI and CodeRabbit |
-| 2 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | Draft; decision collision assigned replacement 0243; awaiting one metadata-only correction push |
+| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; accepted0243/OI-989; awaiting latest-main integration, one push, full CI and CodeRabbit |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -446,3 +445,16 @@ Original issues **#291 and #292** both received additive **`awaiting-fix-feedbac
 With the ready slot free and the owner's prior readiness direction for #341, the coordinator marked **#341 BUG-SIMSYNC READY FIRST**, then posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/341#issuecomment-6401744818). #341 is now the sole ready PR. Lane must integrate latest main `ab863f6531d1e8fab8c2562e88d92b9277937c3f`, re-audit allocations (it claims no new decision/OI/schema), run records/traceability and applicable full app/UI/security/coverage/performance checks, and push ONCE reporting exact head/results. Wait for both full CI and CodeRabbit before correction disposition or exact-head merge. At merge label original#333 `awaiting-fix-feedback` unless reference-hardware visual-smoothness confirmation is already supplied.
 
 #342 advances to second and remains draft pending its authorised metadata-only 0241→0243 correction. #321 remains held. Automatic monitoring remains paused; follow-up is manual.
+
+
+## BUG-SIMSYNC #341 completion and CHECKPOINT #342 release — 25 October 2026
+
+#341 exact head `14cdd9c7981288cfb93c80643268409664b3ed67` included latest main `ab863f6531d1e8fab8c2562e88d92b9277937c3f` (behind_by0), was mergeable, and had CI40224943964 SUCCESS, end-to-end40224943697 SUCCESS, CodeRabbit SUCCESS, no submitted review findings and no review threads. Allocation audit was clean with no new decision/OI/schema claim. Coordinator merged using the exact-head SHA guard; confirmed merge commit **`dafef455d5c31a2db032cff5eeaa4b689821247a`**. No auto-merge or protection bypass.
+
+Original issue **#333** received additive **`awaiting-fix-feedback`**, verified while preserving existing labels. It was automatically closed by the fix link, but reference-hardware visual smoothness and performance confirmation remain pending; closure does not imply human confirmation.
+
+#342's authorised metadata-only reconciliation completed at `b2e4f859a03108036d955f3f249005558b1982d7`. Verified accepted decision **0243** preserves the owner's full-record acceptance under original number0241: normalized SHA-256 before/after `35221d9503d182c4407cc8d4fdb04b2d64790cacba8b737de855a536d105aad9`; Decision-through-EOF byte-identical. OI-989 remains open/free, project schema18 unchanged, recovery format1 separate; records/conflicts/format/whitespace pass and all721 non-Markdown blobs/modes are unchanged.
+
+With #341 merged and no other ready PR, coordinator marked **#342 READY FIRST**, then posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6402459401). #342 is sole ready slot. Lane must integrate latest main `dafef455d5c31a2db032cff5eeaa4b689821247a`, reconcile semantic unions and persisted-format implications, refresh allocation audit, run records/traceability/full recovery/race/fuzz/platform/security/coverage/semver checks, and push ONCE reporting exact head/results. Wait for both full CI and CodeRabbit before correction disposition or exact-head merge. At merge label original#295 `awaiting-fix-feedback` unless OI-989 native/reference evidence is complete.
+
+#321 remains held pending explicit owner readiness. Automatic monitoring remains paused; follow-up is manual.
