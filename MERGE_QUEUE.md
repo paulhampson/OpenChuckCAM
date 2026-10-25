@@ -23,9 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; corrected head `8f67dd1f85700af5cb06f9609185ae516ca119d3`; awaiting fresh full CI/CodeRabbit |
-| 2 | CI-MACSHARD | [#345](https://github.com/paulhampson/OpenChuckCAM/pull/345) | `codex/ci-macos-test-shards` | Draft; owner-prioritised NEXT after #342; amends decision0052, no new allocation |
-| 3 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft behind #345 |
+| 1 | CI-MACSHARD | [#345](https://github.com/paulhampson/OpenChuckCAM/pull/345) | `codex/ci-macos-test-shards` | RELEASED / sole ready slot; awaiting latest-main integration, one push, full CI and CodeRabbit |
+| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft behind #345 |
 
 ## SWARF3 / #320 — MERGED
 
@@ -486,3 +485,14 @@ Owner instructed: **“Add 345 to the queue to go next after 342.”** Verified 
 #345 shards macOS build/test nextest execution into two hash partitions and amends existing decision0052/NFR-02/NFR-08. It claims no new decision, OI or schema allocation. [Coordinator comment6403964720](https://github.com/paulhampson/OpenChuckCAM/pull/345#issuecomment-6403964720) confirms intake and instructs the lane to remain draft without main update/push until #342 completes. At release: READY FIRST, integrate then-current main, refresh allocation audit, preserve all tests/nonempty-count safeguards/shard caches/required aggregation and one-time auxiliary steps, run full CI and CodeRabbit, one push/exact-head report. No acceptance inferred beyond the existing decision0052 amendment scope.
 
 #342's authorised blocker-only correction has now been pushed at `8f67dd1f85700af5cb06f9609185ae516ca119d3`; fresh full CI and CodeRabbit are pending. It remains sole ready. Automatic monitoring remains paused; follow-up is manual.
+
+
+## CHECKPOINT #342 completion and CI-MACSHARD #345 release — 25 October 2026
+
+#342 corrected exact head `8f67dd1f85700af5cb06f9609185ae516ca119d3` included current main (behind_by0), remained mergeable, and passed fresh CI40236827619, end-to-end40236827543 and CodeRabbit. The authorised correction was limited to the non-Unix unused-parameter fix. Two unresolved CodeRabbit threads are Minor and explicitly deferred: handled-failure staging cleanup and bounded busy-lock retry. Accepted0243/OI-989/schema18/recovery-format1 and allocation map unchanged. Coordinator merged with exact-head SHA guard; confirmed merge commit **`89c232227e18251c6c6cb1daa0beb330e1505e79`**. No auto-merge or protection bypass.
+
+Original issue **#295** received additive **`awaiting-fix-feedback`**, verified while preserving existing labels. OI-989 remains open for native Windows/macOS filesystem and owner reference-hardware confirmation; merge does not imply that human evidence or universal durability.
+
+With #342 merged, owner-prioritised #345 advanced first. Coordinator marked **#345 READY FIRST** and posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/345#issuecomment-6404239403). It is the sole ready PR. Lane must integrate latest main `89c232227e18251c6c6cb1daa0beb330e1505e79`, preserve all current workflows/gates, refresh allocation audit, validate exactly two nonempty macOS hash shards with shard-specific caches/one-time auxiliary steps/required matrix aggregation, and push ONCE reporting exact head/results. It amends existing decision0052 and claims no new decision/OI/schema. Wait for both full CI and CodeRabbit before exact-head merge.
+
+#321 remains next/draft with its hold removed. Automatic monitoring remains paused; follow-up is manual.
