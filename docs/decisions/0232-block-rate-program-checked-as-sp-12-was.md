@@ -34,3 +34,7 @@ The document edit below was proposed with this record and is made with its accep
 - `docs/open-items.md`: OI-925 closed.
 
 NFR-12 still applies: the user verifies every program before it runs on a machine.
+
+## Trial-specific release waiver, 25 Oct 2026
+
+The [owner’s submitted trial](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358) says K4 was waived before the machine run. In the takeover session the owner explicitly chose “Retain K4 as a release waiver”. This is the recorded owner disposition for that trial only: K4 remains waived, not passed; it does not remove this record’s pre-run replay requirement for future trials. A subsequent local LinuxCNC replay passed, as detailed in the [results audit](../z1-gates-4-5-test-instructions.md#104-initial-takeover-verification-before-implementation-25-oct-2026). Decision 0222 is accepted in its own lane; no reacceptance of it, 0221 or this record is requested.

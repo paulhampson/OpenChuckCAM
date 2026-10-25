@@ -99,6 +99,15 @@ pub struct ToolChange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PostOptions {
+    /// Override the profile minimum block time; zero disables the check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_block_ms: Option<f64>,
+    /// Override the profile averaging window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_window: Option<u32>,
+    /// Override Off/Report; Slow down and Merge are not implemented.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_block_mode: Option<openchuck_types::machine::ShortBlockMode>,
     /// Units of the program.
     pub units: Units,
     /// The rotary axis letter.
@@ -158,8 +167,19 @@ fn check_line(name: &str, text: &str) -> Result<()> {
 }
 
 impl PostOptions {
+    /// Resolve each post override independently over the machine profile.
+    pub fn block_time(&self, profile: crate::BlockTimeSettings) -> crate::BlockTimeSettings {
+        crate::BlockTimeSettings {
+            min_block_ms: self.min_block_ms.unwrap_or(profile.min_block_ms),
+            block_window: self.block_window.unwrap_or(profile.block_window),
+            mode: self.short_block_mode.unwrap_or(profile.mode),
+        }
+    }
+
     /// Checks every value; the message names the option.
     pub fn validate(&self) -> Result<()> {
+        self.block_time(crate::BlockTimeSettings::default())
+            .validate()?;
         if !matches!(self.a_letter.as_str(), "A" | "B" | "C") {
             return Err(bad("a_letter", "must be A, B or C"));
         }

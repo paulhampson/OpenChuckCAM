@@ -35,10 +35,40 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   be compared with its source (OI-54, decision record 0029 item 16).
 /// - 3: the feed limits may say how the controller counts A in the feed word
 ///   (`max_feeds.rotary_in_feed`, decision record 0076).
-pub const MACHINE_SCHEMA: i64 = 3;
+/// - 4: reserved OPSPEED predecessor; released main integration retains its
+///   actual spindle-limit migration.
+/// - 5: optional minimum block time, window and mode (decision record 0222).
+pub const MACHINE_SCHEMA: i64 = 5;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
-const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[machine_1_to_2, machine_2_to_3];
+const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
+    machine_1_to_2,
+    machine_2_to_3,
+    machine_3_to_4,
+    machine_4_to_5,
+];
+
+/// Reserved predecessor; replaced by OPSPEED's real migration at released integration.
+fn machine_3_to_4(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+fn machine_4_to_5(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_block_time(table, 4)
+}
+
+/// Refuse fields labelled with a schema that predates them.
+pub(crate) fn premature_block_time(table: &toml::Table, schema: i64) -> Result<(), String> {
+    if let Some(machine) = table.get("machine").and_then(toml::Value::as_table) {
+        for field in ["min_block_ms", "block_window", "short_block_mode"] {
+            if machine.contains_key(field) {
+                return Err(format!(
+                    "schema {schema} predates `{field}`; use the current schema or remove the field"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Schema 2 only adds the optional `id`, so a schema 1 file needs no change
 /// but its number. Its profile has no ID until it is saved with one.
@@ -291,7 +321,7 @@ pub fn list_library(dir: &Path) -> Result<LibraryListing, ProjectError> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::panic, clippy::float_cmp)]
 
     use super::*;
     use openchuck_types::machine::{ASense, ProfileField, RotaryAxis};
@@ -314,7 +344,9 @@ mod tests {
             vec![
                 ProfileField::RotaryOrigin,
                 ProfileField::Travel,
-                ProfileField::Clearance
+                ProfileField::Clearance,
+                ProfileField::BlockWindow,
+                ProfileField::ShortBlockMode,
             ]
         );
         for field in [
@@ -388,7 +420,18 @@ mod tests {
     fn req_set_01_profiles_written_before_ids_still_read() {
         // A profile file written before IDs (OI-54) still reads; its profile
         // has no ID, so nothing can be compared with it until it gets one.
-        let z1 = render_profile(&builtin(MAKERA_Z1).unwrap().unwrap()).unwrap();
+        let mut profile = builtin(MAKERA_Z1).unwrap().unwrap();
+        profile.min_block_ms = 0.0;
+        profile.block_window = 1;
+        profile.short_block_mode = openchuck_types::machine::ShortBlockMode::Off;
+        for field in [
+            ProfileField::MinBlockMs,
+            ProfileField::BlockWindow,
+            ProfileField::ShortBlockMode,
+        ] {
+            profile.provenance.remove(&field);
+        }
+        let z1 = render_profile(&profile).unwrap();
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")
             .lines()
@@ -398,6 +441,12 @@ mod tests {
         let entry = parse_profile_entry(Path::new("old.toml"), &old).unwrap();
         assert_eq!(entry.id, None);
         assert_eq!(entry.profile.name, "Makera Z1");
+        assert_eq!(entry.profile.min_block_ms, 0.0);
+        assert_eq!(entry.profile.block_window, 1);
+        assert_eq!(
+            entry.profile.short_block_mode,
+            openchuck_types::machine::ShortBlockMode::Off
+        );
         // The built-in profile has its fixed ID, and it round-trips.
         let z1 = builtin_entry(MAKERA_Z1).unwrap().unwrap();
         assert_eq!(

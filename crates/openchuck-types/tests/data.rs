@@ -154,3 +154,27 @@ proptest! {
         let _ = serde_json::from_str::<openchuck_types::ir::Toolpath>(&text);
     }
 }
+
+#[test]
+fn req_gc_17_req_nfr_07_profiles_refuse_invalid_block_time_settings() {
+    for limit in [f64::NAN, f64::INFINITY, -1.0] {
+        let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+        machine.min_block_ms = limit;
+        assert!(
+            machine
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+    }
+    let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+    machine.block_window = 0;
+    assert!(
+        machine
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("block_window")
+    );
+}

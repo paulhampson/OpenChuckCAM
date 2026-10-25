@@ -1179,7 +1179,15 @@ impl Application {
             let extent = self.inspect_model(model).ok()?.extent?;
             Some(extent.in_setup(&setup.frame))
         };
+        let options = self
+            .post
+            .as_ref()
+            .map(PostSelection::load)
+            .transpose()
+            .map(|post| post.map(|post| post.options))
+            .map_err(|error| error.to_string());
         SetupSheet::with_parts(&self.document.project, &self.strategies, toolpath, &part)
+            .with_block_time(&self.document.project, toolpath, options)
             .with_traceability(&self.traceability())
     }
 

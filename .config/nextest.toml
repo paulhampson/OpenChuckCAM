@@ -174,9 +174,31 @@ priority = 80
 filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)'
 priority = 79
 
+# GATES takeover, 25 Oct 2026: uninstrumented nextest, four test processes;
+# background builds were present (later lowered in priority). Additional long tests:
+# req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region: 83.71 s.
+# req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region: 67.37 s.
+# req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region: 84.159 s.
+# req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 87.74 s.
+# req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 113.101 s.
+# req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 93.242 s.
+# req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 123.5 s.
+# req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 61.999 s.
+# req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 66.59 s.
+# cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads: 149.999 s.
 [profile.coverage]
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads)
+  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
@@ -201,6 +223,16 @@ default-filter = '''not (
 [profile.long]
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads)
+  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)

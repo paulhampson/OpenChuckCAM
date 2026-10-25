@@ -565,6 +565,11 @@ pub(crate) fn post_toolpath(
             );
         }
         let job = PostJob {
+            block_time: openchuck_post::BlockTimeSettings {
+                min_block_ms: machine.min_block_ms,
+                block_window: machine.block_window,
+                mode: machine.short_block_mode,
+            },
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
             operation_names: operation_names.clone(),
@@ -581,6 +586,22 @@ pub(crate) fn post_toolpath(
         let output = post
             .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;
+        let source = if post.definition().options.min_block_ms.is_some() {
+            "post"
+        } else {
+            "profile"
+        };
+        for report in &output.block_time_reports {
+            if report.affected_blocks > 0 {
+                notes.push(format!(
+                    "operation '{}': {}",
+                    operation_names
+                        .get(&report.operation)
+                        .unwrap_or(&report.operation),
+                    report.summary(source)
+                ));
+            }
+        }
         if output.clamped_feeds > 0 {
             notes.push(format!(
                 "setup '{}': {} feed(s) were lowered to the post's maximum feed",

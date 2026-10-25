@@ -11,3 +11,9 @@ Generated G-code is yours to verify before you run it on a machine (NFR-12). The
 This crate belongs to the reusable library family (`openchuck-types`, `openchuck-path`, `openchuck-post`, `openchuck-gcode`). It depends only on other members of that family and on third-party crates, never on the application, UI, GPU, Git or the C++ kernel (architecture sections 4 and 12).
 
 Licence: AGPL-3.0-or-later.
+
+### Minimum block-time Report (GC-17, decision 0222)
+
+`PostJob::block_time` carries the machine profile’s `min_block_ms`, `block_window` and `ShortBlockMode`. Its default is 0 ms, window 1, Off, preserving existing output. A post definition may override each independently in `[options]`; for example `min_block_ms = 7.0`, `block_window = 32`, `short_block_mode = "report"`. These values are the measured built-in Makera Z1 choice, not defaults for another controller. A zero time or Off disables reporting.
+
+`PostOutput::block_time_reports` contains ordered per-operation reports. Report analyses complete windows of consecutive fed blocks, resetting at rapid moves; an incomplete window is explicitly unexamined. It changes no geometry, feed or G-code. The report gives the affected-block count, longest affected run, lowest complete-window mean, effective contact feed in the longest run and estimated added seconds. Slow down and Merge are not implemented. Generated G-code remains the user’s responsibility to verify before running.

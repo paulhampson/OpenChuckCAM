@@ -1282,3 +1282,60 @@ fn req_gc_12_req_gc_07_the_traceability_block_does_not_change_the_g_code() {
     assert_eq!(before.gcode, after.gcode);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_without_changing_gcode()
+{
+    let (dir, mut app) = project("block-time", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let before = app.regenerate().unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 1_000_000.0;
+    machine.block_window = 1;
+    machine.short_block_mode = openchuck_types::machine::ShortBlockMode::Report;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let after = app.regenerate().unwrap();
+    assert_eq!(before.gcode, after.gcode);
+    assert!(after.notes.iter().any(|n| n.contains("affected blocks")));
+    let sheet = app.setup_sheet(Some(&after.toolpath));
+    assert!(sheet.to_html().contains("minimum block time"));
+    assert!(check_pdf(&sheet.to_pdf()).contains("minimum block time"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_12_req_nfr_07_the_sheet_uses_post_overrides_and_reports_an_unloadable_post() {
+    let (dir, mut app) = project("post-block-time", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let before = app.regenerate().unwrap();
+    let custom = dir.join("custom-post");
+    std::fs::create_dir(&custom).unwrap();
+    let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let manifest = std::fs::read_to_string(builtin.join("post.toml")).unwrap();
+    std::fs::write(
+        custom.join("post.toml"),
+        manifest.replace(
+            "[options]",
+            "[options]\nmin_block_ms = 1000000.0\nblock_window = 1\nshort_block_mode = \"report\"",
+        ),
+    )
+    .unwrap();
+    std::fs::copy(builtin.join("main.post"), custom.join("main.post")).unwrap();
+    app.set_post(Some(PostSelection::Folder(custom)));
+    let after = app.regenerate().unwrap();
+    assert_eq!(before.gcode, after.gcode);
+    assert!(after.notes.iter().any(|n| n.contains("(post)")));
+    assert!(
+        app.setup_sheet(Some(&after.toolpath))
+            .to_html()
+            .contains("(post)")
+    );
+    app.set_post(Some(PostSelection::Folder(dir.join("missing-post"))));
+    assert!(
+        app.setup_sheet(Some(&after.toolpath))
+            .to_html()
+            .contains("Report unavailable")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

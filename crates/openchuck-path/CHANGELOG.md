@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0
+
+- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Path geometry and G-code replay behavior are unchanged.
+
+
 All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased

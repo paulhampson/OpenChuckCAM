@@ -537,15 +537,21 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("3 of 7 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("5 of 10 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
-    // value is shown as confirmed or unconfirmed (four are confirmed).
+    // value is shown as confirmed or unconfirmed, including the measured block time.
     assert!(out.stdout.contains("faces -Y at A 90"), "{}", out.stdout);
+    assert!(
+        out.stdout
+            .contains("block time: 7.000 ms, window 32, Report"),
+        "{}",
+        out.stdout
+    );
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        3,
+        5,
         "{}",
         out.stdout
     );

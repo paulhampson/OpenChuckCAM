@@ -242,6 +242,55 @@ fn describe_shape(tool: &ToolSnapshot) -> String {
 }
 
 impl SetupSheet {
+    /// Add the selected post's GC-17 report to the shared HTML/PDF document.
+    pub(crate) fn with_block_time(
+        mut self,
+        project: &Project,
+        path: Option<&Toolpath>,
+        options: Result<Option<openchuck_post::PostOptions>, String>,
+    ) -> Self {
+        let (Some(path), Some(machine)) = (path, project.machine()) else {
+            return self;
+        };
+        let profile = openchuck_post::BlockTimeSettings {
+            min_block_ms: machine.min_block_ms,
+            block_window: machine.block_window,
+            mode: machine.short_block_mode,
+        };
+        let report = options.and_then(|options| {
+            let source = if options.as_ref().is_some_and(|o| o.min_block_ms.is_some()) {
+                "post"
+            } else {
+                "profile"
+            };
+            let settings = options.as_ref().map_or(profile, |o| o.block_time(profile));
+            openchuck_post::block_time_reports(path, settings)
+                .map(|reports| (reports, source))
+                .map_err(|e| e.to_string())
+        });
+        let facts = match report {
+            Ok((reports, source)) => reports
+                .into_iter()
+                .map(|r| {
+                    let name = project
+                        .operations()
+                        .iter()
+                        .find(|o| o.id.to_string() == r.operation)
+                        .map_or_else(|| r.operation.clone(), |o| o.name.clone());
+                    (name, r.summary(source))
+                })
+                .collect::<Vec<_>>(),
+            Err(error) => vec![("Report unavailable".into(), error)],
+        };
+        if !facts.is_empty() {
+            self.sections.push(SheetSection {
+                heading: "Minimum block time".into(),
+                body: SheetBody::Facts(facts),
+            });
+        }
+        self
+    }
+
     /// The sheet with the Traceability section added after the Notes, where
     /// a printed copy ends (GC-12, decision 0110).
     #[must_use]

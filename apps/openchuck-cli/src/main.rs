@@ -1635,6 +1635,10 @@ fn print_machine(profile: &MachineProfile) {
         "clearance:  safe cylinder radius {} mm, safe Z {} mm above the axis (default)",
         p.clearance.radius.0, p.clearance.safe_z.0
     );
+    println!(
+        "block time: {:.3} ms, window {}, {:?}",
+        p.min_block_ms, p.block_window, p.short_block_mode
+    );
     for field in openchuck_app::setup::ProfileField::ALL {
         match p.provenance.get(&field) {
             Some(source) => {

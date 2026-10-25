@@ -20,6 +20,8 @@ use crate::program::{MachineProgram, Step, Target};
 /// What a post needs to know about the job beyond the toolpath.
 #[derive(Debug, Clone)]
 pub struct PostJob {
+    /// Machine profile settings for GC-17, before post overrides.
+    pub block_time: crate::BlockTimeSettings,
     /// The work frame the program is written in.
     pub frame: RotaryFrame,
     /// Tool numbers and spindle speeds by the IR's tool tag (GC-14).
@@ -47,6 +49,8 @@ pub struct PostJob {
 /// The result of posting.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PostOutput {
+    /// Per-operation GC-17 reports, with no G-code changes.
+    pub block_time_reports: Vec<crate::BlockTimeReport>,
     /// The program text.
     pub text: String,
     /// Fed moves whose feed was lowered to the post's maximum.
@@ -212,6 +216,10 @@ impl PostProcessor for TemplatePost {
             .render(Serde(&context))
             .map_err(|e| PostError::Template(engine::describe(&e)))?;
         Ok(PostOutput {
+            block_time_reports: crate::block_time_reports(
+                toolpath,
+                d.options.block_time(job.block_time),
+            )?,
             text,
             clamped_feeds: program.clamped_feeds,
             estimated_seconds: toolpath.total_duration().0,

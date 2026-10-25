@@ -228,7 +228,10 @@ fn req_op_21_req_prj_04_an_automatic_tab_survives_save_and_load() {
     let text = std::fs::read_to_string(dir.join("setups").join(format!("{SETUP}.toml"))).unwrap();
     assert_eq!(text.matches("auto = ").count(), 1, "{text}");
     assert!(text.contains("auto = \"tail\""), "{text}");
-    assert!(text.starts_with("schema = 17"), "{text}");
+    assert!(
+        text.starts_with(&format!("schema = {}", file::SCHEMA)),
+        "{text}"
+    );
     let back = file::load(&dir).unwrap();
     assert_eq!(back.setup(SETUP).unwrap().workholding, w);
     std::fs::remove_dir_all(&dir).ok();

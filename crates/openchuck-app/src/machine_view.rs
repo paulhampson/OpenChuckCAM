@@ -53,6 +53,11 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Take them from the controller's settings or the machine's documented limits."
         }
         ProfileField::Clearance => "Set a clearance on the setup to suit its stock.",
+        ProfileField::MinBlockMs => "Run the block-rate air cut for this controller and transport.",
+        ProfileField::BlockWindow => {
+            "Use the controller queue depth from its documentation or source."
+        }
+        ProfileField::ShortBlockMode => "Report does not change G-code; verify it before running.",
     }
 }
 
@@ -111,6 +116,24 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
     let f = &profile.max_feeds;
     vec![
         value(
+            ProfileField::MinBlockMs,
+            "Minimum block time",
+            format!("{:.3} ms", profile.min_block_ms),
+            false,
+        ),
+        value(
+            ProfileField::BlockWindow,
+            "Block window",
+            format!("{} fed blocks", profile.block_window),
+            false,
+        ),
+        value(
+            ProfileField::ShortBlockMode,
+            "Short block mode",
+            format!("{:?}", profile.short_block_mode),
+            false,
+        ),
+        value(
             ProfileField::RotaryAxis,
             "Rotary axis",
             format!("A, about {}", profile.rotary_axis.name().to_uppercase()),
@@ -160,6 +183,9 @@ mod tests {
         assert_eq!(
             labels,
             [
+                "Minimum block time",
+                "Block window",
+                "Short block mode",
                 "Rotary axis",
                 "A range",
                 "A+ direction",

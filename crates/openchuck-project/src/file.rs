@@ -98,7 +98,11 @@ use openchuck_types::workholding::Workholding;
 ///   offset, so it machines exactly as before. A retaining tab gains the
 ///   optional `auto` (`"head"` or `"tail"`), written only when set (decision
 ///   record 0202).
-pub const SCHEMA: i64 = 17;
+/// - 18: reserved OPSPEED predecessor on this branch; released main integration
+///   retains its actual operation material and spindle-limit migration.
+/// - 19: optional minimum block time, window and mode in machine copies
+///   (decision record 0222); absent fields retain Off.
+pub const SCHEMA: i64 = 19;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -129,7 +133,23 @@ const MIGRATIONS: &[Migration] = &[
     schema_14_to_15,
     schema_15_to_16,
     schema_16_to_17,
+    schema_17_to_18,
+    schema_18_to_19,
 ];
+
+/// Reserved predecessor on the old GATES branch. The released main merge
+/// replaces this with OPSPEED's real schema-18 migration (work breakdown).
+fn schema_17_to_18(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
+fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::premature_block_time(table, 18)?;
+    }
+    Ok(())
+}
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
 /// file does not have, so a schema 1 file needs no change but its number.

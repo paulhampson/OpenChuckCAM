@@ -4,16 +4,20 @@
 # Values are a consensus across Makera's published profiles and the Z1
 # firmware's default configuration. The rotary axis, A direction, A range and
 # feed limits are confirmed by the owner, and the SP-12 air cut on firmware
-# 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction. The rest stay
-# unconfirmed until the axis is measured (OI-60).
+# 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction; the block-rate
+# trial below measured 7 ms. Other unconfirmed values retain their own gaps
+# (including the axis measurement, OI-60).
 # Machine coordinates are the firmware's (G53): home at 0, travel negative.
-schema = 3
+schema = 5
 # Fixed for the built-in profile, so every project copy of it can be compared
 # with it (OI-54, decision 0029 item 16).
 id = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01"
 
 [machine]
 name = "Makera Z1"
+min_block_ms = 7.0
+block_window = 32
+short_block_mode = "report"
 rotary_axis = "x"
 a_sense = "positive"
 # The Z1's tool number range is effectively unlimited; the probe uses a high number
@@ -89,3 +93,15 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 
 [machine.provenance.clearance]
 state = "unconfirmed"
 source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"
+
+[machine.provenance.min_block_ms]
+state = "confirmed"
+source = "Owner gate 4, PR 284 comment 6399134358, submitted 25 Oct 2026: firmware 1.1.2, ESP32 (version not supplied), WiFi upload; 7, 10 and 20 ms passed in both parts, 5/3/2/1 ms stuttered. K4 retained by the owner as a release waiver; subsequent LinuxCNC replay passed. This measured program/transport only (decision 0222)."
+
+[machine.provenance.block_window]
+state = "unconfirmed"
+source = "32-block planner queue in firmware source; accepted averaging rule, decision 0222 item 3; not a separately measured queue depth."
+
+[machine.provenance.short_block_mode]
+state = "unconfirmed"
+source = "Report first, accepted decision 0222; software policy, not a controller measurement."

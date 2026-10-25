@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0
+
+- GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
+
+
 All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased

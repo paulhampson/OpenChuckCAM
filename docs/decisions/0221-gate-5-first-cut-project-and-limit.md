@@ -39,3 +39,7 @@ The document edits below were proposed with this record and are made with its ac
 - `docs/open-items.md`: OI-916 closed.
 
 The first-cut project is built in lane GATES from the owner's geometry (OI-914, closed): `testdata/projects/first_cut/`, its programs in `testdata/golden/first_cut/`. NFR-12 still applies: generated G-code is the user's to verify before running on a machine.
+
+## Submitted trial result, 25 Oct 2026
+
+PH's [PR #284 result](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358) reports the 24 Oct tooling-board first cut passed on build 0.20.0 at dc610e26dd260d69b5fc859270e7bf5fc913a3bb, Z1 firmware 1.1.2: tabs intact, grip unmarked, length and tab positions within ±0.1 mm, surface as simulated, about 0.8 mm left adjacent to tabs, no overcut reported. This records the supported outcome without changing this accepted decision. The [per-step audit](../z1-gates-4-5-test-instructions.md#102-gate-5) retains blank station diameters, tab diameters, fingerprints, G54 coordinates and other procedural evidence gaps; it does not establish a complete gates-1-to-5 signoff. The eight reference air-cut waivers and first-cut gate-4 evidence gap remain under OI-471; the long gate-3 replay/timeout defect is OI-991; OI-41, OI-60 and OI-267 stay open. Generated G-code remains the user's responsibility to verify (NFR-12).
