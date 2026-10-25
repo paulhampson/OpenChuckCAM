@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[metadata]
+project_id = "00000000-0000-0000-0000-000000000001"
+session_id = "00000000-0000-0000-0000-000000000002"
+revision = 1
+timestamp_ms = 123
+kind = "periodic"
+
+[files]
+"project.toml" = '''schema = 18
+name = "Recovery fuzz seed"
+'''

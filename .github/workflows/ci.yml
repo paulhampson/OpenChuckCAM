@@ -570,7 +570,7 @@ jobs:
           - name: A
             targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder
           - name: B
-            targets: project_files stl_import tool_library_toml
+            targets: project_files project_recovery stl_import tool_library_toml
           - name: C
             targets: tool_profile_toml gcode_reader post_definition
     steps:
@@ -605,6 +605,9 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the recovery checkpoint corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' project_recovery ')
+        run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
       - name: Seed the project file corpus from the fixtures
         if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
         run: |
