@@ -1,6 +1,6 @@
 # OpenChuckCAM merge queue
 
-Updated: 24 October 2026 (Europe/London).
+Updated: 25 October 2026 (Europe/London).
 
 ## Working practice — owner instruction, 23 October 2026
 
@@ -23,6 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
+| 1 | ROUGHPATH | [#340](https://github.com/paulhampson/OpenChuckCAM/pull/340) | `codex/lane-roughpath-unwind-and-ramp` | Draft; metadata renumber 0241/0242 authorised; awaiting corrected head/checks |
+| 2 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | Draft; owner says ready; queued behind #340 |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -388,3 +390,16 @@ The owner opened original follow-up **#332 Risk of incomplete file write during 
 **Original#307 and#311 awaiting-fix-feedback verified**: #311 already had label; #307 missing label was added and verified, preserving any existing labels additively. Both need native Windows/export-result/clipboard/dialog-layout confirmation (existingOI580). #306 is completed assessment, so no human-fix label added; workflow implementation remains separate#322. ExistingSIMUIOI987 remains open.
 
 Removed merged#329 from active queue. No eligible pending PR besides held#321: post-cutoff owner search returned only six previously processed entries, below100 bound; no new draft silently omitted. Other open#131/#284 predate cutoff and are unassigned; do not intake. #321 remains draft at b375262526492737ff609a6968a5501fe6d88b8e, held until OWNER readiness notification. No new number claims or record acceptance. Hourly automation6adbdd741cec8191848ce1bc80a97eb3 verified enabled; no webhook discovery tool available, no event activation claimed. Continue intake monitoring despite empty active queue.
+
+
+## New draft intake #340/#341 — 25 October 2026
+
+Bounded post-cutoff owner-PR search returned eight entries (below100 bound): existing processed#323/#325/#326/#327/#328/#329 plus newly opened owner drafts **#340 then #341**, queued exactly once in creation order. Other open#131/#284 predate cutoff and remain unassigned. #321 stays held outside active order at b375262526492737ff609a6968a5501fe6d88b8e until OWNER readiness notification. Automatic hourly monitor remains paused by owner instruction; updates are manual.
+
+**#340 ROUGHPATH** intake head `fe29181581e5604ef0e81cbdffa46c0ece76292a`, branch `codex/lane-roughpath-unwind-and-ramp`, created2026-10-25T16:09:21Z, DRAFT. Owner directly accepted complete provisional rotary-boundary0238 and reversing-ramp0239 records; no OI/schema. Lane reports163 affected +425 UI tests, own coverage below report-only95%, clippy/format/xtask all99/99P1/doctest/semver pass; kernel/LinuxCNC/audit/deny/about/reference hardware not locally run. Main dc610e2 not merged; large shared-interface/golden/config/register conflicts expected. Historical blisk optional ramp still refuses missing entry direction under accepted rule. FACING dependency remains downstream.
+
+Fresh complete remote-ref index audit (27 refs, cursor exhausted) confirms collisions: merged SIMUI owns0238, persisted FINSTEP reservation owns0239, merged OUTPUT-1 owns0240. Assigned **0241 continuous rotary operation boundaries** (former0238) and **0242 optional back-and-forth ramp** (former0239), preserving owner acceptance only if substantive text remains unchanged. [Comment6400185337](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400185337) authorises ONE metadata-only draft push to rename/update all references and verify normalized content/records/conflicts/whitespace; no product/main/ready action. Await exact corrected head/checks, then release #340 serially READY FIRST under0055.
+
+**#341 BUG-SIMSYNC** intake head `e17e65e4012780f2aa31acb2c9b15c6573f99e9e`, branch `codex/bug-simsync-333`, created2026-10-25T16:22:17Z, DRAFT. Owner directly said **"341 is ready for review"**, recorded as readiness signal; created after#340 so queued second. Fixes#333 by synchronising partial-move stock surfaces/tool pose, amends accepted0040, claims no new decision/OI/schema. Lane reports30 app+19 UI focused tests pass, requirement regression failed before fix; format/whitespace pass. nextest/llvm-cov unavailable, coverage and reference-hardware smoothness/performance unverified. [Intake comment6400186721](https://github.com/paulhampson/OpenChuckCAM/pull/341#issuecomment-6400186721) keeps it draft until sole slot reaches it; no early main update/push. At release re-audit allocations, integrate latest main, records/traceability/required checks and push once; wait full CI+CodeRabbit. At merge label original#333 awaiting-fix-feedback if hardware confirmation remains.
+
+Only one PR may be ready. Neither new PR is released yet; #340 metadata reconciliation is the current action. No new acceptance inferred beyond recorded complete-record acceptances. No branch/code edits by coordinator.
