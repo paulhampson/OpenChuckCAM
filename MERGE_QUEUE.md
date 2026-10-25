@@ -23,9 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | ROUGHPATH | [#340](https://github.com/paulhampson/OpenChuckCAM/pull/340) | `codex/lane-roughpath-unwind-and-ramp` | RELEASED / sole ready slot; integrated head `c25eb7aa2f983872a971a522df0e6b822215d12d`; CI in progress, CodeRabbit successful; merge blocked pending full CI and review disposition |
-| 2 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | Draft; owner says ready; queued behind #340 |
-| 3 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | Draft; decision collision assigned replacement 0243; awaiting one metadata-only correction push |
+| 1 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | RELEASED / sole ready slot; awaiting latest-main integration, one push, full CI and CodeRabbit |
+| 2 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | Draft; decision collision assigned replacement 0243; awaiting one metadata-only correction push |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -436,3 +435,14 @@ Current-head end-to-end run **40219464770 SUCCESS**. CI run **40219464750 remain
 Exact head remains `c25eb7aa2f983872a971a522df0e6b822215d12d`, ready and mergeable; latest main is integrated. CodeRabbit's exact-head incremental review completed SUCCESS with **no new actionable comments**. Owner explicitly directed the two remaining Minor refusal-context findings (r4371599807 and r4371599815) to the next suitable PR; rustdoc Minor r4371599821 is fixed in the current head. Owner accepted retaining the current conservative proof/bounds and moved the prior Major availability/cost concern to planning issue **#343** (bug, awaiting-planning). These findings require no #340 correction push and do not block merge. Preserve accepted 0242 safety semantics; no suggested shortcut is approved.
 
 End-to-end40219464770 is SUCCESS. CI40219464750 is still IN PROGRESS, so #340 is **not yet mergeable under coordinator gates** despite all completed jobs being green. Once the exact-head CI run and required aggregator finish successfully, and head/main/allocation state remains unchanged, #340 is cleared for coordinator exact-head guarded merge. Standing rule remains: no auto-merge and no protection bypass. At merge add `awaiting-fix-feedback` to original issues #291 and #292 because no fresh reference-hardware/material-removal trial confirms the fixes. Automatic monitoring remains paused; manual trigger required.
+
+
+## ROUGHPATH #340 completion and BUG-SIMSYNC #341 release — 25 October 2026
+
+GitHub confirms #340 merged exact head `c25eb7aa2f983872a971a522df0e6b822215d12d` at `2026-10-25T18:45:35Z`; merge commit **`ab863f6531d1e8fab8c2562e88d92b9277937c3f`**. The merge was performed outside this coordinator after the owner stated it was merged; record the confirmed result without claiming a coordinator merge action. Accepted decisions0241/0242 and the final allocation map remain unchanged. CodeRabbit exact-head review had no new actionable findings; two Minors were owner-deferred, one Minor fixed, and the conservative availability concern moved to planning issue#343.
+
+Original issues **#291 and #292** both received additive **`awaiting-fix-feedback`**, verified while preserving existing labels. They require owner/reference-hardware material-removal, ramp behavior and rotary-unwind confirmation; automated/local evidence does not substitute for that human trial.
+
+With the ready slot free and the owner's prior readiness direction for #341, the coordinator marked **#341 BUG-SIMSYNC READY FIRST**, then posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/341#issuecomment-6401744818). #341 is now the sole ready PR. Lane must integrate latest main `ab863f6531d1e8fab8c2562e88d92b9277937c3f`, re-audit allocations (it claims no new decision/OI/schema), run records/traceability and applicable full app/UI/security/coverage/performance checks, and push ONCE reporting exact head/results. Wait for both full CI and CodeRabbit before correction disposition or exact-head merge. At merge label original#333 `awaiting-fix-feedback` unless reference-hardware visual-smoothness confirmation is already supplied.
+
+#342 advances to second and remains draft pending its authorised metadata-only 0241→0243 correction. #321 remains held. Automatic monitoring remains paused; follow-up is manual.
