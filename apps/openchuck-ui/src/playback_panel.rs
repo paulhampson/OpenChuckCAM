@@ -22,7 +22,7 @@ use openchuck_app::playback::{
     tool_meshes, wrapped_a_text,
 };
 use openchuck_app::project::id::{ModelId, SetupId};
-use openchuck_app::stockplay::StockPlayback;
+use openchuck_app::stockplay::{StockPlayback, StockSurface};
 use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
 use openchuck_viewport::{Colour, Layer, LineStyle, Scene, Slot};
@@ -54,7 +54,6 @@ const SPEEDS: [(&str, f64); 5] = [
 /// The tool: a lilac tip (the cutter) on a grey body (the shank), 7.4.
 const CUTTER: Colour = roles::TOOL_TIP;
 const SHANK: Colour = roles::TOOL_BODY;
-const STOCK_GLASS: Colour = [0.85, 0.72, 0.45, 0.30];
 
 /// The faint trace of the path outside the playback window: grey, thin and
 /// see-through (issue 205; decision record 0169).
@@ -201,10 +200,52 @@ struct StockState {
     show: bool,
     prepare: Option<JobHandle<StockPlayback>>,
     playback: Option<Arc<StockPlayback>>,
-    mesh: Option<(JobHandle<openchuck_app::scene::Mesh>, usize)>,
+    mesh: Option<(JobHandle<StockSurface>, usize)>,
+    surface: Option<Arc<StockSurface>>,
     /// The number of moves done that the stock on screen is for.
     shown: Option<usize>,
     error: Option<String>,
+}
+
+/// Actual job progress shown immediately below the playback position bar.
+/// Only the pipeline's monotonic, fixed-total reports supply a percentage;
+/// preparation jobs without that contract show activity without an estimate.
+pub struct PreparationProgress {
+    label: &'static str,
+    fraction: Option<f32>,
+    percent: Option<u64>,
+}
+
+impl PreparationProgress {
+    fn show(&self, ui: &mut egui::Ui) {
+        let text = self.percent.map_or_else(
+            || self.label.to_owned(),
+            |percent| format!("{} · {percent} %", self.label),
+        );
+        if let Some(fraction) = self.fraction {
+            ui.add(
+                egui::ProgressBar::new(fraction)
+                    .text(text)
+                    .desired_height(18.0),
+            );
+        } else {
+            let (rect, _) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::hover());
+            ui.put(
+                egui::Rect::from_min_size(rect.min, egui::vec2(18.0, 18.0)),
+                egui::Spinner::new().size(14.0),
+            );
+            ui.painter_at(rect).text(
+                rect.left_center() + egui::vec2(22.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                text,
+                egui::FontId::proportional(12.0),
+                DARK.text,
+            );
+        }
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
+    }
 }
 
 /// The toolpath display and playback controls.
@@ -246,6 +287,7 @@ pub struct PlaybackPanel {
     tool_dirty: bool,
     stock: StockState,
     bands_on: bool,
+    bands_surface: Option<Arc<StockSurface>>,
     /// The deviation job running, with the setup it is for.
     bands_job: Option<(SetupId, JobHandle<(ModelId, DeviationBands)>)>,
     bands: Option<DeviationBands>,
@@ -298,6 +340,7 @@ impl Default for PlaybackPanel {
             tool_dirty: false,
             stock: StockState::default(),
             bands_on: false,
+            bands_surface: None,
             bands_job: None,
             bands: None,
             bands_model: None,
@@ -314,6 +357,58 @@ impl Default for PlaybackPanel {
 }
 
 impl PlaybackPanel {
+    /// The pipeline or initial display preparation still in progress.
+    pub fn preparation_progress(
+        &self,
+        jobs: &openchuck_app::JobLog,
+        pipeline: Option<openchuck_app::JobId>,
+        simulates: bool,
+    ) -> Option<PreparationProgress> {
+        if let Some(job) = pipeline {
+            let entry = jobs.get(job);
+            let monotonic = entry.filter(|e| {
+                e.progress
+                    .as_ref()
+                    .is_some_and(|p| p.total == Some(openchuck_app::RUN_PROGRESS_TOTAL))
+            });
+            return Some(PreparationProgress {
+                label: if simulates {
+                    "Preparing simulation"
+                } else {
+                    "Preparing toolpaths"
+                },
+                fraction: monotonic.and_then(openchuck_app::JobEntry::fraction),
+                percent: monotonic.and_then(openchuck_app::JobEntry::percent),
+            });
+        }
+        let label = if self.data_job.is_some() {
+            "Preparing toolpath display"
+        } else if self.stock.prepare.is_some()
+            || (self.stock.shown.is_none() && self.stock.mesh.is_some())
+        {
+            "Preparing cut part"
+        } else {
+            return None;
+        };
+        Some(PreparationProgress {
+            label,
+            fraction: None,
+            percent: None,
+        })
+    }
+
+    fn simulation_choices(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+        let skip = skip_box(ui, app);
+        ui.separator();
+        let mut machine = self.view == ViewFrame::Machine;
+        if ui.checkbox(&mut machine, "Turn part with A")
+            .on_hover_text("The tool stands upright and the workpiece turns, as on the machine; otherwise the part is fixed and the tool moves round it")
+            .changed()
+        {
+            self.view = if machine { ViewFrame::Machine } else { ViewFrame::Part };
+        }
+        skip
+    }
     /// Asks every job the panel has running to stop: a job handle does not
     /// cancel its job when dropped, and an obsolete stock preparation would
     /// go on using the pool and holding checkpoint memory.
@@ -467,12 +562,18 @@ impl PlaybackPanel {
         data.timeline.sample(self.playback.cursor()).ok()
     }
 
+    /// Leaving Simulate keeps the play head at the result being inspected.
+    pub fn pause(&mut self) {
+        self.playback.pause();
+    }
+
     /// Works the jobs, moves the cursor by `dt` seconds of the clock, and
     /// brings the viewport up to date. Returns true while the frame should be
     /// drawn again.
     pub fn frame(&mut self, app: &Application, viewport: &mut Viewport, dt: f64) -> bool {
         let mut busy = false;
         if std::mem::take(&mut self.reset_layers) {
+            viewport.set_stock_surface(None);
             for layer in [Layer::Paths, Layer::Trace, Layer::Tool, Layer::Stock] {
                 viewport.set_layer(layer, Scene::default());
             }
@@ -735,35 +836,38 @@ impl PlaybackPanel {
                     let done = *done;
                     stock.mesh = None;
                     match result {
-                        Ok(mesh) => {
-                            let mut scene = Scene::default();
-                            scene.add_mesh(&mesh, &[], STOCK_GLASS, STOCK_GLASS);
-                            for item in &mut scene.meshes {
-                                item.slot = Slot::Part;
-                                item.translucent = true;
-                            }
-                            viewport.set_layer(Layer::Stock, scene);
+                        Ok(surface) => {
+                            let surface = Arc::new(surface);
+                            viewport.set_stock_surface(Some(Arc::clone(&surface)));
+                            stock.surface = Some(surface);
                             stock.shown = Some(done);
                         }
                         Err(e) if e.is_cancelled() => {}
-                        Err(e) => stock.error = Some(e.to_string()),
+                        Err(e) => {
+                            stock.error = Some(e.to_string());
+                            stock.surface = None;
+                            stock.shown = None;
+                            viewport.set_stock_surface(None);
+                        }
                     }
                 }
             }
         }
         if !stock.show {
             if stock.shown.take().is_some() {
-                viewport.set_layer(Layer::Stock, Scene::default());
+                stock.surface = None;
+                viewport.set_stock_surface(None);
             }
             return busy;
         }
         let done = pose.cursor.done;
         if let Some(playback) = &stock.playback
             && stock.mesh.is_none()
+            && stock.error.is_none()
             && stock.shown != Some(done)
         {
             stock.mesh = Some((
-                app.start_stock_at(
+                app.start_stock_surface(
                     playback,
                     Cursor {
                         done,
@@ -783,6 +887,20 @@ impl PlaybackPanel {
             self.colour_by = by;
             self.show_bands(viewport);
         }
+    }
+
+    /// The inspector's display choice stays accessible while results are
+    /// stale, independently of the playback dock's height (issue 293).
+    pub fn show_deviation_choice(&mut self, ui: &mut egui::Ui) {
+        let available = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
+        ui.add_enabled(
+            available,
+            egui::Checkbox::new(&mut self.bands_on, "Deviation colours"),
+        )
+        .on_hover_text(
+            "Show overcut, on the surface, and material left; untick for the plain cut part",
+        )
+        .on_disabled_hover_text(NO_STOCK_SIMULATION);
     }
 
     /// Sets the deviation bands shown (SIM-15), and redraws the colours.
@@ -809,6 +927,45 @@ impl PlaybackPanel {
     }
 
     fn update_bands(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
+        if viewport.step() == crate::viewport::ViewStep::Simulate {
+            if let Some((_, job)) = self.bands_job.take() {
+                job.cancel();
+            }
+            let setup = self
+                .run
+                .as_ref()
+                .zip(self.pose())
+                .and_then(|(run, pose)| run.groups.get(pose.group).map(|g| g.setup));
+            self.bands_setup = self.bands_on.then_some(setup).flatten();
+            let surface = self
+                .stock
+                .surface
+                .as_ref()
+                .filter(|s| self.bands_on && Some(s.setup) == setup);
+            if let Some(surface) = surface {
+                if !self
+                    .bands_surface
+                    .as_ref()
+                    .is_some_and(|old| Arc::ptr_eq(old, surface))
+                {
+                    self.bands = surface.bands.clone();
+                    self.bands_model = surface.model;
+                    self.bands_surface = Some(Arc::clone(surface));
+                    self.show_bands(viewport);
+                }
+            } else {
+                self.bands = None;
+                self.bands_surface = None;
+                self.bands_model = None;
+                viewport.set_bands(None);
+            }
+            return false;
+        }
+        if self.bands_surface.take().is_some() {
+            self.bands = None;
+            self.bands_model = None;
+            viewport.set_bands(None);
+        }
         if !self.bands_on {
             if let Some((_, job)) = self.bands_job.take() {
                 job.cancel();
@@ -950,7 +1107,13 @@ impl PlaybackPanel {
     /// The timeline: one segment per enabled operation sized by its moves,
     /// the ones not generated dashed amber, the playhead, and move numbers
     /// under it. Clicking seeks.
-    fn timeline_bar(&mut self, ui: &mut egui::Ui, app: &Application, data: &PlaybackData) {
+    fn timeline_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        app: &Application,
+        data: &PlaybackData,
+        progress: Option<&PreparationProgress>,
+    ) {
         let timeline = &data.timeline;
         let groups = timeline.group_count();
         let moves = timeline.move_count().max(1);
@@ -1046,6 +1209,9 @@ impl PlaybackPanel {
             let f = ((pos.x - rect.left()) / made_width.max(1.0)).clamp(0.0, 1.0);
             self.playback
                 .jump_to_move(timeline, (f * moves as f32) as usize);
+        }
+        if let Some(progress) = progress {
+            progress.show(ui);
         }
         self.window_strip(ui, timeline, rect.left(), made_width);
         ui.horizontal(|ui| {
@@ -1182,7 +1348,7 @@ impl PlaybackPanel {
     /// choice when the user changed it.
     #[cfg(test)]
     pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
-        let skip = self.show_strip(ui, app);
+        let skip = self.show_strip(ui, app, None);
         self.show_rest(ui, app);
         skip
     }
@@ -1191,17 +1357,24 @@ impl PlaybackPanel {
     /// scroll (issue 262): the transport row with "Skip stock simulation",
     /// and the timeline with the window strip. Returns the tick box's new
     /// choice when it was clicked.
-    pub fn show_strip(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+    pub fn show_strip(
+        &mut self,
+        ui: &mut egui::Ui,
+        app: &Application,
+        progress: Option<&PreparationProgress>,
+    ) -> Option<bool> {
         let mut skip = None;
         let Some(data) = self.data.clone() else {
             // The transport row keeps its place while there is nothing to
             // play, so the tab does not move when a run lands (issue 215).
-            let skip = waiting_row(ui, app);
-            if self.data_job.is_some() {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Preparing the toolpath for display…");
-                });
+            let skip = self.waiting_row(ui, app);
+            if let Some(progress) = progress {
+                let (rect, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), 26.0),
+                    egui::Sense::hover(),
+                );
+                ui.painter().rect_filled(rect, 2.0, DARK.selected);
+                progress.show(ui);
             } else if let Some(error) = &self.error {
                 ui.colored_label(PROBLEM, error);
             } else {
@@ -1256,9 +1429,9 @@ impl PlaybackPanel {
                 self.next_operation(timeline);
             }
             ui.separator();
-            skip = skip_box(ui, app);
+            skip = self.simulation_choices(ui, app);
         });
-        self.timeline_bar(ui, app, &data);
+        self.timeline_bar(ui, app, &data, progress);
         skip
     }
 
@@ -1272,7 +1445,7 @@ impl PlaybackPanel {
         let timeline = &data.timeline;
         let total = timeline.total_time();
         let moves = timeline.move_count();
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Speed");
             let speed = self.playback.speed();
             for (name, value) in SPEEDS {
@@ -1293,6 +1466,16 @@ impl PlaybackPanel {
                     self.playback.set_speed(value);
                 }
             }
+            ui.separator();
+            if ui.checkbox(&mut self.show_tool, "Tool").changed() {
+                self.tool_dirty = true;
+            }
+            ui.add_enabled(
+                self.playback.window().is_some(),
+                egui::Checkbox::new(&mut self.hide_outside, HIDE_OUTSIDE),
+            )
+            .on_hover_text("Draw only the moves in the window; otherwise the rest of the path is drawn faintly. Drawing less is quicker on slow graphics")
+            .on_disabled_hover_text("Set a window first, by dragging under the timeline");
         });
         ui.horizontal_wrapped(|ui| {
             ui.label(format!(
@@ -1343,54 +1526,17 @@ impl PlaybackPanel {
             .on_hover_text(continuous_a_tip(pose.work[3], 3));
         }
         ui.horizontal_wrapped(|ui| {
-            let mut machine = self.view == ViewFrame::Machine;
-            if ui
-                .checkbox(&mut machine, "Turn part with A")
-                .on_hover_text(
-                    "The tool stands upright and the workpiece turns, as on the machine; \
-                     otherwise the part is fixed and the tool moves round it",
-                )
-                .changed()
-            {
-                self.view = if machine {
-                    ViewFrame::Machine
-                } else {
-                    ViewFrame::Part
-                };
-            }
-            if ui.checkbox(&mut self.show_tool, "Tool").changed() {
-                self.tool_dirty = true;
-            }
-            let can_stock = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
-            ui.add_enabled_ui(can_stock, |ui| {
-                ui.checkbox(&mut self.bands_on, "Colour the part by deviation")
-                    .on_disabled_hover_text(NO_STOCK_SIMULATION)
-                    .on_hover_text("Overcut, on the surface, and material left");
-            });
-            ui.add_enabled(
-                self.playback.window().is_some(),
-                egui::Checkbox::new(&mut self.hide_outside, HIDE_OUTSIDE),
-            )
-            .on_hover_text(
-                "Draw only the moves in the window; otherwise the rest of the path is drawn \
-                 faintly. Drawing less is quicker on slow graphics",
-            )
-            .on_disabled_hover_text("Set a window first, by dragging under the timeline");
             self.stock_status(ui, app);
-        });
-        // The note keeps its line while it has nothing to say, so the rows
-        // do not move when it appears (issue 215).
-        if let Some((drawn, full, tolerance)) = self.detail {
-            if drawn < full {
-                ui.weak(format!(
-                    "Drawing {drawn} of {full} points, simplified to within {tolerance} mm"
-                ));
-            } else {
-                ui.weak(format!("Drawing all {full} points"));
+            if let Some((drawn, full, tolerance)) = self.detail {
+                if drawn < full {
+                    ui.weak(format!(
+                        "Drawing {drawn} of {full} points, simplified to within {tolerance} mm"
+                    ));
+                } else {
+                    ui.weak(format!("Drawing all {full} points"));
+                }
             }
-        } else {
-            ui.weak(" ");
-        }
+        });
         if let Some(error) = self.stock.error.as_ref().or(self.error.as_ref()) {
             ui.colored_label(PROBLEM, error);
         }
@@ -1399,10 +1545,7 @@ impl PlaybackPanel {
 
     /// What the cut part is doing: being prepared, or why there is none.
     fn stock_status(&self, ui: &mut egui::Ui, app: &Application) {
-        if self.stock.prepare.is_some() {
-            ui.spinner();
-            ui.label("Simulating the cut part…");
-        } else if self.run.as_ref().is_some_and(|r| r.simulation.is_none()) {
+        if self.run.as_ref().is_some_and(|r| r.simulation.is_none()) {
             ui.weak(if app.project().skip_stock_simulation() {
                 "No cut part: the stock simulation is skipped for this project"
             } else {
@@ -1436,18 +1579,20 @@ pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) ->
 /// disabled, then the "Skip stock simulation" tick box, where the row with a
 /// run has them (issues 215 and 259). Returns the tick box's new choice when
 /// it was clicked.
-pub fn waiting_row(ui: &mut egui::Ui, app: &Application) -> Option<bool> {
-    ui.horizontal(|ui| {
-        ui.add_enabled_ui(false, |ui| {
-            for button in ["⏮", "\u{23f4}", "\u{23f5}", "\u{23f5}|", "⏭"] {
-                ui.button(button)
-                    .on_disabled_hover_text("There is nothing to play yet");
-            }
-        });
-        ui.separator();
-        skip_box(ui, app)
-    })
-    .inner
+impl PlaybackPanel {
+    fn waiting_row(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(false, |ui| {
+                for button in ["⏮", "\u{23f4}", "\u{23f5}", "\u{23f5}|", "⏭"] {
+                    ui.button(button)
+                        .on_disabled_hover_text("There is nothing to play yet");
+                }
+            });
+            ui.separator();
+            self.simulation_choices(ui, app)
+        })
+        .inner
+    }
 }
 
 /// The project's "Skip stock simulation" tick box (issue 214; decision
@@ -1790,13 +1935,74 @@ mod tests {
         });
         panel.frame(&app, &mut viewport, 0.0);
         assert!(viewport.layer(Layer::Stock).unwrap().meshes.is_empty());
-        // Colouring by deviation splits the part into bands in the scene.
+        // With Cut part hidden its colours are hidden too. Showing it again
+        // maps the final samples onto the actual stock surface.
         panel.bands_on = true;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.bands.is_none());
+        viewport.set_simulate_show(SimulateShow::default());
         while panel.frame(&app, &mut viewport, 0.0) {
             assert!(started.elapsed() < Duration::from_secs(120));
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(panel.bands.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_nfr_04_req_ui_11_failed_stock_surface_preparation_stops_progress_and_reports_the_error()
+    {
+        let (app, mut panel, mut viewport, dir) = prepared("panel-surface-failure");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        let data = panel.data.clone().unwrap();
+        panel.stock.playback = Some(Arc::new(
+            app.start_stock_playback(Arc::clone(&data.timeline))
+                .wait()
+                .unwrap(),
+        ));
+        let pool = openchuck_app::JobManager::new(openchuck_app::Threads::Exactly(1)).unwrap();
+        let (events, _) = std::sync::mpsc::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        panel.stock.mesh = Some((
+            pool.submit("stock at move", events, move |_| {
+                blocked.recv().unwrap();
+                Err(openchuck_app::AppError::Playback(
+                    "The cut surface could not be prepared".to_owned(),
+                ))
+            }),
+            0,
+        ));
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(
+            panel
+                .preparation_progress(&openchuck_app::JobLog::default(), None, false)
+                .is_some()
+        );
+        release.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while panel.stock.error.is_none() {
+            panel.frame(&app, &mut viewport, 0.0);
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            panel.stock.mesh.is_none(),
+            "failure must not silently start another surface job"
+        );
+        assert!(
+            panel
+                .preparation_progress(&openchuck_app::JobLog::default(), None, false)
+                .is_none()
+        );
+        assert!(
+            panel
+                .stock
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("could not be prepared")
+        );
+        assert!(viewport.stock_surface().is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 

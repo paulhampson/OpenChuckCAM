@@ -1,6 +1,6 @@
 # 0241: Continuous rotary position at operation boundaries
 
-- **Status:** accepted by the project owner directly in the ROUGHPATH lane on 24 October 2026 after reviewing the complete record: "Accept 0238." Shared scope, including legacy Facing, was approved in the preceding turn. The owner also asked for clarification of Makera coordinate-reset semantics; this does not change the accepted rule. Administratively renumbered from provisional 0238 to 0241 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance.
+- **Status:** accepted by the project owner directly in the ROUGHPATH lane on 24 October 2026 after reviewing the complete record: "Accept 0238." Shared scope, including legacy Facing, was approved in the preceding turn. The owner also asked for clarification of Makera coordinate-reset semantics; this does not change the accepted rule. Administratively renumbered from provisional 0238 to 0241 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance. The owner reaffirmed the unchanged acceptance after each complete renumbered record was presented, relayed by Merge Manager in [PR340 comment6400352887](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400352887) on 25 October 2026.
 - **Date:** 24 October 2026.
 - **Lane / issue:** ROUGHPATH, #292. The optional ramp (#291) has a separate decision.
 - **Requirements:** OP-03, OP-11, OP-13, OP-14, OP-15, SET-01/06/09, OP-21, GC-04/07/09/10, NFR-06/07/12.

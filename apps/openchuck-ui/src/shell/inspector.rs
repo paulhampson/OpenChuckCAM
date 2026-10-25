@@ -188,11 +188,9 @@ impl Shell {
     /// The results inspector of the Simulate step (specification 11.5).
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
-        // An out-of-date result says so first, with the way to simulate
-        // again, and its numbers are dimmed (issue 260).
-        if self.out_of_date_banner(ui) {
-            self.primary();
-        }
+        self.play.show_deviation_choice(ui);
+        // The viewport carries the single actionable stale message (297).
+        // Keep the result identification and dimmed values here.
         let stale = self
             .out_of_date
             .reason()
@@ -923,15 +921,12 @@ impl Shell {
         field_row::name_problem(ui, &self.form, NAME);
         frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
         // The strategy under its own heading, apart from the operation's name
-        // the user can change: its plain name and the one-line description
-        // the New operation list shows. Shown only; it cannot be changed here
-        // (issue 242; decision record 0204).
+        // the user can change: its plain name and the same wrapped information
+        // shown during creation. Shown only; it cannot be changed here
+        // (issues 242 and 289; accepted decisions 0204 and 0237).
         ui.add_space(4.0);
         ui.label(RichText::new("Strategy").small().color(DARK.muted));
-        ui.label(RichText::new(strategy).strong());
-        if !strategy_text.is_empty() {
-            ui.label(RichText::new(strategy_text).color(DARK.muted));
-        }
+        crate::strategy_info::show(ui, &strategy, &strategy_text);
         ui.add_space(4.0);
 
         // What is missing, as soon as the operation exists (issue 224): a

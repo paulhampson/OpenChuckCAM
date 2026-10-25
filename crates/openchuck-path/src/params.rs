@@ -345,7 +345,6 @@ pub mod names {
     pub const APPROACH_DISTANCE: &str = "approach_distance";
     /// The entry style (decision record 0026).
     pub const ENTRY: &str = "entry";
-    /// The descent angle of a ramp or helix entry.
     /// Optional repeated descending ramp legs.
     pub const RAMP_BACK_AND_FORTH: &str = "ramp_back_and_forth";
     /// Descent angle for ramp and helix entry.

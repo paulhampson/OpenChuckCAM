@@ -1,6 +1,6 @@
 # 0242: Optional back-and-forth ramp entry
 
-- **Status:** accepted directly by the project owner on 24 October 2026 after complete-record review: "Accept 0239". The one-cutting-diameter minimum and refusal wording were approved directly beforehand. Administratively renumbered from provisional 0239 to 0242 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance.
+- **Status:** accepted directly by the project owner on 24 October 2026 after complete-record review: "Accept 0239". The one-cutting-diameter minimum and refusal wording were approved directly beforehand. Administratively renumbered from provisional 0239 to 0242 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance. The owner reaffirmed the unchanged acceptance after each complete renumbered record was presented, relayed by Merge Manager in [PR340 comment6400352887](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400352887) on 25 October 2026.
 - **Date:** 24 October 2026.
 - **Lane / issue:** ROUGHPATH, #291; rotary boundaries follow accepted 0241.
 - **Requirements:** OP-03, OP-11/12/13/14, SET-09, OP-21, GC-07, NFR-04/06/07/12 and configured machine/post limits.

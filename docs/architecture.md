@@ -161,6 +161,13 @@ Optional back-and-forth ramping (decision 0242) uses the common `ramp_back_and_f
 - **Operation pipeline.** See section 6.
 - **Mapping.** Converts project-model objects to the library's plain data, so the libraries never see the project file (INT-01).
 - **Export.** G-code through `openchuck-post`, setup sheet as HTML or PDF (GC-12), written by the setup sheet module from one document model; times are the IR's programmed time until SIM-08 gives estimates.
+  Desktop preflight freezes the same-run bytes and returns full destinations
+  without writing; application-side writes return actual completed/failed/not
+  attempted paths and retain reports for the project's Messages query
+  (UI-12, GC-15; owner-approved behaviour, accepted decision 0240). Replacement
+  approval belongs to the UI, with application-side destination/readiness
+  revalidation. A batch is sequential, without atomic rollback. The UI only
+  draws, confirms, copies paths and reopens reports. CLI facilities are unchanged.
 
 ### 5.8 Viewport and UI (`openchuck-viewport`, `openchuck-ui`)
 

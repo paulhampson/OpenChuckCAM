@@ -22,12 +22,15 @@ use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_comma
 use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
     EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks,
-    JobHandle, OutputGrouping, PlannedFile, PostSelection, PostSummary, Regeneration,
-    builtin_post_summaries, post_summary,
+    JobHandle, OutputGrouping, OutputPlan, OutputReport, PlannedFile, PostSelection, PostSummary,
+    Regeneration, builtin_post_summaries, post_summary,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
 use crate::theme::DARK;
+
+#[path = "export_panel/feedback.rs"]
+mod feedback;
 
 const PROBLEM: Color32 = DARK.error;
 const WARNING: Color32 = DARK.warning;
@@ -35,6 +38,14 @@ const WARNING: Color32 = DARK.warning;
 const NOTICE_FILL: Color32 = DARK.warning_box.bg;
 /// How many lines of a file the preview shows.
 const PREVIEW_LINES: usize = 14;
+
+#[cfg(test)]
+#[path = "export_panel/layout_tests.rs"]
+mod layout_tests;
+
+#[cfg(test)]
+#[path = "export_panel/write_feedback_tests.rs"]
+mod write_feedback_tests;
 
 /// How the tool numbers are settled (specification 11.6 item 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,11 +91,22 @@ enum Act {
     ChooseFolder,
     ApplyNumbers(ToolNumbering),
     Write,
+    Replace,
+    CancelOverwrite,
+    DismissResult,
+}
+
+struct PendingOutput {
+    plan: OutputPlan,
+    key: Key,
+    folder: String,
 }
 
 /// What the dialog hands back to the shell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Outcome {
+    /// A retained result was added, so the shell refreshes Messages.
+    pub reported: bool,
     /// A sentence for the status bar.
     pub status: Option<String>,
     /// A problem to show in an error dialog.
@@ -93,6 +115,8 @@ pub struct Outcome {
 
 /// The export dialog's state.
 pub struct ExportPanel {
+    overwrite: Option<PendingOutput>,
+    result: Option<OutputReport>,
     deferred: Option<(crate::pending_edits::Ticket, Act)>,
     open: bool,
     posts: Vec<PostSummary>,
@@ -135,6 +159,8 @@ impl ExportPanel {
     /// in which case the box is asked every time).
     pub fn new(ack: Option<Acknowledgements>) -> Self {
         Self {
+            overwrite: None,
+            result: None,
             deferred: None,
             open: false,
             posts: builtin_post_summaries(),
@@ -166,7 +192,7 @@ impl ExportPanel {
 
     /// Whether the dialog is open.
     pub fn is_open(&self) -> bool {
-        self.open
+        self.open || self.overwrite.is_some() || self.result.is_some()
     }
 
     /// Forgets everything about a project that was closed.
@@ -415,10 +441,12 @@ impl ExportPanel {
         run_error: Option<&str>,
     ) -> Outcome {
         let mut outcome = Outcome::default();
-        if !self.open {
+        if !self.is_open() {
             return outcome;
         }
-        self.drive(ctx, app, run, run_error);
+        if self.open {
+            self.drive(ctx, app, run, run_error);
+        }
         let posted = self.files_current(app).map(|f| Arc::clone(&f.run));
         let checks = app.export_checks(run.map(AsRef::as_ref), posted.as_deref(), run_error);
         let acknowledged = self.ack_lookup.acknowledged || self.ticked;
@@ -427,23 +455,44 @@ impl ExportPanel {
         if let Some(action) = crate::pending_edits::take_local(ctx, &mut self.deferred) {
             acts.push(action);
         }
-        let (_, event) = floating_unscrolled(
-            ctx,
-            "export dialog",
-            "Post and export",
-            [980.0, 700.0],
-            |ui| {
-                self.draw(ui, app, &checks, blocker.as_deref(), &mut acts);
-            },
-        );
-        if event == WindowEvent::CloseRequested {
-            acts.push(Act::Close);
+        if self.open {
+            let (_, event) = floating_unscrolled(
+                ctx,
+                "export dialog",
+                "Post and export",
+                [980.0, 700.0],
+                |ui| {
+                    self.draw(ui, app, &checks, blocker.as_deref(), &mut acts);
+                },
+            );
+            if event == WindowEvent::CloseRequested {
+                acts.push(Act::Close);
+            }
         }
+        self.feedback_frame(ctx, &mut acts);
         for act in acts {
             let Some(act) = crate::pending_edits::defer_local(ctx, &mut self.deferred, act) else {
                 continue;
             };
             match act {
+                Act::DismissResult => self.result = None,
+                Act::CancelOverwrite => self.overwrite = None,
+                Act::Replace => {
+                    if let Some(pending) = self.overwrite.take() {
+                        if blocker.is_none()
+                            && self.key(app).as_ref() == Some(&pending.key)
+                            && self.folder == pending.folder
+                        {
+                            outcome = self.finish_write(app, &pending.plan, true);
+                        } else {
+                            let reason = blocker.clone().unwrap_or_else(|| {
+                                "The export choices changed. Review the files before writing."
+                                    .to_owned()
+                            });
+                            outcome = self.refused(app, pending.plan.paths(), reason);
+                        }
+                    }
+                }
                 Act::Close => self.open = false,
                 Act::ChooseFolder => {
                     let mut dialog = rfd::FileDialog::new().set_title("Output folder");
@@ -486,6 +535,8 @@ impl ExportPanel {
                     // The button was disabled for a blocker; check again so a
                     // stale click cannot write.
                     if blocker.is_none()
+                        && self.result.is_none()
+                        && self.overwrite.is_none()
                         && let Some(files) = posted.as_ref()
                     {
                         outcome = self.write(app, files);
@@ -499,45 +550,95 @@ impl ExportPanel {
     /// Writes the G-code and the setup sheet into the output folder, and
     /// keeps the acknowledgement on this computer after the first export of a
     /// project.
-    fn write(&mut self, app: &Application, files: &Regeneration) -> Outcome {
-        let mut outcome = Outcome::default();
+    fn write(&mut self, app: &Application, files: &Arc<Regeneration>) -> Outcome {
         let folder = PathBuf::from(self.folder.trim());
+        match app.prepare_output(&folder, files) {
+            Ok(plan) if !plan.existing().is_empty() => {
+                if let Some(key) = self.key(app) {
+                    self.overwrite = Some(PendingOutput {
+                        plan,
+                        key,
+                        folder: self.folder.clone(),
+                    });
+                }
+                Outcome::default()
+            }
+            Ok(plan) => self.finish_write(app, &plan, false),
+            Err(error) => {
+                let folder = std::path::absolute(&folder).unwrap_or(folder);
+                let paths: Vec<_> = files
+                    .gcode
+                    .iter()
+                    .map(|(name, _)| folder.join(name))
+                    .chain(
+                        app.setup_sheet_file_names()
+                            .iter()
+                            .map(|name| folder.join(name)),
+                    )
+                    .collect();
+                let failed = match &error {
+                    openchuck_app::AppError::Io { path, .. } => path.clone(),
+                    _ => paths.first().cloned().unwrap_or(folder),
+                };
+                let report = OutputReport::refused(&paths, failed, error.to_string());
+                app.record_output_report(report.clone());
+                self.show_report(report.clone());
+                Outcome {
+                    reported: true,
+                    status: Some(report.summary()),
+                    error: None,
+                }
+            }
+        }
+    }
+
+    fn refused(&mut self, app: &Application, paths: &[PathBuf], reason: String) -> Outcome {
+        let path = paths.first().cloned().unwrap_or_default();
+        let report = OutputReport::refused(paths, path, reason);
+        app.record_output_report(report.clone());
+        self.show_report(report.clone());
+        Outcome {
+            reported: true,
+            status: Some(report.summary()),
+            error: None,
+        }
+    }
+
+    fn finish_write(&mut self, app: &Application, plan: &OutputPlan, replace: bool) -> Outcome {
+        let mut outcome = Outcome::default();
         // The sheet is written from the same run as the G-code (decision
         // 0189), and the export recorded: the Post and export step is
         // complete until something changes (UI-10).
-        match app.write_output(&folder, files) {
-            Ok(_) => {
-                let count = files.gcode.len();
-                if !self.ack_lookup.acknowledged
-                    && let Some(ack) = &self.ack
-                {
-                    if let Err(e) = ack.acknowledge(app.location()) {
-                        outcome.error = Some(format!(
-                            "The files were written, but the acknowledgement could not be kept on this computer: {e}"
-                        ));
-                    }
-                    self.refresh_acknowledgement(app);
+        let report = app.write_output(plan, replace);
+        // The acknowledgement is kept once a file really was written,
+        // including partial success (accepted decision 0071).
+        if !report.written.is_empty() {
+            if !self.ack_lookup.acknowledged
+                && let Some(ack) = &self.ack
+            {
+                if let Err(e) = ack.acknowledge(app.location()) {
+                    outcome.error = Some(format!(
+                        "The files were written, but the acknowledgement could not be kept on this computer: {e}"
+                    ));
                 }
-                // The skip's acknowledgement is kept the same way (OI-602).
-                if self.skips(app)
-                    && !self.skip_lookup.acknowledged
-                    && let Some(ack) = &self.ack
-                {
-                    if let Err(e) = ack.acknowledge_stock_skipped(app.location()) {
-                        outcome.error = Some(format!(
-                            "The files were written, but the acknowledgement could not be kept on this computer: {e}"
-                        ));
-                    }
-                    self.refresh_acknowledgement(app);
-                }
-                outcome.status = Some(format!(
-                    "Wrote {count} G-code file{} and the setup sheet (HTML and PDF) to {}.",
-                    if count == 1 { "" } else { "s" },
-                    folder.display()
-                ));
+                self.refresh_acknowledgement(app);
             }
-            Err(e) => outcome.error = Some(e.to_string()),
+            // The skip's acknowledgement is kept the same way (OI-602).
+            if self.skips(app)
+                && !self.skip_lookup.acknowledged
+                && let Some(ack) = &self.ack
+            {
+                if let Err(e) = ack.acknowledge_stock_skipped(app.location()) {
+                    outcome.error = Some(format!(
+                        "The files were written, but the acknowledgement could not be kept on this computer: {e}"
+                    ));
+                }
+                self.refresh_acknowledgement(app);
+            }
         }
+        outcome.reported = true;
+        outcome.status = Some(report.summary());
+        self.show_report(report);
         outcome
     }
 
@@ -586,6 +687,10 @@ impl ExportPanel {
             });
             ui.add_space(4.0);
         });
+        // Keep the body below the fixed actions, and leave the scrollbar
+        // its own strip (UI-16, issue 311). Future preview content belongs
+        // inside this body, without changing the footer or its scroll bounds.
+        crate::theme::solid_scroll_bar(ui);
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.columns(2, |columns| {
                 let [left, right] = columns else { return };
@@ -1183,12 +1288,8 @@ mod tests {
             .unwrap();
         let outcome = panel.write(&app, &posted);
         assert_eq!(outcome.error, None);
-        assert!(
-            outcome
-                .status
-                .unwrap()
-                .starts_with("Wrote 1 G-code file and the setup sheet (HTML and PDF) to")
-        );
+        assert_eq!(outcome.status.as_deref(), Some("Wrote 3 files."));
+        assert_eq!(panel.result.as_ref().unwrap().written.len(), 3);
         assert!(out.join(&posted.gcode[0].0).exists());
         // The setup sheet is written with the G-code (decision 0189).
         for name in app.setup_sheet_file_names() {

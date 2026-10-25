@@ -8,6 +8,7 @@ All notable changes to `openchuck-path` are recorded here.
 - Optional `ramp_back_and_forth` uses a verified corridor of at least one cutting diameter, fixed A, plunge feed and bounded/cancellable descending legs. Original single-line behavior is retained when absent/false. Roughing uses clearance-height links for this option; no low-link shortcut is used before the stock-clear approach.
 
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- Clarify all eleven strategy explanations (OPCREATE2, #289/#290, accepted decision 0237 and OI-986): describe curved swarf walls, selected STEP faces and overcut warnings; remove unsupported promises about complete surfaces, every corner or one-pass completion. Wording only; generation and the public API are unchanged.
 
 - Warning measurement checks cancellation between surface queries (UI-09, INT-04); a cancel request no longer waits for all watched surfaces of the path to be measured. No public API change.
 

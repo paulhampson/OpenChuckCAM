@@ -946,3 +946,43 @@ fn req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_tl_07_req_gc_07_req_ui_08_cleanup_preserves_output_and_current_results() {
+    use openchuck_app::tool_library::{remove_unused_tools, unused_project_tools};
+    let (dir, mut app, op) = project("cleanup-output");
+    let mut unused = app.project().tools()[0].clone();
+    unused.id = ToolId::new();
+    unused.name = "Unused copy".into();
+    unused.controller.number = 12;
+    let unused_id = unused.id;
+    app.execute(Command::Add {
+        item: Item::Tool(unused),
+        placement: Placement::End,
+    })
+    .unwrap();
+    with_post(&mut app, "makera-z1");
+    let run = app.regenerate().unwrap();
+    assert!(app.export_checks(Some(&run), None, None).can_write());
+    app.save().unwrap();
+    assert!(!app.is_modified());
+    let reviewed = unused_project_tools(app.project());
+    app.execute(
+        remove_unused_tools(app.project(), &reviewed, &[unused_id])
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(app.is_modified());
+    assert!(app.export_checks(Some(&run), None, None).can_write());
+    assert!(openchuck_app::run_is_current(app.project(), &run));
+    assert!(openchuck_app::simulation_out_of_date(app.project(), &run).is_none());
+    let after = app.regenerate().unwrap();
+    assert_eq!(after.gcode, run.gcode);
+    assert_eq!(after.reused, [op]);
+    assert!(after.generated.is_empty());
+    app.undo().unwrap();
+    assert!(app.export_checks(Some(&run), None, None).can_write());
+    assert_eq!(app.regenerate().unwrap().gcode, run.gcode);
+    std::fs::remove_dir_all(dir).unwrap();
+}

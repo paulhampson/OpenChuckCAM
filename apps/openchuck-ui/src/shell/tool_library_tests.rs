@@ -861,3 +861,282 @@ fn req_tl_05_req_tl_09_the_operation_has_a_material_preset_row() {
     rig.frame(Vec::new());
     assert!(rig.shows("Material preset"));
 }
+
+fn library_bytes(folder: &std::path::Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    let mut files = std::collections::BTreeMap::new();
+    for entry in std::fs::read_dir(folder).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(library_bytes(&path));
+        } else {
+            files.insert(path.clone(), std::fs::read(path).unwrap());
+        }
+    }
+    files
+}
+
+fn cleanup_click(rig: &mut Rig, label: &str) {
+    let at = rig
+        .visible_text_rects()
+        .into_iter()
+        .rev()
+        .find(|(text, _)| text == label)
+        .unwrap_or_else(|| panic!("missing {label}: {:?}", rig.texts()))
+        .1
+        .center();
+    rig.click(at);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+}
+
+#[test]
+fn req_tl_07_cleanup_reviews_confirms_cancels_and_undoes_without_library_changes() {
+    let folder = library_folder("cleanup");
+    let id = library_with(&folder, ToolType::BullNose, "Unused cleanup tool");
+    let mut rig = Rig::cube("cleanup", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let lib = ToolLibrary::open(&folder).unwrap();
+    let (cmd, _, _) = tool_library::add_to_project(app.project(), &lib, id).unwrap();
+    app.execute(cmd).unwrap();
+    let before = app.project().clone();
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.tool_library.open(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let library_before = library_bytes(&folder);
+    cleanup_click(&mut rig, "Remove unused tools…");
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(
+        rig.shows("Only project copies are removed."),
+        "{:?}",
+        rig.texts()
+    );
+    assert!(rig.shows("Tools used by disabled operations are retained."));
+    assert!(
+        rig.shows("Corner radius"),
+        "Subtype dimensions must distinguish tools of the same diameter"
+    );
+    cleanup_click(&mut rig, "Unused cleanup tool — T2");
+    cleanup_click(&mut rig, "Unused cleanup tool — T2");
+    cleanup_click(&mut rig, "Remove selected…");
+    assert!(!rig.shows("Remove these project copies?"));
+    cleanup_click(&mut rig, "Unused cleanup tool — T2");
+    cleanup_click(&mut rig, "Remove selected…");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Remove these project copies?"));
+    cleanup_click(&mut rig, "Cancel");
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+    cleanup_click(&mut rig, "Remove unused tools…");
+    rig.frame(Vec::new());
+    cleanup_click(&mut rig, "Unused cleanup tool — T2");
+    cleanup_click(&mut rig, "Remove selected…");
+    rig.frame(Vec::new());
+    cleanup_click(&mut rig, "Remove");
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().tools().len(), 1);
+    assert!(ToolLibrary::open(&folder).unwrap().get(id).is_some());
+    assert_eq!(library_bytes(&folder), library_before);
+    rig.shell.undo();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn req_tl_07_cleanup_refreshes_changed_candidates_and_clears_selection() {
+    let folder = library_folder("cleanup-refresh");
+    let id = library_with(&folder, ToolType::FlatEnd, "Refresh me");
+    let mut rig = Rig::cube("cleanup-refresh", None);
+    let lib = ToolLibrary::open(&folder).unwrap();
+    let app = rig.shell.app.as_mut().unwrap();
+    let (cmd, _, _) = tool_library::add_to_project(app.project(), &lib, id).unwrap();
+    app.execute(cmd).unwrap();
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.tool_library.open(Purpose::Browse, None);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    cleanup_click(&mut rig, "Remove unused tools…");
+    cleanup_click(&mut rig, "Refresh me — T2");
+    cleanup_click(&mut rig, "Remove selected…");
+    let app = rig.shell.app.as_mut().unwrap();
+    let cmd = tool_library::set_project_tool_number(app.project(), id, 7).unwrap();
+    app.execute(cmd).unwrap();
+    let before = app.project().clone();
+    cleanup_click(&mut rig, "Remove");
+    assert!(rig.shows("Nothing was removed"));
+    assert!(rig.shows("Refresh me — T7"));
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+    // A cleared selection cannot be confirmed by clicking the disabled button.
+    cleanup_click(&mut rig, "Remove selected…");
+    assert!(!rig.shows("Remove these project copies?"));
+    cleanup_click(&mut rig, "Cancel");
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn req_tl_07_req_ui_14_req_ui_16_cleanup_empty_escape_and_scaled_layout() {
+    for (width, height, scale) in [
+        (1366.0, 768.0, 1.0),
+        (1366.0, 768.0, 1.2),
+        (1920.0, 1080.0, 1.0),
+    ] {
+        let mut rig = Rig::cube(&format!("cleanup-empty-{scale}-{width}"), None);
+        crate::theme::install_fonts(&rig.ctx);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.size = egui::vec2(width, height);
+        rig.ctx.set_pixels_per_point(scale);
+        let folder = rig.dirs[0].join("empty-library");
+        rig.shell.tool_library = ToolLibraryWindow::new(Some(folder));
+        rig.shell.tool_library.open(Purpose::Browse, None);
+        for _ in 0..3 {
+            rig.frame(Vec::new());
+        }
+        let before = rig.shell.app.as_ref().unwrap().project().clone();
+        cleanup_click(&mut rig, "Remove unused tools…");
+        assert!(rig.shows("No unused project tools."));
+        let rect = rig
+            .visible_text_rects()
+            .into_iter()
+            .rev()
+            .find(|(t, _)| t == "Close")
+            .unwrap()
+            .1;
+        assert!(rect.top() >= 0.0 && rect.bottom() <= height && rect.right() <= width);
+        rig.press(egui::Key::Escape, egui::Modifiers::NONE);
+        for _ in 0..3 {
+            rig.frame(Vec::new());
+        }
+        assert!(rig.shell.tool_library.is_open());
+        assert!(!rig.shows("No unused project tools."));
+        assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+    }
+}
+
+#[test]
+fn req_tl_07_req_ui_14_cleanup_checkboxes_and_confirmation_use_the_keyboard() {
+    let folder = library_folder("cleanup-keys");
+    let id = library_with(&folder, ToolType::FlatEnd, "Keyboard tool");
+    let mut rig = Rig::cube("cleanup-keys", None);
+    let lib = ToolLibrary::open(&folder).unwrap();
+    let app = rig.shell.app.as_mut().unwrap();
+    let (cmd, _, _) = tool_library::add_to_project(app.project(), &lib, id).unwrap();
+    app.execute(cmd).unwrap();
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.tool_library.open(Purpose::Browse, None);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    cleanup_click(&mut rig, "Remove unused tools…");
+    // The first Tab enters the checklist; Space selects the focused tool.
+    rig.press(egui::Key::Tab, egui::Modifiers::NONE);
+    rig.press(egui::Key::Space, egui::Modifiers::NONE);
+    rig.press(egui::Key::Tab, egui::Modifiers::NONE);
+    rig.press(egui::Key::Enter, egui::Modifiers::NONE);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(
+        rig.shows("Remove these project copies?"),
+        "{:?}",
+        rig.texts()
+    );
+    // Focus stays on the explicit confirmation action.
+    rig.press(egui::Key::Enter, egui::Modifiers::NONE);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().tools().len(), 1);
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn req_tl_07_cleanup_works_when_the_library_is_unavailable() {
+    let mut rig = Rig::cube("cleanup-without-library", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut tool = app.project().tools()[0].clone();
+    tool.id = ToolId::new();
+    tool.name = "Standalone copy".into();
+    tool.controller.number = 2;
+    app.execute(openchuck_app::Command::Add {
+        item: openchuck_app::project::Item::Tool(tool),
+        placement: openchuck_app::project::Placement::End,
+    })
+    .unwrap();
+    // An ordinary file cannot be opened as a library directory.
+    let path = rig.dirs[0].join("unavailable-library");
+    std::fs::write(&path, b"leave this file unchanged").unwrap();
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(path.clone()));
+    rig.shell.tool_library.open(Purpose::Browse, None);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    cleanup_click(&mut rig, "Remove unused tools…");
+    cleanup_click(&mut rig, "Standalone copy — T2");
+    cleanup_click(&mut rig, "Remove selected…");
+    cleanup_click(&mut rig, "Remove");
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().tools().len(), 1);
+    assert_eq!(std::fs::read(path).unwrap(), b"leave this file unchanged");
+}
+
+#[test]
+fn req_tl_07_req_ui_16_cleanup_large_list_keeps_actions_visible_at_supported_sizes() {
+    for (width, height, scale) in [
+        (1366.0, 768.0, 1.0),
+        (1366.0, 768.0, 1.2),
+        (1920.0, 1080.0, 1.0),
+    ] {
+        let mut rig = Rig::cube(&format!("cleanup-large-{width}-{scale}"), None);
+        crate::theme::install_fonts(&rig.ctx);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.size = egui::vec2(width, height);
+        rig.ctx.set_pixels_per_point(scale);
+        let app = rig.shell.app.as_mut().unwrap();
+        let template = app.project().tools()[0].clone();
+        for i in 0..40 {
+            let mut tool = template.clone();
+            tool.id = ToolId::new();
+            tool.name = format!("Unused tool {i:02}");
+            tool.controller.number = i + 2;
+            app.execute(openchuck_app::Command::Add {
+                item: openchuck_app::project::Item::Tool(tool),
+                placement: openchuck_app::project::Placement::End,
+            })
+            .unwrap();
+        }
+        let folder = rig.dirs[0].join("library");
+        rig.shell.tool_library = ToolLibraryWindow::new(Some(folder));
+        rig.shell.tool_library.open(Purpose::Browse, None);
+        for _ in 0..3 {
+            rig.frame(Vec::new());
+        }
+        cleanup_click(&mut rig, "Remove unused tools…");
+        for label in [
+            "Only project copies are removed. The tool library is unchanged.",
+            "Unused tool 00 — T2",
+            "Remove selected…",
+            "Cancel",
+        ] {
+            let rect = rig
+                .visible_text_rects()
+                .into_iter()
+                .rev()
+                .find(|(t, _)| t == label)
+                .unwrap_or_else(|| panic!("missing {label}"))
+                .1;
+            assert!(
+                rect.top() >= 0.0
+                    && rect.bottom() <= height
+                    && rect.left() >= 0.0
+                    && rect.right() <= width,
+                "{label}: {rect:?}"
+            );
+        }
+        cleanup_click(&mut rig, "Unused tool 00 — T2");
+        cleanup_click(&mut rig, "Remove selected…");
+        assert!(rig.shows("Remove these project copies?"));
+        cleanup_click(&mut rig, "Cancel");
+        assert_eq!(rig.shell.app.as_ref().unwrap().project().tools().len(), 41);
+    }
+}

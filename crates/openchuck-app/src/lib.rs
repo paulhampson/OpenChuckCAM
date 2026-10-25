@@ -41,6 +41,7 @@ pub mod model;
 pub mod note_groups;
 pub mod operation;
 pub mod opflow;
+mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
@@ -58,6 +59,7 @@ pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
 pub mod step_sets;
+mod stock_surface;
 pub mod stockplay;
 #[cfg(test)]
 mod test_project;
@@ -107,6 +109,7 @@ pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use opflow::{SetOptionsShown, StrategyChoice};
+pub use output_write::{OutputFailure, OutputPlan, OutputReport};
 pub use pipeline::{GroupInfo, Regeneration, STAGE_GENERATE, STAGE_SIMULATE};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
@@ -1139,16 +1142,19 @@ impl Application {
         vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
     }
 
-    /// Writes `run`'s G-code files and, with them, the setup sheet made from
-    /// the same run, into `folder`, and records the export (GC-05, GC-12;
-    /// decision 0189). Returns the paths, the G-code first. A run made before
-    /// the project last changed writes nothing ([`AppError::OutOfDate`]), so
-    /// the sheet always describes the program beside it.
-    pub fn write_output(
+    /// Preflights every full destination without creating anything. The
+    /// returned plan freezes the same-run NC and setup-sheet bytes while
+    /// existing paths are reviewed (GC-05/12/15, NFR-07).
+    pub fn prepare_output(
         &self,
         folder: &Path,
-        run: &Regeneration,
-    ) -> Result<Vec<PathBuf>, AppError> {
+        run: &std::sync::Arc<Regeneration>,
+    ) -> Result<OutputPlan, AppError> {
+        if run.gcode.is_empty() {
+            return Err(AppError::Post(
+                "There is no G-code to write. Generate the operations first.".to_owned(),
+            ));
+        }
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
@@ -1158,9 +1164,35 @@ impl Application {
             .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
             .collect();
         files.extend(self.setup_sheet_files(Some(&run.toolpath)));
-        let written = export::write_bytes(folder, &files)?;
-        self.record_export(run);
-        Ok(written)
+        output_write::prepare(folder, std::sync::Arc::clone(run), files)
+    }
+
+    /// Revalidates the reviewed plan and writes in order, stopping at the
+    /// first failure. `replace` confirms the plan's existing paths only.
+    /// Results are retained in Messages; only full success completes Export.
+    /// No atomic batch or machining verification is implied.
+    pub fn write_output(&self, plan: &OutputPlan, replace: bool) -> OutputReport {
+        let checks = self.export_checks(Some(&plan.run), Some(&plan.run), None);
+        let report = if *plan.run.project != self.document.project {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                AppError::OutOfDate.to_string(),
+            )
+        } else if let Some(reason) = checks.first_blocker() {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                reason,
+            )
+        } else {
+            output_write::write(plan, replace)
+        };
+        if report.is_complete() {
+            self.record_export(&plan.run);
+        }
+        self.record_output_report(report.clone());
+        report
     }
 
     /// The checks before writing G-code (GC-15). `run` is the latest

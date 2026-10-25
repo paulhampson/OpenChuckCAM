@@ -135,7 +135,7 @@ impl Strategy for RadialDrilling {
     }
 
     fn description(&self) -> &str {
-        "Drills holes straight into the part from the side, turning the part so each hole faces the tool. It needs a STEP model so it can find the round holes."
+        "Drills holes into the side of the part, turning the part so each hole faces the tool. Needs a STEP model to find the round holes. Use a drill that matches the hole size."
     }
 
     fn group(&self) -> StrategyGroup {

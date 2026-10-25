@@ -568,6 +568,225 @@ fn select_a_set(rig: &mut Rig) -> SelectionSetId {
     id
 }
 
+/// Check the actual layer handed to the renderer, including geometry and the
+/// approved non-colour cues, against stored membership (not an invalidation).
+#[allow(clippy::float_cmp)] // Exact palette tokens and integer pixel widths.
+fn assert_set_overlay(rig: &Rig, id: SelectionSetId, triangles: &[u32], rgb: [u8; 3]) {
+    use openchuck_app::project::SelectionTarget;
+    let app = rig.shell.app.as_ref().unwrap();
+    let set = app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == id)
+        .unwrap();
+    assert_eq!(
+        set.target,
+        SelectionTarget::Triangles(triangles.iter().copied().collect())
+    );
+    assert_eq!(
+        app.selection_summaries(&[])
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .count,
+        triangles.len()
+    );
+    assert!(rig.shell.selection.working_triangles().is_empty());
+    let overlay = rig
+        .shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Overlay)
+        .unwrap();
+    assert!(overlay.lines.is_empty());
+    assert_eq!(overlay.meshes.len(), 2);
+    let frame = &overlay.meshes[0];
+    let fill = &overlay.meshes[1];
+    assert!(frame.outline_only);
+    assert!(!fill.outline_only);
+    assert_eq!(frame.positions, fill.positions);
+    assert_eq!(frame.indices, fill.indices);
+    assert_eq!(
+        fill.indices.len() / 3,
+        triangles.len(),
+        "confirmed membership must already be drawn in the set colour"
+    );
+    let part = rig
+        .shell
+        .viewport
+        .view()
+        .meshes
+        .iter()
+        .find(|m| m.model == Some(set.model))
+        .unwrap();
+    let expected: Vec<_> = triangles
+        .iter()
+        .flat_map(|t| {
+            part.mesh.triangles[*t as usize].map(|v| {
+                let p = part.mesh.vertices[v as usize];
+                [p.x as f32, p.y as f32, p.z as f32]
+            })
+        })
+        .collect();
+    let drawn: Vec<_> = fill
+        .indices
+        .iter()
+        .map(|i| fill.positions[*i as usize])
+        .collect();
+    assert_eq!(drawn, expected, "the right geometry must carry the colour");
+    let opaque = [
+        f32::from(rgb[0]) / 255.0,
+        f32::from(rgb[1]) / 255.0,
+        f32::from(rgb[2]) / 255.0,
+        1.0,
+    ];
+    assert_eq!(fill.colour, [opaque[0], opaque[1], opaque[2], 0.4]);
+    assert_eq!(fill.outline.unwrap().colour, opaque);
+    assert_eq!(fill.outline.unwrap().width, 2.0);
+    assert_eq!(
+        frame.outline.unwrap().colour,
+        [21.0 / 255.0, 23.0 / 255.0, 26.0 / 255.0, 1.0]
+    );
+    assert_eq!(frame.outline.unwrap().width, 4.0);
+    assert!(overlay.meshes.iter().all(|m| m.hatch.is_none()));
+}
+
+/// UI-05 / decision 0215: a checked edit and the overlay published for that
+/// frame must describe the same membership, even if the check finishes after
+/// the inspector has polled it. Issue 298 was reported in Operations.
+#[test]
+fn req_ui_05_checked_add_updates_stored_and_rendered_membership_in_the_same_frame() {
+    let mut rig = Rig::picking("checked-add-overlay");
+    assert_eq!(rig.shell.step, Step::Operations);
+    let id = select_a_set(&mut rig);
+    let model = rig.model();
+    rig.shell
+        .selection
+        .add_to_chosen_for_test(rig.shell.app.as_ref().unwrap(), model, &[2]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        // The part of a real frame after layout. A completion may arrive here
+        // after the inspector's earlier poll; do not poll the panel separately.
+        rig.shell.pick_frame(&rig.ctx);
+        let app = rig.shell.app.as_ref().unwrap();
+        let set = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        if set.target
+            == openchuck_app::project::SelectionTarget::Triangles(BTreeSet::from([0, 1, 2]))
+        {
+            assert_set_overlay(&rig, id, &[0, 1, 2], [0x23, 0x96, 0x88]);
+            break;
+        }
+        assert!(Instant::now() < deadline, "selection check timed out");
+        std::thread::yield_now();
+    }
+    rig.cleanup();
+}
+
+/// UI-05, PRJ-06, NFR-15: each view shares the confirmed geometry and colour,
+/// including queued checks, removals, history and persistence. A historical
+/// stored swatch must retain its value while displaying its approved mapping.
+#[test]
+fn req_ui_05_req_prj_06_req_nfr_15_checked_edits_keep_geometry_colour_and_history_in_every_view() {
+    use openchuck_app::SelectionEdit;
+    use openchuck_app::project::SelectionTarget;
+    for step in [Step::Operations, Step::Model, Step::Simulate] {
+        let mut rig = Rig::picking(&format!("checked-overlay-{step:?}"));
+        rig.shell.step = step;
+        rig.press(Key::Q);
+        let id = select_a_set(&mut rig);
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .edit_selection(id, SelectionEdit::Colour(Some("#7d5bb5".into())))
+            .unwrap();
+        rig.frame(Vec::new());
+        let rgb = [0xb1, 0xd3, 0x64];
+        assert_set_overlay(&rig, id, &[0, 1], rgb);
+        let model = rig.model();
+        let hash = rig.shell.app.as_ref().unwrap().project().models()[0].hash;
+        // Send actual Shift/Ctrl pick intents. All three are issued before
+        // polling, so the later clicks wait behind the first model check.
+        for (triangle, modifiers) in [
+            (2, Modifiers::SHIFT),
+            (3, Modifiers::SHIFT),
+            (0, Modifiers::COMMAND),
+        ] {
+            let point = rig.shell.viewport.view().meshes[0].mesh.vertices[0];
+            rig.shell.pick_intent(
+                crate::viewport::PickInput {
+                    click: Some((
+                        openchuck_app::pick::ScenePick {
+                            mesh: 0,
+                            model: Some(model),
+                            triangle,
+                            face: None,
+                            distance: 1.0,
+                            point,
+                            normal: None,
+                        },
+                        modifiers,
+                    )),
+                    ..Default::default()
+                },
+                &rig.ctx,
+            );
+        }
+        assert_eq!(rig.shell.selection.edits_waiting(), (2, true));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            rig.shell.pick_frame(&rig.ctx);
+            let app = rig.shell.app.as_ref().unwrap();
+            let SelectionTarget::Triangles(t) = &app.project().selection_sets()[0].target else {
+                panic!("triangle set")
+            };
+            assert_set_overlay(&rig, id, &t.iter().copied().collect::<Vec<_>>(), rgb);
+            if rig.shell.selection.edits_waiting() == (0, false) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "selection check timed out");
+            std::thread::yield_now();
+        }
+        assert_set_overlay(&rig, id, &[1, 2, 3], rgb);
+        // Each direct edit remains one command, with the same identity.
+        for expected in [&[0, 1, 2, 3][..], &[0, 1, 2][..], &[0, 1][..]] {
+            assert!(rig.shell.app.as_mut().unwrap().undo().unwrap());
+            rig.shell.pick_frame(&rig.ctx);
+            assert_set_overlay(&rig, id, expected, rgb);
+        }
+        for expected in [&[0, 1, 2][..], &[0, 1, 2, 3][..], &[1, 2, 3][..]] {
+            assert!(rig.shell.app.as_mut().unwrap().redo().unwrap());
+            rig.shell.pick_frame(&rig.ctx);
+            assert_set_overlay(&rig, id, expected, rgb);
+        }
+        rig.frame(Vec::new());
+        assert!(
+            rig.text_centre("3 triangles").is_some(),
+            "displayed count on {step:?}"
+        );
+        let app = rig.shell.app.as_ref().unwrap();
+        app.save().unwrap();
+        let reopened = Application::open(&rig.dir, openchuck_app::Threads::Exactly(2)).unwrap();
+        let stored = &reopened.project().selection_sets()[0];
+        assert_eq!(stored.id, id);
+        assert_eq!(stored.model_hash, hash);
+        assert_eq!(stored.colour.as_deref(), Some("#7d5bb5"));
+        assert_eq!(
+            stored.target,
+            SelectionTarget::Triangles(BTreeSet::from([1, 2, 3]))
+        );
+        rig.shell.select(Selection::Model(model));
+        rig.shell.pick_frame(&rig.ctx);
+        assert!(!highlighted(&rig), "deselection on {step:?}");
+        rig.cleanup();
+    }
+}
+
 #[test]
 fn req_ui_04_req_ui_05_leaving_selection_mode_leaves_no_highlight() {
     // Issue 261: the pending selection is drawn only while selection mode is

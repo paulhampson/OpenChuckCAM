@@ -649,7 +649,11 @@ fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_r
     let (dir, mut app) = project("Together", false);
     let run = post(&mut app, OutputGrouping::Operation);
     let out = folder("together-out");
-    let written = app.write_output(&out, &run).unwrap();
+    let run = std::sync::Arc::new(run);
+    let plan = app.prepare_output(&out, &run).unwrap();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    let written = report.written;
     let names: Vec<_> = written
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
@@ -685,13 +689,153 @@ fn req_gc_12_req_gc_15_req_nfr_12_a_run_made_before_an_edit_writes_nothing() {
     // says to make the files again.
     let (dir, mut app) = project("together-stale", false);
     let run = post(&mut app, OutputGrouping::Setup);
+    let run = std::sync::Arc::new(run);
+    let out = folder("together-stale-out");
+    let plan = app.prepare_output(&out, &run).unwrap();
     let first = app.project().operations()[0].id;
     app.set_parameter(first, "tolerance", Some(ParameterValue::Number(0.02)))
         .unwrap();
-    let out = folder("together-stale-out");
-    let error = app.write_output(&out, &run).unwrap_err();
-    assert!(error.to_string().contains("made again"), "{error}");
+    let report = app.write_output(&plan, false);
+    assert!(
+        report
+            .failed
+            .as_ref()
+            .unwrap()
+            .reason
+            .contains("made again")
+    );
+    assert!(report.written.is_empty());
     assert!(!out.exists(), "nothing is written");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_req_gc_12_req_ui_12_write_messages_retain_every_actual_full_path_and_bytes() {
+    for grouping in [OutputGrouping::Project, OutputGrouping::Operation] {
+        let (dir, mut app) = project("Write feedback", false);
+        app.set_clock(Box::new(openchuck_app::FixedClock(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1234),
+        )));
+        let run = post(&mut app, grouping);
+        let out = folder("feedback");
+        let run = std::sync::Arc::new(run);
+        let plan = app.prepare_output(&out, &run).unwrap();
+        let report = app.write_output(&plan, false);
+        assert!(report.is_complete(), "{report:?}");
+        let written = report.written;
+        assert_eq!(written.len(), run.gcode.len() + 2);
+        for ((name, text), path) in run.gcode.iter().zip(&written) {
+            assert!(path.is_absolute());
+            assert_eq!(path, &out.join(name));
+            assert_eq!(std::fs::read(path).unwrap(), text.as_bytes());
+        }
+        let [html, pdf] = app.setup_sheet_file_names();
+        let sheet = app.setup_sheet(Some(&run.toolpath));
+        assert_eq!(
+            std::fs::read(out.join(html)).unwrap(),
+            sheet.to_html().as_bytes()
+        );
+        assert_eq!(std::fs::read(out.join(pdf)).unwrap(), sheet.to_pdf());
+        let overview = app.overview(None, &openchuck_app::JobLog::default());
+        assert!(
+            overview.messages.iter().any(|message| written
+                .iter()
+                .all(|path| message.text.contains(&path.display().to_string()))
+                && message
+                    .action
+                    .is_some_and(|action| action.label() == "Show result")),
+            "Messages must retain all actual paths and offer the result again"
+        );
+        std::fs::remove_dir_all(out).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn req_gc_05_req_nfr_07_overwrite_plan_lists_existing_files_without_writing() {
+    let (dir, mut app) = project("Replace review", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    let out = folder("replace-review");
+    let fresh = app.prepare_output(&out, &run).unwrap();
+    assert!(fresh.existing().is_empty());
+    assert!(!out.exists(), "preflight and cancellation create nothing");
+    std::fs::create_dir_all(&out).unwrap();
+    let old = out.join(&run.gcode[0].0);
+    let sheet = out.join(app.setup_sheet_file_names()[1].clone());
+    std::fs::write(&old, b"old NC").unwrap();
+    std::fs::write(&sheet, b"old PDF").unwrap();
+    let review = app.prepare_output(&out, &run).unwrap();
+    assert_eq!(review.existing(), &[old.clone(), sheet.clone()]);
+    assert!(review.paths().iter().all(|path| path.is_absolute()));
+    drop(review); // Cancel: the plan has no write side effects.
+    assert_eq!(std::fs::read(&old).unwrap(), b"old NC");
+    assert_eq!(std::fs::read(&sheet).unwrap(), b"old PDF");
+    assert_eq!(std::fs::read_dir(&out).unwrap().count(), 2);
+    let review = app.prepare_output(&out, &run).unwrap();
+    let refused = app.write_output(&review, false);
+    assert!(refused.written.is_empty());
+    assert!(refused.failed.is_some());
+    assert_eq!(std::fs::read(&old).unwrap(), b"old NC");
+    let approved = app.write_output(&review, true);
+    assert!(approved.is_complete(), "{approved:?}");
+    assert_eq!(approved.written, review.paths());
+    assert_eq!(std::fs::read(&old).unwrap(), run.gcode[0].1.as_bytes());
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_15_req_nfr_07_destination_changes_or_stale_inputs_write_nothing() {
+    let (dir, mut app) = project("Revalidate", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    let out = folder("revalidate");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    let appeared = out.join(&run.gcode[1].0);
+    std::fs::write(&appeared, b"appeared after review").unwrap();
+    let report = app.write_output(&plan, true);
+    assert!(report.written.is_empty());
+    assert_eq!(report.failed.as_ref().unwrap().path, appeared);
+    assert_eq!(std::fs::read(&appeared).unwrap(), b"appeared after review");
+    assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
+    let plan = app.prepare_output(&out, &run).unwrap();
+    app.set_parameter(
+        app.project().operations()[0].id,
+        "tolerance",
+        Some(ParameterValue::Number(0.02)),
+    )
+    .unwrap();
+    let report = app.write_output(&plan, true);
+    assert!(report.written.is_empty());
+    assert!(
+        report
+            .failed
+            .as_ref()
+            .unwrap()
+            .reason
+            .contains("made again")
+    );
+    assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
+    assert!(
+        app.overview(None, &openchuck_app::JobLog::default())
+            .messages
+            .iter()
+            .filter(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+            .count()
+            >= 2
+    );
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_15_req_nfr_07_no_export_is_prepared_without_gcode() {
+    let (dir, mut app) = project("Missing NC", false);
+    let mut run = post(&mut app, OutputGrouping::Project);
+    run.gcode.clear();
+    let out = folder("missing-nc");
+    assert!(app.prepare_output(&out, &std::sync::Arc::new(run)).is_err());
+    assert!(!out.exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
 

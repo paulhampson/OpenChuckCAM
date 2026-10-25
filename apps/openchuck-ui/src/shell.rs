@@ -189,6 +189,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The Simulate camera to restore while its run remains available.
+    simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
     /// The results inspector of the Simulate step (SIM-05, SIM-07).
     results: ResultsPanel,
     /// The workflow step open (UI-10).
@@ -282,6 +284,7 @@ impl Shell {
             export: ExportPanel::default(),
             text_had_focus: false,
             play: PlaybackPanel::default(),
+            simulate_camera: None,
             step: Step::Model,
             jobs: JobLog::default(),
             checks: None,
@@ -314,6 +317,7 @@ impl Shell {
     /// (decision records 0168 and 0169).
     fn apply_simulate_settings(&mut self) {
         let simulate = self.settings.simulate;
+        self.viewport.set_cut_part_solid(simulate.cut_part_solid);
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
@@ -330,6 +334,7 @@ impl Shell {
     fn keep_simulate_settings(&mut self) {
         let show = self.viewport.simulate_show();
         let now = openchuck_app::settings::SimulateSettings {
+            cut_part_solid: self.viewport.cut_part_solid(),
             turn_part_with_a: self.play.turns_part_with_a(),
             show_model: show.model,
             show_cut_part: show.cut_part,
@@ -418,6 +423,7 @@ impl Shell {
         self.run.clear();
         self.export.clear();
         self.play.clear();
+        self.simulate_camera = None;
         self.jobs.clear();
         self.checks = None;
         if let Some(job) = self.checks_job.take() {
@@ -753,6 +759,23 @@ impl Shell {
             return;
         }
         if self.overview.step(step).is_available() {
+            if self.step == Step::Simulate && step != Step::Simulate {
+                self.play.pause();
+                self.simulate_camera = self
+                    .run
+                    .last()
+                    .filter(|_| self.play.has_run())
+                    .map(|run| (Arc::clone(run), self.viewport.camera));
+            } else if step == Step::Simulate
+                && self.play.has_run()
+                && let Some((run, camera)) = &self.simulate_camera
+                && self
+                    .run
+                    .last()
+                    .is_some_and(|current| Arc::ptr_eq(current, run))
+            {
+                self.viewport.camera = *camera;
+            }
             // Another step ends selection mode, and its highlight with it
             // (issue 261).
             if step != self.step
@@ -801,7 +824,12 @@ impl Shell {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if self.dialog.is_some() || self.edit_guard.active() {
+        // Global shortcuts run before widgets. Leave input to the modal
+        // shown last frame, including export and tool-library confirmations.
+        if self.dialog.is_some()
+            || self.edit_guard.active()
+            || ctx.memory(|memory| memory.top_modal_layer().is_some())
+        {
             return;
         }
         let (save, undo, redo) = ctx.input_mut(edit_shortcuts);
@@ -1016,6 +1044,11 @@ impl Shell {
             return;
         }
         match action {
+            MessageAction::ReviewExport(index) => {
+                if let Some(report) = self.app.as_ref().and_then(|app| app.output_report(index)) {
+                    self.export.show_report(report);
+                }
+            }
             MessageAction::Show(item) => self.show_item(item),
             MessageAction::Reselect(set) => {
                 // Waits, as the Pick again button does, while a change is
@@ -1134,6 +1167,10 @@ impl Shell {
         let command = match action {
             TreeAction::Select(id) => {
                 self.select(Selection::Operation(id));
+                if self.step == Step::Simulate {
+                    self.open_step(Step::Operations);
+                    self.reveal_operation_inspector();
+                }
                 return;
             }
             TreeAction::SelectModel(id, section) => {
@@ -1239,6 +1276,7 @@ impl Shell {
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
             if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+                self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
                 self.play.set_run(app, run);
                 self.overview_dirty = true;
@@ -1250,6 +1288,9 @@ impl Shell {
             let outcome = self
                 .export
                 .frame(ctx, app, self.run.last(), self.run.last_error());
+            if outcome.reported {
+                self.overview_dirty = true;
+            }
             if let Some(status) = outcome.status {
                 self.status = status;
             }
@@ -1306,7 +1347,9 @@ impl Shell {
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
         self.pick_intent(input, ctx);
-        let Some(app) = &self.app else { return };
+        if self.app.is_none() {
+            return;
+        }
         // Q, W, E and R choose the click; Esc leaves picking (specification
         // 15). Not while a dialog or a floating window is open: its keys are
         // its own, and Esc must not leave picking behind it.
@@ -1316,6 +1359,20 @@ impl Shell {
         {
             self.selected = None;
         }
+        if let Some(app) = &mut self.app {
+            // Keep keyboard handling first, including Esc during Pick again.
+            // A check can finish after the inspector polled it during layout:
+            // store it before deriving the shown set, legend and overlay
+            // (UI-05, issue 298).
+            if let Some(e) = self.selection.poll(app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
+            if let Some(e) = self.selection.reset_dialog(ctx, app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
+        }
+        self.follow_selection_panel();
+        let Some(app) = &self.app else { return };
         // The highlights follow the selection state (issue 261): the working
         // selection is drawn only in selection mode, and a set shown for one
         // item goes when another is selected, however the selection changed
@@ -1352,18 +1409,6 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
-        if let Some(app) = &mut self.app {
-            // A save or an edit that ended, whether or not its tab is shown.
-            if let Some(e) = self.selection.poll(app) {
-                self.dialog = Some(Dialog::Error(e));
-            }
-            // The warning before a click of the other kind resets the
-            // selection.
-            if let Some(e) = self.selection.reset_dialog(ctx, app) {
-                self.dialog = Some(Dialog::Error(e));
-            }
-        }
-        self.follow_selection_panel();
     }
 
     /// A viewport pick retains model/face/edge identity, never a pointer
@@ -2335,6 +2380,8 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod strategy_picker_tests;
 
 #[cfg(test)]
 mod numbox_tests;
