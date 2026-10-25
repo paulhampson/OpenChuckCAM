@@ -1,6 +1,6 @@
 # CHECKPOINT verification
 
-Issue #295; accepted [decision 0241](decisions/0241-project-recovery-checkpoints.md).
+Issue #295; accepted [decision 0243](decisions/0243-project-recovery-checkpoints.md).
 The lane starts from `dc610e26dd260d69b5fc859270e7bf5fc913a3bb`;
 BUG-EDIT merged at `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`.
 Project schema stays 18. Recovery containers have their independent version 1.

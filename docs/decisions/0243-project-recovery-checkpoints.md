@@ -1,8 +1,8 @@
-# 0241: Project recovery checkpoints (lane CHECKPOINT; issue 295)
+# 0243: Project recovery checkpoints (lane CHECKPOINT; issue 295)
 
-- **Status:** accepted by the project owner (25 Oct 2026, directly in the CHECKPOINT chat after presentation of the complete record in the main chat). The owner's explicit response was "Accept decision 0241". Earlier interval, retention, selection and lifecycle answers were given on 24–25 October 2026.
+- **Status:** accepted by the project owner (25 Oct 2026, directly in the CHECKPOINT chat after presentation of the complete record in the main chat). The owner's explicit response was "Accept decision 0241". Earlier interval, retention, selection and lifecycle answers were given on 24–25 October 2026. This accepted record is administratively renumbered from 0241 to 0243 under [Merge Manager allocation reconciliation](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6400705065) on 25 Oct 2026. The complete substantive record and the owner's original full-text acceptance are unchanged; the renumbering creates no new acceptance.
 - **Requirements:** PRJ-08, PRJ-01 to PRJ-04, UI-15, NFR-04, NFR-06, NFR-07.
-- **Numbering:** selected after checking all 27 fetched remote refs and the management queue, where actual/reserved records extend through 0240. The owner authorised this lane to select numbers and let Merge Manager resolve conflicts during review. No project-schema number is claimed.
+- **Numbering:** originally selected as 0241 after checking 27 fetched remote refs and the management queue. The owner authorised this lane to select numbers and let Merge Manager resolve conflicts during review. Merge Manager's reconciled audit establishes ROUGHPATH PR 340's earlier accepted allocations 0241 and 0242 and assigns **0243** to CHECKPOINT in [PR 342 comment 6400705065](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6400705065). OI-989 remains assigned to this lane with no collision. Project schema remains 18; independent recovery container format 1 is not a project-schema allocation.
 
 ## Decision
 
