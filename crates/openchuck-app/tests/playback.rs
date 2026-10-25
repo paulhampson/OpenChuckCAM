@@ -823,20 +823,22 @@ fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
         assert!(v <= last + 1e-6 * start, "move {k}: {v} > {last}");
         last = v;
     }
-    // The cursor part-way into a move shows the stock after the moves done.
-    let mid = n / 2;
-    assert_eq!(
-        app.start_stock_at(
+    // SIM-03: material must come off during a cutting move, before its end.
+    let mid = (0..n)
+        .find(|&k| volume(&at(k)) - volume(&at(k + 1)) > 1e-5)
+        .expect("a move removes stock");
+    let partial = app
+        .start_stock_at(
             &playback,
             Cursor {
                 done: mid,
-                fraction: 0.7
-            }
+                fraction: 0.7,
+            },
         )
         .wait()
-        .unwrap(),
-        at(mid)
-    );
+        .unwrap();
+    assert!(volume(&partial) < volume(&at(mid)) - 1e-6);
+    assert!(volume(&partial) >= volume(&at(mid + 1)) - 1e-6 * start);
     let _ = std::fs::remove_dir_all(dir);
 }
 
