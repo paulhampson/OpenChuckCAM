@@ -4,7 +4,7 @@
 - **Date:** 26 Oct 2026.
 - **Lane:** CIFILTER, `claude/ci-markdown-path-filters`.
 - **Requirements:** none. No requirement ID covers CI path filters, so none is cited; the change serves the speed goal of decision 0052 without weakening a check (NFR-06 and NFR-08 are not touched: no code, test or output changes).
-- **Numbers:** takes 0249, OI-999 and OI-1000: the highest numbers on `main` and on every remote branch on 26 Oct 2026 were 0248 and OI-998. No project schema number.
+- **Numbers:** takes 0249, OI-999 and OI-1000 (OI-999 closed in this record): the highest numbers on `main` and on every remote branch on 26 Oct 2026 were 0248 and OI-998. No project schema number.
 
 ## Context
 
@@ -40,7 +40,7 @@ What the Markdown files the Fast checks read are, so that they keep running (rea
 
 - `actionlint` could not be installed in the session that wrote this record (running a downloaded binary was refused), so it was **not run**; the workflow parses as YAML, and the expressions changed are only `steps.filter.outputs.X` to `steps.heavy.outputs.X`.
 - The filter logic was run locally with `picomatch`, the matcher `paths-filter` uses, on the patterns read from `ci.yml`, replicating the `some-with-excludes` rule of the action's source. The table of expected outputs is in the pull request description.
-- The proof on GitHub is a probe, not run by this session: after this pull request merges, the Merge Manager watches the next Markdown-only pull request (#357) run only `Detect changes`, `Fast checks` and the CLA check.
+- The proof on GitHub is a probe, not run by this session: after this pull request merges, the Merge Manager watches the next Markdown-only pull request (#357) run none of the heavy jobs of `ci.yml`: only `Detect changes`, `Fast checks` and the CLA check, plus the CLI end-to-end suite of `e2e.yml` while it keeps its own filter (OI-999, not pursued).
 
 ## Consequences and limits
 
@@ -49,5 +49,5 @@ What the Markdown files the Fast checks read are, so that they keep running (rea
 
 ## Open items
 
-- **OI-999:** `.github/workflows/e2e.yml` (CLI end to end, network unavailable, a separate workflow) has its own `rust` filter with `testdata/**` and `crates/**`, so a Markdown-only change under `testdata/` still starts that suite. It is outside this task, which names `ci.yml`; the same `some-with-excludes` step would fix it. Needs the owner's yes.
-- **OI-1000:** `cargo xtask records` also runs the open-items register and decision-index checks (`registers.rs`), but the `records` filter does not list `docs/open-items.md`, `docs/decisions/**` or `docs/decisions/README.md`, so a pull request that changes only those does not run it (this was so before this record). Adding them to `records` is a strengthening, not a weakening; not done here because the task says to keep the `records` filter as it is. Needs the owner's yes.
+- **OI-999 (closed, not pursued):** `.github/workflows/e2e.yml` (CLI end to end, network unavailable, a separate workflow) has its own `rust` filter with `testdata/**` and `crates/**`, so a Markdown-only change under `testdata/` still starts that suite. The owner decided on 26 Oct 2026 not to change `e2e.yml`. This record leaves it unchanged; the suite keeps running on Markdown-only changes under `testdata/`, so the proof for #357 is "no heavy jobs of `ci.yml`", not "no workflows at all".
+- **OI-1000:** `cargo xtask records` also runs the open-items register and decision-index checks (`registers.rs`), but the `records` filter does not list `docs/open-items.md`, `docs/decisions/**` or `docs/decisions/README.md`, so a pull request that changes only those does not run it (this was so before this record). Adding them to `records` is a strengthening, not a weakening. The owner chose on 26 Oct 2026 to do it in a follow-up pull request, not this one; this record leaves the `records` filter as it is.
