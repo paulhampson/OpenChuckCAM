@@ -37,11 +37,45 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   (`max_feeds.rotary_in_feed`, decision record 0076).
 /// - 4: the profile may give the spindle speed range, `min_spindle_rpm` and
 ///   `max_spindle_rpm` (decision record 0231).
-pub const MACHINE_SCHEMA: i64 = 4;
+/// - 5: short-block settings (GC-17; reserved by GATES).
+/// - 6: SHORTMOVE integration of the same settings, preserving schema 5 files.
+pub const MACHINE_SCHEMA: i64 = 6;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
-const MACHINE_MIGRATIONS: &[crate::file::Migration] =
-    &[machine_1_to_2, machine_2_to_3, machine_3_to_4];
+const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
+    machine_1_to_2,
+    machine_2_to_3,
+    machine_3_to_4,
+    machine_4_to_5,
+    machine_5_to_6,
+];
+
+/// Older profiles keep the default Off settings; a premature field is refused.
+fn machine_4_to_5(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_short_blocks(table, 4, 5)
+}
+
+fn machine_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Reject settings in a file whose schema predates their introduction.
+pub(crate) fn premature_short_blocks(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    let machine = table.get("machine").and_then(toml::Value::as_table);
+    match ["min_block_ms", "block_window", "short_block_mode"]
+        .into_iter()
+        .find(|f| machine.is_some_and(|m| m.contains_key(*f)))
+    {
+        Some(field) => Err(format!(
+            "this schema {schema} file has `{field}`, a field schema {introduced} introduced; remove it, or set `schema = {introduced}` if the file was written for it"
+        )),
+        None => Ok(()),
+    }
+}
 
 /// Schema 4 adds the optional spindle speed range, which a schema 3 file
 /// does not have, so it needs no change but its number: nothing more is
@@ -346,6 +380,8 @@ mod tests {
                 ProfileField::Travel,
                 ProfileField::Clearance,
                 ProfileField::SpindleRange,
+                ProfileField::BlockWindow,
+                ProfileField::ShortBlockMode,
             ]
         );
         for field in [
@@ -358,6 +394,44 @@ mod tests {
         }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
+    }
+
+    #[test]
+    fn req_gc_17_req_set_01_new_z1_uses_measured_report_settings_and_old_profiles_stay_off() {
+        use openchuck_types::machine::ShortBlockMode;
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(
+            (z1.min_block_ms, z1.block_window, z1.short_block_mode),
+            (7.0, 32, ShortBlockMode::Report)
+        );
+        assert!(z1.is_confirmed(ProfileField::MinBlockMs));
+        let source = &z1.provenance[&ProfileField::MinBlockMs].source;
+        for fact in ["#284", "1.1.2", "WiFi", "not recorded"] {
+            assert!(source.contains(fact), "{source}");
+        }
+        let written = render_profile(&z1).unwrap();
+        let old = written.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 4");
+        assert!(
+            parse_profile(Path::new("old.toml"), &old)
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+        let mut table: toml::Table = old.parse().unwrap();
+        let machine = table.get_mut("machine").unwrap().as_table_mut().unwrap();
+        for key in ["min_block_ms", "block_window", "short_block_mode"] {
+            machine.remove(key);
+        }
+        let old = toml::to_string(&table).unwrap();
+        let loaded = parse_profile(Path::new("old.toml"), &old).unwrap();
+        assert_eq!(
+            (
+                loaded.min_block_ms,
+                loaded.block_window,
+                loaded.short_block_mode
+            ),
+            (0.0, 1, ShortBlockMode::Off)
+        );
     }
 
     #[test]
@@ -438,7 +512,12 @@ mod tests {
         // Without the range, a schema 3 file reads with none.
         let plain: String = old
             .lines()
-            .filter(|l| !l.starts_with("max_spindle_rpm"))
+            .filter(|l| {
+                !l.starts_with("max_spindle_rpm")
+                    && !l.starts_with("min_block_ms")
+                    && !l.starts_with("block_window")
+                    && !l.starts_with("short_block_mode")
+            })
             .map(|l| format!("{l}\n"))
             .collect();
         assert_eq!(
@@ -457,7 +536,13 @@ mod tests {
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")
             .lines()
-            .filter(|l| !l.starts_with("id = ") && !l.starts_with("max_spindle_rpm"))
+            .filter(|l| {
+                !l.starts_with("id = ")
+                    && !l.starts_with("max_spindle_rpm")
+                    && !l.starts_with("min_block_ms")
+                    && !l.starts_with("block_window")
+                    && !l.starts_with("short_block_mode")
+            })
             .map(|l| format!("{l}\n"))
             .collect();
         let entry = parse_profile_entry(Path::new("old.toml"), &old).unwrap();

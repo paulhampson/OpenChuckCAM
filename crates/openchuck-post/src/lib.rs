@@ -21,6 +21,7 @@ mod feed;
 mod options;
 mod program;
 mod render;
+mod short_blocks;
 
 pub use builtin::{builtin, builtin_ids};
 pub use convert::{ConvertOptions, ToolSetting, round_written, to_machine_program};
@@ -34,3 +35,5 @@ pub use options::{
 };
 pub use program::{MachineProgram, Step, Target};
 pub use render::{PostJob, PostOutput, PostProcessor, TemplatePost, sanitise_comment};
+
+pub use short_blocks::{SettingSource, ShortBlockReport, ShortBlockSettings, ShortBlockSources};

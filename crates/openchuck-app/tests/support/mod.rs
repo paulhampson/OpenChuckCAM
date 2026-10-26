@@ -84,6 +84,7 @@ pub fn job() -> PostJob {
         },
     );
     PostJob {
+        short_blocks: Default::default(),
         a_range: openchuck_types::machine::ARange::Continuous,
         safe_z: 30.0,
         frame: RotaryFrame {

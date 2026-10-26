@@ -243,3 +243,52 @@ fn req_imp_06_nfr_07_an_edge_reads_with_or_without_its_exact_curve() {
     });
     assert!(model.validate().is_err());
 }
+
+/// GC-17 defaults leave old profiles off; configured values are validated.
+#[test]
+fn req_gc_17_req_set_01_profile_defaults_roundtrip_and_validation() {
+    use openchuck_types::machine::{ProfileField, ShortBlockMode};
+    let mut machine = MachineProfile::example_x_rotary();
+    assert_eq!(machine.min_block_ms, 0.0);
+    assert_eq!(machine.block_window, 1);
+    assert_eq!(machine.short_block_mode, ShortBlockMode::Off);
+    let old = serde_json::to_string(&machine).unwrap();
+    assert!(!old.contains("min_block_ms"));
+    assert_eq!(
+        serde_json::from_str::<MachineProfile>(&old).unwrap(),
+        machine
+    );
+    machine.min_block_ms = 7.0;
+    machine.block_window = 32;
+    machine.short_block_mode = ShortBlockMode::SlowDown;
+    machine.validate().unwrap();
+    let text = serde_json::to_string(&machine).unwrap();
+    assert!(text.contains("slow_down"));
+    assert_eq!(
+        serde_json::from_str::<MachineProfile>(&text).unwrap(),
+        machine
+    );
+    assert!(machine.fields().contains(&ProfileField::MinBlockMs));
+    for limit in [-1.0, f64::NAN, f64::INFINITY] {
+        machine.min_block_ms = limit;
+        assert!(
+            machine
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+    }
+    machine.min_block_ms = 7.0;
+    for window in [0, 4097, usize::MAX] {
+        machine.block_window = window;
+        assert!(
+            machine
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("block_window")
+        );
+    }
+    assert!(serde_json::from_str::<ShortBlockMode>("\"merge\"").is_err());
+}

@@ -567,6 +567,17 @@ fn run(cli: Cli) -> Result<()> {
             for note in &result.notes {
                 eprintln!("warning: {note}");
             }
+            if let Some((settings, sources)) = result.effective_short_blocks {
+                eprintln!(
+                    "short-block settings: {} ({}), {:.3} ms ({}), {} blocks ({})",
+                    settings.mode.label(),
+                    sources.mode.as_str(),
+                    settings.min_block_ms,
+                    sources.min_block_ms.as_str(),
+                    settings.block_window,
+                    sources.block_window.as_str()
+                );
+            }
             if let Some(out) = &out {
                 std::fs::create_dir_all(out)
                     .with_context(|| format!("cannot create output folder '{}'", out.display()))?;
@@ -577,7 +588,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
             if setup_sheet && let Some(out) = &out {
-                for path in app.write_setup_sheet(out, Some(&result.toolpath))? {
+                for path in app.write_setup_sheet_for_run(out, &result)? {
                     println!("wrote {}", path.display());
                 }
             }
@@ -1641,6 +1652,12 @@ fn print_machine(profile: &MachineProfile) {
         (Some(min), None) => println!("spindle:    from {} rpm", min.0),
         (None, None) => {}
     }
+    println!(
+        "short blocks: {} ms averaged over {} blocks; {}",
+        p.min_block_ms,
+        p.block_window,
+        p.short_block_mode.label()
+    );
     for field in p.fields() {
         match p.provenance.get(&field) {
             Some(source) => {

@@ -73,6 +73,10 @@ pub enum Step {
 /// The program for a whole toolpath, in machining order.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineProgram {
+    /// Controller command demand and mitigation (GC-17).
+    pub short_blocks: Vec<crate::ShortBlockReport>,
+    /// IR with adjusted durations for a slowed program.
+    pub verification_path: openchuck_types::ir::Toolpath,
     /// The steps.
     pub steps: Vec<Step>,
     /// Fed moves whose feed was lowered to the post's maximum.

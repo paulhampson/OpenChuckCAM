@@ -772,3 +772,73 @@ fn req_ui_08_undo_and_redo_on_a_sample_project_restore_the_g_code_and_the_files(
     assert!(stable(&program) == golden("cone_makera-z1.nc"));
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The headless export writes diagnostics and adjusted times from the same
+/// post run as its G-code, rather than rebuilding a toolpath-only sheet.
+#[test]
+fn req_gc_17_req_gc_12_cli_writes_same_run_short_block_reports() {
+    let root = scratch("short-blocks");
+    let sample = Sample {
+        name: "short-blocks",
+        model: Model::Generated(
+            Box::new(Cone {
+                start_radius: 4.0,
+                end_radius: 3.0,
+                length: 4.0,
+            }),
+            (12, 24),
+        ),
+        radius: 4.0,
+        strategy: "helical_finishing",
+        parameters: angle_step(30.0),
+        margin: 1.0,
+        oversize: 2.0,
+        holding: Vec::new(),
+    };
+    let project = build(&sample, &root);
+    let mut app = Application::open(&project, Threads::Exactly(1)).unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 500.0;
+    machine.block_window = 1;
+    machine.short_block_mode = openchuck_app::setup::ShortBlockMode::SlowDown;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    app.save().unwrap();
+    let out_dir = root.join("output");
+    let result = cli_ok(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--post".as_ref(),
+        "makera-z1".as_ref(),
+        "--tool-numbers".as_ref(),
+        "keep".as_ref(),
+        "--setup-sheet".as_ref(),
+        "--out".as_ref(),
+        out_dir.as_os_str(),
+    ]);
+    assert!(
+        result.stdout.contains("replay matches the toolpath"),
+        "{}",
+        result.stdout
+    );
+    assert!(
+        result
+            .stderr
+            .contains("short-block settings: Slow down (machine profile), 500.000 ms"),
+        "{}",
+        result.stderr
+    );
+    let written = files(&out_dir);
+    for extension in [".html", ".pdf"] {
+        let bytes = written
+            .iter()
+            .find(|(name, _)| name.ends_with(extension))
+            .unwrap()
+            .1;
+        let text = String::from_utf8_lossy(bytes);
+        for expected in ["Short blocks", "Slow down", "500", "Added time", "applied"] {
+            assert!(text.contains(expected), "missing {expected} in {extension}");
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}

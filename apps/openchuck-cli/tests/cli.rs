@@ -519,7 +519,7 @@ fn args<'a>(list: &'a [&'a str]) -> Vec<&'a std::ffi::OsStr> {
 }
 
 #[test]
-fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
+fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     let project = empty_project("setup");
     let p = project.to_str().unwrap();
     std::fs::create_dir_all(project.join("models")).unwrap();
@@ -537,12 +537,13 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("4 of 8 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("6 of 11 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
-    // value is shown as confirmed or unconfirmed (four are confirmed; the
-    // spindle range is Makera's published figure, decision 0231).
+    // value is shown as confirmed or unconfirmed. The block-time threshold
+    // joins the four machine-confirmed values; the planner window and Report
+    // mode retain their source/inference provenance (decision 0222).
     assert!(out.stdout.contains("faces -Y at A 90"), "{}", out.stdout);
     assert!(
         out.stdout.contains("spindle:    up to 13000 rpm"),
@@ -551,7 +552,13 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        4,
+        6,
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("short blocks: 7 ms averaged over 32 blocks; Report"),
         "{}",
         out.stdout
     );

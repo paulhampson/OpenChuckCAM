@@ -103,7 +103,9 @@ use openchuck_types::workholding::Workholding;
 ///   one for it (decision record 0230); the machine copy may give the
 ///   spindle speed range, `min_spindle_rpm` and `max_spindle_rpm`, written
 ///   only when set (decision record 0231).
-pub const SCHEMA: i64 = 18;
+/// - 19: short-block settings in machine copies (GC-17; reserved by GATES).
+/// - 20: SHORTMOVE integration; schema 19 settings retain their meaning.
+pub const SCHEMA: i64 = 20;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -135,6 +137,8 @@ const MIGRATIONS: &[Migration] = &[
     schema_15_to_16,
     schema_16_to_17,
     schema_17_to_18,
+    schema_18_to_19,
+    schema_19_to_20,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -334,6 +338,18 @@ fn schema_15_to_16(kind: FileKind, table: &mut toml::Table) -> Result<(), String
                 .to_owned(),
         );
     }
+    Ok(())
+}
+
+/// Schema 19 introduces short-block settings; older copies stay Off.
+fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        return crate::machines::premature_short_blocks(table, 18, 19);
+    }
+    Ok(())
+}
+
+fn schema_19_to_20(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 

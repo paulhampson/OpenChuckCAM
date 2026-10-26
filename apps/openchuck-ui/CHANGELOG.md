@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- GC-17: configure minimum block time, window and Off/Report/Slow down in the machine inspector; show effective post settings, command demand and predicted/applied time cost before export and on same-run setup sheets.
+
 - OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
   is administratively renumbered from original 0238 by Merge Manager to
   resolve the SIMUI collision; substantive content and owner acceptance are

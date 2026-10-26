@@ -27,6 +27,10 @@ pub struct ToolSetting {
 /// Settings of the conversion.
 #[derive(Debug, Clone)]
 pub struct ConvertOptions<F> {
+    /// Controller throughput settings (GC-17).
+    pub short_blocks: crate::ShortBlockSettings,
+    /// Feed decimal places used by the renderer, or None for full precision.
+    pub feed_decimals: Option<u32>,
     /// Allowed rotary travel. Limited axes never receive counter resets.
     pub a_range: ARange,
     /// Required safe Z in the output work frame. A group may offer a
@@ -71,6 +75,13 @@ pub fn to_machine_program<F: AsRotaryFrame>(
     options: &ConvertOptions<F>,
 ) -> Result<MachineProgram> {
     toolpath.validate()?;
+    options.short_blocks.validate()?;
+    if options.short_blocks.enabled() && options.feed_rule == FeedRule::Contact {
+        return Err(PostError::Setting {
+            name: "feed_rule".into(),
+            reason: "Contact has no controller timing model for short-block management; choose a controller feed rule or turn the check Off".into(),
+        });
+    }
     if !options.safe_z.is_finite() {
         return Err(PostError::Setting {
             name: "safe_z".into(),
@@ -114,7 +125,10 @@ pub fn to_machine_program<F: AsRotaryFrame>(
         (px * px + py * py + pz * pz).sqrt()
     };
 
-    let mut program = MachineProgram::default();
+    let mut program = MachineProgram {
+        verification_path: toolpath.clone(),
+        ..MachineProgram::default()
+    };
     let mut current_tool: Option<u32> = None;
     for (g, group) in toolpath.groups.iter().enumerate() {
         let tool = options
@@ -158,6 +172,13 @@ pub fn to_machine_program<F: AsRotaryFrame>(
         }
         program.steps.push(Step::SpindleOn { rpm });
 
+        let group_comment = program.steps.len() - 3; // overridden below by locating the last operation comment
+        let comment_index = program
+            .steps
+            .iter()
+            .rposition(|s| matches!(s, Step::Comment { .. }))
+            .unwrap_or(group_comment);
+        let mut runs: Vec<Vec<Block>> = vec![Vec::new()];
         let mut here = target_of(group.start.tip, group.start.a);
         program.steps.push(Step::Rapid { target: here });
         for (s, segment) in group.segments.iter().enumerate() {
@@ -168,6 +189,9 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             let delta_a = (to.a - here.a).abs();
             let moved = length > NO_MOTION || delta_a > NO_MOTION;
             if segment.kind == MoveKind::Rapid {
+                if runs.last().is_some_and(|r| !r.is_empty()) {
+                    runs.push(Vec::new());
+                }
                 if moved {
                     program.steps.push(Step::Rapid { target: to });
                 }
@@ -211,17 +235,231 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                         reason: format!("the feed worked out is {f}, which cannot be written"),
                     });
                 }
+                if options.short_blocks.enabled() {
+                    let actual = written_feed(feed, options.feed_decimals)?;
+                    let amount = match options.feed_rule {
+                        FeedRule::InverseTime => 60.0,
+                        _ => {
+                            let mut unit = metrics;
+                            unit.duration = 1.0;
+                            feed_number(options.feed_rule.feed(&unit).ok_or_else(|| {
+                                PostError::Feed {
+                                    group: g,
+                                    segment: s,
+                                    reason: "no motion".into(),
+                                }
+                            })?)
+                        }
+                    };
+                    let seconds = amount / actual;
+                    if !(seconds.is_finite() && seconds > 0.0) {
+                        return Err(PostError::Feed {
+                            group: g,
+                            segment: s,
+                            reason: "posted duration is not finite and positive".into(),
+                        });
+                    }
+                    if let Some(run) = runs.last_mut() {
+                        run.push(Block {
+                            step: program.steps.len(),
+                            segment: s,
+                            seconds,
+                            amount,
+                            contact_length: segment.contact_length.0,
+                            feed,
+                        });
+                    }
+                }
                 program.steps.push(Step::Feed {
                     kind: segment.kind,
                     target: to,
                     feed,
                 });
             }
+            if !moved
+                && options.short_blocks.enabled()
+                && options.short_blocks.mode == openchuck_types::machine::ShortBlockMode::SlowDown
+                && let Some(seg) = program
+                    .verification_path
+                    .groups
+                    .get_mut(g)
+                    .and_then(|group| group.segments.get_mut(s))
+            {
+                seg.duration.0 = 0.0;
+            }
             here = to;
+        }
+        if options.short_blocks.enabled() {
+            manage_group(
+                &mut program,
+                &runs,
+                g,
+                &group.tags.operation,
+                comment_index,
+                options.short_blocks,
+                options.feed_decimals,
+            )?;
         }
         if options.a_range == ARange::Continuous && here.z >= options.safe_z {
             program.steps.push(Step::RotaryBoundary { at: here });
         }
     }
     Ok(program)
+}
+
+#[derive(Clone, Copy)]
+struct Block {
+    step: usize,
+    segment: usize,
+    seconds: f64,
+    amount: f64,
+    contact_length: f64,
+    feed: FeedWord,
+}
+fn feed_number(feed: FeedWord) -> f64 {
+    match feed {
+        FeedWord::PerMinute(f) | FeedWord::InverseTime(f) => f,
+    }
+}
+fn written_feed(feed: FeedWord, decimals: Option<u32>) -> Result<f64> {
+    let value = feed_number(feed);
+    let written = match decimals {
+        Some(d) => crate::feed_str(value, d as usize)
+            .parse::<f64>()
+            .map_err(|_| PostError::Setting {
+                name: "feed".into(),
+                reason: "cannot read rendered feed".into(),
+            })?,
+        None => value,
+    };
+    if written.is_finite() && written > 0.0 {
+        Ok(written)
+    } else {
+        Err(PostError::Setting {
+            name: "feed".into(),
+            reason: "rendered feed must be finite and positive".into(),
+        })
+    }
+}
+/// Rounding an F word upward would undercut the requested duration. Select
+/// the nearest representable lower feed and then use its actual duration.
+fn lower_feed(value: f64, decimals: Option<u32>) -> Result<f64> {
+    let Some(d) = decimals else {
+        return Ok(value);
+    };
+    let text = crate::feed_str(value, d as usize);
+    let rounded = text.parse::<f64>().map_err(|_| PostError::Setting {
+        name: "feed".into(),
+        reason: "cannot read rendered feed".into(),
+    })?;
+    let result = if rounded > value {
+        let places = text.split_once('.').map_or(0, |(_, digits)| digits.len());
+        let unit = (0..places).fold(1.0, |v, _| v / 10.0);
+        rounded - unit
+    } else {
+        rounded
+    };
+    if result.is_finite() && result > 0.0 {
+        Ok(result)
+    } else {
+        Err(PostError::Setting {
+            name: "min_block_ms".into(),
+            reason: "requires a feed too small to write; reduce the minimum block time".into(),
+        })
+    }
+}
+
+fn manage_group(
+    program: &mut MachineProgram,
+    runs: &[Vec<Block>],
+    group: usize,
+    operation: &str,
+    comment_index: usize,
+    settings: crate::ShortBlockSettings,
+    decimals: Option<u32>,
+) -> Result<()> {
+    let mut report = crate::ShortBlockReport {
+        operation: operation.into(),
+        settings,
+        sources: Default::default(),
+        short_moves: 0,
+        longest_run: 0,
+        affected_windows: 0,
+        worst_window_ms: f64::INFINITY,
+        effective_feed: 0.0,
+        added_seconds: 0.0,
+        slowed_moves: 0,
+    };
+    let limit = settings.min_block_ms / 1000.0;
+    for run in runs.iter().filter(|r| !r.is_empty()) {
+        let n = settings.block_window.min(run.len());
+        let mut streak = 0;
+        for b in run {
+            if b.seconds < limit {
+                report.short_moves += 1;
+                streak += 1;
+                report.longest_run = report.longest_run.max(streak);
+            } else {
+                streak = 0;
+            }
+        }
+        for window in run.windows(n) {
+            let seconds = window.iter().map(|b| b.seconds).sum::<f64>();
+            let mean = seconds / n as f64;
+            if mean < limit {
+                report.affected_windows += 1;
+            }
+            if mean * 1000.0 < report.worst_window_ms {
+                report.worst_window_ms = mean * 1000.0;
+                report.effective_feed =
+                    window.iter().map(|b| b.contact_length).sum::<f64>() * 60.0 / seconds;
+            }
+        }
+        let mut times: Vec<f64> = run.iter().map(|b| b.seconds).collect();
+        crate::short_blocks::lengthen(&mut times, settings);
+        for (b, time) in run.iter().zip(times) {
+            let mut posted_seconds = b.seconds;
+            if time > b.seconds {
+                let number = lower_feed(b.amount / time, decimals)?;
+                posted_seconds = b.amount / number;
+                report.added_seconds += posted_seconds - b.seconds;
+                report.slowed_moves += 1;
+                if settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown {
+                    let feed = match b.feed {
+                        FeedWord::PerMinute(_) => FeedWord::PerMinute(number),
+                        FeedWord::InverseTime(_) => FeedWord::InverseTime(number),
+                    };
+                    if let Some(Step::Feed { feed: f, .. }) = program.steps.get_mut(b.step) {
+                        *f = feed;
+                    }
+                }
+            }
+            if settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown
+                && let Some(segment) = program
+                    .verification_path
+                    .groups
+                    .get_mut(group)
+                    .and_then(|g| g.segments.get_mut(b.segment))
+            {
+                segment.duration.0 = posted_seconds;
+            }
+        }
+    }
+    if !report.worst_window_ms.is_finite() {
+        report.worst_window_ms = 0.0;
+    }
+    if settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown {
+        let seconds = program
+            .verification_path
+            .groups
+            .get(group)
+            .map_or(0.0, |g| g.segments.iter().map(|s| s.duration.0).sum());
+        if let Some(Step::Comment { text }) = program.steps.get_mut(comment_index)
+            && let Some((head, _)) = text.rsplit_once(", about ")
+        {
+            *text = format!("{head}, about {seconds:.0} s");
+        }
+    }
+    program.short_blocks.push(report);
+    Ok(())
 }

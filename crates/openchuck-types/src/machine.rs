@@ -193,11 +193,17 @@ pub enum ProfileField {
     /// [`MachineProfile::min_spindle_rpm`] and
     /// [`MachineProfile::max_spindle_rpm`].
     SpindleRange,
+    /// [`MachineProfile::min_block_ms`].
+    MinBlockMs,
+    /// [`MachineProfile::block_window`].
+    BlockWindow,
+    /// [`MachineProfile::short_block_mode`].
+    ShortBlockMode,
 }
 
 impl ProfileField {
     /// Every field, in order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 11] = [
         Self::RotaryAxis,
         Self::ASense,
         Self::RotaryOrigin,
@@ -206,6 +212,9 @@ impl ProfileField {
         Self::MaxFeeds,
         Self::Clearance,
         Self::SpindleRange,
+        Self::MinBlockMs,
+        Self::BlockWindow,
+        Self::ShortBlockMode,
     ];
 
     /// The field's name in the profile file.
@@ -219,6 +228,9 @@ impl ProfileField {
             Self::MaxFeeds => "max_feeds",
             Self::Clearance => "clearance",
             Self::SpindleRange => "spindle_range",
+            Self::MinBlockMs => "min_block_ms",
+            Self::BlockWindow => "block_window",
+            Self::ShortBlockMode => "short_block_mode",
         }
     }
 }
@@ -270,6 +282,45 @@ pub enum SpindleLimit {
     Below(SpindleSpeed),
 }
 
+/// How short-block demand is handled (GC-17; decision 0222).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShortBlockMode {
+    /// Leave the program unchanged and skip analysis.
+    #[default]
+    Off,
+    /// Report short blocks without changing the program.
+    Report,
+    /// Lower feed where the average block time is too short; preserve geometry.
+    SlowDown,
+}
+
+impl ShortBlockMode {
+    /// Whether this is the backward-compatible default.
+    pub fn is_off(&self) -> bool {
+        *self == Self::Off
+    }
+
+    /// The mode in user-facing words.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Report => "Report",
+            Self::SlowDown => "Slow down",
+        }
+    }
+}
+
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
+}
+fn is_one(value: &usize) -> bool {
+    *value == 1
+}
+const fn default_block_window() -> usize {
+    1
+}
+
 /// A machine profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -307,6 +358,16 @@ pub struct MachineProfile {
     /// one. A limit, never a default (decision records 0196 and 0231).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_spindle_rpm: Option<SpindleSpeed>,
+    /// Minimum average duration of consecutive fed blocks, milliseconds.
+    /// Zero disables the check (GC-17).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub min_block_ms: f64,
+    /// Number of consecutive fed blocks over which the duration is averaged.
+    #[serde(default = "default_block_window", skip_serializing_if = "is_one")]
+    pub block_window: usize,
+    /// Whether short blocks are reported or slowed; older profiles stay off.
+    #[serde(default, skip_serializing_if = "ShortBlockMode::is_off")]
+    pub short_block_mode: ShortBlockMode,
     /// Where each value came from, and whether it is confirmed on the
     /// machine. A field not listed is treated as unconfirmed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -333,6 +394,19 @@ impl MachineProfile {
                     "a rotary axis about {} is not supported yet (SET-02); use x",
                     self.rotary_axis.name()
                 ),
+            ));
+        }
+        require_finite("machine.min_block_ms", self.min_block_ms)?;
+        if self.min_block_ms < 0.0 {
+            return Err(Error::invalid(
+                "machine.min_block_ms",
+                "must be at least 0; 0 turns the check off",
+            ));
+        }
+        if !(1..=4096).contains(&self.block_window) {
+            return Err(Error::invalid(
+                "machine.block_window",
+                "must be from 1 to 4096",
             ));
         }
         self.rotary_origin.validate("machine.rotary_origin")?;
@@ -452,6 +526,9 @@ impl MachineProfile {
                 rotary_in_feed: RotaryInFeed::Separate,
             },
             max_tool_number: DEFAULT_MAX_TOOL_NUMBER,
+            min_block_ms: 0.0,
+            block_window: 1,
+            short_block_mode: ShortBlockMode::Off,
             min_spindle_rpm: None,
             max_spindle_rpm: None,
             clearance: Clearance {
