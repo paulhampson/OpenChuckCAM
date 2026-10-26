@@ -988,6 +988,47 @@ impl ExportPanel {
                     ui.end_row();
                 }
             });
+        if let Some((settings, sources)) = files.run.effective_short_blocks {
+            ui.label(format!(
+                "Short-block settings: {} ({}), {:.3} ms ({}), {} {} ({}).{}",
+                settings.mode.label(),
+                sources.mode.as_str(),
+                settings.min_block_ms,
+                sources.min_block_ms.as_str(),
+                settings.block_window,
+                if settings.block_window == 1 {
+                    "block"
+                } else {
+                    "blocks"
+                },
+                sources.block_window.as_str(),
+                if settings.min_block_ms == 0.0
+                    || settings.mode == openchuck_app::setup::ShortBlockMode::Off
+                {
+                    " Check off; no slowdown applied."
+                } else {
+                    ""
+                }
+            ));
+        }
+        for report in &files.run.short_blocks {
+            let operation = files
+                .run
+                .project
+                .operations()
+                .iter()
+                .find(|o| o.id.to_string() == report.operation)
+                .map_or(report.operation.as_str(), |o| o.name.as_str());
+            let mode = match report.settings.mode {
+                openchuck_app::setup::ShortBlockMode::Off => "Off",
+                openchuck_app::setup::ShortBlockMode::Report => "Report",
+                openchuck_app::setup::ShortBlockMode::SlowDown => "Slow down",
+            };
+            ui.label(format!("Short blocks — {operation}: {mode}, {:.3} ms over {} {} (limit: {}, window: {}, mode: {}). {} affected windows before slowdown; worst average {:.3} ms; {} moves below the limit, longest run {}. Effective feed {:.3} mm/min; {:.3} s {}.",
+                report.settings.min_block_ms, report.settings.block_window, if report.settings.block_window == 1 { "block" } else { "blocks" }, report.sources.min_block_ms.as_str(), report.sources.block_window.as_str(), report.sources.mode.as_str(),
+                report.affected_windows, report.worst_window_ms, report.short_moves, report.longest_run, report.effective_feed, report.added_seconds,
+                if report.settings.mode == openchuck_app::setup::ShortBlockMode::SlowDown { "added" } else { "would be added by Slow down" }));
+        }
         let [html, pdf] = app.setup_sheet_file_names();
         ui.label(format!(
             "The setup sheet is written with the G-code, from the same run: {html} and {pdf}."

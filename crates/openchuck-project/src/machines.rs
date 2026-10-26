@@ -38,7 +38,8 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 /// - 4: the profile may give the spindle speed range, `min_spindle_rpm` and
 ///   `max_spindle_rpm` (decision record 0231).
 /// - 5: optional minimum block time, window and mode (decision record 0222).
-pub const MACHINE_SCHEMA: i64 = 5;
+/// - 6: Slow down integration; schema 5 Report settings retain their meaning.
+pub const MACHINE_SCHEMA: i64 = 6;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
 const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
@@ -46,7 +47,33 @@ const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
     machine_2_to_3,
     machine_3_to_4,
     machine_4_to_5,
+    machine_5_to_6,
 ];
+
+/// Existing Off/Report settings keep their meaning. Slow down did not exist in schema 5.
+fn machine_5_to_6(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_slow_down(table, 5, 6)
+}
+
+/// Refuse the new policy in a file whose version could only express Off or Report.
+/// This applies even when a zero threshold would make the policy inactive.
+pub(crate) fn premature_slow_down(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    if table
+        .get("machine")
+        .and_then(|machine| machine.get("short_block_mode"))
+        .and_then(toml::Value::as_str)
+        == Some("slow_down")
+    {
+        return Err(format!(
+            "schema {schema} predates `short_block_mode = slow_down`; Slow down requires schema {introduced}. Choose off/report, or set `schema = {introduced}` if this file was written for Slow down"
+        ));
+    }
+    Ok(())
+}
 
 /// Schema 4 adds the optional spindle speed range, which a schema 3 file
 /// does not have, so it needs no change but its number: nothing more is
@@ -369,7 +396,6 @@ mod tests {
                 ProfileField::Travel,
                 ProfileField::Clearance,
                 ProfileField::BlockWindow,
-                ProfileField::ShortBlockMode,
                 ProfileField::SpindleRange,
             ]
         );
@@ -383,6 +409,44 @@ mod tests {
         }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
+    }
+
+    #[test]
+    fn req_gc_17_req_set_01_new_z1_uses_measured_report_settings_and_old_profiles_stay_off() {
+        use openchuck_types::machine::ShortBlockMode;
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(
+            (z1.min_block_ms, z1.block_window, z1.short_block_mode),
+            (7.0, 32, ShortBlockMode::Report)
+        );
+        assert!(z1.is_confirmed(ProfileField::MinBlockMs));
+        let source = &z1.provenance[&ProfileField::MinBlockMs].source;
+        for fact in ["284", "1.1.2", "WiFi", "version not supplied"] {
+            assert!(source.contains(fact), "{source}");
+        }
+        let written = render_profile(&z1).unwrap();
+        let old = written.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 4");
+        assert!(
+            parse_profile(Path::new("old.toml"), &old)
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+        let mut table: toml::Table = old.parse().unwrap();
+        let machine = table.get_mut("machine").unwrap().as_table_mut().unwrap();
+        for key in ["min_block_ms", "block_window", "short_block_mode"] {
+            machine.remove(key);
+        }
+        let old = toml::to_string(&table).unwrap();
+        let loaded = parse_profile(Path::new("old.toml"), &old).unwrap();
+        assert_eq!(
+            (
+                loaded.min_block_ms,
+                loaded.block_window,
+                loaded.short_block_mode
+            ),
+            (0.0, 1, ShortBlockMode::Off)
+        );
     }
 
     #[test]

@@ -62,6 +62,8 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         },
     );
     ConvertOptions {
+        short_blocks: Default::default(),
+        feed_decimals: None,
         a_range: openchuck_types::machine::ARange::Continuous,
         safe_z: 30.0,
         frame: MachineProfile::example_x_rotary(),

@@ -105,7 +105,8 @@ use openchuck_types::workholding::Workholding;
 ///   only when set (decision record 0231).
 /// - 19: optional minimum block time, window and mode in machine copies
 ///   (decision record 0222); absent fields retain Off.
-pub const SCHEMA: i64 = 19;
+/// - 20: Slow down integration; schema 19 Report settings retain their meaning.
+pub const SCHEMA: i64 = 20;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -138,12 +139,21 @@ const MIGRATIONS: &[Migration] = &[
     schema_16_to_17,
     schema_17_to_18,
     schema_18_to_19,
+    schema_19_to_20,
 ];
 
 /// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
 fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Machine {
         crate::machines::premature_block_time(table, 18)?;
+    }
+    Ok(())
+}
+
+/// Schema 20 keeps schema 19 Off/Report settings and adds the Slow down policy.
+fn schema_19_to_20(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::premature_slow_down(table, 19, 20)?;
     }
     Ok(())
 }

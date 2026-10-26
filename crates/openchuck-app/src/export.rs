@@ -368,6 +368,15 @@ pub fn export_checks(
                     }
                 }
             }
+            let diagnostics = posted.unwrap_or(run);
+            for report in &diagnostics.short_blocks {
+                if report.affected_windows > 0 {
+                    push(
+                        CheckLevel::Warning,
+                        crate::posting::short_block_note(project, report),
+                    );
+                }
+            }
             for operation in enabled.iter().filter(|_| !skipped) {
                 // The simulation names an operation as it was called when the
                 // run was made; a rename since then is not a missing run
