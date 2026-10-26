@@ -13,7 +13,7 @@ When a Codex session finishes, it opens a **draft** pull request and the Merge M
 | RAMPBUDGET | #343 | Yes, with one condition | Top tier, high (xhigh if the owner wants a proof-cost redesign) | Now, plan first |
 | AROT (A accumulation) | #337 | Yes, but needs a design decision first | Top tier, high | Proposal phase only |
 | STLPENCIL | #344 | Partly: shares pencil code with STEPALL-Q | Top tier, high | After STEPALL-Q, or fold into it |
-| (fold into OUTPUT2) | #331, #332 | **No** | Same lane as OUTPUT2 | With OUTPUT2 |
+| (folded into OUTPUT2) | #331, #332 | **No. Owner accepted the fold on 26 Oct 2026.** | Same lane as OUTPUT2 (Sonnet in my plan; consider Opus because of #332) | With OUTPUT2 |
 | (no work) | #147 | Already built | none | Owner verifies |
 | (not bugs) | #335, #336 | Enhancements | n/a | Not covered here |
 
@@ -64,12 +64,12 @@ Model note: I do not know which Codex model names your account offers, so the ti
 - **Why partly separate:** it is in the pencil code that STEPALL-Q also edits (OI-950, OI-951). Running both at once risks conflicts. Either start it after STEPALL-Q merges, or fold it into STEPALL-Q.
 - **Model:** top tier, high reasoning (profiling plus determinism).
 
-### Fold into OUTPUT2, do not hand out separately: #331 and #332
+### Folded into OUTPUT2 (accepted by the owner, 26 Oct 2026): #331 and #332
 
 Both come from the #329 export review.
 - **#331:** `OutputReport::text()` ends on a path, then `sentence()` adds a full stop, so Messages shows `Not attempted: /out/part-setup-sheet.pdf.`. Fix in `crates/openchuck-app/src/overview.rs`.
 - **#332:** new destinations use create-new at the final path, so a crash during `write_all` can leave a partial file under the final name. The former writer staged every file before renaming. The recommendation is to restore staged no-clobber publication without weakening the no-overwrite rule.
-- **Why not separate:** OUTPUT2 (#308 to #310) builds on the same export manifest, write path and `OutputReport`. A separate Codex lane would conflict with it and with FOURSTEP and OUTPUT3. #331 is a trivial change that OUTPUT2 should include. #332 is a release-blocker call for the owner: decide whether it ships with OUTPUT2 or earlier.
+- **Why not separate:** OUTPUT2 (#308 to #310) builds on the same export manifest, write path and `OutputReport`. A separate Codex lane would conflict with it and with FOURSTEP and OUTPUT3. #331 is a trivial change that OUTPUT2 should include. The owner decided #332 ships with OUTPUT2. OUTPUT2 closes #308, #309, #310, #331 and #332; #332 restores staged no-clobber publication per file, keeping the accepted no-overwrite rule.
 
 ### No work needed: #147
 
@@ -85,7 +85,7 @@ The import-dialog layout shift is listed in the work breakdown as built by lane 
 2. Start RAMPBUDGET with a planning phase first; ask me for the number range before it claims any decision or OI numbers.
 3. Start AROT only as a proposal.
 4. Hold STLPENCIL until STEPALL-Q or fold it in.
-5. Decide #332 now, because it changes whether OUTPUT2 starts with a bigger scope.
+5. #331 and #332 are decided: they go into OUTPUT2.
 
 ## Rules each Codex session must follow
 
