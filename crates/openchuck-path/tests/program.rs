@@ -43,6 +43,7 @@ fn pose(m: &MachineProfile, x: f64, z: f64, a: f64) -> ToolPose {
 
 fn group(m: &MachineProfile, start: f64, end: f64) -> ToolpathGroup {
     ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: PathTags {
             setup: "setup".into(),
             operation: "cut".into(),
@@ -243,6 +244,7 @@ fn req_op_15_shared_retract_retains_both_turn_directions_and_limited_position() 
             .collect();
         let path = openchuck_path::assemble::assemble(
             &[Pass {
+                helical_pass_start: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),
@@ -254,4 +256,35 @@ fn req_op_15_shared_retract_retains_both_turn_directions_and_limited_position() 
         .unwrap();
         assert_eq!(path.group.segments.last().unwrap().end.a.0, final_a);
     }
+}
+
+#[test]
+fn req_gc_01_req_op_15_connections_preserve_declared_pass_boundaries_in_canonical_copies() {
+    let m = machine();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let previous = group(&m, 0.0, 1080.0);
+    let mut next = group(&m, 0.0, 720.0);
+    next.segments.push(Segment {
+        end: pose(&m, 10.0, 30.0, 740.0),
+        ..next.segments[1]
+    });
+    next.rotary_reset_after = vec![1];
+    let original = next.clone();
+    let placed = connect_group(Some(&previous), &next, &options(&m), &ctx).unwrap();
+    assert_eq!(
+        next, original,
+        "cached canonical geometry must remain context-independent"
+    );
+    assert_eq!(
+        placed.group.rotary_reset_after,
+        vec![1 + placed.link_segments]
+    );
+    openchuck_types::ir::Toolpath {
+        groups: vec![placed.group],
+    }
+    .validate()
+    .unwrap();
+    let split = connect_group(None, &next, &options(&m), &ctx).unwrap();
+    assert_eq!(split.group.rotary_reset_after, vec![1]);
 }

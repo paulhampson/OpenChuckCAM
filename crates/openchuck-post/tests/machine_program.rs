@@ -40,6 +40,7 @@ fn seg(kind: MoveKind, end: ToolPose, duration: f64) -> Segment {
 fn path(segments: Vec<Segment>) -> Toolpath {
     Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "op1".into(),
                 setup: "s1".into(),

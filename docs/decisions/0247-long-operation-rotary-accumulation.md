@@ -4,7 +4,7 @@
 - **Date:** 26 October 2026.
 - **Measurement baseline:** remote main verified at lane start, `ba10400fff3bb7ad32526a7e540919c810e85434`, library family 0.23.0; branch `codex/lane-arot`.
 - **Requirements:** SET-01/06/09, OP-03/04/05/12/14/15/21, GC-01/04/07/08/09/10/12, NFR-05/06/07/12. There are no MC-prefixed requirements in the requirements document; machine requirements are under SET. GC-08 is P2.
-- **Open items:** OI-994 to OI-997. No schema or version allocated; no behavior changes.
+- **Open items:** OI-995 owner-deferred; OI-994/996 closed by acceptance; OI-997 closed as outside scope. Phase 2 is in local validation. No schema or library version allocated; breaking family version awaits Merge Manager release/order.
 - **Allocation audit:** fetched all remote heads and checked their decision filenames and work-breakdown/register references, plus all open PRs. At initial audit main ended at 0244; SHORTMOVE owned 0245 and BUG-NEWPROJ owned 0246. SHORTMOVE merged during this investigation; final remote main is `8f788bf` (0.24.0). This docs-only branch was rebased onto it before opening. The accepted 0245 follow-through changes short-block analysis/optional feeds, not `rotary::fit_range`, assembly or the A-coordinate convention. Raw evidence remains explicitly from the original 0.23.0 baseline, not claimed as a rerun of 0.24.0. BUG-NEWPROJ 0246 remains unmerged. Highest referenced OI is 993. This record takes 0247 and OI-994–997. Unpublished claims cannot be observed and must be reconciled by Merge Manager.
 
 ## Existing decisions and implementation
@@ -46,7 +46,7 @@ A helix advances X by pitch p each turn: a single uninterrupted length L contrib
 | Change pass order/direction | Alternate helices or reverse layers to reduce net accumulation; a single long helix can still exceed a bound. | Changes cutting direction, engagement, path, feeds/time and G-code. New opt-in strategy policy/schema if persisted. Reordering operations conflicts with 0241 and is not proposed. | Must re-prove coverage, gouge, stock-aware cutting, links and tabs. Cutting-direction OP-25 contract matters. No general bound without splitting. |
 | No change beyond this evidence | Keep current limited-pass refusal and boundary handling. | No fields/schema/output change. | Accept unresolved numeric growth on Continuous; owner must establish controller limits. |
 
-None of the output-changing options waives GC-07/NFR-06: each must remain deterministic for the same complete inputs/software version. Legacy byte identity is a separate compatibility promise requiring defaults-off and same-version golden comparisons, not merely determinism. A breaking library change follows 0048 and Merge Manager's version order; no library version is selected here.
+None of the output-changing options waives GC-07/NFR-06: each must remain deterministic for the same complete inputs/software version. Legacy byte identity is a separate compatibility promise, not merely determinism: accepted automatic pass resets intentionally change affected Z1 output; unaffected jobs retain same-version golden identity. A breaking library change follows 0048 and Merge Manager's version order; no library version is selected here.
 
 ## Revised proposal: reset between helical passes
 

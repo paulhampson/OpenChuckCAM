@@ -32,6 +32,7 @@ fn pose(a: f64) -> ToolPose {
 }
 fn group(start: f64, end: f64) -> ToolpathGroup {
     ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: PathTags {
             setup: "s".into(),
             operation: "o".into(),
@@ -123,4 +124,58 @@ fn req_gc_01_req_gc_10_explicit_physical_full_turns_are_checked_as_travel() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn req_op_15_req_gc_09_declared_pass_resets_preserve_signed_turns_and_exact_boundaries() {
+    for before in [720.0_f64, -720.0, 593275.0, -593275.0, 360.0, -360.0] {
+        let after = if before.abs() > 360.0 {
+            before % 360.0
+        } else {
+            before
+        };
+        let mut g = group(before - 10.0, before);
+        // An existing retract may round to no motion. Its boundary must attach
+        // to the last reached pose, without consuming an extra IR/G-code move.
+        let stationary = g.segments[0];
+        g.segments.push(stationary);
+        g.segments.push(Segment {
+            end: pose(before + 10.0),
+            ..stationary
+        });
+        g.rotary_reset_after = vec![1];
+        let path = Toolpath { groups: vec![g] };
+        let text = format!(
+            "G90 G21\nG54\nG0 X0 Y0 Z30 A{}\nA{before}\nG92.4 A0 S0\nA{}\nM2\n",
+            before - 10.0,
+            after + 10.0
+        );
+        let run = |text: &str, p: &Toolpath| {
+            compare(
+                &replay(&read(text).unwrap(), Dialect::MakeraZ1).unwrap(),
+                p,
+                &frame(),
+                TimingRule::Makera,
+                Tolerances::for_decimals(3, 3),
+            )
+        };
+        let c = run(&text, &path).unwrap();
+        assert_eq!(c.ir_a_travel, 20.0);
+        assert_eq!(c.gcode_a_travel, 20.0);
+        let mut undeclared = path.clone();
+        undeclared.groups[0].rotary_reset_after.clear();
+        assert!(
+            run(&text, &undeclared).is_err(),
+            "an arbitrary gap must not authorize a reset"
+        );
+        let wrong = text.replacen(
+            &format!("A{}\nM2", after + 10.0),
+            &format!("A{}\nM2", after + 370.0),
+            1,
+        );
+        assert!(
+            run(&wrong, &path).is_err(),
+            "whole-turn errors after a reset must be detected"
+        );
+    }
 }

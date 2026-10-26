@@ -76,6 +76,7 @@ pub fn segment(kind: MoveKind, end: ToolPose) -> Segment {
 pub fn group(op: &str, poses: &[ToolPose], kind: MoveKind) -> ToolpathGroup {
     let start = poses[0];
     ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: tags(op),
         start,
         segments: poses[1..].iter().map(|p| segment(kind, *p)).collect(),

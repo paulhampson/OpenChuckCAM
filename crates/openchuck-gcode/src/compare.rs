@@ -149,6 +149,9 @@ pub fn compare(
     rule: TimingRule,
     tolerances: Tolerances,
 ) -> Result<Comparison, CompareError> {
+    toolpath
+        .validate()
+        .map_err(|e| CompareError::Structure(e.to_string()))?;
     let frame = frame.rotary_frame();
     let axis = axis_direction(frame.axis);
     let axis = [axis.x, axis.y, axis.z];
@@ -174,7 +177,7 @@ pub fn compare(
     };
 
     // Every IR segment is physical motion. Non-moving controller resets
-    // may occur only after an operation boundary, consuming no IR pose.
+    // may occur only at declared clear pass or operation boundaries, consuming no IR pose.
     struct Expected {
         tip: Point3,
         a: f64,
@@ -207,7 +210,7 @@ pub fn compare(
                 start: before.is_none(),
             });
         }
-        for segment in &group.segments {
+        for (s, segment) in group.segments.iter().enumerate() {
             let to = machine_of(segment.end.tip, segment.end.a.0);
             let moved = !same(&prev, &to);
             if moved {
@@ -221,6 +224,11 @@ pub fn compare(
                     group: g,
                     start: false,
                 });
+            }
+            if group.rotary_reset_after.binary_search(&s).is_ok()
+                && let Some(last) = expected.last_mut()
+            {
+                last.boundary_after = true;
             }
             prev = to;
         }
@@ -324,7 +332,7 @@ pub fn compare(
     Ok(out)
 }
 
-/// Counter resets are bookkeeping at a reached operation boundary. Track
+/// Counter resets are bookkeeping at a reached declared pass or operation boundary. Track
 /// their offset explicitly so even a whole-turn error in a later command
 /// cannot be hidden by comparing only equivalent orientations.
 fn next_move<'a>(
@@ -350,7 +358,7 @@ fn next_move<'a>(
                     || (to - expected_to).abs() > tolerance
                 {
                     return Err(CompareError::Structure(format!(
-                        "line {line}: rotary counter reset is not at the reached operation boundary or does not match the controller"
+                        "line {line}: rotary counter reset is not at a reached declared boundary or does not match the controller"
                     )));
                 }
                 *shift += delta;

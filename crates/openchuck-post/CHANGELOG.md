@@ -13,6 +13,8 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
+- Accept explicit clear pass-boundary metadata for nonmoving continuous-axis counter resets. Z1 rebases subsequent absolute words with existing signed/exact-360 semantics; rotate-only posts omit bookkeeping and add no rewind (accepted 0247, #337). Shared-family minor version awaits Merge Manager allocation.
+
 - Breaking (0.24.0): `ConvertOptions` adds `short_blocks` and `feed_decimals`. Hosts use disabled defaults for legacy behaviour. `PostOutput`/`MachineProgram` return demand reports and an adjusted verification path. `PostOptions` accepts optional per-field overrides.
 
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.

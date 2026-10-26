@@ -13,6 +13,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Breaking: `Pass::helical_pass_start` distinguishes complete roughing-layer helices from fragments. Assembly marks existing clear transitions without changing any physical segment; connections preserve/remap indices. Existing limited-axis fitting/refusal is unchanged (accepted 0247, #337). Shared-family minor version awaits Merge Manager allocation.
+
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
 
 - Report optional fitting and assembly scope durations to the host for STEPALL-M measurements; timing does not affect generated paths. Axial/indexed quiet pass contexts forward opted-in timing callbacks while keeping their inner progress counts suppressed.

@@ -66,6 +66,7 @@ impl Strategy for FineRing {
             })
             .collect();
         Ok(vec![Pass {
+            helical_pass_start: false,
             points,
             stock: None,
             rapids: Vec::new(),

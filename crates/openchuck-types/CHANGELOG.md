@@ -13,6 +13,8 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Breaking: `ToolpathGroup` carries explicit `rotary_reset_after` segment indices for certified clear helical-pass boundaries (accepted 0247, #337). Empty metadata defaults on deserialization and is omitted on serialization. Shared-family minor version awaits Merge Manager allocation.
+
 - Breaking (0.24.0): `ShortBlockMode` adds `SlowDown`; the profile window uses `usize` and is bounded to 4096. Confirmation lists omit disabled timing settings and the software mode policy.
 
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
