@@ -26,7 +26,10 @@
 #include <BRep_Tool.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <GeomConvert.hxx>
+#include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
+#include <Geom_BezierCurve.hxx>
+#include <GeomAbs_CurveType.hxx>
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Geom_Surface.hxx>
 #include <IFSelect_ReturnStatus.hxx>
@@ -50,8 +53,10 @@
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <gp_Ax3.hxx>
+#include <gp_Circ.hxx>
 #include <gp_Cone.hxx>
 #include <gp_Cylinder.hxx>
+#include <gp_Elips.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Sphere.hxx>
@@ -117,6 +122,78 @@ void frame(Json& j, const gp_Ax3& a) {
   j.raw(",\"y\":"); vec(j, a.YDirection().XYZ());
   j.raw(",\"z\":"); vec(j, a.Direction().XYZ());
   j.raw("}");
+}
+
+// The exact curve under an edge, as the importer's EdgeCurve (decision 0227), in the direction of the edge's
+// polyline: `first` is the parameter at the polyline's first point. Writes `null` for a curve kind the importer
+// does not read (the edge then keeps only its polyline). A B-spline is written only when it is clamped and not
+// periodic, as the Rust side requires.
+void edge_curve(Json& j, const TopoDS_Edge& e) {
+  BRepAdaptor_Curve c(e);
+  double a = c.FirstParameter(), b = c.LastParameter();
+  if (e.Orientation() == TopAbs_REVERSED) std::swap(a, b);
+  auto range = [&]() { j.raw(",\"first\":"); j.num(a); j.raw(",\"last\":"); j.num(b); };
+  auto axes = [&](const gp_Ax2& ax) {
+    j.raw("\"frame\":{\"origin\":"); vec(j, ax.Location().XYZ());
+    j.raw(",\"x\":"); vec(j, ax.XDirection().XYZ());
+    j.raw(",\"y\":"); vec(j, ax.YDirection().XYZ());
+    j.raw(",\"z\":"); vec(j, ax.Direction().XYZ());
+    j.raw("}");
+  };
+  switch (c.GetType()) {
+    case GeomAbs_Line: {
+      gp_Lin l = c.Line();
+      j.raw("{\"kind\":\"line\",\"origin\":"); vec(j, l.Location().XYZ());
+      j.raw(",\"direction\":"); vec(j, l.Direction().XYZ());
+      range(); j.raw("}");
+      return;
+    }
+    case GeomAbs_Circle: {
+      gp_Circ ci = c.Circle();
+      j.raw("{\"kind\":\"circle\","); axes(ci.Position());
+      j.raw(",\"radius\":"); j.num(ci.Radius());
+      range(); j.raw("}");
+      return;
+    }
+    case GeomAbs_Ellipse: {
+      gp_Elips el = c.Ellipse();
+      j.raw("{\"kind\":\"ellipse\","); axes(el.Position());
+      j.raw(",\"major\":"); j.num(el.MajorRadius());
+      j.raw(",\"minor\":"); j.num(el.MinorRadius());
+      range(); j.raw("}");
+      return;
+    }
+    case GeomAbs_BSplineCurve:
+    case GeomAbs_BezierCurve: {
+      Handle(Geom_BSplineCurve) bs;
+      if (c.GetType() == GeomAbs_BSplineCurve) {
+        bs = c.BSpline();
+      } else {
+        Handle(Geom_BezierCurve) bz = c.Bezier();
+        bs = GeomConvert::CurveToBSplineCurve(bz);
+      }
+      if (bs.IsNull() || bs->IsPeriodic()) { j.raw("null"); return; }
+      int deg = bs->Degree(), np = bs->NbPoles();
+      TColStd_Array1OfReal knots(1, bs->NbKnots());
+      TColStd_Array1OfInteger mults(1, bs->NbKnots());
+      bs->Knots(knots);
+      bs->Multiplicities(mults);
+      if (mults(1) != deg + 1 || mults(bs->NbKnots()) != deg + 1) { j.raw("null"); return; }
+      j.raw("{\"kind\":\"b_spline\",\"degree\":"); j.integer(deg);
+      j.raw(",\"knots\":[");
+      bool firstk = true;
+      for (int k = 1; k <= bs->NbKnots(); ++k)
+        for (int m = 0; m < mults(k); ++m) { if (!firstk) j.raw(","); firstk = false; j.num(knots(k)); }
+      j.raw("],\"poles\":[");
+      for (int k = 1; k <= np; ++k) { if (k > 1) j.raw(","); gp_Pnt p = bs->Pole(k); j.point(p.X(), p.Y(), p.Z()); }
+      j.raw("],\"weights\":[");
+      for (int k = 1; k <= np; ++k) { if (k > 1) j.raw(","); j.num(bs->Weight(k)); }
+      j.raw("]"); range(); j.raw("}");
+      return;
+    }
+    default:
+      j.raw("null");
+  }
 }
 
 // Millimetres per unit for the length unit names OpenCASCADE reports (0 when it is not a unit we know).
@@ -429,7 +506,10 @@ void write_model(Json& j, const TopoDS_Shape& shape, double lin, double ang) {
       if (e.Orientation() == TopAbs_REVERSED) std::reverse(pts.begin(), pts.end());
     }
     for (size_t k = 0; k < pts.size(); ++k) { if (k) j.raw(","); j.point(pts[k].X(), pts[k].Y(), pts[k].Z()); }
-    j.raw("]}");
+    j.raw("],\"curve\":");
+    if (BRep_Tool::Degenerated(e)) j.raw("null");
+    else edge_curve(j, e);
+    j.raw("}");
   }
 
   j.raw("],\"vertices\":[");

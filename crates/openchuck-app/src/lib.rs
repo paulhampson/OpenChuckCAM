@@ -28,7 +28,10 @@
 mod acknowledgement;
 mod action_log;
 mod cache;
+pub mod checkpoint_schedule;
+pub mod checkpoints;
 mod command;
+mod connections;
 mod error;
 mod export;
 pub mod form;
@@ -40,12 +43,14 @@ pub mod model;
 pub mod note_groups;
 pub mod operation;
 pub mod opflow;
+mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
 mod pipeline;
 pub mod playback;
 mod posting;
+pub mod preset;
 pub mod requirements;
 pub mod scene;
 pub mod selection;
@@ -56,6 +61,7 @@ pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
 pub mod step_sets;
+mod stock_surface;
 pub mod stockplay;
 #[cfg(test)]
 mod test_project;
@@ -104,7 +110,8 @@ pub use openchuck_project as project;
 pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
-pub use opflow::StrategyChoice;
+pub use opflow::{SetOptionsShown, StrategyChoice};
+pub use output_write::{OutputFailure, OutputPlan, OutputReport};
 pub use pipeline::{GroupInfo, Regeneration, STAGE_GENERATE, STAGE_SIMULATE};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
@@ -194,6 +201,7 @@ pub struct Application {
     /// The project as last opened, created or saved, for
     /// [`Application::is_modified`]. Behind a lock so `save` can stay `&self`.
     saved: std::sync::Mutex<Project>,
+    recovered_unsaved: std::sync::atomic::AtomicBool,
     jobs: JobManager,
     cache: cache::PipelineCache,
     strategies: Registry,
@@ -286,6 +294,7 @@ impl Application {
         let (events_tx, events_rx) = channel();
         Ok(Self {
             saved: std::sync::Mutex::new(project.clone()),
+            recovered_unsaved: std::sync::atomic::AtomicBool::new(false),
             document: Document {
                 location: folder.to_path_buf(),
                 project,
@@ -312,6 +321,8 @@ impl Application {
         if let Ok(mut saved) = self.saved.lock() {
             saved.clone_from(&self.document.project);
         }
+        self.recovered_unsaved
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -319,9 +330,12 @@ impl Application {
     /// saved, so a front end can ask before discarding changes. Undoing back
     /// to the saved state makes it unmodified again.
     pub fn is_modified(&self) -> bool {
-        self.saved
-            .lock()
-            .map_or(true, |saved| *saved != self.document.project)
+        self.recovered_unsaved
+            .load(std::sync::atomic::Ordering::Relaxed)
+            || self
+                .saved
+                .lock()
+                .map_or(true, |saved| *saved != self.document.project)
     }
 
     /// One sentence per model file that has changed or is missing since it
@@ -846,6 +860,17 @@ impl Application {
             name,
             value.as_ref(),
         )?;
+        // A cutting value the user sets drops the operation's material
+        // preset (issue 197; decision record 0230).
+        if let Some(value) = &value
+            && requirements::FROM_CUTTING_DATA.contains(&name)
+            && let Some(op) = self.document.project.operation(operation)
+        {
+            let mut edited = op.clone();
+            edited.parameters.insert(name.to_owned(), value.clone());
+            preset::drop_preset(&self.document.project, &self.strategies, &mut edited);
+            return self.execute(Command::Replace(Item::Operation(edited)));
+        }
         self.execute(Command::SetParameter {
             operation,
             name: name.to_owned(),
@@ -1068,15 +1093,15 @@ impl Application {
         self.grouping
     }
 
-    /// The files `grouping` would write for `toolpath` with `post`, with their
+    /// The files `grouping` would write for `run` with `post`, with their
     /// names, setups and programmed times, before anything is posted (GC-05).
     pub fn planned_files(
         &self,
-        toolpath: &openchuck_types::ir::Toolpath,
+        run: &Regeneration,
         post: &PostSelection,
         grouping: OutputGrouping,
     ) -> Result<Vec<PlannedFile>, AppError> {
-        posting::plan_files(&self.document.project, toolpath, post, grouping)
+        posting::plan_files(run, post, grouping)
     }
 
     /// Starts regenerating with `post` and `grouping` for this one run, leaving
@@ -1126,16 +1151,19 @@ impl Application {
         vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
     }
 
-    /// Writes `run`'s G-code files and, with them, the setup sheet made from
-    /// the same run, into `folder`, and records the export (GC-05, GC-12;
-    /// decision 0189). Returns the paths, the G-code first. A run made before
-    /// the project last changed writes nothing ([`AppError::OutOfDate`]), so
-    /// the sheet always describes the program beside it.
-    pub fn write_output(
+    /// Preflights every full destination without creating anything. The
+    /// returned plan freezes the same-run NC and setup-sheet bytes while
+    /// existing paths are reviewed (GC-05/12/15, NFR-07).
+    pub fn prepare_output(
         &self,
         folder: &Path,
-        run: &Regeneration,
-    ) -> Result<Vec<PathBuf>, AppError> {
+        run: &std::sync::Arc<Regeneration>,
+    ) -> Result<OutputPlan, AppError> {
+        if run.gcode.is_empty() {
+            return Err(AppError::Post(
+                "There is no G-code to write. Generate the operations first.".to_owned(),
+            ));
+        }
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
@@ -1145,9 +1173,35 @@ impl Application {
             .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
             .collect();
         files.extend(self.setup_sheet_files(Some(&run.toolpath)));
-        let written = export::write_bytes(folder, &files)?;
-        self.record_export(run);
-        Ok(written)
+        output_write::prepare(folder, std::sync::Arc::clone(run), files)
+    }
+
+    /// Revalidates the reviewed plan and writes in order, stopping at the
+    /// first failure. `replace` confirms the plan's existing paths only.
+    /// Results are retained in Messages; only full success completes Export.
+    /// No atomic batch or machining verification is implied.
+    pub fn write_output(&self, plan: &OutputPlan, replace: bool) -> OutputReport {
+        let checks = self.export_checks(Some(&plan.run), Some(&plan.run), None);
+        let report = if *plan.run.project != self.document.project {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                AppError::OutOfDate.to_string(),
+            )
+        } else if let Some(reason) = checks.first_blocker() {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                reason,
+            )
+        } else {
+            output_write::write(plan, replace)
+        };
+        if report.is_complete() {
+            self.record_export(&plan.run);
+        }
+        self.record_output_report(report.clone());
+        report
     }
 
     /// The checks before writing G-code (GC-15). `run` is the latest

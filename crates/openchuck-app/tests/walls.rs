@@ -131,6 +131,7 @@ fn build(name: &str, profile: &[(f64, f64)], radius: f64) -> (PathBuf, Applicati
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters,
         }),
     ] {

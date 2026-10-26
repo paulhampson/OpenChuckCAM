@@ -121,6 +121,7 @@ pub enum ImportAction {
 
 /// An import in progress.
 pub struct ImportSession {
+    deferred: Option<(crate::pending_edits::Ticket, (ImportAction, bool, bool))>,
     /// The model file; empty until one is chosen.
     pub path: PathBuf,
     /// The path as typed in the window's field.
@@ -156,6 +157,7 @@ impl ImportSession {
     pub fn new(app: &Application, path: PathBuf) -> Self {
         let path_text = path.display().to_string();
         let mut session = Self {
+            deferred: None,
             path,
             path_text,
             selected: None,
@@ -175,6 +177,7 @@ impl ImportSession {
     /// (specification 11.2).
     pub fn blank() -> Self {
         Self {
+            deferred: None,
             path: PathBuf::new(),
             path_text: String::new(),
             selected: None,
@@ -287,6 +290,7 @@ impl ImportSession {
         let mut action = ImportAction::None;
         let mut changed = false;
         let mut submit = false;
+        let mut browse = false;
         let checked = self.preview.is_some();
         // A window inside the main one (decision 0164), of a fixed size: the header and the footer stay in view and the body
         // scrolls (UI-16, OI-431).
@@ -297,21 +301,27 @@ impl ImportSession {
                     ui.add_space(4.0);
                     ui.label(RichText::new("FILE").small().strong().color(DARK.muted));
                     ui.horizontal(|ui| {
+                        let before = self.path_text.clone();
                         let field = ui.add(
                             egui::TextEdit::singleline(&mut self.path_text)
                                 .desired_width(ui.available_width() - 240.0)
                                 .hint_text("Path of a model file (STL or STEP)"),
+                        );
+                        crate::pending_edits::draft_text(
+                            ui,
+                            &field,
+                            "Model file",
+                            &before,
+                            &mut self.path_text,
+                            |text| Ok(text.to_owned()),
                         );
                         // The file being added is the one checked: no new path meanwhile.
                         let busy = self.adding.is_some();
                         if ui
                             .add_enabled(!busy, egui::Button::new("Browse…"))
                             .clicked()
-                            && let Some(picked) =
-                                crate::shell::pick_model(&self.path_text, Some(app))
                         {
-                            self.path_text = picked;
-                            submit = true;
+                            browse = true;
                         }
                         let enter = !busy
                             && field.lost_focus()
@@ -498,13 +508,38 @@ impl ImportSession {
                     }
                 });
         });
+        if event == WindowEvent::CloseRequested {
+            action = ImportAction::Cancel;
+        }
+        if let Some((saved_action, saved_submit, saved_browse)) =
+            crate::pending_edits::take_local(ctx, &mut self.deferred)
+        {
+            action = saved_action;
+            submit = saved_submit;
+            browse = saved_browse;
+        }
+        if action != ImportAction::None || submit || browse {
+            let Some((ready_action, ready_submit, ready_browse)) =
+                crate::pending_edits::defer_local(
+                    ctx,
+                    &mut self.deferred,
+                    (action, submit, browse),
+                )
+            else {
+                return ImportAction::None;
+            };
+            action = ready_action;
+            submit = ready_submit;
+            browse = ready_browse;
+        }
+        if browse && let Some(picked) = crate::shell::pick_model(&self.path_text, Some(app)) {
+            self.path_text = picked;
+            submit = true;
+        }
         if submit {
             self.submit_path(app);
         } else if changed {
             self.check(app);
-        }
-        if event == WindowEvent::CloseRequested {
-            action = ImportAction::Cancel;
         }
         action
     }

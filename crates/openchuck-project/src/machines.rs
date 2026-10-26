@@ -35,8 +35,8 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   be compared with its source (OI-54, decision record 0029 item 16).
 /// - 3: the feed limits may say how the controller counts A in the feed word
 ///   (`max_feeds.rotary_in_feed`, decision record 0076).
-/// - 4: reserved OPSPEED predecessor; released main integration retains its
-///   actual spindle-limit migration.
+/// - 4: the profile may give the spindle speed range, `min_spindle_rpm` and
+///   `max_spindle_rpm` (decision record 0231).
 /// - 5: optional minimum block time, window and mode (decision record 0222).
 pub const MACHINE_SCHEMA: i64 = 5;
 
@@ -48,10 +48,32 @@ const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
     machine_4_to_5,
 ];
 
-/// Reserved predecessor; replaced by OPSPEED's real migration at released integration.
-fn machine_3_to_4(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
-    Ok(())
+/// Schema 4 adds the optional spindle speed range, which a schema 3 file
+/// does not have, so it needs no change but its number: nothing more is
+/// checked. A schema 3 file that already holds one was not written by any
+/// version that knew it, so it is refused rather than guessed at.
+fn machine_3_to_4(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_spindle_range(table, 3)
 }
+
+/// Refuses a machine file of schema `schema` that already holds a spindle
+/// speed range, a field introduced after it (decision record 0231).
+pub(crate) fn premature_spindle_range(table: &toml::Table, schema: i64) -> Result<(), String> {
+    let machine = table.get("machine").and_then(toml::Value::as_table);
+    match ["min_spindle_rpm", "max_spindle_rpm"]
+        .into_iter()
+        .find(|f| machine.is_some_and(|m| m.contains_key(*f)))
+    {
+        Some(field) => Err(format!(
+            "this schema {schema} file has `{field}`, a field schema {} introduced; remove it, \
+             or set `schema = {}` if the file was written for it",
+            schema + 1,
+            schema + 1
+        )),
+        None => Ok(()),
+    }
+}
+
 fn machine_4_to_5(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     premature_block_time(table, 4)
 }
@@ -338,7 +360,8 @@ mod tests {
         }
         // The owner confirmed the axis, direction, range and feed limits from
         // use of the machine. The reference point (OI-60), the travel frame
-        // and the default clearance are not machine-checked values.
+        // and the default clearance are not machine-checked values, and the
+        // spindle range is Makera's published figure (decision 0231).
         assert_eq!(
             z1.unconfirmed_fields(),
             vec![
@@ -347,6 +370,7 @@ mod tests {
                 ProfileField::Clearance,
                 ProfileField::BlockWindow,
                 ProfileField::ShortBlockMode,
+                ProfileField::SpindleRange,
             ]
         );
         for field in [
@@ -416,6 +440,51 @@ mod tests {
         }
     }
 
+    /// The built-in Z1 gives Makera's published highest spindle speed,
+    /// unconfirmed; the range needs profile schema 4 (decision 0231).
+    #[test]
+    fn req_gc_14_req_set_01_the_z1_spindle_range_is_unconfirmed_and_needs_schema_4() {
+        use openchuck_types::machine::{Confirmation, ProfileField};
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(z1.max_spindle_rpm.map(|s| s.0), Some(13000.0));
+        assert_eq!(z1.min_spindle_rpm, None);
+        let p = &z1.provenance[&ProfileField::SpindleRange];
+        assert_eq!(p.state, Confirmation::Unconfirmed);
+        assert!(p.source.contains("Safety Guidelines"), "{}", p.source);
+        // A pre-schema-5 fixture cannot contain the later GC-17 fields.
+        z1.min_block_ms = 0.0;
+        z1.block_window = 1;
+        z1.short_block_mode = openchuck_types::machine::ShortBlockMode::Off;
+        for field in [
+            ProfileField::MinBlockMs,
+            ProfileField::BlockWindow,
+            ProfileField::ShortBlockMode,
+        ] {
+            z1.provenance.remove(&field);
+        }
+        let text = render_profile(&z1).unwrap();
+        let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 3");
+        let err = parse_profile(Path::new("z1.toml"), &old)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("max_spindle_rpm") && err.contains("schema 4"),
+            "{err}"
+        );
+        // Without the range, a schema 3 file reads with none.
+        let plain: String = old
+            .lines()
+            .filter(|l| !l.starts_with("max_spindle_rpm"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert_eq!(
+            parse_profile(Path::new("z1.toml"), &plain)
+                .unwrap()
+                .max_spindle_rpm,
+            None
+        );
+    }
+
     #[test]
     fn req_set_01_profiles_written_before_ids_still_read() {
         // A profile file written before IDs (OI-54) still reads; its profile
@@ -435,7 +504,7 @@ mod tests {
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")
             .lines()
-            .filter(|l| !l.starts_with("id = "))
+            .filter(|l| !l.starts_with("id = ") && !l.starts_with("max_spindle_rpm"))
             .map(|l| format!("{l}\n"))
             .collect();
         let entry = parse_profile_entry(Path::new("old.toml"), &old).unwrap();

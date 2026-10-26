@@ -19,6 +19,22 @@ use openchuck_path::StrategyGroup;
 
 use crate::{AppError, Application, Command};
 
+/// Which options of its boundary, avoid and check sets a strategy takes
+/// (decision records 0176 item 3 and 0229).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SetOptionsShown {
+    /// The boundary set's two limits, Limits the pass and Limits the tip:
+    /// swarf's only (decision record 0229 item 2).
+    pub boundary: bool,
+    /// Each avoid and check set's choice, Cut short, Warn only or Ignore:
+    /// every strategy that takes a region (decision record 0229 item 1).
+    pub avoid_and_check: bool,
+    /// Cut short keeps the tool above a check set, by the stock to leave,
+    /// rather than stopping the pass: rotary roughing (decision record 0043
+    /// item 3).
+    pub check_lifts_tool: bool,
+}
+
 /// A strategy a user can choose for an operation (OP-16).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrategyChoice {
@@ -90,14 +106,18 @@ impl Application {
             .map_or_else(String::new, |s| s.description().to_owned())
     }
 
-    /// Whether strategy `name` takes options on its boundary, avoid and check
-    /// sets (decision 0176; swarf so far, OI-637), so the Geometry section
-    /// shows them.
-    pub fn strategy_takes_set_options(&self, name: &str) -> bool {
+    /// Which options of its boundary, avoid and check sets strategy `name`
+    /// takes, so the Geometry section shows them (decision records 0176
+    /// item 3 and 0229). None for a strategy that is not registered.
+    pub fn strategy_set_options(&self, name: &str) -> SetOptionsShown {
         self.strategies
             .iter()
             .find(|s| s.name() == name)
-            .is_some_and(|s| s.honours_restriction_options())
+            .map_or_else(SetOptionsShown::default, |s| SetOptionsShown {
+                boundary: s.honours_restriction_options(),
+                avoid_and_check: s.honours_region(),
+                check_lifts_tool: name == openchuck_path::roughing::NAME,
+            })
     }
 
     /// Adds an operation at the end of the list, using `strategy` in `setup`,
@@ -112,14 +132,16 @@ impl Application {
         setup: SetupId,
         tool: Option<ToolId>,
     ) -> Result<OperationId, AppError> {
-        self.add_operation_on(name, strategy, setup, tool, None)
+        self.add_operation_on(name, strategy, setup, tool, None, None)
     }
 
     /// [`Application::add_operation`] with the selection set `cut_on` in its
     /// Cut on role: the new operation takes the selection (interface
-    /// specification 11.4; decision record 0114 C16). One undoable step.
-    /// Fails, saying why, for a set the project does not have or a strategy
-    /// that cannot cut in a selection.
+    /// specification 11.4; decision record 0114 C16), and with the material
+    /// preset of `material` (`None` for the setup's stock material; issue
+    /// 197, decision record 0230). One undoable step. Fails, saying why, for
+    /// a set the project does not have, a strategy that cannot cut in a
+    /// selection, or a material the tool has no cutting data for.
     pub fn add_operation_on(
         &mut self,
         name: &str,
@@ -127,6 +149,7 @@ impl Application {
         setup: SetupId,
         tool: Option<ToolId>,
         cut_on: Option<openchuck_project::id::SelectionSetId>,
+        material: Option<&str>,
     ) -> Result<OperationId, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -197,6 +220,9 @@ impl Application {
                 )));
             }
         }
+        let material =
+            crate::preset::chosen_material(&self.document.project, setup, tool, material)
+                .map_err(fail)?;
         // Rotary roughing starts with a stock to leave for the finishing that
         // follows, a tenth of the tool's diameter, written into the operation
         // so the inspector shows it as set (decision record 0205).
@@ -227,6 +253,7 @@ impl Application {
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
                 spindle_speed: None,
+                material,
                 parameters,
                 enabled: true,
             }),

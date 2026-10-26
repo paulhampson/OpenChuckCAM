@@ -9,11 +9,60 @@ use std::path::PathBuf;
 use openchuck_app::settings::{SettingsFile, ThemeChoice, UserSettings};
 use openchuck_app::{Acknowledgements, Application, Threads};
 
+#[test]
+fn req_ui_15_req_prj_08_checkpoint_interval_is_personal_and_survives_restart() {
+    let config = folder("checkpoint-interval");
+    let file = SettingsFile::in_folder(&config);
+    assert_eq!(file.load().settings.checkpoint_minutes, 3);
+    let mut settings = UserSettings {
+        checkpoint_minutes: 7,
+        ..UserSettings::default()
+    };
+    file.save(&settings).unwrap();
+    assert_eq!(file.load().settings.checkpoint_minutes, 7);
+    settings.checkpoint_minutes = 0;
+    assert_eq!(settings.clone().clamped().checkpoint_minutes, 1);
+    settings.checkpoint_minutes = u16::MAX;
+    assert_eq!(settings.clamped().checkpoint_minutes, 15);
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    assert_eq!(file.load().settings.checkpoint_minutes, 3);
+    std::fs::remove_dir_all(config).unwrap();
+}
+
 fn folder(name: &str) -> PathBuf {
     let dir =
         std::env::temp_dir().join(format!("openchuck-settings-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir
+}
+
+#[test]
+fn req_ui_15_req_sim_05_cut_part_opacity_is_personal_persistent_and_translucent_by_default() {
+    let config = folder("cut-part-opacity");
+    let file = SettingsFile::in_folder(&config);
+    let defaults = toml::Value::try_from(&file.load().settings).unwrap();
+    assert_eq!(
+        defaults["simulate"]
+            .get("cut_part_solid")
+            .and_then(toml::Value::as_bool),
+        Some(false)
+    );
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(file.file(), "[interface.simulate]\ncut_part_solid = true\n").unwrap();
+    let loaded = file.load();
+    assert!(loaded.problem.is_none());
+    file.save(&loaded.settings).unwrap();
+    let saved: toml::Value =
+        toml::from_str(&std::fs::read_to_string(file.file()).unwrap()).unwrap();
+    assert_eq!(
+        saved["interface"]["simulate"]["cut_part_solid"].as_bool(),
+        Some(true)
+    );
+    // Files written before the setting existed retain today's look.
+    std::fs::write(file.file(), "[interface.simulate]\nshow_cut_part = true\n").unwrap();
+    let old = toml::Value::try_from(&file.load().settings).unwrap();
+    assert_eq!(old["simulate"]["cut_part_solid"].as_bool(), Some(false));
+    std::fs::remove_dir_all(config).unwrap();
 }
 
 #[test]

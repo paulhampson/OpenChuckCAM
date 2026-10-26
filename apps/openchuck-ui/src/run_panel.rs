@@ -186,6 +186,62 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
     out
 }
 
+/// The New operation dialog's material preset (issue 197; decision record
+/// 0230): the setup's stock material, or one of the tool's other materials,
+/// with a warning when it is not the setup's and a message when the tool has
+/// no cutting data for it. A choice the tool does not have goes back to the
+/// setup's material.
+fn preset_row(
+    ui: &mut egui::Ui,
+    project: &openchuck_app::project::Project,
+    setup: SetupId,
+    tool: Option<ToolId>,
+    material: &mut Option<String>,
+) {
+    use openchuck_app::preset::{PresetState, preset_for};
+    let mut preset = preset_for(project, setup, tool, material.as_deref());
+    if material.is_some() && preset.state != PresetState::Applied {
+        *material = None;
+        preset = preset_for(project, setup, tool, None);
+    }
+    if preset.state == PresetState::NoTool {
+        return;
+    }
+    ui.horizontal(|ui| {
+        ui.label("Material preset").on_hover_text(PRESET_HELP);
+        let shown = preset
+            .choices
+            .iter()
+            .find(|c| c.material == *material)
+            .map_or("", |c| c.label.as_str());
+        let combo = egui::ComboBox::from_id_salt("add op preset")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                for c in &preset.choices {
+                    ui.selectable_value(material, c.material.clone(), &c.label);
+                }
+            });
+        crate::pending_edits::track(ui, &combo.response, "Material preset", None);
+    });
+    if let Some(why) = &preset.differs {
+        ui.horizontal_wrapped(|ui| {
+            crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, why);
+            ui.label(why);
+        });
+    }
+    if let Some(message) = &preset.message {
+        ui.horizontal_wrapped(|ui| {
+            ui.weak(message);
+        });
+    }
+}
+
+/// What the material preset is, for its tooltip.
+pub(crate) const PRESET_HELP: &str = "The tool's cutting data for one stock material: the \
+    spindle speed, feed per tooth, plunge feed, stepover and stepdown. It fills the \
+    operation's cutting values; changing one of them drops the preset. Check the values \
+    against your tool, material and machine before you run the program.";
+
 struct RunningJob {
     handle: JobHandle<Regeneration>,
     simulate: bool,
@@ -198,6 +254,9 @@ struct AddOperation {
     strategy: String,
     setup: Option<SetupId>,
     tool: Option<ToolId>,
+    /// The material whose preset the operation takes; `None` for the
+    /// setup's stock material (issue 197; decision record 0230).
+    material: Option<String>,
     /// The selection set the new operation takes in Cut on, with its name.
     cut_on: Option<(SelectionSetId, String)>,
 }
@@ -212,6 +271,7 @@ pub struct RunPanel {
     last_seconds: f64,
     show_results: bool,
     adding: Option<AddOperation>,
+    deferred_add: Option<(crate::pending_edits::Ticket, (bool, bool, bool))>,
     /// The New operation dialog asked for the tool library (decision record
     /// 0127 item 6).
     wants_library: bool,
@@ -243,6 +303,16 @@ impl RunPanel {
     /// Whether a job is running.
     pub fn is_running(&self) -> bool {
         self.job.is_some()
+    }
+
+    /// The active pipeline job, for the Playback preparation display.
+    pub fn job_id(&self) -> Option<JobId> {
+        self.job.as_ref().map(|job| job.handle.id())
+    }
+
+    /// Whether the active run includes the stock simulation.
+    pub fn running_simulates(&self) -> bool {
+        self.job.as_ref().is_some_and(|job| job.simulate)
     }
 
     /// Starts generating, with the stock simulation unless the project skips
@@ -425,11 +495,16 @@ impl RunPanel {
             .or(choices.first())
             .map(|c| c.name.clone())
             .unwrap_or_default();
+        // The selected operation's preset comes along with its tool.
+        let material = from
+            .filter(|o| o.tool == tool)
+            .and_then(|o| o.material.clone());
         self.adding = Some(AddOperation {
             name: format!("Operation {}", project.operations().len() + 1),
             strategy,
             setup,
             tool,
+            material,
             cut_on,
         });
     }
@@ -441,6 +516,7 @@ impl RunPanel {
         ctx: &egui::Context,
         app: &mut Application,
     ) -> (Option<OperationId>, Option<String>) {
+        let deferred = crate::pending_edits::take_local(ctx, &mut self.deferred_add);
         let Some(form) = &mut self.adding else {
             return (None, None);
         };
@@ -457,132 +533,153 @@ impl RunPanel {
             .iter()
             .map(|t| (t.id, t.name.clone()))
             .collect();
-        let mut close = false;
-        let mut add = false;
-        let mut wants_library = false;
-        egui::Window::new("Add operation")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Name");
-                    ui.text_edit_singleline(&mut form.name);
-                });
-                // One list: roughing first, finishing next, the specialist
-                // strategies last, each with a short description under its
-                // name (issue 195; decision record 0204).
-                ui.label("Strategy");
+        let (mut add, mut close, mut wants_library) = deferred.unwrap_or((false, false, false));
+        let ((), event) = crate::floating::floating_fixed(
+            ctx,
+            "add operation",
+            "Add operation",
+            [560.0, 540.0],
+            |ui| {
+                let body_height = (ui.available_height() - 38.0).max(1.0);
                 egui::ScrollArea::vertical()
-                    .id_salt("add op strategy list")
-                    .max_height(300.0)
-                    .auto_shrink([false, true])
+                    .id_salt("add operation body")
+                    .max_height(body_height)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let mut group = None;
-                        for c in &choices {
-                            if group != Some(c.group) {
-                                group = Some(c.group);
-                                ui.add_space(2.0);
-                                ui.label(
-                                    egui::RichText::new(group_heading(c.group))
-                                        .small()
-                                        .strong(),
-                                );
+                        ui.horizontal(|ui| {
+                            ui.label("Name");
+                            crate::pending_edits::name_edit(ui, &mut form.name, "Operation name");
+                        });
+                        ui.label("Strategy");
+                        let selected = choices.iter().find(|c| c.name == form.strategy);
+                        let escaping = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+                        let mut picked = false;
+                        let mut combo = egui::ComboBox::from_id_salt("add op strategy")
+                            .selected_text(selected.map_or("Choose a strategy", |c| c.label.as_str()))
+                            .width(ui.available_width())
+                            .height((ctx.content_rect().height() - 80.0).max(100.0))
+                            .wrap()
+                            .show_ui(ui, |ui| {
+                                ui.set_max_width(ui.available_width());
+                                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                                let mut group = None;
+                                for c in &choices {
+                                    if group != Some(c.group) {
+                                        group = Some(c.group);
+                                        ui.add_space(4.0);
+                                        ui.label(egui::RichText::new(group_heading(c.group)).strong());
+                                    }
+                                    let label = if c.takes_selections {
+                                        c.label.clone()
+                                    } else {
+                                        format!("{} · ignores selections", c.label)
+                                    };
+                                    let response = ui.add_enabled(
+                                        c.unavailable.is_none(),
+                                        egui::Button::selectable(form.strategy == c.name, label).wrap(),
+                                    );
+                                    if response.clicked() {
+                                        form.strategy.clone_from(&c.name);
+                                        picked = true;
+                                        ui.close();
+                                    }
+                                    if let Some(why) = &c.unavailable {
+                                        // Always readable in the popup, including by keyboard
+                                        // and assistive technology; eligibility stays in the app.
+                                        ui.add(egui::Label::new(why).wrap());
+                                    }
+                                }
+                            });
+                        crate::pending_edits::track(ui, &combo.response, "Strategy", None);
+                        if picked {
+                            combo.response.mark_changed();
+                        }
+                        if picked || (escaping && combo.inner.is_some()) {
+                            combo.response.request_focus();
+                        }
+                        if let Some(c) = choices.iter().find(|c| c.name == form.strategy) {
+                            crate::strategy_info::show(ui, &c.label, &c.description);
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label("Setup");
+                            let shown = setups
+                                .iter()
+                                .find(|(id, _)| Some(*id) == form.setup)
+                                .map_or("none: add a setup first", |(_, n)| n.as_str());
+                            let combo = egui::ComboBox::from_id_salt("add op setup")
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    for (id, name) in &setups {
+                                        ui.selectable_value(&mut form.setup, Some(*id), name);
+                                    }
+                                });
+                            crate::pending_edits::track(ui, &combo.response, "Setup", None);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Tool");
+                            let shown = tools
+                                .iter()
+                                .find(|(id, _)| Some(*id) == form.tool)
+                                .map_or("none yet", |(_, n)| n.as_str());
+                            let combo = egui::ComboBox::from_id_salt("add op tool")
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut form.tool, None, "none yet");
+                                    for (id, name) in &tools {
+                                        ui.selectable_value(&mut form.tool, Some(*id), name);
+                                    }
+                                });
+                            crate::pending_edits::track(ui, &combo.response, "Tool", None);
+                            if ui
+                                .button("From the library…")
+                                .on_hover_text("Choose a tool in the tool library and add it to the project")
+                                .clicked()
+                            {
+                                wants_library = true;
                             }
-                            // Disabled with the reason, not hidden: a
-                            // strategy that needs a STEP part on a mesh part
-                            // (decision record 0174).
-                            if let Some(why) = &c.unavailable {
-                                ui.add_enabled(
-                                    false,
-                                    egui::Button::selectable(
-                                        false,
-                                        format!("{} \u{b7} needs a STEP model", c.label),
-                                    ),
-                                )
-                                .on_disabled_hover_text(why);
+                        });
+                        if let Some(setup) = form.setup {
+                            preset_row(ui, app.project(), setup, form.tool, &mut form.material);
+                        }
+                        let takes = choices
+                            .iter()
+                            .find(|c| c.name == form.strategy)
+                            .is_some_and(|c| c.takes_selections);
+                        if let Some((_, set)) = &form.cut_on {
+                            if takes {
+                                ui.label(format!("Cut on: {set}"));
                             } else {
-                                let label = if c.takes_selections {
-                                    c.label.clone()
-                                } else {
-                                    format!("{} \u{b7} ignores selections", c.label)
-                                };
-                                ui.selectable_value(&mut form.strategy, c.name.clone(), label);
+                                ui.weak(format!(
+                                    "This strategy ignores selections, so it does not take '{set}'."
+                                ));
                             }
+                        }
+                        // The setup chosen after the strategy may not take it.
+                        let unavailable = choices
+                            .iter()
+                            .find(|c| c.name == form.strategy)
+                            .and_then(|c| c.unavailable.clone());
+                        if let Some(why) = &unavailable {
                             ui.horizontal_wrapped(|ui| {
-                                ui.add_space(18.0);
-                                ui.weak(&c.description);
+                                crate::shell::mark(
+                                    ui,
+                                    openchuck_app::overview::ItemState::Warning,
+                                    why,
+                                );
+                                ui.label(format!("{why}."));
                             });
                         }
+                        ui.add(egui::Label::new("Everything else starts at the strategy's defaults; set them in the operation's panel.").wrap());
                     });
-                ui.horizontal(|ui| {
-                    ui.label("Setup");
-                    let shown = setups
-                        .iter()
-                        .find(|(id, _)| Some(*id) == form.setup)
-                        .map_or("none: add a setup first", |(_, n)| n.as_str());
-                    egui::ComboBox::from_id_salt("add op setup")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            for (id, name) in &setups {
-                                ui.selectable_value(&mut form.setup, Some(*id), name);
-                            }
-                        });
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Tool");
-                    let shown = tools
-                        .iter()
-                        .find(|(id, _)| Some(*id) == form.tool)
-                        .map_or("none yet", |(_, n)| n.as_str());
-                    egui::ComboBox::from_id_salt("add op tool")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut form.tool, None, "none yet");
-                            for (id, name) in &tools {
-                                ui.selectable_value(&mut form.tool, Some(*id), name);
-                            }
-                        });
-                    if ui
-                        .button("From the library…")
-                        .on_hover_text("Choose a tool in the tool library and add it to the project")
-                        .clicked()
-                    {
-                        wants_library = true;
-                    }
-                });
-                let takes = choices
-                    .iter()
-                    .find(|c| c.name == form.strategy)
-                    .is_some_and(|c| c.takes_selections);
-                if let Some((_, set)) = &form.cut_on {
-                    if takes {
-                        ui.label(format!("Cut on: {set}"));
-                    } else {
-                        ui.weak(format!(
-                            "This strategy ignores selections, so it does not take '{set}'."
-                        ));
-                    }
-                }
-                // The setup chosen after the strategy may not take it.
+                ui.add_space(4.0);
                 let unavailable = choices
                     .iter()
                     .find(|c| c.name == form.strategy)
-                    .and_then(|c| c.unavailable.clone());
-                if let Some(why) = &unavailable {
-                    ui.horizontal_wrapped(|ui| {
-                        crate::shell::mark(
-                            ui,
-                            openchuck_app::overview::ItemState::Warning,
-                            why,
-                        );
-                        ui.label(format!("{why}."));
-                    });
-                }
-                ui.weak("Everything else starts at the strategy's defaults; set them in the operation's panel.");
+                    .is_none_or(|c| c.unavailable.is_some());
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
-                            form.setup.is_some() && unavailable.is_none(),
+                            form.setup.is_some() && !unavailable,
                             egui::Button::new("Add"),
                         )
                         .clicked()
@@ -593,7 +690,19 @@ impl RunPanel {
                         close = true;
                     }
                 });
-            });
+            },
+        );
+        close |= event == crate::floating::WindowEvent::CloseRequested;
+        if (add || close || wants_library)
+            && crate::pending_edits::defer_local(
+                ctx,
+                &mut self.deferred_add,
+                (add, close, wants_library),
+            )
+            .is_none()
+        {
+            return (None, None);
+        }
         let mut added = None;
         let mut error = None;
         if add && let Some(setup) = form.setup {
@@ -602,7 +711,14 @@ impl RunPanel {
                 .find(|c| c.name == form.strategy)
                 .is_some_and(|c| c.takes_selections);
             let cut_on = form.cut_on.as_ref().filter(|_| takes).map(|(id, _)| *id);
-            match app.add_operation_on(&form.name, &form.strategy, setup, form.tool, cut_on) {
+            match app.add_operation_on(
+                &form.name,
+                &form.strategy,
+                setup,
+                form.tool,
+                cut_on,
+                form.material.as_deref(),
+            ) {
                 Ok(id) => {
                     added = Some(id);
                     close = true;
@@ -697,6 +813,80 @@ fn group_heading(group: openchuck_app::StrategyGroup) -> &'static str {
         StrategyGroup::Roughing => "Roughing",
         StrategyGroup::Finishing => "Finishing",
         StrategyGroup::Specialist => "Specialist",
+    }
+}
+
+#[cfg(test)]
+mod strategy_information_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn texts(shape: &egui::Shape, out: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Text(t) => out.push(t.galley.text().to_owned()),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn req_op_16_req_ui_07_every_registered_strategy_keeps_its_information_on_step_and_stl() {
+        use openchuck_app::{
+            Command,
+            project::{Item, RelativePath},
+        };
+        let (dir, mut app, _, setup) = crate::testing::cube_project("picker-all-strategies");
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let mut panel = RunPanel::default();
+        panel.begin_add(&app, None, None);
+        for extension in ["step", "stl"] {
+            // Eligibility deliberately uses the application's model metadata;
+            // this UI test neither imports nor generates from a fake STEP file.
+            let mut model = app.project().models()[0].clone();
+            model.path = RelativePath::new(format!("models/cube.{extension}")).unwrap();
+            app.execute(Command::Replace(Item::Model(model))).unwrap();
+            let before = app.project().clone();
+            for c in app.strategy_choices_for(Some(setup)) {
+                panel.adding.as_mut().unwrap().strategy.clone_from(&c.name);
+                let mut shown = Vec::new();
+                for _ in 0..4 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(1366.0, 768.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |_| {
+                            panel.add_dialog(&ctx, &mut app);
+                        },
+                    );
+                    output.textures_delta.clear();
+                    shown.clear();
+                    for shape in &output.shapes {
+                        texts(&shape.shape, &mut shown);
+                    }
+                }
+                assert!(
+                    shown.contains(&c.description),
+                    "{} on {extension}: {shown:?}",
+                    c.label
+                );
+                assert_eq!(panel.adding.as_ref().unwrap().strategy, c.name);
+                if let Some(why) = c.unavailable {
+                    assert!(shown.iter().any(|s| s.contains(&why)), "{why}");
+                }
+                assert_eq!(
+                    app.project(),
+                    &before,
+                    "viewing a strategy is not a project edit"
+                );
+            }
+        }
+        drop(app);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 

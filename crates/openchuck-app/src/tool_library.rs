@@ -1338,6 +1338,9 @@ pub struct OperationSpindle {
     pub from_tool: Option<(f64, String)>,
     /// What to do about it when neither gives a speed, in plain words.
     pub missing: Option<String>,
+    /// Why the speed is outside the machine's spindle speed range and what
+    /// to do, in plain words (decision record 0231).
+    pub out_of_range: Option<String>,
 }
 
 /// Operation `operation`'s spindle speed, where it comes from, or what is
@@ -1355,15 +1358,18 @@ pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<Op
         set: op.spindle_speed.map(|s| s.0),
         from_tool,
         missing,
+        out_of_range: crate::requirements::spindle_out_of_range(project, op),
     })
 }
 
 /// The command that gives operation `operation` the spindle speed in the
 /// typed `text` (revolutions per minute), or takes its own speed away when
 /// `text` is `None`, so the tool's cutting data applies again. Text that is
-/// not a number above 0 is refused in plain words (NFR-07).
+/// not a number above 0 is refused in plain words (NFR-07). A speed the user
+/// sets drops the operation's material preset (decision record 0230).
 pub fn set_operation_spindle(
     project: &Project,
+    registry: &openchuck_path::Registry,
     operation: OperationId,
     text: Option<&str>,
 ) -> Result<Command, AppError> {
@@ -1388,6 +1394,9 @@ pub fn set_operation_spindle(
         .cloned()
         .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
     changed.spindle_speed = speed;
+    if speed.is_some() {
+        crate::preset::drop_preset(project, registry, &mut changed);
+    }
     Ok(Command::Replace(Item::Operation(changed)))
 }
 
@@ -1455,4 +1464,51 @@ pub fn remove_from_project(project: &Project, tool: ToolId) -> Result<Command, A
         )));
     }
     Ok(Command::Remove(openchuck_project::ItemId::Tool(tool)))
+}
+
+/// Unused snapshots in project tool-number order (TL-07).
+/// All operations count, including disabled operations in every setup.
+pub fn unused_project_tools(project: &Project) -> Vec<ToolSnapshot> {
+    let used: BTreeSet<_> = project.operations().iter().filter_map(|o| o.tool).collect();
+    let mut tools: Vec<_> = project
+        .tools()
+        .iter()
+        .filter(|t| !used.contains(&t.id))
+        .cloned()
+        .collect();
+    tools.sort_by_key(|t| t.controller.number);
+    tools
+}
+
+/// Validate reviewed selections and construct one undoable cleanup (TL-07, UI-08).
+/// Any changed, missing or newly referenced selection refuses the entire action.
+/// Empty selections create no command. No library store is read or written.
+pub fn remove_unused_tools(
+    project: &Project,
+    reviewed: &[ToolSnapshot],
+    selected: &[ToolId],
+) -> Result<Option<Command>, AppError> {
+    let ids: BTreeSet<_> = selected.iter().copied().collect();
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    let mut commands = Vec::with_capacity(ids.len());
+    // Iterate the reviewed list for stable project-number order. Validate the
+    // complete selection before returning any command to the caller.
+    for tool in reviewed.iter().filter(|t| ids.contains(&t.id)) {
+        if project.tools().iter().find(|t| t.id == tool.id) != Some(tool) {
+            return Err(refuse(
+                "The project changed. Nothing was removed; review the refreshed list and select again.",
+            ));
+        }
+        commands.push(remove_from_project(project, tool.id).map_err(|_| refuse(
+            "The project changed: a selected tool is now used. Nothing was removed; review the refreshed list and select again."
+        ))?);
+    }
+    if commands.len() != ids.len() {
+        return Err(refuse(
+            "The selection changed. Nothing was removed; review the refreshed list and select again.",
+        ));
+    }
+    Ok(Some(Command::Batch(commands)))
 }

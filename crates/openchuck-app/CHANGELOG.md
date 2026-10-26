@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.21.0
+## 0.22.0
 
 - GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
 
@@ -9,6 +9,35 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
+
+- Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
+
+- ROUGHPATH maps optional reversing-ramp clearance from the whole STL target and configured full cutter/shank body, retaining held regions/tabs independently of selections. Unsupported exact STEP certificates and shanks wider than the cutting profile refuse the option. The entry form identifies the ramp-only flag, labels a retained true flag inactive for other styles, and explains full-width-slot engagement. Optional-ramp posting refuses uncertified low decimal precision or float-controller WCS/MCS magnitudes; it never changes the work zero.
+
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
+  is administratively renumbered from original 0238 by Merge Manager to
+  resolve the SIMUI collision; substantive content and owner acceptance are
+  unchanged. No product change in this correction.
+
+- OUTPUT-1 (#307; UI-12, GC-05/12/15, NFR-07): `prepare_output` returns a
+  read-only `OutputPlan` of same-run bytes and full destinations;
+  `write_output` now takes the reviewed plan and replacement approval and
+  returns an `OutputReport` of completed/failed/not-attempted paths. Results
+  are retained in the session overview with `MessageAction::ReviewExport`.
+  A changed destination or stale input refuses the batch, a later I/O failure
+  retains earlier successes, and only a full batch records export completion.
+  New paths are exclusively created; approved replacements use unique
+  temporary files. Existing filenames, output bytes and CLI helpers stay
+  unchanged. No library-family or project-schema change.
+
+- Lane TOOLLIB2 (decision 0236; issue #313): manual project-only unused-tool cleanup with selected-snapshot revalidation, one undoable batch, freed tool numbers, unchanged library and generated output. The tool library window provides a guarded checklist and confirmation, including disabled-operation retention and changed-candidate refresh.
+
+- Lane SWARF3 (decisions 0228 and 0229, OI-634 and OI-637; OP-02, NFR-12): the avoid and check sets of rotary roughing and helical, axial, indexed and simultaneous finishing take their choice (schema 14's `on_break`), on a mesh part and as face sets on a STEP part: Cut short is the path as before, Warn only keeps the whole path with a warning naming the set and how far the tool breaks it, and Ignore leaves the set out with the warning that it limits nothing. Their boundary set takes no options. `Application::strategy_set_options` and `SetOptionsShown` (which options the Geometry section shows: the boundary's limits for swarf only, each avoid or check set's choice for every strategy that takes a region, and whether Cut short lifts the tool over a check set) replace `Application::strategy_takes_set_options` (breaking).
+- Lane OPSPEED (decisions 0230 and 0231; issues #197 and #249): the new `preset` module (`MaterialPreset`, `PresetChoice`, `PresetState`, `preset_for`, `operation_preset`, `set_operation_preset`), a material preset per operation; `Application::add_operation_on` takes the preset's material; `tool_library::set_operation_spindle` takes the strategy registry, and a cutting value set on an operation drops its preset; `OperationSpindle` gains `out_of_range`, and a spindle speed outside the machine's range is a required value and blocks posting. `machine_view::machine_values` lists the spindle speed range when the profile gives one.
+- Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, a breaking change; decision 0226). Pencil clean-up on a STEP part follows the part's inside corners on its exact edges (`PencilFinishing::on_brep`), and its note about the tessellation says so; on a mesh part nothing changes. New example `pencil_creases` (with `kernel-tests`): the creases of both forms and the cut against the exact faces of a STEP part, measured.
 - Lane STEPALL-F (decisions 0209 and 0210, issue #257; OP-23, OP-02, OP-11): on a STEP part, rotary roughing and helical, axial, indexed and simultaneous finishing take face sets as the region, boundary, avoid and check sets and with a stock to leave per set, as the triangles of their faces in the joined tessellation (`selection::resolve` takes a face map). The new `step_sets` module (`SetRefusal`, `Application::set_refusals`) is the one check for the sets a strategy cannot use on a STEP part: the overview puts the operation in error with Messages lines before anything is generated, and generation refuses with the same words, worded with the strategy's label and what to do (the internal name and requirement IDs are gone, also from the mesh part's refusal of a region on a strategy that takes none). An operation on a STEP part that drops the tool on the tessellation says so in its notes. No signature change.
 - Lane MSGPROG (decisions 0218 and 0219; issues #201 and #255): a pipeline run and adding a model report one figure for all their work, `done` of the new `RUN_PROGRESS_TOTAL` (tenths of a per cent), that never goes back; `STAGE_GENERATE` and `STAGE_SIMULATE` name the stage the figure is in, no longer a count of operations or setups. `JobEntry::percent` (rounded down). The new module `note_groups` (`group_notes`, `NoteGroup`, `CLOSE`) groups repeated notes about consecutive moves for display; the notes themselves are unchanged.
 - The comparison of a setup's final stock with its part is kept with the cached stock it compares (decision 0217, OI-627; NFR-04): a Simulate run whose final stocks all come from the cache compares nothing again and reads no part mesh, and gives the same report. `Regeneration::compared` lists the setups compared in a run.

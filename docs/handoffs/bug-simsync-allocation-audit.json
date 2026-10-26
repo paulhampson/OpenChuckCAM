@@ -1,0 +1,765 @@
+{
+  "date": "2026-10-25",
+  "base": "ab863f6531d1e8fab8c2562e88d92b9277937c3f",
+  "pull_requests": [
+    {
+      "number": 342,
+      "head": "b2e4f859a03108036d955f3f249005558b1982d7",
+      "branch": "codex/lane-checkpoint-crash-recovery"
+    },
+    {
+      "number": 341,
+      "head": "e17e65e4012780f2aa31acb2c9b15c6573f99e9e",
+      "branch": "codex/bug-simsync-333"
+    },
+    {
+      "number": 321,
+      "head": "b375262526492737ff609a6968a5501fe6d88b8e",
+      "branch": "claude/lane-stepall-m-measure"
+    },
+    {
+      "number": 284,
+      "head": "9573685001117c4e71a236c555f34138fb21cbad",
+      "branch": "claude/docs-gates-4-5-test-instructions"
+    },
+    {
+      "number": 131,
+      "head": "5f16937630190956027ee9b5f638f8bbdc45c9a0",
+      "branch": "dependabot/cargo/ui-graphics-49e8759968"
+    }
+  ],
+  "branches": [
+    {
+      "branch": "cla-signatures",
+      "sha": "55d93fb3659b0c57f6a7cf1d106ee10db48d3e0f",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "claude/ci-speed-up-libs-nextest",
+      "sha": "af6a09bc6d3c777a069a32154b2790fc582c493c",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "claude/coordinator-notes-owner-test-list",
+      "sha": "226e082e61f1f4a8e875bf62b276498037582f0f",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "claude/docs-gates-4-5-test-instructions",
+      "sha": "9573685001117c4e71a236c555f34138fb21cbad",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "claude/lane-stepall-m-measure",
+      "sha": "b375262526492737ff609a6968a5501fe6d88b8e",
+      "records": [
+        "docs/decisions/0234-replay-output-evidence.txt",
+        "docs/decisions/0234-replay-output-rounding-correction.md"
+      ],
+      "reservations": []
+    },
+    {
+      "branch": "claude/upbeat-davinci-jk46yd",
+      "sha": "c92fa236ccc8862e5a52e80eade69c73b835d7e0",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "codex/bug-simsync-333",
+      "sha": "e17e65e4012780f2aa31acb2c9b15c6573f99e9e",
+      "records": [
+        "docs/decisions/0235-confirmed-selection-overlay.md",
+        "docs/decisions/0236-remove-unused-project-tools.md",
+        "docs/decisions/0237-strategy-dropdown-and-information-panel.md",
+        "docs/decisions/0237-strategy-explanations.txt",
+        "docs/decisions/0238-simulate-display-and-operation-navigation.md",
+        "docs/decisions/0240-export-write-results-and-replacement-confirmation.md"
+      ],
+      "reservations": []
+    },
+    {
+      "branch": "codex/lane-checkpoint-crash-recovery",
+      "sha": "b2e4f859a03108036d955f3f249005558b1982d7",
+      "records": [
+        "docs/decisions/0235-confirmed-selection-overlay.md",
+        "docs/decisions/0236-remove-unused-project-tools.md",
+        "docs/decisions/0237-strategy-dropdown-and-information-panel.md",
+        "docs/decisions/0237-strategy-explanations.txt",
+        "docs/decisions/0238-simulate-display-and-operation-navigation.md",
+        "docs/decisions/0240-export-write-results-and-replacement-confirmation.md",
+        "docs/decisions/0243-project-recovery-checkpoints.md"
+      ],
+      "reservations": []
+    },
+    {
+      "branch": "dependabot/cargo/ui-graphics-49e8759968",
+      "sha": "5f16937630190956027ee9b5f638f8bbdc45c9a0",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "docs/decision-0016-sp-9-exact-surfaces",
+      "sha": "68789930b1eaebdc91f64f33de6e77de46a2ea31",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "main",
+      "sha": "ab863f6531d1e8fab8c2562e88d92b9277937c3f",
+      "records": [
+        "docs/decisions/0235-confirmed-selection-overlay.md",
+        "docs/decisions/0236-remove-unused-project-tools.md",
+        "docs/decisions/0237-strategy-dropdown-and-information-panel.md",
+        "docs/decisions/0237-strategy-explanations.txt",
+        "docs/decisions/0238-simulate-display-and-operation-navigation.md",
+        "docs/decisions/0240-export-write-results-and-replacement-confirmation.md",
+        "docs/decisions/0241-continuous-rotary-operation-boundaries.md",
+        "docs/decisions/0242-optional-back-and-forth-ramp.md"
+      ],
+      "reservations": [
+        "docs/handoffs/roughpath-evidence/release-integration/allocation-audit.json",
+        "docs/handoffs/roughpath-evidence/release-integration/allocation-audit.md"
+      ]
+    },
+    {
+      "branch": "management/merge-queue",
+      "sha": "b295308379def3871e092499302f11ece6fca2f6",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/linuxcnc-fixture-checks",
+      "sha": "92dd315d11ed0c85c5b4ee50466af5dd595a3bbc",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-1-step-kernel",
+      "sha": "f4a7d04db83c33e9cb4ea5f03ded1b9bbaa62834",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-2-viewport",
+      "sha": "d911116d86d5ca369de851991087f933359bd7e4",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-3-wrapped-path-gcode",
+      "sha": "0e251d2d40973cbc043d31e8672a6932ff3228d3",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-4-ray-cast-sweep",
+      "sha": "e5ffcd8daaaae4797ed69326fa7783409b36215e",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-5-gcode-reader",
+      "sha": "0fee6129e5a7051a36e49ec26781c2bda493422d",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-6-simulation-stock",
+      "sha": "7156bc1d196ab0038fa92389b0cbc176a5d13d96",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-7-2d-offsets",
+      "sha": "1f54adde2d9dc46ee4ed5dfcea8e513075921ac2",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-8-project-format",
+      "sha": "db95e1558b0d34aeaa46272012e79674dcc06422",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-9-exact-surfaces",
+      "sha": "b0dca8b57621b23245992d5db6e70510ee0ec918",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-10-template-engine",
+      "sha": "a27134ebc0373714b5dcf10a5b879269c0868840",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-11-swarf",
+      "sha": "d88f11077c1ac41a18115120a5b27e9d173baaf6",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-12-z1-conventions",
+      "sha": "4b1ea01d5eb772e2663e6e6d8698ae671b2ff898",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-13-tool-profiles",
+      "sha": "cc24ea2848920c6fb4d23a40b9fb2a66a445eded",
+      "records": [],
+      "reservations": []
+    },
+    {
+      "branch": "spike/sp-14-short-moves",
+      "sha": "69d532f0723b89667ae792a90a4d4a571300fe39",
+      "records": [],
+      "reservations": []
+    }
+  ],
+  "registers": [
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "52505711075406c2b983071d392cc04501644be7",
+      "branches": [
+        "claude/ci-speed-up-libs-nextest"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "78fbb0f1efd6801b3cc83ee47fe0e2c0228a5149",
+      "branches": [
+        "claude/ci-speed-up-libs-nextest"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "4876f6eb3c18a2371d50403c2509b2795b3134a2",
+      "branches": [
+        "claude/ci-speed-up-libs-nextest"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "7c2a5fbd0caf5b1e5bb54d39795ca1f3010b3056",
+      "branches": [
+        "claude/coordinator-notes-owner-test-list"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "5f9d63e1ea1d45dce7fcf2d77f2b6639165e88c9",
+      "branches": [
+        "claude/coordinator-notes-owner-test-list"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "ba5aa2bae270512fc9c243ad999dd8cf9c2b5b6b",
+      "branches": [
+        "claude/coordinator-notes-owner-test-list"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "121db10e3e36e00cdb66f0278e6d24e5e674cb33",
+      "branches": [
+        "claude/docs-gates-4-5-test-instructions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "37de3d9f2b130d3d5cff99b34d63cecd0ff37ee9",
+      "branches": [
+        "claude/docs-gates-4-5-test-instructions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "f68d673f48085958deeb0f6522500d92dc156a7e",
+      "branches": [
+        "claude/docs-gates-4-5-test-instructions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "0e0bede67ad75461fc11fce25ba3ae072fc90b99",
+      "branches": [
+        "claude/lane-stepall-m-measure"
+      ],
+      "high_open_item_claims": [
+        984
+      ]
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "ec2d3cb38e1a3cb6f65467b0fc8a49b4887548b6",
+      "branches": [
+        "claude/lane-stepall-m-measure"
+      ],
+      "high_open_item_claims": [
+        984
+      ]
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "e3317305326dcd208aeedbfb9d77c3e92c69940d",
+      "branches": [
+        "claude/lane-stepall-m-measure"
+      ],
+      "high_open_item_claims": [
+        984
+      ]
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "4fc2c205ac1e563b09c5afd43746ae1252e655c6",
+      "branches": [
+        "claude/upbeat-davinci-jk46yd"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "37cb4ac2a5d34f6544c25b59c3efd2c93127ebab",
+      "branches": [
+        "claude/upbeat-davinci-jk46yd"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "7949cd5eaa51419d442ff7678e1b66974391c335",
+      "branches": [
+        "claude/upbeat-davinci-jk46yd"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "3eff72574d1cc095b2c2f6d4394c44e7beaf5fa3",
+      "branches": [
+        "codex/bug-simsync-333"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988
+      ]
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "558c6d46c5d4e3f468839e6141a918bfeba40857",
+      "branches": [
+        "codex/bug-simsync-333",
+        "main"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988
+      ]
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "6f524b5195b7d5a3d7fb031148b4c9da83e37690",
+      "branches": [
+        "codex/bug-simsync-333"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988
+      ]
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "b6be619b1ce7cf275951e37d74be12823be8ae18",
+      "branches": [
+        "codex/lane-checkpoint-crash-recovery"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988,
+        989
+      ]
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "4d58d33297da1c3a8fca3d1d5885ac738da60a40",
+      "branches": [
+        "codex/lane-checkpoint-crash-recovery"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988,
+        989
+      ]
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "63f4a629ea3c873fce2c0cd4d5c327c9c2eb5d9e",
+      "branches": [
+        "codex/lane-checkpoint-crash-recovery"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988,
+        989
+      ]
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "8df74f1a28364a06512ef39fcc8db53b0ab83349",
+      "branches": [
+        "dependabot/cargo/ui-graphics-49e8759968",
+        "management/merge-queue"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "55d52087b470a1ae124bbcec8e17285e478fbcda",
+      "branches": [
+        "dependabot/cargo/ui-graphics-49e8759968",
+        "management/merge-queue"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "a4a93e30196a09b42c8158fce90c99a254f8efc7",
+      "branches": [
+        "dependabot/cargo/ui-graphics-49e8759968",
+        "management/merge-queue"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "f139fc4d7e57f44cb19f075dbee65f6aac40fd69",
+      "branches": [
+        "docs/decision-0016-sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "bd6ba0ea0a9994c66b8f7ab0d830618ad64fd695",
+      "branches": [
+        "docs/decision-0016-sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "bfa3edecd3d077bc9e8db51bbca3f0b8f6a54637",
+      "branches": [
+        "docs/decision-0016-sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "3fad7d783a44b5cf33458d91f93b72d68414cbab",
+      "branches": [
+        "main"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988
+      ]
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "9a6c71df54bdce95aec174a9aace625a763884cf",
+      "branches": [
+        "main"
+      ],
+      "high_open_item_claims": [
+        985,
+        986,
+        987,
+        988
+      ]
+    },
+    {
+      "path": "MERGE_QUEUE.md",
+      "sha": "e058660c28a4cfa7bad31e0f6432d4749ab74fd2",
+      "branches": [
+        "management/merge-queue"
+      ],
+      "high_open_item_claims": [
+        984,
+        985,
+        986,
+        987,
+        988,
+        989
+      ]
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "ebc74c31aa76c337c5e79542b9ac6179b634d627",
+      "branches": [
+        "spike/linuxcnc-fixture-checks"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "2e15c3b1f7f616c04603ed4ac067d19c40143545",
+      "branches": [
+        "spike/linuxcnc-fixture-checks"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "40f23b4e054d5ae1faf53305950f4200e3492b3b",
+      "branches": [
+        "spike/linuxcnc-fixture-checks"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "f5621c855e7ab4e0c97e35b5c7ef934b91d5a07e",
+      "branches": [
+        "spike/sp-1-step-kernel",
+        "spike/sp-2-viewport",
+        "spike/sp-3-wrapped-path-gcode"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "e423eed610e4985c996ea6148c3a50c3f7c4e150",
+      "branches": [
+        "spike/sp-1-step-kernel",
+        "spike/sp-2-viewport",
+        "spike/sp-3-wrapped-path-gcode"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "cf0b2b268c6d7190c0596e9e17d2673c1d8e940e",
+      "branches": [
+        "spike/sp-4-ray-cast-sweep"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "c85de69c47dd6688b500a3d35efb6d1756ba5267",
+      "branches": [
+        "spike/sp-4-ray-cast-sweep"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "6b1d64eefe518b8642924b6123e3e37db08054c2",
+      "branches": [
+        "spike/sp-4-ray-cast-sweep"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "4804ddb0033e8ae6a65b376dab0e95ae2dd6c656",
+      "branches": [
+        "spike/sp-5-gcode-reader"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "5ad8418d45df8e162d2cf646b21887dfd780d9d9",
+      "branches": [
+        "spike/sp-5-gcode-reader"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "e87eba3ad2e5de69c33e5fcd0c2d17a68487d214",
+      "branches": [
+        "spike/sp-6-simulation-stock",
+        "spike/sp-11-swarf"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "fe36245a1265b690898977d4f175569dd3e6acbf",
+      "branches": [
+        "spike/sp-6-simulation-stock",
+        "spike/sp-11-swarf"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "756bd7c62a92909641f24279606ba8a94db9ae5a",
+      "branches": [
+        "spike/sp-6-simulation-stock",
+        "spike/sp-11-swarf"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "38aeba0a02a4fef36b4dfdb1555a9039c59ea583",
+      "branches": [
+        "spike/sp-7-2d-offsets",
+        "spike/sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "ffc5c3e6ef6255d43d760769018a36c0ea01ca62",
+      "branches": [
+        "spike/sp-7-2d-offsets",
+        "spike/sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "2a02df0f1658fde25293e1d4e66b0df2edebc009",
+      "branches": [
+        "spike/sp-7-2d-offsets",
+        "spike/sp-9-exact-surfaces"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "0658df0c0aff2da4eeb2ce23f88a22fc7113c023",
+      "branches": [
+        "spike/sp-8-project-format",
+        "spike/sp-12-z1-conventions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "c38d2f68092d1bc0eb2b63e4da3eb6f83661c212",
+      "branches": [
+        "spike/sp-8-project-format",
+        "spike/sp-12-z1-conventions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "0836c595c7c695df7927748910e8a80393506250",
+      "branches": [
+        "spike/sp-8-project-format",
+        "spike/sp-12-z1-conventions"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "72c9e9383b26310daab689d3144c60d851d328c9",
+      "branches": [
+        "spike/sp-10-template-engine"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "0194de58c4d9dd3021f1e33be418adb517e90128",
+      "branches": [
+        "spike/sp-10-template-engine"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "8061ced3ce5e4871d0e5e8bc89e45e2e4c5a1265",
+      "branches": [
+        "spike/sp-10-template-engine"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "dcb9f9343de58c957e905e6cd3efdafe77fa4cd7",
+      "branches": [
+        "spike/sp-13-tool-profiles"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "d861cfd64d4e7196fa9ee0d25cf1bfb4a8b86aec",
+      "branches": [
+        "spike/sp-13-tool-profiles"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "f27ff0f68927f4609faf10563851f5401136d8d3",
+      "branches": [
+        "spike/sp-13-tool-profiles"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "sha": "fcd34fd60843448d661880ad59286117caf3887a",
+      "branches": [
+        "spike/sp-14-short-moves"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/open-items.md",
+      "sha": "4af538030dd13c3e2a77ac5493e3674889d32b38",
+      "branches": [
+        "spike/sp-14-short-moves"
+      ],
+      "high_open_item_claims": []
+    },
+    {
+      "path": "docs/work-breakdown.md",
+      "sha": "4eef25e6af5ca0d5f339a850f3e8c11671302f8f",
+      "branches": [
+        "spike/sp-14-short-moves"
+      ],
+      "high_open_item_claims": []
+    }
+  ],
+  "conclusion": "No new decision, OI or project-schema claim. Preserve held 0234/OI-984, merged 0235–0238 and 0240–0242, FINSTEP reservation 0239, CHECKPOINT 0243/OI-989; project schema 18 and machine schema 4 unchanged. Source: all 27 branch trees, 58 unique decision-index/OI/work-breakdown/queue blobs, and all five open PR heads."
+}

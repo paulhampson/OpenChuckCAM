@@ -13,7 +13,8 @@
 
 use openchuck_types::Result;
 use openchuck_types::brep::{
-    BSplinePatch, BrepEdge, BrepFace, BrepModel, BrepVertex, Frame, Surface, TrimLoop, UvPoint,
+    BSplineCurve, BSplinePatch, BrepEdge, BrepFace, BrepModel, BrepVertex, EdgeCurve, Frame,
+    Surface, TrimLoop, UvPoint,
 };
 use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
@@ -350,6 +351,7 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> Result<BrepModel> {
             .iter()
             .map(|e| BrepEdge {
                 polyline: e.polyline.iter().map(|&p| map.apply(p)).collect(),
+                curve: e.curve.as_ref().and_then(|c| transform_curve(c, map, s)),
                 ..e.clone()
             })
             .collect(),
@@ -362,6 +364,63 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> Result<BrepModel> {
             })
             .collect(),
         tessellation: model.tessellation,
+    })
+}
+
+/// An edge's exact curve mapped by `map`, whose linear part is a scale `s`
+/// times an orthogonal map (decision 0227): frames and poles move as for a
+/// face, lengths scale by `s`, angles and spline parameters are kept, and a
+/// line's parameter (a length) scales by `s`. `None` for a curve kind this
+/// function does not know, so the edge keeps only its polyline.
+fn transform_curve(curve: &EdgeCurve, map: &Affine3, s: f64) -> Option<EdgeCurve> {
+    let axis = |v: Vec3| map.apply_vec(v) * (1.0 / s);
+    let frame = |f: &Frame| Frame {
+        origin: map.apply(f.origin),
+        x: axis(f.x),
+        y: axis(f.y),
+        z: axis(f.z),
+    };
+    Some(match curve {
+        EdgeCurve::Line {
+            origin,
+            direction,
+            first,
+            last,
+        } => EdgeCurve::Line {
+            origin: map.apply(*origin),
+            direction: axis(*direction),
+            first: first * s,
+            last: last * s,
+        },
+        EdgeCurve::Circle {
+            frame: f,
+            radius,
+            first,
+            last,
+        } => EdgeCurve::Circle {
+            frame: frame(f),
+            radius: radius * s,
+            first: *first,
+            last: *last,
+        },
+        EdgeCurve::Ellipse {
+            frame: f,
+            major,
+            minor,
+            first,
+            last,
+        } => EdgeCurve::Ellipse {
+            frame: frame(f),
+            major: major * s,
+            minor: minor * s,
+            first: *first,
+            last: *last,
+        },
+        EdgeCurve::BSpline(c) => EdgeCurve::BSpline(BSplineCurve {
+            poles: c.poles.iter().map(|&p| map.apply(p)).collect(),
+            ..c.clone()
+        }),
+        _ => return None,
     })
 }
 

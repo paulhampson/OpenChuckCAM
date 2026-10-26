@@ -115,6 +115,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -468,6 +469,67 @@ fn req_op_02_a_check_surface_is_not_touched_and_a_boundary_limits_the_cut() {
         assert!(contact.x >= -1e-3 && contact.x <= 10.0 + 1e-3);
         let angle = contact.z.atan2(contact.y).to_degrees();
         assert!(angle > 45.0 - 0.1 && angle < 135.0 + 0.1, "angle = {angle}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The avoid and check sets of a strategy other than swarf take the three
+/// choices of decision 0229 item 1: Cut short is today's path, Warn only
+/// keeps the whole path and warns naming the set, and Ignore keeps the
+/// whole path and says the set limits nothing.
+#[test]
+fn req_op_02_avoid_and_check_sets_of_other_strategies_take_their_choices() {
+    use openchuck_app::project::OnBreak;
+    use openchuck_app::selection::SelectionRole;
+    let (dir, mut app, op, model) = project("on-break");
+    let whole = app.regenerate().unwrap();
+    let roof = app
+        .save_selection("Top", model, top_face(&app, model))
+        .unwrap();
+    for (role, name) in [
+        (SelectionRole::Avoid, "avoid"),
+        (SelectionRole::Check, "check"),
+    ] {
+        app.set_operation_selection(op, role, roof, true).unwrap();
+        // Cut short, the default: the top face is not touched.
+        let short = app.regenerate().unwrap();
+        assert!(
+            short.toolpath.groups[0] != whole.toolpath.groups[0],
+            "{name}"
+        );
+        assert!(short.groups[0].warnings.is_empty(), "{name}");
+        for (choice, said) in [
+            (
+                OnBreak::Warn,
+                if role == SelectionRole::Avoid {
+                    "The tool cuts into the avoid set 'Top' along about ".to_owned()
+                } else {
+                    "The tool touches the check set 'Top' along about ".to_owned()
+                },
+            ),
+            (
+                OnBreak::Ignore,
+                format!(
+                    "The {name} set 'Top' limits nothing, because it is set to Ignore: the tool \
+                     is not kept clear of it."
+                ),
+            ),
+        ] {
+            app.set_on_break(op, role, roof, choice).unwrap();
+            let run = app.regenerate().unwrap();
+            assert!(
+                run.toolpath.groups[0] == whole.toolpath.groups[0],
+                "{name} {choice:?}: the path is not the whole path"
+            );
+            let warnings = &run.groups[0].warnings;
+            assert_eq!(warnings.len(), 1, "{name} {choice:?}: {warnings:?}");
+            assert!(
+                warnings[0].message.starts_with(&said),
+                "{name} {choice:?}: {}",
+                warnings[0].message
+            );
+        }
+        app.set_operation_selection(op, role, roof, false).unwrap();
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -1295,6 +1357,7 @@ fn req_op_02_a_new_operation_refuses_a_set_on_another_model() {
         existing.setup,
         existing.tool,
         Some(roof),
+        None,
     ));
     assert!(error.contains("different model"), "{error}");
     assert_eq!(app.project().operations().len(), count);
@@ -1321,6 +1384,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         )
         .unwrap();
     assert_eq!(app.project().operation(new).unwrap().selections, [set]);
@@ -1333,6 +1397,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         ));
         assert!(error.contains("ignores selections"), "{error}");
     }

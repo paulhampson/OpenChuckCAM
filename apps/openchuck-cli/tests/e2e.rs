@@ -347,6 +347,7 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters,
         }),
         placement: Placement::End,
@@ -668,6 +669,7 @@ fn build_first_cut(root: &Path) -> PathBuf {
                 check: Vec::new(),
                 restriction_options: Default::default(),
                 spindle_speed: None,
+                material: None,
                 parameters: parameters
                     .into_iter()
                     .map(|(k, v)| (k.to_owned(), v))

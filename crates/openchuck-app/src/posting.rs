@@ -13,11 +13,12 @@ use std::path::PathBuf;
 
 use openchuck_gcode::{CheckConfig, Dialect, TimingRule, Tolerances};
 use openchuck_post::{
-    FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, TemplatePost, ToolSetting,
-    UnwindMode, builtin, builtin_ids,
+    ADirection, FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, TemplatePost,
+    ToolSetting, UnwindMode, builtin, builtin_ids,
 };
 use openchuck_project::Project;
 use openchuck_types::ir::{Toolpath, ToolpathGroup};
+use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::kinematics::RotaryFrame;
 
 use crate::error::AppError;
@@ -188,13 +189,15 @@ pub struct PlannedFile {
 /// names [`post_toolpath`] gives them. A project file across setups is refused
 /// as it is when posting (OI-92).
 pub(crate) fn plan_files(
-    project: &Project,
-    toolpath: &Toolpath,
+    run: &crate::Regeneration,
     selection: &PostSelection,
     grouping: OutputGrouping,
 ) -> Result<Vec<PlannedFile>, AppError> {
+    let project = &run.project;
+    let cancel = CancelToken::new();
+    let context = JobContext::new(&cancel, &NoProgress);
     let extension = selection.load()?.options.file_extension;
-    split_units(project, toolpath, grouping)?
+    split_units(project, &run.canonical_toolpath, grouping)?
         .into_iter()
         .enumerate()
         .map(|(index, unit)| {
@@ -208,6 +211,8 @@ pub(crate) fn plan_files(
                         unit.setup
                     ))
                 })?;
+            let assembled =
+                crate::connections::assemble(project, unit.groups, &run.groups, &context)?;
             Ok(PlannedFile {
                 name: file_name(
                     project,
@@ -219,7 +224,7 @@ pub(crate) fn plan_files(
                 ),
                 setup: setup.name.clone(),
                 label: unit.label.as_ref().map(|(title, _)| title.clone()),
-                programmed_seconds: unit
+                programmed_seconds: assembled
                     .groups
                     .iter()
                     .flat_map(|g| g.segments.iter())
@@ -475,14 +480,37 @@ fn split_units(
 /// Posts `toolpath` and returns the files as (name, text), their reports and notes.
 #[allow(clippy::type_complexity)]
 pub(crate) fn post_toolpath(
-    project: &Project,
-    toolpath: &Toolpath,
+    run: &crate::Regeneration,
     selection: &PostSelection,
     grouping: OutputGrouping,
+    context: &JobContext<'_>,
 ) -> Result<(Vec<(String, String)>, Vec<GcodeReport>, Vec<String>), AppError> {
+    let project = &run.project;
+    let toolpath = &run.canonical_toolpath;
     let post = TemplatePost::new(selection.load()?);
     if toolpath.groups.is_empty() {
         return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
+    let decimals = &post.definition().options.decimals;
+    if decimals.pos < 3 || decimals.a < 3 {
+        for group in &toolpath.groups {
+            if let Some(operation) = project
+                .operations()
+                .iter()
+                .find(|o| o.id.to_string() == group.tags.operation)
+            {
+                let reversing = matches!(
+                    operation.parameters.get("ramp_back_and_forth"),
+                    Some(openchuck_project::ParameterValue::Flag(true))
+                ) && matches!(operation.parameters.get("entry"),Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
+                if reversing {
+                    return Err(AppError::Post(format!(
+                        "operation '{}': back-and-forth ramp clearance requires at least three decimal places for XYZ and A; increase the post precision or choose another entry",
+                        operation.name
+                    )));
+                }
+            }
+        }
     }
     let extension = post.definition().options.file_extension.clone();
     let machine = project
@@ -535,6 +563,9 @@ pub(crate) fn post_toolpath(
                         crate::requirements::missing_spindle_message(project, operation)
                     ))
                 })?;
+            if let Some(why) = crate::requirements::spindle_out_of_range(project, operation) {
+                return Err(AppError::Post(format!("cannot post the G-code: {why}")));
+            }
             operation_spindle.insert(group.tags.operation.clone(), speed.0);
             if tools.contains_key(tag) {
                 continue;
@@ -570,6 +601,8 @@ pub(crate) fn post_toolpath(
                 block_window: machine.block_window,
                 mode: machine.short_block_mode,
             },
+            a_range: machine.a_range,
+            safe_z: setup.clearance.unwrap_or(machine.clearance).safe_z.0,
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
             operation_names: operation_names.clone(),
@@ -582,7 +615,81 @@ pub(crate) fn post_toolpath(
             generator: Some(generator_comment()),
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         };
-        let part = Toolpath { groups };
+        let part = crate::connections::assemble(project, groups, &run.groups, context)?;
+        // The certificate's 0.002 mm linear allowance covers decimal
+        // rounding plus <=0.0001 mm float ULP on each work-coordinate word.
+        // A large work offset can otherwise lose clearance in a float
+        // controller even though the physical machine travel is small.
+        if post.definition().options.unwind == UnwindMode::DropTurns
+            || post.definition().feed_rule == FeedRule::Makera
+        {
+            let options = &post.definition().options;
+            let sign = match options.a_direction {
+                ADirection::Same => 1.0,
+                ADirection::Reversed => -1.0,
+            };
+            let mut a_shift = 0.0;
+            for group in &part.groups {
+                let end = group.segments.last().map_or(group.start, |s| s.end);
+                let written_end_a = openchuck_post::round_written(end.a.0, options.decimals.a);
+                let end_z = openchuck_types::kinematics::machine_xyz(&job.frame, end.tip, end.a).z;
+                let reversing=project.operations().iter().find(|o|o.id.to_string()==group.tags.operation).is_some_and(|o|
+                    matches!(o.parameters.get("ramp_back_and_forth"),Some(openchuck_project::ParameterValue::Flag(true)))
+                    && matches!(o.parameters.get("entry"),Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp"));
+                if reversing {
+                    let canonical = toolpath.groups.iter().find(|g| g.tags == group.tags)
+                        .ok_or_else(|| AppError::Post("back-and-forth ramp has no canonical numeric precision certificate; regenerate the toolpath".into()))?;
+                    let canonical_end =
+                        canonical.segments.last().map_or(canonical.start, |s| s.end);
+                    let counter_offset = (end.a.0 - canonical_end.a.0) * sign + a_shift;
+                    if !counter_offset.is_finite() || counter_offset.abs() > 720.0 + 1e-7 {
+                        return Err(AppError::Post("back-and-forth ramp cannot certify controller numeric precision at this rotary counter; use a supported counter-reset post or choose another entry".into()));
+                    }
+                }
+                for pose in std::iter::once(group.start)
+                    .chain(group.segments.iter().map(|s| s.end))
+                    .filter(|_| reversing)
+                {
+                    context.check_cancelled()?;
+                    let xyz =
+                        openchuck_types::kinematics::machine_xyz(&job.frame, pose.tip, pose.a);
+                    let machine_xyz = openchuck_types::kinematics::machine_xyz(
+                        &RotaryFrame::of_profile(machine),
+                        pose.tip,
+                        pose.a,
+                    );
+                    for value in [
+                        xyz.x,
+                        xyz.y,
+                        xyz.z,
+                        machine_xyz.x,
+                        machine_xyz.y,
+                        machine_xyz.z,
+                    ] {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let word = (value.abs() + 1.0) as f32;
+                        if !word.is_finite()
+                            || f64::from(f32::from_bits(word.to_bits() + 1)) - f64::from(word)
+                                > 0.0001
+                        {
+                            return Err(AppError::Post("back-and-forth ramp cannot certify controller numeric precision at this work offset; choose another entry".into()));
+                        }
+                    }
+                }
+                // Mirror the nonmoving boundary emitted by conversion and
+                // the firmware's strict >360 reset rule, including preceding
+                // operations that do not use reversing entry.
+                if machine.a_range == openchuck_types::machine::ARange::Continuous
+                    && options.unwind == UnwindMode::DropTurns
+                    && openchuck_post::round_written(end_z, options.decimals.pos) >= job.safe_z
+                {
+                    let held = written_end_a * sign + a_shift;
+                    if held.abs() > 360.0 {
+                        a_shift = held % 360.0 - written_end_a * sign;
+                    }
+                }
+            }
+        }
         let output = post
             .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;

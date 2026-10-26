@@ -818,7 +818,7 @@ fn run(cli: Cli) -> Result<()> {
                     "{key:<16} {} (built in; {} of {} values unconfirmed)",
                     profile.name,
                     profile.unconfirmed_fields().len(),
-                    openchuck_app::setup::ProfileField::ALL.len()
+                    profile.fields().len()
                 );
             }
             if let Some(dir) = library {
@@ -1651,7 +1651,13 @@ fn print_machine(profile: &MachineProfile) {
         "block time: {:.3} ms, window {}, {:?}",
         p.min_block_ms, p.block_window, p.short_block_mode
     );
-    for field in openchuck_app::setup::ProfileField::ALL {
+    match (p.min_spindle_rpm, p.max_spindle_rpm) {
+        (Some(min), Some(max)) => println!("spindle:    {} to {} rpm", min.0, max.0),
+        (None, Some(max)) => println!("spindle:    up to {} rpm", max.0),
+        (Some(min), None) => println!("spindle:    from {} rpm", min.0),
+        (None, None) => {}
+    }
+    for field in p.fields() {
         match p.provenance.get(&field) {
             Some(source) => {
                 let state = match source.state {
@@ -2086,6 +2092,7 @@ mod tests {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: leave
                 .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
                 .into_iter()

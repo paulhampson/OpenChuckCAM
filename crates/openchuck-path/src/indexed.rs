@@ -47,7 +47,7 @@ impl Strategy for IndexedFinishing {
     }
 
     fn description(&self) -> &str {
-        "Turns the part to each angle you choose, holds it still and cuts one straight pass along its length there. Use it for features that are cut from a few set directions."
+        "Turns the part to each chosen angle, holds it still and follows the surface along its length. Use it for features reached from a few set directions. It does not turn the part during a cutting pass."
     }
 
     fn schema(&self) -> ParameterSchema {

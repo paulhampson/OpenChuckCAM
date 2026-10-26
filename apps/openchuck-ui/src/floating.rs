@@ -114,11 +114,13 @@ fn run<T: Default>(
         window.fixed_size(fit).resizable(false)
     };
     let shown = window.show(ctx, |ui| {
-        if scroll {
-            egui::ScrollArea::vertical().show(ui, &mut contents).inner
-        } else {
-            contents(ui)
-        }
+        crate::pending_edits::form(ctx, egui::Id::new(("dialog form", key)), || {
+            if scroll {
+                egui::ScrollArea::vertical().show(ui, &mut contents).inner
+            } else {
+                contents(ui)
+            }
+        })
     });
     let value = shown.and_then(|r| r.inner).unwrap_or_default();
     let event = if open {

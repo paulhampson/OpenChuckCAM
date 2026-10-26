@@ -80,6 +80,7 @@ fn project_with_operation(tool: Option<ToolId>) -> Project {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: Default::default(),
         }),
         Placement::End,
@@ -630,6 +631,7 @@ fn req_tl_05_a_material_added_to_one_tool_is_known_to_every_tool_and_setup() {
 #[test]
 fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_is_missing() {
     use openchuck_app::tool_library::{operation_spindle, set_operation_spindle};
+    let registry = openchuck_app::path::Registry::builtin();
     let mut lib = ToolLibrary::open(&temp_dir("spindle")).unwrap();
     let mut draft = new_draft(&lib, ToolType::FlatEnd).unwrap();
     edit_cutting_data(&mut draft, "Softwood", oak(), None).unwrap();
@@ -658,21 +660,165 @@ fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_i
     assert!(s.missing.is_none());
     // The user's own value wins and ↺ (None) takes it away again.
     apply(&mut project, |p| {
-        set_operation_spindle(p, op, Some(" 9000 rpm ")).unwrap()
+        set_operation_spindle(p, &registry, op, Some(" 9000 rpm ")).unwrap()
     });
     assert_eq!(operation_spindle(&project, op).unwrap().set, Some(9000.0));
     apply(&mut project, |p| {
-        set_operation_spindle(p, op, None).unwrap()
+        set_operation_spindle(p, &registry, op, None).unwrap()
     });
     assert_eq!(operation_spindle(&project, op).unwrap().set, None);
     // A bad value is refused in plain words and nothing changes.
     for bad in ["", "fast", "0", "-5", "NaN", "inf", "9000rpmrpm"] {
-        let e = set_operation_spindle(&project, op, Some(bad))
+        let e = set_operation_spindle(&project, &registry, op, Some(bad))
             .unwrap_err()
             .to_string();
         assert!(e.contains("spindle speed"), "{bad}: {e}");
         assert!(!e.contains("tool number"), "{bad}: {e}");
     }
-    assert!(set_operation_spindle(&project, OperationId::from_u128(99), None).is_err());
+    assert!(set_operation_spindle(&project, &registry, OperationId::from_u128(99), None).is_err());
     assert!(operation_spindle(&project, OperationId::from_u128(99)).is_none());
+}
+
+#[test]
+fn req_tl_07_unused_candidates_include_only_unreferenced_snapshots_across_setups() {
+    use openchuck_app::tool_library::unused_project_tools;
+    let dir = temp_dir("unused-query");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    let ids: Vec<_> = ["enabled", "disabled", "unused"]
+        .into_iter()
+        .map(|name| saved(&mut lib, ToolType::FlatEnd, name))
+        .collect();
+    let mut project = project_with_operation(None);
+    for id in &ids {
+        add(&mut project, &lib, *id);
+    }
+    apply(&mut project, |p| {
+        set_operation_tool(p, OperationId::from_u128(5), ids[0]).unwrap()
+    });
+    let setup = SetupId::from_u128(2);
+    project
+        .insert(
+            Item::Setup(Setup::new(setup, "second setup")),
+            Placement::End,
+        )
+        .unwrap();
+    let mut disabled = project.operations()[0].clone();
+    disabled.id = OperationId::from_u128(6);
+    disabled.setup = setup;
+    disabled.enabled = false;
+    disabled.tool = Some(ids[1]);
+    project
+        .insert(Item::Operation(disabled), Placement::End)
+        .unwrap();
+    let rows = unused_project_tools(&project);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0], project.tools()[2]);
+    assert_eq!(rows[0].name, "unused");
+    assert_eq!(rows[0].controller.number, 3);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_tl_07_req_tl_11_req_gc_14_req_ui_08_cleanup_is_atomic_and_restores_exact_snapshots() {
+    use openchuck_app::tool_library::{remove_unused_tools, unused_project_tools};
+    let dir = temp_dir("unused-history");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    let ids: Vec<_> = ["first", "second", "third"]
+        .into_iter()
+        .map(|name| saved(&mut lib, ToolType::FlatEnd, name))
+        .collect();
+    let mut project = project_with_operation(None);
+    for id in &ids {
+        add(&mut project, &lib, *id);
+    }
+    let before = project.clone();
+    let reviewed = unused_project_tools(&project);
+    assert!(
+        remove_unused_tools(&project, &reviewed, &[])
+            .unwrap()
+            .is_none()
+    );
+    let project_dir = temp_dir("unused-project-history");
+    openchuck_app::project::file::save(&project, &project_dir).unwrap();
+    let mut app =
+        openchuck_app::Application::open(&project_dir, openchuck_app::Threads::Exactly(1)).unwrap();
+    let command = remove_unused_tools(&project, &reviewed, &[ids[0], ids[2]])
+        .unwrap()
+        .unwrap();
+    app.execute(command).unwrap();
+    project = app.project().clone();
+    assert_eq!(project.tools().len(), 1);
+    assert_eq!(project.tools()[0], before.tools()[1]);
+    app.undo().unwrap();
+    project = app.project().clone();
+    assert_eq!(project, before);
+    app.redo().unwrap();
+    project = app.project().clone();
+    assert_eq!(project.tools().len(), 1);
+    app.save().unwrap();
+    assert!(!app.is_modified());
+    assert_eq!(
+        openchuck_app::project::file::load(&project_dir).unwrap(),
+        project
+    );
+    // A freed number is reused by the existing allocator. Undo that later
+    // addition before restoring the exact original snapshots.
+    let fresh = saved(&mut lib, ToolType::Drill, "fresh");
+    let (add, controller, _) = add_to_project(app.project(), &lib, fresh).unwrap();
+    assert_eq!(controller.number, 1);
+    app.execute(add).unwrap();
+    assert!(app.is_modified());
+    let reused = app.project().clone();
+    app.undo().unwrap();
+    app.undo().unwrap();
+    assert_eq!(app.project(), &before);
+    app.save().unwrap();
+    assert_eq!(
+        openchuck_app::project::file::load(&project_dir).unwrap(),
+        before
+    );
+    app.redo().unwrap();
+    app.redo().unwrap();
+    assert_eq!(app.project(), &reused);
+    assert_eq!(ToolLibrary::open(&dir).unwrap().tools().count(), 4);
+    std::fs::remove_dir_all(project_dir).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_tl_07_cleanup_refuses_entire_changed_selection() {
+    use openchuck_app::tool_library::{remove_unused_tools, unused_project_tools};
+    let dir = temp_dir("unused-changed");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    let a = saved(&mut lib, ToolType::FlatEnd, "a");
+    let b = saved(&mut lib, ToolType::Drill, "b");
+    let mut project = project_with_operation(None);
+    for id in [a, b] {
+        add(&mut project, &lib, id);
+    }
+    let reviewed = unused_project_tools(&project);
+    for change in 0..4 {
+        let mut changed = project.clone();
+        match change {
+            0 => {
+                let mut t = changed.tools()[1].clone();
+                t.name = "changed".into();
+                changed.replace(Item::Tool(t)).unwrap();
+            }
+            1 => apply(&mut changed, |p| set_project_tool_number(p, b, 17).unwrap()),
+            2 => {
+                changed
+                    .remove(openchuck_app::project::ItemId::Tool(b))
+                    .unwrap();
+            }
+            _ => apply(&mut changed, |p| {
+                set_operation_tool(p, OperationId::from_u128(5), b).unwrap()
+            }),
+        }
+        let before = changed.clone();
+        assert!(remove_unused_tools(&changed, &reviewed, &[a, b]).is_err());
+        assert_eq!(changed, before);
+    }
+    assert!(remove_unused_tools(&project, &[], &[a]).is_err());
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.21.0
+## 0.22.0
 
 - GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
 
@@ -9,6 +9,11 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+
+- **Breaking (0.20.0):** `machine::MachineProfile` has two new public fields, `min_spindle_rpm` and `max_spindle_rpm` (`Option<SpindleSpeed>`), the spindle speed range the machine runs at, a limit and never a default; `ProfileField` gains `SpindleRange` (`ProfileField::ALL` has eight entries), and `unconfirmed_fields` lists it only when the profile gives a range. New: `machine::SpindleLimit`, `MachineProfile::spindle_limit` and `MachineProfile::fields` (the fields the profile gives a value for; the CLI counts those). `validate` refuses a value that is not above 0, and a lowest speed not below the highest (decision 0231, OI-754; GC-14, NFR-12). Profile files without them read with no range.
+- **Breaking (0.19.0):** `brep::BrepEdge` has a new public field, `curve: Option<EdgeCurve>`, the exact curve under the edge (decision 0227, issue 257; OP-08, OI-229). New: `brep::EdgeCurve` (a line, circle, ellipse or `BSplineCurve`), `brep::BSplineCurve`; `BrepModel::validate` checks the curve. Models written before the field read as `None`.
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Lane FOLLOW1 (OI-841; OP-21): `setup::SetupWarningKind::TabsOverlap`, a tab placed automatically that lies over a tab placed by hand; `workholding::check_tab_zones` reports it.
 - **Breaking (0.17.0):** a setup's part offset moves only the part (decision 0201, issue #175; SET-05). `kinematics::RotaryFrame::machine` is removed: every setup's machine frame is `RotaryFrame::of_profile`, with the model origin at the rotary reference point, and the stock, the workholding, the work zero and the toolpaths are fixed in it. `setup::SetupFrame::place_part` and `moves_part`, and `setup::PartExtent::in_setup`, place the part in a setup; `expected_work_offset` no longer adds the part offset; `SetupCheck::part` is the part as the setup places it.
 - **Breaking (0.17.0):** `workholding::Tab` has a new public field, `auto: Option<TabEnd>`, a tab placed automatically at the head or the tail of the part (decision 0202, issues #182 and #186; OP-21). New: `TabEnd`, `MIN_TAB_ROOM`, `auto_tab_span`, `Workholding::resolved` and `Workholding::auto_tabs_without_room`, and `setup::SetupWarningKind::AutoTabNoRoom`; `check_tab_zones` places automatic tabs first, and `validate_workholding` does not hold an automatic tab's stored position against the stock.

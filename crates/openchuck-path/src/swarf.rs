@@ -1910,7 +1910,7 @@ impl Strategy for Swarf {
     }
 
     fn description(&self) -> &str {
-        "Cuts with the side of the tool laid along straight lines in a curved wall of the part, so one pass finishes a tall surface. It needs a STEP model, not a mesh, and walls that are made of straight lines."
+        "Cuts selected wall faces, such as a blade, with the side of the tool. The wall can curve along its length, with straight lines running across its height for the tool's side to follow. Needs a STEP model. Some faces make the tool cut into the surface by more than the operation's tolerance; a warning gives the depth and location. Check the warning, toolpath and simulation before running the program."
     }
 
     fn group(&self) -> StrategyGroup {

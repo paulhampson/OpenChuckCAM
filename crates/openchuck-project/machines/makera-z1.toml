@@ -23,6 +23,10 @@ a_sense = "positive"
 # The Z1's tool number range is effectively unlimited; the probe uses a high number
 # (unconfirmed). 1000 is the owner's choice for now (13 Oct 2026, OI-62).
 max_tool_number = 1000
+# The spindle runs from 0 to 13 000 rpm (Makera's Z1 Safety Guidelines,
+# V1.3), so only the highest speed is a limit. Unconfirmed until the owner
+# checks it on the machine (decision 0231, OI-754).
+max_spindle_rpm = 13000.0
 
 # Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
 # anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,
@@ -105,3 +109,7 @@ source = "32-block planner queue in firmware source; accepted averaging rule, de
 [machine.provenance.short_block_mode]
 state = "unconfirmed"
 source = "Report first, accepted decision 0222; software policy, not a controller measurement."
+
+[machine.provenance.spindle_range]
+state = "unconfirmed"
+source = "Makera's published specification: the Makera Z1 Safety Guidelines, V1.3 (makera.com, file MakeraZ1-Safety_Guidelines-V1.3-multi-lan-260709-1.pdf), give the spindle as 0 to 13 000 rpm with closed-loop control; reviews (CNX Software, 1 Sep 2026) give the same. Not yet checked on the machine (decision 0231)"

@@ -86,6 +86,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         check: Vec::new(),
         restriction_options: Default::default(),
         spindle_speed: None,
+        material: None,
         parameters,
     }
 }
@@ -166,7 +167,13 @@ fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
 fn post(app: &mut Application, grouping: OutputGrouping) -> openchuck_app::Regeneration {
     app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
     app.set_output_grouping(grouping);
-    app.regenerate().unwrap()
+    let run = app.regenerate().unwrap();
+    assert!(
+        run.reports.iter().all(|r| r.is_clean()),
+        "{:?}",
+        run.reports
+    );
+    run
 }
 
 fn names(result: &openchuck_app::Regeneration) -> Vec<&str> {

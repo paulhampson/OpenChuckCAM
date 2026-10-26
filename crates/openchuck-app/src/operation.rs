@@ -20,9 +20,9 @@ use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
     CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
-    Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy, StrategyInput,
-    SurfaceSource, WatchedSurface, Window, drill, edge_following, generate, generate_in_region,
-    generate_in_zones, swarf,
+    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy,
+    StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following, generate,
+    generate_in_region, generate_in_zones, pencil, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
 use openchuck_project::{
@@ -82,9 +82,7 @@ pub fn parameter_values(
             (k.clone(), v)
         })
         .collect();
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
+    let material = crate::preset::material_of(project, operation);
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
@@ -481,8 +479,12 @@ pub(crate) fn generate_with_part(
         .as_ref()
         .map(BrepLimits::watch)
         .unwrap_or_default();
+    let region_watch = resolved_region
+        .as_ref()
+        .map(crate::selection::ResolvedRegion::watch)
+        .unwrap_or_default();
     let constraint = match (&resolved_region, &brep_limits) {
-        (Some(r), _) => Some(r.constraint()),
+        (Some(r), _) => Some(r.constraint(&region_watch)),
         (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
     };
@@ -493,6 +495,51 @@ pub(crate) fn generate_with_part(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
+    let reversing = matches!(
+        operation.parameters.get(names::RAMP_BACK_AND_FORTH),
+        Some(openchuck_project::ParameterValue::Flag(true))
+    ) && matches!(operation.parameters.get(names::ENTRY), Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
+    let entry_geometry = if reversing && placed.brep.is_none() {
+        use openchuck_types::tool::profile::{
+            ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
+        };
+        if snapshot.tool.shank_diameter.0 > 2.0 * profile.cutting_radius() {
+            return Err(missing(
+                operation,
+                "back-and-forth ramp cannot certify this larger shank with a convex complete-tool envelope",
+            ));
+        }
+        let mut segments = profile
+            .pieces()
+            .iter()
+            .map(|piece| match *piece {
+                ProfilePiece::Line { end, .. } => ProfileSegment::Line { to: end },
+                ProfilePiece::Arc { end, centre, .. } => ProfileSegment::Arc { to: end, centre },
+            })
+            .collect::<Vec<_>>();
+        if snapshot.tool.overall_length.0 > profile.top() {
+            segments.push(ProfileSegment::Line {
+                to: ProfilePoint::new(profile.cutting_radius(), snapshot.tool.overall_length.0),
+            });
+        }
+        let body = ToolProfile { segments }.validate()?;
+        let part = openchuck_geom::part_extent(mesh)
+            .ok_or_else(|| missing(operation, "the whole target has no bounds"))?;
+        let protected =
+            crate::workholding::solids(&setup.workholding, setup.stock.as_ref(), &part)?;
+        Some((MeshSurface::new(mesh)?, body, protected))
+    } else {
+        None
+    };
+    let entry_safety = entry_geometry.as_ref().map(|(target, body, protected)| {
+        openchuck_path::entry_safety::EntrySafety {
+            rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+            target,
+            body,
+            protected,
+            machine,
+        }
+    });
     let input = StrategyInput {
         surface,
         stock,
@@ -502,6 +549,7 @@ pub(crate) fn generate_with_part(
         clearance: setup.clearance.unwrap_or(machine.clearance),
         max_feeds: machine.max_feeds,
         tags: &tags,
+        entry_safety: entry_safety.as_ref(),
         keep_out: &keep_out,
     };
     let resolved = parameter_values(project, operation, registry)?;
@@ -564,6 +612,13 @@ pub(crate) fn generate_with_part(
     };
     let registry_strategy = strategy;
     let with_edges;
+    // Pencil clean-up on a STEP part follows the part's own inside corners,
+    // not creases between the facets of its tessellation (OP-09; decision
+    // 0226); on a mesh part it reads the mesh, as before.
+    let pencil_on_brep = match &placed.brep {
+        Some(brep) if operation.strategy == pencil::NAME => Some(PencilFinishing::on_brep(brep)?),
+        _ => None,
+    };
     let strategy: &dyn Strategy = match (brep_edges, mesh_edges) {
         (Some(source), _) => {
             with_edges = EdgeFollowing::with_source(source);
@@ -577,7 +632,9 @@ pub(crate) fn generate_with_part(
             );
             &with_edges
         }
-        (None, None) => strategy,
+        (None, None) => pencil_on_brep
+            .as_ref()
+            .map_or(strategy, |p| p as &dyn Strategy),
     };
     let path = if zones.is_empty() {
         match &constraint {
@@ -609,6 +666,7 @@ pub(crate) fn generate_with_part(
     let mut warnings = brep_limits
         .as_ref()
         .map(|l| l.warnings.clone())
+        .or_else(|| resolved_region.as_ref().map(|r| r.warnings.clone()))
         .unwrap_or_default();
     // Notes about the values come first, then the notes about moves.
     let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
@@ -661,6 +719,15 @@ pub(crate) fn generate_with_part(
 fn tessellation_note(strategy: &dyn Strategy, name: &str) -> Option<String> {
     if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
         return None;
+    }
+    if name == pencil::NAME {
+        return Some(format!(
+            "{} follows the STEP part's inside corners on its exact edges, and drops the tool \
+             on the part's tessellation, made at a deflection of {} mm, not on its exact faces: \
+             dropping on the exact faces is not built yet",
+            strategy.label(),
+            openchuck_types::brep::TessellationSettings::default().linear
+        ));
     }
     Some(format!(
         "{} drops the tool on the STEP part's tessellation, made at a deflection of {} mm, not \
@@ -998,7 +1065,7 @@ impl BrepLimits {
 
 /// The warning for a set whose options leave it limiting nothing (decision
 /// 0176): the path is made as if it were not there.
-fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
+pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
     PathWarning {
         message: format!(
             "The {set} limits nothing, because {why}. {fix} beside the set in the operation \
@@ -1479,6 +1546,7 @@ mod tests {
                 check: Vec::new(),
                 restriction_options: Default::default(),
                 spindle_speed: None,
+                material: None,
                 parameters: values,
             }),
         ] {
@@ -2618,6 +2686,76 @@ mod tests {
         );
         assert_eq!(note(&helical.run_on(true).unwrap()), None);
         assert_eq!(note(&fixture(drill::NAME, &[]).run().unwrap()), None);
+    }
+
+    /// The shouldered shaft of the testkit (one sharp inside corner at X 12,
+    /// radius 8, and a fillet tessellated in four facets), under pencil
+    /// clean-up at a 20 degree crease angle.
+    fn shaft_fixture() -> Fixture {
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(BALL),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(BALL),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        fixture_on(
+            pencil::NAME,
+            &[(pencil::pencil_parameter::CREASE_ANGLE, Value::Number(20.0))],
+            openchuck_testkit::brep::shouldered_shaft(4),
+            Vec::new(),
+            "shaft.step",
+            ball,
+            12.0,
+        )
+    }
+
+    #[test]
+    fn req_op_09_req_op_23_pencil_on_a_step_part_follows_its_inside_corner_not_the_facets() {
+        // Decision 0226: on a STEP part the creases are the B-rep's inside
+        // corners, so only the shoulder at X 12 is cut, the tool resting on
+        // the bar against it; the same part read as a mesh also follows the
+        // facets of the fillet (X 24 to 26).
+        let f = shaft_fixture();
+        let path = f.run().unwrap();
+        let xs = cut_xs(&path);
+        assert!(!xs.is_empty());
+        let rest = 12.0 - 0.5 * BALL;
+        assert!(
+            xs.iter().all(|x| (x - rest).abs() <= 0.05),
+            "{:?}",
+            xs.iter()
+                .copied()
+                .fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)))
+        );
+        let said = path
+            .notes
+            .iter()
+            .find(|n| n.contains("tessellation"))
+            .cloned()
+            .unwrap();
+        assert!(
+            said.starts_with(
+                "Pencil clean-up follows the STEP part's inside corners on its exact edges"
+            ) && said.contains("0.01 mm")
+                && said.contains("not built yet"),
+            "{said}"
+        );
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("along the part's edges")),
+            "{:?}",
+            path.notes
+        );
+        let as_mesh = cut_xs(&f.run_on(true).unwrap());
+        assert!(
+            as_mesh.iter().any(|x| *x > 20.0),
+            "the mesh form follows the fillet's facets"
+        );
     }
 
     #[test]

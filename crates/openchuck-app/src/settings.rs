@@ -101,6 +101,8 @@ pub mod region {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SimulateSettings {
+    /// Opaque cut stock; false retains the translucent default (issue 300).
+    pub cut_part_solid: bool,
     /// "Turn part with A": the tool stands upright and the part turns, as on
     /// the machine (SIM-02). On by default, also for projects made before
     /// it was (issue 203).
@@ -123,6 +125,7 @@ pub struct SimulateSettings {
 impl Default for SimulateSettings {
     fn default() -> Self {
         Self {
+            cut_part_solid: false,
             turn_part_with_a: true,
             show_model: false,
             show_cut_part: true,
@@ -174,6 +177,9 @@ pub struct UserSettings {
     /// before this field existed reads as on: the field is additive and the
     /// file has no version number.
     pub record_actions: bool,
+    /// Periodic recovery checkpoint interval, in whole minutes (PRJ-08).
+    /// The independent interim checkpoint uses the fixed 15-second debounce.
+    pub checkpoint_minutes: u16,
     /// The Simulate step's choices.
     pub simulate: SimulateSettings,
     /// The tool library's folded groups and size filter (decision record
@@ -195,6 +201,7 @@ impl Default for UserSettings {
             recent: Vec::new(),
             open_sections: BTreeMap::new(),
             record_actions: true,
+            checkpoint_minutes: 3,
             simulate: SimulateSettings::default(),
             tool_library: ToolLibraryView::default(),
         }
@@ -212,6 +219,7 @@ impl UserSettings {
             d.scale
         };
         self.units = "mm".to_owned();
+        self.checkpoint_minutes = self.checkpoint_minutes.clamp(1, 15);
         let range = |r: (f32, f32, f32)| (r.1, r.2);
         self.project_panel = self
             .project_panel

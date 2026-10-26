@@ -17,13 +17,14 @@
 //! one undoable command and the library is untouched (item 1). The
 //! default-tool ledger is never touched, so an edited default stays edited
 //! and a deleted one stays deleted (TL-12).
+//! Unused project copies have a guarded checklist and confirmation (0236).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use eframe::egui::{self, RichText};
 use openchuck_app::project::id::{OperationId, ToolId};
-use openchuck_app::project::{ParameterValue, Project};
+use openchuck_app::project::{ParameterValue, Project, ToolSnapshot};
 use openchuck_app::tool_edit::{self, starting_profile};
 use openchuck_app::tool_library::{
     self as library, ConflictChoice, CopyState, CuttingRow, DeleteImpact, ImportPreview, ListQuery,
@@ -203,6 +204,10 @@ enum Act {
     AskSaveToLibrary,
     SaveToLibrary,
     RemoveFromProject,
+    AskCleanup,
+    ReviewCleanup,
+    RemoveCleanup,
+    CancelCleanup,
     ImportLibrary,
     ApplyImport,
     CancelImport,
@@ -243,9 +248,32 @@ enum Confirm {
     Discard(Box<Act>),
 }
 
+/// A reviewed project-only selection. Snapshots remain frozen until a refusal
+/// refreshes the list, so confirmation cannot act on outdated information.
+#[derive(Debug)]
+struct Cleanup {
+    reviewed: Vec<ToolSnapshot>,
+    selected: BTreeSet<ToolId>,
+    confirming: bool,
+    notice: Option<String>,
+}
+
+impl Cleanup {
+    fn new(project: &Project) -> Self {
+        Self {
+            reviewed: library::unused_project_tools(project),
+            selected: BTreeSet::new(),
+            confirming: false,
+            notice: None,
+        }
+    }
+}
+
 /// The window's state.
 #[derive(Debug)]
 pub struct ToolLibraryWindow {
+    deferred: Option<(crate::pending_edits::Ticket, Act)>,
+    cleanup: Option<Cleanup>,
     open: bool,
     purpose: Purpose,
     /// The library folder; the default folder when `None`.
@@ -286,6 +314,8 @@ impl ToolLibraryWindow {
     /// tool library folder when `None`.
     pub fn new(folder: Option<PathBuf>) -> Self {
         Self {
+            deferred: None,
+            cleanup: None,
             open: false,
             purpose: Purpose::Browse,
             folder,
@@ -459,6 +489,13 @@ impl ToolLibraryWindow {
             self.forget();
         }
         let mut acts = Vec::new();
+        if let Some((ticket, _)) = &self.deferred
+            && let Some(approved) = crate::pending_edits::local_result(ctx, *ticket)
+            && let Some((_, action)) = self.deferred.take()
+            && approved
+        {
+            acts.push(action);
+        }
         let project = app.as_deref().map(Application::project);
         let title = match self.purpose {
             Purpose::Operation(_) => "Tool library: choose the operation's tool",
@@ -473,6 +510,29 @@ impl ToolLibraryWindow {
         }
         self.field_had_keyboard = ctx.egui_wants_keyboard_input();
         for act in acts {
+            if (act.leaves()
+                || matches!(
+                    act,
+                    Act::Save
+                        | Act::SaveCutting
+                        | Act::AddToProject
+                        | Act::AskSaveToLibrary
+                        | Act::AskDelete
+                        | Act::CancelEdits
+                        | Act::EditProfile
+                        | Act::ExportLibrary
+                        | Act::ApplyImport
+                        | Act::CancelImport
+                        | Act::RemoveFromProject
+                        | Act::AskCleanup
+                        | Act::ReviewCleanup
+                        | Act::RemoveCleanup
+                ))
+                && let Some(ticket) = crate::pending_edits::request_local(ctx)
+            {
+                self.deferred = Some((ticket, act));
+                continue;
+            }
             let (status, added) = self.act(act, app.as_deref_mut());
             if status.is_some() {
                 outcome.status = status;
@@ -488,13 +548,21 @@ impl ToolLibraryWindow {
         // Esc closes the window (it asks first when a draft would be lost) unless a field
         // had the keyboard, where Esc belongs to the field and only ends the edit
         // (specification section 16; OI-536).
-        if !self.field_had_keyboard && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
-            acts.push(Act::Close);
+        if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.cleanup.is_some() {
+                acts.push(Act::CancelCleanup);
+            } else if !self.field_had_keyboard {
+                acts.push(Act::Close);
+            }
         }
         egui::Panel::bottom("tool library footer")
             .resizable(false)
             .show(ui, |ui| self.footer(ui, project, acts));
         let Some(lib) = &self.library else {
+            if project.is_some() && ui.button("Remove unused tools…").clicked() {
+                acts.push(Act::AskCleanup);
+            }
+            self.dialogs(ui, acts);
             ui.label(
                 RichText::new(self.unreadable.as_deref().unwrap_or("No tool library."))
                     .color(DARK.error),
@@ -636,8 +704,9 @@ impl ToolLibraryWindow {
                 }
                 Some(Chosen::Library(id)) => {
                     let dirty = self.is_dirty();
+                    let pending = !crate::pending_edits::entries(ui.ctx()).is_empty();
                     let new = self.library.as_ref().is_some_and(|l| l.get(id).is_none());
-                    if crate::shell::primary_button(ui, "Save", dirty).clicked() {
+                    if crate::shell::primary_button(ui, "Save", dirty || pending).clicked() {
                         acts.push(Act::Save);
                     }
                     if ui.add_enabled(dirty, egui::Button::new("Cancel")).clicked() {
@@ -654,12 +723,18 @@ impl ToolLibraryWindow {
                 None => {}
             }
         });
+        let validate_name = |text: &str| {
+            let mut candidate = tool.clone();
+            library::edit_name(&mut candidate, text)
+                .map_err(|e| form_panel::refusal(&e.to_string()))
+        };
         let name = TextRow {
             key: "name",
             label: "Name",
             description: "The tool's name in lists and on the setup sheet.",
             applied: tool.name.clone(),
             enabled: true,
+            validate: Some(&validate_name),
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &name) {
@@ -672,7 +747,7 @@ impl ToolLibraryWindow {
             ui,
             "tool type",
             "Type",
-            "The tool's shape (TL-02, TL-03). The sizes are kept.",
+            "The tool's shape. The sizes are kept.",
             &labels,
             current,
             true,
@@ -692,7 +767,20 @@ impl ToolLibraryWindow {
             );
         }
         let fields = tool_edit::tool_form(&tool.tool);
-        if let Some(edit) = form_panel::show_fields(ui, &fields, &[], false, &mut self.fields) {
+        let preflight = |field: &openchuck_app::form::Field| {
+            let field = field.clone();
+            crate::pending_edits::preflight(
+                egui::Id::new(("tool fields", tool.id)),
+                tool.tool.clone(),
+                move |tool, text| {
+                    let value = form_panel::parse(&field.kind, text)?
+                        .ok_or_else(|| "Needs a value. Not applied.".to_owned())?;
+                    tool_edit::set_tool_field(tool, &field.name, &value)
+                        .map_err(|e| form_panel::refusal(&e.to_string()))
+                },
+            )
+        };
+        for edit in form_panel::show_fields(ui, &fields, &[], false, &mut self.fields, preflight) {
             acts.push(Act::Field(edit.name, edit.value));
         }
         let mut materials: Vec<String> = MATERIALS.iter().map(|m| (*m).to_owned()).collect();
@@ -713,7 +801,7 @@ impl ToolLibraryWindow {
             ui,
             "tool material",
             "Material",
-            "What the tool is made of (TL-04). Not the stock material.",
+            "What the tool is made of. Not the stock material.",
             &labels,
             Some(current),
             true,
@@ -884,14 +972,29 @@ impl ToolLibraryWindow {
         }) else {
             return;
         };
+        let validate_number = |text: &str| {
+            let number = text
+                .trim()
+                .trim_start_matches(['T', 't'])
+                .parse::<u32>()
+                .map_err(|_| "Type a whole tool number. Not applied.".to_owned())?;
+            project
+                .ok_or_else(|| "Open a project first.".to_owned())
+                .and_then(|project| {
+                    library::set_project_tool_number(project, id, number)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                })
+        };
         let number = TextRow {
             key: "project number",
             label: "Tool number",
-            description: "The project's number for this tool (TL-06), used by every operation \
-                          that uses it.",
+            description: "The project's number for this tool, used by every operation that uses \
+                          it.",
             range: Some("1 or more, not another project tool's number"),
             applied: row.number.to_string(),
             enabled: true,
+            validate: Some(&validate_number),
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &number) {
@@ -938,6 +1041,72 @@ impl ToolLibraryWindow {
 
     /// The confirmations and the import review.
     fn dialogs(&mut self, ui: &mut egui::Ui, acts: &mut Vec<Act>) {
+        if let Some(cleanup) = &mut self.cleanup {
+            modal(ui, "remove unused project tools", |ui| {
+                ui.set_width((ui.ctx().content_rect().width() - 64.0).clamp(200.0, 560.0));
+                ui.heading(if cleanup.confirming {
+                    "Remove these project copies?"
+                } else {
+                    "Remove unused tools"
+                });
+                ui.label("Only project copies are removed. The tool library is unchanged.");
+                ui.label("Tools used by disabled operations are retained.");
+                if let Some(notice) = &cleanup.notice {
+                    ui.colored_label(DARK.warning, notice);
+                }
+                if cleanup.reviewed.is_empty() {
+                    ui.label("No unused project tools.");
+                    if ui.button("Close").clicked() {
+                        acts.push(Act::CancelCleanup);
+                    }
+                    return;
+                }
+                crate::theme::solid_scroll_bar(ui);
+                egui::ScrollArea::vertical()
+                    .max_height((ui.ctx().content_rect().height() * 0.4).min(320.0))
+                    .show(ui, |ui| {
+                        for tool in &cleanup.reviewed {
+                            let label = format!("{} — T{}", tool.name, tool.controller.number);
+                            if cleanup.confirming {
+                                if cleanup.selected.contains(&tool.id) {
+                                    ui.label(label);
+                                }
+                            } else {
+                                let mut checked = cleanup.selected.contains(&tool.id);
+                                if ui.checkbox(&mut checked, label).changed() {
+                                    if checked {
+                                        cleanup.selected.insert(tool.id);
+                                    } else {
+                                        cleanup.selected.remove(&tool.id);
+                                    }
+                                }
+                                ui.label(library::summary(&tool.tool));
+                                let dimensions: Vec<_> = library::default_dimensions(&tool.tool)
+                                    .into_iter()
+                                    .map(|(label, value)| format!("{label}: {value}"))
+                                    .collect();
+                                ui.label(dimensions.join(" · "));
+                            }
+                        }
+                    });
+                ui.horizontal(|ui| {
+                    let (label, action) = if cleanup.confirming {
+                        ("Remove", Act::RemoveCleanup)
+                    } else {
+                        ("Remove selected…", Act::ReviewCleanup)
+                    };
+                    if crate::shell::primary_button(ui, label, !cleanup.selected.is_empty())
+                        .clicked()
+                    {
+                        acts.push(action);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        acts.push(Act::CancelCleanup);
+                    }
+                });
+            });
+            return;
+        }
         match &self.confirm {
             Some(Confirm::Delete(_, impact)) => {
                 modal(ui, "delete library tool", |ui| {
@@ -1111,6 +1280,7 @@ impl ToolLibraryWindow {
         match act {
             Act::Close => {
                 self.open = false;
+                self.cleanup = None;
                 self.confirm = None;
                 self.import = None;
                 self.draft = None;
@@ -1351,6 +1521,50 @@ impl ToolLibraryWindow {
                 };
                 library::save_to_library(app.project(), lib, id).map_err(text)?;
                 Ok(Some("Saved the project's tool to the library.".into()))
+            }
+            Act::AskCleanup => {
+                let app = app.ok_or("Open a project first.")?;
+                self.cleanup = Some(Cleanup::new(app.project()));
+                Ok(None)
+            }
+            Act::ReviewCleanup => {
+                if let Some(cleanup) = &mut self.cleanup
+                    && !cleanup.selected.is_empty()
+                {
+                    cleanup.confirming = true;
+                }
+                Ok(None)
+            }
+            Act::CancelCleanup => {
+                self.cleanup = None;
+                Ok(None)
+            }
+            Act::RemoveCleanup => {
+                let Some(cleanup) = &self.cleanup else {
+                    return Ok(None);
+                };
+                if !cleanup.confirming {
+                    return Ok(None);
+                }
+                let app = app.ok_or("Open a project first.")?;
+                let selected: Vec<_> = cleanup.selected.iter().copied().collect();
+                let result =
+                    library::remove_unused_tools(app.project(), &cleanup.reviewed, &selected)
+                        .and_then(|command| match command {
+                            Some(command) => app.execute(command),
+                            None => Ok(()),
+                        });
+                if let Err(error) = result {
+                    let mut refreshed = Cleanup::new(app.project());
+                    refreshed.notice = Some(error.to_string());
+                    self.cleanup = Some(refreshed);
+                    return Ok(None);
+                }
+                self.cleanup = None;
+                Ok(Some(format!(
+                    "Removed {} unused project tools. Undo with Ctrl Z.",
+                    selected.len()
+                )))
             }
             Act::RemoveFromProject => {
                 let (Some(Chosen::Project(id)), Some(app)) = (self.chosen, app) else {
@@ -1645,6 +1859,9 @@ fn list(
             if let Some(project) = project {
                 let rows = library::project_rows(project, Some(lib), search);
                 group_title(ui, "This project");
+                if ui.button("Remove unused tools…").clicked() {
+                    acts.push(Act::AskCleanup);
+                }
                 if rows.is_empty() {
                     ui.label(RichText::new("No tools yet.").color(DARK.muted));
                 }
@@ -1762,6 +1979,7 @@ fn cutting_editor(
     ui.group(|ui| {
         ui.horizontal(|ui| {
             field_row::tip(ui.label("Stock material"), MATERIAL_HELP);
+            let before = draft.material.clone();
             let response = ui.add(
                 egui::TextEdit::singleline(&mut draft.material)
                     .desired_width(CUTTING_BOX_MIN * 1.5)
@@ -1770,6 +1988,23 @@ fn cutting_editor(
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Stock material")
             });
+            crate::pending_edits::draft_text(
+                ui,
+                &response,
+                "Stock material",
+                &before,
+                &mut draft.material,
+                |text| {
+                    if text.trim().is_empty() {
+                        Err("Give the stock material a name.".to_owned())
+                    } else {
+                        Ok(text.to_owned())
+                    }
+                },
+            );
+            if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+                draft.problem = Some(reason);
+            }
             field_row::tip(response, MATERIAL_HELP);
             if !known.is_empty() {
                 egui::ComboBox::from_id_salt("cutting material pick")
@@ -1794,8 +2029,9 @@ fn cutting_editor(
                     // Wide enough for the largest value in full, and for
                     // what the pane leaves after the unit.
                     let width = cutting_box_width(ui.available_width());
+                    let before = text.clone();
                     let response = ui.add(
-                        egui::TextEdit::singleline(text)
+                        egui::TextEdit::singleline(&mut *text)
                             .desired_width(width)
                             .font(egui::TextStyle::Monospace),
                     );
@@ -1806,6 +2042,19 @@ fn cutting_editor(
                             format!("{label} in {unit}"),
                         )
                     });
+                    crate::pending_edits::draft_text(ui, &response, label, &before, text, |text| {
+                        crate::arith::entry_text(text, field_row::places(unit)).and_then(|number| {
+                            if number.parse::<f64>().is_ok_and(|v| v > 0.0) {
+                                Ok(number)
+                            } else {
+                                Err(format!("{label} must be above 0. Not applied."))
+                            }
+                        })
+                    });
+                    if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id)
+                    {
+                        draft.problem = Some(reason);
+                    }
                     field_row::tip(response, &tip);
                     ui.label(RichText::new(*unit).color(DARK.muted));
                     ui.end_row();
@@ -1881,27 +2130,27 @@ fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, dirty: bool, acts: &
     field_row::read_only_row(
         ui,
         "Type",
-        "The tool's shape (TL-02, TL-03).",
+        "The tool's shape.",
         ToolType::of(&tool.tool.shape).label(),
     );
     for (label, value) in library::default_dimensions(&tool.tool) {
         field_row::read_only_row(
             ui,
             &label,
-            "A dimension of the tool (TL-04).",
+            "A dimension of the tool.",
             RichText::new(value).monospace(),
         );
     }
     field_row::read_only_row(
         ui,
         "Flutes",
-        "The number of flutes (TL-04).",
+        "The number of flutes.",
         RichText::new(tool.tool.flute_count.to_string()).monospace(),
     );
     field_row::read_only_row(
         ui,
         "Material",
-        "What the tool is made of (TL-04). Not the stock material.",
+        "What the tool is made of. Not the stock material.",
         tool.tool
             .material
             .as_deref()

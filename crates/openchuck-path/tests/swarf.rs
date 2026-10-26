@@ -144,6 +144,7 @@ impl Fixture {
             },
             max_feeds: machine().max_feeds,
             tags: &self.tags,
+            entry_safety: None,
             keep_out: &[],
         }
     }

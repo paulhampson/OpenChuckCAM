@@ -1,0 +1,25 @@
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling serde_spanned v1.1.2
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling serde_json v1.0.154
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling openchuck-types v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling minijinja v3.0.1
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+   Compiling openchuck-geom v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-geom)
+   Compiling openchuck-project v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-project)
+   Compiling openchuck-post v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+   Compiling openchuck-sim v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
+   Compiling openchuck-import v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+   Compiling openchuck-gcode v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-gcode)
+   Compiling openchuck-testkit v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 15.85s
+     Running tests/posting.rs (target/debug/deps/posting-08ef2eedc8a1dc9e)
+
+running 1 test
+test req_gc_07_req_op_11_ramp_option_off_posts_identical_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.55s
+

@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_recovery, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -72,6 +72,9 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the recovery checkpoint corpus
+        if: matrix.target == 'project_recovery'
+        run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
       - name: Seed the project file corpus from the fixtures
         if: matrix.target == 'project_files'
         run: |

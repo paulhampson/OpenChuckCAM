@@ -269,7 +269,9 @@ fn req_ui_16_req_sim_04_the_whole_playback_tab_shows_in_the_default_dock_and_sta
         "Whole program",
         "Go to move",
         "Turn part with A",
-        "Colour the part by deviation",
+        // SIMUI places this choice with the results inspector, so it is
+        // accessible even when a stale run has no playback controls.
+        "Deviation colours",
         // Issues 205 and 214 (decision records 0168 and 0169).
         "Window: moves",
         "Hide path outside window",

@@ -73,6 +73,7 @@ fn engrave(
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        entry_safety: None,
         keep_out: &[],
     };
     let mut values: BTreeMap<String, ParameterValue> = [

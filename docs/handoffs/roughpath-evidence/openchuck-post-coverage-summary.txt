@@ -1,0 +1,37 @@
+Filename                                 Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+openchuck-post/src/builtin.rs                 18                 0   100.00%           4                 0   100.00%          13                 0   100.00%           0                 0         -
+openchuck-post/src/convert.rs                222                21    90.54%           6                 1    83.33%         161                22    86.34%           0                 0         -
+openchuck-post/src/definition.rs             142                25    82.39%          12                 2    83.33%          91                12    86.81%           0                 0         -
+openchuck-post/src/engine.rs                 204                67    67.16%          22                 9    59.09%         109                39    64.22%           0                 0         -
+openchuck-post/src/error.rs                    3                 3     0.00%           1                 1     0.00%           3                 3     0.00%           0                 0         -
+openchuck-post/src/feed.rs                    44                 0   100.00%           5                 0   100.00%          35                 0   100.00%           0                 0         -
+openchuck-post/src/options.rs                100                 9    91.00%           5                 0   100.00%          74                 9    87.84%           0                 0         -
+openchuck-post/src/render.rs                 177                13    92.66%          15                 2    86.67%         111                 4    96.40%           0                 0         -
+openchuck-testkit/src/brep.rs                822               822     0.00%          39                39     0.00%         544               544     0.00%           0                 0         -
+openchuck-testkit/src/determinism.rs          54                54     0.00%           6                 6     0.00%          35                35     0.00%           0                 0         -
+openchuck-testkit/src/golden.rs              140                63    55.00%          15                 7    53.33%          78                31    60.26%           0                 0         -
+openchuck-testkit/src/gouge.rs               467               467     0.00%          24                24     0.00%         261               261     0.00%           0                 0         -
+openchuck-testkit/src/oracle.rs               59                59     0.00%           3                 3     0.00%          21                21     0.00%           0                 0         -
+openchuck-testkit/src/parts.rs                62                62     0.00%           4                 4     0.00%          31                31     0.00%           0                 0         -
+openchuck-testkit/src/region.rs              927               927     0.00%          45                45     0.00%         502               502     0.00%           0                 0         -
+openchuck-testkit/src/ruled.rs               208               208     0.00%          15                15     0.00%         177               177     0.00%           0                 0         -
+openchuck-types/src/brep.rs                  432               432     0.00%          32                32     0.00%         259               259     0.00%           0                 0         -
+openchuck-types/src/error.rs                  32                13    59.38%           4                 1    75.00%          32                18    43.75%           0                 0         -
+openchuck-types/src/geometry.rs              156                90    42.31%          22                11    50.00%          91                53    41.76%           0                 0         -
+openchuck-types/src/ir.rs                     70                 8    88.57%           8                 0   100.00%          40                 8    80.00%           0                 0         -
+openchuck-types/src/job.rs                    40                40     0.00%           9                 9     0.00%          33                33     0.00%           0                 0         -
+openchuck-types/src/kinematics.rs            116                38    67.24%          14                 4    71.43%          67                21    68.66%           0                 0         -
+openchuck-types/src/machine.rs               204               182    10.78%          17                15    11.76%         177               143    19.21%           0                 0         -
+openchuck-types/src/mesh.rs                   50                50     0.00%           4                 4     0.00%          21                21     0.00%           0                 0         -
+openchuck-types/src/model.rs                  28                28     0.00%           4                 4     0.00%          22                22     0.00%           0                 0         -
+openchuck-types/src/setup.rs                 436               436     0.00%          26                26     0.00%         290               290     0.00%           0                 0         -
+openchuck-types/src/simulation.rs             24                24     0.00%           5                 5     0.00%          27                27     0.00%           0                 0         -
+openchuck-types/src/stock.rs                  28                28     0.00%           1                 1     0.00%          12                12     0.00%           0                 0         -
+openchuck-types/src/tool/mod.rs              360               360     0.00%          22                22     0.00%         296               296     0.00%           0                 0         -
+openchuck-types/src/tool/profile.rs          443               443     0.00%          28                28     0.00%         272               272     0.00%           0                 0         -
+openchuck-types/src/transform.rs              76                76     0.00%           7                 7     0.00%          41                41     0.00%           0                 0         -
+openchuck-types/src/units.rs                 117               113     3.42%          19                18     5.26%          78                75     3.85%           0                 0         -
+openchuck-types/src/workholding.rs           467               467     0.00%          21                21     0.00%         301               301     0.00%           0                 0         -
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                       6728              5628    16.35%         464               366    21.12%        4305              3583    16.77%           0                 0         -

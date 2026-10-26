@@ -367,6 +367,7 @@ type SetLook = Option<(String, [u8; 3])>;
 
 /// The panel's state between frames.
 pub struct SelectionPanel {
+    deferred_save: Option<(crate::pending_edits::Ticket, bool)>,
     choice: Choice,
     /// What a click may pick (decision record 0066 item 3).
     filter: PickFilter,
@@ -435,6 +436,7 @@ pub struct SelectionPanel {
 impl Default for SelectionPanel {
     fn default() -> Self {
         Self {
+            deferred_save: None,
             choice: Choice::Smooth,
             filter: PickFilter::Both,
             smooth_angle: 30.0,
@@ -1486,6 +1488,7 @@ impl SelectionPanel {
         app: &mut Application,
         view: &SceneView,
     ) -> Option<String> {
+        let deferred = crate::pending_edits::take_local(ui.ctx(), &mut self.deferred_save);
         let mut error = self.finish_writing(app);
         self.drop_stale_working(app);
         ui.heading("New selection");
@@ -1506,18 +1509,30 @@ impl SelectionPanel {
         });
         let count = app.project().selection_sets().len();
         ui.horizontal_wrapped(|ui| {
-            ui.add(
+            let before = self.name.clone();
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.name)
                     .hint_text(format!("Selection {}", count + 1))
                     .desired_width(140.0),
             );
+            crate::pending_edits::draft_text(
+                ui,
+                &response,
+                "Selection name",
+                &before,
+                &mut self.name,
+                |text| Ok(text.to_owned()),
+            );
             let ready =
                 !self.working.is_empty() && self.working_model.is_some() && self.writing.is_none();
-            if ui
+            if (ui
                 .add_enabled(ready, egui::Button::new("Save as new set"))
                 .on_hover_text("Name this selection so operations can use it")
                 .clicked()
+                || deferred == Some(true))
                 && let Some(model) = self.working_model
+                && crate::pending_edits::defer_local(ui.ctx(), &mut self.deferred_save, true)
+                    .is_some()
             {
                 let name = if self.name.trim().is_empty() {
                     format!("Selection {}", count + 1)
@@ -1535,10 +1550,13 @@ impl SelectionPanel {
                     Err(e) => error = Some(e.to_string()),
                 }
             }
-            if ui
+            if (ui
                 .add_enabled(!self.working.is_empty(), egui::Button::new("Clear"))
                 .on_hover_text("Empty the selection")
                 .clicked()
+                || deferred == Some(false))
+                && crate::pending_edits::defer_local(ui.ctx(), &mut self.deferred_save, false)
+                    .is_some()
             {
                 self.working = nothing();
                 self.working_model = None;

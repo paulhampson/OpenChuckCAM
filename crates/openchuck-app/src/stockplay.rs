@@ -22,6 +22,8 @@ use openchuck_types::tool::RevolvedProfile;
 
 use crate::pathview::{DeviationBands, deviation_bands};
 use crate::playback::{Cursor, Timeline};
+pub use crate::stock_surface::StockSurface;
+use crate::stock_surface::SurfaceSamples;
 use crate::{AppError, Application, JobHandle, Regeneration};
 
 /// The most memory the checkpoints of one setup may hold, in bytes. Each is a
@@ -41,6 +43,8 @@ struct SetupPlay {
     /// The groups run on this setup's stock, in order, counted across all
     /// groups of the timeline.
     groups: Vec<usize>,
+    model: Option<ModelId>,
+    samples: Option<SurfaceSamples>,
 }
 
 /// The simulation of every setup with its checkpoints, to give the stock at a
@@ -64,9 +68,7 @@ impl StockPlayback {
         &self.timeline
     }
 
-    /// The stock at `cursor`: after the whole moves done, not part-way into
-    /// the next (the dexel stock changes at samples a cell apart, and the
-    /// part of a move already cut is shown by the tool drawn at the cursor).
+    /// The stock at `cursor`, including the swept part of the current move.
     pub fn stock_at(
         &self,
         cursor: Cursor,
@@ -101,7 +103,44 @@ impl StockPlayback {
             .iter()
             .filter_map(|g| Some((path.groups.get(*g)?, &infos.get(*g)?.tool)))
             .collect();
-        Ok(setup.simulator.stock_at(local, moves, &groups, context)?)
+        let stock = setup.simulator.stock_at(local, moves, &groups, context)?;
+        let Some(original) = path.groups.get(group) else {
+            return Ok(stock);
+        };
+        let Some(segment) = original.segments.get(moves) else {
+            return Ok(stock);
+        };
+        if cursor.fraction <= 0.0 {
+            return Ok(stock);
+        }
+        let pose = timeline.sample(cursor)?;
+        let start = moves
+            .checked_sub(1)
+            .and_then(|i| original.segments.get(i))
+            .map_or(original.start, |s| s.end);
+        let mut partial = *segment;
+        partial.end = openchuck_types::ir::ToolPose {
+            tip: pose.tip,
+            axis: openchuck_types::geometry::UnitVec3::new(pose.axis)?,
+            a: openchuck_types::units::Degrees(pose.a),
+        };
+        let fraction = cursor.fraction.clamp(0.0, 1.0);
+        partial.duration.0 *= fraction;
+        partial.contact_length.0 *= fraction;
+        let partial = openchuck_types::ir::ToolpathGroup {
+            tags: original.tags.clone(),
+            start,
+            segments: vec![partial],
+        };
+        let frame = timeline
+            .work_frame(group)
+            .ok_or_else(|| AppError::Playback("no frame covers this move".to_owned()))?;
+        let mut simulator = Simulator::without_checkpoints(stock, &frame);
+        let info = infos
+            .get(group)
+            .ok_or_else(|| AppError::Playback("no tool covers this move".to_owned()))?;
+        simulator.run_group(&partial, &info.tool, context)?;
+        Ok(simulator.into_stock())
     }
 
     /// The stock at `cursor` as a closed mesh for the viewport.
@@ -205,6 +244,13 @@ impl Application {
                         id,
                         simulator,
                         groups,
+                        model: project.setup(id).and_then(|s| s.part),
+                        samples: run
+                            .simulation
+                            .as_ref()
+                            .and_then(|r| r.setups.iter().find(|s| s.id == id))
+                            .and_then(|s| s.deviation.as_ref())
+                            .map(|d| SurfaceSamples::new(&d.points, settings.cell.0)),
                     });
                 }
                 Ok(StockPlayback { timeline, setups })
@@ -222,6 +268,42 @@ impl Application {
         self.jobs
             .submit("stock at move", self.events_tx.clone(), move |context| {
                 playback.mesh_at(cursor, context)
+            })
+    }
+
+    /// Actual playback stock with display-only final-result colours and a
+    /// matching CPU picker, prepared together off the interface thread.
+    pub fn start_stock_surface(
+        &self,
+        playback: &Arc<StockPlayback>,
+        cursor: Cursor,
+    ) -> JobHandle<StockSurface> {
+        let playback = Arc::clone(playback);
+        self.jobs
+            .submit("stock at move", self.events_tx.clone(), move |context| {
+                let mesh = playback.mesh_at(cursor, context)?;
+                let group = playback
+                    .timeline
+                    .locate(cursor.done)
+                    .map(|(g, _)| g)
+                    .or_else(|| {
+                        playback
+                            .timeline
+                            .run()
+                            .toolpath
+                            .groups
+                            .iter()
+                            .rposition(|g| !g.segments.is_empty())
+                    })
+                    .unwrap_or(0);
+                let setup = playback
+                    .setups
+                    .iter()
+                    .find(|s| s.groups.contains(&group))
+                    .ok_or_else(|| {
+                        AppError::Playback("no simulation covers this move".to_owned())
+                    })?;
+                StockSurface::new(mesh, setup.id, setup.model, setup.samples.as_ref(), context)
             })
     }
 

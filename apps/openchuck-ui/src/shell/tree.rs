@@ -508,12 +508,28 @@ impl Shell {
                                     },
                                 )
                                 .response;
+                            #[cfg(test)]
+                            ui.data_mut(|data| {
+                                data.insert_temp(
+                                    egui::Id::new(("operation reorder", id)),
+                                    handle.rect,
+                                );
+                            });
                             handle.on_hover_text("Drag to move earlier or later (Alt ↑, Alt ↓)");
-                            toggled = ui
+                            let enable = ui
                                 .checkbox(&mut enabled, "")
-                                .on_hover_text("Include in generation, simulation and G-code")
-                                .changed();
-                            if eye(ui, shown).clicked() {
+                                .on_hover_text("Include in generation, simulation and G-code");
+                            toggled = enable.changed();
+                            let eye = eye(ui, shown);
+                            #[cfg(test)]
+                            ui.data_mut(|data| {
+                                data.insert_temp(
+                                    egui::Id::new(("operation enable", id)),
+                                    enable.rect,
+                                );
+                                data.insert_temp(egui::Id::new(("operation eye", id)), eye.rect);
+                            });
+                            if eye.clicked() {
                                 actions.push(TreeAction::Command(Box::new(
                                     Command::SetPathsShown {
                                         operations: vec![id],
@@ -523,6 +539,10 @@ impl Shell {
                             }
                         },
                     );
+                    #[cfg(test)]
+                    ui.data_mut(|data| {
+                        data.insert_temp(egui::Id::new(("operation row focus", id)), response.id);
+                    });
                     if toggled {
                         actions.push(TreeAction::Command(Box::new(
                             Command::SetOperationEnabled {
@@ -547,7 +567,12 @@ impl Shell {
                             Stroke::new(2.0, DARK.accent),
                         );
                     }
-                    if response.clicked() {
+                    if response.clicked()
+                        || (response.has_focus()
+                            && ui.input_mut(|i| {
+                                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                            }))
+                    {
                         actions.push(TreeAction::Select(id));
                     }
                     item_menu(

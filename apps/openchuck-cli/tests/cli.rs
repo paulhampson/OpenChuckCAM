@@ -537,7 +537,7 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("5 of 10 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("6 of 11 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
@@ -549,9 +549,14 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
         "{}",
         out.stdout
     );
+    assert!(
+        out.stdout.contains("spindle:    up to 13000 rpm"),
+        "{}",
+        out.stdout
+    );
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        5,
+        6,
         "{}",
         out.stdout
     );

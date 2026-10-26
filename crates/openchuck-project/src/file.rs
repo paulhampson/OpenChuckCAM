@@ -98,8 +98,11 @@ use openchuck_types::workholding::Workholding;
 ///   offset, so it machines exactly as before. A retaining tab gains the
 ///   optional `auto` (`"head"` or `"tail"`), written only when set (decision
 ///   record 0202).
-/// - 18: reserved OPSPEED predecessor on this branch; released main integration
-///   retains its actual operation material and spindle-limit migration.
+/// - 18: an operation gains the optional `material`, the stock material
+///   whose cutting data its preset takes, written only when the user chose
+///   one for it (decision record 0230); the machine copy may give the
+///   spindle speed range, `min_spindle_rpm` and `max_spindle_rpm`, written
+///   only when set (decision record 0231).
 /// - 19: optional minimum block time, window and mode in machine copies
 ///   (decision record 0222); absent fields retain Off.
 pub const SCHEMA: i64 = 19;
@@ -136,12 +139,6 @@ const MIGRATIONS: &[Migration] = &[
     schema_17_to_18,
     schema_18_to_19,
 ];
-
-/// Reserved predecessor on the old GATES branch. The released main merge
-/// replaces this with OPSPEED's real schema-18 migration (work breakdown).
-fn schema_17_to_18(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
-    Ok(())
-}
 
 /// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
 fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
@@ -345,6 +342,26 @@ fn schema_15_to_16(kind: FileKind, table: &mut toml::Table) -> Result<(), String
         return Err(
             "this schema 15 file has `spindle_speed`, a field schema 16 introduced; \
              remove it, or set `schema = 16` if the file was written for schema 16"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+/// Schema 18 adds the optional `material` to operation files and the
+/// optional spindle speed range to the machine copy, which a schema 17 file
+/// does not have, so it needs no change but its number: the operation takes
+/// the setup's stock material and the machine checks no spindle speed, as
+/// before. A schema 17 file that already holds one was not written by any
+/// version that knew it, so it is refused rather than guessed at.
+fn schema_17_to_18(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        return crate::machines::premature_spindle_range(table, 17);
+    }
+    if kind == FileKind::Operation && table.contains_key("material") {
+        return Err(
+            "this schema 17 file has `material`, a field schema 18 introduced; \
+             remove it, or set `schema = 18` if the file was written for schema 18"
                 .to_owned(),
         );
     }
@@ -617,6 +634,8 @@ struct OperationFile {
     parameters: BTreeMap<String, ParameterValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     spindle_speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    material: Option<String>,
     #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
     enabled: bool,
 }
@@ -804,6 +823,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             check_options: non_default(&o.restriction_options.check),
             parameters: o.parameters.clone(),
             spindle_speed: o.spindle_speed.map(|s| s.0),
+            material: o.material.clone(),
             enabled: o.enabled,
         };
         files.insert(item_path(FileKind::Operation, &o.id), to_text(&file)?);
@@ -1118,6 +1138,7 @@ fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Proje
                     },
                     parameters: f.parameters,
                     spindle_speed: f.spindle_speed.map(openchuck_types::units::SpindleSpeed),
+                    material: f.material,
                     enabled: f.enabled,
                 })
             })

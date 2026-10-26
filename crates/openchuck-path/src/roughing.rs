@@ -225,7 +225,7 @@ impl Strategy for RotaryRoughing {
     }
 
     fn description(&self) -> &str {
-        "Removes most of the material from the stock in layers, working from the outside in as the part turns, and leaves a thin layer on the part for a finishing operation to cut. Use it first. It is not meant to give a finished surface."
+        "Removes most of the material from the stock in layers, working from the outside in. The part can turn continuously or be held at chosen angles. Use it before finishing; stock to leave sets how much material to keep for the finishing tool."
     }
 
     fn group(&self) -> StrategyGroup {

@@ -1,0 +1,61 @@
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::held_region req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region
+        SLOW [> 60.000s] (─────────) openchuck-app::reference_jobs req_gc_07_reference_jobs_are_identical_at_1_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-app::reference_jobs req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files
+        SLOW [> 60.000s] (─────────) openchuck-app::workholding req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count
+        SLOW [> 60.000s] (─────────) openchuck-app::workholding req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2
+        SLOW [>120.000s] (─────────) openchuck-app::reference_jobs req_gc_07_reference_jobs_are_identical_at_1_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-app::workholding req_op_21_default_tabs_follow_the_owners_answers
+        SLOW [> 60.000s] (─────────) openchuck-app::workholding req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target
+        SLOW [> 60.000s] (─────────) openchuck-app::workholding req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab
+        FAIL [  23.953s] ( 535/1911) openchuck-cli::e2e blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [  47.898s] ( 541/1911) openchuck-cli::e2e blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [  47.150s] ( 542/1911) openchuck-cli::e2e blisk_helical_5::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-cli::e2e cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-cli::e2e lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        SLOW [>120.000s] (─────────) openchuck-cli::e2e cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [   2.680s] ( 602/1911) openchuck-geom::pick req_ui_04_picking_a_million_triangles_stays_within_its_budget
+        FAIL [   5.387s] ( 607/1911) openchuck-geom::pick req_ui_04_picking_edges_of_a_million_triangle_part_stays_within_its_budget
+        SLOW [>120.000s] (─────────) openchuck-cli::e2e lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        SLOW [>180.000s] (─────────) openchuck-cli::e2e lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-path::helical req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts
+        SLOW [> 60.000s] (─────────) openchuck-path::region req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed
+        SLOW [>120.000s] (─────────) openchuck-path::helical req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts
+        SLOW [>180.000s] (─────────) openchuck-path::helical req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts
+        SLOW [> 60.000s] (─────────) openchuck-path::simultaneous req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound
+        SLOW [> 60.000s] (─────────) openchuck-path::simultaneous req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging
+        SLOW [> 60.000s] (─────────) openchuck-path::simultaneous req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part
+        SLOW [> 60.000s] (─────────) openchuck-path::simultaneous req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal
+        SLOW [>120.000s] (─────────) openchuck-path::simultaneous req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound
+        SLOW [>120.000s] (─────────) openchuck-path::simultaneous req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part
+        SLOW [>120.000s] (─────────) openchuck-path::simultaneous req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal
+        SLOW [>180.000s] (─────────) openchuck-path::simultaneous req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part
+        SLOW [> 60.000s] (─────────) openchuck-path::walls req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads
+        SLOW [>240.000s] (─────────) openchuck-path::simultaneous req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part
+        SLOW [> 60.000s] (─────────) openchuck-sim::roughing req_op_03_indexed_and_continuous_forms_reach_the_same_envelope
+        SLOW [> 60.000s] (─────────) openchuck-sim::simulation req_nfr_06_simulation_is_identical_at_1_2_and_n_threads
+        SLOW [> 60.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>120.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [> 60.000s] (─────────) openchuck-sim::simulation req_sim_07_finer_resolution_lowers_the_error_and_costs_more
+        SLOW [>180.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>240.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>300.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>360.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>420.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [> 60.000s] (─────────) openchuck-ui::bin/openchuck-ui shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state
+        SLOW [>480.000s] (─────────) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+        SLOW [>120.000s] (─────────) openchuck-ui::bin/openchuck-ui shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state
+        PASS [ 521.292s] (1911/1911) openchuck-sim::simulation req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run
+     Summary [1978.109s] 1911 tests run: 1906 passed (30 slow), 5 failed, 2 skipped
+        FAIL [  23.953s] ( 535/1911) openchuck-cli::e2e blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [  47.898s] ( 541/1911) openchuck-cli::e2e blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [  47.150s] ( 542/1911) openchuck-cli::e2e blisk_helical_5::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads
+        FAIL [   2.680s] ( 602/1911) openchuck-geom::pick req_ui_04_picking_a_million_triangles_stays_within_its_budget
+        FAIL [   5.387s] ( 607/1911) openchuck-geom::pick req_ui_04_picking_edges_of_a_million_triangle_part_stays_within_its_budget

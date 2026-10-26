@@ -35,6 +35,7 @@
 //!         check: Vec::new(),
 //!         restriction_options: Default::default(),
 //!         spindle_speed: None,
+//!         material: None,
 //!         parameters: Default::default(),
 //!     }),
 //!     Placement::End,
@@ -58,6 +59,7 @@ pub mod machines;
 mod model;
 pub mod new_folder;
 pub mod order;
+pub mod recovery;
 pub mod tools;
 
 pub use error::ProjectError;
