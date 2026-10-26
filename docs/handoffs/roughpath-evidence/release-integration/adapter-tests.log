@@ -1,0 +1,48 @@
+   Compiling openchuck-buildinfo v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-buildinfo)
+   Compiling openchuck-ui v0.21.0 (/workspace/OpenChuckCAM/apps/openchuck-ui)
+    Finished `test` profile [unoptimized] target(s) in 31.48s
+────────────
+ Nextest run ID 96456307-2d2c-4058-bf98-0bb3acc70d88 with nextest profile: default
+    Starting 3 tests across 1 binary (467 tests skipped)
+        PASS [  26.003s] (1/3) openchuck-ui::bin/openchuck-ui shell::simulate_tests::rendering::req_nfr_04_cut_stock_rendering_cost_is_measured_at_full_hd_on_the_available_adapter
+  stdout ───
+
+    running 1 test
+    test shell::simulate_tests::rendering::req_nfr_04_cut_stock_rendering_cost_is_measured_at_full_hd_on_the_available_adapter ... ok
+
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 25.95s
+
+  stderr ───
+    Failed to create /home/agent/.cache/mesa_shader_cache for shader cache (Read-only file system)---disabling.
+    Failed to create /home/agent/.cache/mesa_shader_cache_db for shader cache (Read-only file system)---disabling.
+    adapter: AdapterInfo { name: "llvmpipe (LLVM 19.1.7, 256 bits)", vendor: 65541, device: 0, device_type: Cpu, device_pci_bus_id: "", driver: "", driver_info: "4.5 (Core Profile) Mesa 25.0.7-2+deb13u1", backend: Gl, subgroup_min_size: 4, subgroup_max_size: 128, transient_saves_memory: None, limit_bucket: None }
+    SIMUI 1920×1080, mapped=false, solid=false, triangles=224240, warmed submit+GPU-wait ms: p50=96.468, p95=113.983
+    SIMUI 1920×1080, mapped=false, solid=true, triangles=224240, warmed submit+GPU-wait ms: p50=111.935, p95=131.918
+    SIMUI 1920×1080, mapped=true, solid=false, triangles=224240, warmed submit+GPU-wait ms: p50=84.230, p95=88.031
+    SIMUI 1920×1080, mapped=true, solid=true, triangles=224240, warmed submit+GPU-wait ms: p50=87.940, p95=109.526
+
+        PASS [  55.855s] (2/3) openchuck-ui::bin/openchuck-ui shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels
+  stdout ───
+
+    running 1 test
+    test shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels ... ok
+
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 55.77s
+
+  stderr ───
+    Failed to create /home/agent/.cache/mesa_shader_cache for shader cache (Read-only file system)---disabling.
+    Failed to create /home/agent/.cache/mesa_shader_cache_db for shader cache (Read-only file system)---disabling.
+    adapter: AdapterInfo { name: "llvmpipe (LLVM 19.1.7, 256 bits)", vendor: 65541, device: 0, device_type: Cpu, device_pci_bus_id: "", driver: "", driver_info: "4.5 (Core Profile) Mesa 25.0.7-2+deb13u1", backend: Gl, subgroup_min_size: 4, subgroup_max_size: 128, transient_saves_memory: None, limit_bucket: None }
+    actual rendered band colours: [[[0.8745098, 0.32156864, 0.1882353, 1.0], [0.6039216, 0.627451, 0.65882355, 1.0], [0.7764706, 0.9764706, 1.0, 1.0], [0.29411766, 0.7176471, 0.9882353, 1.0], [0.30588236, 0.44313726, 0.91764706, 1.0]], [[0.8745098, 0.32156864, 0.1882353, 1.0], [0.6039216, 0.627451, 0.65882355, 1.0], [0.7764706, 0.9764706, 1.0, 1.0], [0.29411766, 0.7176471, 0.9882353, 1.0], [0.30588236, 0.44313726, 0.91764706, 1.0]]]
+
+        PASS [  32.464s] (3/3) openchuck-ui::bin/openchuck-ui shell::simulate_tests::rendering::req_sim_11_req_sim_05_surface_tooltips_pick_and_pin_the_visible_stock_in_both_modes
+  stdout ───
+
+    running 1 test
+    test shell::simulate_tests::rendering::req_sim_11_req_sim_05_surface_tooltips_pick_and_pin_the_visible_stock_in_both_modes ... ok
+
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 32.40s
+
+
+────────────
+     Summary [ 114.324s] 3 tests run: 3 passed, 467 skipped

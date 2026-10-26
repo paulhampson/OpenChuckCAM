@@ -174,7 +174,7 @@ impl Strategy for EdgeFollowing {
     }
 
     fn description(&self) -> &str {
-        "Moves the tool along the sharp edges or chosen curves of the part, cutting a line into the surface for engraving or carving. It does not clear areas."
+        "Moves the tool along the part's edges or supplied curves to cut lines for engraving or carving. It follows lines rather than clearing areas."
     }
 
     fn group(&self) -> StrategyGroup {

@@ -1,0 +1,12 @@
+schema = 17
+id = "1697d929-da0c-47fd-9364-d64d39d4cc15"
+order = "V"
+name = "Finish"
+setup = "6dc9b5f7-2a15-43a6-880d-f1a29e5af513"
+strategy = "axial_finishing"
+tool = "5f0c2d1e-7a3b-4c6d-8e9f-0000000000e2"
+selections = []
+
+[parameters]
+entry = "lead"
+max_x_step = 3.0

@@ -17,6 +17,8 @@ All use the same tool and material: a 3 mm ball end mill (2 flutes, 8 mm flute l
 
 `cargo test -p openchuck-cli --test e2e` builds the same jobs (all but `drilling` and `swarf`, which are read from STEP files and need the kernel) with the command-line tool, from STL import to G-code, and requires each program, regenerated in separate processes at 1, 2 and N threads with both posts, to equal its golden file byte for byte; it also simulates them and runs the undo, redo and cancellation scenarios ([decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md)). A job added here is added there too.
 
+Every job is also committed as a project folder in `testdata/projects/` (OI-913): the generated jobs without their parts, which `cargo run -p openchuck-cli --example sample_projects -- <folder>` writes beside a copy of each (OI-920), and `drilling` and `swarf` whole, with their STEP files (OI-922). The end-to-end suite and, for the STEP jobs, `step_pipeline` check that each committed folder writes its golden programs.
+
 ## Baseline finishing jobs (slice 12)
 
 Three more jobs run on the `cone` part with the same tool, material and Z1 profile, one for each new strategy ([decision 0034](decisions/0034-slice-12-baseline-finishing.md)): `cone_axial` (axial finishing, stepover 2 mm, zig-zag), `cone_indexed` (indexed finishing at 0, 90, 180 and 270 degrees) and `cone_axial_lead` (axial finishing with `lead` entry). Golden files `testdata/golden/reference/cone_axial_*`, `cone_indexed_*` and `cone_axial_lead_*` for both posts. `cargo test -p openchuck-app --test reference_jobs` checks gates 1 and 2 and the golden files; `--test golden_audit` (`req_op_04_baseline_finishing_golden_files_pass_the_audit`) checks conventions, that A does not move within a pass, no gouge (deepest 0.0026 mm) and that the two posts reach the same positions. **Gate 3 (the LinuxCNC replay) has not been run for these programs**: `cargo xtask replay` picks them up from the folder and CI runs it; the session that built them had no Docker daemon. Gates 4 and 5 are not run.
@@ -61,7 +63,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 
 ## Air-cut plan (gate 4) for the operator
 
-The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-procedure.md) (reviewed 14 Oct 2026). For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
+The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-procedure.md) (reviewed 14 Oct 2026). Step-by-step instructions for gates 4 and 5, with checklists and results forms, are in [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) (draft; the owner answered OI-910 to OI-919 on 22 Oct 2026; gate 5 cuts a first-cut project, [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md), accepted). For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
 
 1. Check the profile values the programs depend on: axis height (OI-60), travel (OI-39). The A direction is already confirmed. Regenerate the Z1 programs and compare with the golden files.
 2. Run SP-12's conventions program first (`spikes/sp12/AIR-CUT.md` on the SP-12 branch) and record the results in decision 0007's open items (wrap, feed rule, G93; the direction is confirmed).
@@ -71,3 +73,9 @@ The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-
 6. Record, for each run: file, override, result, measured against predicted time, alarms. Any unexpected motion is a defect with the G-code attached.
 
 Gate 5 (first cut in wax or foam) follows only when gate 4 passes, with the safe-practice checklist ([reviewed by the operator](z1-safe-practice-checklist.md), 14 Oct 2026).
+
+## Submitted machine evidence (25 Oct 2026)
+
+The owner reports sphere and cone passed at 50%, then 100%, with no alarms, motion as simulated and timing matching predictions. The other eight reference programs were waived for time, not passed. Gate 5’s first-cut job passed as reported at the accepted ±0.1 mm limit, with the measurement and procedural gaps itemised in the [step-by-step audit](z1-gates-4-5-test-instructions.md#10-results). Program fingerprints were not supplied, so these job-level observations do not establish that the exact stored golden bytes ran. Local automated and LinuxCNC evidence is recorded separately from those physical outcomes.
+
+The first-cut LinuxCNC fixture subsequently passed all thirteen owner-authorized bounded gate-3 units with checked source/actual boundary state (OI-991 closed; results 10.8). The eight physical reference-program waivers remain unchanged.

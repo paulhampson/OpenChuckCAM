@@ -17,13 +17,14 @@
 //! one undoable command and the library is untouched (item 1). The
 //! default-tool ledger is never touched, so an edited default stays edited
 //! and a deleted one stays deleted (TL-12).
+//! Unused project copies have a guarded checklist and confirmation (0236).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use eframe::egui::{self, RichText};
 use openchuck_app::project::id::{OperationId, ToolId};
-use openchuck_app::project::{ParameterValue, Project};
+use openchuck_app::project::{ParameterValue, Project, ToolSnapshot};
 use openchuck_app::tool_edit::{self, starting_profile};
 use openchuck_app::tool_library::{
     self as library, ConflictChoice, CopyState, CuttingRow, DeleteImpact, ImportPreview, ListQuery,
@@ -203,6 +204,10 @@ enum Act {
     AskSaveToLibrary,
     SaveToLibrary,
     RemoveFromProject,
+    AskCleanup,
+    ReviewCleanup,
+    RemoveCleanup,
+    CancelCleanup,
     ImportLibrary,
     ApplyImport,
     CancelImport,
@@ -243,10 +248,32 @@ enum Confirm {
     Discard(Box<Act>),
 }
 
+/// A reviewed project-only selection. Snapshots remain frozen until a refusal
+/// refreshes the list, so confirmation cannot act on outdated information.
+#[derive(Debug)]
+struct Cleanup {
+    reviewed: Vec<ToolSnapshot>,
+    selected: BTreeSet<ToolId>,
+    confirming: bool,
+    notice: Option<String>,
+}
+
+impl Cleanup {
+    fn new(project: &Project) -> Self {
+        Self {
+            reviewed: library::unused_project_tools(project),
+            selected: BTreeSet::new(),
+            confirming: false,
+            notice: None,
+        }
+    }
+}
+
 /// The window's state.
 #[derive(Debug)]
 pub struct ToolLibraryWindow {
     deferred: Option<(crate::pending_edits::Ticket, Act)>,
+    cleanup: Option<Cleanup>,
     open: bool,
     purpose: Purpose,
     /// The library folder; the default folder when `None`.
@@ -288,6 +315,7 @@ impl ToolLibraryWindow {
     pub fn new(folder: Option<PathBuf>) -> Self {
         Self {
             deferred: None,
+            cleanup: None,
             open: false,
             purpose: Purpose::Browse,
             folder,
@@ -496,6 +524,9 @@ impl ToolLibraryWindow {
                         | Act::ApplyImport
                         | Act::CancelImport
                         | Act::RemoveFromProject
+                        | Act::AskCleanup
+                        | Act::ReviewCleanup
+                        | Act::RemoveCleanup
                 ))
                 && let Some(ticket) = crate::pending_edits::request_local(ctx)
             {
@@ -517,13 +548,21 @@ impl ToolLibraryWindow {
         // Esc closes the window (it asks first when a draft would be lost) unless a field
         // had the keyboard, where Esc belongs to the field and only ends the edit
         // (specification section 16; OI-536).
-        if !self.field_had_keyboard && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
-            acts.push(Act::Close);
+        if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.cleanup.is_some() {
+                acts.push(Act::CancelCleanup);
+            } else if !self.field_had_keyboard {
+                acts.push(Act::Close);
+            }
         }
         egui::Panel::bottom("tool library footer")
             .resizable(false)
             .show(ui, |ui| self.footer(ui, project, acts));
         let Some(lib) = &self.library else {
+            if project.is_some() && ui.button("Remove unused tools…").clicked() {
+                acts.push(Act::AskCleanup);
+            }
+            self.dialogs(ui, acts);
             ui.label(
                 RichText::new(self.unreadable.as_deref().unwrap_or("No tool library."))
                     .color(DARK.error),
@@ -1002,6 +1041,72 @@ impl ToolLibraryWindow {
 
     /// The confirmations and the import review.
     fn dialogs(&mut self, ui: &mut egui::Ui, acts: &mut Vec<Act>) {
+        if let Some(cleanup) = &mut self.cleanup {
+            modal(ui, "remove unused project tools", |ui| {
+                ui.set_width((ui.ctx().content_rect().width() - 64.0).clamp(200.0, 560.0));
+                ui.heading(if cleanup.confirming {
+                    "Remove these project copies?"
+                } else {
+                    "Remove unused tools"
+                });
+                ui.label("Only project copies are removed. The tool library is unchanged.");
+                ui.label("Tools used by disabled operations are retained.");
+                if let Some(notice) = &cleanup.notice {
+                    ui.colored_label(DARK.warning, notice);
+                }
+                if cleanup.reviewed.is_empty() {
+                    ui.label("No unused project tools.");
+                    if ui.button("Close").clicked() {
+                        acts.push(Act::CancelCleanup);
+                    }
+                    return;
+                }
+                crate::theme::solid_scroll_bar(ui);
+                egui::ScrollArea::vertical()
+                    .max_height((ui.ctx().content_rect().height() * 0.4).min(320.0))
+                    .show(ui, |ui| {
+                        for tool in &cleanup.reviewed {
+                            let label = format!("{} — T{}", tool.name, tool.controller.number);
+                            if cleanup.confirming {
+                                if cleanup.selected.contains(&tool.id) {
+                                    ui.label(label);
+                                }
+                            } else {
+                                let mut checked = cleanup.selected.contains(&tool.id);
+                                if ui.checkbox(&mut checked, label).changed() {
+                                    if checked {
+                                        cleanup.selected.insert(tool.id);
+                                    } else {
+                                        cleanup.selected.remove(&tool.id);
+                                    }
+                                }
+                                ui.label(library::summary(&tool.tool));
+                                let dimensions: Vec<_> = library::default_dimensions(&tool.tool)
+                                    .into_iter()
+                                    .map(|(label, value)| format!("{label}: {value}"))
+                                    .collect();
+                                ui.label(dimensions.join(" · "));
+                            }
+                        }
+                    });
+                ui.horizontal(|ui| {
+                    let (label, action) = if cleanup.confirming {
+                        ("Remove", Act::RemoveCleanup)
+                    } else {
+                        ("Remove selected…", Act::ReviewCleanup)
+                    };
+                    if crate::shell::primary_button(ui, label, !cleanup.selected.is_empty())
+                        .clicked()
+                    {
+                        acts.push(action);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        acts.push(Act::CancelCleanup);
+                    }
+                });
+            });
+            return;
+        }
         match &self.confirm {
             Some(Confirm::Delete(_, impact)) => {
                 modal(ui, "delete library tool", |ui| {
@@ -1175,6 +1280,7 @@ impl ToolLibraryWindow {
         match act {
             Act::Close => {
                 self.open = false;
+                self.cleanup = None;
                 self.confirm = None;
                 self.import = None;
                 self.draft = None;
@@ -1415,6 +1521,50 @@ impl ToolLibraryWindow {
                 };
                 library::save_to_library(app.project(), lib, id).map_err(text)?;
                 Ok(Some("Saved the project's tool to the library.".into()))
+            }
+            Act::AskCleanup => {
+                let app = app.ok_or("Open a project first.")?;
+                self.cleanup = Some(Cleanup::new(app.project()));
+                Ok(None)
+            }
+            Act::ReviewCleanup => {
+                if let Some(cleanup) = &mut self.cleanup
+                    && !cleanup.selected.is_empty()
+                {
+                    cleanup.confirming = true;
+                }
+                Ok(None)
+            }
+            Act::CancelCleanup => {
+                self.cleanup = None;
+                Ok(None)
+            }
+            Act::RemoveCleanup => {
+                let Some(cleanup) = &self.cleanup else {
+                    return Ok(None);
+                };
+                if !cleanup.confirming {
+                    return Ok(None);
+                }
+                let app = app.ok_or("Open a project first.")?;
+                let selected: Vec<_> = cleanup.selected.iter().copied().collect();
+                let result =
+                    library::remove_unused_tools(app.project(), &cleanup.reviewed, &selected)
+                        .and_then(|command| match command {
+                            Some(command) => app.execute(command),
+                            None => Ok(()),
+                        });
+                if let Err(error) = result {
+                    let mut refreshed = Cleanup::new(app.project());
+                    refreshed.notice = Some(error.to_string());
+                    self.cleanup = Some(refreshed);
+                    return Ok(None);
+                }
+                self.cleanup = None;
+                Ok(Some(format!(
+                    "Removed {} unused project tools. Undo with Ctrl Z.",
+                    selected.len()
+                )))
             }
             Act::RemoveFromProject => {
                 let (Some(Chosen::Project(id)), Some(app)) = (self.chosen, app) else {
@@ -1709,6 +1859,9 @@ fn list(
             if let Some(project) = project {
                 let rows = library::project_rows(project, Some(lib), search);
                 group_title(ui, "This project");
+                if ui.button("Remove unused tools…").clicked() {
+                    acts.push(Act::AskCleanup);
+                }
                 if rows.is_empty() {
                     ui.label(RichText::new("No tools yet.").color(DARK.muted));
                 }

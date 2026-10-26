@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, Toolpath};
 use openchuck_types::kinematics::{AsRotaryFrame, axis_direction, machine_xyz};
+use openchuck_types::machine::ARange;
 use openchuck_types::units::Degrees;
 
 use crate::error::{PostError, Result};
@@ -26,6 +27,11 @@ pub struct ToolSetting {
 /// Settings of the conversion.
 #[derive(Debug, Clone)]
 pub struct ConvertOptions<F> {
+    /// Allowed rotary travel. Limited axes never receive counter resets.
+    pub a_range: ARange,
+    /// Required safe Z in the output work frame. A group may offer a
+    /// non-moving counter reset only after reaching at least this height.
+    pub safe_z: f64,
     /// The work frame the program is written in (`RotaryFrame::work`).
     pub frame: F,
     /// The per-controller feed rule (decision 0019 item 5).
@@ -65,6 +71,12 @@ pub fn to_machine_program<F: AsRotaryFrame>(
     options: &ConvertOptions<F>,
 ) -> Result<MachineProgram> {
     toolpath.validate()?;
+    if !options.safe_z.is_finite() {
+        return Err(PostError::Setting {
+            name: "safe_z".into(),
+            reason: "must be finite".into(),
+        });
+    }
     if let Some(max) = options.max_feed
         && !(max.is_finite() && max > 0.0)
     {
@@ -162,18 +174,6 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             let delta_a = (to.a - here.a).abs();
             let moved = length > NO_MOTION || delta_a > NO_MOTION;
             if segment.kind == MoveKind::Rapid {
-                if length <= NO_MOTION && delta_a > NO_MOTION {
-                    let turns = delta_a / 360.0;
-                    if (turns - turns.round()).abs() * 360.0 <= 1e-9 {
-                        program.steps.push(Step::Unwind {
-                            from: here.a,
-                            to: to.a,
-                            at: to,
-                        });
-                        here = to;
-                        continue;
-                    }
-                }
                 if moved {
                     program.steps.push(Step::Rapid { target: to });
                 }
@@ -224,6 +224,9 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                 });
             }
             here = to;
+        }
+        if options.a_range == ARange::Continuous && here.z >= options.safe_z {
+            program.steps.push(Step::RotaryBoundary { at: here });
         }
     }
     Ok(program)

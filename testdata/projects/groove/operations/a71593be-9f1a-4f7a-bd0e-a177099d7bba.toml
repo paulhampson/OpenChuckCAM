@@ -1,0 +1,11 @@
+schema = 17
+id = "a71593be-9f1a-4f7a-bd0e-a177099d7bba"
+order = "V"
+name = "Finish"
+setup = "1ad47707-1809-470a-9577-5f1518c61201"
+strategy = "helical_finishing"
+tool = "5f0c2d1e-7a3b-4c6d-8e9f-0000000000e2"
+selections = []
+
+[parameters]
+max_angle_step = 5.0

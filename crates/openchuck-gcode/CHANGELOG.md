@@ -1,10 +1,24 @@
 # Changelog
 
+## 0.23.0
+
+- STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
+
+## 0.22.0
+
+- GC-10: `compare_simulator_range` checks bounded LinuxCNC fixtures against the original unsplit source and independently replayed prefix state. `SimReport` gains default-empty `boundaries` and the public `SimBoundary` type; struct constructors must supply the new field. Ordinary whole-program JSON remains compatible.
+
+- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Existing whole-program replay behavior is unchanged.
+
+
 All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
 - Use the written rotary angle when identifying rounded-away moves; keep tip comparison against the original IR and unchanged tolerances (issue #324).
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+
+- Replay `G92.4 A0 S0` with the Z1 firmware's strict `|A| > 360` condition (GC-09, decision 0241, #292). Exactly +360 and -360 remain unchanged, so subsequent absolute A motion is checked against the actual controller convention. XYZ and spindle state are unchanged by this command.
 - Version 0.20.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`, and `ProfileField` gains `SpindleRange`, breaking changes; decision 0231).
 - Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.

@@ -1,0 +1,37 @@
+OPCREATE2 approved strategy explanations — OI-986
+Status: accepted separately by the project owner on 24 Oct 2026, directly in
+the OPCREATE2 session: "Accept the explanation texts for OI-986".
+Presented in full before approval; decision 0237 was accepted separately.
+
+Rotary roughing
+Removes most of the material from the stock in layers, working from the outside in. The part can turn continuously or be held at chosen angles. Use it before finishing; stock to leave sets how much material to keep for the finishing tool.
+
+Facing
+Reduces the stock along its length to flat faces at chosen rotary angles, or to a round diameter. Use it to prepare stock before roughing. The part and workholding can limit the cut.
+
+Helical finishing
+Follows the surface in a spiral around the part as the tool moves along its length. Use it for a general finish on round shapes. Selections and gaps can split the spiral into separate cuts, and the tool may not reach tight inside corners.
+
+Axial finishing
+Follows the surface in passes along the length of the part, turning the part a small step between passes. Use it where marks running along the part suit the job better than a spiral.
+
+Indexed finishing
+Turns the part to each chosen angle, holds it still and follows the surface along its length. Use it for features reached from a few set directions. It does not turn the part during a cutting pass.
+
+Simultaneous 4-axis finishing
+Moves the tool while turning the part to approach the surface from different directions. Use it for curved shapes that need the cutting angle to change along a pass. Four-axis motion cannot follow every surface direction; check the resulting path and simulation.
+
+Rest machining
+Uses the stock left by earlier operations in the same setup to find and cut remaining material. Use a smaller tool to reach areas a larger tool left behind, such as inside corners. The remaining material is estimated from the stock simulation.
+
+Pencil clean-up
+Follows supported sharp inside corners to remove ridges of material left by other finishing operations. Use it as a final clean-up, rather than to cut large areas. It does not cover every inside corner or smooth transition.
+
+Edge and curve following
+Moves the tool along the part's edges or supplied curves to cut lines for engraving or carving. It follows lines rather than clearing areas.
+
+Swarf (flank) machining
+Cuts selected wall faces, such as a blade, with the side of the tool. The wall can curve along its length, with straight lines running across its height for the tool's side to follow. Needs a STEP model. Some faces make the tool cut into the surface by more than the operation's tolerance; a warning gives the depth and location. Check the warning, toolpath and simulation before running the program.
+
+Radial drilling
+Drills holes into the side of the part, turning the part so each hole faces the tool. Needs a STEP model to find the round holes. Use a drill that matches the hole size.

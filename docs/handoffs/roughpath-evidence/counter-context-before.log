@@ -1,0 +1,22 @@
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 0.59s
+     Running tests/posting.rs (target/debug/deps/posting-08ef2eedc8a1dc9e)
+
+running 1 test
+test req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate ... FAILED
+
+failures:
+
+---- req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate stdout ----
+
+thread 'req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate' (41144) panicked at crates/openchuck-app/tests/posting.rs:923:16:
+large unrebased float counter exceeds the canonical entry certificate
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    req_gc_09_req_op_11_float_counter_context_must_match_ramp_certificate
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 23 filtered out; finished in 2.44s
+
+error: test failed, to rerun pass `-p openchuck-app --test posting`

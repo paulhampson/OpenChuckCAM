@@ -15,11 +15,18 @@ use crate::definition::PostDefinition;
 use crate::engine;
 use crate::error::{PostError, Result};
 use crate::options::{ADirection, PostOptions, UnwindMode};
-use crate::program::{MachineProgram, Step, Target};
+use crate::program::{MachineProgram, Step};
 
 /// What a post needs to know about the job beyond the toolpath.
 #[derive(Debug, Clone)]
 pub struct PostJob {
+    /// Machine profile settings for GC-17, before post overrides.
+    pub block_time: crate::BlockTimeSettings,
+    /// Allowed rotary travel; limited axes never receive counter resets.
+    pub a_range: openchuck_types::machine::ARange,
+    /// Required safe Z in the output work frame, for operation-boundary
+    /// counter resets (decision 0241).
+    pub safe_z: f64,
     /// The work frame the program is written in.
     pub frame: RotaryFrame,
     /// Tool numbers and spindle speeds by the IR's tool tag (GC-14).
@@ -47,6 +54,8 @@ pub struct PostJob {
 /// The result of posting.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PostOutput {
+    /// Per-operation GC-17 reports, with no G-code changes.
+    pub block_time_reports: Vec<crate::BlockTimeReport>,
     /// The program text.
     pub text: String,
     /// Fed moves whose feed was lowered to the post's maximum.
@@ -90,11 +99,7 @@ struct Context<'a> {
 fn map_a(step: &mut Step, f: impl Fn(f64) -> f64) {
     match step {
         Step::Rapid { target } | Step::Feed { target, .. } => target.a = f(target.a),
-        Step::Unwind { from, to, at } => {
-            *from = f(*from);
-            *to = f(*to);
-            at.a = f(at.a);
-        }
+        Step::RotaryBoundary { at } => at.a = f(at.a),
         _ => {}
     }
 }
@@ -113,12 +118,7 @@ fn apply_a_conventions(program: &MachineProgram, options: &PostOptions) -> Vec<S
     match options.unwind {
         UnwindMode::Rotate => steps
             .into_iter()
-            .map(|step| match step {
-                Step::Unwind { at, to, .. } => Step::Rapid {
-                    target: Target { a: to, ..at },
-                },
-                other => other,
-            })
+            .filter(|step| !matches!(step, Step::RotaryBoundary { .. }))
             .collect(),
         UnwindMode::DropTurns => {
             // The controller keeps the remainder of A with its sign, which may
@@ -127,19 +127,23 @@ fn apply_a_conventions(program: &MachineProgram, options: &PostOptions) -> Vec<S
             let mut shift = 0.0;
             steps
                 .into_iter()
-                .map(|mut step| match &mut step {
-                    Step::Unwind { from, to, at } => {
-                        let held = *from + shift;
-                        let remainder = held - 360.0 * (held / 360.0).trunc();
-                        shift = remainder - *to;
-                        *from = held;
-                        *to = remainder;
+                .filter_map(|mut step| match &mut step {
+                    Step::RotaryBoundary { at } => {
+                        let held = at.a + shift;
+                        // Firmware 1.1.2 leaves exactly +/-360 alone. The
+                        // following A words must use that retained counter,
+                        // or an intended short move gains a full turn.
+                        if held.abs() <= 360.0 {
+                            return None;
+                        }
+                        let remainder = held % 360.0;
+                        shift = remainder - at.a;
                         at.a = remainder;
-                        step
+                        Some(step)
                     }
                     _ => {
                         map_a(&mut step, |a| a + shift);
-                        step
+                        Some(step)
                     }
                 })
                 .collect()
@@ -173,6 +177,8 @@ impl PostProcessor for TemplatePost {
     fn post(&self, toolpath: &Toolpath, job: &PostJob) -> Result<PostOutput> {
         let d = &self.definition;
         let convert = ConvertOptions {
+            a_range: job.a_range,
+            safe_z: job.safe_z,
             frame: job.frame,
             feed_rule: d.feed_rule,
             max_feed: d.options.max_feed,
@@ -212,6 +218,10 @@ impl PostProcessor for TemplatePost {
             .render(Serde(&context))
             .map_err(|e| PostError::Template(engine::describe(&e)))?;
         Ok(PostOutput {
+            block_time_reports: crate::block_time_reports(
+                toolpath,
+                d.options.block_time(job.block_time),
+            )?,
             text,
             clamped_feeds: program.clamped_feeds,
             estimated_seconds: toolpath.total_duration().0,

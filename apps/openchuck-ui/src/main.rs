@@ -48,6 +48,7 @@ mod run_panel;
 mod selection_panel;
 mod setup_panes;
 mod shell;
+mod strategy_info;
 mod testing;
 mod theme;
 mod tool_library_window;

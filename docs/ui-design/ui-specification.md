@@ -135,7 +135,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | Model | Opens the import dialog (11.2) |
 | Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and the inspector's New selection (12.2) |
-| Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
+| Operations | Opens Operations and the New operation dialog, with its registered-strategy dropdown and information panel (OP-16; decision 0237) |
 
 **Rows** are 28 high. Columns, left to right:
 
@@ -192,7 +192,8 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | Section plane (S) | All | *(UI-21)* |
 | Measure (M): distance, angle, radius about the rotary axis | All | *(UI-21)* |
 | Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(UI-21)* |
-| Show: Model, Cut part, Toolpath, tick boxes in any combination; Cut part only by default; the one ticked box is disabled with the reason, so the view is never empty; the part coloured by deviation shows with Cut part ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)) | Simulate | SIM-01, SIM-03, SIM-05 |
+| Show: Part, Cut part, Toolpaths, tick boxes in any combination; Cut part only by default; quick boxes and the Show menu share one state and protect the last checked main choice. Cut part is the simulated Stock layer. Axes, Held regions and tabs, and Selections stay menu-only flags. Overall Toolpaths masks the existing per-operation tree choices, which return unchanged when it is shown again (owner direction, issue 299; accepted [decision 0238](../decisions/0238-simulate-display-and-operation-navigation.md)) | Simulate | SIM-01, SIM-03, SIM-05 |
+| Cut part display: Translucent (default) or Solid, in the Show menu; remembered per user, not in the project (issue 300; decision 0238, accepted) | Simulate | SIM-05, UI-15 |
 | Show findings | Model | IMP-04 |
 
 ### 7.2 Overlays
@@ -460,7 +461,11 @@ Boards 3 and 3b.
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
   - Several operations generate in chain order. An operation served from the cache shows "reused" in the Jobs tab.
   - Cancelling leaves no partial result: the operation stays stale.
-- **New operation.** Choose a strategy from the menu; the new operation takes the selection and the last tool used. Its dialog lists the project's tools and offers "From the library…", which opens the tool library and gives the new operation the tool added (decision 0127). A strategy that cannot honour a region (decision 0032 item 6) is listed with "ignores selections" and cannot take one.
+- **New operation** ([decision 0237](../decisions/0237-strategy-dropdown-and-information-panel.md), accepted). Keep one creation dialog. After the name, a Strategy dropdown shows the selected strategy's plain name. Choices follow the registry's Roughing, Finishing and Specialist groups and order. Unavailable choices remain visible and disabled, with their full reasons readable in the open list without hover. The application supplies eligibility; the UI does not list STEP-only strategies itself. Strategies that ignore selections say so.
+  - An always-visible, text-only information panel below the dropdown shows the selected strategy's name and complete wrapped explanation on one left edge. There is no explanation checkbox or preference. Repainting and resizing retain the choice. A setup change that makes the choice unavailable retains it, shows why and disables Add.
+  - The operation takes the selection and last tool used. Setup, tools, material preset and "From the library…" retain their existing behaviour (decisions 0127 and 0230). Choosing a strategy edits only the creation draft; Add creates the operation. Ordinary field-to-field confirmation and guarded form departures follow decision 0233.
+  - Long content scrolls within the bounded dialog without covering its footer. All controls remain keyboard accessible, in reading order; explanations wrap within the available width at supported scales.
+- **Inspector strategy** (decision 0237). Under the operation's name and status, show a Strategy heading, plain strategy name and the same information-panel presentation. The strategy is read-only; the operation name remains independently editable.
 - **An operation in error** (board 3b):
   - **Banner:** "This operation can't be generated", then the cause in one sentence, for example "The selection 'Lettering' no longer matches the model. 12 of its 40 edges were not found after the model file changed".
   - **Actions:** "Reselect in the view" (primary in the banner) and "Show missing". "Use the N matching edges" is *(UI-24)*.
@@ -472,13 +477,13 @@ Boards 3 and 3b.
 
 Board 4 (SIM-01 to SIM-07).
 
-**Tree:** the same tree. Each operation has an eye button that shows or hides its toolpath in the view only, in every step (section 6). Simulation results and the G-code do not change when something is hidden; a line under the tree says so (decision 0169).
+**Tree:** the same tree. Each operation has an eye button that shows or hides its toolpath in the view only, in every step (section 6). Simulation results and the G-code do not change when something is hidden; a line under the tree says so (decision 0169). On Simulate, a single click or Enter on a focused operation row opens Operations with that operation selected and its inspector visible. Row controls (enable, visibility, reorder and duplicate) do not navigate. The shared pending-edit guard (accepted 0233) runs before departure: Cancel preserves the draft and current context. Returning to the same available run preserves playback position and the Simulate camera; departure pauses playback and resets only its window under 0169. A new run starts normally, operation edits produce the correct stale state, and disabled/deleted operations keep the existing run-drop rule (navigation policy accepted directly by the owner; accepted record 0238).
 
 **Workflow bar:** "Simulate from" (start of operation N).
 
 **Viewport:**
 
-- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
+- **The stock** at the playback cursor, plain or with optional projected final-result colours (SIM-05; owner-authorised approach, issue 300; decision 0238, accepted). Colouring and numeric probes use the actual stock surface. Each displayed value comes from the nearest counted final-result sample within the comparison search distance plus one cell; it is not a fresh measurement at the current move. More remote triangles are Not measured. Tooltips identify “Final result · … (nearest target sample)”. Solid stock occludes internal model/toolpaths. Translucent plain stock keeps 30% opacity; mapped colours use 98% opacity to preserve the accepted palette’s rendered readability, while internal geometry still contributes. The choice is personal, with Translucent the default. The stock may be coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
 
   | Band | Colour | Meaning |
   | --- | --- | --- |
@@ -494,30 +499,33 @@ Board 4 (SIM-01 to SIM-07).
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
-- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the part coloured by deviation, resting the pointer on the part (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one the triangle is coloured by. Picking is on the CPU from the data already held, only when the pointer rests. The operation and move that left the point are added with the rest of SIM-11.
+- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the cut stock coloured by deviation, resting the pointer on its surface (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one its stock triangle is coloured by, explicitly labelled as a projected final result. Picking uses the same stock mesh on the CPU; a nearer visible model/stock face hides hover and pinned values in either display mode. A changed mesh clears pins because triangle identities change. The operation and move that left the point are added with the rest of SIM-11.
 
 **Results inspector:**
 
+- “Deviation colours”, available for current and stale simulated results; off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many (decision 0162);
 - a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥ (decision 0162);
-- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md)). Built as [decision 0217](../decisions/0217-band-visibility-and-the-kept-comparison.md) (accepted) sets out: the tick box is labelled with the row's range and a bin stays chosen across runs; the range is in signed millimetres (negative is overcut), ends included, an empty field without a limit, and narrows the ticked bins; "Show all" shows everything again. A triangle not shown keeps the part's own colour (so does one that "Colour by" leaves out); a triangle not measured stays hatched. A hidden row is drawn faint and one the range cuts across half faint; on the colour scale a hidden band is faint, a partly hidden one in its lower half, and the scale says "Some bands are hidden". The worst values, the share and the counts stay those of the whole part; a hidden band is drawn in a solid dark slate `#5d6570` of its own, never the part's grey, so it does not read as "within tolerance" ([decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md) item 8)
+- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md)). Built as [decision 0217](../decisions/0217-band-visibility-and-the-kept-comparison.md) (accepted) sets out: the tick box is labelled with the row's range and a bin stays chosen across runs; the range is in signed millimetres (negative is overcut), ends included, an empty field without a limit, and narrows the ticked bins; "Show all" shows everything again. A triangle hidden by a band/range choice uses the distinct hidden-band slate of accepted 0216 (so does one that "Colour by" leaves out); a triangle not measured stays hatched. A hidden row is drawn faint and one the range cuts across half faint; on the colour scale a hidden band is faint, a partly hidden one in its lower half, and the scale says "Some bands are hidden". The worst values, the share and the counts stay those of the whole part; a hidden band is drawn in a solid dark slate `#5d6570` of its own, never the part's grey, so it does not read as "within tolerance" ([decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md) item 8)
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
-**A result out of date** *(NFR-12, UI-11; [decision 0192](../decisions/0192-simulate-result-out-of-date.md))*. While the latest run no longer matches the project (the export check's test: an operation in it changed, was turned off or removed, or an enabled operation is not in it), one banner says so over the top of the view, in the Playback tab under its controls (never over them) and at the top of the results inspector: the stale mark, "Simulation out of date", the reason in plain words ("Operation 'Roughing' was turned off.") and the Simulate primary action (section 5) as its button. The old numbers stay to compare, dimmed under "Results of the out-of-date simulation:", and so do the playback controls the tab still has. A run that holds an operation turned off or removed leaves the view (decision 0172 item 3), and the Playback tab shows the banner under the transport row it keeps.
+**A result out of date** *(NFR-12, UI-11; owner direction, issue 297; accepted amendment to [decision 0192](../decisions/0192-simulate-result-out-of-date.md) in [0238](../decisions/0238-simulate-display-and-operation-navigation.md))*. While the latest run no longer matches the project (the export check’s test), one actionable banner appears in the viewport only: the stale mark, “Simulation out of date”, the existing plain-language reason, and “Run simulation again” without an operation number. No duplicate warning or rerun button appears in Playback or the inspector. The step-bar status mark remains. Old numbers stay dimmed under “Results of the out-of-date simulation:”, as do retained playback controls, and export remains blocked. A run with an operation turned off or removed leaves the view under 0172 item 3. With no enabled operation, show the existing guidance without a run button. Explicitly skipped stock simulation retains the accurate toolpath-only action and wording of accepted 0192 item 3.
 
-**Playback dock** (SIM-04). The transport row (with "Skip stock simulation"), the timeline and the window strip are a strip that does not scroll; the rest scrolls under it, its bar in a strip of its own so it never lies over a control. At the default dock height everything fits without scrolling; in a dock too short for the strip, it scrolls with the rest, and the dock never grows past its height (issue 262; [decision 0192](../decisions/0192-simulate-result-out-of-date.md) items 7 and 8).
+**Playback dock** (SIM-04). The transport row (with “Skip stock simulation” and “Turn part with A”, adjacent with a thin divider only, no group label or box), the timeline, preparation progress and the window strip are a strip that does not scroll; the rest scrolls under it, its bar in a strip of its own so it never lies over a control. At the default dock height everything fits without scrolling; in a dock too short for the strip, it scrolls with the rest, and the dock never grows past its height (issue 262; [decision 0192](../decisions/0192-simulate-result-out-of-date.md) items 7 and 8).
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
-- **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
+- **Preparation progress** (owner direction, issue 305; accepted 0238): directly below the playback position bar, during initial loading and regeneration. Read the existing monotonic pipeline progress; show its reported percentage without a time estimate. Other preparation stages without a stable total show activity without a percentage. Remove the display on readiness or failure; a disabled position bar provides the anchor before a timeline exists. Dock bounds stay fixed.
+- **Synchronized cut playback** (SIM-02/03/04, issue 333): Cut part includes the swept portion of the current move. The viewport's stock, tool pose, A rotation and tool readout share the exact same cursor. While a stock surface is being prepared, retain the previous matching pair; expensive work stays off the UI thread. With Cut part hidden, tool motion follows playback time directly.
+- **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s. Speed and path-display choices share a row where they fit, with their existing target sizes; Playback uses denser row gaps and the drawing-detail note uses remaining row space.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
 - **Window** ([decision 0169](../decisions/0169-playback-window-and-path-visibility.md)): a strip under the timeline with a band and two handles: drag an end to resize, the band to move, elsewhere to start one; "Window: moves [from] to [to]" and "Whole program" on the Go to move row. The play head runs only inside it. The rest of the path is a faint grey trace unless "Hide path outside window" is ticked (kept per user, section 13). Not remembered: leaving Simulate, a new run or opening a project lifts it.
 - **Skip stock simulation** (the project's choice, undoable; [decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)). Otherwise the stock simulation runs with every generation and the cut part is prepared without being asked for.
-- **Turn part with A,** on by default (SIM-02).
+- **Turn part with A,** on by default (SIM-02), beside Skip stock simulation with only a thin divider between them (issue 305).
 - **The readout** gives A as in 7.2.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
 
@@ -550,6 +558,8 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189);
 - a preview of the first lines.
 
+The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
+
 **Safety notice band** (NFR-12; GC-16):
 
 - **Always shown** at export, in an amber box. The text is fixed: "Verify this G-code before you run it. It was produced from your project and has not been tested on your machine. Check the origin, axis height, tool lengths, A direction and unwinding at the controller, and run an air cut first."
@@ -559,6 +569,32 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - **While the project skips the stock simulation,** the band also says so, with the tick box "I know the cut has not been simulated for this project", which must be ticked before writing; it is remembered as the export's is, per project on each computer ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)).
 
 **Footer:** Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the boxes are ticked, and its tooltip says which is missing. It writes the G-code files and, beside them, the setup sheet as HTML and PDF (GC-12), made from the same run; there is no separate setup sheet button ([decision 0189](../decisions/0189-setup-sheet-written-with-the-g-code.md)).
+
+The footer stays outside the scrolling body. The body's scrollbar occupies
+its own strip: text, file rows and controls never extend underneath it,
+including long paths, validation errors and expanded tool-number controls
+(UI-16, issue 311). The dialog remains inside the main window (decision 0164).
+
+**Replacement and write results (UI-12, GC-15; behaviour approved by the owner
+24 Oct 2026, accepted decision 0240).** Write G-code preflights the complete
+same-run NC/HTML/PDF batch without creating files or folders. If destinations
+exist, an in-main-window confirmation lists every existing full path with
+Replace files (primary) and Cancel. Cancel or Esc writes nothing. After the
+pending-edit guard resolves, replacement revalidates readiness, choices and
+destination existence; changed inputs require another review.
+
+After writing, an in-main-window Export result modal lists actual Written
+paths, a Failed path and reason when applicable, and Not attempted paths.
+Its count includes setup sheets. Files are written in order; a failure stops
+later writes, and earlier completed writes remain. The result stays until
+Dismiss (primary) or Esc; clicking the backdrop does not dismiss it. Copy
+paths copies only actual written destinations and is disabled if none were
+written. The fixed NFR-12 notice is shown. Result/confirmation actions remain
+outside scrolling content, whose scrollbar has its own strip. Messages keeps
+each result for the open project session and offers Show result through the
+shared pending-edit guard. Dismissal and project edits do not remove history;
+historical failures do not block present readiness. Full batch success marks
+export complete. The existing unattended CLI behaviour is unchanged.
 
 ### 11.7 Workholding and retaining tabs
 
@@ -682,6 +718,7 @@ TL-01 to TL-07, TL-11, TL-12; decision 0014; decision 0029 item 12; decision 012
 - **Left: the tool list.** A search field (name, type or material), and under it the size filter; "This project" first, one row per project tool with its tool number chip; then the library's tools in **sections** (decision 0199): one for each machine whose tool set holds them, in name order, then "Standard tools" for the tools no machine's set holds; inside a section the tools are in type groups (ball end, flat end, bull-nose and tapered, V-bit, chamfer and drill, custom profile), each with a chip "in project" on a library tool the project holds; a tool two machines hold is listed under each; New tool (by type), Duplicate and Delete.
   - **Folding.** Every section and type group has a heading with an arrow and the number of tools inside ("⏷ MAKERA Z1 (3)"); a click folds or unfolds it. Which are folded is remembered per user (section 13).
   - **Size filter.** "Diameter (mm)" and "Flute length (mm)", each with three boxes: exact, min and max. An exact value shows tools of that size (within 0.0005 mm) and the range beside it is then not used; min and max, either or both, show the tools between them, ends included. It applies with the search and hides the groups and sections it leaves empty. A box that cannot be read is not used, and a line says which and why. The filter keeps its state when the window is closed and opened again and between runs (section 13); "Clear filter" empties it by hand.
+- **Remove unused tools…** beside "This project" opens an unfiltered project-wide checklist of unused snapshots, in tool-number order, showing name, type, dimensions and number (decision 0236, issue 313). Checkboxes start clear. Disabled operations retain their tools. Only project copies are removed; the library is unchanged. "Remove selected…" opens a second confirmation naming the selected tools and numbers; Cancel changes nothing. With no candidates, show "No unused project tools." and Close. Revalidate selected snapshots and references before removal: any changed, missing or newly used selection cancels the entire removal, refreshes the list, clears selection and requires fresh confirmation. Removal is one undoable edit, freeing numbers under existing allocation rules without renumbering survivors or making unrelated results stale. Opening and confirmation use the pending-edit guard, preserving library Save and workholding Apply boundaries. Escape cancels the active cleanup stage.
 - **Two kinds of tool** (decision 0127 items 1 and 4):
   - **A project tool** is the project's own copy (TL-07). Each change is one undoable step; the library is untouched.
   - **A library tool** is edited as a draft: nothing is written until Save; Cancel drops the changes; leaving a draft with changes (another tool, New tool, Duplicate, Import library, Close) asks "Discard the changes?" first. New tool starts from the default standard tool of its type (TL-12), named "New <type>"; Duplicate makes a library draft "<name> copy" with a new ID, no tool set numbers and not in the project.
@@ -743,15 +780,20 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - scale and theme;
   - display units;
   - recent projects;
+  - recovery checkpoint interval, three minutes by default and configurable from one to fifteen whole minutes (PRJ-08; owner's CHECKPOINT policy). Settings explains that three periodic checkpoints are retained independently of a single interim checkpoint updated after fifteen seconds without a confirmed project change;
   - remembered sections;
   - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
-  - the Simulate step's choices: Turn part with A, the view's tick boxes, Hide path outside window, and whether new projects skip the stock simulation (one tick box in Settings) (decisions 0168 and 0169);
+  - the Simulate step's choices: Turn part with A, Part/Cut part/Toolpaths, Translucent or Solid cut stock, Hide path outside window, and whether new projects skip the stock simulation (one tick box in Settings) (decisions 0168 and 0169);
   - whether the user's actions are recorded in the log (NFR-18, decision 0157): on by default, one checkbox "Record my actions in the log" in a small Settings dialog (File, Settings…, and the same item in Help; both open the same dialog) with a sentence saying what is recorded (names, never values), that the log stays on the computer, and the log's path.
 - **Where.** The platform configuration folder of decision 0029 item 15: `OpenChuckCAM/` beside `machines/` and `tools/`, under `$XDG_CONFIG_HOME` (else `~/.config`), `%APPDATA%` or `~/Library/Application Support`.
 - **Format.** One `settings.toml`, written with the `toml` crate already in the workspace. Not eframe persistence, which would bring the `directories` crate that decision 0029 declined.
 - **When the file is bad.** A missing or unreadable file gives defaults and a message, never a crash (NFR-07).
 - **How a project is identified** for the acknowledgement: by its canonical folder path on that computer (OI-165, closed). Moving or renaming the folder asks again; no project file changes.
+
+### 13.1 Recovery checkpoints
+
+Recovery (PRJ-08; accepted CHECKPOINT policy, accepted design record 0243) presents an unexpected session's retained choices with the captured project name, project folder, UTC capture time and Periodic/Interim label, newest published state first. No checkpoint is restored automatically: choose one and use **Recover selected**. Explain that recovery is unsaved and ordinary explicit Save is needed. **Keep saved project** opens the saved project without deleting checkpoints; **Discard recovery data…** requires a separate deletion confirmation. Show damaged-checkpoint errors alongside remaining valid choices and preserve damaged/partial data. Missing or changed model references give clear warnings. A moved/inaccessible location offers a folder-path **Locate** control, checked against the recovery identity; a failed lookup retains the choice for retry. A timestamp outside the supported display calendar is labelled clearly without losing recovery choices. Cancel from the existing pending-field or unsaved-project warning stops close; after Save/discard is resolved, close waits asynchronously for recovery retirement. Report checkpoint failures in Messages without interrupting normal editing.
 
 ## 14. Visual design
 
@@ -925,3 +967,7 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 ![Operations step](mockups/03-operations.png)
 
 Known gaps in the images: the footer omits the short G-code notice of section 10 (D2), and the tree check boxes are drawn without a tick.
+
+### Optional back-and-forth ramp
+
+The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.

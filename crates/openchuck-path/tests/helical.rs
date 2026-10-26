@@ -150,9 +150,9 @@ fn req_op_04_helix_pitch_and_a_per_x_match_the_analytic_values_on_a_cylinder() {
         for s in &path.group.segments {
             assert!(s.end.tip.is_finite() && s.end.a.0.is_finite() && s.duration.0.is_finite());
         }
-        // The group ends unwound.
-        let end = path.group.segments.last().unwrap().end.a.0;
-        assert!(end > -180.0 && end <= 180.0);
+        // Safe retract retains the last cutting angle (decision 0241).
+        let end = path.group.segments.last().unwrap().end.a;
+        assert_eq!(end, cuts.last().unwrap().1.end.a);
     }
 }
 

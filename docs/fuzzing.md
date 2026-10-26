@@ -6,12 +6,15 @@ The libFuzzer targets are in `fuzz/fuzz_targets/`, a separate cargo-fuzz workspa
 
 ## Inventory
 
+Before pushing a public library API change, compile the separate fuzz workspace with `cargo check --locked --all-targets --manifest-path fuzz/Cargo.toml` as well as benchmark consumers with `cargo check --locked --all-targets --manifest-path benches/Cargo.toml`. Workspace-only checks do not compile `fuzz/`; a missing `PostJob` field stopped group C before its smoke run in PR 284. These compile checks supplement the nightly-toolchain fuzz runs.
+
 | Format | Parser (entry point) | Fuzz target | Pull request | Nightly | Corpus seeds |
 | --- | --- | --- | --- | --- | --- |
 | STL model (IMP-01) | `openchuck_import::import_bytes`, then `check_mesh` and `place` | `stl_import` | Group B | Yes | `testdata/stl/*.stl` |
 | STEP model (IMP-02) | `StepImporter` (the OpenCASCADE reader in a child process, decision 0003) | Mutation run, not libFuzzer: `crates/openchuck-import/examples/step_mutations.rs` (decision 0027 item 9, OI-27) | 150 mutants in the STEP kernel job | 3,000 mutants, seeded by the run number | `testdata/step/valid/` (4 files); `testdata/step/broken/` and `crash/` in the import tests |
 | Project file, one at a time, with schema and migration checks (PRJ-01, PRJ-04) | `openchuck_project::file::parse_file` | `project_files` | Group B | Yes | The fixture files in `crates/openchuck-project/tests/fixtures/`, each after the byte that picks its kind (from decision 0107; none before) |
 | Project folder, with the checks across files (PRJ-01, PRJ-05, PRJ-06) | `openchuck_project::file::load_files`, the checks of `file::load` | `project_folder` (decision 0107) | Group A | Yes (decision 0107) | The fixture folders in `crates/openchuck-project/tests/fixtures/`, each written as `=== <path>` blocks |
+| Recovery checkpoint container (PRJ-08, NFR-07) | `openchuck_project::recovery::Snapshot::decode`, then project validation; fuzz both raw envelopes and checksummed arbitrary inner payloads | `project_recovery` | Group B | Yes | `fuzz/seeds/project_recovery/`; local 60-second smoke is not counted as nightly CPU hours |
 | Selection sets (PRJ-06) | In project files: kind 4 of `project_files`, and the set checks of `load` | `project_files`, `project_folder` | As above | As above | As above |
 | Workholding and tabs (SET-09, OP-21) | In setup files | `project_files`, `project_folder` | As above | As above | As above |
 | Machine profile file (SET-01) | `openchuck_project::machines::parse_profile`, with a write and read back | `machine_profile_toml` | Group A | Yes | `crates/openchuck-project/machines/*.toml` |
@@ -36,6 +39,7 @@ Updated from the nightly runs on `main` by a session with the Actions API (decis
 | `stl_import` | 6 (12 to 17 Oct 2026) | 6.0 | 0 | 17 Oct 2026, run 39011834775 |
 | `project_files` | 6 | 6.0 | 0 | 17 Oct 2026 |
 | `project_folder` | 0 (new) | 0.0 | 0 | |
+| `project_recovery` | 0 (new, CHECKPOINT) | 0.0 | Not yet measured | |
 | `machine_profile_toml` | 6 | 6.0 | 0 | 17 Oct 2026 |
 | `machine_profile_json` | 6 | 6.0 | 0 | 17 Oct 2026 |
 | `tool_library_toml` | 4 (14 to 17 Oct; 13 Oct failed) | 4.0 | 0 (13 Oct crash fixed in 070e7ee) | 17 Oct 2026 |

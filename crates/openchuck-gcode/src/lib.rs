@@ -15,6 +15,7 @@ mod compare;
 mod interp;
 mod reader;
 mod sim;
+mod sim_ranges;
 
 pub use check::{CheckConfig, FeedLimits, Finding, FindingKind, static_check};
 pub use compare::{CompareError, Comparison, TimingRule, Tolerances, compare};
@@ -23,4 +24,7 @@ pub use interp::{
     replay_axis,
 };
 pub use reader::{Block, MAX_LINE_CHARS, Program, ReadError, Word, read};
-pub use sim::{SimComparison, SimError, SimReport, SimRow, compare_simulator, parse_sim_report};
+pub use sim::{
+    SimBoundary, SimComparison, SimError, SimReport, SimRow, compare_simulator, parse_sim_report,
+};
+pub use sim_ranges::compare_simulator_range;

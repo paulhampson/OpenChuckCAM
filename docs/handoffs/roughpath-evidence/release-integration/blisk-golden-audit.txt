@@ -1,0 +1,4 @@
+testdata/golden/blisk/axial_linuxcnc.ngc: removes only terminal 'A-5.714' after safe retract; every cutting/feed word byte-identical.
+testdata/golden/blisk/axial_makera-z1.nc: removes only terminal 'G92.4 A0 S0' after safe retract; every cutting/feed word byte-identical.
+testdata/golden/blisk/helical_2_linuxcnc.ngc: removes only terminal 'A0.000' after safe retract; every cutting/feed word byte-identical.
+testdata/golden/blisk/helical_5_linuxcnc.ngc: removes only terminal 'A0.000' after safe retract; every cutting/feed word byte-identical.

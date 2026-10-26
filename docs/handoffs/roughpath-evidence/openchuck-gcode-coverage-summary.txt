@@ -1,0 +1,26 @@
+Filename                                Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+openchuck-gcode/src/check.rs                218                 8    96.33%           8                 0   100.00%         171                 8    95.32%           0                 0         -
+openchuck-gcode/src/compare.rs              301                68    77.41%          14                 0   100.00%         230                64    72.17%           0                 0         -
+openchuck-gcode/src/interp.rs               317                 8    97.48%          12                 1    91.67%         238                 6    97.48%           0                 0         -
+openchuck-gcode/src/reader.rs               203                 6    97.04%           9                 1    88.89%         114                 2    98.25%           0                 0         -
+openchuck-gcode/src/sim.rs                  300                 9    97.00%          17                 0   100.00%         205                12    94.15%           0                 0         -
+openchuck-types/src/brep.rs                 432               432     0.00%          32                32     0.00%         259               259     0.00%           0                 0         -
+openchuck-types/src/error.rs                 32                32     0.00%           4                 4     0.00%          32                32     0.00%           0                 0         -
+openchuck-types/src/geometry.rs             156                97    37.82%          22                11    50.00%          91                55    39.56%           0                 0         -
+openchuck-types/src/ir.rs                    70                67     4.29%           8                 7    12.50%          40                37     7.50%           0                 0         -
+openchuck-types/src/job.rs                   40                40     0.00%           9                 9     0.00%          33                33     0.00%           0                 0         -
+openchuck-types/src/kinematics.rs           116                46    60.34%          14                 6    57.14%          67                31    53.73%           0                 0         -
+openchuck-types/src/machine.rs              204               200     1.96%          17                16     5.88%         177               173     2.26%           0                 0         -
+openchuck-types/src/mesh.rs                  50                50     0.00%           4                 4     0.00%          21                21     0.00%           0                 0         -
+openchuck-types/src/model.rs                 28                28     0.00%           4                 4     0.00%          22                22     0.00%           0                 0         -
+openchuck-types/src/setup.rs                436               436     0.00%          26                26     0.00%         290               290     0.00%           0                 0         -
+openchuck-types/src/simulation.rs            24                24     0.00%           5                 5     0.00%          27                27     0.00%           0                 0         -
+openchuck-types/src/stock.rs                 28                28     0.00%           1                 1     0.00%          12                12     0.00%           0                 0         -
+openchuck-types/src/tool/mod.rs             360               360     0.00%          22                22     0.00%         296               296     0.00%           0                 0         -
+openchuck-types/src/tool/profile.rs         443               443     0.00%          28                28     0.00%         272               272     0.00%           0                 0         -
+openchuck-types/src/transform.rs             76                76     0.00%           7                 7     0.00%          41                41     0.00%           0                 0         -
+openchuck-types/src/units.rs                117               113     3.42%          19                18     5.26%          78                75     3.85%           0                 0         -
+openchuck-types/src/workholding.rs          467               467     0.00%          21                21     0.00%         301               301     0.00%           0                 0         -
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                      4418              3038    31.24%         303               223    26.40%        3017              2069    31.42%           0                 0         -

@@ -1,10 +1,25 @@
 # Changelog
 
+## 0.23.0
+
+- STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
+
+## 0.22.0
+
+- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Path geometry and G-code replay behavior are unchanged.
+
+
 All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
 - Report optional fitting and assembly scope durations to the host for STEPALL-M measurements; timing does not affect generated paths. Axial/indexed quiet pass contexts forward opted-in timing callbacks while keeping their inner progress counts suppressed.
+- **Breaking (0.21.0, ROUGHPATH):** `StrategyInput` adds `entry_safety: Option<&EntrySafety>`; hosts without optional reversing ramp support pass `None`. `EntryParameters` adds `back_and_forth`, false by default. To support it, supply the whole mesh target, protected solids, complete convex cutter/shank body, matching machine profile and `RotaryPrecision` valid for all output posts. The certificate reserves written coordinate precision and controller float uncertainty. Hosts must write at least three XYZ/A decimals and, for `Float32`, bound connection/reset offsets from certified canonical A to 720 degrees or recertify the contextual path. Missing or unsupported certificates refuse the enabled option. `program::connect_group` assembles explicit timed inter-operation links from canonical groups; never reconnect a previously connected group as canonical input.
+- Optional `ramp_back_and_forth` uses a verified corridor of at least one cutting diameter, fixed A, plunge feed and bounded/cancellable descending legs. Original single-line behavior is retained when absent/false. Roughing uses clearance-height links for this option; no low-link shortcut is used before the stock-clear approach.
+
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- Clarify all eleven strategy explanations (OPCREATE2, #289/#290, accepted decision 0237 and OI-986): describe curved swarf walls, selected STEP faces and overcut warnings; remove unsupported promises about complete surfaces, every corner or one-pass completion. Wording only; generation and the public API are unchanged.
+
 - Warning measurement checks cancellation between surface queries (UI-09, INT-04); a cancel request no longer waits for all watched surfaces of the path to be measured. No public API change.
 
 - Lane SWARF3 (decision 0229, OI-637; OP-02, NFR-12): an avoid or check surface that only warns (`RegionConstraint::watch`) is taken by rotary roughing and helical, axial, indexed and simultaneous finishing, not only swarf. The shared generation makes the passes as if it were not there, then follows each move between cut points as the machine makes it, samples it at a nominal eighth of the tool's cutting radius (with a minimum spacing and interval cap; narrow crossings can be missed, OI-970), and drops the tool (grown by the stock to leave) onto each watched surface alone: where the tool rests on the surface, or reaches into it where it is, the length counts. Each surface broken is named in a warning ("The tool cuts into the avoid set 'Rib' along about 3.000 mm of the toolpath. ..."), said first in the notes too. A boundary limit turned off is still refused for a strategy other than swarf, now saying "takes no options on its boundary set". With no watched surface every path and note is unchanged. No public item changed.

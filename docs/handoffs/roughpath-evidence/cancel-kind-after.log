@@ -1,0 +1,11 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 6.11s
+     Running unittests src/lib.rs (target/debug/deps/openchuck_app-46647f05946e129f)
+
+running 1 test
+test connections::tests::req_nfr_04_req_ui_09_connection_preserves_cancellation_kind ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 96 filtered out; finished in 0.08s

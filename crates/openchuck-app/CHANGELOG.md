@@ -1,8 +1,38 @@
 # Changelog
 
+## 0.22.0
+
+- GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
+
+
 All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
+
+- CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
+
+- Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
+
+- ROUGHPATH maps optional reversing-ramp clearance from the whole STL target and configured full cutter/shank body, retaining held regions/tabs independently of selections. Unsupported exact STEP certificates and shanks wider than the cutting profile refuse the option. The entry form identifies the ramp-only flag, labels a retained true flag inactive for other styles, and explains full-width-slot engagement. Optional-ramp posting refuses uncertified low decimal precision or float-controller WCS/MCS magnitudes; it never changes the work zero.
+
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
+  is administratively renumbered from original 0238 by Merge Manager to
+  resolve the SIMUI collision; substantive content and owner acceptance are
+  unchanged. No product change in this correction.
+
+- OUTPUT-1 (#307; UI-12, GC-05/12/15, NFR-07): `prepare_output` returns a
+  read-only `OutputPlan` of same-run bytes and full destinations;
+  `write_output` now takes the reviewed plan and replacement approval and
+  returns an `OutputReport` of completed/failed/not-attempted paths. Results
+  are retained in the session overview with `MessageAction::ReviewExport`.
+  A changed destination or stale input refuses the batch, a later I/O failure
+  retains earlier successes, and only a full batch records export completion.
+  New paths are exclusively created; approved replacements use unique
+  temporary files. Existing filenames, output bytes and CLI helpers stay
+  unchanged. No library-family or project-schema change.
+
+- Lane TOOLLIB2 (decision 0236; issue #313): manual project-only unused-tool cleanup with selected-snapshot revalidation, one undoable batch, freed tool numbers, unchanged library and generated output. The tool library window provides a guarded checklist and confirmation, including disabled-operation retention and changed-candidate refresh.
 
 - Lane SWARF3 (decisions 0228 and 0229, OI-634 and OI-637; OP-02, NFR-12): the avoid and check sets of rotary roughing and helical, axial, indexed and simultaneous finishing take their choice (schema 14's `on_break`), on a mesh part and as face sets on a STEP part: Cut short is the path as before, Warn only keeps the whole path with a warning naming the set and how far the tool breaks it, and Ignore leaves the set out with the warning that it limits nothing. Their boundary set takes no options. `Application::strategy_set_options` and `SetOptionsShown` (which options the Geometry section shows: the boundary's limits for swarf only, each avoid or check set's choice for every strategy that takes a region, and whether Cut short lifts the tool over a check set) replace `Application::strategy_takes_set_options` (breaking).
 - Lane OPSPEED (decisions 0230 and 0231; issues #197 and #249): the new `preset` module (`MaterialPreset`, `PresetChoice`, `PresetState`, `preset_for`, `operation_preset`, `set_operation_preset`), a material preset per operation; `Application::add_operation_on` takes the preset's material; `tool_library::set_operation_spindle` takes the strategy registry, and a cutting value set on an operation drops its preset; `OperationSpindle` gains `out_of_range`, and a spindle speed outside the machine's range is a required value and blocks posting. `machine_view::machine_values` lists the spindle speed range when the profile gives one.

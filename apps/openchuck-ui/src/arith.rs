@@ -332,14 +332,14 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_the_examples_of_the_issue_are_worked_out() {
+    fn req_ui_26_the_examples_of_the_issue_are_worked_out() {
         assert_eq!(ok("12.5 + 3"), 15.5);
         assert_eq!(ok("60 / 2"), 30.0);
         assert_eq!(ok("20 * 0.5"), 10.0);
     }
 
     #[test]
-    fn req_ui_07_multiplication_binds_tighter_and_brackets_override() {
+    fn req_ui_26_multiplication_binds_tighter_and_brackets_override() {
         assert_eq!(ok("2 + 3 * 4"), 14.0);
         assert_eq!(ok("(2 + 3) * 4"), 20.0);
         assert_eq!(ok("10 - 4 - 3"), 3.0);
@@ -348,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_a_sign_may_stand_before_a_number_or_bracket() {
+    fn req_ui_26_a_sign_may_stand_before_a_number_or_bracket() {
         assert_eq!(ok("-5"), -5.0);
         assert_eq!(ok("+5"), 5.0);
         assert_eq!(ok("3 * -2"), -6.0);
@@ -358,21 +358,21 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_numbers_may_have_a_leading_point_and_an_exponent() {
+    fn req_ui_26_numbers_may_have_a_leading_point_and_an_exponent() {
         assert_eq!(ok(".5 + .5"), 1.0);
         assert_eq!(ok("1e3 + 1"), 1001.0);
         assert_eq!(ok("2.5E-1"), 0.25);
     }
 
     #[test]
-    fn req_ui_07_the_same_entry_always_gives_the_same_number() {
+    fn req_ui_26_the_same_entry_always_gives_the_same_number() {
         let a = ok("0.1 + 0.2 * 3 / 7");
         let b = ok("0.1 + 0.2 * 3 / 7");
         assert_eq!(a.to_bits(), b.to_bits());
     }
 
     #[test]
-    fn req_ui_07_req_nfr_07_each_unreadable_entry_has_its_own_fault() {
+    fn req_ui_26_req_nfr_07_each_unreadable_entry_has_its_own_fault() {
         assert_eq!(fault("12*"), Fault::Incomplete);
         assert_eq!(fault(""), Fault::Incomplete);
         assert_eq!(fault("*3"), Fault::ExpectedNumber);
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_the_message_quotes_the_entry_in_plain_words() {
+    fn req_ui_26_the_message_quotes_the_entry_in_plain_words() {
         let message = evaluate("12*").unwrap_err().to_string();
         assert_eq!(message, "Cannot read '12*'; expected a number or a sum.");
         let unit = evaluate("5 mm").unwrap_err().to_string();
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_every_message_names_the_entry_or_says_what_to_do() {
+    fn req_ui_26_every_message_names_the_entry_or_says_what_to_do() {
         let entries = [
             "12*", "*3", "1 2", "(1", "1)", "1.2.3", "5 mm", "1,5", "3^2", "1/0", "1e999",
         ];
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_req_nfr_07_garbage_never_panics() {
+    fn req_ui_26_req_nfr_07_garbage_never_panics() {
         // Every string over a small alphabet up to length six, plus a few
         // hostile ones: all give a number or an error.
         let alphabet = [
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_a_sum_is_rounded_to_the_places_of_the_field() {
+    fn req_ui_26_a_sum_is_rounded_to_the_places_of_the_field() {
         assert_eq!(round_to(10.0 / 3.0, Some(3)), 3.333);
         assert_eq!(round_to(2.0 / 3.0, Some(2)), 0.67);
         assert_eq!(round_to(1234.5678, Some(0)), 1235.0);
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_only_the_worked_out_number_is_kept() {
+    fn req_ui_26_only_the_worked_out_number_is_kept() {
         assert_eq!(entry_text("12.5 + 3", Some(3)).unwrap(), "15.500");
         assert_eq!(entry_text("10 / 3", Some(3)).unwrap(), "3.333");
         assert_eq!(entry_text("1000 / 3", Some(0)).unwrap(), "333");
@@ -485,14 +485,14 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_a_plain_number_is_kept_exactly_as_typed() {
+    fn req_ui_26_a_plain_number_is_kept_exactly_as_typed() {
         assert_eq!(entry_text("12.3456", Some(3)).unwrap(), "12.3456");
         assert_eq!(entry_text("-7", Some(3)).unwrap(), "-7");
         assert_eq!(entry_text("1e3", Some(0)).unwrap(), "1e3");
     }
 
     #[test]
-    fn req_ui_07_boxes_with_their_own_text_read_a_sum_as_a_number() {
+    fn req_ui_26_boxes_with_their_own_text_read_a_sum_as_a_number() {
         assert_eq!(number("6 * 0.5", Some(3)).unwrap(), 3.0);
         assert_eq!(number(" 0.125 ", Some(3)).unwrap(), 0.125);
         assert!(number("inf", None).unwrap_err().starts_with("Cannot read"));
@@ -500,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_07_an_unreadable_entry_gives_its_message() {
+    fn req_ui_26_an_unreadable_entry_gives_its_message() {
         assert_eq!(
             entry_text("12*", Some(3)).unwrap_err(),
             "Cannot read '12*'; expected a number or a sum."

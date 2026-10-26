@@ -113,6 +113,8 @@ pub struct StrategyInput<'a> {
     pub max_feeds: MaxFeeds,
     /// Tags for the toolpath group.
     pub tags: &'a PathTags,
+    /// Whole-target clearance inputs for optional back-and-forth ramp entry.
+    pub entry_safety: Option<&'a crate::entry_safety::EntrySafety<'a>>,
     /// Model X intervals, as (low, high), that the tool's tip never enters
     /// while it cuts: each held region of the setup widened on both sides by
     /// the tool's largest radius, so no part of the tool reaches over the
@@ -166,11 +168,11 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// The name shown to the user.
     fn label(&self) -> &str;
 
-    /// What the strategy does, in a sentence or two a reader who is not a
-    /// machinist can follow, with each unavoidable term explained. It says
-    /// nothing that implies the output is safe to run (NFR-12). The host shows
-    /// it under the strategy's name when an operation is added and in the
-    /// operation's panel (OP-16; decision record 0204).
+    /// What the strategy does, when to use it and its important limits, in
+    /// plain language a reader who is not a machinist can follow. Explain
+    /// unavoidable terms; never imply safe output (NFR-12). The host shows
+    /// this text during creation and in the inspector's read-only Strategy
+    /// block (OP-16; accepted decision 0237).
     fn description(&self) -> &str;
 
     /// Where the strategy sits in the list a host offers: roughing first,

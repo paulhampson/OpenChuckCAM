@@ -505,6 +505,18 @@ In the full stock-carrying sequence, STEP pencil benefits by 1.995 times on form
 
 **Remaining criteria:** a proven sub-0.001 mm physical sampling bound/replacement M2 checker; resolution of the original candidate's 0.005 mm tessellation allocation and trim-query qualifications; and a candidate satisfying every per-operation performance limit. M4/replay passes and this completed M3 method do not establish full decision-0209 qualification or adopt a setting. OI-839 remains STEPALL-X. The authorised measuring/correction work is reported with those failures; PR 321 stays draft pending owner/coordinator release, with no waiver or T/X implementation.
 
+## Released-main integration (26 Oct 2026)
+
+The owner removed the queue hold on 25 Oct; the Merge Manager marked PR 321 ready and released its main update on 26 Oct ([instructions](https://github.com/paulhampson/OpenChuckCAM/pull/321#issuecomment-6419595503)). This supersedes the earlier draft/no-release hold in historical sections. The owner then explicitly instructed this lane to complete those actions, including the Minor review finding, with one push and checks. This is release integration, not adoption of a candidate or waiver of reported qualifications.
+
+Main `0620cd0f73c89d3b56c120cdcb784847f70b67b1` is merged once. Newer main behaviour, dependencies, canonical/connected operation assembly, rotary boundaries, block-time fields and exporter model hashes are retained. Main carries library family 0.22.0; the audited next free minor is **0.23.0**, now used in lockstep with changelogs. Accepted 0211/0234, OI-984 and the separate OI-990 follow-up remain; GATES record 0244 retains its status and allocation. Duplicate union rows OI-604/OI-831 were reconciled without losing their newer content. Verification-plan reconciliation preserves the accepted job/every-operation policy and main's updated gate-5 wording.
+
+The harness supplies main's new `PostJob` fields and explicit `entry_safety: None` for its default entry configuration. It compares library generation with application **canonical** groups, and connects fresh copies through the shared library boundary assembler before comparing posted bytes; connected paths are never treated as canonical input. This follows the fixture's single setup without held regions/tabs/fixtures, not a generic host implementation.
+
+The owner overrode the instruction to defer the Minor CodeRabbit finding. Project creation now atomically reserves a fresh destination and never recursively replaces an existing path. This applies to `--keep`, the derived STL project and the default temporary project. Existing files, non-empty/empty directories and symlinks are refused with a named error; explicit `--keep` still controls retention. All three preservation regressions failed against the extracted old deletion behaviour, then passed. No overwrite switch or dependency was added (NFR-07).
+
+Historical M1–M4 measurements retain their pinned sources and do not describe the new-main integration by implication. Integration checks and targeted current-source M4 checks are recorded in [the release validation](../stepall-m-release-validation.md); no full remeasurement, accuracy/performance pass or gate waiver is inferred from releasing the PR.
+
 ## Owner choices made before record acceptance (24 Oct 2026)
 
 The owner requested: "Take me through the decisions. Ask me about the decision record last." The following answers were given directly in this lane session, rather than relayed. They select the directions and conditions below. The owner subsequently accepted the full revised record directly in this session on 24 Oct 2026: "Accept 0211".

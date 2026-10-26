@@ -18,7 +18,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 4309 >>
+<< /Length 4693 >>
 stream
 BT /F2 14 Tf 40 793.50 Td (Setup sheet: sheet) Tj ET
 BT /F2 11 Tf 40 771.50 Td (Job) Tj ET
@@ -27,46 +27,52 @@ BT /F1 8.5 Tf 40 749.50 Td (Machine          Example X rotary) Tj ET
 BT /F1 8.5 Tf 40 738.50 Td (Setups           2) Tj ET
 BT /F1 8.5 Tf 40 727.50 Td (Operations       4) Tj ET
 BT /F1 8.5 Tf 40 716.50 Td (Tools used       2) Tj ET
-BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:17) Tj ET
+BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:05) Tj ET
 BT /F2 11 Tf 40 683.50 Td (Setup: Setup 1) Tj ET
-BT /F1 8.5 Tf 40 672.50 Td (Part            models/cube.stl) Tj ET
-BT /F1 8.5 Tf 40 661.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
-BT /F1 8.5 Tf 40 650.50 Td (Stock material  oak) Tj ET
-BT /F1 8.5 Tf 40 639.50 Td (Work offset     G54, work zero at model X 0 mm on the rotary axis) Tj ET
-BT /F1 8.5 Tf 40 628.50 Td (Part offset     part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
-BT /F2 11 Tf 40 606.50 Td (Setup: Flip / side 2) Tj ET
-BT /F1 8.5 Tf 40 595.50 Td (Part            models/cube.stl) Tj ET
-BT /F1 8.5 Tf 40 584.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
-BT /F1 8.5 Tf 40 573.50 Td (Stock material  oak) Tj ET
-BT /F1 8.5 Tf 40 562.50 Td (Work offset     G54, work zero at model X 0 mm on the rotary axis) Tj ET
-BT /F1 8.5 Tf 40 551.50 Td (Part offset     part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
-BT /F2 11 Tf 40 529.50 Td (Tools) Tj ET
-BT /F2 8.5 Tf 40 518.50 Td (Tool  Name       Type      Dia mm  Flutes  Flute mm  Overall mm  Shank mm  Used in) Tj ET
-BT /F1 8.5 Tf 40 507.50 Td (-------------------------------------------------------------------------------------------------) Tj ET
-BT /F1 8.5 Tf 40 496.50 Td (T1    4 mm ball  ball end  4       2       10        40          4         Setup 1, Flip / side 2) Tj ET
-BT /F1 8.5 Tf 40 485.50 Td (T2    6 mm ball  ball end  6       2       10        40          6         Setup 1) Tj ET
-BT /F2 11 Tf 40 463.50 Td (Operations) Tj ET
-BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy      Setup         Tool          Spindle rpm  Speed from    Tolerance  Time) Tj ET
-BT /F1 8.5 Tf 40 441.50 Td (----------------------------------------------------------------------------------------------------) Tj ET
-BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
-BT /F1 8.5 Tf 40 419.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 408.50 Td (2   Finish B    Helical       Setup 1       T2 6 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
-BT /F1 8.5 Tf 40 397.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 386.50 Td (3   Touch up A  Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:18) Tj ET
-BT /F1 8.5 Tf 40 375.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 364.50 Td (4   Side two    Helical       Flip / side   T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
-BT /F1 8.5 Tf 40 353.50 Td (                finishing     2                                        oak) Tj ET
-BT /F2 11 Tf 40 331.50 Td (Notes) Tj ET
-BT /F1 8.5 Tf 40 320.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET
-BT /F1 8.5 Tf 40 309.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
-BT /F1 8.5 Tf 40 298.50 Td (be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a) Tj ET
-BT /F1 8.5 Tf 40 287.50 Td (program is safe or correct for any machine, tool or setup.) Tj ET
-BT /F2 11 Tf 40 265.50 Td (Traceability) Tj ET
-BT /F1 8.5 Tf 40 254.50 Td (Generated            2026-10-21T09:30:05Z) Tj ET
-BT /F1 8.5 Tf 40 243.50 Td (Project last saved   2026-10-21T09:12:00Z) Tj ET
-BT /F1 8.5 Tf 40 232.50 Td (Software version     0.0.0) Tj ET
-BT /F1 8.5 Tf 40 221.50 Td (Project fingerprint  blake3:abababababababababababababababababababababababababababababababab) Tj ET
-BT /F1 8.5 Tf 40 210.50 Td (Version control      not tracked) Tj ET
+BT /F1 8.5 Tf 40 672.50 Td (Part               models/cube.stl) Tj ET
+BT /F1 8.5 Tf 40 661.50 Td (Stock              cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
+BT /F1 8.5 Tf 40 650.50 Td (Stock material     oak) Tj ET
+BT /F1 8.5 Tf 40 639.50 Td (Work offset        G54, work zero at model X 0 mm on the rotary axis) Tj ET
+BT /F1 8.5 Tf 40 628.50 Td (Part offset        part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
+BT /F1 8.5 Tf 40 617.50 Td (Held at the start  none) Tj ET
+BT /F1 8.5 Tf 40 606.50 Td (Held at the end    none) Tj ET
+BT /F1 8.5 Tf 40 595.50 Td (Tabs               none) Tj ET
+BT /F2 11 Tf 40 573.50 Td (Setup: Flip / side 2) Tj ET
+BT /F1 8.5 Tf 40 562.50 Td (Part               models/cube.stl) Tj ET
+BT /F1 8.5 Tf 40 551.50 Td (Stock              cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
+BT /F1 8.5 Tf 40 540.50 Td (Stock material     oak) Tj ET
+BT /F1 8.5 Tf 40 529.50 Td (Work offset        G54, work zero at model X 0 mm on the rotary axis) Tj ET
+BT /F1 8.5 Tf 40 518.50 Td (Part offset        part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
+BT /F1 8.5 Tf 40 507.50 Td (Held at the start  none) Tj ET
+BT /F1 8.5 Tf 40 496.50 Td (Held at the end    none) Tj ET
+BT /F1 8.5 Tf 40 485.50 Td (Tabs               none) Tj ET
+BT /F2 11 Tf 40 463.50 Td (Tools) Tj ET
+BT /F2 8.5 Tf 40 452.50 Td (Tool  Name       Type      Dia mm  Flutes  Flute mm  Overall mm  Shank mm  Used in) Tj ET
+BT /F1 8.5 Tf 40 441.50 Td (-------------------------------------------------------------------------------------------------) Tj ET
+BT /F1 8.5 Tf 40 430.50 Td (T1    4 mm ball  ball end  4       2       10        40          4         Setup 1, Flip / side 2) Tj ET
+BT /F1 8.5 Tf 40 419.50 Td (T2    6 mm ball  ball end  6       2       10        40          6         Setup 1) Tj ET
+BT /F2 11 Tf 40 397.50 Td (Operations) Tj ET
+BT /F2 8.5 Tf 40 386.50 Td (No  Operation   Strategy      Setup         Tool          Spindle rpm  Speed from    Tolerance  Time) Tj ET
+BT /F1 8.5 Tf 40 375.50 Td (----------------------------------------------------------------------------------------------------) Tj ET
+BT /F1 8.5 Tf 40 364.50 Td (1   Finish A    Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
+BT /F1 8.5 Tf 40 353.50 Td (                finishing                                              oak) Tj ET
+BT /F1 8.5 Tf 40 342.50 Td (2   Finish B    Helical       Setup 1       T2 6 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
+BT /F1 8.5 Tf 40 331.50 Td (                finishing                                              oak) Tj ET
+BT /F1 8.5 Tf 40 320.50 Td (3   Touch up A  Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:15) Tj ET
+BT /F1 8.5 Tf 40 309.50 Td (                finishing                                              oak) Tj ET
+BT /F1 8.5 Tf 40 298.50 Td (4   Side two    Helical       Flip / side   T1 4 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
+BT /F1 8.5 Tf 40 287.50 Td (                finishing     2                                        oak) Tj ET
+BT /F2 11 Tf 40 265.50 Td (Notes) Tj ET
+BT /F1 8.5 Tf 40 254.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET
+BT /F1 8.5 Tf 40 243.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
+BT /F1 8.5 Tf 40 232.50 Td (be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a) Tj ET
+BT /F1 8.5 Tf 40 221.50 Td (program is safe or correct for any machine, tool or setup.) Tj ET
+BT /F2 11 Tf 40 199.50 Td (Traceability) Tj ET
+BT /F1 8.5 Tf 40 188.50 Td (Generated            2026-10-21T09:30:05Z) Tj ET
+BT /F1 8.5 Tf 40 177.50 Td (Project last saved   2026-10-21T09:12:00Z) Tj ET
+BT /F1 8.5 Tf 40 166.50 Td (Software version     0.0.0) Tj ET
+BT /F1 8.5 Tf 40 155.50 Td (Project fingerprint  blake3:abababababababababababababababababababababababababababababababab) Tj ET
+BT /F1 8.5 Tf 40 144.50 Td (Version control      not tracked) Tj ET
 BT /F1 8.5 Tf 40 20.00 Td (Page 1 of 1) Tj ET
 endstream
 endobj
@@ -83,5 +89,5 @@ xref
 trailer
 << /Size 8 /Root 1 0 R /Info 5 0 R >>
 startxref
-4880
+5264
 %%EOF

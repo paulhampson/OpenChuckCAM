@@ -1,0 +1,22 @@
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 4.04s
+     Running unittests src/lib.rs (target/debug/deps/openchuck_app-46647f05946e129f)
+
+running 1 test
+test connections::tests::req_nfr_04_req_ui_09_connection_preserves_cancellation_kind ... FAILED
+
+failures:
+
+---- connections::tests::req_nfr_04_req_ui_09_connection_preserves_cancellation_kind stdout ----
+
+thread 'connections::tests::req_nfr_04_req_ui_09_connection_preserves_cancellation_kind' (17650) panicked at crates/openchuck-app/src/connections.rs:121:9:
+operation 'Finish' cannot be generated: the job was cancelled
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    connections::tests::req_nfr_04_req_ui_09_connection_preserves_cancellation_kind
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 96 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p openchuck-app --lib`

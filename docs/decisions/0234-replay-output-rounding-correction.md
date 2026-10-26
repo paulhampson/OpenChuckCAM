@@ -59,7 +59,7 @@ The completed five-run full-sequence M3 on 25 Oct 2026 is reported in [0211](021
 
 The owner's instruction to include #324 in this work supersedes the former pending-lane restriction for this correction. It does not authorise STEPALL-T/X implementation or a tessellation default. Keep OI-839 in STEPALL-X and keep sampling, accuracy allocation and performance verification separate.
 
-PR #321 stays draft. The owner accepted this complete final implementation record directly on 25 Oct 2026, after the other decisions and verification results were presented, with "Accept 0234". Decision 0211 is already accepted. Neither acceptance releases the PR to the Merge Manager, marks it ready, merges it or enables auto-merge. The separate sampling, tessellation and performance qualifications and later-main integration remain outstanding.
+At record acceptance PR #321 stayed draft. The owner accepted this complete final implementation record directly on 25 Oct 2026, after the other decisions and verification results were presented, with "Accept 0234". Decision 0211 is already accepted. Neither acceptance releases the PR to the Merge Manager, marks it ready, merges it or enables auto-merge. The separate sampling, tessellation and performance qualifications remain outstanding. The Merge Manager subsequently released PR 321 on 26 Oct 2026 and the owner instructed completion of the released main integration, including the Minor finding, with one push. That later release supersedes the earlier draft hold; it grants no qualification waiver. See [release validation](../stepall-m-release-validation.md).
 
 ## Consequences
 

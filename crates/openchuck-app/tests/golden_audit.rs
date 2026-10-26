@@ -122,7 +122,16 @@ fn audit_conventions(name: &str, text: &str, post: Post) {
     }
     let drops = lines.iter().filter(|l| **l == "G92.4 A0 S0").count();
     if post == Post::Z1 {
-        assert_eq!(drops, 1, "{name}: one unwind by G92.4");
+        // A non-moving boundary reset is useful only beyond one complete
+        // turn. In particular the firmware keeps exactly +/-360 unchanged.
+        let parsed = read(text).unwrap();
+        let played = replay(&parsed, Dialect::MakeraZ1).unwrap();
+        let last = played.moves().filter(|m| !m.machine).last().unwrap();
+        assert_eq!(
+            drops,
+            usize::from(last.to[3].abs() > 360.0),
+            "{name}: reset only when the final physical counter needs it"
+        );
     } else {
         assert_eq!(drops, 0, "{name}: LinuxCNC must not use G92.4");
     }

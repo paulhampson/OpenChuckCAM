@@ -127,4 +127,3 @@ integration-native-tests.log (test output):
         PASS [  22.188s] (13/14) openchuck-app::step_accuracy req_op_12_a_pose_reads_its_gouge_and_its_gap_against_the_exact_faces
         PASS [  28.834s] (14/14) openchuck-app::step_accuracy req_op_12_a_moves_middle_and_quarters_lie_on_the_machines_straight_move
      Summary [  28.836s] 14 tests run: 14 passed, 0 skipped
-

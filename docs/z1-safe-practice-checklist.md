@@ -4,6 +4,8 @@
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM has never run a generated program on a Z1 as of this draft. Passing the project's own gates reduces the risk; it does not remove it.
 
+**Step-by-step instructions** for gates 4 and 5, with one-page checklists and results forms, are in [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) (lane GATES, draft for the owner's review).
+
 Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop at the first one you cannot tick.
 
 ## 1. Before every session
@@ -30,11 +32,11 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 - [ ] Any unexpected motion, alarm or rejected line stops the trial. I log it as a defect with the G-code and the application commit attached, and do not continue.
 - [ ] I record each run on the air-cut sheet.
 
-## 3. Gate 5: first cut (wax or foam), only after gate 4 has passed
+## 3. Gate 5: first cut (wax, foam or tooling board), only after gate 4 has passed
 
 - [ ] The air cut for this program passed, with the sheet stored.
-- [ ] The first-cut limit has been set from the machine's measured repeatability on a 3-axis test part (start at ±0.1 mm).
-- [ ] The material is soft and low-cost (wax or foam), held firmly and square in the chuck. I have checked it cannot slip or loosen as A turns.
+- [ ] The first-cut limit is ±0.1 mm ([decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md): no 3-axis test part).
+- [ ] The material is soft and low-cost (wax, foam or tooling board), held firmly and square in the chuck. I have checked it cannot slip or loosen as A turns.
 - [ ] The stock is no larger than the stock in the project, and the stock position (X0, centre on the axis) is checked by hand.
 - [ ] The tool is the tool in the project (3 mm ball end mill, 8 mm flute length, for the reference jobs), fitted with the correct stick-out and tightened. The tool number in the program is the tool in the spindle.
 - [ ] The tool change (`M5`, `T<n> M6`) has been tested separately and attended, or I change the tool by hand and have checked the program's tool change lines (OI-41).

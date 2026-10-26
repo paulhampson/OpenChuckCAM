@@ -44,8 +44,7 @@ pub fn seg(kind: MoveKind, end: ToolPose, duration: f64, length: f64) -> Segment
 }
 
 /// A small hand-reviewable part: a 20 mm cylinder with a helical groove of
-/// three turns (A reaches 1080) over 6 mm of X in 45 degree steps, then the safe retract with an
-/// unwind of three turns. The tool tip rides the top of the part.
+/// three turns (A reaches 1080) over 6 mm of X in 45 degree steps, then the safe retract at the accumulated angle. The tool tip rides the top of the part.
 pub fn small_part() -> Toolpath {
     let top = 10.0;
     let mut segments = vec![
@@ -68,7 +67,6 @@ pub fn small_part() -> Toolpath {
         2.0,
     ));
     segments.push(seg(MoveKind::Rapid, pose(6.0, 0.0, 30.0, 1080.0), 0.2, 0.0));
-    segments.push(seg(MoveKind::Rapid, pose(6.0, 0.0, 30.0, 0.0), 0.3, 0.0));
     Toolpath {
         groups: vec![ToolpathGroup {
             tags: PathTags {
@@ -93,6 +91,9 @@ pub fn job() -> PostJob {
         },
     );
     PostJob {
+        block_time: Default::default(),
+        a_range: openchuck_types::machine::ARange::Continuous,
+        safe_z: 30.0,
         frame: RotaryFrame {
             axis: RotaryAxis::X,
             sense: ASense::Positive,

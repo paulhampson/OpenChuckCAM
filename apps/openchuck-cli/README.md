@@ -30,3 +30,5 @@ Workholding (decisions 0035, 0041 and 0045; SET-09, OP-21): `setup --held-start`
 A folder with no `project.toml` gives a warning and an offer to create the project: pass `--create` to accept, answer the prompt on a terminal, or the command stops with an error.
 
 Licence: AGPL-3.0-or-later.
+
+For bounded gate-3 verification, `gcode-sim original.ngc report.json --source-lines FIRST:LAST` compares the original moves in an inclusive source range and independently checks the actual start/end interpreter state against the full original prefix. Ordinary whole-program `gcode-sim` usage is unchanged. This is verification tooling; generated G-code remains the user's responsibility to verify.

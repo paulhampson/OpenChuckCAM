@@ -213,6 +213,7 @@ impl Fixture {
             clearance: self.clearance,
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
+            entry_safety: None,
             keep_out: &[],
         }
     }

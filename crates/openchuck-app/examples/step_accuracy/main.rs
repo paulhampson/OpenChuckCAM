@@ -39,6 +39,8 @@
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
 //! branch `claude/upbeat-davinci-jk46yd`; it is not in `testdata/` (OI-832
 //! covers `blisk.step` only), so form (a) runs only when its path is given.
+//! `--keep DIR` requires a fresh destination; existing paths, including the
+//! derived STL project path, are refused without replacement.
 //! `--quick` coarsens every stepover for a smoke run; its numbers are not the
 //! record's.
 
@@ -55,6 +57,7 @@ mod checks;
 mod measure;
 mod posting;
 mod timing;
+mod workspace;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -325,6 +328,7 @@ fn main() -> Result<(), Error> {
 
     // The project: the owner's tools and operations, on the STEP part.
     let ops = operations(&args);
+    // Existing destinations are refused, including the derived STL project.
     // With `--keep` the project stays, saved, for `operation_times` (lane
     // BUG-TABDEV's example) to time through the application.
     let dir = args.keep.clone().unwrap_or_else(|| {
@@ -586,7 +590,7 @@ fn main() -> Result<(), Error> {
                 library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
             }
             let one = serde_json::to_string(&first.groups)?;
-            let posted = posting::post_run(&first.groups, &post_job)?;
+            let posted = posting::post_run(&job.connected_groups(&first.groups)?, &post_job)?;
             if let Some(letter) = name.chars().next() {
                 library_posts.insert(letter, posted.clone());
             }
@@ -599,7 +603,7 @@ fn main() -> Result<(), Error> {
                 )?;
                 checks::identical(
                     &posted,
-                    &posting::post_run(&again.groups, &post_job)?,
+                    &posting::post_run(&job.connected_groups(&again.groups)?, &post_job)?,
                     &format!("form {name}, {n} threads, posted G-code"),
                 )?;
                 println!("{n} threads: toolpath and posted G-code identical");
@@ -638,7 +642,11 @@ fn main() -> Result<(), Error> {
             if n == cores
                 && let Some(library) = &library_b
             {
-                checks::identical(library, &result.toolpath.groups, "form b application path")?;
+                checks::identical(
+                    library,
+                    &result.canonical_toolpath.groups,
+                    "form b application path",
+                )?;
                 println!("the library's form b path is the application's");
             }
             reference.get_or_insert(gcode);
@@ -1055,7 +1063,7 @@ fn project(
     bounds: &Aabb,
     ops: &[Op],
 ) -> Result<(Application, Vec<OperationId>), Error> {
-    let _ = std::fs::remove_dir_all(dir);
+    workspace::create_destination(dir)?;
     let mut app = Application::create(dir, "blisk", Threads::All)?;
     std::fs::create_dir_all(dir.join("models"))?;
     let name = model_file.file_name().ok_or("no file name")?;
@@ -1330,6 +1338,13 @@ impl Job<'_> {
                 });
         }
         Ok(openchuck_post::PostJob {
+            block_time: openchuck_post::BlockTimeSettings {
+                min_block_ms: self.machine.min_block_ms,
+                block_window: self.machine.block_window,
+                mode: self.machine.short_block_mode,
+            },
+            a_range: self.machine.a_range,
+            safe_z: setup.clearance.unwrap_or(self.machine.clearance).safe_z.0,
             frame: RotaryFrame::work(self.machine, &setup.frame),
             tools,
             operation_names,
@@ -1339,6 +1354,50 @@ impl Job<'_> {
             generator: Some(format!("OpenChuckCAM {}", env!("CARGO_PKG_VERSION"))),
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         })
+    }
+
+    /// Mirror production operation-boundary assembly for this single-setup
+    /// fixture, whose setup has no held region, tabs or fixtures. Generation
+    /// comparisons stay canonical; only posting receives connected copies.
+    fn connected_groups(
+        &self,
+        groups: &[Result<ToolpathGroup, String>],
+    ) -> Result<Vec<Result<ToolpathGroup, String>>, Error> {
+        use openchuck_path::program::{ConnectionOptions, connect_group};
+        let setup = self.project.setups().first().ok_or("no setup")?;
+        let stock = AnalyticStock::from_stock(
+            setup.stock.as_ref().ok_or("no stock")?,
+            Some(self.part_bounds),
+        )?;
+        let bounds = self.part_bounds;
+        let radius = bounds
+            .min
+            .y
+            .abs()
+            .max(bounds.max.y.abs())
+            .hypot(bounds.min.z.abs().max(bounds.max.z.abs()));
+        let options = ConnectionOptions {
+            machine: self.machine,
+            clearance: setup.clearance.unwrap_or(self.machine.clearance),
+            enclosing_radius: radius.max(stock.max_radius().ok_or("no stock radius")?),
+            required_start_a: None,
+        };
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let mut result = Vec::new();
+        let mut previous = None;
+        for group in groups {
+            match group {
+                Ok(group) => {
+                    let connected =
+                        connect_group(previous.as_ref(), group, &options, &context)?.group;
+                    previous = Some(connected.clone());
+                    result.push(Ok(connected));
+                }
+                Err(error) => result.push(Err(error.clone())),
+            }
+        }
+        Ok(result)
     }
 
     /// The operations in order on `form`, each on the stock the ones before
@@ -1398,6 +1457,7 @@ impl Job<'_> {
                 max_feeds: self.machine.max_feeds,
                 tags: &tags,
                 keep_out: &[],
+                entry_safety: None,
             };
             let started = Instant::now();
             // The application rebuilds B-rep corners for each pencil operation

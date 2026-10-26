@@ -1,0 +1,7 @@
+schema = 17
+name = "cone_axial_lead"
+
+[[models]]
+id = "adc2b06d-8cb1-4951-80c5-d62c502ece39"
+path = "models/part.stl"
+hash = "blake3:e4b0938ec03f4801423bee32b270dc4e01eefaffa0d14be95fb99c3e00b52db1"

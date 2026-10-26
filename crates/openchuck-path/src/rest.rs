@@ -300,7 +300,7 @@ impl Strategy for RestMachining {
     }
 
     fn description(&self) -> &str {
-        "Cuts only the material an earlier, larger tool could not reach, such as inside corners, using a smaller tool. It needs earlier operations in the same setup, so it knows what is left."
+        "Uses the stock left by earlier operations in the same setup to find and cut remaining material. Use a smaller tool to reach areas a larger tool left behind, such as inside corners. The remaining material is estimated from the stock simulation."
     }
 
     fn schema(&self) -> ParameterSchema {

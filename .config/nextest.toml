@@ -38,6 +38,15 @@
 # the axial passes 73 s and the 1, 2 and N threads test 70 s (alone: 27, 22, 17 and
 # 14 s).
 
+# Lane GATES (OI-913, 22 Oct 2026): the `lobed` sample's committed-project test (the
+# folder in `testdata/projects/` with its part generated, validated, then regenerated
+# with both posts and compared with the golden programs) takes 77 s in
+# `cargo test -p openchuck-cli --test e2e -- committed_project` (8 vCPU, beside the
+# other seven, each under 30 s).
+# The gate 5 first-cut project (decision 0221, OI-914), alone on 8 vCPU: its committed
+# project regenerated at 1, 2 and N threads with both posts (six runs of rotary roughing
+# on 35 x 35 mm box stock and helical finishing) 387 s, and its simulation 98 s.
+
 # The first exception to "the pull request Tests job runs every listed test" (OI-506,
 # owner, 20 Oct 2026, option C of the FIT flag; AGENTS.md: "accept it in the nightly run
 # only"): `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
@@ -169,11 +178,102 @@ priority = 79
 # concurrent validation: walls determinism 98.6 s, unroll hole grid 65.6 s,
 # reference replay/golden comparison 87.4 s when regenerating the corrected
 # references (61.6 s on the subsequent verification). Keep these in default Tests and nightly long; exclude from coverage.
+# GATES takeover, 25 Oct 2026: uninstrumented nextest, four test processes;
+# background builds were present (later lowered in priority). Additional long tests:
+# req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region: 83.71 s.
+# req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region: 67.37 s.
+# req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region: 84.159 s.
+# req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 87.74 s.
+# req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 113.101 s.
+# req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 93.242 s.
+# req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 123.5 s.
+# req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 61.999 s.
+# req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 66.59 s.
+# cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads: 149.999 s.
+# GATES released integration, 26 Oct 2026: overlapping product/UI runs, four workers each.
+# Existing long UI playback-dock matrix: 128.495 s; reference determinism: 212.816 s.
+# First-cut committed-project determinism, focused rerun after reviewed main golden update:
+# 293.759 s uninstrumented (both posts at 1, 2 and N threads); remains long/coverage-excluded.
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_21_default_tabs_follow_the_owners_answers, 62.697 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count, 96.301 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2, 97.045 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target, 80.216 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab, 76.749 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region, 62.241 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files, 104.948 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock, 60.580 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab, 81.905 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_set_09_req_op_21_the_deviation_report_counts_them_as_part, 65.227 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_op_04_every_hand_made_case_offsets_correctly_from_the_original, 71.884 s uninstrumented.
+# ROUGHPATH 25 Oct 2026, four workers alongside coverage: req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads, 96.086 s uninstrumented.
+# OUTPUT-1 released-main run, 24 Oct 2026: automatic-tab outline regression
+# took 72.987 s uninstrumented; retain default/long and exclude coverage.
+# ROUGHPATH released-main run, 25 Oct 2026: uninstrumented, four workers
+# alongside native kernel compilation/LinuxCNC; default execution is retained.
+# openchuck-app::held_region req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region: 64.637 s.
+# openchuck-app::held_region req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region: 95.352 s.
+# openchuck-app::held_region req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region: 67.859 s.
+# openchuck-app::held_region req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region: 86.754 s.
+# openchuck-cli::e2e blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads: 87.296 s.
+# STEPALL-M released integration, 26 Oct 2026, four workers and overlapping builds:
+# existing native STEP rough/rest/pencil 293.561 s, reference determinism 147.615 s.
+# First-cut determinism stopped at 562.532 s under contention before ten minutes;
+# unchanged full case passed alone at 323.661 s. All remain selected by default
+# (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# CHECKPOINT released integration (25 Oct 2026): existing per-selection stock
+# allowance regression took 76.405 s uninstrumented alongside tooling builds.
+# Keep it in default/nightly long and exclude local coverage under AGENTS.md.
+# CHECKPOINT validation (25 Oct 2026): existing cut-surface rendering matrix
+# took 63.867 s uninstrumented alongside tooling builds. Keep it in default
+# and nightly long; exclude it from local coverage under the long-test rule.
+# SIMUI whole-dock matrix: 62.592 s uninstrumented in the full UI run
+# (24 Oct 2026, four-core cloud quota, two test threads; decision 0238).
+# A later full UI run alongside app coverage took 116.400 s for this matrix.
+# Corrected fixed-physical-size matrix: 107.678 s alongside UI coverage.
+# Existing CLI blisk_helical_2 end-to-end: 78.996 s alongside UI coverage;
+# existing cone_held_tabs end-to-end: 131.726 s in the same run.
+# Retain default execution and select both in the nightly long profile.
+# Existing app workholding both-direction roughing regression: 92.703 s
+# in the same full uninstrumented app run; retain default/nightly execution.
+
+# TOOLLIB2 validation (24 Oct 2026): existing machining regressions exceeded
+# a minute uninstrumented in the contended four-test run. Default still runs
+# them; coverage excludes and nightly long selects them.
+# req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 117.339 s.
+# req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 128.797 s.
+# req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 93.617 s.
+# req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 95.625 s.
 # The narrow avoid-patch regression took 67.238 s uninstrumented in the
 # SWARF3 cloud container (23 Oct 2026); keep it in default and nightly tests.
+# req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region: 127.844 s uninstrumented.
+# req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files: 83.161 s uninstrumented.
+# req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 72.458 s uninstrumented.
+# req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2: 70.961 s uninstrumented.
+# req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 71.132 s uninstrumented.
+# OPCREATE2 released integration (24 Oct 2026): the existing wall determinism
+# test took 65.709 s uninstrumented in the combined UI/path run, alongside
+# tooling builds. Default still runs it; coverage excludes and long selects it.
+# req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads: 65.709 s.
+# Released TOOLLIB2 reconciliation (24 Oct 2026):
+# req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
+  | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
+  | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
@@ -186,6 +286,9 @@ default-filter = '''not (
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
   | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
   | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
+  | test(~lobed::req_gc_07_req_nfr_08_the_committed_project_writes_the_golden_programs)
+  | test(~first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads)
+  | test(~first_cut::req_sim_03_req_sim_05_req_set_09_req_op_21_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
   | test(~req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
@@ -194,12 +297,44 @@ default-filter = '''not (
   | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
   | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
   | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
 )'''
 
 [profile.long]
+# SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
+# Existing app both-direction roughing regression: 92.703 s, also above.
+# Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
 # 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
+  | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
+  | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
@@ -212,6 +347,9 @@ default-filter = '''
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
   | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
   | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
+  | test(~lobed::req_gc_07_req_nfr_08_the_committed_project_writes_the_golden_programs)
+  | test(~first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads)
+  | test(~first_cut::req_sim_03_req_sim_05_req_set_09_req_op_21_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
   | test(~req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
@@ -220,4 +358,18 @@ default-filter = '''
   | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
   | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
   | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
 '''
