@@ -35,6 +35,7 @@ fn faithful(replay: &Replay) -> SimReport {
         })
         .collect();
     SimReport {
+        boundaries: Vec::new(),
         rows,
         errors: Vec::new(),
         final_position: replay.moves().last().unwrap().to,

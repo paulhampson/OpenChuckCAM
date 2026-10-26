@@ -77,3 +77,5 @@ Gate 5 (first cut in wax or foam) follows only when gate 4 passes, with the safe
 ## Submitted machine evidence (25 Oct 2026)
 
 The owner reports sphere and cone passed at 50%, then 100%, with no alarms, motion as simulated and timing matching predictions. The other eight reference programs were waived for time, not passed. Gate 5’s first-cut job passed as reported at the accepted ±0.1 mm limit, with the measurement and procedural gaps itemised in the [step-by-step audit](z1-gates-4-5-test-instructions.md#10-results). Program fingerprints were not supplied, so these job-level observations do not establish that the exact stored golden bytes ran. Local automated and LinuxCNC evidence is recorded separately from those physical outcomes.
+
+The first-cut LinuxCNC fixture subsequently passed all thirteen owner-authorized bounded gate-3 units with checked source/actual boundary state (OI-991 closed; results 10.8). The eight physical reference-program waivers remain unchanged.

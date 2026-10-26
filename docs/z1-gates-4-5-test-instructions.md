@@ -1,6 +1,6 @@
 # Makera Z1 gates 4 and 5: step-by-step test instructions
 
-**Status: draft; owner results submitted 25 Oct 2026, audited below (lane GATES).** Section 10 records passes, failures, waivers and missing evidence separately. This lane is not ready for Merge Manager intake. Decisions 0221 and 0232 are accepted; decision 0222 is accepted on current main. None needs reacceptance.
+**Status: draft; owner results submitted 25 Oct 2026, audited below (lane GATES).** Section 10 records passes, failures, waivers and missing evidence separately. Local preparation is complete for Merge Manager intake; the existing PR stays draft under decision 0055. Decisions 0221 and 0232 are accepted; decision 0222 is accepted on current main. None needs reacceptance.
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM does not say that a program is safe or correct for any machine, tool or setup, and nothing in this document says otherwise. Passing gates 1 to 3, a clean simulation or a step of these instructions lowers the risk; it does not remove it. You, the operator, decide whether a program runs, and you can stop at any point.
 
@@ -599,8 +599,9 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-935 | Closed 25 Oct 2026 | Project schema 19 and standalone machine schema 5 claimed before use after checking main and remote allocations. Old-copy/schema-guard tests pass; released main integration must preserve OPSPEED’s actual predecessor migrations. |
 | OI-936 | Open, deferred | No arc-fitting/replay evidence supplied. |
 | OI-937 | Open | Program has no G4; dwell units remain untested. |
+| OI-991 | Closed 25 Oct 2026 | Owner-authorized bounded replay: 13/13 passed, all original lines/moves preserved, actual/source boundaries and all 12 transitions verified; driver/wrapper limits and CI sharding support it. Complete record 0244 remains proposed. |
 
-OI-991 is newly open for the first-cut gate-3 duration/timeout defect (10.5), allocated after checking main and every remote unmerged branch (highest OI-990). Only OI-930 and OI-935 close in this follow-through, with their rows moved to the Closed table. Existing closed items retain their accepted resolutions. OI-41, OI-60 and OI-471 retain the other missing machine and measurement evidence. A passing automated check does not close a waived physical check.
+OI-991 closes after the owner-authorized bounded first-cut replay passes (10.5 and 10.8); it was allocated after checking main and every remote unmerged branch (highest OI-990). OI-930, OI-935 and OI-991 close in this follow-through, with their rows moved to the Closed table. Existing closed items retain their accepted resolutions. OI-41, OI-60 and OI-471 retain the other missing machine and measurement evidence. A passing automated check does not close a waived physical check.
 
 ## 10. Results
 
@@ -720,7 +721,7 @@ The owner reports the tooling-board first cut **passed** at decision 0221’s ±
 | W5 | not run | No separate completed-check evidence supplied; successful cut alone does not establish this procedural check. | OI-471 |
 | T0 | passed | Tools agreed by PH, 2026-10-24. | OI-471 |
 | T1 | passed | 104 single flute; 204 two flutes. | OI-471 |
-| T2 | passed | Plastic; 10000 rpm “As tool library”. | OI-471 |
+| T2 | passed | Plastic and tool-data speed source reported; one 10000 rpm entry supplied. Individual operation speeds were not recorded. | OI-471 |
 | T3 | not applicable | Both selected tools have Plastic presets. | OI-471 |
 | T4 | not run | Cutting/plunge feed 1000/300 supplied; individual F-word limit check not reported. | OI-471 |
 | T5 | not run | Stick-out “as with Makera standard collet spacer”; numerical depth/margin not supplied. | OI-471 |
@@ -903,6 +904,19 @@ As above - all steps passed
 
 As above - all steps passed
 
+## Review record
+
+| | |
+| --- | --- |
+| Reviewed by (Z1 operator) | PH |
+| Date | 2026-10-25 |
+| Machine and firmware | As above |
+| Changes required | No |
+| Reviewed: yes / no | Yes |
+````
+
+</details>
+
 ### 10.4 Initial takeover verification (before implementation, 25 Oct 2026)
 
 This is historical preparation evidence; post-implementation results are recorded in 10.6. These checks concern the old lane head `9573685001117c4e71a236c555f34138fb21cbad` plus uncommitted preparation. Main `dc610e26dd260d69b5fc859270e7bf5fc913a3bb` was inspected, not merged. They do not verify omitted physical trials.
@@ -930,85 +944,17 @@ The one subsequent repeat, with the build workload stopped, **passed the local c
 
 Reproduction after the temporary-file permissions adjustment: `docker run --rm -v /tmp/openchuck-replay-1237-block_rate_linuxcnc.ngc:/work -w /work -e CHECK_PROGRAM=/work/program.ngc -e CHECK_REPORT=/work/report.json ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10 linuxcnc checks.ini`, then `target/debug/openchuck-cli gcode-sim /tmp/block_rate_linuxcnc.ngc /tmp/openchuck-replay-1237-block_rate_linuxcnc.ngc/report.json --tolerance 0.05`. The work directory contains unmodified repository checks.ini, sim.tbl and sim_driver.py, plus the pinned program with the prescribed footer substitution. The exact digest above pins the image. No tolerance was increased to obtain a pass.
 
-This subsequent replay supplies current simulator evidence. It does not show that K4 preceded the owner’s machine run, does not change the historical K4 row from waived to passed, and does not pass any omitted physical reference program. The owner retained the sequence deviation as a release waiver on 25 Oct 2026. The approved 7 ms profile/report implementation and schema allocation are completed locally. Post-implementation verification is recorded below; the first-cut long-replay disposition remains pending, so this is preparation, not Merge Manager intake.
+This subsequent replay supplies current simulator evidence. It does not show that K4 preceded the owner’s machine run, does not change the historical K4 row from waived to passed, and does not pass any omitted physical reference program. The owner retained the sequence deviation as a release waiver on 25 Oct 2026. The approved 7 ms profile/report implementation and schema allocation are completed locally. Post-implementation verification is recorded below; the subsequent bounded first-cut evidence is recorded in 10.8; this initial-stage account does not claim a full uninterrupted replay.
 
-### 10.5 First-cut replay duration flag (owner disposition pending)
+### 10.5 First-cut replay duration flag (owner-authorized bounded replay)
 
-The stored first-cut LinuxCNC golden has **1,727.333 s of nominal fed motion**, derived by reading its modal G0/G1 positions and F words under the LinuxCNC feed rule (linear distance, or A distance for an A-only move). This is an analysis estimate, not a replay result, and excludes acceleration and tool changes. It already exceeds ten minutes. The full local replay has not been started. Both `xtask/src/replay.rs::TIMEOUT_SECONDS` and `tools/linuxcnc/sim_driver.py` currently impose 900 s, so the unchanged full replay cannot finish under those limits. Any approved long-run disposition must also address both limits; splitting must check modal state and continuity explicitly. AGENTS.md requires a decision on an uninstrumented test over ten minutes: shrink it, split it, or accept it only in a long/nightly run. The owner has been asked individually to choose bounded replay chunks with explicit modal-state/continuity checks, or an approved full long/nightly replay. No chunking implementation or full-program pass is claimed while that answer is pending. OI-991 retains this first-cut gate-3 tooling/evidence gap; OI-471 retains the physical trial gaps. This does not change the submitted physical cut’s observed outcome or the K4 release waiver.
+The stored first-cut LinuxCNC golden has **1,727.333 s of nominal fed motion**, derived from its modal G0/G1 positions and F words under the LinuxCNC feed rule. This is an analysis estimate, not a replay result, and excludes rapids, acceleration and tool changes. Both the original wrapper and driver imposed 900 s, so an unchanged full replay could not finish. AGENTS.md requires an owner disposition for an uninstrumented test over ten minutes.
 
-### 10.6 Implementation and local verification, 25 Oct 2026
+The owner directly instructed “Apply your suggested approach to allow support of the test” on 25 Oct 2026, authorizing bounded chunks preserving every original move with explicit modal-state and continuity checks. The complete detailed record [0244](decisions/0244-bounded-first-cut-linuxcnc-replay.md) is proposed; acceptance of its full text is not inferred from that earlier instruction. No reacceptance of 0221, 0222 or 0232 is requested.
 
-The requirement-first Z1 profile test failed before the fields existed (`None` versus `Some(7.0)`). Report/setup-sheet and longest-run-feed checks also exposed failures before their implementations were corrected. Accepted 0222 now has an executable **Report** implementation: the new built-in Z1 uses **7 ms / 32 blocks / Report**, and optional post fields override the profile independently. A complete sliding window is required; rapids and operation boundaries reset it. Reports identify affected blocks, the longest run, its effective contact feed, the worst window mean and estimated added time. An incomplete window is identified explicitly. The estimate does not change path durations or G-code. Slow down and Merge remain unbuilt.
+Implementation targets at most 300 s estimated simulator time per fixture, including startup, with a hard limit of at most 600 s in both driver and wrapper. It expands before CI sharding. Each fixture initializes simulated joints at the original boundary coordinates, restores G modes, F, tool and spindle state, and checks actual start/end coordinates and modes at simulator-only M0 stops followed by `M66 E0 L0` queue barriers. The barriers prevent interpreter read-ahead from changing F/modes before the paused snapshot. Original contiguous source lines are retained exactly once across all chunks; production G-code and comparison tolerances are unchanged. Unsupported modes/syntax and atomic moves that cannot fit fail closed. Separate fixtures add stops and fresh interpreter initialization, so their results cannot establish uninterrupted full-program dynamics or the original pre-cut gate ordering.
 
-Older project machine copies and other profiles default to **0 ms / 1 / Off**; no migration substitutes the new built-in profile. Tests cover old standalone profiles/project copies, schema guards, disabled-profile warnings, both posts' byte-identical Off/Report output, deterministic reports, overrides, invalid input, rapid boundaries, and application warnings plus HTML/PDF setup sheets. CLI inspection shows the actual setting. The public API additions bump the workspace/library version to **0.21.0**. The intentional G-code text change is the generator version comment; motion/feed words remain unchanged. Existing golden tests normalise that comment and passed at 1, 2 and N threads.
-
-Project schema **19** and standalone machine schema **5** were claimed before use after checking main and all remote branches. This old branch uses reserved predecessor steps for 18/4. **Before release, the Merge Manager's main integration must replace those placeholders with OPSPEED's actual migrations and preserve its operation-material and spindle-limit fields.** They are not a substitute for integrating main. Current main's clipboard-win 5.4.3 and tokio 1.53.3 dependency fixes are retained locally; no unrelated dependency upgrade was made.
-
-| Local check | Result | Uninstrumented time / scope |
-| --- | --- | --- |
-| Product tests: types, project, post, application and CLI, including e2e golden regeneration and first-cut determinism | All **775 currently selected tests** have passing evidence across the baseline and final affected-test reruns; no unresolved product-test failure | Final affected/remaining batch: 325/325, 488.246 s; core batch: 234/234, 2.506 s; subsequent focused additions passed. Longest individual test: first-cut determinism, **369.528 s**. |
-| UI-26 numeric-entry tests | 18/18 passed | 0.75 s |
-| xtask replay-selection tests | 6/6 passed | 0.01 s final execution (build excluded) |
-| Clippy, all targets, warnings denied | Passed for types, project, post, app, CLI, UI and xtask | 9.023 s final command (earlier all-target run 32.60 s) |
-| `cargo xtask all` | Passed: dependencies, licences, records, testdata, conflicts, publishing checks and traceability; **100/100 P1** requirements have tests | 22.051 s final command |
-| `cargo audit` | Passed; 1,352 advisories / 449 dependencies, no vulnerability reported after the tokio fix | 5.448 s command |
-| `cargo deny check` | Passed advisories, bans, licences and sources; existing duplicate-version/unmatched-exception warnings retained | 2.371 s command |
-| Formatting and whitespace | `cargo fmt --all -- --check` and `git diff --check` passed | 1.465 s formatting; whitespace clean |
-| Fuzz manifest/lockfile consistency | Locked offline metadata passed; not a fuzz campaign | Scope only |
-
-Tests were run uninstrumented before coverage. Every newly observed test over about a minute is listed in both the `coverage` exclusions and `long` selections of `.config/nextest.toml`, with measured times. None of the executed uninstrumented product tests exceeded ten minutes. The separately flagged full first-cut LinuxCNC replay has not been started (10.5).
-
-Changed-crate **own-test** line coverage is a lower bound, not the nightly whole-suite result:
-
-| Crate | Covered / executable lines | Line coverage |
-| --- | --- | --- |
-| openchuck-types | 2,043 / 2,621 | 77.95% |
-| openchuck-project | 3,276 / 3,608 | 90.80% |
-| openchuck-post | 652 / 740 | 88.11% |
-| openchuck-app | 15,495 / 16,786 | 92.31% |
-| openchuck-cli | 929 / 1,400 | 66.36% (27 CLI command tests; e2e coverage not included in this lower bound) |
-
-These totals **do not meet the 95% development target**; it is not a PR merge gate (0102). No source was excluded to improve them. The new `block_time.rs` module is **121/123 lines, 98.37%** on its own crate's tests. Its unexecuted lines are a loop closing brace and the defensive zero-duration effective-feed fallback; normal posted moving blocks require a positive duration. Other new own-crate gaps are the types' field-name/provenance plumbing (covered by consuming application/CLI tests), a project migration closing brace, UI/profile label branches and setup-sheet fallback branches. These are recorded rather than filled with implementation-mirroring tests. Application coverage ran all 463 selected own tests (708.717 s instrumented suite time; 10 long tests skipped by the coverage profile). CLI e2e tests passed uninstrumented. Instrumented artifacts were cleaned with `cargo llvm-cov clean --workspace` and the separate instrumented target directory removed; JSON summaries were retained outside it.
-
-The K4 replay outcome and hashes are in 10.4. Reference-program gate-3 replays passed separately on the idle Docker host at the repository's unchanged **0.1 mm** comparison tolerance; their final outcomes are recorded in 10.7. They cannot pass any omitted physical air cut. The K4 repeat used 0.05 mm, stricter than that repository default.
-
-Facilities unavailable here: native Windows/macOS execution, direct Z1 access, and an installed OpenCASCADE 7.8.1 kernel. The existing lane's earlier ten passing STEP-pipeline kernel tests remain historical evidence; this prepared code has not rerun them. Current integrated-head kernel CI and platform checks remain required. The owner's Windows/Z1 0.20.0 results are preserved independently from this Linux 0.21.0 verification. Generated G-code remains the user's responsibility to verify (NFR-12).
-
-### 10.7 Final local reference-program LinuxCNC replay results
-
-All **11 selected programs** (ten reference jobs plus the small-part fixture) passed on the managed Docker host using the image/digest in 10.4 and unchanged repository tolerance **0.1 mm** (or degrees for A); final positions retain the checker's separate 0.001 tolerance. This is the default `xtask` program selection with only `first_cut_linuxcnc.ngc` withheld under OI-991. The full first-cut gate-3 replay remains **not run**. These passes do not supply hardware evidence for the eight waived air cuts.
-
-The temporary reproduction harness copied unmodified `checks.ini`, `sim.tbl` and `sim_driver.py`, and the exact committed program into each `/tmp/gates-gate3/<filename>/` directory, with permissions readable by the image's unprivileged user. It ran the same `docker ... linuxcnc checks.ini` command and then `target/debug/openchuck-cli gcode-sim <program> <report> --tolerance 0.1`. Heavy build/coverage workloads were stopped for the final replays. Reports/logs are temporary local artifacts; the following summary and report hashes preserve the evidence identity in the repository.
-
-| LinuxCNC program | Result | Recognised moves reached | Largest difference | Reported motion s | Docker wall s | Report SHA-256 |
-| --- | --- | --- | --- | --- | --- | --- |
-| post_linuxcnc_small_part.ngc | passed; no fault | 30 | 0.1000 | 29.6 | 44.215 | `a85d9a4f3dedbece16d749fbac7b339110366b7a840009668f078e5dd333aa15` |
-| cone_axial_lead_linuxcnc.ngc | passed; no fault | 1345 | 0.0536 | 286.4 | 317.552 | `ab886c0e0af81be494c3d62bbad02d1c75227758f426be1ef6ffd5f7f67ee8a9` |
-| cone_axial_linuxcnc.ngc | passed; no fault | 609 | 0.0999 | 271.2 | 288.515 | `2a12342e5b4ec0768cfbe880f0b715eb86cf0dc83bce07914272e512bcfa3c01` |
-| cone_held_tabs_linuxcnc.ngc | passed; no fault | 1591 | 0.1000 | 171.1 | 196.048 | `256e5f473510031222ce86169b2db38009f9c121e9fcfccd1a5fcb46c43a09cf` |
-| cone_indexed_linuxcnc.ngc | passed; no fault | 77 | 0.0067 | 36.2 | 57.916 | `1b2288559573a0d91b1f5e350c53fd8153be8baa1606ad366c8698c443259760` |
-| cone_linuxcnc.ngc | passed; no fault | 1086 | 0.0150 | 117.7 | 141.676 | `b03943da8a666267b2e7ab7992a3c54a5fab0c599997c8d95133e33b072effa5` |
-| drilling_linuxcnc.ngc | passed; no fault | 15 | 0.0010 | 23.3 | 43.096 | `2a69ef2432baa21e3d1f6c8f6686de64f468a21555b6c7ddd7cd553f1c0e1258` |
-| groove_linuxcnc.ngc | passed; no fault | 1104 | 0.0150 | 152.9 | 176.608 | `d33f237a7b2f78e8b7dcb00ac00e9ac17e7d8b9bb43ac3a22e85f34187fe40b0` |
-| lobed_linuxcnc.ngc | passed; no fault | 1806 | 0.0920 | 105.6 | 131.348 | `6908a091013f9f6d498039e54e7852a319bed1637531955437ea64829bdb2902` |
-| sphere_linuxcnc.ngc | passed; no fault | 726 | 0.0150 | 87.8 | 109.496 | `cedd62cfe3c198337df4aa0e42d5ea2f5cf2625e0aaf92b43b35c60e162ff7a4` |
-| swarf_linuxcnc.ngc | passed; no fault | 54 | 0.0041 | 105.6 | 126.108 | `1b713a8e0cfa6bff6d17761f5ad621501ea0fb5882ec183ced26138caaf7ae69` |
-
-An earlier cone-axial attempt failed comparison at line 314, expected `[0, 0, 45, 180]`, with no LinuxCNC errors, maximum sampling gap 97.8 ms and wall time 295.818 s. One attempt was interrupted when the host was busy with coverage; it supplied no result. The idle-host repeat in the table passed. The earlier failure is retained; neither a tolerance change nor a product fix was used to obtain the repeat pass. An initial temporary wrapper also mistakenly selected a Z1 `.ngc` file; LinuxCNC rejected its Z1-specific `G92.4`. Selection was corrected to the repository's `linuxcnc` filename rule before these final reference results. It is not a LinuxCNC-post product failure.
-
-## Review record
-
-| | |
-| --- | --- |
-| Reviewed by (Z1 operator) | PH |
-| Date | 2026-10-25 |
-| Machine and firmware | As above |
-| Changes required | No |
-| Reviewed: yes / no | Yes |
-
-````
-
-</details>
+OI-991 is closed by the thirteen passing bounded fixtures and verified source/boundary continuity in 10.8. OI-471 retains the physical-trial and missing-measurement gaps. The K4 release waiver and the supported Gate 5 physical outcome are unchanged.
 
 ### 10.6 Implementation and local verification, 25 Oct 2026
 
@@ -1030,7 +976,7 @@ Project schema **19** and standalone machine schema **5** were claimed before us
 | Formatting and whitespace | `cargo fmt --all -- --check` and `git diff --check` passed | 1.465 s formatting; whitespace clean |
 | Fuzz manifest/lockfile consistency | Locked offline metadata passed; not a fuzz campaign | Scope only |
 
-Tests were run uninstrumented before coverage. Every newly observed test over about a minute is listed in both the `coverage` exclusions and `long` selections of `.config/nextest.toml`, with measured times. None of the executed uninstrumented product tests exceeded ten minutes. The separately flagged full first-cut LinuxCNC replay has not been started (10.5).
+Tests were run uninstrumented before coverage. Every newly observed test over about a minute is listed in both the `coverage` exclusions and `long` selections of `.config/nextest.toml`, with measured times. None of the executed uninstrumented product tests exceeded ten minutes. The first-cut duration flag now has an owner-authorized bounded implementation (10.5); the subsequent execution evidence is recorded separately.
 
 Changed-crate **own-test** line coverage is a lower bound, not the nightly whole-suite result:
 
@@ -1048,9 +994,9 @@ The K4 replay outcome and hashes are in 10.4. Reference-program gate-3 replays p
 
 Facilities unavailable here: native Windows/macOS execution, direct Z1 access, and an installed OpenCASCADE 7.8.1 kernel. The existing lane's earlier ten passing STEP-pipeline kernel tests remain historical evidence; this prepared code has not rerun them. Current integrated-head kernel CI and platform checks remain required. The owner's Windows/Z1 0.20.0 results are preserved independently from this Linux 0.21.0 verification. Generated G-code remains the user's responsibility to verify (NFR-12).
 
-### 10.7 Final local reference-program LinuxCNC replay results
+### 10.7 Local reference-program LinuxCNC replay results before bounded first-cut support
 
-All **11 selected programs** (ten reference jobs plus the small-part fixture) passed on the managed Docker host using the image/digest in 10.4 and unchanged repository tolerance **0.1 mm** (or degrees for A); final positions retain the checker's separate 0.001 tolerance. This is the default `xtask` program selection with only `first_cut_linuxcnc.ngc` withheld under OI-991. The full first-cut gate-3 replay remains **not run**. These passes do not supply hardware evidence for the eight waived air cuts.
+All **11 selected programs** (ten reference jobs plus the small-part fixture) passed on the managed Docker host using the image/digest in 10.4 and unchanged repository tolerance **0.1 mm** (or degrees for A); final positions retain the checker's separate 0.001 tolerance. This is the default `xtask` program selection with only `first_cut_linuxcnc.ngc` withheld under OI-991. At this earlier verification stage the full first-cut gate-3 replay remained **not run**; the subsequent owner-authorized bounded implementation and evidence are recorded below. These passes do not supply hardware evidence for the eight waived air cuts.
 
 The temporary reproduction harness copied unmodified `checks.ini`, `sim.tbl` and `sim_driver.py`, and the exact committed program into each `/tmp/gates-gate3/<filename>/` directory, with permissions readable by the image's unprivileged user. It ran the same `docker ... linuxcnc checks.ini` command and then `target/debug/openchuck-cli gcode-sim <program> <report> --tolerance 0.1`. Heavy build/coverage workloads were stopped for the final replays. Reports/logs are temporary local artifacts; the following summary and report hashes preserve the evidence identity in the repository.
 
@@ -1069,6 +1015,53 @@ The temporary reproduction harness copied unmodified `checks.ini`, `sim.tbl` and
 | swarf_linuxcnc.ngc | passed; no fault | 54 | 0.0041 | 105.6 | 126.108 | `1b713a8e0cfa6bff6d17761f5ad621501ea0fb5882ec183ced26138caaf7ae69` |
 
 An earlier cone-axial attempt failed comparison at line 314, expected `[0, 0, 45, 180]`, with no LinuxCNC errors, maximum sampling gap 97.8 ms and wall time 295.818 s. One attempt was interrupted when the host was busy with coverage; it supplied no result. The idle-host repeat in the table passed. The earlier failure is retained; neither a tolerance change nor a product fix was used to obtain the repeat pass. An initial temporary wrapper also mistakenly selected a Z1 `.ngc` file; LinuxCNC rejected its Z1-specific `G92.4`. Selection was corrected to the repository's `linuxcnc` filename rule before these final reference results. It is not a LinuxCNC-post product failure.
+
+### 10.8 Owner-authorized bounded first-cut follow-through
+
+The owner instructed “Apply your suggested approach to allow support of the test” after the explanation of the first-cut gate-3 duration gap. This authorizes the bounded approach. Complete record [0244](decisions/0244-bounded-first-cut-linuxcnc-replay.md) remains proposed; no acceptance of its later full text is inferred. Decisions 0221, 0222 and 0232 remain accepted.
+
+The first-cut source expands to **13 deterministic simulator fixtures**. Their contiguous source ranges reconstruct every original line exactly once, in order. Both driver and wrapper enforce a limit of at most 600 s per unit, or a smaller requested timeout; the planner targets 300 s including startup. Each fixture restores and checks its original boundary state. The independent `gcode-sim --source-lines FIRST:LAST` path replays the original unsplit prefix, checks both actual boundary states and compares the original moves in that range. It therefore checks the fixture against the original program. Production G-code and comparison tolerances are unchanged. The public verification API additions use the already-unreleased library version 0.21.0; ordinary report JSON remains compatible through default-empty boundary data. No machine/project schema is added.
+
+**Observed initial tooling failure:** part 1 passed in 237.846 s. Parts 2–5 each failed twice at their starting state check, with the following values. Part 6 was interrupted while the issue was investigated; it supplies no result. Parts 7–13 were not run in that attempt. The observations and first reports are retained under the initial-attempt evidence; none is retroactively passed.
+
+| Part | Expected boundary F | Reported F | Attempt 1 wall s | Attempt 2 wall s |
+| --- | --- | --- | --- | --- |
+| 2 | 16.7 | 17.3 | 20.234 | 20.229 |
+| 3 | 18.1 | 299.9 | 19.218 | 18.621 |
+| 4 | 19.7 | 20.7 | 19.019 | 18.422 |
+| 5 | 21.7 | 21.6 | 19.022 | 19.625 |
+
+The reported F matched the next source line, with about a 1 ms sampling gap. The conclusion is that interpreter-reported settings look ahead across M0; this is a checkpoint assumption in the test tooling, not a new physical machine result. Each checkpoint now has a LinuxCNC-only `M66 E0 L0` queue barrier after M0, preventing that read-ahead before the paused state is checked. A focused real-simulator probe then checked F60 before an original line changed it to F120 and passed the independent original-source comparison. No feed, coordinate or comparison tolerance was relaxed. A separate negative probe deliberately supplied a wrong expected tool and stopped before original motion.
+
+Local regressions passed: 19 gcode tests, 28 CLI command tests, 97 xtask tests, and the Python boundary-helper tests. Uninstrumented own-test execution was under a second per suite (build time excluded); no new Rust/nextest case exceeded a minute. The external simulator units are timed separately and distributed by the gate-3 harness rather than nextest. The legacy whole-program small-part replay passed in 52.168 s; a short fixture exercised the complete bounded harness in 23.435 s. Audit and deny passed in 5.798 s and 1.862 s. Final document-freeze checks passed: `cargo xtask all` 6.815 s (records, testdata and 100/100 P1 traceability included), all-target Clippy for eight relevant crates with warnings denied 9.054 s, formatting 1.505 s, whitespace clean. The final own-test executions passed: gcode 19 (including 0.25 s reader properties), CLI command tests 28 in 0.17 s, xtask 97 in 0.21 s.
+
+Own-test line-coverage lower bounds for this follow-through are gcode 861/1,116 (77.15%), CLI command tests 946/1,406 (67.28%), and xtask 2,528/3,364 (75.15%); these whole-crate totals remain below the 95% development target. The new independent range module covers 163/171 lines (95.32%); the planner covers 315/322 lines (97.83%). Remaining new gaps are defensive parse/impossible-state paths and the external execution paths exercised by uninstrumented LinuxCNC runs. Focused Python unit/short-runtime coverage is 36/37 executable lines (97.30%) for the boundary helper and 98/106 (92.45%) for the driver. These standard-library trace counts include the unexecuted synthetic module-prologue line 0; it is not source code. Other driver gaps are defensive timeout/homing/extra-checkpoint paths and legacy-control paths exercised uninstrumented. LLVM-instrumented targets were cleaned after reporting; trace evidence is retained outside the repository. Instrumented runtime timings are not used as performance evidence.
+
+The synchronized bounded run passed all thirteen fixtures on their first attempts. All 16,853 original lines reconstruct byte for byte, every adjacent expected boundary agrees, and all twelve actual boundary transitions match. The independent comparisons reached all 16,827 recognised original moves with no faults. Maximum per-unit wall time: 270.312 s; sum of unit wall times: 2,441.792 s. The sequential command batch took 2,448.126 s (40 min 48.126 s), including repeated harness setup. No execution unit exceeded ten minutes. OI-991 is closed. This software evidence does not close the physical reference-program waivers, the override discrepancy, OI-267 or the unrecorded Gate 5 measurements. Native Windows/macOS, installed OpenCASCADE kernel execution and direct Z1 access remain unavailable locally.
+
+
+
+The bounded evidence was also assembled in original-source order and compared once against the complete original program: all 16,827 recognised moves reached, largest difference 0.1000, no fault (3.126 s comparison command). This assembled comparison is subsequent bounded evidence, not an uninterrupted simulator execution. Actual transition checks retain the original coordinates/feed/tool/spindle state across all twelve junctions.
+
+Software-fixture SHA-256: `d42a2e229b631794fb37b25086e464164b8c4dd364cc2111172a9e78b287bd7e`. This identifies the stored program verified here; it does not fill the owner's blank physical program/setup fingerprints. The stored fixture includes S10000 roughing and S12000 finishing. The owner's single 10000 rpm entry does not identify every physical operation's speed; per-operation physical settings remain unrecorded under OI-471.
+
+| Part | Original source lines | Recognised moves | Largest difference | Wall s | Report SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1–872 | 862 | 0.0175 | 236.797 | `be80eb1876ef7772af791dddf3d82727045134e4475f65de93c4abeedec71aa4` |
+| 2 | 873–2020 | 1139 | 0.1000 | 224.992 | `d0d621aef9f5e28de212c091f1906d5cb4760c01f25ee72e92b7fae5756b7d10` |
+| 3 | 2021–3497 | 1477 | 0.1000 | 209.736 | `3ed65b52a6815824eeadd2872221217d952cff79b04efc6a0ed7d15e7551b389` |
+| 4 | 3498–5309 | 1812 | 0.0442 | 192.267 | `f9301c609ca59aa058850e1392009286024e0f40f9ff730cc441cfc9a26c8905` |
+| 5 | 5310–7183 | 1874 | 0.0150 | 191.052 | `a2e2ce32e8e07aecc795c453b6965535831b68b8ea86277cb4aa24e9263edfd3` |
+| 6 | 7184–9052 | 1869 | 0.1000 | 190.289 | `feee2b44465f756a526b76acc9fc84cfb1f9a01c547ab61711834e04340be654` |
+| 7 | 9053–10893 | 1841 | 0.0150 | 191.661 | `b7ab8b6ce79528329f2495765af9206b7568f1f9f19285ed79431a5e7e303cc6` |
+| 8 | 10894–12598 | 1705 | 0.0150 | 196.482 | `7a7d4d4a09042c1374cab0d638bf5245ea128fe07fd676b6d014764d5733399e` |
+| 9 | 12599–12738 | 140 | 0.0150 | 46.411 | `c698c619fac565a83a0bd8f32d28a2ebecbf59b456d7cce9641394d1ee4aef06` |
+| 10 | 12739–12909 | 167 | 0.0150 | 270.312 | `67c70babea208fd7fc2e8d6bd5bf39cb9f773ca66effc684b48dbffc17e67f3f` |
+| 11 | 12910–14643 | 1733 | 0.1000 | 197.087 | `9c959febe80d02023497437d82a1a7f81802b6d5a707d57c3e9af7135ba2ab09` |
+| 12 | 14644–16552 | 1909 | 0.1000 | 189.055 | `f21335a0161f7436be42c98a732425a525f50fc8782d726d805d27dcfa7e1955` |
+| 13 | 16553–16853 | 299 | 0.0150 | 105.651 | `209cab39f8e421a92dc141f681e1f63bfa36fd7486fef2cffb3040c99bfab63a` |
+
+Reproduction on an otherwise idle host: `cargo xtask replay --docker ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10 --keep-reports target/replay --timeout 600 testdata/golden/first_cut/first_cut_linuxcnc.ngc`. The local run used each execution share exactly once (`2/13`, `3/13`, `1/13`, then `4/13` through `13/13`) to check the previously failing ranges first. All share assignments use the same deterministic expansion; CI distributes the full reference/first-cut set over its existing three shares. Raw reports, expected-state/source manifests, simulator INIs, per-attempt timings and the assembled evidence remain temporary local artifacts; the summaries/hashes above preserve their identity in the repository. The Docker image/digest is the one recorded in 10.4.
 
 ## Review record
 
@@ -1078,4 +1071,4 @@ An earlier cone-axial attempt failed comparison at line 314, expected `[0, 0, 45
 | Date | 2026-10-25 |
 | Machine and firmware | Makera Z1, 1.1.2 |
 | Changes required | Owner: No. Evidence audit: unresolved exceptions above. |
-| Reviewed: yes / no | Yes (owner submission); local selected checks passed; OI-991, physical evidence and unavailable-platform gaps remain |
+| Reviewed: yes / no | Yes (owner submission); local selected checks and bounded first-cut replay passed; physical evidence and unavailable-platform gaps remain |

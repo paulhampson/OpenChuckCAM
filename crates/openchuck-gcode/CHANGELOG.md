@@ -2,7 +2,9 @@
 
 ## 0.21.0
 
-- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Path geometry and G-code replay behavior are unchanged.
+- GC-10: `compare_simulator_range` checks bounded LinuxCNC fixtures against the original unsplit source and independently replayed prefix state. `SimReport` gains default-empty `boundaries` and the public `SimBoundary` type; struct constructors must supply the new field. Ordinary whole-program JSON remains compatible.
+
+- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Existing whole-program replay behavior is unchanged.
 
 
 All notable changes to `openchuck-gcode` are recorded here.
