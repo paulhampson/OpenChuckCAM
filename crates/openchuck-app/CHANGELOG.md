@@ -1,10 +1,16 @@
 # Changelog
 
+## 0.22.0
+
+- GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
+
+
 All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
-- Version 0.22.0 with the library family (GC-17, decisions 0222/0244): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+- CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
 
 - Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
 

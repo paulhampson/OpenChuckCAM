@@ -990,12 +990,17 @@ impl ExportPanel {
             });
         if let Some((settings, sources)) = files.run.effective_short_blocks {
             ui.label(format!(
-                "Short-block settings: {} ({}), {:.3} ms ({}), {} blocks ({}).{}",
+                "Short-block settings: {} ({}), {:.3} ms ({}), {} {} ({}).{}",
                 settings.mode.label(),
                 sources.mode.as_str(),
                 settings.min_block_ms,
                 sources.min_block_ms.as_str(),
                 settings.block_window,
+                if settings.block_window == 1 {
+                    "block"
+                } else {
+                    "blocks"
+                },
                 sources.block_window.as_str(),
                 if settings.min_block_ms == 0.0
                     || settings.mode == openchuck_app::setup::ShortBlockMode::Off
@@ -1019,8 +1024,8 @@ impl ExportPanel {
                 openchuck_app::setup::ShortBlockMode::Report => "Report",
                 openchuck_app::setup::ShortBlockMode::SlowDown => "Slow down",
             };
-            ui.label(format!("Short blocks — {operation}: {mode}, {:.3} ms over {} blocks (limit: {}, window: {}, mode: {}). {} affected windows before slowdown; worst average {:.3} ms; {} moves below the limit, longest run {}. Effective feed {:.3} mm/min; {:.3} s {}.",
-                report.settings.min_block_ms, report.settings.block_window, report.sources.min_block_ms.as_str(), report.sources.block_window.as_str(), report.sources.mode.as_str(),
+            ui.label(format!("Short blocks — {operation}: {mode}, {:.3} ms over {} {} (limit: {}, window: {}, mode: {}). {} affected windows before slowdown; worst average {:.3} ms; {} moves below the limit, longest run {}. Effective feed {:.3} mm/min; {:.3} s {}.",
+                report.settings.min_block_ms, report.settings.block_window, if report.settings.block_window == 1 { "block" } else { "blocks" }, report.sources.min_block_ms.as_str(), report.sources.block_window.as_str(), report.sources.mode.as_str(),
                 report.affected_windows, report.worst_window_ms, report.short_moves, report.longest_run, report.effective_feed, report.added_seconds,
                 if report.settings.mode == openchuck_app::setup::ShortBlockMode::SlowDown { "added" } else { "would be added by Slow down" }));
         }

@@ -104,7 +104,7 @@ pub struct PostOptions {
     pub min_block_ms: Option<f64>,
     /// Optional controller window override (1 to 4096).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub block_window: Option<usize>,
+    pub block_window: Option<u32>,
     /// Optional command-rate action override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_block_mode: Option<openchuck_types::machine::ShortBlockMode>,
@@ -180,7 +180,7 @@ impl PostOptions {
             sources.min_block_ms = crate::SettingSource::Post;
         }
         if let Some(v) = self.block_window {
-            settings.block_window = v;
+            settings.block_window = v as usize;
             sources.block_window = crate::SettingSource::Post;
         }
         if let Some(v) = self.short_block_mode {
@@ -190,11 +190,20 @@ impl PostOptions {
         (settings, sources)
     }
 
+    /// Resolve each post override independently over the canonical machine settings.
+    pub fn block_time(&self, profile: crate::BlockTimeSettings) -> crate::BlockTimeSettings {
+        crate::BlockTimeSettings {
+            min_block_ms: self.min_block_ms.unwrap_or(profile.min_block_ms),
+            block_window: self.block_window.unwrap_or(profile.block_window),
+            mode: self.short_block_mode.unwrap_or(profile.mode),
+        }
+    }
+
     /// Checks every value; the message names the option.
     pub fn validate(&self) -> Result<()> {
         crate::ShortBlockSettings {
             min_block_ms: self.min_block_ms.unwrap_or(0.0),
-            block_window: self.block_window.unwrap_or(1),
+            block_window: self.block_window.unwrap_or(1) as usize,
             mode: self.short_block_mode.unwrap_or_default(),
         }
         .validate()?;

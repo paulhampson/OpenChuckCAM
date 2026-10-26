@@ -1,11 +1,11 @@
 # 0222: Short moves: a minimum block time, reported first, then met by slowing down (lane SHORTMOVE; SP-14)
 
-- **Status:** accepted (23 Oct 2026) by the project owner, given in this lane's own session (decision 0049). Proposed 22 Oct 2026. The original investigation below predates the hardware trial; see the current follow-through note.
+- **Status:** accepted (23 Oct 2026) by the project owner, given in this lane's own session (decision 0049). Proposed 22 Oct 2026. GATES #284 implemented Report and the profile/post fields at schemas 19/5; SHORTMOVE 0245 completes managed reporting and selective Slow down at schemas 20/6. The original investigation below predates the hardware trial; see the current follow-through note.
   - **Item 2 decided:** the owner chose option A (Report first, then Slow down; Merge deferred), relayed by the coordinator on 22 Oct 2026.
   - **Item 3 decided:** the owner chose option A, a window of N blocks held in the machine profile beside the minimum block time (N = 1 is the strict per-block case; the Z1 uses 32), relayed by the coordinator on 22 Oct 2026. OI-931 is closed.
   - **Item 7's air cut decided:** the owner chose to add it to the gate 4 procedure now, in lane GATES' draft pull request #284, and the Z1 profile ships with the check **off** until it has been run (OI-930 stays open until then).
   - **5 ms is not a Z1 value.** It is a placeholder threshold, used to describe the measurements and as a test value. No Z1 value is set until the air cut measures one (see *The 5 ms figure*).
-- **What it amends:** nothing in the documents yet. With the record accepted, the requirement (GC-17), the profile and post fields and the verification rows below are agreed. They are written into `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` in the build lane's pull request, which also claims the project schema number (OI-935).
+- **What it amends:** GC-17 and the profile/post fields are now reflected in the requirements, architecture and verification plan by the GATES follow-through (25 Oct 2026). With the record accepted, the requirement (GC-17), the profile and post fields and the verification rows below are agreed. They are written into `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` in the build lane's pull request, which also claims the project schema number (OI-935).
 - **Date:** 22 Oct 2026.
 - **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged, but kept: the gate 4 procedure fetches the air-cut program `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` from it). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
 - **Open items:** OI-930 to OI-937 are new (OI-937 added after the published sources were read). OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
@@ -15,7 +15,7 @@
 
 The owner submitted the air-cut results in [#284 comment 6399134358](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358). Both parts passed 20, 10 and 7 ms and stuttered at 5 ms and below, on Z1 firmware 1.1.2 via WiFi upload. The controller is identified as ESP32 without its firmware version. **7 ms is the shortest tested smooth setting**, not an exact capacity boundary. OI-930 is closed by this evidence; earlier statements below that the value is unknown describe the pre-trial investigation.
 
-The owner instructed this session to execute Report followed by Slow down, with Merge still deferred. [0244](0244-short-block-report-and-slowdown.md) records the configurable implementation: new Z1 profiles Report at 7 ms/32, old project copies retain Off, optional post overrides, geometry-preserving window slowdown, adjusted replay timing and same-run setup sheets. Schema claim OI-935 is closed. Hardware mitigation validation remains open as OI-992; a software window target alone is not a smoothness guarantee. The unpushed Report work described in draft #284 is not assumed integrated.
+The owner instructed this session to execute Report followed by Slow down, with Merge still deferred. [0245](0245-short-block-report-and-slowdown.md) records the configurable implementation: new Z1 profiles Report at 7 ms/32, old project copies retain Off, optional post overrides, geometry-preserving window slowdown, adjusted replay timing and same-run setup sheets. Schema claim OI-935 is closed. Hardware mitigation validation remains open as OI-992; a software window target alone is not a smoothness guarantee. GATES #284 is now merged; its complete-window IR reporting API, schema guards, hardware evidence and waivers are preserved. The managed reporting path additionally examines actual emitted durations and bounded short runs as recorded in 0245.
 
 ## Context
 
@@ -355,3 +355,11 @@ Its result sets the Z1 profile's value (OI-930); its pass rule is in item 7.
   - OI-935: the schema claim.
   - OI-936: arc fitting on A-free passes.
   - OI-937: the units of `G4 P` on the Z1 (Makera and Smoothie disagree).
+
+## GATES follow-through, 25 Oct 2026
+
+The owner’s [PR #284 result](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358) records 7, 10 and 20 ms passing in both X-only and simultaneous X/A sections; 5, 3, 2 and 1 ms stuttered in both parts (eight failures). The measured minimum passing tested value is 7 ms. Firmware 1.1.2, ESP32 (firmware version not supplied), WiFi upload, build 0.20.0 at dc610e26dd260d69b5fc859270e7bf5fc913a3bb. This is not a measured limit for other programs, transports or controllers. The owner explicitly retained original K4 as a release waiver in the takeover session; a subsequent local LinuxCNC replay passed. See the full [results audit](../z1-gates-4-5-test-instructions.md#10-results).
+
+The new built-in Z1 profile uses `min_block_ms = 7.0`, `block_window = 32`, `short_block_mode = "report"`. Existing project copies retain their own profile and default Off when the fields are absent; no migration enables the check. Machine schema 5 and project schema 19 were claimed before use. Library version 0.22.0 accounts for the public profile/post API additions. Report does not modify G-code or replay tolerances. Report itself changes no G-code; the software-version bump changes the generator version comment. Released main integration separately adopts accepted decision 0241’s rotary golden changes (results 10.9). Setup sheets and warning text may gain Report information.
+
+OI-930 and OI-935 are closed by the measurement/profile implementation and the schema claim, with their rows moved to the Closed table. OI-932 to OI-934, OI-936 and OI-937 remain open; OI-931 was already closed by the owner’s accepted averaging rule.

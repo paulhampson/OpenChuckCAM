@@ -20,8 +20,8 @@ use crate::program::{MachineProgram, Step};
 /// What a post needs to know about the job beyond the toolpath.
 #[derive(Debug, Clone)]
 pub struct PostJob {
-    /// Controller command-rate settings from the machine profile (GC-17).
-    pub short_blocks: crate::ShortBlockSettings,
+    /// Machine profile settings for GC-17, before post overrides.
+    pub block_time: crate::BlockTimeSettings,
     /// Allowed rotary travel; limited axes never receive counter resets.
     pub a_range: openchuck_types::machine::ARange,
     /// Required safe Z in the output work frame, for operation-boundary
@@ -58,6 +58,8 @@ pub struct PostOutput {
     pub short_blocks: Vec<crate::ShortBlockReport>,
     /// IR with posted durations when Slow down is active, for replay comparison.
     pub verification_path: Toolpath,
+    /// Original-IR complete-window diagnostics in Report mode (compatibility API).
+    pub block_time_reports: Vec<crate::BlockTimeReport>,
     /// The program text.
     pub text: String,
     /// Fed moves whose feed was lowered to the post's maximum.
@@ -178,7 +180,7 @@ impl PostProcessor for TemplatePost {
 
     fn post(&self, toolpath: &Toolpath, job: &PostJob) -> Result<PostOutput> {
         let d = &self.definition;
-        let (short_blocks, sources) = d.options.effective_short_blocks(job.short_blocks);
+        let (short_blocks, sources) = d.options.effective_short_blocks(job.block_time.into());
         let convert = ConvertOptions {
             short_blocks,
             feed_decimals: Some(d.options.decimals.f),
@@ -235,6 +237,13 @@ impl PostProcessor for TemplatePost {
         Ok(PostOutput {
             short_blocks: program.short_blocks,
             verification_path: program.verification_path,
+            block_time_reports: if short_blocks.mode
+                == openchuck_types::machine::ShortBlockMode::Report
+            {
+                crate::block_time_reports(toolpath, d.options.block_time(job.block_time))?
+            } else {
+                Vec::new()
+            },
             text,
             clamped_feeds: program.clamped_feeds,
             estimated_seconds,

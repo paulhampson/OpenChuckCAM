@@ -252,6 +252,18 @@ At 19:35 eight pull requests were open, all with CI running or queued, and four 
 - *macOS* took 24.6 min in one run (Tests step 17.2 min) and 9.4 min in another (Tests 7.9 min) on the same code, so its true cost is not yet known. Sharding it in two is left until there are three or four more runs of data.
 - *Coverage trend* fell from 25.8 to 19.4 min with the longer long-test list (6(a)) and is now the longest job in the run. Options left for it were decided against (6(c) not accepted, sharding the instrumented run not wanted).
 
+## macOS sharding update (25 Oct 2026)
+
+The user requested macOS test sharding because it is now the slowest CI job.
+This supersedes the earlier deferral of macOS in Option 4: `build-test` now uses
+two `hash:I/2` nextest shards on macOS, as on Linux and Windows. This supports
+NFR-02 (three-platform verification) and NFR-08 (automated regression tests).
+The existing nonempty partition and total-count checks apply to both macOS
+shards, and `CI required checks` waits for the whole `build-test` matrix.
+Clippy, doctests and examples still run only in shard 1; caches remain keyed
+by shard. No tests or gates are removed. The additional macOS runner can add
+queue time; the actual wall-time improvement remains to be measured in CI.
+
 ## Open items
 
 | # | Item | Needed from |

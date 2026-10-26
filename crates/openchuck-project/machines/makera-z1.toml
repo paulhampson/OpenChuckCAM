@@ -4,8 +4,9 @@
 # Values are a consensus across Makera's published profiles and the Z1
 # firmware's default configuration. The rotary axis, A direction, A range and
 # feed limits are confirmed by the owner, and the SP-12 air cut on firmware
-# 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction. The rest stay
-# unconfirmed until the axis is measured (OI-60).
+# 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction; the block-rate
+# trial below measured 7 ms. Other unconfirmed values retain their own gaps
+# (including the axis measurement, OI-60).
 # Machine coordinates are the firmware's (G53): home at 0, travel negative.
 schema = 6
 # Fixed for the built-in profile, so every project copy of it can be compared
@@ -14,6 +15,9 @@ id = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01"
 
 [machine]
 name = "Makera Z1"
+min_block_ms = 7.0
+block_window = 32
+short_block_mode = "report"
 rotary_axis = "x"
 a_sense = "positive"
 # The Z1's tool number range is effectively unlimited; the probe uses a high number
@@ -23,11 +27,6 @@ max_tool_number = 1000
 # V1.3), so only the highest speed is a limit. Unconfirmed until the owner
 # checks it on the machine (decision 0231, OI-754).
 max_spindle_rpm = 13000.0
-# Shortest tested smooth block time in both parts of the owner's trial (#284).
-# Report initially; Slow down is an explicit project choice.
-min_block_ms = 7.0
-block_window = 32
-short_block_mode = "report"
 
 # Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
 # anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,
@@ -99,18 +98,18 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 
 state = "unconfirmed"
 source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"
 
-[machine.provenance.spindle_range]
-state = "unconfirmed"
-source = "Makera's published specification: the Makera Z1 Safety Guidelines, V1.3 (makera.com, file MakeraZ1-Safety_Guidelines-V1.3-multi-lan-260709-1.pdf), give the spindle as 0 to 13 000 rpm with closed-loop control; reviews (CNX Software, 1 Sep 2026) give the same. Not yet checked on the machine (decision 0231)"
-
 [machine.provenance.min_block_ms]
 state = "confirmed"
-source = "Owner Z1 block-rate air cut, #284 comment 6399134358, 25 Oct 2026: both parts passed 20, 10 and 7 ms, stuttered at 5 ms and below; firmware 1.1.2, WiFi upload; ESP32 version not recorded"
+source = "Owner gate 4, PR 284 comment 6399134358, submitted 25 Oct 2026: firmware 1.1.2, ESP32 (version not supplied), WiFi upload; 7, 10 and 20 ms passed in both parts, 5/3/2/1 ms stuttered. K4 retained by the owner as a release waiver; subsequent LinuxCNC replay passed. This measured program/transport only (decision 0222)."
 
 [machine.provenance.block_window]
 state = "unconfirmed"
-source = "32-block planner queue in Makera Z1 firmware source (Conveyor.cpp); adopted analysis window in decision 0222, not a hardware measurement"
+source = "32-block planner queue in firmware source; accepted averaging rule, decision 0222 item 3; not a separately measured queue depth."
 
 [machine.provenance.short_block_mode]
 state = "unconfirmed"
-source = "Report is the initial application policy in decision 0222; choose Slow down explicitly after reviewing the report"
+source = "Report first, accepted decision 0222; software policy, not a controller measurement."
+
+[machine.provenance.spindle_range]
+state = "unconfirmed"
+source = "Makera's published specification: the Makera Z1 Safety Guidelines, V1.3 (makera.com, file MakeraZ1-Safety_Guidelines-V1.3-multi-lan-260709-1.pdf), give the spindle as 0 to 13 000 rpm with closed-loop control; reviews (CNX Software, 1 Sep 2026) give the same. Not yet checked on the machine (decision 0231)"

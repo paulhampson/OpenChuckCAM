@@ -18,6 +18,7 @@ import linuxcnc
 
 PROGRAM = os.environ["CHECK_PROGRAM"]
 REPORT = os.environ["CHECK_REPORT"]
+BOUNDARIES = os.environ.get("CHECK_BOUNDARIES")
 
 
 def wait(stat, pred, timeout=30.0):
@@ -31,6 +32,13 @@ def wait(stat, pred, timeout=30.0):
 
 
 def main():
+    expected = None
+    if BOUNDARIES:
+        from boundary_checks import snapshot, verify
+        with open(BOUNDARIES, encoding="utf-8") as fh:
+            expected = json.load(fh)
+    boundary_states = []
+    timeout = min(expected['timeout_seconds'], 600) if expected else 900
     stat, cmd, err = linuxcnc.stat(), linuxcnc.command(), linuxcnc.error_channel()
     wait(stat, lambda s: True)
     cmd.state(linuxcnc.STATE_ESTOP_RESET)
@@ -59,13 +67,30 @@ def main():
             errors.append(e[1])
         if stat.task_paused or stat.paused:
             time.sleep(0.05)
+            if expected:
+                stat.poll()
+                actual = snapshot(stat)
+                index = len(boundary_states)
+                try:
+                    if index >= len(expected['states']):
+                        raise ValueError('unexpected extra boundary stop')
+                    verify(expected['states'][index], actual)
+                except (ValueError, KeyError, TypeError) as failure:
+                    errors.append(f'boundary {index + 1}: {failure}')
+                    break
+                boundary_states.append(actual)
+                samples.append((time.monotonic() - t0, stat.motion_line,
+                                list(stat.position[:4])))
             cmd.auto(linuxcnc.AUTO_RESUME)
         if stat.interp_state == linuxcnc.INTERP_IDLE and stat.queue == 0 and now > 1:
             break
-        if now > 900:
+        if now > timeout:
             errors.append("timeout")
             break
         time.sleep(0.001)
+
+    if expected and len(boundary_states) != len(expected['states']):
+        errors.append(f'missing boundary checks: {len(boundary_states)} of {len(expected["states"])}')
 
     # Per line: from the first sample that differs from the line's first
     # position to the first sample that reaches the line's last position.
@@ -98,6 +123,7 @@ def main():
         json.dump({"program": PROGRAM, "rows": rows, "errors": errors, "path": path, "max_gap": round(max_gap, 4),
                    "final_position": list(stat.actual_position[:4]),
                    "g92_offset": list(stat.g92_offset[:4]),
+                   "boundaries": boundary_states,
                    "samples": len(samples)}, fh, indent=1)
     cmd.state(linuxcnc.STATE_ESTOP)
 

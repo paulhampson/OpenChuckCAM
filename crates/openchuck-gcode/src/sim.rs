@@ -50,6 +50,37 @@ pub struct SimReport {
     /// LinuxCNC's reported line number lags the motion.
     #[serde(default)]
     pub path: Vec<[f64; 4]>,
+    /// Actual paused interpreter states at a bounded fixture's start and end.
+    /// Empty for ordinary whole-program reports.
+    #[serde(default)]
+    pub boundaries: Vec<SimBoundary>,
+}
+
+/// The driver's actual interpreter state, independently checked against the original source.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SimBoundary {
+    /// Commanded machine coordinates, XYZA.
+    pub position: [f64; 4],
+    /// Actual machine coordinates, XYZA.
+    pub actual_position: [f64; 4],
+    /// LinuxCNC's active G codes, scaled by ten.
+    pub gcodes: Vec<i32>,
+    /// Modal feed word.
+    pub feed: f64,
+    /// Modal spindle speed.
+    pub rpm: f64,
+    /// Tool currently in the spindle.
+    pub tool: u32,
+    /// Whether the spindle is enabled.
+    pub spindle_on: bool,
+    /// 1 for M3, 0 stopped; this fixture subset has no M4.
+    pub direction: i32,
+    /// Work-coordinate offsets, XYZA.
+    pub g5x_offset: [f64; 4],
+    /// Temporary offsets, XYZA.
+    pub g92_offset: [f64; 4],
+    /// Work-coordinate rotation in the XY plane.
+    pub rotation_xy: f64,
 }
 
 /// Why the simulator run does not match.

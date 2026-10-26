@@ -253,3 +253,40 @@ fn req_gc_14_an_operation_spindle_speed_overrides_the_tools() {
     let err = to_machine_program(&toolpath, &o).unwrap_err().to_string();
     assert!(err.contains("op1") && err.contains("spindle"), "{err}");
 }
+
+#[test]
+fn req_gc_09_req_gc_10_written_rotary_pose_respects_the_linear_rounding_budget() {
+    // The original #324 model pose, independently transformed from its reported
+    // machine coordinates. At written A the correct rounded Y is -0.017.
+    let original = pose(
+        21.558251369535647,
+        38.606261929758226,
+        -23.12048468371006,
+        120.93751838129586,
+    );
+    let mut toolpath = path(vec![]);
+    toolpath.groups[0].start = original;
+    let mut opts = options(FeedRule::Makera);
+    opts.frame.rotary_origin = Point3::ORIGIN;
+    opts.decimals = Some((3, 3));
+    let program = to_machine_program(&toolpath, &opts).unwrap();
+    let target = program
+        .steps
+        .iter()
+        .find_map(|step| {
+            if let Step::Rapid { target } = step {
+                Some(target)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let (s, c) = target.a.to_radians().sin_cos();
+    let actual = Point3::new(
+        target.x,
+        c * target.y + s * target.z,
+        -s * target.y + c * target.z,
+    );
+    assert!(actual.distance(original.tip) <= 3.0_f64.sqrt() * 0.0005 + 1e-9);
+    assert!((target.a - original.a.0).abs() <= 0.0005 + 1e-9);
+}

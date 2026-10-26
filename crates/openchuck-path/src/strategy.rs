@@ -404,7 +404,10 @@ fn generate_with(
     context.check_cancelled()?;
     let mid = part_middle(input);
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
-    let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
+    let mut path = {
+        let _timing = context.time_stage("assembly");
+        assemble_with_entry(&passes, input, &common, &entry, context)?
+    };
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes
     // still says it (decision record 0175).

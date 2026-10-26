@@ -369,7 +369,21 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
         .into_iter()
         .find(|j| j.name == "box_helical")
         .unwrap();
-    let (dir, app) = build(&job, "no-id");
+    let (dir, mut app) = build(&job, "no-id");
+    // Build a real pre-GC-17 copy before labelling it as schema 12.
+    let mut profile = app.project().machine().unwrap().clone();
+    profile.min_block_ms = 0.0;
+    profile.block_window = 1;
+    profile.short_block_mode = openchuck_types::machine::ShortBlockMode::Off;
+    for field in [
+        openchuck_types::machine::ProfileField::MinBlockMs,
+        openchuck_types::machine::ProfileField::BlockWindow,
+        openchuck_types::machine::ProfileField::ShortBlockMode,
+    ] {
+        profile.provenance.remove(&field);
+    }
+    app.execute(Command::SetMachine(Some(Box::new(profile))))
+        .unwrap();
     app.save().unwrap();
     drop(app);
     let machine = std::fs::read_to_string(dir.join("machine.toml")).unwrap();

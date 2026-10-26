@@ -151,7 +151,7 @@ enum Action {
     /// it ran (gate 3): every move must reach its position, LinuxCNC must
     /// report no fault, and the program must end where the replay says.
     GcodeSim {
-        /// The G-code file the simulator ran (LinuxCNC dialect).
+        /// Original LinuxCNC file; --source-lines selects a bounded fixture's original range.
         program: PathBuf,
         /// The simulator driver's JSON report.
         report: PathBuf,
@@ -161,6 +161,10 @@ enum Action {
         /// 45 degrees a second; the final position is held to 0.001.
         #[arg(long, default_value_t = 0.1)]
         tolerance: f64,
+        /// Check a bounded fixture against inclusive FIRST:LAST lines of the original file.
+        /// Both actual boundaries are independently checked using the full original prefix.
+        #[arg(long, value_name = "FIRST:LAST")]
+        source_lines: Option<String>,
     },
     /// Show the tool numbers the program will use, or change them (GC-14).
     /// The choice is saved in the project.
@@ -569,12 +573,17 @@ fn run(cli: Cli) -> Result<()> {
             }
             if let Some((settings, sources)) = result.effective_short_blocks {
                 eprintln!(
-                    "short-block settings: {} ({}), {:.3} ms ({}), {} blocks ({})",
+                    "short-block settings: {} ({}), {:.3} ms ({}), {} {} ({})",
                     settings.mode.label(),
                     sources.mode.as_str(),
                     settings.min_block_ms,
                     sources.min_block_ms.as_str(),
                     settings.block_window,
+                    if settings.block_window == 1 {
+                        "block"
+                    } else {
+                        "blocks"
+                    },
                     sources.block_window.as_str()
                 );
             }
@@ -664,9 +673,10 @@ fn run(cli: Cli) -> Result<()> {
             program,
             report,
             tolerance,
+            source_lines,
         } => {
             use openchuck_app::gcode::{
-                Dialect, compare_simulator, parse_sim_report, read, replay,
+                Dialect, compare_simulator, compare_simulator_range, parse_sim_report, read, replay,
             };
             let text = std::fs::read_to_string(&program)
                 .with_context(|| format!("cannot read '{}'", program.display()))?;
@@ -677,12 +687,19 @@ fn run(cli: Cli) -> Result<()> {
                     errors.first().map_or_else(String::new, ToString::to_string)
                 )
             })?;
-            let replayed = replay(&read, Dialect::Linuxcnc)
-                .map_err(|e| anyhow::anyhow!("{}: {e}", program.display()))?;
             let text = std::fs::read_to_string(&report)
                 .with_context(|| format!("cannot read '{}'", report.display()))?;
             let sim = parse_sim_report(&text)?;
-            let found = compare_simulator(&replayed, &sim, tolerance)?;
+            let found = if let Some(lines) = source_lines {
+                let (first, last) = lines
+                    .split_once(':')
+                    .context("--source-lines takes FIRST:LAST")?;
+                compare_simulator_range(&read, &sim, first.parse()?..=last.parse()?, tolerance)?
+            } else {
+                let replayed = replay(&read, Dialect::Linuxcnc)
+                    .map_err(|e| anyhow::anyhow!("{}: {e}", program.display()))?;
+                compare_simulator(&replayed, &sim, tolerance)?
+            };
             println!(
                 "{}: the simulator reached all {} moves (largest difference {:.4}, {:.1} s of motion) and reported no fault",
                 program.display(),
@@ -1653,9 +1670,14 @@ fn print_machine(profile: &MachineProfile) {
         (None, None) => {}
     }
     println!(
-        "short blocks: {} ms averaged over {} blocks; {}",
+        "short blocks: {} ms averaged over {} {}; {}",
         p.min_block_ms,
         p.block_window,
+        if p.block_window == 1 {
+            "block"
+        } else {
+            "blocks"
+        },
         p.short_block_mode.label()
     );
     for field in p.fields() {

@@ -15,6 +15,15 @@ pub struct ShortBlockSettings {
     /// Report only or lengthen durations while retaining geometry.
     pub mode: ShortBlockMode,
 }
+impl From<crate::BlockTimeSettings> for ShortBlockSettings {
+    fn from(settings: crate::BlockTimeSettings) -> Self {
+        Self {
+            min_block_ms: settings.min_block_ms,
+            block_window: settings.block_window as usize,
+            mode: settings.mode,
+        }
+    }
+}
 impl Default for ShortBlockSettings {
     fn default() -> Self {
         Self {

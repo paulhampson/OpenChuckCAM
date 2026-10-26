@@ -15,6 +15,7 @@
 //! Run it on an otherwise idle machine: the driver samples every millisecond in
 //! real time.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -22,6 +23,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 
 use crate::Findings;
+
+mod chunks;
 
 /// What to run and how.
 #[derive(Debug)]
@@ -102,13 +105,21 @@ fn select_share(programs: &[PathBuf], index: usize, count: usize) -> Result<Vec<
 fn shard_programs(programs: &[PathBuf], index: usize, count: usize) -> Vec<PathBuf> {
     let seconds = |p: &PathBuf| {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if name.starts_with("first_cut_linuxcnc.chunk-") {
+            return chunks::SECONDS as u64;
+        }
         EXPECTED_SECONDS
             .iter()
             .find(|(n, _)| *n == name)
             .map_or(DEFAULT_SECONDS, |(_, s)| *s)
     };
     let mut order: Vec<&PathBuf> = programs.iter().collect();
-    order.sort_by(|a, b| seconds(b).cmp(&seconds(a)).then_with(|| a.cmp(b)));
+    order.sort_by(|a, b| {
+        seconds(b)
+            .cmp(&seconds(a))
+            .then_with(|| a.file_name().cmp(&b.file_name()))
+            .then_with(|| a.cmp(b))
+    });
     let mut load = vec![0u64; count];
     let mut mine = Vec::new();
     for program in order {
@@ -128,12 +139,14 @@ fn shard_programs(programs: &[PathBuf], index: usize, count: usize) -> Vec<PathB
     mine
 }
 
-/// The LinuxCNC golden programs: the reference jobs and the small part.
+/// The LinuxCNC golden programs: the reference jobs, the small part and the
+/// gate 5 first-cut project (decision record 0221, OI-914).
 fn default_programs(root: &Path) -> Result<Vec<PathBuf>> {
     let mut programs = Vec::new();
     for dir in [
         root.join("testdata/golden"),
         root.join("testdata/golden/reference"),
+        root.join("testdata/golden/first_cut"),
     ] {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -156,6 +169,71 @@ fn default_programs(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(programs)
 }
 
+/// Temporary verification fixtures; production programs are never rewritten.
+struct PreparedPrograms {
+    programs: Vec<PathBuf>,
+    boundaries: BTreeMap<PathBuf, PathBuf>,
+    work: PathBuf,
+}
+impl Drop for PreparedPrograms {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.work);
+    }
+}
+
+fn prepare_programs(programs: Vec<PathBuf>) -> Result<PreparedPrograms> {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let work = std::env::temp_dir().join(format!(
+        "openchuck-replay-plan-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&work)?;
+    let mut out = PreparedPrograms {
+        programs: Vec::new(),
+        boundaries: BTreeMap::new(),
+        work,
+    };
+    for program in programs {
+        let program = program
+            .canonicalize()
+            .with_context(|| format!("cannot find '{}'", program.display()))?;
+        if program
+            .file_name()
+            .is_none_or(|n| n != "first_cut_linuxcnc.ngc")
+        {
+            out.programs.push(program);
+            continue;
+        }
+        let original = std::fs::read_to_string(&program)?;
+        let parts = chunks::plan(&original, chunks::SECONDS)?;
+        let total = parts.len();
+        for (i, part) in parts.into_iter().enumerate() {
+            let name = format!("first_cut_linuxcnc.chunk-{:03}-of-{total:03}", i + 1);
+            let fixture = out.work.join(format!("{name}.ngc"));
+            let expected = out.work.join(format!("{name}.boundaries.json"));
+            std::fs::write(&fixture, &part.text)?;
+            let manifest = chunks::Manifest {
+                original_program: program.clone(),
+                source_program: "first_cut_linuxcnc.ngc".into(),
+                first_line: part.first_line,
+                last_line: part.last_line,
+                original_lines: part.source,
+                estimated_seconds: part.estimated_seconds,
+                states: part.boundaries,
+                timeout_seconds: None,
+            };
+            std::fs::write(&expected, serde_json::to_vec_pretty(&manifest)?)?;
+            out.boundaries.insert(fixture.clone(), expected);
+            out.programs.push(fixture);
+        }
+        println!(
+            "first_cut_linuxcnc.ngc: {total} bounded verification chunks; original lines and boundary continuity preserved"
+        );
+    }
+    Ok(out)
+}
+
 /// Builds the command that runs LinuxCNC on `checks.ini` in `work`.
 fn linuxcnc_command(
     options: &Options,
@@ -176,11 +254,21 @@ fn linuxcnc_command(
                 "CHECK_PROGRAM=/work/program.ngc",
                 "-e",
                 "CHECK_REPORT=/work/report.json",
-            ])
-            .arg(image)
-            .args(["linuxcnc", "checks.ini"]);
+            ]);
+        if work.join("boundaries.json").is_file() {
+            command.args(["-e", "CHECK_BOUNDARIES=/work/boundaries.json"]);
+        }
+        command.arg(image).args(["linuxcnc", "checks.ini"]);
         std::fs::copy(program, work.join("program.ngc"))
             .with_context(|| format!("cannot copy '{}'", program.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                work.join("program.ngc"),
+                std::fs::Permissions::from_mode(0o644),
+            )?;
+        }
         return Ok(command);
     }
     let mut command;
@@ -198,6 +286,9 @@ fn linuxcnc_command(
         .current_dir(work)
         .env("CHECK_PROGRAM", program)
         .env("CHECK_REPORT", report);
+    if work.join("boundaries.json").is_file() {
+        command.env("CHECK_BOUNDARIES", work.join("boundaries.json"));
+    }
     Ok(command)
 }
 
@@ -252,22 +343,24 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
     } else {
         options.programs.clone()
     };
+    // Expand before dealing shares: each bounded first-cut chunk is checked once.
+    let prepared = prepare_programs(programs)?;
     let programs = match &options.shard {
-        None => programs,
+        None => prepared.programs.clone(),
         Some(text) => {
             let (index, count) = parse_shard(text)?;
-            let mine = select_share(&programs, index, count)?;
+            let mine = select_share(&prepared.programs, index, count)?;
             println!(
                 "share {index}/{count}: {} of {} programs",
                 mine.len(),
-                programs.len()
+                prepared.programs.len()
             );
             mine
         }
     };
     // The comparison is the CLI's `gcode-sim`.
     let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "openchuck-cli"])
+        .args(["build", "--quiet", "--locked", "-p", "openchuck-cli"])
         .current_dir(root)
         .status()
         .context("cannot run cargo")?;
@@ -288,7 +381,8 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
             .and_then(|n| n.to_str())
             .unwrap_or("program")
             .to_string();
-        let mut outcome = run_once(options, &config, &cli, &program, &name)?;
+        let boundary = prepared.boundaries.get(&program).map(PathBuf::as_path);
+        let mut outcome = timed_run(options, &config, &cli, &program, &name, boundary, 1)?;
         // The simulator runs in real time and samples every millisecond, so a loaded machine can
         // leave a gap that hides a corner. A real failure repeats; run a failing program once more
         // and report the second result, with the first one's reason.
@@ -297,7 +391,7 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
                 "{name}: failed ({first}); the longest sampling gap was {:.0} ms. Running it once more",
                 outcome.max_gap.unwrap_or(0.0) * 1000.0
             );
-            outcome = run_once(options, &config, &cli, &program, &name)?;
+            outcome = timed_run(options, &config, &cli, &program, &name, boundary, 2)?;
         }
         match outcome.failure {
             None => println!("{}", outcome.said),
@@ -315,15 +409,56 @@ struct Outcome {
     failure: Option<String>,
     /// The longest pause between the driver's samples, in seconds.
     max_gap: Option<f64>,
+    /// A bounded chunk exceeded its limit; do not silently retry a long test.
+    timed_out: bool,
 }
 
-/// The `max_gap` the driver wrote into its report.
-fn report_max_gap(report: &Path) -> Option<f64> {
-    let text = std::fs::read_to_string(report).ok()?;
-    let at = text.find("\"max_gap\":")? + "\"max_gap\":".len();
-    let rest = text.get(at..)?.trim_start();
-    let end = rest.find([',', '}', '\n'])?;
-    rest.get(..end)?.trim().parse().ok()
+fn timed_run(
+    options: &Options,
+    config: &Path,
+    cli: &Path,
+    program: &Path,
+    name: &str,
+    boundary: Option<&Path>,
+    attempt: usize,
+) -> Result<Outcome> {
+    let started = Instant::now();
+    let outcome = run_once(options, config, cli, program, name, boundary)?;
+    let seconds = started.elapsed().as_secs_f64();
+    println!("{name}: attempt {attempt} wall time {seconds:.3} s");
+    if let Some(keep) = &options.keep_reports {
+        std::fs::create_dir_all(keep)?;
+        std::fs::write(
+            keep.join(format!("{name}.attempt-{attempt}.json")),
+            serde_json::to_vec_pretty(
+                &serde_json::json!({"wall_seconds":seconds,"failure":outcome.failure,"max_gap":outcome.max_gap,"timed_out":outcome.timed_out}),
+            )?,
+        )?;
+        if attempt == 1 && outcome.failure.is_some() && keep.join(format!("{name}.json")).is_file()
+        {
+            std::fs::copy(
+                keep.join(format!("{name}.json")),
+                keep.join(format!("{name}.first-report.json")),
+            )?;
+        }
+    }
+    if outcome.timed_out || (boundary.is_some() && seconds > 600.0) {
+        bail!(
+            "{name}: bounded replay exceeded its limit; stopped without further retry for an owner long-test decision"
+        );
+    }
+    Ok(outcome)
+}
+
+/// Read only the small evidence header, skipping large path/row arrays.
+#[derive(serde::Deserialize)]
+struct ReportChecks {
+    #[serde(default)]
+    max_gap: Option<f64>,
+    #[serde(default)]
+    errors: Vec<String>,
+    #[serde(default)]
+    boundaries: Vec<serde_json::Value>,
 }
 
 /// Runs `program` in LinuxCNC once and compares the report.
@@ -333,19 +468,62 @@ fn run_once(
     cli: &Path,
     program: &Path,
     name: &str,
+    boundary: Option<&Path>,
 ) -> Result<Outcome> {
     let work = std::env::temp_dir().join(format!("openchuck-replay-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work)?;
-    for file in ["checks.ini", "sim.tbl", "sim_driver.py"] {
+    for file in [
+        "checks.ini",
+        "sim.tbl",
+        "sim_driver.py",
+        "boundary_checks.py",
+    ] {
         std::fs::copy(config.join(file), work.join(file))
             .with_context(|| format!("cannot copy {file}"))?;
     }
+    let mut original_range = None;
+    let timeout = if let Some(boundary) = boundary {
+        let mut manifest: chunks::Manifest =
+            serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(boundary)?))?;
+        let timeout = options.timeout_seconds.min(600);
+        original_range = Some((
+            manifest.original_program.clone(),
+            manifest.first_line,
+            manifest.last_line,
+        ));
+        manifest.timeout_seconds = Some(timeout);
+        let start = manifest.states.first().context("missing start boundary")?;
+        let ini = std::fs::read_to_string(work.join("checks.ini"))?;
+        std::fs::write(work.join("checks.ini"), chunks::start_config(&ini, start)?)?;
+        std::fs::write(
+            work.join("boundaries.json"),
+            serde_json::to_vec_pretty(&manifest)?,
+        )?;
+        timeout
+    } else {
+        options.timeout_seconds
+    };
     // The container runs as an unprivileged user that must write the report.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&work, std::fs::Permissions::from_mode(0o777))?;
+        for file in [
+            "checks.ini",
+            "sim.tbl",
+            "boundary_checks.py",
+            "boundaries.json",
+        ] {
+            let path = work.join(file);
+            if path.is_file() {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))?;
+            }
+        }
+        std::fs::set_permissions(
+            work.join("sim_driver.py"),
+            std::fs::Permissions::from_mode(0o755),
+        )?;
     }
     let report = work.join("report.json");
     let mut command = linuxcnc_command(options, &work, program, &report)?;
@@ -359,11 +537,12 @@ fn run_once(
         )
     })?;
     let container = options.docker.as_ref().map(|_| container_name(&work));
-    if let Err(e) = wait_with_timeout(child, options.timeout_seconds, container.as_deref()) {
+    if let Err(e) = wait_with_timeout(child, timeout, container.as_deref()) {
         return Ok(Outcome {
             said: String::new(),
             failure: Some(e.to_string()),
             max_gap: None,
+            timed_out: boundary.is_some(),
         });
     }
     if !report.is_file() || std::fs::metadata(&report)?.len() == 0 {
@@ -376,17 +555,50 @@ fn run_once(
                 tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
             )),
             max_gap: None,
+            timed_out: false,
         });
     }
-    let max_gap = report_max_gap(&report);
+    let report_data: ReportChecks =
+        serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(&report)?))?;
+    let max_gap = report_data.max_gap;
+    let timed_out = boundary.is_some() && report_data.errors.iter().any(|e| e == "timeout");
     if let Some(keep) = &options.keep_reports {
         std::fs::create_dir_all(keep)?;
         std::fs::copy(&report, keep.join(format!("{name}.json")))?;
+        if boundary.is_some() {
+            std::fs::copy(program, keep.join(format!("{name}.program.ngc")))?;
+            std::fs::copy(
+                work.join("boundaries.json"),
+                keep.join(format!("{name}.boundaries.json")),
+            )?;
+            std::fs::copy(
+                work.join("checks.ini"),
+                keep.join(format!("{name}.checks.ini")),
+            )?;
+        }
     }
-    let output = Command::new(cli)
-        .arg("gcode-sim")
-        .arg(program)
-        .arg(&report)
+    if boundary.is_some() && report_data.boundaries.len() != 2 {
+        return Ok(Outcome {
+            said: String::new(),
+            failure: Some(format!(
+                "simulator did not verify both source boundaries: {}",
+                report_data.errors.join("; ")
+            )),
+            max_gap,
+            timed_out,
+        });
+    }
+    let mut compare = Command::new(cli);
+    compare.arg("gcode-sim");
+    if let Some((original, first, last)) = original_range {
+        compare
+            .arg(original)
+            .arg(&report)
+            .args(["--source-lines", &format!("{first}:{last}")]);
+    } else {
+        compare.arg(program).arg(&report);
+    }
+    let output = compare
         .args(["--tolerance", &options.tolerance.to_string()])
         .output()
         .context("cannot run openchuck-cli gcode-sim")?;
@@ -398,6 +610,7 @@ fn run_once(
         said,
         failure,
         max_gap,
+        timed_out,
     })
 }
 
@@ -479,6 +692,62 @@ mod tests {
         assert!(select_share(&list, 1, list.len() + 1).is_err());
         // A huge count must not be allocated.
         assert!(select_share(&list, 1, 1_000_000_000).is_err());
+    }
+
+    #[test]
+    fn req_gc_10_the_replay_runs_the_first_cut_project_with_the_reference_jobs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let programs = default_programs(&root).unwrap();
+        let names: Vec<String> = programs
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_owned))
+            .collect();
+        for expected in ["first_cut_linuxcnc.ngc", "cone_linuxcnc.ngc"] {
+            assert!(names.iter().any(|n| n == expected), "{expected}: {names:?}");
+        }
+        assert!(names.iter().all(|n| !n.contains("makera")), "{names:?}");
+    }
+
+    #[test]
+    fn req_gc_10_req_nfr_06_first_cut_is_expanded_before_sharding_without_losing_a_chunk() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let prepared = prepare_programs(default_programs(&root).unwrap()).unwrap();
+        assert!(prepared.boundaries.len() > 1);
+        assert!(
+            !prepared
+                .programs
+                .iter()
+                .any(|p| p.file_name().is_some_and(|n| n == "first_cut_linuxcnc.ngc"))
+        );
+        let mut all = Vec::new();
+        for index in 1..=3 {
+            all.extend(select_share(&prepared.programs, index, 3).unwrap());
+        }
+        all.sort();
+        let mut expected = prepared.programs.clone();
+        expected.sort();
+        assert_eq!(all, expected);
+        assert_eq!(prepared.programs.len(), 11 + prepared.boundaries.len());
+    }
+
+    #[test]
+    fn req_gc_10_req_nfr_07_actual_boundary_checks_reject_discontinuities() {
+        let python = ["python3", "python"]
+            .into_iter()
+            .find(|name| {
+                Command::new(name).arg("--version").output().is_ok_and(|o| {
+                    o.status.success()
+                        && String::from_utf8_lossy(&o.stdout).starts_with("Python 3.")
+                })
+            })
+            .expect("Python 3 is required for LinuxCNC verification-tooling tests");
+        let status = Command::new(python)
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .args(["-m", "unittest", "discover", "-s", "tools/linuxcnc/tests"])
+            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(".."))
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 
     #[test]

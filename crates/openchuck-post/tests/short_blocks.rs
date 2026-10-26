@@ -2,7 +2,7 @@
 //! GC-17: measured command throughput, reported or met without changing geometry.
 #![allow(clippy::unwrap_used, clippy::float_cmp, clippy::indexing_slicing)]
 mod support;
-use openchuck_post::{PostProcessor, ShortBlockSettings};
+use openchuck_post::{BlockTimeSettings, PostProcessor};
 use openchuck_types::ir::{MoveKind, Toolpath};
 use openchuck_types::machine::ShortBlockMode;
 
@@ -23,8 +23,8 @@ fn path(times: &[f64]) -> Toolpath {
         .collect();
     p
 }
-fn settings(mode: ShortBlockMode, window: usize) -> ShortBlockSettings {
-    ShortBlockSettings {
+fn settings(mode: ShortBlockMode, window: u32) -> BlockTimeSettings {
+    BlockTimeSettings {
         min_block_ms: 7.0,
         block_window: window,
         mode,
@@ -36,7 +36,7 @@ fn req_gc_17_off_and_report_leave_program_unchanged() {
     let mut job = support::job();
     let post = support::builtin_post("makera-z1");
     let off = post.post(&p, &job).unwrap();
-    job.short_blocks = settings(ShortBlockMode::Report, 2);
+    job.block_time = settings(ShortBlockMode::Report, 2);
     let report = post.post(&p, &job).unwrap();
     assert_eq!(off.text, report.text);
     assert_eq!(off.estimated_seconds, report.estimated_seconds);
@@ -51,7 +51,7 @@ fn req_gc_17_off_and_report_leave_program_unchanged() {
 fn req_gc_17_slow_down_preserves_geometry_and_meets_overlapping_windows() {
     let p = path(&[0.001, 0.002, 0.003, 0.004, 0.005]);
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::SlowDown, 3);
+    job.block_time = settings(ShortBlockMode::SlowDown, 3);
     let result = support::builtin_post("makera-z1").post(&p, &job).unwrap();
     let adjusted = &result.verification_path.groups[0].segments;
     for (a, b) in p.groups[0].segments.iter().zip(adjusted) {
@@ -73,7 +73,7 @@ fn req_gc_17_slow_down_preserves_geometry_and_meets_overlapping_windows() {
 #[test]
 fn req_gc_17_window_absorbs_short_bursts_but_short_runs_are_checked() {
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::SlowDown, 4);
+    job.block_time = settings(ShortBlockMode::SlowDown, 4);
     let post = support::builtin_post("makera-z1");
     let p = path(&[0.001, 0.001, 0.020, 0.020]);
     let result = post.post(&p, &job).unwrap();
@@ -97,6 +97,10 @@ fn req_gc_17_post_overrides_profile_and_rejects_invalid_settings() {
         .post(&path(&[0.002]), &support::job())
         .unwrap();
     assert_eq!(result.short_blocks[0].settings.min_block_ms, 10.0);
+    assert!(
+        result.block_time_reports.is_empty(),
+        "effective Slow down override must not publish legacy unchanged-G-code wording"
+    );
     assert!(result.verification_path.groups[0].segments[0].duration.0 >= 0.010 - 1e-12);
     d.options.block_window = Some(0);
     assert!(d.options.validate().is_err());
@@ -111,7 +115,7 @@ fn req_gc_17_rapid_boundaries_do_not_hide_short_runs() {
     p.groups[0].segments[1].kind = MoveKind::Rapid;
     p.groups[0].segments[1].contact_feed = None;
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::SlowDown, 32);
+    job.block_time = settings(ShortBlockMode::SlowDown, 32);
     let result = support::builtin_post("makera-z1").post(&p, &job).unwrap();
     assert_eq!(result.short_blocks[0].slowed_moves, 2);
     assert_eq!(result.short_blocks[0].longest_run, 1);
@@ -134,7 +138,7 @@ fn req_gc_17_mixed_rotary_and_inverse_time_use_rendered_feeds() {
             s.end.a.0 = (i + 1) as f64 * 0.1;
         }
         let mut job = support::job();
-        job.short_blocks = settings(ShortBlockMode::SlowDown, 1);
+        job.block_time = settings(ShortBlockMode::SlowDown, 1);
         let result = post.post(&p, &job).unwrap();
         for s in &result.verification_path.groups[0].segments {
             assert!(s.duration.0 >= 0.007 - 1e-12);
@@ -153,7 +157,7 @@ fn req_gc_17_max_feed_is_included_in_demand() {
     // 0.1 mm at F60 is a 100ms block despite the original 1ms duration.
     d.options.max_feed = Some(60.0);
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::Report, 1);
+    job.block_time = settings(ShortBlockMode::Report, 1);
     let result = openchuck_post::TemplatePost::new(d)
         .post(&path(&[0.001]), &job)
         .unwrap();
@@ -169,10 +173,10 @@ fn req_gc_17_contact_requires_controller_rule_but_off_is_compatible() {
     let mut job = support::job();
     let p = path(&[0.001]);
     let baseline = post.post(&p, &job).unwrap();
-    job.short_blocks = settings(ShortBlockMode::Off, 1);
+    job.block_time = settings(ShortBlockMode::Off, 1);
     assert_eq!(post.post(&p, &job).unwrap().text, baseline.text);
     for mode in [ShortBlockMode::Report, ShortBlockMode::SlowDown] {
-        job.short_blocks = settings(mode, 1);
+        job.block_time = settings(mode, 1);
         let error = post.post(&p, &job).unwrap_err();
         assert!(error.to_string().contains("controller timing model"));
     }
@@ -189,7 +193,7 @@ fn req_gc_17_invalid_and_unrepresentable_limits_return_errors() {
         (1e100, 1),
     ] {
         let mut job = support::job();
-        job.short_blocks = ShortBlockSettings {
+        job.block_time = BlockTimeSettings {
             min_block_ms: ms,
             block_window: n,
             mode: ShortBlockMode::SlowDown,
@@ -202,7 +206,7 @@ fn req_gc_17_invalid_and_unrepresentable_limits_return_errors() {
 fn req_gc_17_req_gc_07_same_output_at_one_and_many_threads() {
     let p = path(&[0.0001, 0.002, 0.003, 0.004, 0.005, 0.001, 0.030]);
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::SlowDown, 3);
+    job.block_time = settings(ShortBlockMode::SlowDown, 3);
     let post = support::builtin_post("makera-z1");
     let expected = post.post(&p, &job).unwrap();
     std::thread::scope(|scope| {
@@ -294,7 +298,7 @@ fn req_gc_17_rendered_feeds_meet_window_limit_at_rounding_boundaries_and_a_only(
                 p.groups[0].start.tip.z = radius;
             }
             let mut job = support::job();
-            job.short_blocks = ShortBlockSettings {
+            job.block_time = BlockTimeSettings {
                 min_block_ms: 7.001,
                 block_window: 3,
                 mode: ShortBlockMode::SlowDown,
@@ -321,14 +325,14 @@ fn req_gc_17_sources_are_visible_even_when_post_disables_checking() {
     d.options.min_block_ms = Some(0.0);
     let (effective, sources) = d
         .options
-        .effective_short_blocks(settings(ShortBlockMode::Report, 32));
+        .effective_short_blocks(settings(ShortBlockMode::Report, 32).into());
     assert_eq!(effective.min_block_ms, 0.0);
     assert_eq!(effective.block_window, 32);
     assert_eq!(sources.min_block_ms.as_str(), "post override");
     assert_eq!(sources.block_window.as_str(), "machine profile");
     assert_eq!(sources.mode.as_str(), "machine profile");
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::Report, 32);
+    job.block_time = settings(ShortBlockMode::Report, 32);
     assert!(
         openchuck_post::TemplatePost::new(d)
             .post(&path(&[0.001]), &job)
@@ -342,7 +346,7 @@ fn req_gc_17_rounded_away_moves_do_not_consume_a_command_window() {
     let mut p = path(&[0.001, 0.001]);
     p.groups[0].segments[0].end.tip.x = 0.0001;
     let mut job = support::job();
-    job.short_blocks = settings(ShortBlockMode::SlowDown, 1);
+    job.block_time = settings(ShortBlockMode::SlowDown, 1);
     let result = support::builtin_post("makera-z1").post(&p, &job).unwrap();
     assert_eq!(result.short_blocks[0].short_moves, 1);
     assert_eq!(
@@ -358,7 +362,7 @@ fn req_gc_17_rounded_away_moves_do_not_consume_a_command_window() {
 fn req_gc_17_neutral_conversion_checks_unrounded_block_durations() {
     let job = support::job();
     let options = openchuck_post::ConvertOptions {
-        short_blocks: settings(ShortBlockMode::SlowDown, 1),
+        short_blocks: settings(ShortBlockMode::SlowDown, 1).into(),
         feed_decimals: None,
         a_range: job.a_range,
         safe_z: job.safe_z,
@@ -373,4 +377,45 @@ fn req_gc_17_neutral_conversion_checks_unrounded_block_durations() {
     let p = path(&[0.001]);
     let program = openchuck_post::to_machine_program(&p, &options).unwrap();
     assert!(program.verification_path.groups[0].segments[0].duration.0 >= 0.007);
+}
+
+#[test]
+fn req_gc_17_canonical_settings_preserve_legacy_report_and_manage_posted_timing() {
+    // Main's compatibility report analyses complete windows of original IR
+    // durations. The managing report measures emitted feeds, including max_feed.
+    let p = path(&[0.001; 40]);
+    let mut job = support::job();
+    job.block_time = settings(ShortBlockMode::Report, 32);
+    let mut definition = openchuck_post::builtin("makera-z1").unwrap().unwrap();
+    definition.options.max_feed = Some(1200.0);
+    let post = openchuck_post::TemplatePost::new(definition);
+    let report = post.post(&p, &job).unwrap();
+    assert_eq!(report.block_time_reports.len(), 1);
+    assert_eq!(report.short_blocks.len(), 1);
+    assert!((report.block_time_reports[0].worst_mean_ms - 1.0).abs() < 1e-9);
+    assert!((report.short_blocks[0].worst_window_ms - 5.0).abs() < 1e-9);
+    assert_eq!(report.block_time_reports[0].settings.block_window, 32);
+    assert_eq!(report.short_blocks[0].settings.block_window, 32);
+    job.block_time.mode = ShortBlockMode::SlowDown;
+    let slowed = post.post(&p, &job).unwrap();
+    assert!(
+        slowed.block_time_reports.is_empty(),
+        "legacy summary must not claim G-code unchanged after Slow down"
+    );
+    assert!(slowed.short_blocks[0].added_seconds > 0.0);
+    for window in slowed.verification_path.groups[0].segments.windows(32) {
+        assert!(window.iter().map(|s| s.duration.0).sum::<f64>() >= 32.0 * 0.007);
+    }
+}
+#[test]
+fn req_gc_17_canonical_post_override_disables_both_report_interfaces() {
+    let p = path(&[0.001; 40]);
+    let mut job = support::job();
+    job.block_time = settings(ShortBlockMode::Report, 32);
+    let mut d = openchuck_post::builtin("makera-z1").unwrap().unwrap();
+    d.options.min_block_ms = Some(0.0);
+    let report = openchuck_post::TemplatePost::new(d).post(&p, &job).unwrap();
+    assert!(report.block_time_reports.is_empty());
+    assert!(report.short_blocks.is_empty());
+    assert_eq!(report.verification_path, p);
 }

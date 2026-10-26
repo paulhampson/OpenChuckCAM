@@ -521,10 +521,15 @@ pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> 
         ),
     };
     format!(
-        "Operation '{operation}': short blocks: {} windows below {:.3} ms averaged over {} blocks (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
+        "Operation '{operation}': short blocks: {} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
         report.affected_windows,
         report.settings.min_block_ms,
         report.settings.block_window,
+        if report.settings.block_window == 1 {
+            "block"
+        } else {
+            "blocks"
+        },
         report.sources.min_block_ms.as_str(),
         report.sources.block_window.as_str(),
         report.sources.mode.as_str(),
@@ -672,9 +677,10 @@ pub(crate) fn post_toolpath(
             );
         }
         let job = PostJob {
-            short_blocks: ShortBlockSettings {
+            block_time: openchuck_post::BlockTimeSettings {
                 min_block_ms: machine.min_block_ms,
-                block_window: machine.block_window,
+                // Validated machine profiles cap this value at 4096.
+                block_window: machine.block_window as u32,
                 mode: machine.short_block_mode,
             },
             a_range: machine.a_range,

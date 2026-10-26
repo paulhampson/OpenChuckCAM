@@ -76,6 +76,15 @@ pub fn tooltip(profile: &MachineProfile, field: ProfileField) -> String {
         .get(&field)
         .map(|p| p.source.trim().trim_end_matches('.'))
         .filter(|s| !s.is_empty());
+    if field == ProfileField::ShortBlockMode {
+        return match source {
+            Some(source) => format!(
+                "Posting policy. Source: {source}. {}",
+                how_to_confirm(field)
+            ),
+            None => format!("Posting policy. {}", how_to_confirm(field)),
+        };
+    }
     let source = match source {
         Some(s) => format!("Source: {s}."),
         None => "No source is recorded, so it is treated as an unconfirmed placeholder.".to_owned(),
@@ -170,26 +179,37 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
             true,
         ));
     }
-    values.extend([
-        value(
-            ProfileField::MinBlockMs,
-            "Minimum block time",
-            format!("{} ms (0 is off)", profile.min_block_ms),
-            false,
-        ),
-        value(
-            ProfileField::BlockWindow,
-            "Block window",
-            format!("{} blocks", profile.block_window),
-            false,
-        ),
-        value(
-            ProfileField::ShortBlockMode,
-            "Short-block mode",
-            profile.short_block_mode.label().into(),
-            false,
-        ),
-    ]);
+    let hardware_fields = profile.fields();
+    values.extend(
+        [
+            value(
+                ProfileField::MinBlockMs,
+                "Minimum block time",
+                format!("{} ms (0 is off)", profile.min_block_ms),
+                false,
+            ),
+            value(
+                ProfileField::BlockWindow,
+                "Block window",
+                format!(
+                    "{} block{}",
+                    profile.block_window,
+                    if profile.block_window == 1 { "" } else { "s" }
+                ),
+                false,
+            ),
+            value(
+                ProfileField::ShortBlockMode,
+                "Short-block mode",
+                profile.short_block_mode.label().into(),
+                false,
+            ),
+        ]
+        .into_iter()
+        .filter(|value| {
+            value.field == ProfileField::ShortBlockMode || hardware_fields.contains(&value.field)
+        }),
+    );
     values
 }
 
@@ -245,6 +265,12 @@ mod tests {
             assert!(!v.tooltip.contains("rotary_origin"), "{}", v.tooltip);
             assert!(!v.value.contains('_'), "{}", v.value);
         }
+        let mode = values
+            .iter()
+            .find(|v| v.field == ProfileField::ShortBlockMode)
+            .unwrap();
+        assert!(mode.tooltip.starts_with("Posting policy."));
+        assert!(!mode.tooltip.contains("confirmed on the machine"));
         assert!(values.iter().filter(|v| v.collapsed).count() == 3);
     }
 

@@ -1034,6 +1034,13 @@ fn req_gc_17_req_gc_12_report_preserves_output_and_explains_short_blocks() {
     let sheet = app.setup_sheet_for_run(&reported);
     let html = sheet.to_html();
     let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
+    // Both the per-operation result and the effective settings use the
+    // singular controller-window unit (CodeRabbit, GC-17/GC-12).
+    for text in [&html, &pdf] {
+        // PDF escapes parentheses in its text stream; the visible unit is shared.
+        assert_eq!(text.matches("1 block").count(), 2);
+        assert!(!text.contains("1 blocks"));
+    }
     for text in [
         "Short blocks",
         "500",

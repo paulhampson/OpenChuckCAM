@@ -1,0 +1,25 @@
+{
+  "batch": "b-1",
+  "state": "paused",
+  "started_utc": "2026-10-24T14:46:50Z",
+  "argv": [
+    "/workspace/stepall-evidence/m3-step-accuracy",
+    "--only",
+    "m3",
+    "--forms",
+    "b",
+    "--ops",
+    "roughing,rest,pencil,helical,axial,indexed",
+    "--runs",
+    "5",
+    "--threads",
+    "1",
+    "--skip-probe",
+    "--fine",
+    "0.01",
+    "--angular",
+    "0.02"
+  ],
+  "reason": "Owner requested handoff; incomplete batch excluded",
+  "paused_utc": "2026-10-24T15:04:12.441731+00:00"
+}

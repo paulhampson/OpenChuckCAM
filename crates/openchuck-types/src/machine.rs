@@ -190,15 +190,15 @@ pub enum ProfileField {
     MaxFeeds,
     /// [`MachineProfile::clearance`].
     Clearance,
+    /// Minimum fed-block time.
+    MinBlockMs,
+    /// Queue averaging window.
+    BlockWindow,
+    /// Software policy for short blocks; never a machine-confirmable value.
+    ShortBlockMode,
     /// [`MachineProfile::min_spindle_rpm`] and
     /// [`MachineProfile::max_spindle_rpm`].
     SpindleRange,
-    /// [`MachineProfile::min_block_ms`].
-    MinBlockMs,
-    /// [`MachineProfile::block_window`].
-    BlockWindow,
-    /// [`MachineProfile::short_block_mode`].
-    ShortBlockMode,
 }
 
 impl ProfileField {
@@ -211,10 +211,10 @@ impl ProfileField {
         Self::Travel,
         Self::MaxFeeds,
         Self::Clearance,
-        Self::SpindleRange,
         Self::MinBlockMs,
         Self::BlockWindow,
         Self::ShortBlockMode,
+        Self::SpindleRange,
     ];
 
     /// The field's name in the profile file.
@@ -462,19 +462,29 @@ impl MachineProfile {
     }
 
     /// Whether the value of `field` is confirmed on the machine.
+    /// The software policy [`ProfileField::ShortBlockMode`] is never a machine fact.
     pub fn is_confirmed(&self, field: ProfileField) -> bool {
-        self.provenance
-            .get(&field)
-            .is_some_and(|p| p.state == Confirmation::Confirmed)
+        field != ProfileField::ShortBlockMode
+            && self
+                .provenance
+                .get(&field)
+                .is_some_and(|p| p.state == Confirmation::Confirmed)
     }
 
-    /// The fields the profile gives a value for, in order: every field, but
-    /// the spindle range only when the profile gives one.
+    /// Machine-confirmable fields, in order. The spindle range is present
+    /// only when configured; block-time values only while the check is active.
+    /// The mode is software policy and never a machine-confirmable field.
     pub fn fields(&self) -> Vec<ProfileField> {
         let spindle = self.min_spindle_rpm.is_some() || self.max_spindle_rpm.is_some();
+        let block_time = self.min_block_ms > 0.0 && self.short_block_mode != ShortBlockMode::Off;
         ProfileField::ALL
             .into_iter()
-            .filter(|f| *f != ProfileField::SpindleRange || spindle)
+            .filter(|field| match field {
+                ProfileField::SpindleRange => spindle,
+                ProfileField::MinBlockMs | ProfileField::BlockWindow => block_time,
+                ProfileField::ShortBlockMode => false,
+                _ => true,
+            })
             .collect()
     }
 

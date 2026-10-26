@@ -19,7 +19,9 @@ use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::project::{
     Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
 };
-use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+use openchuck_app::setup::{
+    HeldRegion, MachineProfile, Millimetres, Stock, Tab, TabEnd, TabLayout, TabShape, Workholding,
+};
 use openchuck_app::{
     Application, Command, OutputGrouping, PostSelection, SetupSheet, Threads, Traceability,
 };
@@ -808,6 +810,153 @@ fn req_gc_12_req_gc_07_the_sheet_is_the_same_bytes_each_time() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Setup 1 of the sheet project held 1 mm at the start of the stock (X -7 to
+/// -6), with a head tab placed automatically between the held region and
+/// the part (the cube spans X 0 to 10: it is centred on the axis in Y and Z
+/// only) and a frustum tab placed by hand.
+fn held_sheet_project() -> (PathBuf, Application) {
+    let (dir, mut app) = sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.workholding = Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(1.0),
+            diameter: None,
+        }),
+        end: None,
+        tabs: vec![
+            Tab {
+                x_start: Millimetres(0.0),
+                length: Millimetres(0.5),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(6.0),
+                },
+                layout: TabLayout::OnAxis,
+                auto: Some(TabEnd::Head),
+            },
+            Tab {
+                x_start: Millimetres(5.0),
+                length: Millimetres(2.0),
+                shape: TabShape::Frustum {
+                    start_diameter: Millimetres(6.0),
+                    end_diameter: Millimetres(10.0),
+                },
+                layout: TabLayout::OnAxis,
+                auto: None,
+            },
+        ],
+    };
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    (dir, app)
+}
+
+fn facts(sheet: &openchuck_app::SetupSheet, heading: &str) -> Vec<(String, String)> {
+    let section = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading == heading)
+        .unwrap_or_else(|| panic!("no section {heading}"));
+    match &section.body {
+        openchuck_app::SheetBody::Facts(facts) => facts.clone(),
+        other => panic!("{heading} is not facts: {other:?}"),
+    }
+}
+
+fn fact(facts: &[(String, String)], label: &str) -> String {
+    facts
+        .iter()
+        .find(|(l, _)| l == label)
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| panic!("no fact {label} in {facts:?}"))
+}
+
+#[test]
+fn req_gc_12_req_set_09_req_op_21_the_sheet_shows_each_setups_held_regions_and_tabs() {
+    let (dir, app) = held_sheet_project();
+    let sheet = app.setup_sheet(None);
+    let first = facts(&sheet, "Setup: Setup 1");
+    assert_eq!(
+        fact(&first, "Held at the start"),
+        "1 mm of the stock, X -7 to -6 mm, at the stock's own section"
+    );
+    assert_eq!(fact(&first, "Held at the end"), "none");
+    assert_eq!(fact(&first, "Tabs"), "2, listed under Tabs: Setup 1");
+    // The automatic head tab is where the part, the stock and the held
+    // region put it (decision 0202), not where it was last stored.
+    assert_eq!(
+        cell_rows(&sheet, "Tabs: Setup 1"),
+        [
+            [
+                "1",
+                "-6",
+                "0",
+                "cylinder",
+                "6",
+                "on the axis",
+                "automatically, at the head of the part"
+            ],
+            [
+                "2",
+                "5",
+                "7",
+                "frustum",
+                "6 to 10",
+                "on the axis",
+                "by hand"
+            ],
+        ]
+    );
+    // The setup with none says so, and has no tab table.
+    let second = facts(&sheet, "Setup: Flip / side 2");
+    assert_eq!(fact(&second, "Held at the start"), "none");
+    assert_eq!(fact(&second, "Held at the end"), "none");
+    assert_eq!(fact(&second, "Tabs"), "none");
+    assert!(
+        !sheet
+            .sections
+            .iter()
+            .any(|s| s.heading == "Tabs: Flip / side 2")
+    );
+    // Both formats carry it (decision 0028 item 4: one document, two writers).
+    let html = sheet.to_html();
+    assert!(html.contains("Held at the start"), "{html}");
+    assert!(html.contains("Tabs: Setup 1"), "{html}");
+    let pdf = check_pdf(&sheet.to_pdf());
+    assert!(pdf.contains("Held at the start"), "{pdf}");
+    assert!(pdf.contains("Tabs: Setup 1"), "{pdf}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_set_09_a_holding_diameter_is_named_on_the_sheet() {
+    let (dir, mut app) = sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.workholding.end = Some(HeldRegion {
+        length: Millimetres(2.0),
+        diameter: Some(Millimetres(12.0)),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let sheet = app.setup_sheet(None);
+    assert_eq!(
+        fact(&facts(&sheet, "Setup: Setup 1"), "Held at the end"),
+        "2 mm of the stock, X 5 to 7 mm, at diameter 12 mm"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_gc_07_req_set_09_the_sheet_with_held_regions_and_tabs_is_the_same_bytes_each_time()
+{
+    let (dir, app) = held_sheet_project();
+    app.save().unwrap();
+    let first = app.setup_sheet(None);
+    for threads in [1, 4] {
+        let again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        let sheet = again.setup_sheet(None);
+        assert_eq!(sheet.sections, first.sections, "{threads} threads");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 fn sheet_golden(name: &str, text: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata/golden/setup_sheet")
@@ -833,6 +982,28 @@ fn req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot() {
     sheet_golden("small_project.html", &sheet.to_html());
     let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
     sheet_golden("small_project.pdf", &pdf);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_set_09_req_nfr_08_a_sheet_with_held_regions_and_tabs_matches_its_snapshot() {
+    let (dir, app) = held_sheet_project();
+    // No toolpath and fixed traceability, as in the snapshot above.
+    let sheet = SetupSheet::with_parts(app.project(), app.strategies(), None, &|setup| {
+        let model = setup.part?;
+        let extent = app.inspect_model(model).ok()?.extent?;
+        Some(extent.in_setup(&setup.frame))
+    })
+    .with_traceability(&Traceability {
+        generated: "2026-10-22T09:30:05Z".into(),
+        saved: "2026-10-22T09:12:00Z".into(),
+        version: "0.0.0".into(),
+        fingerprint: format!("blake3:{}", "cd".repeat(32)),
+        version_control: Traceability::NOT_TRACKED.into(),
+    });
+    sheet_golden("held_project.html", &sheet.to_html());
+    let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
+    sheet_golden("held_project.pdf", &pdf);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -1116,5 +1287,80 @@ fn req_gc_12_req_gc_07_the_traceability_block_does_not_change_the_g_code() {
     let _ = app.setup_sheet(Some(&before.toolpath));
     let after = app.regenerate().unwrap();
     assert_eq!(before.gcode, after.gcode);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_without_changing_gcode()
+{
+    let (dir, mut app) = project("block-time", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let before = app.regenerate().unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 1_000_000.0;
+    machine.block_window = 1;
+    machine.short_block_mode = openchuck_types::machine::ShortBlockMode::Report;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let after = app.regenerate().unwrap();
+    assert_eq!(before.gcode, after.gcode);
+    assert!(after.notes.iter().any(|n| n.contains("windows below")));
+    let sheet = app.setup_sheet(Some(&after.toolpath));
+    assert!(sheet.to_html().contains("minimum block time"));
+    assert!(check_pdf(&sheet.to_pdf()).contains("minimum block time"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_12_req_nfr_07_the_sheet_uses_post_overrides_and_reports_an_unloadable_post() {
+    let (dir, mut app) = project("post-block-time", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let before = app.regenerate().unwrap();
+    let custom = dir.join("custom-post");
+    std::fs::create_dir(&custom).unwrap();
+    let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let manifest = std::fs::read_to_string(builtin.join("post.toml")).unwrap();
+    std::fs::write(
+        custom.join("post.toml"),
+        manifest.replace(
+            "[options]",
+            "[options]\nmin_block_ms = 1000000.0\nblock_window = 1\nshort_block_mode = \"report\"",
+        ),
+    )
+    .unwrap();
+    std::fs::copy(builtin.join("main.post"), custom.join("main.post")).unwrap();
+    app.set_post(Some(PostSelection::Folder(custom.clone())));
+    let after = app.regenerate().unwrap();
+    assert_eq!(before.gcode, after.gcode);
+    assert!(after.notes.iter().any(|n| n.contains("post override")));
+    assert!(
+        app.setup_sheet(Some(&after.toolpath))
+            .to_html()
+            .contains("(post)")
+    );
+    let post_file = custom.join("post.toml");
+    let report_post = std::fs::read_to_string(&post_file).unwrap();
+    std::fs::write(
+        &post_file,
+        report_post.replace(
+            "short_block_mode = \"report\"",
+            "short_block_mode = \"slow_down\"",
+        ),
+    )
+    .unwrap();
+    let preview = app.setup_sheet(Some(&after.toolpath));
+    for text in [preview.to_html(), check_pdf(&preview.to_pdf())] {
+        assert!(text.contains("Toolpath-only preview; selected Slow down has not been applied."));
+        assert!(
+            !text.contains(", Report:"),
+            "the selected policy is Slow down"
+        );
+    }
+    app.set_post(Some(PostSelection::Folder(dir.join("missing-post"))));
+    assert!(
+        app.setup_sheet(Some(&after.toolpath))
+            .to_html()
+            .contains("Report unavailable")
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }

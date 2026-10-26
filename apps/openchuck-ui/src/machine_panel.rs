@@ -105,7 +105,9 @@ fn value_row(ui: &mut egui::Ui, value: &MachineValue) {
                 .max_rect(rect)
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
         );
-        icon(&mut child, value);
+        if value.field != ProfileField::ShortBlockMode {
+            icon(&mut child, value);
+        }
         child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add(egui::Label::new(RichText::new(value.label).color(DARK.muted)).truncate());
         });
@@ -212,12 +214,6 @@ impl MachinePanel {
             next.short_block_mode = *mode;
             user_source(&mut next, ProfileField::ShortBlockMode);
             edited = Some(next);
-        }
-        if let Some(value) = machine_values(profile)
-            .into_iter()
-            .find(|v| v.field == ProfileField::ShortBlockMode)
-        {
-            icon(ui, &value);
         }
         edited
     }

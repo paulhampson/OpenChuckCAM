@@ -3,7 +3,7 @@
 //! cargo run -p openchuck-post --example short_block_gate3 -- OUTPUT_DIRECTORY
 #![allow(clippy::print_stdout)]
 use openchuck_post::{
-    PostJob, PostProcessor, ShortBlockSettings, TemplatePost, ToolSetting, builtin,
+    BlockTimeSettings, PostJob, PostProcessor, TemplatePost, ToolSetting, builtin,
 };
 use openchuck_types::{
     geometry::{Point3, UnitVec3},
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     };
     let mut job = PostJob {
-        short_blocks: ShortBlockSettings {
+        block_time: BlockTimeSettings {
             min_block_ms: 7.0,
             block_window: 32,
             mode: ShortBlockMode::Report,
@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("original", ShortBlockMode::Report),
         ("slowed", ShortBlockMode::SlowDown),
     ] {
-        job.short_blocks.mode = mode;
+        job.block_time.mode = mode;
         let output = post.post(&path, &job)?;
         std::fs::write(folder.join(format!("{name}.ngc")), output.text)?;
         let time = output.estimated_seconds;

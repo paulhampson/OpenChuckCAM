@@ -155,6 +155,30 @@ proptest! {
     }
 }
 
+#[test]
+fn req_gc_17_req_nfr_07_profiles_refuse_invalid_block_time_settings() {
+    for limit in [f64::NAN, f64::INFINITY, -1.0] {
+        let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+        machine.min_block_ms = limit;
+        assert!(
+            machine
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+    }
+    let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+    machine.block_window = 0;
+    assert!(
+        machine
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("block_window")
+    );
+}
+
 /// A machine profile may give the spindle speed range the machine runs at,
 /// as a limit only (decision 0231; OI-754): a speed outside it is reported
 /// with the limit, and a profile without one checks nothing.
@@ -166,7 +190,7 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     assert_eq!(m.spindle_limit(SpindleSpeed(1.0e6)), None);
     // No range: nothing to confirm either.
     assert!(!m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
-    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 1);
+    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 4);
     m.max_spindle_rpm = Some(SpindleSpeed(13000.0));
     m.validate().unwrap();
     assert!(m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
@@ -291,4 +315,68 @@ fn req_gc_17_req_set_01_profile_defaults_roundtrip_and_validation() {
         );
     }
     assert!(serde_json::from_str::<ShortBlockMode>("\"merge\"").is_err());
+}
+
+/// Only active controller facts need confirmation; a reporting policy is software configuration.
+#[test]
+fn req_gc_17_req_set_01_only_active_block_time_values_need_machine_confirmation() {
+    use openchuck_types::machine::{Confirmation, ProfileField, Provenance, ShortBlockMode};
+    let mut machine = MachineProfile::example_x_rotary();
+    let baseline = machine.fields();
+    assert_eq!(baseline.len(), 7);
+    for (milliseconds, mode, active) in [
+        (0.0, ShortBlockMode::Off, false),
+        (7.0, ShortBlockMode::Off, false),
+        (0.0, ShortBlockMode::Report, false),
+        (0.0, ShortBlockMode::SlowDown, false),
+        (7.0, ShortBlockMode::Report, true),
+        (7.0, ShortBlockMode::SlowDown, true),
+    ] {
+        machine.min_block_ms = milliseconds;
+        machine.block_window = 32;
+        machine.short_block_mode = mode;
+        machine.validate().unwrap();
+        let fields = machine.fields();
+        let unconfirmed = machine.unconfirmed_fields();
+        for field in [ProfileField::MinBlockMs, ProfileField::BlockWindow] {
+            assert_eq!(
+                fields.contains(&field),
+                active,
+                "{mode:?} at {milliseconds} ms"
+            );
+            assert_eq!(
+                unconfirmed.contains(&field),
+                active,
+                "{mode:?} at {milliseconds} ms"
+            );
+        }
+        assert!(!fields.contains(&ProfileField::ShortBlockMode));
+        assert!(!unconfirmed.contains(&ProfileField::ShortBlockMode));
+        if !active {
+            assert_eq!(fields, baseline);
+        }
+    }
+    // Imported policy provenance cannot turn a software choice into a confirmed machine fact.
+    for field in [
+        ProfileField::MinBlockMs,
+        ProfileField::BlockWindow,
+        ProfileField::ShortBlockMode,
+    ] {
+        machine.provenance.insert(
+            field,
+            Provenance {
+                state: Confirmation::Confirmed,
+                source: "Recorded in an imported profile".into(),
+            },
+        );
+    }
+    assert!(machine.is_confirmed(ProfileField::MinBlockMs));
+    assert!(machine.is_confirmed(ProfileField::BlockWindow));
+    assert!(!machine.is_confirmed(ProfileField::ShortBlockMode));
+    assert!(
+        machine
+            .unconfirmed_fields()
+            .iter()
+            .all(|field| baseline.contains(field))
+    );
 }

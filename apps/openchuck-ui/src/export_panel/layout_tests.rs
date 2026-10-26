@@ -446,11 +446,14 @@ fn req_gc_17_files_show_report_and_slowdown_with_effective_sources() {
             .expect("effective settings are visible before export");
         assert!(settings.contains(mode.label()));
         assert!(settings.contains("500.000 ms (machine profile)"));
+        assert!(settings.contains("1 block (machine profile)"));
+        assert!(!settings.contains("1 blocks"));
         let diagnostic = visible
             .iter()
             .find(|s| s.starts_with("Short blocks — Finish:"))
             .expect("affected operation diagnostics are visible before export");
         assert!(diagnostic.contains("affected windows before slowdown"));
+        assert!(diagnostic.contains("over 1 block (limit:"));
         if mode == ShortBlockMode::Report {
             assert!(diagnostic.contains("would be added by Slow down"));
         } else {

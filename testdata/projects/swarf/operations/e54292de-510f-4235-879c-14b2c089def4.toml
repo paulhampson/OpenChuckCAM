@@ -1,0 +1,10 @@
+schema = 17
+id = "e54292de-510f-4235-879c-14b2c089def4"
+order = "V"
+name = "Swarf"
+setup = "d9041800-c25e-47a8-b59c-e39ef1b86ed9"
+strategy = "swarf"
+tool = "645a90c7-67c7-4e36-acda-d9a471253cdd"
+selections = ["265794f5-8f99-4e7a-902a-7dd337f5baa9"]
+
+[parameters]

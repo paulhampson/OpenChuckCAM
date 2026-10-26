@@ -58,6 +58,15 @@ pub struct Progress {
 pub trait ProgressSink: Send + Sync {
     /// Called with each progress report.
     fn report(&self, progress: Progress);
+
+    /// Opt in to diagnostic stage timings. Disabled hosts incur no clock reads.
+    fn wants_timings(&self) -> bool {
+        false
+    }
+
+    /// A completed scope, including scopes exited on error. Nested or parallel
+    /// scopes overlap; durations must not be summed as job wall time.
+    fn timing(&self, _stage: &str, _elapsed: std::time::Duration) {}
 }
 
 /// A sink that discards progress.
@@ -96,6 +105,15 @@ impl<'a> JobContext<'a> {
         self.cancel.check()
     }
 
+    /// Measure an optional diagnostic scope. Nested and parallel scopes overlap.
+    pub fn time_stage<'b>(&'b self, stage: &'b str) -> StageTimer<'b> {
+        StageTimer {
+            sink: self.progress,
+            stage,
+            started: self.progress.wants_timings().then(std::time::Instant::now),
+        }
+    }
+
     /// Reports progress.
     pub fn report(&self, stage: &str, done: u64, total: Option<u64>) {
         self.progress.report(Progress {
@@ -103,5 +121,28 @@ impl<'a> JobContext<'a> {
             done,
             total,
         });
+    }
+}
+
+/// A diagnostic scope reported to the host when it ends, including early returns.
+/// It does not affect cancellation, progress counters or generated output.
+pub struct StageTimer<'a> {
+    sink: &'a dyn ProgressSink,
+    stage: &'a str,
+    started: Option<std::time::Instant>,
+}
+impl std::fmt::Debug for StageTimer<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StageTimer")
+            .field("stage", &self.stage)
+            .field("started", &self.started)
+            .finish_non_exhaustive()
+    }
+}
+impl Drop for StageTimer<'_> {
+    fn drop(&mut self) {
+        if let Some(started) = self.started {
+            self.sink.timing(self.stage, started.elapsed());
+        }
     }
 }
