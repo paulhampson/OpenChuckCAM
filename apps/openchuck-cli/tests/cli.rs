@@ -537,13 +537,18 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("4 of 8 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("6 of 11 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
-    // value is shown as confirmed or unconfirmed (four are confirmed; the
-    // spindle range is Makera's published figure, decision 0231).
+    // value is shown as confirmed or unconfirmed, including the measured block time.
     assert!(out.stdout.contains("faces -Y at A 90"), "{}", out.stdout);
+    assert!(
+        out.stdout
+            .contains("block time: 7.000 ms, window 32, Report"),
+        "{}",
+        out.stdout
+    );
     assert!(
         out.stdout.contains("spindle:    up to 13000 rpm"),
         "{}",
@@ -551,7 +556,7 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        4,
+        6,
         "{}",
         out.stdout
     );
@@ -1172,4 +1177,46 @@ fn req_nfr_16_cli_short_version_is_one_line() {
     assert_eq!(out.code, Some(0));
     assert_eq!(out.stdout.lines().count(), 1, "{}", out.stdout);
     assert!(out.stdout.contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn req_gc_10_cli_checks_a_chunk_against_the_original_source_range() {
+    let dir = std::env::temp_dir().join(format!("openchuck-source-range-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("original.ngc");
+    let report = dir.join("report.json");
+    std::fs::write(
+        &source,
+        "G90 G21 G17 G61 G54\nT2 M6\nS9000 M3\nG0 X1 Y2 Z3 A450\nG1 X11 F60\nX21\nM5\nM30\n",
+    )
+    .unwrap();
+    let start = r#"{"position":[11,2,3,450],"actual_position":[11,2,3,450],"gcodes":[10,170,210,540,610,900,940],"feed":60,"rpm":9000,"tool":2,"spindle_on":true,"direction":1,"g5x_offset":[0,0,0,0],"g92_offset":[0,0,0,0],"rotation_xy":0}"#;
+    let end = start
+        .replace("[11,2,3,450]", "[21,2,3,450]")
+        .replace("\"spindle_on\":true", "\"spindle_on\":false")
+        .replace("\"direction\":1", "\"direction\":0");
+    let text = format!(
+        r#"{{"rows":[],"errors":[],"final_position":[21,2,3,450],"path":[[11,2,3,450],[21,2,3,450]],"boundaries":[{start},{end}]}}"#
+    );
+    std::fs::write(&report, &text).unwrap();
+    let out = run(&[
+        "gcode-sim".as_ref(),
+        source.as_os_str(),
+        report.as_os_str(),
+        "--source-lines".as_ref(),
+        "6:8".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("reached all 1 moves"), "{}", out.stdout);
+    std::fs::write(&report, text.replace("\"feed\":60", "\"feed\":61")).unwrap();
+    let out = run(&[
+        "gcode-sim".as_ref(),
+        source.as_os_str(),
+        report.as_os_str(),
+        "--source-lines".as_ref(),
+        "6:8".as_ref(),
+    ]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("source boundary"), "{}", out.stderr);
+    std::fs::remove_dir_all(dir).unwrap();
 }

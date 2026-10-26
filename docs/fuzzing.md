@@ -6,6 +6,8 @@ The libFuzzer targets are in `fuzz/fuzz_targets/`, a separate cargo-fuzz workspa
 
 ## Inventory
 
+Before pushing a public library API change, compile the separate fuzz workspace with `cargo check --locked --all-targets --manifest-path fuzz/Cargo.toml` as well as benchmark consumers with `cargo check --locked --all-targets --manifest-path benches/Cargo.toml`. Workspace-only checks do not compile `fuzz/`; a missing `PostJob` field stopped group C before its smoke run in PR 284. These compile checks supplement the nightly-toolchain fuzz runs.
+
 | Format | Parser (entry point) | Fuzz target | Pull request | Nightly | Corpus seeds |
 | --- | --- | --- | --- | --- | --- |
 | STL model (IMP-01) | `openchuck_import::import_bytes`, then `check_mesh` and `place` | `stl_import` | Group B | Yes | `testdata/stl/*.stl` |

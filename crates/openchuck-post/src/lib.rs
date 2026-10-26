@@ -12,6 +12,7 @@
 
 #![warn(missing_docs)]
 
+mod block_time;
 mod builtin;
 mod convert;
 mod definition;
@@ -34,3 +35,5 @@ pub use options::{
 };
 pub use program::{MachineProgram, Step, Target};
 pub use render::{PostJob, PostOutput, PostProcessor, TemplatePost, sanitise_comment};
+
+pub use block_time::{BlockTimeReport, BlockTimeSettings, block_time_reports};

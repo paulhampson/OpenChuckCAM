@@ -59,6 +59,7 @@ fn toolpath() -> Toolpath {
 
 fn job() -> PostJob {
     PostJob {
+        block_time: Default::default(),
         a_range: openchuck_types::machine::ARange::Continuous,
         safe_z: 30.0,
         frame: RotaryFrame {

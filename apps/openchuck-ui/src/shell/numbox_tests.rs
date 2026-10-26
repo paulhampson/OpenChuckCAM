@@ -48,7 +48,7 @@ fn type_into(rig: &mut Rig, at: egui::Pos2, text: &str) {
 }
 
 #[test]
-fn req_ui_07_req_nfr_07_an_unreadable_entry_shows_its_reason_under_the_box() {
+fn req_ui_26_req_nfr_07_an_unreadable_entry_shows_its_reason_under_the_box() {
     let mut rig = setup_rig("numbox-error");
     let at = unit_box(&rig);
     type_into(&mut rig, at, "12*");
@@ -60,7 +60,7 @@ fn req_ui_07_req_nfr_07_an_unreadable_entry_shows_its_reason_under_the_box() {
 }
 
 #[test]
-fn req_ui_07_req_ui_11_an_unreadable_entry_marks_the_step_bar_until_fixed() {
+fn req_ui_26_req_ui_11_an_unreadable_entry_marks_the_step_bar_until_fixed() {
     let mut rig = setup_rig("numbox-bar");
     assert!(!rig.shows("Error to fix"));
     let at = unit_box(&rig);
@@ -77,7 +77,7 @@ fn req_ui_07_req_ui_11_an_unreadable_entry_marks_the_step_bar_until_fixed() {
 }
 
 #[test]
-fn req_ui_07_a_sum_is_worked_out_and_only_the_number_is_kept() {
+fn req_ui_26_a_sum_is_worked_out_and_only_the_number_is_kept() {
     let mut rig = setup_rig("numbox-sum");
     let at = unit_box(&rig);
     let diameter = |rig: &Rig| {
@@ -103,7 +103,7 @@ fn req_ui_07_a_sum_is_worked_out_and_only_the_number_is_kept() {
 }
 
 #[test]
-fn req_ui_07_the_last_good_value_is_kept_while_an_entry_is_unreadable() {
+fn req_ui_26_the_last_good_value_is_kept_while_an_entry_is_unreadable() {
     let mut rig = setup_rig("numbox-last-good");
     let before = rig.shell.app.as_ref().unwrap().project().clone();
     let at = unit_box(&rig);

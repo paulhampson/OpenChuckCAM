@@ -1,0 +1,12 @@
+schema = 17
+name = "drilling"
+
+[[models]]
+id = "5082f98c-f7b4-4b7d-a19e-424a5733b738"
+path = "models/rotary_blank_drilled.step"
+hash = "blake3:151d0a27d0e5a118a2f91adf951ec668dbba6c2dc72c0336e1813074346ed0a6"
+
+[[models.transform]]
+kind = "rotate"
+axis = "x"
+angle = 30.0

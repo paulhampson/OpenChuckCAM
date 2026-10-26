@@ -155,6 +155,30 @@ proptest! {
     }
 }
 
+#[test]
+fn req_gc_17_req_nfr_07_profiles_refuse_invalid_block_time_settings() {
+    for limit in [f64::NAN, f64::INFINITY, -1.0] {
+        let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+        machine.min_block_ms = limit;
+        assert!(
+            machine
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+    }
+    let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+    machine.block_window = 0;
+    assert!(
+        machine
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("block_window")
+    );
+}
+
 /// A machine profile may give the spindle speed range the machine runs at,
 /// as a limit only (decision 0231; OI-754): a speed outside it is reported
 /// with the limit, and a profile without one checks nothing.

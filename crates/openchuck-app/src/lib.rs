@@ -1225,7 +1225,23 @@ impl Application {
     /// decision 0110). Pass a regeneration's toolpath to include each
     /// operation's programmed time.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
-        SetupSheet::new(&self.document.project, &self.strategies, toolpath)
+        // Each setup's part as the setup places it, for the tabs placed
+        // automatically (decision record 0202); a part that cannot be read
+        // leaves them where they were stored.
+        let part = |setup: &openchuck_project::Setup| {
+            let model = setup.part?;
+            let extent = self.inspect_model(model).ok()?.extent?;
+            Some(extent.in_setup(&setup.frame))
+        };
+        let options = self
+            .post
+            .as_ref()
+            .map(PostSelection::load)
+            .transpose()
+            .map(|post| post.map(|post| post.options))
+            .map_err(|error| error.to_string());
+        SetupSheet::with_parts(&self.document.project, &self.strategies, toolpath, &part)
+            .with_block_time(&self.document.project, toolpath, options)
             .with_traceability(&self.traceability())
     }
 

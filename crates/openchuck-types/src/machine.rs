@@ -190,6 +190,12 @@ pub enum ProfileField {
     MaxFeeds,
     /// [`MachineProfile::clearance`].
     Clearance,
+    /// Minimum fed-block time.
+    MinBlockMs,
+    /// Queue averaging window.
+    BlockWindow,
+    /// Minimum block-time reporting mode.
+    ShortBlockMode,
     /// [`MachineProfile::min_spindle_rpm`] and
     /// [`MachineProfile::max_spindle_rpm`].
     SpindleRange,
@@ -197,7 +203,7 @@ pub enum ProfileField {
 
 impl ProfileField {
     /// Every field, in order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 11] = [
         Self::RotaryAxis,
         Self::ASense,
         Self::RotaryOrigin,
@@ -205,6 +211,9 @@ impl ProfileField {
         Self::Travel,
         Self::MaxFeeds,
         Self::Clearance,
+        Self::MinBlockMs,
+        Self::BlockWindow,
+        Self::ShortBlockMode,
         Self::SpindleRange,
     ];
 
@@ -218,6 +227,9 @@ impl ProfileField {
             Self::Travel => "travel",
             Self::MaxFeeds => "max_feeds",
             Self::Clearance => "clearance",
+            Self::MinBlockMs => "min_block_ms",
+            Self::BlockWindow => "block_window",
+            Self::ShortBlockMode => "short_block_mode",
             Self::SpindleRange => "spindle_range",
         }
     }
@@ -260,6 +272,33 @@ const fn default_max_tool_number() -> u32 {
     DEFAULT_MAX_TOOL_NUMBER
 }
 
+/// Action for the minimum block-time check (GC-17, decision 0222).
+/// Slow down and Merge are reserved for later work and are not accepted values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShortBlockMode {
+    /// No report and no output change.
+    #[default]
+    Off,
+    /// Report short windows without changing G-code.
+    Report,
+}
+impl ShortBlockMode {
+    /// Whether the check is disabled.
+    pub fn is_off(&self) -> bool {
+        *self == Self::Off
+    }
+}
+fn default_block_window() -> u32 {
+    1
+}
+fn one_block(value: &u32) -> bool {
+    *value == 1
+}
+fn zero_block_ms(value: &f64) -> bool {
+    *value == 0.0
+}
+
 /// Which end of a machine's spindle speed range a speed is outside, with
 /// that end (decision record 0231).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -299,6 +338,15 @@ pub struct MachineProfile {
     /// [`DEFAULT_MAX_TOOL_NUMBER`].
     #[serde(default = "default_max_tool_number")]
     pub max_tool_number: u32,
+    /// Minimum average fed-block time, milliseconds; zero disables GC-17.
+    #[serde(default, skip_serializing_if = "zero_block_ms")]
+    pub min_block_ms: f64,
+    /// Number of consecutive fed blocks averaged by GC-17; at least one.
+    #[serde(default = "default_block_window", skip_serializing_if = "one_block")]
+    pub block_window: u32,
+    /// Report first; default Off preserves existing profiles and projects.
+    #[serde(default, skip_serializing_if = "ShortBlockMode::is_off")]
+    pub short_block_mode: ShortBlockMode,
     /// The lowest spindle speed the machine runs at, when the profile gives
     /// one. A limit, never a default (decision records 0196 and 0231).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -317,6 +365,13 @@ impl MachineProfile {
     /// Fails if any value is not finite or out of range, or the rotary axis
     /// is one this release does not support.
     pub fn validate(&self) -> Result<()> {
+        require_finite("machine.min_block_ms", self.min_block_ms)?;
+        if self.min_block_ms < 0.0 || self.block_window == 0 {
+            return Err(Error::invalid(
+                "machine.min_block_ms/block_window",
+                "minimum block time must be nonnegative and block window at least 1",
+            ));
+        }
         if self.name.trim().is_empty() {
             return Err(Error::invalid("machine.name", "the name must not be empty"));
         }
@@ -408,7 +463,17 @@ impl MachineProfile {
     pub fn unconfirmed_fields(&self) -> Vec<ProfileField> {
         self.fields()
             .into_iter()
-            .filter(|f| !self.is_confirmed(*f))
+            .filter(|f| {
+                let block_field = matches!(
+                    f,
+                    ProfileField::MinBlockMs
+                        | ProfileField::BlockWindow
+                        | ProfileField::ShortBlockMode
+                );
+                let disabled =
+                    self.min_block_ms == 0.0 || self.short_block_mode == ShortBlockMode::Off;
+                !(self.is_confirmed(*f) || (block_field && disabled))
+            })
             .collect()
     }
 
@@ -458,6 +523,9 @@ impl MachineProfile {
                 radius: Millimetres(40.0),
                 safe_z: Millimetres(50.0),
             },
+            min_block_ms: 0.0,
+            block_window: 1,
+            short_block_mode: ShortBlockMode::Off,
             provenance: BTreeMap::new(),
         }
     }

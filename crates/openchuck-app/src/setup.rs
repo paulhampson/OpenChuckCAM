@@ -225,6 +225,9 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::Travel => "travel",
         ProfileField::MaxFeeds => "maximum feeds",
         ProfileField::Clearance => "clearance",
+        ProfileField::MinBlockMs => "minimum block time",
+        ProfileField::BlockWindow => "block window",
+        ProfileField::ShortBlockMode => "short block mode",
         ProfileField::SpindleRange => "spindle speed range",
     }
 }
@@ -246,8 +249,17 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         min_spindle_rpm,
         max_spindle_rpm,
         provenance,
+        min_block_ms,
+        block_window,
+        short_block_mode,
     } = a;
     let checks = [
+        (
+            "minimum block time",
+            min_block_ms.partial_cmp(&b.min_block_ms) == Some(std::cmp::Ordering::Equal),
+        ),
+        ("block window", *block_window == b.block_window),
+        ("short block mode", *short_block_mode == b.short_block_mode),
         ("name", *name == b.name),
         ("rotary axis", *rotary_axis == b.rotary_axis),
         ("A+ direction", *a_sense == b.a_sense),

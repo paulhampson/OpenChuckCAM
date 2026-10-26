@@ -132,8 +132,8 @@ jobs:
               # The fuzz job itself, so a change to it is run by its own pull request.
               - '.github/workflows/ci.yml'
 
-  # The simulator runs in real time, so the golden programs (22 minutes one after another) are
-  # dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
+  # The simulator runs in real time. Bounded first-cut fixtures are expanded before
+  # the golden programs and fixtures are dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
   # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
   # programs fails, and `needs: gate3` in the aggregator waits for all three.
   gate3:
