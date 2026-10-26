@@ -161,12 +161,15 @@ pub fn compare(
             .map_or(v, |x| if x == 0.0 { 0.0 } else { x })
     };
     let machine_of = |tip: Point3, a: f64| {
+        // Expected written motion uses the quantized A. Tip comparison
+        // below still uses the original IR tip and the unchanged budget.
+        let a = written(a, tolerances.a_decimals);
         let p = machine_xyz(&frame, tip, Degrees(a));
         [
             written(p.x, tolerances.pos_decimals),
             written(p.y, tolerances.pos_decimals),
             written(p.z, tolerances.pos_decimals),
-            written(a, tolerances.a_decimals),
+            a,
         ]
     };
 

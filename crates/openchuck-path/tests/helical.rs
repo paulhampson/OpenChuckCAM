@@ -779,3 +779,41 @@ fn req_op_04_req_op_11_helical_scallop_sets_the_pitch_for_a_ball() {
     let da = s.end.a.0 - from.a.0;
     assert!((da - 360.0 * dx / pitch).abs() < 1e-6, "{da} {dx} {pitch}");
 }
+
+#[test]
+fn req_nfr_04_req_nfr_06_stage_timings_do_not_change_the_generated_path() {
+    use openchuck_types::job::{CancelToken, JobContext, Progress, ProgressSink};
+    use std::sync::Mutex;
+    use std::time::Duration;
+    #[derive(Default)]
+    struct Timings(Mutex<Vec<String>>);
+    impl ProgressSink for Timings {
+        fn report(&self, _: Progress) {}
+        fn wants_timings(&self) -> bool {
+            true
+        }
+        fn timing(&self, stage: &str, _: Duration) {
+            self.0.lock().unwrap().push(stage.to_owned());
+        }
+    }
+    let part = Cylinder {
+        radius: 5.0,
+        length: 2.0,
+    };
+    let f = fixture(&part, 3, 180, &ball(2.0));
+    let v = values(1.0, &[]);
+    let baseline = helical(&f, &v);
+    let sink = Timings::default();
+    let cancel = CancelToken::new();
+    let timed = generate(
+        &HelicalFinishing,
+        &f.input(),
+        &v,
+        &JobContext::new(&cancel, &sink),
+    )
+    .unwrap();
+    assert_eq!(baseline, timed);
+    let stages = sink.0.lock().unwrap();
+    assert!(stages.iter().any(|stage| stage == "fitting"));
+    assert!(stages.iter().any(|stage| stage == "assembly"));
+}

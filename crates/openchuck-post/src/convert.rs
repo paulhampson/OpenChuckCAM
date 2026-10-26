@@ -88,13 +88,19 @@ pub fn to_machine_program<F: AsRotaryFrame>(
     let frame = options.frame.rotary_frame();
     let axis = axis_direction(frame.axis);
     let target_of = |tip: Point3, a: Degrees| {
+        // Locate the requested model tip at the angle the controller will
+        // actually receive. Rounding XYZ at the unrounded angle adds a
+        // radius-dependent tip error on top of the linear rounding budget.
+        let a = options
+            .decimals
+            .map_or(a, |(_, rot)| Degrees(round_written(a.0, rot)));
         let p = machine_xyz(&frame, tip, a);
         match options.decimals {
-            Some((pos, rot)) => Target {
+            Some((pos, _)) => Target {
                 x: round_written(p.x, pos),
                 y: round_written(p.y, pos),
                 z: round_written(p.z, pos),
-                a: round_written(a.0, rot),
+                a: a.0,
             },
             None => Target {
                 x: p.x,
