@@ -828,6 +828,9 @@ impl PlaybackPanel {
             match job.try_result() {
                 None => busy = true,
                 Some(result) => {
+                    // Layout has already captured the viewport and dock for
+                    // this frame. Draw again to show readiness or the error.
+                    busy = true;
                     stock.prepare = None;
                     match result {
                         Ok(playback) => stock.playback = Some(Arc::new(playback)),
@@ -843,6 +846,9 @@ impl PlaybackPanel {
             match job.try_result() {
                 None => busy = true,
                 Some(result) => {
+                    // The paint callback still holds the previous surface.
+                    // Even at the end, publish this one in another frame.
+                    busy = true;
                     let done = *done;
                     stock.mesh = None;
                     match result {
@@ -892,16 +898,21 @@ impl PlaybackPanel {
 
     /// The inspector's display choice stays accessible while results are
     /// stale, independently of the playback dock's height (issue 293).
-    pub fn show_deviation_choice(&mut self, ui: &mut egui::Ui) {
+    pub fn show_deviation_choice(&mut self, ui: &mut egui::Ui) -> egui::Response {
         let available = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
-        ui.add_enabled(
-            available,
-            egui::Checkbox::new(&mut self.bands_on, "Deviation colours"),
-        )
-        .on_hover_text(
-            "Show overcut, on the surface, and material left; untick for the plain cut part",
-        )
-        .on_disabled_hover_text(NO_STOCK_SIMULATION);
+        let response = ui
+            .add_enabled(
+                available && self.stock.error.is_none(),
+                egui::Checkbox::new(&mut self.bands_on, "Deviation colours"),
+            )
+            .on_hover_text(
+                "Show overcut, on the surface, and material left; untick for the plain cut part",
+            )
+            .on_disabled_hover_text(self.stock.error.as_deref().unwrap_or(NO_STOCK_SIMULATION));
+        if let Some(error) = &self.stock.error {
+            ui.weak(format!("Deviation colours unavailable: {error}"));
+        }
+        response
     }
 
     /// Sets the deviation bands shown (SIM-15), and redraws the colours.
@@ -1908,6 +1919,138 @@ mod tests {
     }
 
     #[test]
+    fn req_sim_03_req_sim_04_final_cut_part_is_published_after_jump_to_end() {
+        final_cut_part_at_end(0);
+    }
+
+    #[test]
+    fn req_sim_03_req_sim_04_final_cut_part_is_published_after_step_to_end() {
+        final_cut_part_at_end(1);
+    }
+
+    #[test]
+    fn req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end() {
+        final_cut_part_at_end(2);
+    }
+
+    #[test]
+    fn req_sim_03_req_sim_04_req_ui_02_final_cut_part_is_drawn_after_dragging_playhead_to_end() {
+        final_cut_part_at_end(3);
+    }
+
+    fn final_cut_part_at_end(route: usize) {
+        let (app, mut panel, mut viewport, dir) = prepared(&format!("panel-final-stock-{route}"));
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        let data = panel.data.clone().unwrap();
+        // Allow coverage instrumentation overhead without changing the work performed.
+        let deadline = Instant::now() + Duration::from_secs(600);
+        for case in 0..4 {
+            panel.bands_on = case >= 2;
+            assert!(openchuck_app::run_is_current(
+                app.project(),
+                panel.run.as_ref().unwrap()
+            ));
+            panel.playback.seek(&data.timeline, 0.0);
+            while panel.frame(&app, &mut viewport, 0.0) {
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if case % 2 == 0 {
+                // Also reach the end before the first stock surface is ready.
+                panel.cancel_jobs();
+                panel.stock = StockState::default();
+                viewport.set_stock_surface(None);
+            } else {
+                // Reach the end while an earlier cursor's surface job is pending.
+                panel.playback.seek(&data.timeline, 0.4);
+                panel.frame(&app, &mut viewport, 0.0);
+                assert!(panel.stock.mesh.is_some());
+            }
+            match route {
+                0 => panel
+                    .playback
+                    .jump_to_move(&data.timeline, data.timeline.move_count() - 1),
+                1 => panel
+                    .playback
+                    .step(&data.timeline, data.timeline.move_count() as isize),
+                2 => {
+                    panel.playback.play(&data.timeline);
+                    panel.frame(&app, &mut viewport, data.timeline.total_time() + 1.0);
+                }
+                _ => {
+                    let ctx = egui::Context::default();
+                    let draw = |panel: &mut PlaybackPanel, events| {
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    egui::vec2(900.0, 400.0),
+                                )),
+                                events,
+                                ..Default::default()
+                            },
+                            |ui| panel.timeline_bar(ui, &app, &data, None),
+                        );
+                        output.textures_delta.clear();
+                    };
+                    draw(&mut panel, Vec::new());
+                    let (strip, left, width) = panel.strip;
+                    let y = strip.top() - ctx.style_of(ctx.theme()).spacing.item_spacing.y - 13.0;
+                    let from = egui::pos2(left + width * 0.4, y);
+                    let to = egui::pos2(left + width + 2.0, y);
+                    let button = |pos, pressed| egui::Event::PointerButton {
+                        pos,
+                        pressed,
+                        button: egui::PointerButton::Primary,
+                        modifiers: egui::Modifiers::NONE,
+                    };
+                    draw(
+                        &mut panel,
+                        vec![egui::Event::PointerMoved(from), button(from, true)],
+                    );
+                    draw(&mut panel, vec![egui::Event::PointerMoved(to)]);
+                    draw(&mut panel, vec![button(to, false)]);
+                }
+            }
+            // Shell::draw lays out the viewport before run_frame polls playback.
+            // Stop drawing when playback stops requesting frames, just as the UI does.
+            let ctx = egui::Context::default();
+            let drawn_surface = loop {
+                let drawn_surface = viewport.stock_surface().cloned();
+                let mut busy = false;
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    viewport.show(ui);
+                    busy = panel.frame(&app, &mut viewport, 0.0);
+                });
+                output.textures_delta.clear();
+                if !busy {
+                    break drawn_surface;
+                }
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert_eq!(panel.playback.cursor().done, data.timeline.move_count());
+            assert_eq!(panel.stock.shown, Some(panel.playback.cursor()));
+            let expected = app
+                .start_stock_surface(
+                    panel.stock.playback.as_ref().unwrap(),
+                    panel.playback.cursor(),
+                )
+                .wait()
+                .unwrap();
+            assert_eq!(viewport.stock_surface().unwrap().as_ref(), &expected);
+            assert!(
+                drawn_surface
+                    .as_ref()
+                    .is_some_and(|s| s.as_ref() == &expected),
+                "the final cut surface must be handed to the renderer without another user action"
+            );
+            assert!(!viewport.layer(Layer::Stock).unwrap().meshes.is_empty());
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn req_sim_05_the_stock_and_the_deviation_colours_come_from_jobs() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-stock");
         viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
@@ -1996,28 +2139,55 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_04_req_ui_11_failed_stock_surface_preparation_stops_progress_and_reports_the_error()
-    {
-        let (app, mut panel, mut viewport, dir) = prepared("panel-surface-failure");
+    fn req_sim_05_req_ui_11_req_nfr_12_req_gc_15_failed_surface_explains_colours() {
+        failed_stock_preparation_explains_colours(false);
+    }
+
+    #[test]
+    fn req_sim_05_req_ui_11_req_nfr_12_req_gc_15_checkpoint_memory_failure_explains_colours() {
+        failed_stock_preparation_explains_colours(true);
+    }
+
+    fn failed_stock_preparation_explains_colours(checkpoint: bool) {
+        let (mut app, mut panel, mut viewport, dir) = prepared(if checkpoint {
+            "panel-checkpoint-failure"
+        } else {
+            "panel-surface-failure"
+        });
         viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
         let data = panel.data.clone().unwrap();
-        panel.stock.playback = Some(Arc::new(
-            app.start_stock_playback(Arc::clone(&data.timeline))
-                .wait()
-                .unwrap(),
-        ));
+        let export_before = app
+            .export_checks(panel.run.as_deref(), None, None)
+            .can_write();
+        let message = if checkpoint {
+            "stock playback would keep at least 2000 MB of checkpoints across the setups, over the allowed memory; make the simulation cell coarser or play the toolpath without the stock"
+        } else {
+            "The cut surface could not be prepared"
+        };
         let pool = openchuck_app::JobManager::new(openchuck_app::Threads::Exactly(1)).unwrap();
         let (events, _) = std::sync::mpsc::channel();
         let (release, blocked) = std::sync::mpsc::channel();
-        panel.stock.mesh = Some((
-            pool.submit("stock at move", events, move |_| {
+        if checkpoint {
+            // Inject the memory-bound error at the checkpoint job boundary;
+            // allocating 1.5 GiB is neither needed nor safe for this UI test.
+            panel.stock.prepare = Some(pool.submit("prepare playback", events, move |_| {
                 blocked.recv().unwrap();
-                Err(openchuck_app::AppError::Playback(
-                    "The cut surface could not be prepared".to_owned(),
-                ))
-            }),
-            Cursor::default(),
-        ));
+                Err(openchuck_app::AppError::Playback(message.to_owned()))
+            }));
+        } else {
+            panel.stock.playback = Some(Arc::new(
+                app.start_stock_playback(Arc::clone(&data.timeline))
+                    .wait()
+                    .unwrap(),
+            ));
+            panel.stock.mesh = Some((
+                pool.submit("stock at move", events, move |_| {
+                    blocked.recv().unwrap();
+                    Err(openchuck_app::AppError::Playback(message.to_owned()))
+                }),
+                Cursor::default(),
+            ));
+        }
         panel.frame(&app, &mut viewport, 0.0);
         assert!(
             panel
@@ -2031,24 +2201,74 @@ mod tests {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(
-            panel.stock.mesh.is_none(),
-            "failure must not silently start another surface job"
-        );
-        assert!(
-            panel
-                .preparation_progress(&openchuck_app::JobLog::default(), None, false)
-                .is_none()
-        );
-        assert!(
-            panel
-                .stock
-                .error
-                .as_ref()
-                .unwrap()
-                .contains("could not be prepared")
-        );
-        assert!(viewport.stock_surface().is_none());
+        let run = panel.run.clone().unwrap();
+        for stale in [false, true] {
+            if stale {
+                let operation = app.project().operations()[0].id;
+                app.set_parameter(
+                    operation,
+                    "stepover",
+                    Some(openchuck_app::project::ParameterValue::Number(0.6)),
+                )
+                .unwrap();
+            }
+            for _ in 0..3 {
+                panel.frame(&app, &mut viewport, 0.0);
+            }
+            assert!(
+                panel.stock.prepare.is_none() && panel.stock.mesh.is_none(),
+                "no automatic retry"
+            );
+            assert!(
+                panel
+                    .preparation_progress(&openchuck_app::JobLog::default(), None, false)
+                    .is_none()
+            );
+            assert!(panel.stock.error.as_ref().unwrap().contains(message));
+            assert!(viewport.stock_surface().is_none() && viewport.bands().is_none());
+            assert_eq!(openchuck_app::run_is_current(app.project(), &run), !stale);
+            if stale {
+                assert!(!app.export_checks(Some(&run), None, None).can_write());
+            } else {
+                assert_eq!(
+                    app.export_checks(Some(&run), None, None).can_write(),
+                    export_before
+                );
+            }
+            assert!(Arc::ptr_eq(panel.run.as_ref().unwrap(), &run));
+            // Check the actual inspector and dock text, not just the error field.
+            let ctx = egui::Context::default();
+            let mut enabled = true;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                enabled = panel.show_deviation_choice(ui).enabled();
+                panel.show_rest(ui, &app);
+            });
+            output.textures_delta.clear();
+            assert!(
+                !enabled,
+                "a failed cut surface cannot carry deviation colours"
+            );
+            fn texts(shape: &egui::Shape, out: &mut String) {
+                match shape {
+                    egui::Shape::Text(t) => out.push_str(t.galley.text()),
+                    egui::Shape::Vec(v) => {
+                        for s in v {
+                            texts(s, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut text = String::new();
+            for shape in output.shapes {
+                texts(&shape.shape, &mut text);
+            }
+            assert!(text.contains("Deviation colours unavailable"), "{text}");
+            assert!(
+                text.contains(message),
+                "the preparation error stays visible: {text}"
+            );
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 
