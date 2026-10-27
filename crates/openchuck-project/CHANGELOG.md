@@ -9,6 +9,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
 - CHECKPOINT (PRJ-08): separate checksummed recovery containers, portable exclusive writer ownership, complete publication before independent three-periodic/one-interim retention, and revision-bounded Save/close retirement. Normal project schema and saved files are unchanged by recovery reads.
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 

@@ -986,3 +986,234 @@ fn req_tl_07_req_gc_07_req_ui_08_cleanup_preserves_output_and_current_results() 
     assert_eq!(app.regenerate().unwrap().gcode, run.gcode);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// GC-17 reporting leaves motion alone and carries the effective controller
+/// settings and cost into the same-run HTML/PDF setup sheets.
+#[test]
+fn req_gc_17_req_gc_12_report_preserves_output_and_explains_short_blocks() {
+    use openchuck_types::machine::ShortBlockMode;
+    let (dir, mut app, _) = project("short-block-report");
+    with_post(&mut app, "makera-z1");
+    let off = app.regenerate().unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 500.0;
+    machine.block_window = 1;
+    machine.short_block_mode = ShortBlockMode::Report;
+    machine.provenance.insert(
+        openchuck_types::machine::ProfileField::MinBlockMs,
+        openchuck_types::machine::Provenance {
+            state: openchuck_types::machine::Confirmation::Unconfirmed,
+            source: "Fixture calibration, firmware test".into(),
+        },
+    );
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let reported = app.regenerate().unwrap();
+    assert_eq!(reported.toolpath, off.toolpath);
+    assert_eq!(reported.gcode, off.gcode);
+    assert!(!reported.short_blocks.is_empty());
+    assert!(
+        reported
+            .short_blocks
+            .iter()
+            .any(|r| r.affected_windows > 0 && r.added_seconds > 0.0)
+    );
+    assert!(
+        reported
+            .notes
+            .iter()
+            .any(|n| n.contains("short blocks") && n.contains("500"))
+    );
+    let checks = app.export_checks(Some(&reported), Some(&reported), None);
+    assert!(
+        checks
+            .checks
+            .iter()
+            .any(|c| c.text.contains("short blocks"))
+    );
+    let sheet = app.setup_sheet_for_run(&reported);
+    let html = sheet.to_html();
+    let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
+    // Both the per-operation result and the effective settings use the
+    // singular controller-window unit (CodeRabbit, GC-17/GC-12).
+    for text in [&html, &pdf] {
+        // PDF escapes parentheses in its text stream; the visible unit is shared.
+        assert_eq!(text.matches("1 block").count(), 2);
+        assert!(!text.contains("1 blocks"));
+    }
+    for text in [
+        "Short blocks",
+        "500",
+        "machine profile",
+        "Report",
+        "Worst window",
+        "Added time",
+        "Fixture calibration, firmware test",
+    ] {
+        assert!(html.contains(text), "missing {text}: {html}");
+        assert!(pdf.contains(text), "missing {text} in PDF");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Gate 2 must compare the slowed durations, retaining its normal timing
+/// tolerance instead of treating an intentional slowdown as a mismatch.
+#[test]
+fn req_gc_17_req_gc_11_slow_down_replays_and_reports_adjusted_time() {
+    use openchuck_types::machine::ShortBlockMode;
+    let (dir, mut app, _) = project("short-block-slowdown");
+    with_post(&mut app, "makera-z1");
+    let off = app.regenerate().unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 500.0;
+    machine.block_window = 1;
+    machine.short_block_mode = ShortBlockMode::SlowDown;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let slowed = app.regenerate().unwrap();
+    assert_eq!(
+        slowed.toolpath, off.toolpath,
+        "the canonical geometry and strategy time stay intact"
+    );
+    assert_ne!(slowed.gcode, off.gcode);
+    assert!(
+        slowed.reports.iter().all(|r| r.is_clean()),
+        "{:?}",
+        slowed.reports
+    );
+    let adjusted = slowed.posted_toolpath.as_ref().unwrap();
+    assert!(adjusted.total_duration().0 > off.toolpath.total_duration().0);
+    let comparison = slowed.reports[0].comparison.as_ref().unwrap();
+    assert!(
+        (comparison.ir_cut_seconds - comparison.gcode_cut_seconds).abs()
+            / comparison.ir_cut_seconds
+            < 0.01
+    );
+    let planned = app
+        .planned_files(
+            &slowed,
+            &PostSelection::parse("makera-z1"),
+            app.output_grouping(),
+        )
+        .unwrap();
+    assert!(planned[0].programmed_seconds > off.toolpath.total_duration().0);
+    // Previewing a post which explicitly disables management must recompute
+    // its time, rather than reuse the first post's slowdown cost.
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let disabled = dir.join("disabled-preview-post");
+    std::fs::create_dir_all(&disabled).unwrap();
+    std::fs::copy(original.join("main.post"), disabled.join("main.post")).unwrap();
+    let manifest = std::fs::read_to_string(original.join("post.toml")).unwrap();
+    std::fs::write(
+        disabled.join("post.toml"),
+        manifest.replace("[options]", "[options]\nshort_block_mode = \"off\""),
+    )
+    .unwrap();
+    let preview = app
+        .planned_files(
+            &slowed,
+            &PostSelection::Folder(disabled),
+            app.output_grouping(),
+        )
+        .unwrap();
+    assert!((preview[0].programmed_seconds - off.toolpath.total_duration().0).abs() < 1e-6);
+    assert!(
+        app.setup_sheet_for_run(&slowed)
+            .to_html()
+            .contains("Slow down")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_disabled_post_override_is_visible_in_same_run_sheets() {
+    use openchuck_types::machine::ShortBlockMode;
+    let (dir, mut app, _) = project("short-block-disabled");
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let custom = dir.join("custom-post");
+    std::fs::create_dir_all(&custom).unwrap();
+    std::fs::copy(original.join("main.post"), custom.join("main.post")).unwrap();
+    let manifest = std::fs::read_to_string(original.join("post.toml")).unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 500.0;
+    machine.block_window = 32;
+    machine.short_block_mode = ShortBlockMode::Report;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    app.set_post(Some(PostSelection::Folder(custom.clone())));
+    for override_text in [
+        "short_block_mode = \"off\"",
+        "short_block_mode = \"slow_down\"\nmin_block_ms = 0",
+    ] {
+        std::fs::write(
+            custom.join("post.toml"),
+            manifest.replace("[options]", &format!("[options]\n{override_text}")),
+        )
+        .unwrap();
+        let run = app.regenerate().unwrap();
+        assert!(run.short_blocks.is_empty());
+        let (settings, sources) = run.effective_short_blocks.unwrap();
+        assert_eq!(sources.mode, openchuck_post::SettingSource::Post);
+        assert!(settings.mode == ShortBlockMode::Off || settings.min_block_ms == 0.0);
+        let sheet = app.setup_sheet_for_run(&run);
+        for text in [
+            "Short-block settings",
+            "post override",
+            "Off; no slowdown applied",
+            "32 blocks",
+        ] {
+            assert!(sheet.to_html().contains(text), "{text}");
+            assert!(
+                String::from_utf8(sheet.to_pdf()).unwrap().contains(text),
+                "{text}"
+            );
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_11_slowdown_with_max_feed_keeps_the_timing_gate() {
+    use openchuck_types::machine::ShortBlockMode;
+    let (dir, mut app, _) = project("short-block-clamped-gate");
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let custom = dir.join("custom-post");
+    std::fs::create_dir_all(&custom).unwrap();
+    let template = std::fs::read_to_string(original.join("main.post")).unwrap();
+    std::fs::write(custom.join("main.post"), &template).unwrap();
+    let manifest = std::fs::read_to_string(original.join("post.toml")).unwrap();
+    std::fs::write(
+        custom.join("post.toml"),
+        manifest.replace("[options]", "[options]\nmax_feed = 10"),
+    )
+    .unwrap();
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 500.0;
+    machine.block_window = 1;
+    machine.short_block_mode = ShortBlockMode::SlowDown;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    app.set_post(Some(PostSelection::Folder(custom.clone())));
+    let correct = app.regenerate().unwrap();
+    assert!(
+        correct.notes.iter().any(|n| n.contains("maximum feed")),
+        "clamping is exercised"
+    );
+    assert!(
+        correct.reports.iter().all(|r| r.is_clean()),
+        "{:?}",
+        correct.reports
+    );
+    // A faulty user template doubles each feed. Geometry remains identical;
+    // the independent timing check must catch it despite max-feed clamping.
+    let faulty = template.replace("it.feed.value|feed", "(it.feed.value * 2)|feed");
+    assert_ne!(faulty, template);
+    std::fs::write(custom.join("main.post"), faulty).unwrap();
+    let wrong = app.regenerate().unwrap();
+    assert!(
+        wrong.reports.iter().any(|r| r.comparison.is_err()),
+        "{:?}",
+        wrong.reports
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -242,6 +242,160 @@ fn describe_shape(tool: &ToolSnapshot) -> String {
 }
 
 impl SetupSheet {
+    /// Records effective controller settings even when the check is disabled.
+    #[must_use]
+    pub fn with_short_block_configuration(
+        mut self,
+        settings: openchuck_post::ShortBlockSettings,
+        sources: openchuck_post::ShortBlockSources,
+    ) -> Self {
+        self.sections.push(SheetSection {
+            heading: "Short-block settings".into(),
+            body: SheetBody::Facts(vec![
+                (
+                    "Mode".into(),
+                    format!("{} ({})", settings.mode.label(), sources.mode.as_str()),
+                ),
+                (
+                    "Minimum average block time".into(),
+                    format!(
+                        "{} ms ({})",
+                        plain(settings.min_block_ms, 3),
+                        sources.min_block_ms.as_str()
+                    ),
+                ),
+                (
+                    "Block window".into(),
+                    format!(
+                        "{} block{} ({})",
+                        settings.block_window,
+                        if settings.block_window == 1 { "" } else { "s" },
+                        sources.block_window.as_str()
+                    ),
+                ),
+                (
+                    "Check".into(),
+                    if settings.min_block_ms == 0.0
+                        || settings.mode == openchuck_types::machine::ShortBlockMode::Off
+                    {
+                        "Off; no slowdown applied"
+                    } else {
+                        "Enabled"
+                    }
+                    .into(),
+                ),
+            ]),
+        });
+        self
+    }
+
+    /// Adds the selected post's effective short-block settings and results.
+    /// Report lists the possible slowdown cost; Slow down lists the applied
+    /// cost. Both formats render these same facts (GC-17, GC-12).
+    #[must_use]
+    pub fn with_short_blocks(
+        mut self,
+        project: &Project,
+        reports: &[openchuck_post::ShortBlockReport],
+    ) -> Self {
+        use openchuck_types::machine::ShortBlockMode;
+        for report in reports {
+            let operation = project
+                .operations()
+                .iter()
+                .find(|o| o.id.to_string() == report.operation)
+                .map_or(report.operation.as_str(), |o| o.name.as_str());
+            let mode = match report.settings.mode {
+                ShortBlockMode::Off => "Off",
+                ShortBlockMode::Report => "Report",
+                ShortBlockMode::SlowDown => "Slow down",
+            };
+            let mut facts = vec![
+                (
+                    "Mode".into(),
+                    format!("{mode} ({})", report.sources.mode.as_str()),
+                ),
+                (
+                    "Minimum average block time".into(),
+                    format!(
+                        "{} ms ({})",
+                        plain(report.settings.min_block_ms, 3),
+                        report.sources.min_block_ms.as_str()
+                    ),
+                ),
+                (
+                    "Block window".into(),
+                    format!(
+                        "{} block{} ({})",
+                        report.settings.block_window,
+                        if report.settings.block_window == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        report.sources.block_window.as_str()
+                    ),
+                ),
+                (
+                    "Moves below the limit".into(),
+                    report.short_moves.to_string(),
+                ),
+                (
+                    "Longest run below the limit".into(),
+                    format!("{} moves", report.longest_run),
+                ),
+                (
+                    "Affected windows".into(),
+                    report.affected_windows.to_string(),
+                ),
+                (
+                    "Worst window".into(),
+                    format!(
+                        "{} ms average before slowdown",
+                        plain(report.worst_window_ms, 3)
+                    ),
+                ),
+                (
+                    "Effective feed".into(),
+                    format!("{} mm/min", plain(report.effective_feed, 3)),
+                ),
+                (
+                    "Added time".into(),
+                    format!(
+                        "{} s ({})",
+                        plain(report.added_seconds, 3),
+                        if report.settings.mode == ShortBlockMode::SlowDown {
+                            "applied"
+                        } else {
+                            "if Slow down is selected"
+                        }
+                    ),
+                ),
+                (
+                    if report.settings.mode == ShortBlockMode::SlowDown {
+                        "Slowed moves"
+                    } else {
+                        "Moves to slow"
+                    }
+                    .into(),
+                    report.slowed_moves.to_string(),
+                ),
+            ];
+            if report.sources.min_block_ms == openchuck_post::SettingSource::Profile
+                && let Some(provenance) = project.machine().and_then(|m| {
+                    m.provenance
+                        .get(&openchuck_types::machine::ProfileField::MinBlockMs)
+                })
+            {
+                facts.push(("Threshold evidence".into(), provenance.source.clone()));
+            }
+            self.sections.push(SheetSection {
+                heading: format!("Short blocks: {operation}"),
+                body: SheetBody::Facts(facts),
+            });
+        }
+        self
+    }
     /// Add the selected post's GC-17 report to the shared HTML/PDF document.
     pub(crate) fn with_block_time(
         mut self,
@@ -254,7 +408,8 @@ impl SetupSheet {
         };
         let profile = openchuck_post::BlockTimeSettings {
             min_block_ms: machine.min_block_ms,
-            block_window: machine.block_window,
+            // The application's validated profile caps the window at 4096.
+            block_window: machine.block_window as u32,
             mode: machine.short_block_mode,
         };
         let report = options.and_then(|options| {
@@ -265,21 +420,43 @@ impl SetupSheet {
             };
             let settings = options.as_ref().map_or(profile, |o| o.block_time(profile));
             openchuck_post::block_time_reports(path, settings)
-                .map(|reports| (reports, source))
+                .map(|reports| {
+                    (
+                        reports,
+                        source,
+                        settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown,
+                    )
+                })
                 .map_err(|e| e.to_string())
         });
         let facts = match report {
-            Ok((reports, source)) => reports
-                .into_iter()
-                .map(|r| {
-                    let name = project
-                        .operations()
-                        .iter()
-                        .find(|o| o.id.to_string() == r.operation)
-                        .map_or_else(|| r.operation.clone(), |o| o.name.clone());
-                    (name, r.summary(source))
-                })
-                .collect::<Vec<_>>(),
+            Ok((reports, source, preview)) => {
+                let mut facts = reports
+                    .into_iter()
+                    .map(|r| {
+                        let name = project
+                            .operations()
+                            .iter()
+                            .find(|o| o.id.to_string() == r.operation)
+                            .map_or_else(|| r.operation.clone(), |o| o.name.clone());
+                        let summary = if preview {
+                            let mean = if r.windows == 0 {
+                                "no complete window".to_owned()
+                            } else {
+                                format!("worst mean {:.3} ms, effective feed in longest run {:.3} mm/min", r.worst_mean_ms, r.effective_feed)
+                            };
+                            format!("minimum block time {:.3} ms ({source}), window {}; {} affected blocks, longest run {}; {mean}; estimated slow-down adds {:.3} s.", r.settings.min_block_ms, r.settings.block_window, r.affected_blocks, r.longest_run, r.seconds_added)
+                        } else {
+                            r.summary(source)
+                        };
+                        (name, summary)
+                    })
+                    .collect::<Vec<_>>();
+                if preview {
+                    facts.push(("Preview".into(), "Toolpath-only preview; selected Slow down has not been applied. Use the same-run setup sheet for posted feeds and times.".into()));
+                }
+                facts
+            }
             Err(error) => vec![("Report unavailable".into(), error)],
         };
         if !facts.is_empty() {

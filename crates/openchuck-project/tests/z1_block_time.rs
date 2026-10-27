@@ -58,7 +58,11 @@ fn req_gc_17_req_prj_04_older_z1_copies_stay_off_and_other_profiles_default_off(
 #[test]
 fn req_gc_17_req_prj_04_new_fields_need_the_claimed_schema() {
     let text = include_str!("../machines/makera-z1.toml");
-    let old = text.replacen("schema = 5", "schema = 4", 1);
+    let old = text.replacen(
+        &format!("schema = {}", openchuck_project::machines::MACHINE_SCHEMA),
+        "schema = 4",
+        1,
+    );
     let error = openchuck_project::machines::parse_profile(std::path::Path::new("old.toml"), &old)
         .unwrap_err();
     assert!(error.to_string().contains("predates"));
@@ -75,4 +79,63 @@ fn req_gc_17_off_does_not_add_unconfirmed_machine_warnings_to_older_projects() {
             | openchuck_types::machine::ProfileField::BlockWindow
             | openchuck_types::machine::ProfileField::ShortBlockMode
     )));
+}
+
+#[test]
+fn req_gc_17_req_prj_04_published_schema_5_profile_settings_keep_their_meaning() {
+    use openchuck_types::machine::{ProfileField, ShortBlockMode};
+    let text = include_str!("../machines/makera-z1.toml");
+    let old = text.replacen(
+        &format!("schema = {}", openchuck_project::machines::MACHINE_SCHEMA),
+        "schema = 5",
+        1,
+    );
+    let profile =
+        openchuck_project::machines::parse_profile(std::path::Path::new("published.toml"), &old)
+            .unwrap();
+    assert_eq!(
+        (
+            profile.min_block_ms,
+            profile.block_window,
+            profile.short_block_mode
+        ),
+        (7.0, 32, ShortBlockMode::Report)
+    );
+    assert_eq!(profile.fields().len(), 10);
+    assert_eq!(
+        profile.unconfirmed_fields(),
+        [
+            ProfileField::RotaryOrigin,
+            ProfileField::Travel,
+            ProfileField::Clearance,
+            ProfileField::BlockWindow,
+            ProfileField::SpindleRange
+        ]
+    );
+    assert!(!profile.fields().contains(&ProfileField::ShortBlockMode));
+}
+
+#[test]
+fn req_gc_17_req_prj_04_slow_down_requires_machine_schema_6_even_when_inactive() {
+    use openchuck_project::machines::{MACHINE_SCHEMA, parse_profile, render_profile};
+    use openchuck_types::machine::{MachineProfile, ShortBlockMode};
+    let mut profile = MachineProfile::example_x_rotary();
+    profile.block_window = 32;
+    profile.short_block_mode = ShortBlockMode::SlowDown;
+    for milliseconds in [0.0, 7.0] {
+        profile.min_block_ms = milliseconds;
+        let text = render_profile(&profile).unwrap();
+        assert_eq!(
+            parse_profile(std::path::Path::new("current.toml"), &text).unwrap(),
+            profile
+        );
+        let downgraded = text.replacen(&format!("schema = {MACHINE_SCHEMA}"), "schema = 5", 1);
+        let error = parse_profile(std::path::Path::new("old.toml"), &downgraded)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("slow_down") && error.contains("schema 6"),
+            "{error}"
+        );
+    }
 }

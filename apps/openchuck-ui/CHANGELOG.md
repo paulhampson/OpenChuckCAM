@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- GC-17: configure minimum block time, window and Off/Report/Slow down in the machine inspector; show effective post settings, command demand and predicted/applied time cost before export and on same-run setup sheets.
 - CHECKPOINT, PRJ-08, issue #295: configure a per-user recovery interval,
   retain three scheduled checkpoints plus a separate fifteen-second interim,
   and choose recovery into unsaved memory. Startup discovery, moved-folder

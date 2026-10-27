@@ -571,6 +571,22 @@ fn run(cli: Cli) -> Result<()> {
             for note in &result.notes {
                 eprintln!("warning: {note}");
             }
+            if let Some((settings, sources)) = result.effective_short_blocks {
+                eprintln!(
+                    "short-block settings: {} ({}), {:.3} ms ({}), {} {} ({})",
+                    settings.mode.label(),
+                    sources.mode.as_str(),
+                    settings.min_block_ms,
+                    sources.min_block_ms.as_str(),
+                    settings.block_window,
+                    if settings.block_window == 1 {
+                        "block"
+                    } else {
+                        "blocks"
+                    },
+                    sources.block_window.as_str()
+                );
+            }
             if let Some(out) = &out {
                 std::fs::create_dir_all(out)
                     .with_context(|| format!("cannot create output folder '{}'", out.display()))?;
@@ -581,7 +597,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
             if setup_sheet && let Some(out) = &out {
-                for path in app.write_setup_sheet(out, Some(&result.toolpath))? {
+                for path in app.write_setup_sheet_for_run(out, &result)? {
                     println!("wrote {}", path.display());
                 }
             }
@@ -1647,16 +1663,23 @@ fn print_machine(profile: &MachineProfile) {
         "clearance:  safe cylinder radius {} mm, safe Z {} mm above the axis (default)",
         p.clearance.radius.0, p.clearance.safe_z.0
     );
-    println!(
-        "block time: {:.3} ms, window {}, {:?}",
-        p.min_block_ms, p.block_window, p.short_block_mode
-    );
     match (p.min_spindle_rpm, p.max_spindle_rpm) {
         (Some(min), Some(max)) => println!("spindle:    {} to {} rpm", min.0, max.0),
         (None, Some(max)) => println!("spindle:    up to {} rpm", max.0),
         (Some(min), None) => println!("spindle:    from {} rpm", min.0),
         (None, None) => {}
     }
+    println!(
+        "short blocks: {} ms averaged over {} {}; {}",
+        p.min_block_ms,
+        p.block_window,
+        if p.block_window == 1 {
+            "block"
+        } else {
+            "blocks"
+        },
+        p.short_block_mode.label()
+    );
     for field in p.fields() {
         match p.provenance.get(&field) {
             Some(source) => {

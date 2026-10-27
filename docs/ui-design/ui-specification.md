@@ -973,3 +973,9 @@ Known gaps in the images: the footer omits the short G-code notice of section 10
 ### Optional back-and-forth ramp
 
 The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.
+
+### Short-move command demand (GC-17, decisions 0222 and 0244)
+
+The machine inspector exposes Minimum block time (ms), Block window (1 to 4096) and Off/Report/Slow down. Explain that zero disables the check, a larger time trades speed for smoothness, and slowdown preserves programmed geometry. User edits preserve the machine library identity and mark the edited field provenance unconfirmed. The new Z1 profile starts at Report / 7 ms / 32; loaded older project copies retain Off.
+
+The Files area shows effective mode, time and window with each setting's source, including Off and post overrides. Same-run HTML/PDF setup sheets show the same settings and per-operation demand figures, predicted or applied added time, with export warnings for deficient windows. The selected post's timing drives replay and output estimates. Geometry-only setup sheets without a posted run have no post-specific command-demand result. No wording promises smoothness on untested hardware.

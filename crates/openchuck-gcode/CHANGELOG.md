@@ -15,6 +15,8 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
 - Use the written rotary angle when identifying rounded-away moves; keep tip comparison against the original IR and unchanged tolerances (issue #324).
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 

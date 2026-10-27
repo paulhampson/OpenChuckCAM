@@ -17,8 +17,8 @@ LINUXCNC_RIP=/path/to/linuxcnc cargo xtask replay prog.ngc   # a run-in-place bu
 A failing program is run once more and the second result counts, because a loaded machine can leave a gap in the samples that hides a corner; the driver writes the longest gap (`max_gap`, seconds) into its report. Run it on an otherwise idle machine: the simulator runs in real time (the reference jobs take 1.5 to 2.5 minutes each) and a busy machine can leave gaps in the samples. trivkins treats A as a plain number, so a pass proves the dialect, the reached positions and the absence of faults, not the A direction (decision record 0001).
 
 The first-cut golden is expanded automatically into temporary bounded fixtures
-before CI shares are assigned (GC-10, OI-991; proposed record 0244, with the
-underlying approach directly authorized by the owner). Every original line is
+before CI shares are assigned (GC-10, OI-991; decision 0244, accepted by the
+owner on 26 Oct 2026). Every original line is
 retained exactly once across contiguous source ranges. The planner supports only
 this fixture's absolute metric G0/G1 subset and refuses unfamiliar modes.
 Each unit targets at most 300 s estimated simulator time including startup;
