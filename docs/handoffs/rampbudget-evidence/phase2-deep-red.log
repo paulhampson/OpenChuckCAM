@@ -1,0 +1,28 @@
+   Compiling openchuck-path v0.23.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.35s
+────────────
+ Nextest run ID a6746a8b-f79d-41d2-b580-c0ad206eeb03 with nextest profile: default
+    Starting 4 tests across 2 binaries (21 tests skipped)
+       START [         ] (1/4) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available
+
+running 1 test
+
+thread 'req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available' (12571) panicked at crates/openchuck-path/tests/entry.rs:788:49:
+called `Result::unwrap()` on an `Err` value: Strategy("back-and-forth ramp clearance: the entry's clearance budget is exhausted")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available ... FAILED
+
+failures:
+
+failures:
+    req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 15 filtered out; finished in 1.16s
+
+        FAIL [   1.161s] (1/4) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available
+  Cancelling due to test failure
+────────────
+     Summary [   1.162s] 1/4 tests run: 0 passed, 1 failed, 21 skipped
+        FAIL [   1.161s] (1/4) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available
+warning: 3/4 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed

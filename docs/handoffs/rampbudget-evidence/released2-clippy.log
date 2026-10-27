@@ -1,0 +1,4 @@
+   Compiling openchuck-buildinfo v0.24.0 (/workspace/OpenChuckCAM/crates/openchuck-buildinfo)
+    Checking openchuck-ui v0.24.0 (/workspace/OpenChuckCAM/apps/openchuck-ui)
+    Checking openchuck-cli v0.24.0 (/workspace/OpenChuckCAM/apps/openchuck-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.77s

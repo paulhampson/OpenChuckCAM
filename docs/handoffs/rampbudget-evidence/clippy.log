@@ -1,0 +1,5 @@
+   Compiling openchuck-buildinfo v0.23.0 (/workspace/OpenChuckCAM/crates/openchuck-buildinfo)
+    Checking openchuck-path v0.23.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Checking openchuck-cli v0.23.0 (/workspace/OpenChuckCAM/apps/openchuck-cli)
+    Checking openchuck-ui v0.23.0 (/workspace/OpenChuckCAM/apps/openchuck-ui)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.42s

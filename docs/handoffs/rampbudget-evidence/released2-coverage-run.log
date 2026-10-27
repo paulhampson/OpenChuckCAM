@@ -1,0 +1,367 @@
+info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
+   Compiling openchuck-types v0.24.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling openchuck-testkit v0.24.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling openchuck-path v0.24.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 53.00s
+────────────
+ Nextest run ID 6ca1d7aa-965a-4525-ad6e-0e296e3fc494 with nextest profile: coverage
+    Starting 357 tests across 32 binaries (16 tests skipped via profile.coverage.default-filter)
+        PASS [   0.004s] (  1/357) openchuck-path assemble::ramp::tests::req_op_11_half_unit_rounding_must_not_remove_all_descent
+        PASS [   0.004s] (  2/357) openchuck-path assemble::ramp::tests::req_op_11_every_written_leg_descends_and_sub_resolution_entries_refuse
+        PASS [   0.005s] (  3/357) openchuck-path assemble::ramp::tests::req_op_11_minimum_length_is_inclusive_and_impossible_entries_refuse
+        PASS [   0.006s] (  4/357) openchuck-path assemble::ramp::tests::req_nfr_04_ramp_planning_cancels_during_generation
+        PASS [   0.005s] (  5/357) openchuck-path assemble::ramp::tests::req_op_11_req_op_13_multiple_descending_legs_and_partial_final_leg
+        PASS [   0.004s] (  6/357) openchuck-path assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle
+        PASS [   0.004s] (  7/357) openchuck-path assemble::tests::req_op_13_a_move_that_hardly_moves_x_is_timed_against_z
+        PASS [   0.005s] (  8/357) openchuck-path assemble::tests::req_op_13_a_controller_that_counts_a_in_the_feed_word_keeps_it_within_the_limit
+        PASS [   0.005s] (  9/357) openchuck-path assemble::tests::req_op_13_contact_smoothing_follows_each_tip_whatever_the_spacing
+        PASS [   0.005s] ( 10/357) openchuck-path assemble::tests::req_op_13_contact_smoothing_stops_at_a_wall_step
+        PASS [   0.004s] ( 11/357) openchuck-path assemble::walls::tests::req_op_13_a_pass_without_a_wall_is_unchanged
+        PASS [   0.004s] ( 12/357) openchuck-path assemble::walls::tests::req_op_12_a_merge_keeps_every_dropped_point_within_the_chord
+        PASS [   0.004s] ( 13/357) openchuck-path assemble::walls::tests::req_op_13_micro_moves_before_a_climb_merge_into_one_move
+        PASS [   0.004s] ( 14/357) openchuck-path brep_edges::tests::req_op_09_an_edge_that_turns_both_ways_or_cannot_be_told_is_no_inside_corner
+        PASS [   0.004s] ( 15/357) openchuck-path entry_safety::tests::req_nfr_04_req_nfr_06_memo_evicts_in_insertion_order_with_bounded_storage
+        PASS [   0.004s] ( 16/357) openchuck-path entry_safety::tests::req_nfr_04_req_nfr_07_cancellation_during_query_and_cached_check_returns_no_certificate
+        PASS [   0.006s] ( 17/357) openchuck-path entry_safety::tests::req_op_12_req_nfr_04_memo_reuses_contacts_and_no_contact_only_for_exact_inputs
+        PASS [   0.005s] ( 18/357) openchuck-path entry_safety::tests::req_op_12_req_set_09_new_target_or_complete_body_never_inherits_a_previous_clear_answer
+        PASS [   0.005s] ( 19/357) openchuck-path extend::tests::req_op_24_the_default_distance_is_a_tenth_of_the_tool_diameter
+        PASS [   0.005s] ( 20/357) openchuck-path pencil::tests::req_op_09_req_nfr_12_a_move_is_checked_on_the_arc_the_machine_turns
+        PASS [   0.006s] ( 21/357) openchuck-path pencil::tests::req_op_09_req_nfr_12_a_turn_is_sampled_by_the_arc_the_tool_sweeps
+        PASS [   0.004s] ( 22/357) openchuck-path simultaneous::tests::req_op_06_req_op_15_smoothing_removes_small_reversals_with_least_deviation
+        PASS [   0.005s] ( 23/357) openchuck-path simultaneous::tests::req_op_06_smoothing_keeps_a_monotone_target_exactly
+        PASS [   0.004s] ( 24/357) openchuck-path simultaneous::tests::req_op_15_the_taut_string_bends_round_a_sine
+        PASS [   0.004s] ( 25/357) openchuck-path simultaneous::tests::req_op_15_the_taut_string_is_straight_where_the_band_allows
+        PASS [   0.004s] ( 26/357) openchuck-path simultaneous::tests::req_op_15_the_taut_string_stays_in_the_band_and_removes_jitter
+        PASS [   0.005s] ( 27/357) openchuck-path strategy::tests::req_set_09_a_pass_is_cut_short_where_it_would_reach_over_a_held_region
+        PASS [   0.005s] ( 28/357) openchuck-path strategy::tests::req_set_09_messages_name_the_held_region_by_its_end_of_the_stock
+        PASS [   0.005s] ( 29/357) openchuck-path strategy::tests::req_set_09_nothing_changes_without_a_held_region_or_when_clear
+        PASS [   0.004s] ( 30/357) openchuck-path strategy::tests::req_set_09_req_nfr_07_an_operation_wholly_over_a_held_region_is_refused
+        PASS [   0.004s] ( 31/357) openchuck-path strategy::tests::req_set_09_req_nfr_12_an_assembled_move_at_feed_that_reaches_in_refuses_the_path
+        PASS [   0.004s] ( 32/357) openchuck-path strategy::tests::req_set_09_req_op_10_a_drilled_hole_over_a_held_region_is_dropped_whole
+        PASS [   0.323s] ( 33/357) openchuck-path entry_safety::tests::req_op_12_req_nfr_04_memo_preserves_certificates_and_budget_at_lower_query_cost
+        PASS [   0.100s] ( 34/357) openchuck-path::axial req_nfr_04_req_ui_09_req_nfr_06_quiet_passes_keep_timings_without_changing_progress_or_paths
+        PASS [   0.551s] ( 35/357) openchuck-path::axial req_nfr_04_axial_finishing_fits_its_passes_on_more_than_one_thread
+        PASS [   2.211s] ( 36/357) openchuck-path candidates::tests::req_op_02_candidate_intervals_are_the_region_offset_along_random_lines
+        PASS [   2.136s] ( 37/357) openchuck-path::axial req_op_04_axial_passes_close_the_circle_and_follow_a_cylinder
+        PASS [   0.492s] ( 38/357) openchuck-path::axial req_op_04_axial_zigzag_alternates_and_climb_does_not
+        PASS [   2.980s] ( 39/357) openchuck-path::axial req_op_04_req_op_11_scallop_sets_the_pass_count_for_ball_and_warns_for_flat
+        PASS [  21.205s] ( 40/357) openchuck-path::axial req_nfr_06_axial_finishing_is_identical_at_1_2_and_n_threads
+        PASS [  25.112s] ( 41/357) openchuck-path::axial property::req_op_04_every_surface_point_is_within_the_stepover_of_the_path
+        PASS [   0.491s] ( 42/357) openchuck-path::axial req_op_14_req_op_11_lead_entry_beside_the_stock_end_never_rapids_into_stock
+        PASS [   4.076s] ( 43/357) openchuck-path::axial req_op_11_lead_entry_works_on_all_three_finishing_strategies
+        PASS [   0.143s] ( 44/357) openchuck-path::axial req_ui_09_axial_finishing_counts_its_passes_with_one_total_that_only_goes_up
+        PASS [   0.256s] ( 45/357) openchuck-path::axial req_ui_09_a_pass_that_fails_is_not_counted_as_done
+        PASS [   0.103s] ( 46/357) openchuck-path::brep_edge_following req_nfr_06_req_op_08_brep_exact_edge_following_is_identical_at_1_2_and_n_threads
+        PASS [   0.020s] ( 47/357) openchuck-path::brep_edge_following req_op_08_brep_a_chain_on_an_edge_with_an_exact_curve_lies_on_the_curve
+        PASS [   0.024s] ( 48/357) openchuck-path::brep_edge_following req_op_08_brep_a_curve_that_does_not_meet_its_edge_is_ignored
+        PASS [   0.400s] ( 49/357) openchuck-path::brep_edge_following req_op_08_brep_a_part_with_no_real_edge_says_so
+        PASS [   0.660s] ( 50/357) openchuck-path::brep_edge_following req_nfr_06_req_op_08_brep_edge_following_is_identical_at_1_2_and_n_threads
+        PASS [   0.576s] ( 51/357) openchuck-path::brep_edge_following req_op_08_brep_an_edge_that_is_not_a_seam_on_a_curved_face_is_followed
+        PASS [   0.028s] ( 52/357) openchuck-path::brep_edge_following req_op_08_brep_an_edge_without_an_exact_curve_keeps_the_kernels_polyline
+        PASS [   1.112s] ( 53/357) openchuck-path::brep_edge_following req_op_08_brep_a_tangent_edge_is_not_an_edge_unless_the_crease_angle_is_zero
+        PASS [   0.044s] ( 54/357) openchuck-path::brep_edge_following req_op_08_brep_edges_join_into_open_and_closed_chains_and_stop_where_three_meet
+        PASS [   0.304s] ( 55/357) openchuck-path::brep_edge_following req_op_08_brep_engraved_depth_is_constant_along_an_open_helix_on_a_curved_surface
+        PASS [   0.988s] ( 56/357) openchuck-path::brep_edge_following req_op_08_brep_chosen_edges_are_the_only_ones_followed_and_a_bad_id_is_refused
+        PASS [   0.044s] ( 57/357) openchuck-path::brep_edge_following req_op_08_brep_engraved_depth_is_exact_on_a_coarsely_tessellated_curved_edge
+        PASS [   0.012s] ( 58/357) openchuck-path::brep_edge_following req_op_08_brep_short_chains_are_dropped_by_the_shortest_length
+        PASS [   0.324s] ( 59/357) openchuck-path::brep_edge_following req_op_08_brep_engraved_depth_is_constant_on_a_curved_surface_closed_chains
+        PASS [   0.068s] ( 60/357) openchuck-path::brep_faces req_imp_02_answers_are_deterministic
+        PASS [   0.496s] ( 61/357) openchuck-path::brep_edge_following req_op_08_brep_the_rims_of_a_cylinder_are_two_closed_chains_and_the_seam_is_no_edge
+        PASS [   3.497s] ( 62/357) openchuck-path::brep_faces req_imp_02_bspline_sphere_accuracy_numbers
+        PASS [   1.471s] ( 63/357) openchuck-path::brep_faces req_imp_02_bspline_sphere_closest_survives_the_poles
+        PASS [  30.108s] ( 64/357) openchuck-path::axial req_op_04_the_ends_of_a_part_are_within_the_stepover_of_the_path
+        PASS [   0.017s] ( 65/357) openchuck-path::brep_faces req_imp_02_cylinder_exact_vs_closed_form
+        PASS [   0.009s] ( 66/357) openchuck-path::brep_faces req_imp_02_invalid_faces_are_errors_not_panics
+        PASS [   0.038s] ( 67/357) openchuck-path::brep_faces req_imp_02_mirrored_frame_uses_the_given_y_and_flips_with_reversed
+        PASS [   0.021s] ( 68/357) openchuck-path::brep_faces req_imp_02_plane_disc_with_a_hole_misses_through_the_hole
+        PASS [   3.915s] ( 69/357) openchuck-path::brep_faces req_imp_02_prop_closest_is_no_further_than_any_sampled_point
+        PASS [   0.509s] ( 70/357) openchuck-path::brep_faces req_imp_02_prop_ray_hits_lie_on_the_surface
+        PASS [   0.256s] ( 71/357) openchuck-path::brep_faces req_imp_02_rational_quarter_cylinder_equals_the_closed_form
+        PASS [   0.015s] ( 72/357) openchuck-path::brep_faces req_imp_02_reversed_face_flips_normals
+        PASS [   0.023s] ( 73/357) openchuck-path::brep_faces req_imp_02_source_drop_tool_falls_back_to_the_tessellation
+        PASS [   0.017s] ( 74/357) openchuck-path::brep_faces req_imp_02_source_project_and_cast_ray_report_the_face
+        PASS [   0.036s] ( 75/357) openchuck-path::brep_faces req_imp_02_source_restricted_to_selected_faces
+        PASS [   0.016s] ( 76/357) openchuck-path::brep_faces req_imp_02_sphere_pole_closest_and_ray_through_the_pole
+        PASS [   0.016s] ( 77/357) openchuck-path::brep_faces req_imp_02_torus_ray_hits_all_four_walls
+        PASS [   0.292s] ( 78/357) openchuck-path::brep_faces req_imp_02_unwrapped_nurbs_cylinder_equals_the_analytic_cylinder
+        PASS [  10.332s] ( 79/357) openchuck-path::brep_faces req_imp_02_cone_rays_and_closest
+        PASS [  16.128s] ( 80/357) openchuck-path::brep_faces req_imp_02_bspline_patch_matches_its_bezier_form_and_hits_lie_on_it
+        PASS [   0.992s] ( 81/357) openchuck-path::brep_pencil req_op_09_brep_a_part_with_no_inside_corner_says_so
+        PASS [   2.559s] ( 82/357) openchuck-path::brep_pencil req_op_09_brep_no_false_creases_between_the_facets_of_a_fillet
+        PASS [   0.896s] ( 83/357) openchuck-path::brep_pencil req_op_09_brep_pencil_takes_no_region
+        PASS [   4.173s] ( 84/357) openchuck-path::brep_pencil req_op_09_brep_pencil_cuts_only_where_material_is_left
+        PASS [   2.767s] ( 85/357) openchuck-path::brep_pencil req_op_09_req_nfr_07_brep_an_edge_whose_faces_cannot_be_compared_is_counted_as_left_out
+        PASS [   9.304s] ( 86/357) openchuck-path::brep_pencil req_nfr_06_req_op_09_brep_pencil_is_identical_at_1_2_and_n_threads
+        PASS [   5.248s] ( 87/357) openchuck-path::brep_pencil req_op_09_brep_the_only_crease_of_the_shouldered_shaft_is_its_sharp_inside_corner
+        PASS [   3.612s] ( 88/357) openchuck-path::brep_pencil req_op_09_req_nfr_12_brep_an_edge_whose_side_cannot_be_told_is_left_out_and_said
+        PASS [   0.008s] ( 89/357) openchuck-path::cutter req_nfr_07_bad_meshes_are_refused_with_a_message
+        PASS [   0.010s] ( 90/357) openchuck-path::cutter req_nfr_07_degenerate_triangles_do_not_break_queries
+        PASS [   0.009s] ( 91/357) openchuck-path::cutter req_op_11_the_cutter_contact_is_on_the_tool_stock_away_from_the_surface_point
+        PASS [   4.471s] ( 92/357) openchuck-path::brep_pencil req_op_09_req_nfr_12_brep_pencil_rests_in_the_corner_within_tolerance_without_gouging
+        PASS [   0.024s] ( 93/357) openchuck-path::cutter req_op_12_custom_profile_agrees_with_the_standard_tool
+        PASS [   0.038s] ( 94/357) openchuck-path::cutter req_op_12_drop_matches_closed_form_on_a_cylinder
+        PASS [  56.554s] ( 95/357) openchuck-path::axial req_op_04_axial_leaves_no_gouge_and_no_uncovered_surface_on_a_cone
+        PASS [   1.711s] ( 96/357) openchuck-path::cutter req_op_11_the_grown_tool_is_the_tool_plus_a_ball
+        PASS [   0.006s] ( 97/357) openchuck-path::cutter req_op_12_req_nfr_05_the_contact_normal_is_the_tools_normal_at_the_contact
+        PASS [   0.014s] ( 98/357) openchuck-path::cutter req_op_12_surface_queries_agree_with_the_exact_cylinder
+        PASS [   0.456s] ( 99/357) openchuck-path::drill req_nfr_06_req_op_10_drilling_is_identical_at_1_2_and_n_threads
+        PASS [   0.995s] (100/357) openchuck-path::drill req_nfr_07_an_empty_or_cancelled_drilling_job_is_a_clear_error
+        PASS [   1.999s] (101/357) openchuck-path::cutter req_op_12_drop_matches_closed_form_on_a_sphere_at_any_a
+        PASS [   0.143s] (102/357) openchuck-path::drill req_op_10_a_face_selection_picks_the_holes_and_the_composite_keeps_them
+        PASS [   0.339s] (103/357) openchuck-path::drill req_op_10_a_hole_off_the_rotary_axis_is_drilled_with_the_tool_offset
+        PASS [   1.113s] (104/357) openchuck-path::drill req_op_10_a_convex_cylinder_and_a_mesh_have_no_holes
+        PASS [   0.560s] (105/357) openchuck-path::drill req_op_10_angles_are_visited_in_one_sweep_after_the_largest_gap
+        PASS [   0.147s] (106/357) openchuck-path::drill req_op_10_holes_are_found_from_cylindrical_faces_with_axis_diameter_and_depth
+        PASS [   0.357s] (107/357) openchuck-path::drill req_op_10_blind_depth_may_be_to_the_tip_and_a_point_is_found_in_the_model
+        PASS [   0.420s] (108/357) openchuck-path::drill req_op_10_holes_the_tool_cannot_drill_are_left_out_with_a_note
+        PASS [   0.493s] (109/357) openchuck-path::drill req_op_10_holes_at_several_angles_have_the_right_a_position_and_depth
+        PASS [   0.072s] (110/357) openchuck-path::drill req_op_10_overlapping_partial_walls_are_not_a_full_round_hole
+        PASS [   0.393s] (111/357) openchuck-path::drill req_op_10_peck_and_retract_heights_are_correct_and_stay_clear_of_the_part
+        PASS [   0.809s] (112/357) openchuck-path::drill req_op_10_op_15_a_limited_range_is_swept_from_its_low_end_or_refused
+        PASS [   0.351s] (113/357) openchuck-path::drill req_op_10_stock_above_the_opening_raises_the_retract_height
+        PASS [   0.005s] (114/357) openchuck-path::drill req_op_10_the_schema_is_uniform_and_the_strategy_is_registered
+        PASS [   0.004s] (115/357) openchuck-path::edge_curve req_op_08_exact_curve_a_chord_is_checked_beyond_its_midpoint
+        PASS [   0.043s] (116/357) openchuck-path::edge_curve req_op_08_exact_curve_a_circle_arc_lies_on_the_circle_within_the_sag_limit
+        PASS [   0.008s] (117/357) openchuck-path::edge_curve req_op_08_exact_curve_a_curve_that_cannot_be_evaluated_gives_nothing
+        PASS [   0.008s] (118/357) openchuck-path::edge_curve req_op_08_exact_curve_a_line_is_its_two_ends
+        PASS [   0.005s] (119/357) openchuck-path::edge_curve req_op_08_exact_curve_a_rational_spline_quarter_circle_is_a_circle
+        PASS [   0.005s] (120/357) openchuck-path::edge_curve req_op_08_exact_curve_a_reversed_range_runs_backwards
+        PASS [   0.005s] (121/357) openchuck-path::edge_curve req_op_08_exact_curve_a_spline_feature_in_a_short_knot_span_is_not_missed
+        PASS [   0.005s] (122/357) openchuck-path::edge_curve req_op_08_exact_curve_an_ellipse_satisfies_its_equation
+        PASS [   0.005s] (123/357) openchuck-path::edge_curve req_op_08_exact_curve_validation_refuses_a_damaged_curve
+        PASS [   0.100s] (124/357) openchuck-path::edge_following req_nfr_06_req_op_08_edge_following_is_identical_at_1_2_and_n_threads
+        PASS [   0.007s] (125/357) openchuck-path::edge_following req_op_08_a_chain_through_the_rotary_axis_is_refused
+        PASS [   0.008s] (126/357) openchuck-path::edge_following req_op_08_a_curve_off_the_surface_is_projected_along_the_tool_axis
+        PASS [   0.032s] (127/357) openchuck-path::edge_following req_op_08_a_curve_that_misses_the_surface_is_refused_with_a_message
+        PASS [   0.005s] (128/357) openchuck-path::edge_following req_op_08_a_custom_source_with_no_chains_does_not_blame_the_crease_angle
+        PASS [   0.010s] (129/357) openchuck-path::edge_following req_op_08_a_region_a_lead_entry_and_an_empty_part_are_refused_with_messages
+        PASS [   0.005s] (130/357) openchuck-path::edge_following req_op_08_a_smooth_surface_has_no_feature_edge_and_the_crease_angle_decides
+        PASS [   0.012s] (131/357) openchuck-path::edge_following req_op_08_a_v_bit_cuts_the_requested_width_by_going_to_the_depth_that_makes_it
+        PASS [   0.307s] (132/357) openchuck-path::drill req_op_10_the_expanded_moves_are_rapid_retracts_and_fed_pecks
+        PASS [   0.007s] (133/357) openchuck-path::edge_following req_op_08_a_width_the_tool_cannot_cut_is_refused
+        PASS [   0.008s] (134/357) openchuck-path::edge_following req_op_08_an_open_chain_winding_round_a_curved_surface_is_cut_at_constant_depth
+        PASS [   0.011s] (135/357) openchuck-path::edge_following req_op_08_carving_cuts_lines_across_the_chain_to_the_carve_width
+        PASS [   0.016s] (136/357) openchuck-path::edge_following req_op_08_chain_direction_and_start_point_are_controllable
+        PASS [   0.014s] (137/357) openchuck-path::edge_following req_op_08_chains_are_cut_from_the_lowest_x_nearest_first
+        PASS [   0.011s] (138/357) openchuck-path::edge_following req_op_08_chosen_mesh_edges_are_chained_and_cut_at_constant_depth
+        PASS [   0.012s] (139/357) openchuck-path::edge_following req_op_08_depth_per_pass_makes_levels_ending_at_the_full_depth
+        PASS [   0.009s] (140/357) openchuck-path::edge_following req_op_08_engraved_depth_is_constant_on_a_curved_surface
+        PASS [   0.020s] (141/357) openchuck-path::edge_following req_op_08_the_ends_of_a_cylinder_are_two_closed_chains
+        PASS [   0.028s] (142/357) openchuck-path::edge_following req_op_08_short_chains_are_dropped_by_the_shortest_length
+        PASS [   0.010s] (143/357) openchuck-path::edge_following req_op_08_the_generated_path_cuts_at_the_feed_with_no_rapid_cuts
+        PASS [   0.006s] (144/357) openchuck-path::edge_following req_op_08_the_open_edges_of_a_surface_are_open_chains_split_where_three_meet
+        PASS [   0.010s] (145/357) openchuck-path::edge_following req_op_16_edge_following_is_in_the_registry_with_uniform_parameters
+        PASS [   0.044s] (146/357) openchuck-path::entry req_op_11_back_and_forth_ramp_descends_on_multiple_legs
+        PASS [   0.072s] (147/357) openchuck-path::entry req_op_11_entry_moves_are_fed_moves_with_positive_durations
+        PASS [   0.104s] (148/357) openchuck-path::entry req_op_11_entry_output_is_identical_on_repeat
+        PASS [   0.016s] (149/357) openchuck-path::entry req_op_11_entry_parameters_are_validated
+        PASS [   0.286s] (150/357) openchuck-path::entry req_gc_07_req_nfr_06_deep_reversing_entry_is_identical_at_1_2_and_n_threads
+        PASS [   9.048s] (151/357) openchuck-path::brep_pencil req_op_09_without_brep_edges_pencil_reads_the_tessellation_as_before
+        PASS [   0.075s] (152/357) openchuck-path::entry req_op_11_lead_arcs_are_tangent_to_the_cut_and_leave_the_surface_alone
+        PASS [   0.036s] (153/357) openchuck-path::entry req_op_11_nfr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead
+        PASS [   0.033s] (154/357) openchuck-path::entry req_op_11_plunge_is_the_default_entry_and_changes_nothing
+        PASS [   0.412s] (155/357) openchuck-path::entry req_op_11_helix_descends_on_a_circle_and_ends_tangent_at_the_first_cut_point
+        PASS [   0.491s] (156/357) openchuck-path::entry req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle
+        PASS [   0.448s] (157/357) openchuck-path::entry req_op_11_ramp_that_would_gouge_is_refused_naming_its_size
+        PASS [   0.163s] (158/357) openchuck-path::entry req_op_11_req_nfr_04_rampbudget_unchanged_pass_inputs
+        PASS [   0.024s] (159/357) openchuck-path::entry req_op_11_req_nfr_07_reversing_ramp_refusal_names_pass_with_no_direction
+        PASS [   0.096s] (160/357) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available
+        PASS [   1.043s] (161/357) openchuck-path::entry req_op_11_helix_that_would_gouge_is_refused_naming_its_size
+        PASS [   0.112s] (162/357) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation
+        PASS [   0.059s] (163/357) openchuck-path::entry req_op_14_req_op_11_local_stock_removal_does_not_lower_the_unproven_incoming_rapid
+        PASS [   0.008s] (164/357) openchuck-path::entry_safety req_gc_09_req_op_11_large_z1_counters_reserve_firmware_precision
+        PASS [   0.005s] (165/357) openchuck-path::entry_safety req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance
+        PASS [   0.004s] (166/357) openchuck-path::entry_safety req_op_11_req_op_12_sweep_detects_thin_obstacle_between_clear_endpoints
+        PASS [   0.005s] (167/357) openchuck-path::entry_safety req_op_11_req_op_21_later_leg_reversal_and_final_connection_are_checked
+        PASS [   0.004s] (168/357) openchuck-path::entry_safety req_op_11_req_set_09_complete_shank_envelope_and_machine_travel_are_checked
+        PASS [   0.006s] (169/357) openchuck-path::entry_safety req_op_11_req_set_09_sweep_reserves_controller_rounding_clearance
+        PASS [   0.006s] (170/357) openchuck-path::entry_safety req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid
+        PASS [   0.005s] (171/357) openchuck-path::entry_safety req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded
+        PASS [   0.005s] (172/357) openchuck-path::entry_safety req_set_09_req_op_21_sweep_checks_protected_geometry_budget_and_cancellation
+        PASS [   0.005s] (173/357) openchuck-path::exact_faces req_imp_02_a_face_answers_point_normal_closest_ray_and_trim_queries
+        PASS [   0.024s] (174/357) openchuck-path::exact_faces req_imp_02_a_source_of_faces_answers_the_port_and_reports_the_face
+        PASS [   0.020s] (175/357) openchuck-path::exact_faces req_imp_02_tessellation_fallback_drop_is_within_the_mesh_error
+        PASS [   0.775s] (176/357) openchuck-path::entry req_op_11_req_op_12_req_op_14_req_nfr_04_req_nfr_07_rampbudget_characterization
+        PASS [   0.652s] (177/357) openchuck-path::extend req_op_24_facing_flat_cuts_the_whole_stock_down_to_the_face
+        PASS [   0.583s] (178/357) openchuck-path::extend req_op_24_facing_flat_extends_past_the_sides_when_asked
+        PASS [   2.952s] (179/357) openchuck-path::entry req_op_11_req_nfr_07_rampbudget_exact_subinterval_boundary
+        PASS [   0.945s] (180/357) openchuck-path::extend req_op_24_facing_round_turns_the_stock_to_the_diameter_and_extends_past_its_ends
+        PASS [   2.451s] (181/357) openchuck-path::extend req_op_24_req_nfr_07_a_distance_beyond_the_tool_diameter_is_refused_by_name
+        PASS [   0.088s] (182/357) openchuck-path::extend req_op_24_req_nfr_07_a_stock_with_no_known_ends_is_refused_and_box_stock_has_them
+        PASS [   0.081s] (183/357) openchuck-path::extend req_op_24_req_nfr_07_facing_refuses_a_size_with_nothing_to_face
+        PASS [   0.510s] (184/357) openchuck-path::extend req_op_24_req_op_12_facing_follows_the_part_where_it_rises_above_the_face
+        PASS [   0.013s] (185/357) openchuck-path::extend req_op_24_req_op_16_facing_is_registered_under_roughing
+        PASS [   4.536s] (186/357) openchuck-path::extend req_op_24_req_gc_07_the_option_is_off_by_default_and_changes_nothing
+        PASS [   8.947s] (187/357) openchuck-path::extend req_op_24_each_strategy_carries_its_passes_past_the_chosen_ends_of_the_stock
+        PASS [   0.025s] (188/357) openchuck-path::field req_op_03_a_cut_removes_the_cells_the_tool_covers_and_no_others
+        PASS [   2.064s] (189/357) openchuck-path::extend req_op_24_req_set_09_an_end_held_by_the_workholding_is_refused_not_cut_short
+        PASS [   0.067s] (190/357) openchuck-path::field req_op_03_the_field_reads_the_stock_it_is_built_from
+        PASS [   0.175s] (191/357) openchuck-path::field req_op_03_the_field_is_refused_for_a_degenerate_size
+        PASS [   0.032s] (192/357) openchuck-path::field req_op_14_a_cell_the_tool_only_partly_covers_is_not_taken_as_cut
+        PASS [  15.973s] (193/357) openchuck-path::cutter req_op_12_independent_checker_finds_no_gouge_and_catches_a_seeded_fault
+        PASS [   4.556s] (194/357) openchuck-path::fit_interior req_op_12_req_nfr_05_a_simultaneous_move_is_within_the_chord_between_its_points
+        PASS [   0.192s] (195/357) openchuck-path::helical req_nfr_04_req_nfr_06_stage_timings_do_not_change_the_generated_path
+        PASS [   4.788s] (196/357) openchuck-path::fit_interior req_op_12_req_nfr_05_a_move_is_within_the_chord_between_its_points_not_only_at_its_middle
+        PASS [   0.022s] (197/357) openchuck-path::helical req_nfr_07_bad_input_is_refused_with_a_message
+        PASS [   0.282s] (198/357) openchuck-path::helical req_nfr_08_the_helical_toolpath_matches_its_golden_file
+        PASS [   2.373s] (199/357) openchuck-path::helical req_op_04_a_tighter_tolerance_adds_points_and_tightens_the_fit
+        PASS [  14.092s] (200/357) openchuck-path::extend req_op_24_req_op_21_an_extended_path_rises_over_a_tab_and_never_cuts_it
+        PASS [   3.706s] (201/357) openchuck-path::helical req_op_04_helix_pitch_and_a_per_x_match_the_analytic_values_on_a_cylinder
+        PASS [   0.904s] (202/357) openchuck-path::helical req_op_04_req_op_11_helical_scallop_sets_the_pitch_for_a_ball
+        PASS [   0.647s] (203/357) openchuck-path::helical req_op_04_req_op_13_contact_feed_is_the_programmed_feed_on_every_cut
+        PASS [   9.611s] (204/357) openchuck-path::helical req_op_04_req_nfr_05_path_fitting_stays_inside_its_budget_on_a_sphere
+        PASS [   0.408s] (205/357) openchuck-path::helical req_op_11_stock_to_leave_is_refused_for_a_concave_tool_and_bad_values
+        PASS [   8.693s] (206/357) openchuck-path::helical req_op_05_req_op_06_every_helical_pose_round_trips_through_the_independent_oracle
+        PASS [  26.802s] (207/357) openchuck-path::fit_interior req_op_12_req_nfr_05_the_lobed_reference_job_cuts_no_deeper_than_the_tolerance_between_its_points
+        PASS [   0.195s] (208/357) openchuck-path::indexed req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads
+        PASS [   0.120s] (209/357) openchuck-path::indexed req_op_04_indexed_count_spaces_positions_equally_from_the_start_angle
+        PASS [   0.092s] (210/357) openchuck-path::indexed req_op_04_indexed_positions_land_on_the_requested_angles_in_order
+        PASS [   0.056s] (211/357) openchuck-path::indexed req_op_04_indexed_refuses_a_bad_angle_list
+        PASS [   0.103s] (212/357) openchuck-path::indexed req_op_04_req_op_14_indexed_positioning_never_feeds_across_the_stock
+        PASS [   0.042s] (213/357) openchuck-path::pathing req_nfr_07_any_parameter_values_give_a_result_or_an_error
+        PASS [   0.070s] (214/357) openchuck-path::pathing req_op_01_cancellation_stops_generation
+        PASS [  24.336s] (215/357) openchuck-path::helical req_nfr_06_helical_finishing_is_identical_at_1_2_and_n_threads
+        PASS [   0.015s] (216/357) openchuck-path::pathing req_op_11_common_parameters_resolve_with_defaults_and_refuse_bad_values
+        PASS [   2.013s] (217/357) openchuck-path::pathing req_op_01_regeneration_is_identical_at_1_2_and_n_threads
+        PASS [   3.804s] (218/357) openchuck-path::pathing req_op_13_contact_feed_is_correct_on_simultaneous_moves
+        PASS [   0.079s] (219/357) openchuck-path::pathing req_op_13_machine_feed_limits_lengthen_moves_and_say_so
+        PASS [   0.584s] (220/357) openchuck-path::pathing req_op_14_links_stay_outside_the_clearance_and_never_cross_the_stock
+        PASS [   0.096s] (221/357) openchuck-path::pathing req_op_14_stock_beyond_the_retract_height_is_refused
+        PASS [   0.016s] (222/357) openchuck-path::pathing req_op_15_angles_stay_continuous_and_fit_the_range
+        PASS [   0.169s] (223/357) openchuck-path::pathing req_op_15_generated_rings_keep_accumulated_a_after_safe_retract
+        PASS [   0.499s] (224/357) openchuck-path::pathing req_op_15_ir_poses_round_trip_through_the_independent_oracle
+        PASS [   0.035s] (225/357) openchuck-path::pathing req_op_15_no_nan_and_no_jump_over_half_a_turn
+        PASS [   0.019s] (226/357) openchuck-path::pathing req_op_15_stock_model_answers_rays
+        PASS [   0.172s] (227/357) openchuck-path::pathing req_op_16_stub_strategy_plugs_in_through_the_registry
+        PASS [   0.016s] (228/357) openchuck-path::program req_nfr_04_program_connection_observes_cancellation
+        PASS [   0.016s] (229/357) openchuck-path::program req_op_14_req_op_15_links_preserve_signed_turns_and_cutting_travel
+        PASS [   0.012s] (230/357) openchuck-path::program req_op_14_req_set_09_req_op_21_connection_refuses_unproved_clearance_and_travel
+        PASS [   0.032s] (231/357) openchuck-path::program req_op_15_boundary_ties_prefer_positive_machine_a_and_respect_whole_group_limits
+        PASS [   0.017s] (232/357) openchuck-path::program req_op_15_req_gc_05_standalone_starts_and_required_orientation_are_preserved
+        PASS [   0.015s] (233/357) openchuck-path::program req_op_15_shared_retract_retains_both_turn_directions_and_limited_position
+        PASS [   5.595s] (234/357) openchuck-path::region req_op_02_a_boundary_limits_x_and_angle
+        PASS [   4.408s] (235/357) openchuck-path::region req_op_02_a_check_set_that_only_warns_names_the_stock_to_leave
+        PASS [  22.663s] (236/357) openchuck-path::pathing req_op_12_generated_rings_pass_the_gouge_and_coverage_checks
+        PASS [  38.619s] (237/357) openchuck-path::helical req_op_11_stock_to_leave_leaves_the_stock_everywhere
+        PASS [  11.165s] (238/357) openchuck-path::region req_op_02_a_set_that_only_warns_keeps_the_path_and_names_the_set
+        PASS [  10.828s] (239/357) openchuck-path::region req_op_02_a_strategy_without_boundary_options_refuses_them
+        PASS [   3.081s] (240/357) openchuck-path::region req_op_02_an_empty_constraint_changes_nothing
+        PASS [  53.076s] (241/357) openchuck-path::helical req_op_13_feed_at_the_contact_is_within_two_percent_on_a_grooved_part
+        PASS [  33.473s] (242/357) openchuck-path::region req_op_02_a_set_that_only_warns_and_is_not_reached_says_nothing
+        PASS [  16.450s] (243/357) openchuck-path::region req_op_02_an_avoid_surface_is_never_cut
+        PASS [   5.106s] (244/357) openchuck-path::region req_op_02_req_nfr_07_a_constraint_with_nothing_to_cut_is_an_error
+        PASS [   0.098s] (245/357) openchuck-path::region req_op_02_req_ui_09_req_int_04_cancel_stops_watched_surface_queries
+        PASS [  15.584s] (246/357) openchuck-path::region req_op_02_axial_indexed_and_simultaneous_finishing_take_sets_that_only_warn
+        PASS [   2.096s] (247/357) openchuck-path::region_offsets req_op_02_a_pass_that_cannot_reach_the_region_drops_nothing
+        PASS [  14.240s] (248/357) openchuck-path::region req_op_02_req_nfr_06_a_set_that_only_warns_says_the_same_at_any_thread_count
+        PASS [  12.287s] (249/357) openchuck-path::region_offsets req_op_02_req_op_04_a_band_narrower_than_the_old_spacing_is_cut_on_every_pass
+        PASS [  12.599s] (250/357) openchuck-path::region_offsets req_op_02_req_op_04_helical_and_indexed_find_the_band_too
+        PASS [   2.766s] (251/357) openchuck-path::rest req_op_09_a_closed_crease_clean_at_its_start_is_not_joined_across_the_gap
+        PASS [   0.023s] (252/357) openchuck-path::rest req_op_09_creases_join_a_mesh_with_a_vertex_per_triangle
+        PASS [   0.360s] (253/357) openchuck-path::rest req_op_09_detection_is_deterministic
+        PASS [   0.024s] (254/357) openchuck-path::rest req_op_09_detection_refuses_nonsense_without_panicking
+        PASS [   0.119s] (255/357) openchuck-path::rest req_op_09_near_finds_a_sample_within_the_reach_and_not_beyond_it
+        PASS [   0.019s] (256/357) openchuck-path::rest req_op_09_smooth_and_convex_edges_are_not_creases
+        PASS [   0.368s] (257/357) openchuck-path::rest req_op_09_stock_larger_than_the_part_has_material_left_everywhere_and_stock_at_it_has_none
+        PASS [   0.025s] (258/357) openchuck-path::rest req_op_09_the_inside_corner_of_a_step_is_one_closed_crease
+        PASS [   0.015s] (259/357) openchuck-path::rest req_op_16_the_new_strategies_are_registered_and_check_their_parameters
+        PASS [  26.685s] (260/357) openchuck-path::region req_op_02_the_tool_does_not_touch_a_check_surface
+        PASS [   0.074s] (261/357) openchuck-path::roughing req_nfr_07_too_fine_a_stepover_in_a_new_direction_is_refused_by_name
+        PASS [  37.382s] (262/357) openchuck-path::region req_op_02_cuts_stay_on_the_selected_region_and_reach_its_edges
+        PASS [   2.189s] (263/357) openchuck-path::roughing req_op_03_continuous_roughing_along_the_length_cuts_lines_along_x_and_turns_a_between_them
+        PASS [   6.785s] (264/357) openchuck-path::roughing req_nfr_06_roughing_is_identical_at_1_2_and_n_threads
+        PASS [   1.007s] (265/357) openchuck-path::roughing req_op_03_req_op_15_continuous_roughing_retract_keeps_accumulated_a
+        PASS [   1.604s] (266/357) openchuck-path::roughing req_op_03_the_part_must_be_under_the_tool_and_the_stock_above_it
+        PASS [   0.049s] (267/357) openchuck-path::roughing req_op_11_a_bad_stepdown_or_form_is_refused_by_name
+        PASS [   0.005s] (268/357) openchuck-path::roughing req_op_11_a_plunge_is_refused_for_a_tool_that_cannot_plunge_and_ramp_and_helix_are_not
+        PASS [   2.547s] (269/357) openchuck-path::roughing req_op_03_req_op_15_indexed_roughing_around_the_part_cuts_across_at_fixed_a_stepping_along_x
+        PASS [   0.005s] (270/357) openchuck-path::roughing req_op_11_req_op_16_the_roughing_schema_lists_every_parameter_with_unit_range_and_default
+        PASS [  14.522s] (271/357) openchuck-path::rest req_op_09_a_part_with_more_triangles_than_samples_allowed_is_refused_not_looped_on
+        PASS [   4.934s] (272/357) openchuck-path::roughing req_op_11_layers_are_equal_and_no_deeper_than_the_stepdown
+        PASS [   9.653s] (273/357) openchuck-path::roughing req_op_03_req_gc_07_the_cut_direction_defaults_to_the_forms_own_direction
+        PASS [   2.580s] (274/357) openchuck-path::roughing_region req_op_02_a_check_surface_beyond_the_part_still_keeps_roughing_above_it
+        PASS [   3.328s] (275/357) openchuck-path::roughing_region req_nfr_06_regional_roughing_is_identical_at_1_2_and_n_threads
+        PASS [   0.880s] (276/357) openchuck-path::roughing_region req_op_02_a_selection_the_tool_cannot_reach_is_an_error_for_roughing
+        PASS [   2.368s] (277/357) openchuck-path::roughing_region req_op_02_a_check_surface_keeps_roughing_above_it_and_beside_it_is_still_cut
+        PASS [   0.005s] (278/357) openchuck-path::roughing_region req_op_02_roughing_honours_regions
+        PASS [   1.880s] (279/357) openchuck-path::roughing_region req_op_02_roughing_never_cuts_an_avoid_surface
+        PASS [  12.075s] (280/357) openchuck-path::roughing req_op_12_req_nfr_06_both_new_directions_never_gouge_and_are_identical_at_any_thread_count
+        PASS [   3.944s] (281/357) openchuck-path::roughing_region req_op_02_an_empty_constraint_changes_nothing_for_roughing
+        PASS [   2.905s] (282/357) openchuck-path::roughing_region req_op_02_roughing_stays_inside_a_containment_boundary
+        PASS [   0.006s] (283/357) openchuck-path::rounding_noise req_gc_07_req_nfr_06_a_drop_tied_between_two_flanks_keeps_its_contact_under_rounding_noise
+        PASS [   0.005s] (284/357) openchuck-path::rounding_noise req_gc_07_req_nfr_06_a_point_on_a_mesh_edge_projects_to_the_same_normal_from_either_side
+        PASS [   0.004s] (285/357) openchuck-path::rounding_noise req_gc_07_req_nfr_06_an_edge_contact_moves_only_by_rounding_under_rounding_noise
+        PASS [   8.577s] (286/357) openchuck-path::roughing_region req_op_02_roughing_stays_on_the_selected_region
+        PASS [   0.047s] (287/357) openchuck-path::simultaneous req_nfr_07_bad_input_is_refused_with_a_message
+        PASS [  17.638s] (288/357) openchuck-path::roughing req_op_12_roughing_never_gouges_the_part_with_its_stock_to_leave
+        PASS [   1.015s] (289/357) openchuck-path::simultaneous req_op_05_exact_faces_drive_the_path_with_their_own_normals
+        PASS [  16.617s] (290/357) openchuck-path::rounding_noise req_gc_07_req_nfr_06_the_blisk_helical_pass_is_the_same_under_one_ulp_of_mesh_noise
+        PASS [  25.453s] (291/357) openchuck-path::roughing_region req_op_02_roughing_takes_sets_that_only_warn
+        PASS [   0.023s] (292/357) openchuck-path::simultaneous req_op_16_the_strategy_is_built_in_and_its_schema_starts_with_the_common_parameters
+        PASS [  19.248s] (293/357) openchuck-path::simultaneous req_op_02_cuts_stay_on_the_selected_region
+        PASS [   0.267s] (294/357) openchuck-path::solids req_op_21_a_composite_without_solids_is_the_model
+        PASS [   0.017s] (295/357) openchuck-path::solids req_op_21_a_ray_hits_exact_distances_from_outside_and_inside
+        PASS [   0.180s] (296/357) openchuck-path::solids req_op_21_a_ray_meets_the_surface_where_the_mesh_does
+        PASS [   0.156s] (297/357) openchuck-path::solids req_op_21_a_small_tool_through_a_large_solid_finds_the_top_among_several_narrow_windows
+        PASS [   0.041s] (298/357) openchuck-path::solids req_op_21_a_solid_has_its_analytic_volume_area_bounds_and_outward_mesh
+        PASS [   0.034s] (299/357) openchuck-path::solids req_op_21_a_tool_drops_on_a_cylinder_at_the_closed_form_height
+        PASS [   0.017s] (300/357) openchuck-path::solids req_op_21_an_impossible_solid_is_refused_with_a_message
+        PASS [  22.333s] (301/357) openchuck-path::simultaneous req_op_05_req_op_06_every_pose_round_trips_through_the_independent_oracle
+        PASS [   0.014s] (302/357) openchuck-path::solids req_op_21_the_closest_point_and_normal_are_exact
+        PASS [   1.094s] (303/357) openchuck-path::solids req_op_21_the_closest_point_is_the_nearest_of_a_dense_sampling
+        PASS [  12.269s] (304/357) openchuck-path::solids req_nfr_06_the_composite_drop_is_identical_at_1_2_and_n_threads
+        PASS [   0.015s] (305/357) openchuck-path::solids req_set_09_a_box_answers_as_its_own_mesh_does
+        PASS [   0.015s] (306/357) openchuck-path::solids req_set_09_a_box_solid_has_its_volume_area_bounds_and_outward_mesh
+        PASS [   0.012s] (307/357) openchuck-path::solids req_set_09_an_impossible_box_is_refused_with_a_message
+        PASS [   0.352s] (308/357) openchuck-path::solids req_set_09_the_composite_answers_as_the_union_of_its_parts
+        PASS [   4.847s] (309/357) openchuck-path::solids req_op_21_the_tool_drop_matches_a_fine_mesh_of_the_solid
+        PASS [   0.014s] (310/357) openchuck-path::strategy_menu req_op_07_req_op_16_req_nfr_12_swarf_information_explains_curved_selected_step_walls_and_warnings
+        PASS [   0.008s] (311/357) openchuck-path::strategy_menu req_op_16_req_nfr_12_strategy_information_does_not_promise_every_surface_or_corner
+        PASS [   0.009s] (312/357) openchuck-path::strategy_menu req_op_16_every_strategy_has_a_plain_description
+        PASS [   0.009s] (313/357) openchuck-path::strategy_menu req_op_16_the_menu_runs_from_roughing_to_finishing_to_specialist
+        PASS [   0.016s] (314/357) openchuck-path::swarf req_nfr_07_req_op_07_a_mesh_a_region_and_a_cancelled_job_are_refused_clearly
+        PASS [   0.100s] (315/357) openchuck-path::swarf req_op_02_req_op_07_a_boundary_limits_the_cut_length_at_the_tool_tip
+        PASS [   0.072s] (316/357) openchuck-path::swarf req_op_02_req_op_07_a_boundary_limits_the_swarf_pass_across_the_rulings
+        PASS [   0.092s] (317/357) openchuck-path::swarf req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_into_it_is_refused
+        PASS [   0.155s] (318/357) openchuck-path::swarf req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_path_and_warns
+        PASS [   0.233s] (319/357) openchuck-path::swarf req_op_02_req_op_07_req_nfr_12_swarf_stops_short_of_an_avoid_surface_and_further_of_a_check_surface
+        PASS [   0.111s] (320/357) openchuck-path::swarf req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning
+        PASS [   0.185s] (321/357) openchuck-path::swarf req_op_06_req_op_07_the_tool_axis_is_the_machine_vertical_at_each_pose
+        PASS [   2.675s] (322/357) openchuck-path::swarf req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refused_naming_it
+        PASS [   0.860s] (323/357) openchuck-path::swarf req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_named_at_a_large_one
+        PASS [   0.036s] (324/357) openchuck-path::swarf req_op_07_a_plane_wall_uses_the_family_the_four_axes_can_reach
+        PASS [   1.556s] (325/357) openchuck-path::swarf req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_tolerance
+        PASS [   0.480s] (326/357) openchuck-path::swarf req_op_07_a_ruling_longer_than_the_flank_is_refused_and_so_is_a_tool_without_a_flank
+        PASS [   0.432s] (327/357) openchuck-path::swarf req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order
+        PASS [   0.032s] (328/357) openchuck-path::swarf req_op_07_detection_fits_rulings_on_ruled_faces_and_refuses_a_sphere_and_a_torus
+        PASS [   0.384s] (329/357) openchuck-path::swarf req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_how_to_accept_it
+        PASS [   8.077s] (330/357) openchuck-path::swarf req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads
+        PASS [   0.536s] (331/357) openchuck-path::swarf req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within_the_limit_and_refused_beyond_it
+        PASS [   2.384s] (332/357) openchuck-path::swarf req_op_07_req_op_12_a_pocket_wall_is_cut_from_inside_and_a_limit_below_its_chord_refuses_it
+        PASS [   0.032s] (333/357) openchuck-path::swarf req_op_07_rulings_along_the_rotary_axis_are_refused
+        PASS [   0.060s] (334/357) openchuck-path::swarf req_op_07_the_flank_is_the_straight_side_of_the_tool_as_one_cone
+        PASS [   1.844s] (335/357) openchuck-path::swarf req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass_and_a_set_value_wins
+        PASS [   1.724s] (336/357) openchuck-path::swarf req_op_07_the_tip_extension_tip_end_and_direction_parameters_move_the_tool
+        PASS [   1.225s] (337/357) openchuck-path::swarf req_op_11_req_op_07_stock_to_leave_offsets_the_flank_by_the_allowance
+        PASS [   0.168s] (338/357) openchuck-path::swarf req_op_15_req_op_07_the_a_range_is_respected_along_a_helicoid
+        PASS [   0.029s] (339/357) openchuck-path::swarf req_op_16_req_op_07_strategies_say_in_their_registration_whether_they_need_a_step_part
+        PASS [   0.007s] (340/357) openchuck-path::swarf req_op_16_swarf_is_in_the_registry_with_the_common_parameters
+        PASS [   0.038s] (341/357) openchuck-path::unroll req_nfr_06_passes_are_identical_at_1_2_and_n_threads
+        PASS [   4.284s] (342/357) openchuck-path::swarf req_op_12_req_op_07_the_independent_checker_finds_no_gouge_on_the_oracle_cases
+        PASS [  26.747s] (343/357) openchuck-path::solids req_op_21_helical_finishing_on_the_composite_never_gouges_the_held_region_or_the_tab
+        PASS [   5.067s] (344/357) openchuck-path::unroll req_nfr_07_a_jagged_dense_loop_does_not_crash
+        PASS [   0.007s] (345/357) openchuck-path::unroll req_nfr_07_the_result_check_has_teeth
+        PASS [   0.006s] (346/357) openchuck-path::unroll req_nfr_07_touching_and_invalid_regions_are_refused_with_a_message
+        PASS [   0.005s] (347/357) openchuck-path::unroll req_op_04_arcs_are_cut_into_chords_within_tolerance_and_lines_stay_single
+        PASS [   1.362s] (348/357) openchuck-path::unroll req_nfr_07_any_polygon_is_refused_or_offset_correctly
+        PASS [   0.057s] (349/357) openchuck-path::unroll req_op_04_islands_that_grow_into_a_ring_are_refused
+        PASS [   2.220s] (350/357) openchuck-path::unroll req_nfr_07_dense_gentle_loops_are_simplified_within_tolerance
+        PASS [   6.288s] (351/357) openchuck-path::unroll req_op_04_islands_across_the_seam_offset_correctly_in_the_periodic_development
+        PASS [   0.323s] (352/357) openchuck-path::zones req_op_11_a_bad_amount_or_a_strategy_without_zones_is_refused
+        PASS [   5.577s] (353/357) openchuck-path::zones req_op_11_each_zone_is_left_its_own_stock_with_all_three_strategies
+        PASS [  49.114s] (354/357) openchuck-path::simultaneous req_op_11_stock_to_leave_is_left_everywhere
+        PASS [   1.804s] (355/357) openchuck-path::zones req_op_11_one_zone_of_the_operations_value_changes_nothing
+        PASS [  20.891s] (356/357) openchuck-path::unroll req_op_04_random_regions_offset_correctly_from_the_original
+        PASS [  39.516s] (357/357) openchuck-path::walls req_op_13_req_op_14_helical_finishing_meets_walls_in_whole_moves
+────────────
+     Summary [ 298.047s] 357 tests run: 357 passed, 16 skipped
