@@ -1524,7 +1524,8 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
             rig.size = egui::vec2(1920.0 / scale, 1080.0 / scale);
             if setup {
                 let id = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
-                rig.shell.choose_setup(id, None);
+                // Focus the stock section so the numeric field is visible at both scales.
+                rig.shell.choose_setup(id, Some(SetupPart::Stock));
             } else {
                 let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
                 rig.shell.select(Selection::Operation(op));
@@ -1535,12 +1536,40 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
             // Content never widens the pane beyond the width it was set to
             // (issues 178 and 179: it crept wider each frame).
             assert!(near(width, width::INSPECTOR.0), "the pane's width: {at}");
-            let target = before
-                .iter()
-                .filter(|r| is_text_box(r, rig.size.x))
-                .nth(1)
-                .copied()
-                .unwrap_or_else(|| panic!("no second text box: {at}: {before:?}"));
+            let target = if setup {
+                // This fixture originally edited the cylinder stock's Length.
+                // Machine throughput controls now precede Stock, so ordinal 1
+                // selects the bounded Block window instead. Refusing a huge
+                // window legitimately adds an error row and clips later boxes.
+                // Find the intended stock field by its label, keeping the same
+                // valid, long numeric edit and every layout assertion below.
+                let label = rig
+                    .text_rects()
+                    .into_iter()
+                    .find(|(text, rect)| text == "Length" && rect.left() > rig.size.x - width)
+                    .map(|(_, rect)| rect)
+                    .unwrap_or_else(|| panic!("no stock Length label: {at}"));
+                before
+                    .iter()
+                    .find(|rect| {
+                        is_text_box(rect, rig.size.x)
+                            && rect.top() <= label.center().y
+                            && rect.bottom() >= label.center().y
+                    })
+                    .copied()
+                    .unwrap_or_else(|| panic!("no stock Length entry: {at}"))
+            } else {
+                before
+                    .iter()
+                    .filter(|r| is_text_box(r, rig.size.x))
+                    .nth(1)
+                    .copied()
+                    .unwrap_or_else(|| panic!("no second text box: {at}: {before:?}"))
+            };
+            assert!(
+                egui::Rect::from_min_size(egui::Pos2::ZERO, rig.size).contains(target.center()),
+                "the intended entry is visible before clicking: {at}"
+            );
             // All the wide boxes share one left and one right edge.
             let wide: Vec<_> = before
                 .iter()
@@ -1576,6 +1605,18 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
             let (after, confirmed) = rig.inspector_layout();
             assert!(near(after, width), "after Enter: {at}");
             assert_eq!(confirmed.len(), before.len(), "after Enter: {at}");
+            if setup {
+                let app = rig.shell.app.as_ref().unwrap();
+                // Length is displayed with three decimal places. A click
+                // chooses a caret position, so digits may extend the fraction
+                // rather than create a huge magnitude. Field identity follows
+                // from the matched label; the machine window stays untouched.
+                assert_eq!(
+                    app.project().machine().unwrap().block_window,
+                    1,
+                    "the bounded machine window was not edited: {at}"
+                );
+            }
         }
     }
 }

@@ -669,7 +669,7 @@ fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_r
         assert_eq!(path, &out.join(name));
         assert_eq!(&std::fs::read_to_string(path).unwrap(), text);
     }
-    let sheet = app.setup_sheet(Some(&run.toolpath));
+    let sheet = app.setup_sheet_for_run(&run);
     assert_eq!(
         std::fs::read_to_string(out.join(&expected[expected.len() - 2])).unwrap(),
         sheet.to_html()
@@ -730,7 +730,7 @@ fn req_gc_05_req_gc_12_req_ui_12_write_messages_retain_every_actual_full_path_an
             assert_eq!(std::fs::read(path).unwrap(), text.as_bytes());
         }
         let [html, pdf] = app.setup_sheet_file_names();
-        let sheet = app.setup_sheet(Some(&run.toolpath));
+        let sheet = app.setup_sheet_for_run(&run);
         assert_eq!(
             std::fs::read(out.join(html)).unwrap(),
             sheet.to_html().as_bytes()

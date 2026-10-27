@@ -1,0 +1,129 @@
+STEPALL-M integration validation, 24 Oct 2026 (Europe/London)
+Source: 1248937398134c21ce0173a09e778929e2f87006
+Merged main: 1a90435654c734c05e4fa3f110c4a7f3f8e5859f (SWARF3 and BUG-EDIT).
+Authorisation: owner's existing instruction to merge main while keeping PR 321 draft.
+Conflict resolution: preserve both path changelog entries; reorder decision-index rows 0233/0234 after its union merge.
+No new owner policy, default, schema or lane release.
+
+Environment: Rust 1.97.0, GCC 14.2.0, CMake 4.4.4, static OCCT 7.8.1;
+AMD EPYC 9V74, 4-CPU quota, 16 GiB RAM. Correctness checks overlapped M1/M4;
+these durations are not M3 performance measurements.
+
+Commands (source /workspace/.tooling/openchuck-env.sh first):
+cargo nextest run -p openchuck-path --test region --test roughing_region -p openchuck-app --test round_trip --test reference_jobs --test selection --locked
+OPENCHUCK_STEP_WORKER=/workspace/OpenChuckCAM/target/release/openchuck-step-worker OCCT_ROOT=/workspace/OpenChuckCAM/target/OCCT cargo nextest run -p openchuck-app --features kernel-tests --test step_accuracy --test step_accuracy_checks --test step_accuracy_posting --test step_accuracy_timing --locked
+cargo clippy -p openchuck-types -p openchuck-path -p openchuck-post -p openchuck-gcode -p openchuck-app --all-targets --locked -- -D warnings
+OCCT_ROOT=/workspace/OpenChuckCAM/target/OCCT cargo build --release -p openchuck-app --features kernel-tests --example step_accuracy -p openchuck-cli --locked
+cargo fmt --all --check
+git diff --check
+cargo xtask records
+cargo xtask deps
+cargo xtask licences
+cargo xtask trace
+cargo xtask conflicts
+cargo xtask testdata
+cargo xtask publish
+cargo deny --locked check
+
+Results:
+64 integration tests passed, 349.460 s. The three slow tests were already selected
+in the long profile and excluded from focused coverage; none exceeded 10 minutes.
+14 native harness tests passed, 28.836 s. The first invocation omitted the worker
+path and failed setup; the corrected invocation above passed against the pinned worker.
+Clippy, release build, fmt/diff, registers, deps, licences, conflicts, testdata and
+publishing checks pass. Traceability: 99/99 P1 requirements have tests.
+Dependency audit: advisories ok, bans ok, licenses ok, sources ok.
+The first metadata check needed the newly merged Tokio package fetched through
+network-enabled execution; it then passed. A mistyped publish-check subcommand was
+corrected to the repository's publish command; that check passed.
+
+The running full-stepover M4 was built before this merge, with correction source
+f052ee8c0d97a7b4aea062d7db05abda95ff4fa6. Its provenance is not relabelled.
+The merged shared strategy's watched_warnings returns immediately for an empty watch
+list; these measurement projects have no watched surfaces. The integration tests
+above cover watched/unwatched behaviour and reference output/determinism. The M3
+binary was rebuilt from the integrated source above before any timed batch started.
+
+integration-tests.log (test output):
+        PASS [   0.017s] ( 1/64) openchuck-app::round_trip req_gc_01_req_gc_10_linuxcnc_post_round_trips_within_rounding
+        PASS [   0.021s] ( 2/64) openchuck-app::round_trip req_gc_01_req_gc_09_z1_post_round_trips_under_the_makera_rule
+        PASS [   0.042s] ( 3/64) openchuck-app::round_trip req_gc_08_replay_comparison_catches_a_flipped_a_sign_and_a_wrong_frame
+        PASS [   0.057s] ( 4/64) openchuck-app::round_trip req_gc_08_replay_comparison_catches_a_changed_position_and_a_dropped_move
+        PASS [   0.049s] ( 5/64) openchuck-app::round_trip req_gc_09_req_gc_10_rotary_rounding_keeps_tip_within_existing_linear_budget
+        PASS [   0.064s] ( 6/64) openchuck-app::round_trip req_gc_08_static_checks_passes_both_posts_and_fails_seeded_faults
+        PASS [   0.052s] ( 7/64) openchuck-app::round_trip req_op_13_req_gc_10_a_small_feed_is_written_to_keep_its_moves_time_within_gate_2
+        PASS [   0.044s] ( 8/64) openchuck-app::round_trip req_op_13_the_naive_contact_feed_is_caught_by_the_time_check
+        PASS [   0.052s] ( 9/64) openchuck-app::selection req_nfr_04_a_failing_or_cancelled_save_stores_nothing
+        PASS [   0.069s] (10/64) openchuck-app::selection req_nfr_04_an_edit_made_from_an_older_set_is_refused_when_finished
+        PASS [   0.075s] (11/64) openchuck-app::selection req_nfr_04_req_ui_05_an_edit_of_the_target_is_a_job_and_the_rest_is_ready_at_once
+        PASS [   0.028s] (12/64) openchuck-app::selection req_nfr_04_req_ui_05_saving_a_set_is_a_reported_job_with_the_same_result
+        PASS [   0.912s] (13/64) openchuck-app::selection req_op_02_a_check_surface_is_not_touched_and_a_boundary_limits_the_cut
+        PASS [   0.076s] (14/64) openchuck-app::selection req_op_02_a_new_operation_refuses_a_set_on_another_model
+        PASS [   1.000s] (15/64) openchuck-app::selection req_op_02_a_reference_that_cannot_be_resolved_stops_the_operation
+        PASS [   0.040s] (16/64) openchuck-app::selection req_op_02_a_set_on_another_model_is_flagged
+        PASS [   0.100s] (17/64) openchuck-app::selection req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted
+        PASS [   0.644s] (18/64) openchuck-app::selection req_op_02_an_avoid_surface_is_never_cut
+        PASS [   1.320s] (19/64) openchuck-app::selection req_op_02_an_operation_cuts_only_on_its_selected_region
+        PASS [   2.892s] (20/64) openchuck-app::selection req_op_02_avoid_and_check_sets_of_other_strategies_take_their_choices
+        PASS [   0.088s] (21/64) openchuck-app::selection req_op_02_req_ui_05_each_restriction_set_carries_its_own_options
+        PASS [  10.004s] (22/64) openchuck-app::selection req_gc_07_req_nfr_06_req_op_11_roughing_with_a_selection_leave_is_the_same_at_any_thread_count
+        PASS [   0.084s] (23/64) openchuck-app::selection req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_ones_followed
+        PASS [   3.609s] (24/64) openchuck-app::selection req_op_02_rotary_roughing_removes_stock_only_above_its_selected_region
+        PASS [   0.043s] (25/64) openchuck-app::selection req_op_11_req_nfr_07_a_strategy_without_leave_zones_other_than_roughing_is_still_refused
+        PASS [   1.664s] (26/64) openchuck-app::selection req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations
+        PASS [  10.548s] (27/64) openchuck-app::selection req_op_11_req_op_03_a_larger_selection_stock_to_leave_raises_roughing_over_the_whole_part
+        PASS [  20.760s] (28/64) openchuck-app::selection req_op_11_req_op_03_a_smaller_or_equal_selection_stock_to_leave_changes_nothing
+        PASS [   0.036s] (29/64) openchuck-app::selection req_ui_04_req_ui_09_selecting_a_region_is_a_reported_job
+        PASS [   0.100s] (30/64) openchuck-app::selection req_ui_04_the_cube_has_the_expected_counts_for_each_way_of_picking
+        PASS [   0.100s] (31/64) openchuck-app::selection req_ui_05_editing_a_set_marks_exactly_the_operations_that_use_it
+        PASS [   0.080s] (32/64) openchuck-app::selection req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind
+        PASS [   0.075s] (33/64) openchuck-app::selection req_ui_05_req_prj_06_replacing_a_stale_set_makes_it_current_and_add_and_remove_stay_refused
+        PASS [   0.040s] (34/64) openchuck-app::selection req_ui_05_req_prj_06_select_save_close_and_reopen_gives_the_same_set
+        PASS [   0.096s] (35/64) openchuck-app::selection req_ui_05_saving_and_editing_are_undoable_and_checked
+        PASS [   0.052s] (36/64) openchuck-app::selection req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_ignores_it
+        PASS [   5.261s] (37/64) openchuck-path::region req_op_02_a_boundary_limits_x_and_angle
+        PASS [   4.480s] (38/64) openchuck-path::region req_op_02_a_check_set_that_only_warns_names_the_stock_to_leave
+        PASS [  36.897s] (39/64) openchuck-path::region req_op_02_a_region_and_an_avoid_surface_combine
+        PASS [  59.318s] (40/64) openchuck-app::selection req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own
+        PASS [   5.598s] (41/64) openchuck-path::region req_op_02_a_set_that_only_warns_keeps_the_path_and_names_the_set
+        PASS [  18.900s] (42/64) openchuck-path::region req_op_02_a_set_that_only_warns_and_is_not_reached_says_nothing
+        PASS [   8.679s] (43/64) openchuck-path::region req_op_02_a_strategy_without_boundary_options_refuses_them
+        PASS [  12.231s] (44/64) openchuck-path::region req_op_02_an_avoid_surface_is_never_cut
+        PASS [   2.172s] (45/64) openchuck-path::region req_op_02_an_empty_constraint_changes_nothing
+        PASS [  10.584s] (46/64) openchuck-path::region req_op_02_axial_indexed_and_simultaneous_finishing_take_sets_that_only_warn
+        PASS [  40.352s] (47/64) openchuck-path::region req_op_02_cuts_stay_on_the_selected_region_and_reach_its_edges
+        PASS [  88.530s] (48/64) openchuck-path::region req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed
+        PASS [ 178.525s] (49/64) openchuck-app::reference_jobs req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files
+        PASS [   0.203s] (50/64) openchuck-path::region req_op_02_req_ui_09_req_int_04_cancel_stops_watched_surface_queries
+        PASS [   3.650s] (51/64) openchuck-path::region req_op_02_req_nfr_07_a_constraint_with_nothing_to_cut_is_an_error
+        PASS [   3.121s] (52/64) openchuck-path::roughing_region req_nfr_06_regional_roughing_is_identical_at_1_2_and_n_threads
+        PASS [   2.418s] (53/64) openchuck-path::roughing_region req_op_02_a_check_surface_beyond_the_part_still_keeps_roughing_above_it
+        PASS [   4.304s] (54/64) openchuck-path::roughing_region req_op_02_a_check_surface_keeps_roughing_above_it_and_beside_it_is_still_cut
+        PASS [  16.297s] (55/64) openchuck-path::region req_op_02_req_nfr_06_a_set_that_only_warns_says_the_same_at_any_thread_count
+        PASS [   0.903s] (56/64) openchuck-path::roughing_region req_op_02_a_selection_the_tool_cannot_reach_is_an_error_for_roughing
+        PASS [   0.060s] (57/64) openchuck-path::roughing_region req_op_02_roughing_honours_regions
+        PASS [   4.000s] (58/64) openchuck-path::roughing_region req_op_02_roughing_never_cuts_an_avoid_surface
+        PASS [   5.795s] (59/64) openchuck-path::roughing_region req_op_02_an_empty_constraint_changes_nothing_for_roughing
+        PASS [  16.954s] (60/64) openchuck-path::region req_op_02_the_tool_does_not_touch_a_check_surface
+        PASS [   3.324s] (61/64) openchuck-path::roughing_region req_op_02_roughing_stays_inside_a_containment_boundary
+        PASS [   8.279s] (62/64) openchuck-path::roughing_region req_op_02_roughing_stays_on_the_selected_region
+        PASS [  16.751s] (63/64) openchuck-path::roughing_region req_op_02_roughing_takes_sets_that_only_warn
+        PASS [ 349.431s] (64/64) openchuck-app::reference_jobs req_gc_07_reference_jobs_are_identical_at_1_and_n_threads
+     Summary [ 349.460s] 64 tests run: 64 passed (3 slow), 0 skipped
+
+integration-native-tests.log (test output):
+        PASS [   1.592s] ( 1/14) openchuck-app::step_accuracy req_imp_06_m1_cannot_skip_a_bad_triangle_on_a_large_face
+        PASS [  11.928s] ( 2/14) openchuck-app::step_accuracy req_imp_06_the_tessellation_error_is_measured_on_the_triangles_not_taken_from_the_setting
+        PASS [   0.016s] ( 3/14) openchuck-app::step_accuracy_checks req_gc_07_req_nfr_06_m4_rejects_changed_gcode_and_toolpaths
+        PASS [   0.036s] ( 4/14) openchuck-app::step_accuracy_checks req_gc_09_m4_rejects_unclean_replay_even_when_output_is_identical
+        PASS [   0.008s] ( 5/14) openchuck-app::step_accuracy_checks req_op_12_m2_requires_a_finite_proven_sub_micron_sampling_bound
+        PASS [   0.016s] ( 6/14) openchuck-app::step_accuracy_checks req_op_23_m4_gate_rejects_differing_harness_and_application_paths
+        PASS [   0.019s] ( 7/14) openchuck-app::step_accuracy_posting req_gc_07_m4_posts_only_the_operations_that_generated_successfully
+        PASS [   0.021s] ( 8/14) openchuck-app::step_accuracy_posting req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path
+        PASS [   0.036s] ( 9/14) openchuck-app::step_accuracy_posting req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors
+        PASS [   0.011s] (10/14) openchuck-app::step_accuracy_timing req_nfr_04_m3_uses_the_median_not_the_first_or_fastest_run
+        PASS [   0.008s] (11/14) openchuck-app::step_accuracy_timing req_nfr_04_req_op_23_m3_requires_five_successful_runs
+        PASS [  16.931s] (12/14) openchuck-app::step_accuracy req_op_12_a_mesh_is_sampled_by_its_area_and_read_like_the_exact_faces
+        PASS [  22.188s] (13/14) openchuck-app::step_accuracy req_op_12_a_pose_reads_its_gouge_and_its_gap_against_the_exact_faces
+        PASS [  28.834s] (14/14) openchuck-app::step_accuracy req_op_12_a_moves_middle_and_quarters_lie_on_the_machines_straight_move
+     Summary [  28.836s] 14 tests run: 14 passed, 0 skipped

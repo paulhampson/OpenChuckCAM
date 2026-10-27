@@ -402,3 +402,63 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
         }
     }
 }
+
+#[test]
+fn req_gc_17_files_show_report_and_slowdown_with_effective_sources() {
+    use openchuck_app::Command;
+    use openchuck_app::setup::ShortBlockMode;
+    let (dir, mut app, _, _) = cube_project("short-block-files-settings");
+    for mode in [ShortBlockMode::Report, ShortBlockMode::SlowDown] {
+        let mut machine = app.project().machine().unwrap().clone();
+        machine.min_block_ms = 500.0;
+        machine.block_window = 1;
+        machine.short_block_mode = mode;
+        app.execute(Command::SetMachine(Some(Box::new(machine))))
+            .unwrap();
+        let mut panel = ExportPanel::new(None);
+        app.set_post(panel.selection());
+        app.set_output_grouping(panel.grouping);
+        let run = Arc::new(app.regenerate().unwrap());
+        assert!(run.short_blocks.iter().any(|r| r.affected_windows > 0));
+        panel.open(&app);
+        let key = panel.key(&app).unwrap();
+        let plan = app.planned_files(&run, &key.post, key.grouping).unwrap();
+        panel.files = Some(Files { key, run, plan });
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let mut clock = 0.0;
+        let mut visible = Vec::new();
+        for bottom in [false, true] {
+            let snapshot = draw(
+                &mut panel,
+                &app,
+                &ctx,
+                egui::vec2(1920.0, 1080.0),
+                [980.0, 700.0],
+                bottom,
+                &mut clock,
+            );
+            visible.extend(snapshot.texts.into_iter().map(|(text, _, _)| text));
+        }
+        let settings = visible
+            .iter()
+            .find(|s| s.starts_with("Short-block settings:"))
+            .expect("effective settings are visible before export");
+        assert!(settings.contains(mode.label()));
+        assert!(settings.contains("500.000 ms (machine profile)"));
+        assert!(settings.contains("1 block (machine profile)"));
+        assert!(!settings.contains("1 blocks"));
+        let diagnostic = visible
+            .iter()
+            .find(|s| s.starts_with("Short blocks — Finish:"))
+            .expect("affected operation diagnostics are visible before export");
+        assert!(diagnostic.contains("affected windows before slowdown"));
+        assert!(diagnostic.contains("over 1 block (limit:"));
+        if mode == ShortBlockMode::Report {
+            assert!(diagnostic.contains("would be added by Slow down"));
+        } else {
+            assert!(diagnostic.ends_with("s added."));
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

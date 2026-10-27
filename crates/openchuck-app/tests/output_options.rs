@@ -1304,7 +1304,7 @@ fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_with
         .unwrap();
     let after = app.regenerate().unwrap();
     assert_eq!(before.gcode, after.gcode);
-    assert!(after.notes.iter().any(|n| n.contains("affected blocks")));
+    assert!(after.notes.iter().any(|n| n.contains("windows below")));
     let sheet = app.setup_sheet(Some(&after.toolpath));
     assert!(sheet.to_html().contains("minimum block time"));
     assert!(check_pdf(&sheet.to_pdf()).contains("minimum block time"));
@@ -1329,15 +1329,33 @@ fn req_gc_17_req_gc_12_req_nfr_07_the_sheet_uses_post_overrides_and_reports_an_u
     )
     .unwrap();
     std::fs::copy(builtin.join("main.post"), custom.join("main.post")).unwrap();
-    app.set_post(Some(PostSelection::Folder(custom)));
+    app.set_post(Some(PostSelection::Folder(custom.clone())));
     let after = app.regenerate().unwrap();
     assert_eq!(before.gcode, after.gcode);
-    assert!(after.notes.iter().any(|n| n.contains("(post)")));
+    assert!(after.notes.iter().any(|n| n.contains("post override")));
     assert!(
         app.setup_sheet(Some(&after.toolpath))
             .to_html()
             .contains("(post)")
     );
+    let post_file = custom.join("post.toml");
+    let report_post = std::fs::read_to_string(&post_file).unwrap();
+    std::fs::write(
+        &post_file,
+        report_post.replace(
+            "short_block_mode = \"report\"",
+            "short_block_mode = \"slow_down\"",
+        ),
+    )
+    .unwrap();
+    let preview = app.setup_sheet(Some(&after.toolpath));
+    for text in [preview.to_html(), check_pdf(&preview.to_pdf())] {
+        assert!(text.contains("Toolpath-only preview; selected Slow down has not been applied."));
+        assert!(
+            !text.contains(", Report:"),
+            "the selected policy is Slow down"
+        );
+    }
     app.set_post(Some(PostSelection::Folder(dir.join("missing-post"))));
     assert!(
         app.setup_sheet(Some(&after.toolpath))

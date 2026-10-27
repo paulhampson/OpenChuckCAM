@@ -5,6 +5,8 @@
 - **Requirements:** GC-10, GC-07, NFR-06, NFR-07 and NFR-12. Verification tooling and its independent library API; no machine/project schema or production G-code change. The verification API additions use the 0.22.0 library-family version.
 - **Open item:** OI-991, closed 25 Oct 2026 by the passing bounded implementation. Main and every remote unmerged branch were inspected before claiming 0244; main reached 0242 and CHECKPOINT 0243. No existing allocation is reused.
 
+Acceptance evidence: the owner’s direct instruction was [relayed durably on PR #284](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6423120726); [PR #357](https://github.com/paulhampson/OpenChuckCAM/pull/357) carries the documentation follow-through. No further acceptance is requested.
+
 ## Context
 
 Accepted 0221 requires gates 1–4 for the first-cut project before gate 5. The existing branch includes its LinuxCNC golden in gate 3, but both the driver and wrapper have a 900 s timeout. The program has 1,727.333 s nominal fed motion before rapids, acceleration and tool changes; one original rapid alone takes about 228 s under the simulator's velocity limit. The unchanged whole-program replay cannot finish under those limits. AGENTS.md requires an owner disposition for an uninstrumented test exceeding ten minutes. The owner authorized bounded chunks preserving every original move and explicitly checking modal state and continuity at each boundary.

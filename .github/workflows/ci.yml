@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Pull request and main-branch CI (work breakdown slice 0 items 5 and 13;
-# verification plan sections 7 to 9). Jobs are path-filtered: a change to
-# docs/ alone does not rebuild the Rust workspace (testdata/ and the built-in posts, which live in
-# crates/openchuck-post/posts/ since decision 0103, do, because the golden G-code tests read them).
+# verification plan sections 7 to 9). Jobs are path-filtered:
+# - `rust`, `step`, `gate3` and `fuzz` (every heavy job) are off when every changed file that matches
+#   them is Markdown (`*.md`, in any directory; decision 0249): documentation is not built. A change
+#   outside Markdown to crates/, testdata/, tools/, the posts (crates/openchuck-post/posts/ since
+#   decision 0103) or .github/workflows/ turns them on, because the golden G-code tests read the
+#   posts and testdata/ and the workflow is part of what is tested.
+# - `records` and `any` still see Markdown, because `cargo xtask records`, `testdata`, `trace` and
+#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/open-items.md and others), so
+#   Fast checks run on a Markdown-only pull request and the heavy jobs do not.
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
@@ -48,20 +54,41 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
+      rust: ${{ steps.heavy.outputs.rust }}
       records: ${{ steps.filter.outputs.records }}
       any: ${{ steps.filter.outputs.any }}
-      fuzz: ${{ steps.filter.outputs.fuzz }}
-      step: ${{ steps.filter.outputs.step }}
-      gate3: ${{ steps.filter.outputs.gate3 }}
+      fuzz: ${{ steps.heavy.outputs.fuzz }}
+      step: ${{ steps.heavy.outputs.step }}
+      gate3: ${{ steps.heavy.outputs.gate3 }}
       linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # `records`, `any` and `linuxcnc_image` match Markdown too (see the header).
       - uses: dorny/paths-filter@v4
         id: filter
         with:
+          filters: |
+            records:
+              - 'docs/requirements.md'
+              - 'docs/work-breakdown.md'
+              - 'docs/dependencies.md'
+              - 'testdata/**'
+            # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
+            any:
+              - '**'
+            linuxcnc_image:
+              - 'docker/linuxcnc/**'
+      # The heavy jobs ignore Markdown. `some-with-excludes` (not the default `some`, where '!**/*.md'
+      # would match every other file) matches a file that matches a pattern and no '!' pattern, so a
+      # Markdown file never turns a heavy filter on, whatever directory it is in (decision 0249).
+      # The quantifier is per step, so these filters have a step of their own.
+      # v4.0.3 is the first release with `some-with-excludes`; the moving `v4` tag is not relied on.
+      - uses: dorny/paths-filter@v4.0.3
+        id: heavy
+        with:
+          predicate-quantifier: some-with-excludes
           filters: |
             rust:
               - 'crates/**'
@@ -82,6 +109,7 @@ jobs:
               - '.cargo/**'
               - '.config/**'
               - '.github/workflows/**'
+              - '!**/*.md'
             # The STEP kernel build (decision 0003): only what can change the wrapper, its
             # inputs or what is compared with it. A docs or posts change never gets here.
             step:
@@ -98,14 +126,7 @@ jobs:
               - 'deny.toml'
               - '.github/workflows/ci.yml'
               - '.github/actions/occt/**'
-            records:
-              - 'docs/requirements.md'
-              - 'docs/work-breakdown.md'
-              - 'docs/dependencies.md'
-              - 'testdata/**'
-            # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
-            any:
-              - '**'
+              - '!**/*.md'
             gate3:
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-post/**'
@@ -118,8 +139,7 @@ jobs:
               - 'xtask/**'
               - 'Cargo.lock'
               - '.github/workflows/ci.yml'
-            linuxcnc_image:
-              - 'docker/linuxcnc/**'
+              - '!**/*.md'
             fuzz:
               - 'fuzz/**'
               - 'crates/openchuck-gcode/**'
@@ -131,6 +151,7 @@ jobs:
               - 'testdata/stl/**'
               # The fuzz job itself, so a change to it is run by its own pull request.
               - '.github/workflows/ci.yml'
+              - '!**/*.md'
 
   # The simulator runs in real time. Bounded first-cut fixtures are expanded before
   # the golden programs and fixtures are dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
@@ -361,6 +382,12 @@ jobs:
       # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
         run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
+      # The STEP accuracy measurement (decision 0211): its functions checked on closed forms, and
+      # the measuring example built so it keeps compiling. The measurement itself is run by hand.
+      - name: STEP accuracy measurement
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

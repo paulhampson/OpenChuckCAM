@@ -1,0 +1,12 @@
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status

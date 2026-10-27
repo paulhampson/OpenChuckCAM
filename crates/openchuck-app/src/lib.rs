@@ -1094,7 +1094,8 @@ impl Application {
     }
 
     /// The files `grouping` would write for `run` with `post`, with their
-    /// names, setups and programmed times, before anything is posted (GC-05).
+    /// names, setups and programmed times including selected-post slowdown,
+    /// without writing anything (GC-05, GC-17).
     pub fn planned_files(
         &self,
         run: &Regeneration,
@@ -1123,13 +1124,25 @@ impl Application {
 
     /// Writes the setup sheet as HTML and PDF into `folder`, named after the
     /// project, and returns the two paths (GC-12). Pass the toolpath of a
-    /// regeneration to include the programmed times.
+    /// regeneration to include its original-IR programmed times. Use
+    /// [`Self::write_setup_sheet_for_run`] for the selected post's adjusted
+    /// times and same-run diagnostics.
     pub fn write_setup_sheet(
         &self,
         folder: &Path,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
     ) -> Result<Vec<PathBuf>, AppError> {
         export::write_bytes(folder, &self.setup_sheet_files(toolpath))
+    }
+
+    /// Writes the same-run setup sheets, including post-adjusted durations
+    /// and short-block diagnostics (GC-12, GC-17).
+    pub fn write_setup_sheet_for_run(
+        &self,
+        folder: &Path,
+        run: &Regeneration,
+    ) -> Result<Vec<PathBuf>, AppError> {
+        export::write_bytes(folder, &self.sheet_files(self.setup_sheet_for_run(run)))
     }
 
     /// The setup sheet's two file names, HTML then PDF, named after the
@@ -1146,7 +1159,10 @@ impl Application {
         &self,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
     ) -> Vec<(String, Vec<u8>)> {
-        let sheet = self.setup_sheet(toolpath);
+        self.sheet_files(self.setup_sheet(toolpath))
+    }
+
+    fn sheet_files(&self, sheet: SetupSheet) -> Vec<(String, Vec<u8>)> {
         let [html, pdf] = self.setup_sheet_file_names();
         vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
     }
@@ -1172,7 +1188,7 @@ impl Application {
             .iter()
             .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
             .collect();
-        files.extend(self.setup_sheet_files(Some(&run.toolpath)));
+        files.extend(self.sheet_files(self.setup_sheet_for_run(run)));
         output_write::prepare(folder, std::sync::Arc::clone(run), files)
     }
 
@@ -1223,7 +1239,9 @@ impl Application {
 
     /// The project's setup sheet with its traceability block (GC-12,
     /// decision 0110). Pass a regeneration's toolpath to include each
-    /// operation's programmed time.
+    /// operation's original-IR programmed time. This is a toolpath-only
+    /// preview: it does not apply the selected post's Slow down mode. Use
+    /// [`Self::setup_sheet_for_run`] for posted feeds and adjusted times.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
         // Each setup's part as the setup places it, for the tabs placed
         // automatically (decision record 0202); a part that cannot be read
@@ -1243,6 +1261,37 @@ impl Application {
         SetupSheet::with_parts(&self.document.project, &self.strategies, toolpath, &part)
             .with_block_time(&self.document.project, toolpath, options)
             .with_traceability(&self.traceability())
+    }
+
+    /// The selected post's same-run setup sheet, including its adjusted
+    /// programmed times and controller diagnostics (GC-12, GC-17).
+    pub fn setup_sheet_for_run(&self, run: &Regeneration) -> SetupSheet {
+        let cancel = openchuck_types::job::CancelToken::new();
+        let context =
+            openchuck_types::job::JobContext::new(&cancel, &openchuck_types::job::NoProgress);
+        let part = |setup: &openchuck_project::Setup| {
+            let model = setup.part?;
+            let reference = run
+                .project
+                .models()
+                .iter()
+                .find(|reference| reference.id == model)?;
+            let extent = model::inspect_model(&self.document.location, reference, &context)
+                .ok()?
+                .extent?;
+            Some(extent.in_setup(&setup.frame))
+        };
+        let mut sheet = SetupSheet::with_parts(
+            &run.project,
+            &self.strategies,
+            Some(run.posted_toolpath.as_ref().unwrap_or(&run.toolpath)),
+            &part,
+        )
+        .with_short_blocks(&run.project, &run.short_blocks);
+        if let Some((settings, sources)) = run.effective_short_blocks {
+            sheet = sheet.with_short_block_configuration(settings, sources);
+        }
+        sheet.with_traceability(&self.traceability())
     }
 
     /// Replaces the clock a setup sheet reads its generation time from, so a

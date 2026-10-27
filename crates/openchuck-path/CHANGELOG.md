@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0
+
+- STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
+
 ## 0.22.0
 
 - Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Path geometry and G-code replay behavior are unchanged.
@@ -9,6 +13,9 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
+- Report optional fitting and assembly scope durations to the host for STEPALL-M measurements; timing does not affect generated paths. Axial/indexed quiet pass contexts forward opted-in timing callbacks while keeping their inner progress counts suppressed.
 - **Breaking (0.21.0, ROUGHPATH):** `StrategyInput` adds `entry_safety: Option<&EntrySafety>`; hosts without optional reversing ramp support pass `None`. `EntryParameters` adds `back_and_forth`, false by default. To support it, supply the whole mesh target, protected solids, complete convex cutter/shank body, matching machine profile and `RotaryPrecision` valid for all output posts. The certificate reserves written coordinate precision and controller float uncertainty. Hosts must write at least three XYZ/A decimals and, for `Float32`, bound connection/reset offsets from certified canonical A to 720 degrees or recertify the contextual path. Missing or unsupported certificates refuse the enabled option. `program::connect_group` assembles explicit timed inter-operation links from canonical groups; never reconnect a previously connected group as canonical input.
 - Optional `ramp_back_and_forth` uses a verified corridor of at least one cutting diameter, fixed A, plunge feed and bounded/cancellable descending legs. Original single-line behavior is retained when absent/false. Roughing uses clearance-height links for this option; no low-link shortcut is used before the stock-clear approach.
 

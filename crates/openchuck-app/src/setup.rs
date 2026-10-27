@@ -17,7 +17,7 @@ pub use openchuck_project::machines::{
 pub use openchuck_types::geometry::{Aabb, Point3};
 pub use openchuck_types::machine::{
     ARange, ASense, Clearance, Confirmation, MachineProfile, MaxFeeds, ProfileField, Provenance,
-    RotaryAxis,
+    RotaryAxis, ShortBlockMode,
 };
 pub use openchuck_types::setup::{
     PartExtent, SetupFrame, SetupWarning, SetupWarningKind, WorkOffset, WorkOffsetRegister,
@@ -225,10 +225,10 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::Travel => "travel",
         ProfileField::MaxFeeds => "maximum feeds",
         ProfileField::Clearance => "clearance",
+        ProfileField::SpindleRange => "spindle speed range",
         ProfileField::MinBlockMs => "minimum block time",
         ProfileField::BlockWindow => "block window",
-        ProfileField::ShortBlockMode => "short block mode",
-        ProfileField::SpindleRange => "spindle speed range",
+        ProfileField::ShortBlockMode => "short-block mode",
     }
 }
 
@@ -248,18 +248,12 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         max_tool_number,
         min_spindle_rpm,
         max_spindle_rpm,
-        provenance,
         min_block_ms,
         block_window,
         short_block_mode,
+        provenance,
     } = a;
     let checks = [
-        (
-            "minimum block time",
-            min_block_ms.partial_cmp(&b.min_block_ms) == Some(std::cmp::Ordering::Equal),
-        ),
-        ("block window", *block_window == b.block_window),
-        ("short block mode", *short_block_mode == b.short_block_mode),
         ("name", *name == b.name),
         ("rotary axis", *rotary_axis == b.rotary_axis),
         ("A+ direction", *a_sense == b.a_sense),
@@ -273,6 +267,12 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
             "spindle speed range",
             *min_spindle_rpm == b.min_spindle_rpm && *max_spindle_rpm == b.max_spindle_rpm,
         ),
+        (
+            "minimum block time",
+            min_block_ms.to_bits() == b.min_block_ms.to_bits(),
+        ),
+        ("block window", *block_window == b.block_window),
+        ("short-block mode", *short_block_mode == b.short_block_mode),
         ("which values are confirmed", *provenance == b.provenance),
     ];
     checks
@@ -280,4 +280,24 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         .filter(|(_, same)| !same)
         .map(|(name, _)| name)
         .collect()
+}
+
+#[cfg(test)]
+mod short_block_tests {
+    use super::*;
+
+    #[test]
+    fn req_gc_17_req_set_01_profile_comparison_names_short_move_settings() {
+        let source = MachineProfile::example_x_rotary();
+        let mut copy = source.clone();
+        copy.min_block_ms = 7.0;
+        assert_eq!(differing_fields(&source, &copy), ["minimum block time"]);
+        copy.block_window = 32;
+        copy.short_block_mode = ShortBlockMode::Report;
+        assert_eq!(
+            differing_fields(&source, &copy),
+            ["minimum block time", "block window", "short-block mode"]
+        );
+        assert_eq!(source.min_block_ms.to_bits(), 0.0f64.to_bits());
+    }
 }
