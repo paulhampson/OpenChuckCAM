@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use openchuck_gcode::{CheckConfig, Dialect, TimingRule, Tolerances};
 use openchuck_post::{
-    ADirection, FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, TemplatePost,
-    ToolSetting, UnwindMode, builtin, builtin_ids,
+    ADirection, FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, ShortBlockReport,
+    ShortBlockSettings, TemplatePost, ToolSetting, UnwindMode, builtin, builtin_ids,
 };
 use openchuck_project::Project;
 use openchuck_types::ir::{Toolpath, ToolpathGroup};
@@ -181,13 +181,15 @@ pub struct PlannedFile {
     /// The operation or tool name for `Operation` and `Tool` files.
     pub label: Option<String>,
     /// The programmed time: the sum of the toolpath's move durations at their
-    /// programmed feeds, in seconds (decision 0028 item 3; not SIM-08).
+    /// programmed feeds, including selected-post slowdown, in seconds
+    /// (decisions 0028 and 0222; not SIM-08).
     pub programmed_seconds: f64,
 }
 
 /// The files `grouping` would write for `toolpath`, in output order, with the
-/// names [`post_toolpath`] gives them. A project file across setups is refused
-/// as it is when posting (OI-92).
+/// names [`post_toolpath`] gives them. Timing uses the selected post, computed
+/// without writing anything if the run was posted with other choices. A project
+/// file across setups is refused as it is when posting (OI-92).
 pub(crate) fn plan_files(
     run: &crate::Regeneration,
     selection: &PostSelection,
@@ -197,6 +199,17 @@ pub(crate) fn plan_files(
     let cancel = CancelToken::new();
     let context = JobContext::new(&cancel, &NoProgress);
     let extension = selection.load()?.options.file_extension;
+    // A preview of a different post/grouping must compute that program's
+    // timing rather than reusing another post's slowdown cost.
+    let seconds = if run
+        .posted_selection
+        .as_ref()
+        .is_some_and(|(post, split)| post == selection && *split == grouping)
+    {
+        run.posted_file_seconds.clone()
+    } else {
+        post_toolpath(run, selection, grouping, &context)?.file_seconds
+    };
     split_units(project, &run.canonical_toolpath, grouping)?
         .into_iter()
         .enumerate()
@@ -213,23 +226,22 @@ pub(crate) fn plan_files(
                 })?;
             let assembled =
                 crate::connections::assemble(project, unit.groups, &run.groups, &context)?;
+            let name = file_name(
+                project,
+                &setup.name,
+                unit.label.as_ref(),
+                grouping,
+                index,
+                &extension,
+            );
             Ok(PlannedFile {
-                name: file_name(
-                    project,
-                    &setup.name,
-                    unit.label.as_ref(),
-                    grouping,
-                    index,
-                    &extension,
-                ),
+                name: name.clone(),
                 setup: setup.name.clone(),
                 label: unit.label.as_ref().map(|(title, _)| title.clone()),
-                programmed_seconds: assembled
-                    .groups
-                    .iter()
-                    .flat_map(|g| g.segments.iter())
-                    .map(|s| s.duration.0)
-                    .sum(),
+                programmed_seconds: seconds
+                    .get(&name)
+                    .copied()
+                    .unwrap_or_else(|| assembled.total_duration().0),
             })
         })
         .collect()
@@ -257,7 +269,7 @@ pub struct GcodeComparison {
     pub max_position_error: f64,
     /// Largest A error, degrees.
     pub max_a_error: f64,
-    /// Cut time of the IR, seconds.
+    /// Cut time of the verification IR after any post slowdown, seconds.
     pub ir_cut_seconds: f64,
     /// Cut time of the G-code under the controller's feed rule, seconds.
     pub gcode_cut_seconds: f64,
@@ -277,7 +289,7 @@ fn check_file(
     machine: &openchuck_types::machine::MachineProfile,
     setup: &openchuck_project::Setup,
     part: &Toolpath,
-    clamped: usize,
+    allow_unadjusted_clamp_time: bool,
 ) -> GcodeReport {
     let options = &definition.options;
     let dialect = if options.unwind == UnwindMode::DropTurns {
@@ -367,8 +379,10 @@ fn check_file(
         }
     }
     let mut tolerances = Tolerances::for_decimals(options.decimals.pos, options.decimals.a);
-    if clamped > 0 {
-        // Lowered feeds make moves longer than the IR says, on purpose.
+    if allow_unadjusted_clamp_time {
+        // Off/Report retain the canonical IR durations when a post maximum
+        // lowers feed. Slow down supplies adjusted durations and keeps the
+        // normal 1% timing check, including moves clamped to that maximum.
         tolerances.time_relative = f64::INFINITY;
     }
     let frame = RotaryFrame::work(machine, &setup.frame);
@@ -477,19 +491,75 @@ fn split_units(
     Ok(units)
 }
 
-/// Posts `toolpath` and returns the files as (name, text), their reports and notes.
-#[allow(clippy::type_complexity)]
+/// The posted files and their matching verification/reporting data.
+pub(crate) struct PostedFiles {
+    pub files: Vec<(String, String)>,
+    pub reports: Vec<GcodeReport>,
+    pub notes: Vec<String>,
+    pub short_blocks: Vec<ShortBlockReport>,
+    pub toolpath: Toolpath,
+    pub file_seconds: BTreeMap<String, f64>,
+    pub settings: Option<(ShortBlockSettings, openchuck_post::ShortBlockSources)>,
+}
+
+/// One short-block result in the operator's words, shared by export checks
+/// and the run's Messages notes (GC-17).
+pub(crate) fn short_block_note(project: &Project, report: &ShortBlockReport) -> String {
+    let operation = project
+        .operations()
+        .iter()
+        .find(|o| o.id.to_string() == report.operation)
+        .map_or(report.operation.as_str(), |o| o.name.as_str());
+    let action = match report.settings.mode {
+        openchuck_types::machine::ShortBlockMode::SlowDown => format!(
+            "Slow down lengthened {} moves and added {:.3} s",
+            report.slowed_moves, report.added_seconds
+        ),
+        _ => format!(
+            "Report leaves the program unchanged; slowdown would add {:.3} s",
+            report.added_seconds
+        ),
+    };
+    format!(
+        "Operation '{operation}': short blocks: {} windows below {:.3} ms averaged over {} {} (limit from {}, window from {}, mode from {}); {} moves below the limit, longest run {}, worst window before slowdown {:.3} ms, original effective feed {:.3} mm/min. {action}.",
+        report.affected_windows,
+        report.settings.min_block_ms,
+        report.settings.block_window,
+        if report.settings.block_window == 1 {
+            "block"
+        } else {
+            "blocks"
+        },
+        report.sources.min_block_ms.as_str(),
+        report.sources.block_window.as_str(),
+        report.sources.mode.as_str(),
+        report.short_moves,
+        report.longest_run,
+        report.worst_window_ms,
+        report.effective_feed
+    )
+}
+
+/// Posts `toolpath` and returns the files and matching timing/check data.
 pub(crate) fn post_toolpath(
     run: &crate::Regeneration,
     selection: &PostSelection,
     grouping: OutputGrouping,
     context: &JobContext<'_>,
-) -> Result<(Vec<(String, String)>, Vec<GcodeReport>, Vec<String>), AppError> {
+) -> Result<PostedFiles, AppError> {
     let project = &run.project;
     let toolpath = &run.canonical_toolpath;
     let post = TemplatePost::new(selection.load()?);
     if toolpath.groups.is_empty() {
-        return Ok((Vec::new(), Vec::new(), Vec::new()));
+        return Ok(PostedFiles {
+            files: Vec::new(),
+            reports: Vec::new(),
+            notes: Vec::new(),
+            short_blocks: Vec::new(),
+            toolpath: Toolpath::default(),
+            file_seconds: BTreeMap::new(),
+            settings: None,
+        });
     }
     let decimals = &post.definition().options.decimals;
     if decimals.pos < 3 || decimals.a < 3 {
@@ -516,6 +586,14 @@ pub(crate) fn post_toolpath(
     let machine = project
         .machine()
         .ok_or_else(|| AppError::Post("the project has no machine profile".into()))?;
+    let settings = post
+        .definition()
+        .options
+        .effective_short_blocks(ShortBlockSettings {
+            min_block_ms: machine.min_block_ms,
+            block_window: machine.block_window,
+            mode: machine.short_block_mode,
+        });
     let operation_names: BTreeMap<String, String> = project
         .operations()
         .iter()
@@ -524,6 +602,9 @@ pub(crate) fn post_toolpath(
     let mut files = Vec::new();
     let mut reports = Vec::new();
     let mut notes = Vec::new();
+    let mut short_blocks = Vec::new();
+    let mut posted_toolpath = Toolpath::default();
+    let mut file_seconds = BTreeMap::new();
     for (index, unit) in split_units(project, toolpath, grouping)?
         .into_iter()
         .enumerate()
@@ -598,7 +679,8 @@ pub(crate) fn post_toolpath(
         let job = PostJob {
             block_time: openchuck_post::BlockTimeSettings {
                 min_block_ms: machine.min_block_ms,
-                block_window: machine.block_window,
+                // Validated machine profiles cap this value at 4096.
+                block_window: machine.block_window as u32,
                 mode: machine.short_block_mode,
             },
             a_range: machine.a_range,
@@ -693,22 +775,6 @@ pub(crate) fn post_toolpath(
         let output = post
             .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;
-        let source = if post.definition().options.min_block_ms.is_some() {
-            "post"
-        } else {
-            "profile"
-        };
-        for report in &output.block_time_reports {
-            if report.affected_blocks > 0 {
-                notes.push(format!(
-                    "operation '{}': {}",
-                    operation_names
-                        .get(&report.operation)
-                        .unwrap_or(&report.operation),
-                    report.summary(source)
-                ));
-            }
-        }
         if output.clamped_feeds > 0 {
             notes.push(format!(
                 "setup '{}': {} feed(s) were lowered to the post's maximum feed",
@@ -729,10 +795,30 @@ pub(crate) fn post_toolpath(
             post.definition(),
             machine,
             setup,
-            &part,
-            output.clamped_feeds,
+            &output.verification_path,
+            output.clamped_feeds > 0
+                && !(settings.0.min_block_ms > 0.0
+                    && settings.0.mode == openchuck_types::machine::ShortBlockMode::SlowDown),
         ));
+        file_seconds.insert(name.clone(), output.estimated_seconds);
+        for report in &output.short_blocks {
+            if report.affected_windows > 0 {
+                notes.push(short_block_note(project, report));
+            }
+        }
+        short_blocks.extend(output.short_blocks);
+        posted_toolpath
+            .groups
+            .extend(output.verification_path.groups);
         files.push((name, output.text));
     }
-    Ok((files, reports, notes))
+    Ok(PostedFiles {
+        files,
+        reports,
+        notes,
+        short_blocks,
+        toolpath: posted_toolpath,
+        file_seconds,
+        settings: Some(settings),
+    })
 }

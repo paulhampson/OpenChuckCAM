@@ -1340,7 +1340,8 @@ impl Job<'_> {
         Ok(openchuck_post::PostJob {
             block_time: openchuck_post::BlockTimeSettings {
                 min_block_ms: self.machine.min_block_ms,
-                block_window: self.machine.block_window,
+                // This workspace uses a validated machine profile (<=4096).
+                block_window: self.machine.block_window as u32,
                 mode: self.machine.short_block_mode,
             },
             a_range: self.machine.a_range,

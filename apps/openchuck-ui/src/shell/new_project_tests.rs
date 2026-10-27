@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use eframe::egui::{Event, Modifiers, PointerButton};
+use eframe::egui::{Event, Key, Modifiers, PointerButton};
 
 use super::frame_tests::Rig;
 use super::*;
@@ -55,6 +55,110 @@ fn click(rig: &mut Rig, label: &str) {
     rig.frame(vec![button(true)]);
     rig.frame(vec![button(false)]);
     rig.frame(Vec::new());
+}
+
+fn type_name(rig: &mut Rig, name: &str) {
+    let at = rig
+        .visible_text_rects()
+        .into_iter()
+        .find(|(text, _)| text == "Untitled")
+        .expect("the name field shows Untitled")
+        .1
+        .center();
+    rig.click(at);
+    rig.press(Key::A, Modifiers::COMMAND);
+    rig.frame(vec![Event::Text(name.to_owned())]);
+    assert!(!crate::pending_edits::entries(&rig.ctx).is_empty());
+}
+
+#[test]
+fn req_prj_01_req_ui_07_new_project_ok_confirms_its_typed_name_without_a_warning() {
+    let parent = scratch("typed-ok");
+    let mut rig = blank();
+    open_dialog(&mut rig, &parent, "Untitled");
+    type_name(&mut rig, "Blisk");
+    click(&mut rig, "OK");
+    assert!(!rig.shows("Unconfirmed changes"));
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().name(), "Blisk");
+    assert!(parent.join("Blisk/project.toml").is_file());
+    let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn req_prj_01_req_nfr_07_new_project_ok_still_refuses_an_empty_typed_name() {
+    let parent = scratch("typed-empty");
+    let mut rig = blank();
+    open_dialog(&mut rig, &parent, "Untitled");
+    type_name(&mut rig, "   ");
+    assert!(rig.shows("Give the project a name."));
+    assert!(matches!(
+        rig.shell.dialog,
+        Some(Dialog::Folder { create: true, .. })
+    ));
+    assert!(rig.shell.app.is_none());
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 0);
+    let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn req_ui_07_new_project_cancel_discards_its_typed_name_without_a_warning() {
+    let parent = scratch("typed-cancel");
+    let mut rig = blank();
+    open_dialog(&mut rig, &parent, "Untitled");
+    type_name(&mut rig, "Blisk");
+    click(&mut rig, "Cancel");
+    assert!(!rig.shows("Unconfirmed changes"));
+    assert!(rig.shell.dialog.is_none());
+    assert!(crate::pending_edits::entries(&rig.ctx).is_empty());
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 0);
+    let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn req_ui_14_new_project_escape_restores_the_field_without_closing_the_dialog() {
+    let parent = scratch("typed-escape");
+    let mut rig = blank();
+    open_dialog(&mut rig, &parent, "Untitled");
+    type_name(&mut rig, "Blisk");
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(!rig.shows("Unconfirmed changes"));
+    assert!(matches!(
+        &rig.shell.dialog,
+        Some(Dialog::Folder { create: true, name, .. }) if name == "Untitled"
+    ));
+    let _ = std::fs::remove_dir_all(&parent);
+}
+
+#[test]
+fn req_ui_07_req_ui_14_new_project_app_close_still_uses_the_departure_guard() {
+    let parent = scratch("typed-close");
+    let mut rig = blank();
+    open_dialog(&mut rig, &parent, "Untitled");
+    type_name(&mut rig, "Blisk");
+    let mut input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, rig.size)),
+        ..Default::default()
+    };
+    input
+        .viewports
+        .get_mut(&egui::ViewportId::ROOT)
+        .unwrap()
+        .events
+        .push(egui::ViewportEvent::Close);
+    let mut output = rig.ctx.run_ui(input, |ui| rig.shell.draw(ui));
+    output.textures_delta.clear();
+    assert!(
+        output.viewport_output[&egui::ViewportId::ROOT]
+            .commands
+            .contains(&egui::ViewportCommand::CancelClose)
+    );
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Unconfirmed changes"));
+    assert!(!rig.shell.quitting);
+    let _ = std::fs::remove_dir_all(&parent);
 }
 
 #[test]

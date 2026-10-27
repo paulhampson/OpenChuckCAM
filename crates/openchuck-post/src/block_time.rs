@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! GC-17 Report: a deterministic analysis of ordered fed-block durations.
+//! GC-17 compatibility Report: a deterministic analysis of original IR durations.
+//!
+//! This API retains complete-window diagnostic semantics. The production post
+//! also returns `ShortBlockReport`, measured from emitted feeds, and uses that
+//! controller-time model for optional Slow down. These metrics need not match.
 use crate::{PostError, Result};
 use openchuck_types::{
     ir::{MoveKind, Toolpath},

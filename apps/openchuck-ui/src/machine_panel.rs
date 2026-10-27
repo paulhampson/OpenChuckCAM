@@ -16,11 +16,12 @@ use openchuck_app::Command;
 use openchuck_app::library::default_folders;
 use openchuck_app::machine_view::{MachineValue, machine_values};
 use openchuck_app::setup::{
-    AvailableMachine, MachineProfile, MachineSource, ProfileEntry, available_machines,
-    compare_machine, new_machine_id, save_profile_entry,
+    AvailableMachine, Confirmation, MachineProfile, MachineSource, ProfileEntry, ProfileField,
+    Provenance, ShortBlockMode, available_machines, compare_machine, new_machine_id,
+    save_profile_entry,
 };
 
-use crate::field_row;
+use crate::field_row::{self, FieldState, Outcome, TextRow};
 use crate::theme::{DARK, width};
 
 const NOTE: Color32 = DARK.warning;
@@ -104,7 +105,9 @@ fn value_row(ui: &mut egui::Ui, value: &MachineValue) {
                 .max_rect(rect)
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
         );
-        icon(&mut child, value);
+        if value.field != ProfileField::ShortBlockMode {
+            icon(&mut child, value);
+        }
         child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add(egui::Label::new(RichText::new(value.label).color(DARK.muted)).truncate());
         });
@@ -119,6 +122,7 @@ pub struct MachinePanel {
     available: Vec<AvailableMachine>,
     chosen: usize,
     message: Option<String>,
+    fields: FieldState,
 }
 
 impl Default for MachinePanel {
@@ -130,6 +134,7 @@ impl Default for MachinePanel {
             available,
             chosen: 0,
             message: None,
+            fields: FieldState::default(),
         }
     }
 }
@@ -138,6 +143,79 @@ impl MachinePanel {
     fn refresh(&mut self) {
         self.available = available_machines(self.library.as_deref());
         self.chosen = self.chosen.min(self.available.len().saturating_sub(1));
+    }
+
+    fn short_blocks(
+        &mut self,
+        ui: &mut egui::Ui,
+        profile: &MachineProfile,
+    ) -> Option<MachineProfile> {
+        ui.strong("Short moves");
+        ui.weak("Report shows command demand. Slow down preserves the programmed path at a lower feed. Zero milliseconds turns the check off.");
+        let mut edited = None;
+        for (field, label, unit, range, applied) in [
+            (
+                ProfileField::MinBlockMs,
+                "Minimum block time",
+                "ms",
+                "0 or more",
+                profile.min_block_ms.to_string(),
+            ),
+            (
+                ProfileField::BlockWindow,
+                "Block window",
+                "blocks",
+                "whole number from 1 to 4096",
+                profile.block_window.to_string(),
+            ),
+        ] {
+            let validate = |text: &str| edit_short_block(profile, field, text).map(|_| ());
+            let row = TextRow {
+                key: field.name(),
+                label,
+                unit,
+                range: Some(range),
+                applied,
+                enabled: true,
+                number: true,
+                description: "Set from the machine's measured block rate and planner queue depth. Applies to this project copy.",
+                validate: Some(&validate),
+                ..TextRow::default()
+            };
+            if let Outcome::Commit(text) = field_row::text_row(ui, &mut self.fields, &row) {
+                match edit_short_block(edited.as_ref().unwrap_or(profile), field, &text) {
+                    Ok(value) => edited = Some(value),
+                    Err(reason) => self.fields.refuse(field.name(), &text, reason),
+                }
+            }
+            let value = machine_values(profile)
+                .into_iter()
+                .find(|v| v.field == field);
+            if let Some(value) = value {
+                icon(ui, &value);
+            }
+        }
+        let modes = [
+            ShortBlockMode::Off,
+            ShortBlockMode::Report,
+            ShortBlockMode::SlowDown,
+        ];
+        let current = modes.iter().position(|m| *m == profile.short_block_mode);
+        if let Some(index) = field_row::list_row(
+            ui,
+            "short_block_mode",
+            "Mode",
+            "Report leaves motion unchanged. Slow down lengthens blocks to meet the configured average; geometry is unchanged.",
+            (&["Off", "Report", "Slow down"], current),
+            profile.short_block_mode.label(),
+        ) && let Some(mode) = modes.get(index)
+        {
+            let mut next = edited.take().unwrap_or_else(|| profile.clone());
+            next.short_block_mode = *mode;
+            user_source(&mut next, ProfileField::ShortBlockMode);
+            edited = Some(next);
+        }
+        edited
     }
 
     /// Draws the panel for the project's machine `copy`. Returns a command
@@ -162,7 +240,15 @@ impl MachinePanel {
                     &profile.name,
                 );
                 let values = machine_values(profile);
-                for value in values.iter().filter(|v| !v.collapsed) {
+                for value in values.iter().filter(|v| {
+                    !v.collapsed
+                        && !matches!(
+                            v.field,
+                            ProfileField::MinBlockMs
+                                | ProfileField::BlockWindow
+                                | ProfileField::ShortBlockMode
+                        )
+                }) {
                     value_row(ui, value);
                 }
                 egui::CollapsingHeader::new(
@@ -176,6 +262,14 @@ impl MachinePanel {
                     }
                 });
             }
+        }
+        if let Some(profile) = copy
+            && let Some(edited) = self.short_blocks(ui, profile)
+        {
+            command = Some(Command::SetMachineFrom {
+                machine: Some(Box::new(edited)),
+                id: copy_id.map(str::to_owned),
+            });
         }
         ui.separator();
 
@@ -343,4 +437,126 @@ pub fn open_folder(dir: &std::path::Path) -> Result<(), String> {
         .spawn()
         .map(drop)
         .map_err(|e| format!("could not open {} with {program}: {e}", dir.display()))
+}
+
+fn user_source(profile: &mut MachineProfile, field: ProfileField) {
+    profile.provenance.insert(field, Provenance { state: Confirmation::Unconfirmed, source: "User configured for this project; validate on the machine with its firmware and program delivery method".into() });
+}
+
+fn edit_short_block(
+    profile: &MachineProfile,
+    field: ProfileField,
+    text: &str,
+) -> Result<MachineProfile, String> {
+    let mut next = profile.clone();
+    match field {
+        ProfileField::MinBlockMs => {
+            next.min_block_ms = text
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| "Enter a finite number of milliseconds, 0 or more.".to_owned())?
+        }
+        ProfileField::BlockWindow => {
+            let number = text
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| "Enter a whole number of blocks, 1 to 4096.".to_owned())?;
+            if !number.is_finite() || number.fract() != 0.0 || !(1.0..=4096.0).contains(&number) {
+                return Err("Enter a whole number of blocks, 1 to 4096.".into());
+            }
+            next.block_window = number as usize;
+        }
+        _ => return Err("Choose a short-move setting.".into()),
+    }
+    next.validate().map_err(|e| e.to_string())?;
+    user_source(&mut next, field);
+    Ok(next)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn req_gc_17_req_ui_13_machine_mode_control_selects_slowdown() {
+        let ctx = egui::Context::default();
+        let mut panel = MachinePanel::default();
+        let machine = MachineProfile::example_x_rotary();
+        let mut frame = |events| {
+            let mut edited = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        Pos2::ZERO,
+                        egui::vec2(420.0, 400.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    edited = panel.short_blocks(ui, &machine);
+                },
+            );
+            output.textures_delta.clear();
+            (edited, output.shapes)
+        };
+        fn find(shape: &egui::Shape, needle: &str) -> Option<Pos2> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == needle => {
+                    Some(text.pos + text.galley.rect.center().to_vec2())
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, needle)),
+                _ => None,
+            }
+        }
+        let (_, shapes) = frame(Vec::new());
+        let at = shapes
+            .iter()
+            .find_map(|s| find(&s.shape, "Off"))
+            .expect("Mode dropdown is shown");
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(vec![egui::Event::PointerMoved(at)]);
+        frame(vec![button(at, true)]);
+        frame(vec![button(at, false)]);
+        let (_, shapes) = frame(Vec::new());
+        let at = shapes
+            .iter()
+            .find_map(|s| find(&s.shape, "Slow down"))
+            .expect("Slow down option is shown");
+        frame(vec![egui::Event::PointerMoved(at)]);
+        frame(vec![button(at, true)]);
+        let (edited, _) = frame(vec![button(at, false)]);
+        let edited = edited.unwrap();
+        assert_eq!(edited.short_block_mode, ShortBlockMode::SlowDown);
+        assert_eq!(
+            edited.min_block_ms.to_bits(),
+            machine.min_block_ms.to_bits()
+        );
+        assert_eq!(edited.block_window, machine.block_window);
+        assert!(!edited.is_confirmed(ProfileField::ShortBlockMode));
+    }
+
+    #[test]
+    fn req_gc_17_req_set_01_machine_controls_validate_and_keep_other_values() {
+        let original = MachineProfile::example_x_rotary();
+        let limit = edit_short_block(&original, ProfileField::MinBlockMs, "7.5").unwrap();
+        assert_eq!(limit.min_block_ms.to_bits(), 7.5f64.to_bits());
+        assert_eq!(limit.max_feeds, original.max_feeds);
+        assert!(!limit.is_confirmed(ProfileField::MinBlockMs));
+        let window = edit_short_block(&limit, ProfileField::BlockWindow, "32.0").unwrap();
+        assert_eq!(window.block_window, 32);
+        assert_eq!(window.min_block_ms.to_bits(), 7.5f64.to_bits());
+        for text in ["0", "-1", "2.5", "4097", "NaN", "abc"] {
+            assert!(edit_short_block(&original, ProfileField::BlockWindow, text).is_err());
+        }
+        for text in ["-1", "NaN", "inf", "abc"] {
+            assert!(edit_short_block(&original, ProfileField::MinBlockMs, text).is_err());
+        }
+    }
 }

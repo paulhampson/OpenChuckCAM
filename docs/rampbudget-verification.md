@@ -1,5 +1,7 @@
 # RAMPBUDGET — implementation and verification
 
+This records the initial delivery checkpoint. Merge Manager subsequently marked #360 ready and released integration on 27 October 2026; see [released main integration](rampbudget-release-verification.md) for current validation.
+
 Refs #343. Based on verified main `ba10400fff3bb7ad32526a7e540919c810e85434`, library 0.23.0. [Phase 1](rampbudget-phase1.md) contains the baseline, analytical limits, options and raw measurements. The owner directly accepted the complete record with **“Accept 0247”** on 26 October 2026 in this lane session. A refreshed remote-ref audit found AROT's separately published 0247 and OI-994–997; this lane's unchanged eight clauses are [0248](decisions/0248-ramp-clearance-budget.md), with OI-998. This is administrative renumbering, not a change or relay of acceptance.
 
 Main subsequently advanced to `8f788bf` / library 0.24.0 through SHORTMOVE. This lane retains its verified starting base until Merge Manager releases main integration under accepted 0055 item 4. No public signature/type, project format or schema changes, no new dependency, and no library version selected. The number follows merge order if integration exposes any required break; there is no semver workaround.

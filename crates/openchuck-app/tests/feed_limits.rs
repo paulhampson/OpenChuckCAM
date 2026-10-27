@@ -388,18 +388,40 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
     drop(app);
     let machine = std::fs::read_to_string(dir.join("machine.toml")).unwrap();
     assert!(!machine.contains("\nid = "), "{machine}");
-    let older: String = machine
-        .lines()
-        // Neither field existed in schema 12 (decisions 0076 and 0231).
-        .filter(|l| !l.starts_with("rotary_in_feed") && !l.starts_with("max_spindle_rpm"))
-        .map(|l| {
-            if l.starts_with("schema = ") {
-                "schema = 12\n".to_owned()
-            } else {
-                format!("{l}\n")
-            }
-        })
-        .collect();
+    let mut older: toml::Table = machine.parse().unwrap();
+    older.insert("schema".into(), toml::Value::Integer(12));
+    let profile = older.get_mut("machine").unwrap().as_table_mut().unwrap();
+    // Build an actual schema-12 machine: newer limit/configuration fields
+    // and their provenance did not exist yet (0076, 0231, 0222).
+    for field in [
+        "min_spindle_rpm",
+        "max_spindle_rpm",
+        "min_block_ms",
+        "block_window",
+        "short_block_mode",
+    ] {
+        profile.remove(field);
+    }
+    profile
+        .get_mut("max_feeds")
+        .unwrap()
+        .as_table_mut()
+        .unwrap()
+        .remove("rotary_in_feed");
+    if let Some(provenance) = profile
+        .get_mut("provenance")
+        .and_then(toml::Value::as_table_mut)
+    {
+        for field in [
+            "spindle_range",
+            "min_block_ms",
+            "block_window",
+            "short_block_mode",
+        ] {
+            provenance.remove(field);
+        }
+    }
+    let older = toml::to_string_pretty(&older).unwrap();
     std::fs::write(dir.join("machine.toml"), older).unwrap();
 
     let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
