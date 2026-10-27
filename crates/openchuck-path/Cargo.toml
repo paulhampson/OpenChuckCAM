@@ -21,11 +21,12 @@ cavalier_contours.workspace = true
 parry3d-f64.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 openchuck-testkit.workspace = true
 proptest.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

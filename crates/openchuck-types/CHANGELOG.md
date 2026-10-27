@@ -4,6 +4,8 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Version 0.22.0 with the library family for FACING (decision0244). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - **Breaking (0.20.0):** `machine::MachineProfile` has two new public fields, `min_spindle_rpm` and `max_spindle_rpm` (`Option<SpindleSpeed>`), the spindle speed range the machine runs at, a limit and never a default; `ProfileField` gains `SpindleRange` (`ProfileField::ALL` has eight entries), and `unconfirmed_fields` lists it only when the profile gives a range. New: `machine::SpindleLimit`, `MachineProfile::spindle_limit` and `MachineProfile::fields` (the fields the profile gives a value for; the CLI counts those). `validate` refuses a value that is not above 0, and a lowest speed not below the highest (decision 0231, OI-754; GC-14, NFR-12). Profile files without them read with no range.

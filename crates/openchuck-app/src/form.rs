@@ -19,6 +19,9 @@ use openchuck_project::{ParameterValue, Project};
 use crate::AppError;
 use crate::operation::parameter_values;
 
+pub use openchuck_path::facing::selection::{FaceOffset, SideRequest, decode_rows, encode_rows};
+pub use openchuck_types::units::Degrees;
+
 /// What kind of value a field takes.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -45,6 +48,9 @@ pub enum FieldKind {
     Flag,
     /// Free text, such as a list of angles.
     Text,
+    /// Ordered arbitrary A/optional plane-offset rows, stored as one text
+    /// parameter and edited as a table rather than exposed JSON.
+    IndexedFaces,
     /// One of a list of words.
     Choice {
         /// The words, in display order.
@@ -208,7 +214,7 @@ pub fn parameter_form(
     let op = project
         .operation(operation)
         .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
-    let schema = registry.get(&op.strategy)?.schema();
+    let schema = crate::operation::effective_schema(op, registry.get(&op.strategy)?);
     let (resolved, mut notes) = match parameter_values(project, op, registry) {
         Ok(r) => (r.values, r.notes),
         Err(e) => (BTreeMap::new(), vec![e.user_message()]),
@@ -261,6 +267,10 @@ pub fn parameter_form(
                 ParameterKind::AngleList { default } => {
                     (FieldKind::Text, Some(ParameterValue::Text(default.clone())))
                 }
+                ParameterKind::IndexedFaces { default } => (
+                    FieldKind::IndexedFaces,
+                    Some(ParameterValue::Text(default.clone())),
+                ),
                 ParameterKind::Choice { options, default } => (
                     FieldKind::Choice {
                         options: options.clone(),
@@ -290,7 +300,8 @@ pub fn parameter_form(
                 label: if spec.name == names::RAMP_BACK_AND_FORTH && reversing_inactive {
                     format!("{} (inactive)", spec.label)
                 } else {
-                    spec.label.clone()
+                    facing_face_label(project, &op.strategy, &spec.name)
+                        .unwrap_or_else(|| spec.label.clone())
                 },
                 description: spec.description.clone(),
                 kind,
@@ -308,6 +319,28 @@ pub fn parameter_form(
     })
 }
 
+// Canonical model faces use the same fixed order as 0244/SideSelection.
+// Show the actual machine sense, leaving the face name alone if it is unknown.
+fn facing_face_label(project: &Project, strategy: &str, name: &str) -> Option<String> {
+    if strategy != openchuck_path::facing::NAME {
+        return None;
+    }
+    let (face, angle) = match name {
+        "positive_z" => ("+Z", 0.),
+        "positive_y" => ("+Y", 90.),
+        "negative_z" => ("−Z", 180.),
+        "negative_y" => ("−Y", 270.),
+        _ => return None,
+    };
+    let machine = project.machine()?;
+    let a = if name == "positive_z" {
+        0.
+    } else {
+        angle * machine.a_sense.sign()
+    };
+    Some(format!("{face} (A {a:.0}°)"))
+}
+
 /// Checks one value of `operation`'s strategy against its schema: the name
 /// must exist, and the value must have the right kind and be in range.
 /// `None` (clear the value) is always allowed: the cutting data or the
@@ -323,11 +356,27 @@ pub(crate) fn check_parameter(
     let op = project
         .operation(operation)
         .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
-    let schema = registry.get(&op.strategy)?.schema();
-    let spec = schema.get(name).ok_or_else(|| AppError::Operation {
-        name: op.name.clone(),
-        reason: format!("its strategy has no parameter '{name}'"),
-    })?;
+    let strategy = registry.get(&op.strategy)?;
+    let schema = strategy.schema();
+    let mut proposed = crate::operation::stored_values(op);
+    match value {
+        Some(value) => {
+            proposed.insert(name.to_owned(), to_path(value));
+        }
+        None => {
+            proposed.remove(name);
+        }
+    }
+    let active = strategy.schema_for(&proposed);
+    // Visible mode-specific controls use their active range. Known inactive
+    // values remain editable through the host API using their union spec.
+    let spec = active
+        .get(name)
+        .or_else(|| schema.get(name))
+        .ok_or_else(|| AppError::Operation {
+            name: op.name.clone(),
+            reason: format!("its strategy has no parameter '{name}'"),
+        })?;
     let Some(value) = value else { return Ok(()) };
     let single = ParameterSchema {
         parameters: vec![spec.clone()],

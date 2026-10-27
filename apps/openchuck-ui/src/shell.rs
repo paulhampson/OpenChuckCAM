@@ -482,7 +482,10 @@ impl Shell {
             let setup = self
                 .setup
                 .filter(|id| app.project().setups().iter().any(|s| s.id == *id));
-            self.scene_job = Some((app.start_scene(setup), fit));
+            self.scene_job = Some((
+                app.start_scene_with_facing(setup, self.run.last().cloned()),
+                fit,
+            ));
         }
     }
 
@@ -565,7 +568,8 @@ impl Shell {
         if self.checks_job.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        if self.overview_dirty || self.overview.revision != revision {
+        let geometry_changed = self.overview.revision != revision;
+        if self.overview_dirty || geometry_changed {
             let mut overview = app.overview(self.checks.as_deref(), &self.jobs);
             for note in &self.viewport.view().notes {
                 overview.push(Message::new(Severity::Info, note.clone(), None, None));
@@ -579,6 +583,9 @@ impl Shell {
             self.overview = overview;
             self.overview_dirty = false;
             self.highlight = None;
+        }
+        if geometry_changed {
+            self.rebuild_scene(false);
         }
     }
 
@@ -1325,10 +1332,12 @@ impl Shell {
     /// (slice 9).
     fn run_frame(&mut self, ctx: &egui::Context) {
         let mut error = None;
+        let mut regenerated = false;
         let mut added = None;
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
             if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+                regenerated = true;
                 self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
                 self.play.set_run(app, run);
@@ -1364,6 +1373,9 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+        }
+        if regenerated {
+            self.rebuild_scene(false);
         }
         // The tool library window works with or without a project (12.1). Its
         // folded groups and size filter are kept in the settings (UI-15).

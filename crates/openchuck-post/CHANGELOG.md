@@ -4,6 +4,8 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
+- Version 0.22.0 with the library family for FACING (decision0244). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Fix the Makera Z1's A-coordinate adjustment after `G92.4 A0 S0` at exactly +360 or -360 degrees (GC-04/09, decision 0241, #292). Firmware retains these values; following absolute A words now retain that offset too, avoiding an unintended full turn. The command remains a non-moving whole-turn counter reset, not a change to the saved work offset.

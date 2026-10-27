@@ -103,6 +103,9 @@ pub(crate) fn assemble(
             data.part_bounds,
             context,
         )?;
+        if let Some(facing) = &data.facing {
+            facing.validate(&linked.group, context)?;
+        }
         result.groups.push(linked.group);
     }
     Ok(result)

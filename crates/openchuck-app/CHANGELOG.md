@@ -4,6 +4,17 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Facing shares draft extent/margin/target/dimension geometry and generated finite-cutter outlines between background viewport scenes and Setup panes. Stale generated sweeps are not overlaid on edited drafts. Curved outlines are display approximations, never clearance evidence. `FrontPane`/`EndPane` add Facing guides under the0.22.0 API change.
+- Facing completion is separate from whole-part simulation deviation: outside-extent stock is labelled Intentionally unfaced locally; global remaining stock, other misses and every overcut remain counted. Simulation retains its cell resolution.
+- Actual written verification preserves the accepted Z1 footer after checking its retract against the actual whole setup/configured clearance. Unexpected machine/home/frame changes, unsupported interpolation and excessive coordinate/feed precision refuse export. Default legacy output is unchanged apart from the release-version banner.
+- Shared parameter edits use the proposed active schema's range as well as its displayed defaults. Test-only FINSTEP consumer verifies legacy Scallop default0 off / Allowed excess0.01mm on; production adaptive semantics remain FINSTEP-owned. Owner-approved merge order: this FACING PR first, FINSTEP consumes hooks from main afterward.
+
+- **Breaking (0.22.0, FACING):** `OperationPath` and `GroupInfo` add optional `facing: FacingVerification` metadata. It retains immutable whole-setup geometry and resolved settings from the same generation; pipeline/file connections revalidate actual groups against those inputs. Default whole-stock/zero-margin legacy modes retain `None`. New End/Box generation and supported restricted legacy completion are enabled with independent nominal and actual posted/binary32 checks. Unsupported proofs refuse clearly.
+
+- Version 0.22.0 with the library family for FACING (decision0244). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+- Facing supplies whole placed STL geometry separately from the composite target, resolves automatic tabs before separating tab-only extents, and marks unsupported STEP projection bounds unknown. The operation form uses active mode settings and retains inactive edits.
+- Facing's plane Reset restores part-plus-allowance derivation in one undoable edit, distinct from clearing required manual text. Standard face controls show their A positions using the configured machine sense. All four preserves offsets and ordered arbitrary rows.
+
 - CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
 
 - Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.

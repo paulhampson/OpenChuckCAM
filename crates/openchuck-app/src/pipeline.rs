@@ -88,6 +88,8 @@ pub struct GroupInfo {
     /// it sets (decision record 0175). They make the operation's state a
     /// warning and are listed in Messages and the results.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// Facing inputs captured with this generation, shared with its cache.
+    pub facing: Option<crate::facing::FacingVerification>,
 }
 
 /// The result of regenerating a project.
@@ -283,6 +285,9 @@ pub(crate) fn regenerate(
             path.part_bounds,
             context,
         )?;
+        if let Some(facing) = &path.facing {
+            facing.validate(&linked.group, context)?;
+        }
         for note in &path.notes {
             regeneration
                 .notes
@@ -362,6 +367,7 @@ pub(crate) fn regenerate(
             tool: path.tool.clone(),
             part_bounds: path.part_bounds,
             warnings: path.warnings.clone(),
+            facing: path.facing.clone(),
         });
         share(STAGE_GENERATE, i, 0.0, 1.0).finish();
     }

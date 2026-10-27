@@ -2375,6 +2375,7 @@ mod tests {
                        (40.330, -5.370, -9.425), more than this operation's tolerance of 0.01 mm.";
         let run = crate::Regeneration {
             groups: vec![crate::pipeline::GroupInfo {
+                facing: None,
                 operation: op,
                 setup,
                 tool: openchuck_types::tool::Tool {

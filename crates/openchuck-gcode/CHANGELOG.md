@@ -4,6 +4,10 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- `compare_with_moves` exposes each actual replayed move with its source group/segment, controller counter shift and programmed fed duration. Observations are provisional until the complete comparison succeeds. Existing `compare` delegates with a no-op observer and preserves its result/structural checks; no motion is silently accepted because a callback ran.
+
+- Version 0.22.0 with the library family for FACING (decision0244). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Replay `G92.4 A0 S0` with the Z1 firmware's strict `|A| > 360` condition (GC-09, decision 0241, #292). Exactly +360 and -360 remain unchanged, so subsequent absolute A motion is checked against the actual controller convention. XYZ and spindle state are unchanged by this command.

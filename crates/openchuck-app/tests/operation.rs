@@ -1547,6 +1547,282 @@ fn set_strategy(
 }
 
 #[test]
+fn req_op_24_req_ui_07_facing_forms_show_only_the_selected_modes_settings() {
+    let (dir, mut app, op) = project("facing-mode-form");
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[("shape", ParameterValue::Text("end".into()))],
+    );
+    let form = app.parameter_form(op).unwrap();
+    assert!(!form.fields.iter().any(|f| f.name == "size"));
+    assert!(!form.fields.iter().any(|f| f.name == "arbitrary_faces"));
+    assert!(
+        form.fields
+            .iter()
+            .any(|f| f.name == "stepdown" && f.label == "Axial stepdown")
+    );
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[("shape", ParameterValue::Text("box".into()))],
+    );
+    let form = app.parameter_form(op).unwrap();
+    assert!(!form.fields.iter().any(|f| f.name == "size"));
+    assert!(form.fields.iter().any(|f| f.name == "arbitrary_faces"));
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[("shape", ParameterValue::Text("flat".into()))],
+    );
+    let form = app.parameter_form(op).unwrap();
+    assert!(form.fields.iter().any(|f| f.name == "size"));
+    assert!(!form.fields.iter().any(|f| f.name == "layer_distribution"));
+    assert!(!form.fields.iter().any(|f| f.name == "arbitrary_faces"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_ui_07_all_four_is_one_undoable_edit_preserving_offsets_and_rows() {
+    let (dir, mut app, op) = project("facing-all-four");
+    let rows = r#"[{"angle":130,"offset":9},{"angle":40,"offset":null}]"#;
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[
+            ("shape", ParameterValue::Text("box".into())),
+            ("positive_z", ParameterValue::Flag(true)),
+            ("positive_z_from_part", ParameterValue::Flag(false)),
+            ("positive_z_offset", ParameterValue::Number(9.)),
+            ("arbitrary_faces", ParameterValue::Text(rows.into())),
+        ],
+    );
+    let before = app.project().operation(op).unwrap().clone();
+    app.select_all_facing_sides(op).unwrap();
+    let after = app.project().operation(op).unwrap().clone();
+    for side in ["positive_z", "positive_y", "negative_z", "negative_y"] {
+        assert_eq!(
+            after.parameters.get(side),
+            Some(&ParameterValue::Flag(true))
+        );
+    }
+    assert_eq!(
+        after.parameters.get("positive_z_offset"),
+        Some(&ParameterValue::Number(9.))
+    );
+    assert_eq!(
+        after.parameters.get("positive_z_from_part"),
+        Some(&ParameterValue::Flag(false))
+    );
+    assert_eq!(
+        after.parameters.get("arbitrary_faces"),
+        Some(&ParameterValue::Text(rows.into()))
+    );
+    assert!(app.undo().unwrap());
+    assert_eq!(app.project().operation(op), Some(&before));
+    assert!(app.redo().unwrap());
+    assert_eq!(app.project().operation(op), Some(&after));
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[("shape", ParameterValue::Text("round".into()))],
+    );
+    assert!(app.select_all_facing_sides(op).is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_ui_07_reset_plane_restores_part_derivation_in_one_undoable_edit() {
+    let (dir, mut app, op) = project("facing-reset-plane");
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[
+            ("shape", ParameterValue::Text("box".into())),
+            ("positive_z", ParameterValue::Flag(true)),
+            ("positive_z_from_part", ParameterValue::Flag(false)),
+            ("positive_z_offset", ParameterValue::Number(9.)),
+        ],
+    );
+    let before = app.project().operation(op).unwrap().clone();
+    // Clearing typed manual text stays a required manual draft. Reset is
+    // the distinct action that returns the target to model derivation.
+    app.set_parameter(op, "positive_z_offset", None).unwrap();
+    assert_eq!(
+        app.project()
+            .operation(op)
+            .unwrap()
+            .parameters
+            .get("positive_z_from_part"),
+        Some(&ParameterValue::Flag(false))
+    );
+    assert!(app.undo().unwrap());
+    app.reset_parameter(op, "positive_z_offset").unwrap();
+    let after = app.project().operation(op).unwrap().clone();
+    assert_eq!(
+        after.parameters.get("positive_z_from_part"),
+        Some(&ParameterValue::Flag(true))
+    );
+    assert!(!after.parameters.contains_key("positive_z_offset"));
+    assert!(
+        !app.parameter_form(op)
+            .unwrap()
+            .fields
+            .iter()
+            .any(|f| f.name == "positive_z_offset")
+    );
+    assert!(app.undo().unwrap());
+    assert_eq!(app.project().operation(op), Some(&before));
+    assert!(app.redo().unwrap());
+    assert_eq!(app.project().operation(op), Some(&after));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_ui_07_standard_face_controls_show_machine_a_sense() {
+    let (dir, mut app, op) = project("facing-face-a-labels");
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[("shape", ParameterValue::Text("box".into()))],
+    );
+    for (sense, angles) in [
+        (
+            openchuck_types::machine::ASense::Positive,
+            [0, 90, 180, 270],
+        ),
+        (
+            openchuck_types::machine::ASense::Negative,
+            [0, -90, -180, -270],
+        ),
+    ] {
+        let mut machine = MachineProfile::example_x_rotary();
+        machine.a_sense = sense;
+        app.execute(Command::SetMachine(Some(Box::new(machine))))
+            .unwrap();
+        let form = app.parameter_form(op).unwrap();
+        for ((name, face), angle) in [
+            ("positive_z", "+Z"),
+            ("positive_y", "+Y"),
+            ("negative_z", "−Z"),
+            ("negative_y", "−Y"),
+        ]
+        .into_iter()
+        .zip(angles)
+        {
+            let label = &form.fields.iter().find(|f| f.name == name).unwrap().label;
+            assert_eq!(label, &format!("{face} (A {angle}°)"));
+        }
+    }
+    app.execute(Command::SetMachine(None)).unwrap();
+    let form = app.parameter_form(op).unwrap();
+    assert!(
+        !form
+            .fields
+            .iter()
+            .find(|f| f.name == "positive_y")
+            .unwrap()
+            .label
+            .contains("90")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_set_09_facing_receives_whole_part_stock_and_separate_protections() {
+    use openchuck_types::workholding::{HeldRegion, Tab, TabEnd, TabLayout, TabShape};
+    #[derive(Debug)]
+    struct InspectFacing;
+    impl Strategy for InspectFacing {
+        fn name(&self) -> &str {
+            "facing"
+        }
+        fn label(&self) -> &str {
+            "Facing input inspection"
+        }
+        fn description(&self) -> &str {
+            "Requirement test of whole-setup inputs."
+        }
+        fn schema(&self) -> ParameterSchema {
+            ParameterSchema::with_common(vec![])
+        }
+        fn passes(
+            &self,
+            input: &StrategyInput<'_>,
+            _: &Parameters,
+            _: &JobContext<'_>,
+        ) -> openchuck_path::Result<Vec<Pass>> {
+            let setup = input.facing.unwrap();
+            // The protected composite extends to X=-7 and +17; it must not
+            // replace the placed part used to derive the end target.
+            let x = setup
+                .part
+                .vertices
+                .iter()
+                .map(|p| p.x)
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| {
+                    (lo.min(x), hi.max(x))
+                });
+            assert_eq!(x, (0., 10.));
+            assert_eq!(setup.held, [Some((-7., -6.)), None]);
+            assert_eq!(setup.tabs.len(), 1);
+            assert_eq!(setup.protected.len(), 2);
+            assert_eq!(setup.projection_error, Some(0.));
+            assert_eq!(setup.tool.diameter.0, 4.);
+            assert_eq!(setup.machine, &MachineProfile::example_x_rotary());
+            assert!(matches!(setup.stock,Stock::Cylinder {length,..} if length.0==24.));
+            assert!(input.surface.bounds().min.x < 0.);
+            assert!(setup.tabs[0].contains(openchuck_types::geometry::Point3::new(16., 0., 0.)));
+            Err(openchuck_path::PathError::Strategy(
+                "whole facing inputs inspected".into(),
+            ))
+        }
+    }
+    let (dir, mut app, op) = project("facing-whole-inputs");
+    let id = app.project().operation(op).unwrap().setup;
+    let mut setup = app.project().setup(id).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(20.),
+        length: Millimetres(24.),
+        x_start: Millimetres(-7.),
+    });
+    setup.workholding.start = Some(HeldRegion {
+        length: Millimetres(1.),
+        diameter: None,
+    });
+    setup.workholding.tabs = vec![Tab {
+        x_start: Millimetres(100.),
+        length: Millimetres(2.),
+        shape: TabShape::Cylinder {
+            diameter: Millimetres(6.),
+        },
+        layout: TabLayout::OnAxis,
+        auto: Some(TabEnd::Tail),
+    }];
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    set_strategy(&mut app, op, "facing", &[]);
+    let mut registry = openchuck_path::Registry::new();
+    registry.register(Arc::new(InspectFacing)).unwrap();
+    let cancel = openchuck_types::job::CancelToken::new();
+    let context = JobContext::new(&cancel, &openchuck_types::job::NoProgress);
+    let error =
+        openchuck_app::operation::generate_operation(&dir, app.project(), op, &registry, &context)
+            .unwrap_err();
+    assert!(
+        error.to_string().contains("whole facing inputs inspected"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_op_24_the_default_distance_past_the_stock_follows_the_tool() {
     use openchuck_path::extend::parameter as extend;
     let (dir, mut app, op) = project("extend-default");

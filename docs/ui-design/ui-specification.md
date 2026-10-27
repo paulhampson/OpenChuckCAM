@@ -448,6 +448,8 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 
 **Footer** primary: "Continue to operations".
 
+**Facing extent diagram (0244, accepted).** The relevant Setup diagram and viewport use the same geometry description for the operation’s target plane/cylinder and dimensions, coverage rectangle or Round axial span, margin, protected held/tab solids and actual necessary additional cutter sweep. Use existing overlay conventions. An invalid draft carries its reason and does not replace a valid generated preview.
+
 ### 11.4 Operations
 
 Boards 3 and 3b.
@@ -473,7 +475,12 @@ Boards 3 and 3b.
   - **A closing line** says export is blocked while the operation is in error, and that turning it off lets the others export.
 - **Footer** primary: section 5. While generation runs with an operation in error, "Continue to simulate" is disabled, with its reason in the tooltip.
 
+**Facing controls (0244, accepted).** Preserve legacy Flat/Round and add End opposite held end and Box sides. Box sides offers individual standard faces and All four, plus arbitrary-angle rows with per-face model-derived offsets or explicit overrides and Reset to part plus allowance. Show opposite-plane separation. Standard selections run in fixed model order; arbitrary rows follow their listed order with keyboard-accessible Move up/down and an explicit stable Sort by A angle action. Sorting/reordering keeps offsets attached and is one undoable confirmed edit. New box sides offers Full stepdown, shorter final pass by default or Equal stepdowns; legacy layers are unchanged. End mode labels its maximum depth Axial stepdown and shows inferred end, target X and Length to opposite model end. Extents offer Whole stock, Part and Part plus tabs; planar margin expands four edges, Round Axial margin expands both X ends around the full circumference, all defaulting to zero. Tabs are always protected. Unsupported/unreachable requests explain the reason and produce no usable partial path.
+
 ### 11.5 Simulate
+
+**Facing completion (0244, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.
+
 
 Board 4 (SIM-01 to SIM-07).
 

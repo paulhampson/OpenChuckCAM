@@ -34,6 +34,7 @@ mod command;
 mod connections;
 mod error;
 mod export;
+pub mod facing;
 pub mod form;
 mod jobs;
 pub mod library;
@@ -371,10 +372,25 @@ impl Application {
         &self,
         setup: Option<openchuck_project::id::SetupId>,
     ) -> JobHandle<scene::SceneView> {
+        self.start_scene_with_facing(setup, None)
+    }
+
+    /// Scene plus actual Facing cutter sweep from a current regeneration.
+    /// Stale results are never overlaid on edited draft geometry.
+    pub fn start_scene_with_facing(
+        &self,
+        setup: Option<openchuck_project::id::SetupId>,
+        run: Option<std::sync::Arc<Regeneration>>,
+    ) -> JobHandle<scene::SceneView> {
         let document = self.document.clone();
         self.jobs
             .submit("build scene", self.events_tx.clone(), move |context| {
-                scene::build_scene(&document.location, &document.project, setup, context)
+                let mut view =
+                    scene::build_scene(&document.location, &document.project, setup, context)?;
+                if let Some(run) = run.filter(|r| r.project.as_ref() == &document.project) {
+                    facing::display::add_generated(&mut view, &run, context)?;
+                }
+                Ok(view)
             })
     }
 
@@ -844,9 +860,96 @@ impl Application {
         form::parameter_form(&self.document.project, &self.strategies, operation)
     }
 
-    /// Sets an operation parameter, or clears it with `None`, after checking
-    /// the value against the strategy's schema. An invalid value is an error
-    /// naming the parameter, and the project is left unchanged (UI-07).
+    /// Selects all four Box sides in one undoable command, preserving each
+    /// stored offset/default state and every arbitrary row (OP-24, UI-07).
+    pub fn select_all_facing_sides(&mut self, operation: OperationId) -> Result<(), AppError> {
+        let op = self
+            .document
+            .project
+            .operation(operation)
+            .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+        if op.strategy != openchuck_path::facing::NAME
+            || !matches!(op.parameters.get("shape"),Some(openchuck_project::ParameterValue::Text(mode)) if mode=="box")
+        {
+            return Err(AppError::Operation {
+                name: op.name.clone(),
+                reason: "All four requires Box sides facing".into(),
+            });
+        }
+        let commands = ["positive_z", "positive_y", "negative_z", "negative_y"]
+            .into_iter()
+            .filter(|name| {
+                op.parameters.get(*name) != Some(&openchuck_project::ParameterValue::Flag(true))
+            })
+            .map(|name| Command::SetParameter {
+                operation,
+                name: name.into(),
+                value: Some(openchuck_project::ParameterValue::Flag(true)),
+            })
+            .collect::<Vec<_>>();
+        if commands.is_empty() {
+            return Ok(());
+        }
+        self.execute(Command::Batch(commands))
+    }
+
+    /// Resets a parameter to its default. A Facing plane returns to part plus
+    /// allowance derivation as one undoable edit; clearing manual text with
+    /// set_parameter(None) remains distinct (OP-24, UI-07).
+    pub fn reset_parameter(&mut self, operation: OperationId, name: &str) -> Result<(), AppError> {
+        let op = self
+            .document
+            .project
+            .operation(operation)
+            .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+        let side = name
+            .strip_suffix("_offset")
+            .filter(|side| ["positive_z", "positive_y", "negative_z", "negative_y"].contains(side));
+        if op.strategy == openchuck_path::facing::NAME
+            && matches!(op.parameters.get("shape"),Some(openchuck_project::ParameterValue::Text(shape)) if shape=="box")
+            && let Some(side) = side
+        {
+            let derived = format!("{side}_from_part");
+            let value = openchuck_project::ParameterValue::Flag(true);
+            form::check_parameter(
+                &self.document.project,
+                &self.strategies,
+                operation,
+                name,
+                None,
+            )?;
+            form::check_parameter(
+                &self.document.project,
+                &self.strategies,
+                operation,
+                &derived,
+                Some(&value),
+            )?;
+            if !op.parameters.contains_key(name)
+                && matches!(
+                    op.parameters.get(&derived),
+                    None | Some(openchuck_project::ParameterValue::Flag(true))
+                )
+            {
+                return Ok(());
+            }
+            return self.execute(Command::Batch(vec![
+                Command::SetParameter {
+                    operation,
+                    name: name.into(),
+                    value: None,
+                },
+                Command::SetParameter {
+                    operation,
+                    name: derived,
+                    value: Some(value),
+                },
+            ]));
+        }
+        self.set_parameter(operation, name, None)
+    }
+
+    /// Sets or clears one parameter after schema validation (UI-07).
     pub fn set_parameter(
         &mut self,
         operation: OperationId,

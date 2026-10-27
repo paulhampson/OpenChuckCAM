@@ -491,6 +491,24 @@ pub(crate) fn post_toolpath(
     if toolpath.groups.is_empty() {
         return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
+    for group in &toolpath.groups {
+        context.check_cancelled()?;
+        if let Some(operation) = project
+            .operations()
+            .iter()
+            .find(|o| o.id.to_string() == group.tags.operation)
+            && crate::facing::needs_verification(operation)
+            && !run
+                .groups
+                .iter()
+                .any(|data| data.operation == operation.id && data.facing.is_some())
+        {
+            return Err(AppError::Post(format!(
+                "operation '{}': whole-setup Facing verification inputs are missing; regenerate before posting",
+                operation.name
+            )));
+        }
+    }
     let decimals = &post.definition().options.decimals;
     if decimals.pos < 3 || decimals.a < 3 {
         for group in &toolpath.groups {
@@ -688,6 +706,14 @@ pub(crate) fn post_toolpath(
         let output = post
             .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;
+        crate::facing::written::verify_output(
+            &output.text,
+            post.definition(),
+            &job,
+            &part,
+            &run.groups,
+            context,
+        )?;
         if output.clamped_feeds > 0 {
             notes.push(format!(
                 "setup '{}': {} feed(s) were lowered to the post's maximum feed",

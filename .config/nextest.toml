@@ -223,8 +223,21 @@ priority = 79
 # req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads: 65.709 s.
 # Released TOOLLIB2 reconciliation (24 Oct 2026):
 # req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
+# FACING validation27Oct2026, uninstrumented app run alongside path coverage/API
+# builds: cylindrical-tab both-post regression75.152s (isolated22.985s), existing
+# square/spline feed/post gate61.950s; held-region roughing79.254s.
+# Existing output-grouping determinism71.006s; tab-volume simulation64.086s.
+# Simulator continuous-roughing envelope75.124s in the concurrent normal run.
+# Keep default tests; coverage excludes and
+# nightly long selects these exact cases. Instrumented costs are not used.
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
+  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
+  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
   | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
   | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
@@ -279,6 +292,12 @@ default-filter = '''not (
 # 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
+  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
+  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
   | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
   | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
