@@ -42,7 +42,14 @@ runs:
       run: |
         version=$(sed -nE 's/^occt-sys = "=([0-9.]+)".*/\1/p' Cargo.toml)
         [ -n "$version" ] || { echo "::error::no occt-sys pin in Cargo.toml"; exit 1; }
-        echo "key=occt-$version-$RUNNER_OS-$RUNNER_ARCH-$VARIANT-r$REVISION" >> "$GITHUB_OUTPUT"
+        key="occt-$version-$RUNNER_OS-$RUNNER_ARCH-$VARIANT-r$REVISION"
+        # On Linux the runner image is part of the key: the `ubuntu-latest` label moved from 24.04 to
+        # 26.04 and an install built there crashed the worker (decision 0251, OI-1003), so a build on
+        # one image must never be restored on another. `ImageOS` is set by the hosted runner images
+        # (`ubuntu24`, `ubuntu26`) and names the OS release, not the weekly image build, so the key
+        # does not change every week. Windows and macOS keep their keys (their builds take 8 to 71 min).
+        [ "$RUNNER_OS" != Linux ] || key="$key-${ImageOS:-unknown}"
+        echo "key=$key" >> "$GITHUB_OUTPUT"
       env:
         VARIANT: ${{ inputs.variant }}
         REVISION: ${{ inputs.revision }}

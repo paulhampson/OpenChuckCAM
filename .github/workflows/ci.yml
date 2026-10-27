@@ -350,8 +350,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          # The Linux leg runs on the pinned ubuntu-24.04 image: on ubuntu-latest (now Ubuntu 26.04)
+          # the worker built against OpenCASCADE crashes with SIGSEGV. The job name still reads
+          # `ubuntu-latest` (decisions 0250 and 0251, OI-1002, OI-1003).
+          - os: ubuntu-latest
+            runner: ubuntu-24.04
+          - os: windows-latest
+          - os: macos-latest
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
