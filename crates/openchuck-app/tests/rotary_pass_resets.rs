@@ -67,6 +67,13 @@ fn req_op_15_req_gc_09_long_helical_operation_resets_between_complete_passes_wit
     // This does not claim a hardware limit or solve an uninterrupted helix.
     let program = openchuck_gcode::read(&text).unwrap();
     let replay = openchuck_gcode::replay(&program, openchuck_gcode::Dialect::MakeraZ1).unwrap();
+    assert!(
+        replay
+            .moves()
+            .filter(|m| !m.machine && m.motion == openchuck_gcode::Motion::Linear)
+            .all(|m| m.spindle_on),
+        "counter resets must preserve spindle state before the next cut"
+    );
     let peak = replay
         .moves()
         .filter(|m| !m.machine)

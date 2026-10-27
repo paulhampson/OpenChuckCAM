@@ -291,3 +291,49 @@ fn req_gc_09_req_gc_10_written_rotary_pose_respects_the_linear_rounding_budget()
     assert!(actual.distance(original.tip) <= 3.0_f64.sqrt() * 0.0005 + 1e-9);
     assert!((target.a - original.a.0).abs() <= 0.0005 + 1e-9);
 }
+
+#[test]
+fn req_gc_01_req_gc_04_req_op_15_standalone_hosts_declare_local_clear_pass_boundaries_without_new_motion()
+ {
+    let mut marked = path(vec![
+        seg(MoveKind::Cutting, pose(5.0, 0.0, 12.0, 720.0), 2.0),
+        seg(MoveKind::Linking, pose(5.0, 0.0, 15.0, 720.0), 1.0),
+        seg(MoveKind::Cutting, pose(10.0, 0.0, 12.0, 1440.0), 2.0),
+    ]);
+    // The host certifies an existing local-stock clear retract, below the
+    // global safe Z. Neither arbitrary retracts nor final cuts imply resets.
+    marked.groups[0].rotary_reset_after = vec![1];
+    let mut unmarked = marked.clone();
+    unmarked.groups[0].rotary_reset_after.clear();
+    let mut config = options(FeedRule::Makera);
+    config.frame.rotary_origin = Point3::ORIGIN;
+    let before = to_machine_program(&unmarked, &config).unwrap();
+    let after = to_machine_program(&marked, &config).unwrap();
+    assert_eq!(
+        after
+            .steps
+            .iter()
+            .filter(|s| matches!(s,Step::RotaryBoundary {at} if at.a==720.0 && at.z==15.0))
+            .count(),
+        1
+    );
+    let physical: Vec<_> = after
+        .steps
+        .into_iter()
+        .filter(|s| !matches!(s, Step::RotaryBoundary { .. }))
+        .collect();
+    assert_eq!(
+        physical, before.steps,
+        "explicit reset actions must add no physical positioning or feed change"
+    );
+    let mut limited = config;
+    limited.a_range = openchuck_types::machine::ARange::Limited {
+        min: Degrees(-2000.0),
+        max: Degrees(2000.0),
+    };
+    assert_eq!(
+        to_machine_program(&marked, &limited).unwrap().steps,
+        before.steps,
+        "a counter reset must not conceal limited physical travel"
+    );
+}
