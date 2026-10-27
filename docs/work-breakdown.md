@@ -280,7 +280,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | DEP | Nothing |
 | SP | Nothing (docs only); lane RH is merged |
 | UIR | X8 and X9 |
-| GATES | Existing #284 merged by Merge Manager as `0620cd0`; accepted 0221/0222/0232/0244. Final CI passed; acceptance of 0244 given directly by the owner on 26 Oct 2026. Physical evidence gaps and deferred review follow-ups remain recorded (0055). |
+| GATES | Existing #284 merged by Merge Manager as `0620cd0`; accepted 0221/0222/0232/0244. Final CI passed; acceptance of 0244 given directly by the owner on 26 Oct 2026. Physical evidence gaps and deferred review follow-ups remain recorded. Docs-only follow-through #357 integrates the released main once and records the unrelated setup-sheet timestamp flake as OI-1001 / issue #361 for a separate code lane; no test or CI code change (0055). |
 | REL | Everything, including TP, X8, X9 and UIR |
 | OPCREATE | Nothing (issue 197 inside it went to lane OPSPEED, OI-792) |
 | SIMPOLISH | BUG-RESULTS, BUG-REGEN and BUG-SIMSTALE (merged); merges `main` after BUG-TABDEV (pull request 273, decision 0194: the comparison's samples) when told. Touches `crates/openchuck-app` (`simulation.rs` `SetupState::compare` and `finish`, `pipeline.rs` the comparison and `Regeneration::compared`) and `apps/openchuck-ui` (`results_panel.rs` the band filter, `playback_panel.rs` `shown_bands`, `viewport.rs` the part's triangles in no band, `viewport_overlays.rs` the scale's marks, one line of `shell/inspector.rs`, the rig's `settle` in `shell/frame_tests.rs`). Lane SELSET reworks the deviation palette in `roles.rs` and the colour scale; this lane changes no colour |
