@@ -1,0 +1,6 @@
+Released main: ea3ecf6849a65a839878bb664356867692ee51ae
+Production, tests, dependency manifests and versions unchanged since previous released head.
+Requirements, architecture and imported CI fix match released main exactly.
+All remote refs audited: no other 0248 or OI-998 claim. Open PRs audited separately; AROT #364 retains 0247/OI-994–997.
+Requested main register rows preserved verbatim; 0248/OI-998 retained; no schema or version claim.
+Paul Hampson 528002+paulhampson@users.noreply.github.com

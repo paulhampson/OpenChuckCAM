@@ -1,0 +1,3 @@
+openchuck-path own tests: 13751/14925 lines = 92.13%
+/workspace/OpenChuckCAM/crates/openchuck-path/src/assemble/entry.rs {'count': 602, 'covered': 512, 'percent': 85.0498338870432}
+/workspace/OpenChuckCAM/crates/openchuck-path/src/entry_safety.rs {'count': 197, 'covered': 185, 'percent': 93.90862944162436}

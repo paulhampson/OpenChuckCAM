@@ -29,3 +29,21 @@ Rebuildable incremental caches and stale executable artifacts were removed to re
 ## Handoff
 
 The merge commit is authored and committed as Paul Hampson with the linked noreply address and a Codex co-author line. One released push and its exact SHA are reported on #360. Merge Manager owns CI review, release acceptance and merging; this lane does not merge the PR or set auto-merge. Issue #343 / OI-998 remain open for owner fix feedback. Original [implementation limits and coverage gaps](rampbudget-verification.md) remain explicit; no hardware/machining validation or NFR-12 wording change is claimed.
+
+## Second released integration after the STEP CI fix
+
+On 27 October 2026, Merge Manager [released one further integration push](https://github.com/paulhampson/OpenChuckCAM/pull/360#issuecomment-6453930301) after #371 merged. Main **`ea3ecf6849a65a839878bb664356867692ee51ae` is merged once** into the previous released lane head `997507f5379b69d70bd898e41bc112e037694ef1`. The earlier integration above remains a historical checkpoint.
+
+This merge has no conflicts and changes no RAMPBUDGET production or test source, public API, dependency or version. It imports the STEP runner/cache fix exactly from main, inheriting **library 0.24.0 and schemas 20/6**. All remote refs and open PRs were audited again: **0248 / OI-998** remain this lane's allocations, with AROT #364 retaining 0247 / OI-994–997. Main's decision rows 0245/0246/0249/0250/**0251** and OI rows are preserved verbatim: **OI-1000/OI-1002/OI-1003 open; OI-999/OI-1001 closed**. No stale or duplicate rows were introduced. Proposed records remain proposed; no acceptance or new number is inferred. Requirements and architecture still match main without lane edits.
+
+Validation on this merged tree:
+
+- `cargo fmt --all` and `cargo clippy --workspace --all-targets` pass (Clippy **9.77 s**).
+- `cargo nextest run --locked -p openchuck-path -j 4`: **372/372 pass**, **472.667 s**, one existing nightly-only exclusion. Seven tests exceeded a minute, all already registered in both required profiles; longest **230.020 s**. No new filter change and no test over ten minutes.
+- Application posting regressions: **3/3 pass**, **2.234 s**, covering both-post option-off bytes, reversing-ramp 1/2/N output and indexed roughing through shared entry.
+- `cargo xtask deps`, `licences`, `records`, `trace`, `conflicts`: all pass on the first attempt; **100/100 P1 requirements** have tests.
+- Own-crate coverage: **357/357 pass**, **298.047 s**, 16 skipped. Unlike the first integration's coverage run, this run excludes the previously registered region/avoid long test from its start. Path coverage is **13,751/14,925 (92.13%)**, below the report-only 95% target. `entry_safety.rs` remains **185/197 (93.91%)**, assembly entry **512/602 (85.05%)**. Summary and missing lines were read, including the unchanged new gaps at `entry_safety.rs:255` and `:296–298` described above. Existing unrelated gaps remain. No production exclusion was added. **`cargo llvm-cov clean --workspace` passed**.
+
+Raw evidence is retained in `docs/handoffs/rampbudget-evidence/released2-*.log`. No local STEP kernel or new semver run is claimed: the imported CI fix and full cross-platform checks will run on the pushed head. The previous head's Fast checks including semver passed; its Ubuntu STEP failure was the separate runner/cache problem recorded in 0251 / OI-1003. No machining validation or fix for the historical blisk entry-direction refusal is implied.
+
+The second merge uses Paul Hampson as author and committer, with Codex credited as co-author. Its one authorized push and exact head SHA are reported on #360. PR readiness, CI review and merging remain with Merge Manager; #343 / OI-998 await owner feedback.
