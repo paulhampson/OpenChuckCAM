@@ -413,10 +413,13 @@ impl SetupSheet {
             mode: machine.short_block_mode,
         };
         let report = options.and_then(|options| {
-            let overridden = options.as_ref().is_some_and(|o| {
-                o.min_block_ms.is_some() || o.block_window.is_some() || o.short_block_mode.is_some()
-            });
-            let source = if overridden { "post" } else { "profile" };
+            // The label sits beside the minimum block time, so it names that
+            // setting's source only (OI-1063: the window and mode have none).
+            let source = if options.as_ref().is_some_and(|o| o.min_block_ms.is_some()) {
+                "post"
+            } else {
+                "profile"
+            };
             let settings = options.as_ref().map_or(profile, |o| o.block_time(profile));
             openchuck_post::block_time_reports(path, settings)
                 .map(|reports| {

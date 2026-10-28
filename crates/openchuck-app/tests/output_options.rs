@@ -1415,7 +1415,7 @@ fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_with
 }
 
 #[test]
-fn req_gc_17_req_gc_12_a_post_that_overrides_only_the_window_is_labelled_as_a_post_override() {
+fn req_gc_17_req_gc_12_a_window_only_override_leaves_the_minimum_block_time_labelled_profile() {
     let (dir, mut app) = project("post-window-only", false);
     app.set_post(Some(PostSelection::parse("makera-z1")));
     let mut machine = app.project().machine().unwrap().clone();
@@ -1437,7 +1437,9 @@ fn req_gc_17_req_gc_12_a_post_that_overrides_only_the_window_is_labelled_as_a_po
     app.set_post(Some(PostSelection::Folder(custom)));
     let after = app.regenerate().unwrap();
     let html = app.setup_sheet(Some(&after.toolpath)).to_html();
-    assert!(html.contains("(post)"), "the window came from the post");
+    // The label sits beside the minimum block time, which the post did not set.
+    assert!(html.contains("(profile)"), "{html}");
+    assert!(!html.contains("(post)"), "only the window is overridden");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

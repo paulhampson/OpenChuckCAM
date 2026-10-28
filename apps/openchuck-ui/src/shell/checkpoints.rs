@@ -809,6 +809,7 @@ mod tests {
                 true,
             );
         }
+        let publish_deadline = Instant::now() + Duration::from_secs(30);
         loop {
             rig.frame(Vec::new());
             let catalog = Catalog::read(&folder).unwrap();
@@ -817,7 +818,7 @@ mod tests {
                 break;
             }
             assert!(
-                Instant::now() < deadline,
+                Instant::now() < publish_deadline,
                 "reopened project reused an old revision namespace"
             );
             std::thread::sleep(Duration::from_millis(1));
