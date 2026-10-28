@@ -1,6 +1,6 @@
 # 0267: Output file name templates, file hashes on the setup sheet and staged writes (lane OUTPUT2)
 
-- **Status:** proposed (28 Oct 2026). The owner's decisions were relayed by the coordinator on 28 Oct 2026: OI-1070 option A (items 1 to 4), OI-1071 option A (item 5) and OI-1072 option B (item 6, not the lane's recommendation). Item 7 carries out the owner's instruction that #332 ships in this lane. Only the owner accepts this record, directly in the lane's session (decision 0049).
+- **Status:** accepted (28 Oct 2026) by the project owner, who read the condensed record in the coordinator session and answered "Approve", including the two tensions of option B in item 6. The acceptance was relayed to this lane by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. The owner's choices were relayed the same way on 28 Oct 2026: OI-1070 option A (items 1 to 4), OI-1071 option A (item 5) and OI-1072 option B (item 6, not the lane's recommendation). Item 7 carries out the owner's instruction that #332 ships in this lane.
 - **Date:** 28 Oct 2026.
 - **Lane/issues:** OUTPUT2: #308 (NC file names), #309 (files and hashes on the setup sheet), #310 (setup sheet name), #331 (full stop after the last path in Messages), #332 (incomplete file after an interrupted write).
 - **Requirements:** GC-05, GC-07, GC-12, GC-15, GC-16, NFR-06, NFR-07, NFR-10, NFR-12, NFR-14, UI-07, UI-12, UI-15, UI-16.
