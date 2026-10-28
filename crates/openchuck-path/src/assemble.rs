@@ -445,26 +445,19 @@ pub fn assemble_with_entry(
             b.retract(height)?;
             if helical_starts.get(i).copied().unwrap_or(false)
                 && rotary.range == openchuck_types::machine::ARange::Continuous
+                && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
             {
-                let (index, segment) =
-                    b.segments.iter().enumerate().next_back().ok_or_else(|| {
-                        PathError::Strategy(
-                            "helical pass has no existing clear retract for its A counter reset"
-                                .into(),
-                        )
-                    })?;
                 let before = index
                     .checked_sub(1)
                     .and_then(|s| b.segments.get(s))
                     .map_or(start, |s| s.end);
-                if !matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
-                    || segment.end.a != before.a
+                // A pass already at clearance may need no retract. Preserve
+                // its valid motion without inventing a reset boundary.
+                if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
+                    && segment.end.a == before.a
                 {
-                    return Err(PathError::Strategy(
-                        "helical pass has no existing clear retract for its A counter reset".into(),
-                    ));
+                    rotary_reset_after.push(index);
                 }
-                rotary_reset_after.push(index);
             }
             let target = rotary.to_axis(head.tip, head.a);
             let at = b.at().height.max(height);
