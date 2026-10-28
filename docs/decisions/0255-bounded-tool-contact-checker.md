@@ -1,6 +1,6 @@
 # 0255: A bounded tool-contact checker for M2 (lane STEPALL-T; issue #346)
 
-- **Status:** proposed (28 Oct 2026, Europe/London). Awaiting the project owner's acceptance in the lane session (decision 0049). Until then it is guidance; it changes no product output, default, schema or library API.
+- **Status:** accepted by the project owner on 28 Oct 2026 (Europe/London). The owner read the condensed record in the coordinator session and answered "Approve" there; the acceptance was relayed to this lane session by the coordinator session (decision 0049). Proposed 28 Oct 2026. It changes no product output, default, schema or library API.
 - **Date:** 28 Oct 2026 (Europe/London).
 - **Requirements:** OP-12, OP-23, NFR-05, NFR-06, NFR-12. Verification plan 4.1 (toolpath deviation budget; the new tool-contact row).
 - **Builds on:** [decision 0209](0209-step-geometry-for-every-strategy.md) item 4.1, M2 (accepted: "sampling adds under 0.001 mm"); [decision 0211](0211-step-accuracy-measured.md) (accepted: the flat-cutter counterexample and the unqualified M2); decisions [0115](0115-path-fitting-tests-the-quarter-points.md) and [0133](0133-simultaneous-fitter-tests-the-quarter-points.md) (the stations).

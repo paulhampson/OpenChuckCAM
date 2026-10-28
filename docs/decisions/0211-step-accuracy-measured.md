@@ -343,7 +343,7 @@ The current nominal 0.05 mm grid is not merely missing a proof for nonuniform B-
 
 M2 now prints its measurements but exits with an explicit unqualified-sampling error. A rejection-policy test requires a finite, nonnegative, proven clearance-error bound strictly below 0.001 mm, and rejects a missing bound, the demonstrated miss, the exact limit and non-finite values. The current caller supplies no bound; nominal grid spacing is never substituted for one. M1, M3 and M4 remain independently runnable. This guard does not repair the sampler or waive the criterion: a replacement independently bounded clearance check remains required before STEPALL-M release. The blisk readings above remain sampled observations, not certified maxima or remaining-material bounds.
 
-Follow-up (lane STEPALL-T, issue #346, 28 Oct 2026): [decision 0255](0255-bounded-tool-contact-checker.md) (proposed) replaces the sampled clearance with a bounded checker whose intervals are proven to hold the exact value, keeps this counterexample as a regression, and reruns M2 on the blisk and the corpus with it. The sampled readings in this record are unchanged.
+Follow-up (lane STEPALL-T, issue #346, 28 Oct 2026): [decision 0255](0255-bounded-tool-contact-checker.md) (accepted 28 Oct 2026) replaces the sampled clearance with a bounded checker whose intervals are proven to hold the exact value, keeps this counterexample as a regression, and reruns M2 on the blisk and the corpus with it. The sampled readings in this record are unchanged.
 
 ## Measuring every M1 triangle (24 Oct 2026)
 
