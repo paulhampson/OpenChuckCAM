@@ -1751,7 +1751,7 @@ fn req_op_24_req_set_09_facing_receives_whole_part_stock_and_separate_protection
             "Requirement test of whole-setup inputs."
         }
         fn schema(&self) -> ParameterSchema {
-            ParameterSchema::with_common(vec![])
+            openchuck_path::Facing.schema()
         }
         fn passes(
             &self,
@@ -1807,7 +1807,17 @@ fn req_op_24_req_set_09_facing_receives_whole_part_stock_and_separate_protection
         auto: Some(TabEnd::Tail),
     }];
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
-    set_strategy(&mut app, op, "facing", &[]);
+    // Whole-setup proof context belongs to explicitly restricted/new Facing,
+    // not legacy Whole stock/zero-margin operations.
+    set_strategy(
+        &mut app,
+        op,
+        "facing",
+        &[
+            ("size", ParameterValue::Number(6.)),
+            ("extent", ParameterValue::Text("part".into())),
+        ],
+    );
     let mut registry = openchuck_path::Registry::new();
     registry.register(Arc::new(InspectFacing)).unwrap();
     let cancel = openchuck_types::job::CancelToken::new();
@@ -1898,4 +1908,139 @@ fn req_op_24_req_nfr_12_a_path_past_the_machines_travel_is_refused() {
     set_strategy(&mut app, op, "helical_finishing", &[]);
     app.regenerate().unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Exercise the host route before Facing-specific verification context existed.
+/// The already-checked legacy pass planner and normal host services are shared;
+/// an alias bypasses only the Facing-context block in operation generation.
+#[derive(Debug)]
+struct PreScopeFacing(&'static str);
+impl Strategy for PreScopeFacing {
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn label(&self) -> &str {
+        openchuck_path::Facing.label()
+    }
+    fn description(&self) -> &str {
+        "Legacy Facing host route for OP-24/GC-07."
+    }
+    fn group(&self) -> openchuck_path::StrategyGroup {
+        openchuck_path::Facing.group()
+    }
+    fn schema(&self) -> ParameterSchema {
+        openchuck_path::Facing.schema()
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        p: &Parameters,
+        ctx: &JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        assert!(input.facing.is_none());
+        openchuck_path::Facing.passes(input, p, ctx)
+    }
+}
+
+#[test]
+fn req_op_24_req_gc_07_legacy_default_imported_stock_keeps_the_pre_scope_refusal() {
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::mesh::TriangleMesh;
+    let (dir, mut app, op) = project("facing-legacy-imported-refusal");
+    app.register_strategy(Arc::new(PreScopeFacing("pre_scope_facing")))
+        .unwrap();
+    let id = app.project().operation(op).unwrap().setup;
+    let mut setup = app.project().setup(id).unwrap().clone();
+    setup.stock = Some(Stock::Imported {
+        mesh: TriangleMesh {
+            vertices: vec![
+                Point3::new(0., 0., 0.),
+                Point3::new(1., 0., 0.),
+                Point3::new(0., 1., 0.),
+            ],
+            triangles: vec![[0, 1, 2]],
+        },
+    });
+    let parameters = [("size", ParameterValue::Number(7.))];
+    // SET-04 rejects this stock while applying the setup, before either
+    // strategy can generate it. Preserve that pre-existing refusal, not a
+    // newly invented ability to machine imported stock.
+    set_strategy(&mut app, op, "pre_scope_facing", &parameters);
+    let before = app
+        .execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap_err();
+    assert!(
+        before
+            .to_string()
+            .contains("imported stock (SET-04) is not available yet"),
+        "{before}"
+    );
+    set_strategy(&mut app, op, "facing", &parameters);
+    let after = app
+        .execute(Command::Replace(Item::Setup(setup)))
+        .unwrap_err();
+    assert_eq!(after.to_string(), before.to_string());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_gc_07_req_set_09_legacy_default_with_workholding_matches_pre_scope_output() {
+    use openchuck_types::workholding::HeldRegion;
+    let (dir, mut app, op) = project("facing-legacy-held-output");
+    app.register_strategy(Arc::new(PreScopeFacing("pre_scope_facing")))
+        .unwrap();
+    let id = app.project().operation(op).unwrap().setup;
+    let mut setup = app.project().setup(id).unwrap().clone();
+    setup.workholding.start = Some(HeldRegion {
+        length: Millimetres(1.),
+        diameter: None,
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let token = openchuck_types::job::CancelToken::new();
+    let context = JobContext::new(&token, &openchuck_types::job::NoProgress);
+    let parameters = [
+        ("size", ParameterValue::Number(7.)),
+        ("angles", ParameterValue::Text("0,90".into())),
+    ];
+    set_strategy(&mut app, op, "pre_scope_facing", &parameters);
+    let before = openchuck_app::operation::generate_operation(
+        &dir,
+        app.project(),
+        op,
+        app.strategies(),
+        &context,
+    )
+    .unwrap();
+    set_strategy(&mut app, op, "facing", &parameters);
+    let after = openchuck_app::operation::generate_operation(
+        &dir,
+        app.project(),
+        op,
+        app.strategies(),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(after, before);
+    // Observe the same Facing port through a delegating strategy. Legacy
+    // defaults need neither projection bounds nor a new verification context;
+    // workholding is still carried by the existing composite/keep-out route.
+    let mut registry = openchuck_path::Registry::new();
+    registry
+        .register(Arc::new(PreScopeFacing("facing")))
+        .unwrap();
+    let observed =
+        openchuck_app::operation::generate_operation(&dir, app.project(), op, &registry, &context)
+            .unwrap();
+    assert_eq!(observed, before);
+    let bytes = |path: &openchuck_app::operation::OperationPath| {
+        let warnings = path
+            .warnings
+            .iter()
+            .map(|w| (&w.message, &w.parameter))
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&(&path.group, &path.notes, warnings)).unwrap()
+    };
+    assert_eq!(bytes(&after), bytes(&before));
+    assert!(after.facing.is_none());
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -1,5 +1,77 @@
 # FACING implementation and released integration handoff
 
+## Owner-authorized review batch — 28 October 2026
+
+[Merge Manager comment 6466442243](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6466442243)
+relays the owner's “Fix all in one push” instruction for every open CodeRabbit
+thread and the outside-diff description item from [review 5680678112](https://github.com/paulhampson/OpenChuckCAM/pull/365#pullrequestreview-5680678112).
+This is one further correction push under0055. Main remains b2278b89; no new main
+merge, number, schema, API or design allocation is needed. Parent49c3a4d's CI and
+end-to-end workflows are now fully green, including native Windows/macOS tests.
+The identity thread is already addressed there; its exact, unrounded,
+all-platform 1/2/4-thread comparison is retained unchanged in this batch.
+
+- **Legacy host compatibility:** verification geometry is constructed only when
+  `facing::needs_verification(operation)` is true. Whole-stock/zero-margin legacy
+  operations retain the existing composite target and keep-out protection without
+  requesting a new Facing context. New and restricted modes still receive their
+  complete setup and retain all final checks. A requirement test compares the
+  full held-stock OperationPath and serialized IR/notes/warnings to a pre-scope
+  host route, and a delegating port observes the absent legacy proof context.
+  The latter first failed before the gate correction (3.750s).
+- **Unbounded imported stock:** SET-04 already refuses `Stock::Imported` when
+  applying a setup, before generation. A direct generation fallback also refuses
+  it in AnalyticStock. We do not add imported-stock support or claim that it
+  previously generated. A regression proves the same supported-API refusal for
+  legacy Facing and the pre-scope route. This exception is explicitly allowed in
+  the Merge Manager instruction. Valid non-empty workholding already generated;
+  it remains byte-identical, with its composite/keep-out protections intact.
+- **Cancellation:** extracting the actual post-sweep completion boundary without
+  changing its old error mapping exposed the bug in a deterministic unit test:
+  cancellation at that stage first returned Strategy instead of Cancelled
+  (0.005s). `flat_completion` now preserves PathError::Cancelled; all other errors
+  retain the existing unfinished/raised-composite refusal. The test does not use
+  sleeps or depend on a race with earlier clearance checks.
+- **Camera fit:** replacing a scene job ORs its unconsumed fit request into the
+  new request. The test reads the pending result before polling (valid even if
+  the worker already finished), failed on the lost fit (0.168s), then verifies
+  normal rebuilds do not refit after consumption and a new fit request is kept.
+- **User text:** Facing's description and Shape documentation now name End/Box,
+  indexed/arbitrary A and all coverage choices. This does not change a parameter,
+  target, toolpath or post. The old frozen reference stays a pre-scope snapshot.
+
+The existing whole-setup input-inspection test now explicitly opts into Part
+extent; its former default operation no longer requests proof context. New Rust
+test fixtures cover the cases above. No stored golden G-code, built-in post,
+mesh/STEP/project or replay fixture is regenerated. Library0.25.0, decision0252
+and schemas20/6 remain unchanged.
+
+Focused uninstrumented regressions **6/6 pass in5.845s**, including unchanged exact
+native identity. Uninstrumented selected tests pass **1486/1486 in491.899s**
+(app543, path443, UI500;44 existing long-profile exclusions). Longest selected
+case is37.878s; no new long classification is needed. The isolated cylindrical-tab
+case also passes **1/1 in19.631s** through both posts. Formatting and workspace
+all-target Clippy with warnings denied pass (18.16s).
+
+Fresh focused own-crate coverage runs pass: path100/100 (22.352s instrumented),
+app28/28 (10.284s), UI1/1 (0.255s). These are changed-line checks, not new aggregate
+95% claims; original full-own-crate gaps below remain explicit. The new description
+executes twice in the path run; its Flat completion helper exercises both the
+Cancelled arm and the unchanged other-error refusal. App's new gate is reached127
+times, with121 proof setups and six legacy/no-proof calls. UI's pending-fit OR is
+hit twice, including the replaced request. Changed executable lines record hits;
+pre-existing unvisited branches remain. Path's text summary warns85 functions
+have mismatched LLVM data despite fresh instrumentation; LCOV exports complete,
+and this limits confidence in the aggregate coverage summary. App/UI reports
+have no mismatch warning. Reports and changed lines were inspected, each own run
+was cleaned with `cargo llvm-cov clean --workspace`, and the generated instrumented
+build directory was removed. `cargo xtask all` passes deps, licences, records,
+testdata, conflicts, publish and trace (100/100 P1 requirements); whitespace
+checks pass. No new main merge is needed; the single owner-authorized review
+push includes all fixes and documentation. New-head Windows/macOS, all other CI jobs and the next
+CodeRabbit review remain for Merge Manager. Thread replies will describe changes
+without marking the owner's decisions resolved.
+
 ## Cross-platform CI correction — 28 October 2026
 
 Merge Manager released one fix push in [comment 6464548181](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6464548181).
@@ -54,10 +126,12 @@ decision0252 and schemas20/6 are unchanged. The correction is delivered in the
 one fix push released by Merge Manager; no new allocation, main merge, golden
 regeneration or readiness/merge action is included.
 
-Windows and macOS execution is not available locally; their exact before/after assertions and production golden
-checks must pass on the new CI head. No platform production G-code divergence has
-been established by the failing raw-IR fingerprint; discovery of one would stop
-the fix for Merge Manager review rather than permit a new platform golden.
+Windows and macOS execution is not available locally. Subsequent CI at49c3a4d
+passed the [complete CI workflow](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40666207894)
+and [end-to-end workflow](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40666207884),
+confirming native identity on all three platforms. No platform production G-code
+divergence was established by the raw-IR fingerprint. Any later such finding is
+still a blocker for review, not permission to introduce a platform golden.
 
 ## Released integration — 28 October 2026 (local checks complete)
 

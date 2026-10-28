@@ -35,7 +35,7 @@ pub const NAME: &str = "facing";
 
 /// Parameter names specific to facing.
 pub mod parameter {
-    /// [`FLAT`] or [`ROUND`].
+    /// [`FLAT`], [`ROUND`], [`END`] or [`BOX`].
     pub const SHAPE: &str = "shape";
     /// Flat: the face's distance from the rotary axis; round: the diameter.
     pub const SIZE: &str = "size";
@@ -73,7 +73,7 @@ impl Strategy for Facing {
     }
 
     fn description(&self) -> &str {
-        "Reduces the stock along its length to flat faces at chosen rotary angles, or to a round diameter. Use it to prepare stock before roughing. The part and workholding can limit the cut."
+        "Prepares stock with longitudinal flat faces or a round diameter, the end opposite the held end, or selected box sides at indexed or arbitrary A angles. Choose whole stock, part, or part plus tabs for coverage. Holding and tabs stay protected."
     }
 
     fn group(&self) -> StrategyGroup {

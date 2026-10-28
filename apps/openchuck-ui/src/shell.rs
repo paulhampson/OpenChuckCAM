@@ -474,10 +474,11 @@ impl Shell {
     }
 
     /// Starts building the scene again after the project or the chosen setup changed.
-    fn rebuild_scene(&mut self, fit: bool) {
+    fn rebuild_scene(&mut self, mut fit: bool) {
         if let Some(app) = &self.app {
-            if let Some((old, _)) = self.scene_job.take() {
+            if let Some((old, pending_fit)) = self.scene_job.take() {
                 old.cancel();
+                fit |= pending_fit;
             }
             let setup = self
                 .setup

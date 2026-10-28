@@ -45,7 +45,13 @@ pub(in crate::facing) fn verify(
                     }
                     from = to;
                 }
-                verify_flat_raster(face.coverage,face.target.plane,face.target.offset,&sweeps,0.5*setup.tool.diameter.0,tolerance,context).map_err(|_|refuse("restricted legacy Flat has an unfinished or raised composite-target region; complete coverage of that composite surface is not certified"))?;
+                flat_completion(
+                    &face,
+                    &sweeps,
+                    0.5 * setup.tool.diameter.0,
+                    tolerance,
+                    context,
+                )?;
             }
         }
         FacingGeometry::Round { diameter, x_extent } => {
@@ -191,4 +197,65 @@ fn round(
         return Err(refuse("Round has no verified full-circumference finish"));
     }
     Ok(())
+}
+
+// The final completion boundary after collecting actual sweeps. Keep error
+// policy here so cancellation arriving at this stage can be checked directly.
+fn flat_completion(
+    face: &super::super::description::FaceDescription,
+    sweeps: &[FlatSweep],
+    radius: f64,
+    tolerance: f64,
+    context: &JobContext<'_>,
+) -> Result<()> {
+    verify_flat_raster(face.coverage, face.target.plane, face.target.offset,
+        sweeps, radius, tolerance, context)
+        .map_err(|error| match error {
+            PathError::Cancelled => error,
+            _ => refuse("restricted legacy Flat has an unfinished or raised composite-target region; complete coverage of that composite surface is not certified"),
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use crate::facing::description::FaceDescription;
+    use crate::facing::geometry::FacingPlane;
+    use crate::facing::selection::ResolvedSide;
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::job::{CancelToken, NoProgress};
+    use openchuck_types::machine::MachineProfile;
+    use openchuck_types::units::Degrees;
+
+    #[test]
+    fn req_ui_09_req_op_24_cancellation_during_legacy_flat_completion_stays_cancelled() {
+        let plane = FacingPlane::side(
+            RotaryMapping::of_profile(&MachineProfile::example_x_rotary()),
+            Degrees(0.),
+        )
+        .unwrap();
+        let face = FaceDescription {
+            target: ResolvedSide {
+                angle: Degrees(0.),
+                offset: 7.,
+                plane,
+            },
+            coverage: plane
+                .bounds(
+                    [Point3::new(0., 0., 7.), Point3::new(10., 10., 7.)],
+                    &[],
+                    0.,
+                )
+                .unwrap(),
+        };
+        let token = CancelToken::new();
+        // Simulate a request arriving after sweep collection but before the
+        // completion proof; early clearance checks cannot mask this boundary.
+        token.cancel();
+        assert!(matches!(
+            flat_completion(&face, &[], 1., 0.01, &JobContext::new(&token, &NoProgress)),
+            Err(PathError::Cancelled)
+        ));
+    }
 }

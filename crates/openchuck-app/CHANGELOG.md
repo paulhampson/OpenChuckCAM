@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- FACING review fix: construct whole-setup verification geometry only for modes/extents that require it. Legacy Whole stock/zero-margin generation keeps the existing composite workholding target and pre-scope output; imported stock retains the existing SET-04 refusal.
+
 - Facing shares draft extent/margin/target/dimension geometry and generated finite-cutter outlines between background viewport scenes and Setup panes. Stale generated sweeps are not overlaid on edited drafts. Curved outlines are display approximations, never clearance evidence. `FrontPane`/`EndPane` add Facing guides under the0.25.0 API change.
 - Facing completion is separate from whole-part simulation deviation: outside-extent stock is labelled Intentionally unfaced locally; global remaining stock, other misses and every overcut remain counted. Simulation retains its cell resolution.
 - Actual written verification preserves the accepted Z1 footer after checking its retract against the actual whole setup/configured clearance. Unexpected machine/home/frame changes, unsupported interpolation and excessive coordinate/feed precision refuse export. Default legacy output is unchanged apart from the release-version banner.

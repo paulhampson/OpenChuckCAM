@@ -503,7 +503,7 @@ pub(crate) fn generate_with_part(
         (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
     };
-    let facing_geometry = if operation.strategy == openchuck_path::facing::NAME {
+    let facing_geometry = if crate::facing::needs_verification(operation) {
         let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "the whole facing part has no extent"))?;
         let bounds = stock

@@ -13,6 +13,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- FACING review fixes: preserve cancellation from restricted legacy Flat completion; describe End/Box, arbitrary A and coverage choices in strategy metadata. Completion still refuses every other unfinished/unsupported result with its existing reason.
+
 - FACING CI regression: compare default Flat/Round IR and diagnostics byte-for-byte against a frozen pre-scope entry computed in the same process at 1/2/4 threads. Native full-precision Round JSON fingerprints are diagnostic, not a cross-platform oracle; no production geometry, post, tolerance or golden fixture changes.
 
 - FACING (OP-24, accepted0252): unheld-end flank facing and indexed box sides, four independent selections/All four plus ordered arbitrary A faces, model-derived or explicit per-face offsets, full/equal side stepdowns, projected stock/part/part-plus-tabs extents and zero-default margin. Existing Flat/Round whole-stock defaults retain their original roughing/layer branch and output fingerprints.
