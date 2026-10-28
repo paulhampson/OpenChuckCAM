@@ -5,7 +5,12 @@
 //! narrower than the stated tolerance, or the check fails. Each case has a
 //! closed-form answer computed here from the geometry alone.
 
-#![allow(clippy::unwrap_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss,
+    clippy::float_cmp
+)]
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
@@ -549,10 +554,9 @@ fn req_op_12_no_bound_no_answer() {
         budget: 3,
         ..settings()
     };
-    assert!(matches!(
-        g.clearance(&t, Point3::ORIGIN, up(), &tight),
-        Err(ContactError::Budget { .. })
-    ));
+    let e = g.clearance(&t, Point3::ORIGIN, up(), &tight).unwrap_err();
+    assert!(matches!(e, ContactError::Budget { .. }));
+    assert!(e.to_string().contains("only known to lie in"), "{e}");
     // A tolerance of zero, or not finite, is not a bound.
     for tolerance in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         let s = Settings {
@@ -592,10 +596,9 @@ fn req_op_12_a_concave_tool_has_no_bound() {
     }
     .validate()
     .unwrap();
-    assert!(matches!(
-        ConvexTool::new(&profile),
-        Err(ContactError::NotConvex(_))
-    ));
+    let e = ConvexTool::new(&profile).unwrap_err();
+    assert!(matches!(e, ContactError::NotConvex(_)));
+    assert!(e.to_string().contains("not convex"), "{e}");
 }
 
 #[test]
@@ -611,6 +614,94 @@ fn req_op_12_a_face_without_positive_weights_has_no_bound() {
     let mut f = counterexample_plane(vec![]);
     f.uv_bounds = [0.0, f64::NAN, 0.0, 1.0];
     assert!(Geometry::of_faces(&model(vec![f])).is_err());
+    // NFR-07: every malformed face is refused with a reason, not evaluated.
+    type Break = Box<dyn Fn(&mut BrepFace)>;
+    let broken: Vec<Break> = vec![
+        Box::new(|f| {
+            if let Surface::BSpline(p) = &mut f.geometry {
+                p.knots_u.pop();
+            }
+        }),
+        Box::new(|f| {
+            if let Surface::BSpline(p) = &mut f.geometry {
+                p.knots_u.swap(4, 6);
+            }
+        }),
+        Box::new(|f| {
+            if let Surface::BSpline(p) = &mut f.geometry {
+                p.poles.pop();
+            }
+        }),
+        Box::new(|f| {
+            if let Surface::BSpline(p) = &mut f.geometry {
+                p.poles[0].x = f64::INFINITY;
+            }
+        }),
+        Box::new(|f| {
+            if let Surface::BSpline(p) = &mut f.geometry {
+                p.degree_u = 9;
+            }
+        }),
+        Box::new(|f| f.uv_bounds = [2.0, 3.0, 0.0, 1.0]),
+        Box::new(|f| {
+            f.trims = vec![TrimLoop(vec![
+                UvPoint { u: 0.0, v: 0.0 },
+                UvPoint {
+                    u: f64::NAN,
+                    v: 0.5,
+                },
+                UvPoint { u: 1.0, v: 1.0 },
+            ])];
+        }),
+    ];
+    for (k, b) in broken.iter().enumerate() {
+        let mut f = nonuniform_plane();
+        b(&mut f);
+        let e = Geometry::of_faces(&model(vec![f])).unwrap_err();
+        assert!(matches!(e, ContactError::Face { .. }), "{k}: {e}");
+        assert!(e.to_string().contains("face 0"), "{k}: {e}");
+    }
+    let mut f = counterexample_plane(vec![]);
+    if let Surface::Plane { frame } = &mut f.geometry {
+        frame.x = Vec3::new(1.0, 1.0, 0.0);
+    }
+    assert!(Geometry::of_faces(&model(vec![f])).is_err());
+    let cone = face(
+        Surface::Cone {
+            frame: Frame {
+                origin: Point3::ORIGIN,
+                x: Vec3::new(1.0, 0.0, 0.0),
+                y: Vec3::new(0.0, 1.0, 0.0),
+                z: Vec3::new(0.0, 0.0, 1.0),
+            },
+            radius: 1.0,
+            semi_angle: 2.0,
+        },
+        [0.0, 1.0, 0.0, 1.0],
+        vec![],
+    );
+    assert!(Geometry::of_faces(&model(vec![cone])).is_err());
+    let sphere = face(
+        Surface::Sphere {
+            frame: Frame {
+                origin: Point3::ORIGIN,
+                x: Vec3::new(1.0, 0.0, 0.0),
+                y: Vec3::new(0.0, 1.0, 0.0),
+                z: Vec3::new(0.0, 0.0, 1.0),
+            },
+            radius: -1.0,
+        },
+        [0.0, 1.0, 0.0, 1.0],
+        vec![],
+    );
+    assert!(Geometry::of_faces(&model(vec![sphere])).is_err());
+    // A triangle naming a missing vertex.
+    let mesh = TriangleMesh {
+        vertices: vec![Point3::ORIGIN],
+        triangles: vec![[0, 1, 2]],
+    };
+    let e = Geometry::of_mesh(&mesh).unwrap_err();
+    assert!(e.to_string().contains("no finite corner"), "{e}");
 }
 
 #[test]

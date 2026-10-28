@@ -254,7 +254,6 @@ pub struct ConvexTool {
     /// The profile's pieces, then the cap from the rim to the axis.
     pieces: Vec<Piece>,
     top: f64,
-    radius: f64,
 }
 
 impl ConvexTool {
@@ -324,21 +323,7 @@ impl ConvexTool {
             a: end,
             b: Rz { r: 0.0, z: end.z },
         });
-        Ok(Self {
-            pieces,
-            top: end.z,
-            radius: end.r,
-        })
-    }
-
-    /// The largest radius.
-    pub fn radius(&self) -> f64 {
-        self.radius
-    }
-
-    /// The height of the cap above the tip.
-    pub fn top(&self) -> f64 {
-        self.top
+        Ok(Self { pieces, top: end.z })
     }
 
     fn inside(&self, p: Rz) -> bool {
@@ -960,7 +945,6 @@ enum Region {
 
 #[derive(Debug, Clone)]
 struct Face {
-    id: u32,
     kind: Kind,
     trims: Option<Trims>,
     periods: (Option<f64>, Option<f64>),
@@ -1037,7 +1021,6 @@ impl Face {
             Kind::Nurbs(_) => (None, None),
         };
         let out = Self {
-            id: face.id.0,
             kind,
             trims: Trims::new(face)?,
             periods,
@@ -1728,11 +1711,6 @@ impl Geometry {
     /// The number of faces.
     pub fn faces(&self) -> usize {
         self.faces.len()
-    }
-
-    /// The face numbers, in order.
-    pub fn face_ids(&self) -> Vec<u32> {
-        self.faces.iter().map(|f| f.id).collect()
     }
 }
 
