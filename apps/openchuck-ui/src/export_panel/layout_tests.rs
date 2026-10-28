@@ -299,11 +299,18 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
     let folder = dir.join("long_directory/".repeat(10));
     std::fs::create_dir_all(&folder).unwrap();
     let mut run = app.regenerate().unwrap();
+    // 24 program files, one per copy of the operation's group, so the run's
+    // files and its toolpath agree as a posted run's do (decision 0267).
+    let group = run.canonical_toolpath.groups[0].clone();
+    run.canonical_toolpath.groups = vec![group; 24];
+    run.posted_selection = run
+        .posted_selection
+        .map(|(post, _)| (post, openchuck_app::OutputGrouping::Operation));
     run.gcode = (0..24)
         .map(|i| (format!("output-{i}.nc"), "NC".into()))
         .collect();
-    for (name, _) in &run.gcode {
-        std::fs::write(folder.join(name), b"existing NC").unwrap();
+    for program in app.output_files(&run).unwrap().programs {
+        std::fs::write(folder.join(program.name), b"existing NC").unwrap();
     }
     let run = Arc::new(run);
     // Complete success, total failure, partial success and overwrite review.
