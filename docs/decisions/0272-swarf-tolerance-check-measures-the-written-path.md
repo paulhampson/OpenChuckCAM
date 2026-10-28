@@ -81,8 +81,10 @@ Records read: 0021, 0048, 0049, 0055, 0061, 0111, 0114, 0175, 0176, 0228, 0229. 
 | --- | --- |
 | The reported cut is the written path's, at every tolerance; a cut beyond the tolerance is warned of; the advised tolerance clears the warning in one step and the written path is then within it | `req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_path_whatever_the_tolerance` (`crates/openchuck-path/tests/swarf.rs`; helicoid of pitch 3 mm per radian over 24 degrees, 6 mm flat tool, tolerances 0.01, 0.0131, 0.02 and 0.05 mm; independent checker over the motion every 0.01 mm and the face every 0.03 by 0.1 mm). It failed on `main` (reported 0.0246 mm, measured 0.0309 mm, on the 40 degree helicoid it was written on); 13 s alone, uninstrumented |
 | The blisk, with and without an avoid set | The harness `crates/openchuck-app/examples/swarf_tolerance.rs` (Context and items 1 and 7) |
+| The advice search: tried again while beaten, not cleared where the face cannot be made, failed only by cancellation | `req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_the_face_again` (a helicoid, and a helicoid bent to be ruled only within about 0.002 mm) |
 | The warning's words and checked advice | `req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_how_to_accept_it`, and the test above |
 | Identical at 1, 2 and N threads | `req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads`; the application's swarf reference job tests |
+| Coverage | `swarf.rs` 94.52 % of lines on the crate's library and swarf tests alone (the nightly run counts every crate's tests). The one changed line not reached is the `?` that passes a cancellation of the advice search out of the strategy (UI-09, NFR-07) |
 | Path unchanged | The swarf golden programs (`req_op_07_req_gc_09_req_gc_10_the_swarf_reference_job_passes_gates_1_and_2_and_matches_its_golden_files`) are unchanged |
 
 ## Consequences

@@ -316,17 +316,26 @@ fn verdict(outline: &Outline, poses: &[ToolPose], points: &[Point3], leave: f64)
 #[derive(Debug)]
 struct Helicoid {
     pitch: f64,
+    /// A bend along the rulings, `bend (v - 14)^2` along X, so the face is
+    /// ruled only within about `9 bend` (zero for an exact helicoid).
+    bend: f64,
     u: (f64, f64),
     v: (f64, f64),
 }
 
 impl Helicoid {
     fn at(&self, u: f64, v: f64) -> Point3 {
-        Point3::new(self.pitch * u, v * u.cos(), v * u.sin())
+        Point3::new(
+            self.pitch * u + self.bend * (v - 14.0).powi(2),
+            v * u.cos(),
+            v * u.sin(),
+        )
     }
 
     fn normal(&self, u: f64, v: f64) -> UnitVec3 {
-        UnitVec3::new(Vec3::new(-v, -self.pitch * u.sin(), self.pitch * u.cos())).unwrap()
+        let du = Vec3::new(self.pitch, -v * u.sin(), v * u.cos());
+        let dv = Vec3::new(2.0 * self.bend * (v - 14.0), u.cos(), u.sin());
+        UnitVec3::new(du.cross(dv)).unwrap()
     }
 }
 
@@ -394,8 +403,13 @@ struct ExactFaces {
 
 impl ExactFaces {
     fn helicoid(pitch: f64, degrees: f64) -> Self {
+        Self::bent_helicoid(pitch, 0.0, degrees)
+    }
+
+    fn bent_helicoid(pitch: f64, bend: f64, degrees: f64) -> Self {
         let h = Helicoid {
             pitch,
+            bend,
             u: (0.0, degrees.to_radians()),
             v: (8.0, 20.0),
         };
@@ -464,6 +478,7 @@ impl SurfaceSource for ExactFaces {
 fn helicoid_samples(pitch: f64, degrees: f64, nu: usize, nv: usize, inset: f64) -> Vec<Point3> {
     let h = Helicoid {
         pitch,
+        bend: 0.0,
         u: (0.0, degrees.to_radians()),
         v: (8.0, 20.0),
     };
@@ -2011,4 +2026,99 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
         measured <= x + resolution,
         "at {x} the path cuts {measured:.4} mm"
     );
+}
+
+#[test]
+fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_the_face_again() {
+    // Decision record 0272 item 4: the advice starts at the cut, rounded up
+    // to the four decimals shown; while the face made again there is still
+    // cut beyond it, the next try is that cut. A tolerance at which the face
+    // cannot be made ends the search as not cleared, and only cancellation
+    // fails it.
+    let f = Fixture::with_surface(Box::new(ExactFaces::helicoid(3.0, 24.0)), flat());
+    let made = |settings: &Settings| {
+        run(|ctx| {
+            face_path(
+                f.face(),
+                &f.tool,
+                f.rotary,
+                settings,
+                &RegionConstraint::default(),
+                ctx,
+            )
+        })
+        .unwrap()
+    };
+    let path = made(&f.settings());
+    assert!(path.gouge > TOL, "{path:?}");
+    let search = |path: &swarf::FacePath, f: &Fixture| {
+        run(|ctx| {
+            swarf::clearing_tolerance(
+                f.face(),
+                path,
+                &f.tool,
+                f.rotary,
+                &f.settings(),
+                &RegionConstraint::default(),
+                ctx,
+            )
+        })
+    };
+    // Started below the face's cut, the first try is beaten and the search
+    // goes on to a tolerance that holds the cut.
+    let low = swarf::FacePath {
+        gouge: 0.5 * path.gouge,
+        ..path.clone()
+    };
+    match search(&low, &f).unwrap() {
+        swarf::Clearing::At { tolerance, cut } => {
+            assert!(tolerance > 0.5 * path.gouge + 1e-4, "{tolerance}");
+            assert!(cut <= tolerance, "{cut} at {tolerance}");
+            let again = made(&Settings {
+                tolerance,
+                ..f.settings()
+            });
+            assert_eq!(again.gouge, cut);
+        }
+        other => panic!("{other:?}"),
+    }
+    // A face ruled only within about 0.002 mm cannot be made at the first
+    // tolerance tried (0.0001 mm): the advice says the warning is not
+    // cleared, and why.
+    let bent = Fixture::with_surface(
+        Box::new(ExactFaces::bent_helicoid(3.0, 0.0002, 24.0)),
+        flat(),
+    );
+    let tight = swarf::FacePath {
+        gouge: 1e-6,
+        ..path.clone()
+    };
+    let clearing = search(&tight, &bent).unwrap();
+    assert_eq!(
+        clearing,
+        swarf::Clearing::NotFound {
+            tolerance: 0.0001,
+            cut: 1e-6
+        }
+    );
+    let message = path.overcut_warning(TOL, clearing).unwrap();
+    assert!(
+        message.contains("Raising the Tolerance does not clear this warning: at 0.0001 mm"),
+        "{message}"
+    );
+    assert!(!message.contains("raise the Tolerance"), "{message}");
+    // Cancelled, the search fails rather than advising anything.
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let cancelled = swarf::clearing_tolerance(
+        f.face(),
+        &path,
+        &f.tool,
+        f.rotary,
+        &f.settings(),
+        &RegionConstraint::default(),
+        &ctx,
+    );
+    assert_eq!(cancelled, Err(openchuck_path::PathError::Cancelled));
 }
