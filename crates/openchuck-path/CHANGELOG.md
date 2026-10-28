@@ -13,6 +13,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- RAMPBUDGET (#343, accepted decision 0248): certify optional reversing ramps with bounded adaptive continuous-envelope intervals and operation-scoped exact whole-target query reuse. Deep entries in the regression matrix now certify within the unchanged entry limits. Preserve motion, stock-clear start, full-tool/protected/machine checks, cancellation and option-off output. Public APIs and project format are unchanged; no library version is selected by this lane.
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
 
 - Report optional fitting and assembly scope durations to the host for STEPALL-M measurements; timing does not affect generated paths. Axial/indexed quiet pass contexts forward opted-in timing callbacks while keeping their inner progress counts suppressed.

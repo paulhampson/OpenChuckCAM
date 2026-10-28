@@ -51,7 +51,7 @@ rules are preserved. No target-model fallback is proposed or implemented.
 
 ## Validation
 
-Final-base checks: `cargo fmt --all`, `cargo clippy --workspace --all-targets`,
+Initial delivery checks: `cargo fmt --all`, `cargo clippy --workspace --all-targets`,
 `cargo nextest run -p openchuck-ui --locked --test-threads 4` (**491/491 passed,
 285.645 seconds**), and `cargo xtask deps`, `licences`, `records`, `trace` all pass.
 Traceability reports **100/100 P1** requirements with tests.
@@ -107,4 +107,46 @@ build; no source files were removed.
 
 Nothing here verifies G-code for machining. Owner/reference-hardware display
 verification remains OI-987; OI-988 remains closed. The owner retests #334/#330 and
-closes them; the PR remains draft for the Merge Manager, under decision 0055.
+closes them. The Merge Manager released PR #362 on 27 Oct 2026 under decision 0055;
+release integration and validation are recorded below.
+
+
+## Released integration
+
+The Merge Manager marked PR #362 ready and requested one merge from main
+`61ebfc493e290dedd64f36ac484ba42874f35f6d` (library 0.24.0, schemas 20/6).
+Merged that main once. The only conflict was the independently added owner test
+list: retained main's existing checklist and inserted the BUG-SIMEND owner checks
+as section B6. No production or test-code conflict; the BUG-SIMEND fix and tests
+are unchanged from the draft delivery.
+
+The decision index, records 0245/0246/0248/0249/0250/0251 and open-items register
+are identical to main: OI-998/1000/1002/1003 remain open and OI-999/1001 remain
+closed. This lane allocates no decision, open item, schema or version and changes
+no library code relative to the integrated main. CI and library changes brought
+in by the merge belong to their original lanes.
+
+Released uninstrumented checks: `cargo fmt --all`, workspace/all-target clippy,
+and `cargo nextest run -p openchuck-ui --locked --test-threads 4` pass:
+**497/497 tests in 283.752 seconds**, zero skipped. The six extra tests since the
+draft are from main's BUG-NEWPROJ lane. New BUG-SIMEND tests take 4.557–42.168
+seconds; the existing, registered whole-dock matrix takes 81.462 seconds.
+
+All released xtask checks pass: `deps`, `licences`, `records`, `trace` and
+`conflicts`; traceability remains **100/100 P1**.
+
+Released coverage uses the same prescribed own-UI-tests command and filename
+filter: **495/495 passed in 725.714 seconds**, two prelisted long tests skipped
+(both passed in the normal run). UI line coverage is **26,168 / 29,799 = 87.82%**,
+below the report-only development target; `playback_panel.rs` remains
+**1,920 / 2,009 = 95.57%**. Every new production line is covered. The checkpoint
+and surface repaint requests executed 24 and 54 times, respectively, and the
+unavailable-colour explanation four times. Only the same test-helper
+`Shape::Vec` traversal at lines 2254–2257 remains newly uncovered because the
+fixtures emit flat shapes. Summary, JSON and text reports and changed lines were
+reviewed, then `cargo llvm-cov clean --workspace` completed. No extra exclusions.
+
+The released push contains this merge and its conflict/documentation resolution
+only, with no further product changes. The lane reports the exact head on PR #362;
+the Merge Manager reads CI and decides whether to merge. Owner feedback and
+OI-987 hardware checks remain outstanding; no machining verification is claimed.

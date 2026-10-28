@@ -22,3 +22,13 @@ Part of [OpenChuckCAM](https://github.com/paulhampson/OpenChuckCAM). Architectur
 This crate belongs to the reusable library family (`openchuck-types`, `openchuck-path`, `openchuck-post`, `openchuck-gcode`). It depends only on other members of that family and on third-party crates, never on the application, UI, GPU, Git or the C++ kernel (architecture sections 4 and 12).
 
 Licence: AGPL-3.0-or-later.
+
+Optional back-and-forth ramp clearance uses adaptive continuous-envelope certificates
+(decisions 0242/0248). An inconclusive coarse bound subdivides deterministically;
+all accepted intervals enclose the complete tool sweep. Each attempted interval,
+including a cache hit or unsuccessful bound, consumes the shared 100,000-attempt
+entry budget. Shared assembly retains exact whole-target drop results across passes
+in one immutable target/tool scope, with at most 100,000 FIFO cache entries.
+Standalone `EntrySafety::verify` calls retain no cache after returning. Machine and
+protected-solid checks always run independently. This does not lower the global
+stock-clear approach or alter ramp motion or the 10,000-leg limit.

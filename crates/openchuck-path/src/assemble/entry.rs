@@ -24,6 +24,7 @@
 //! fit is refused with a message that names the style and the size it needs;
 //! it never changes style on its own.
 
+use std::cell::RefCell;
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 use openchuck_types::ir::MoveKind;
@@ -49,7 +50,8 @@ const MAX_RAMP_CHECKS: usize = 20_000;
 /// A horizontal direction in the fixed frame: (along, across).
 type Dir = (f64, f64);
 
-pub(super) struct Entry {
+pub(super) struct Entry<'a> {
+    sweep: Option<RefCell<crate::entry_safety::SweepSession<'a>>>,
     style: EntryStyle,
     back_and_forth: bool,
     ramp_tan: f64,
@@ -62,9 +64,9 @@ pub(super) struct Entry {
     grown: Option<RevolvedProfile>,
 }
 
-impl Entry {
+impl<'a> Entry<'a> {
     pub(super) fn new(
-        input: &StrategyInput<'_>,
+        input: &StrategyInput<'a>,
         common: &CommonParameters,
         e: &EntryParameters,
     ) -> Result<Self> {
@@ -75,6 +77,14 @@ impl Entry {
             _ => Some(cutter::grow_profile(input.tool, leave)?),
         };
         Ok(Self {
+            sweep: (e.style == EntryStyle::Ramp && e.back_and_forth)
+                .then(|| {
+                    input
+                        .entry_safety
+                        .map(crate::entry_safety::SweepSession::new)
+                        .map(RefCell::new)
+                })
+                .flatten(),
             style: e.style,
             back_and_forth: e.back_and_forth,
             ramp_tan: e.ramp_angle.0.to_radians().tan(),
@@ -275,7 +285,8 @@ impl Entry {
         points: &[CutPoint],
         context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<()> {
-        let safety=input.entry_safety.ok_or_else(|| PathError::Strategy("back-and-forth ramp needs whole-target, complete-tool and machine clearance inputs".into()))?;
+        let safety=self.sweep.as_ref().ok_or_else(|| PathError::Strategy("back-and-forth ramp needs whole-target, complete-tool and machine clearance inputs".into()))?;
+        let mut safety = safety.borrow_mut();
         let d = direction_at_start(b, points).ok_or_else(|| {
             PathError::Strategy(format!(
                 "pass {}: back-and-forth ramp has no usable straight entry direction",

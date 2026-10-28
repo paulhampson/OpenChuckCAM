@@ -1,0 +1,323 @@
+   Compiling openchuck-path v0.23.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.53s
+     Running tests/entry.rs (target/debug/deps/entry-ca2b5346ef4a7902)
+
+running 1 test
+SWEEP budget=100000 steps=1271 distance=3.175000000000 offset=0.003528942769 from=Point3 { x: 20.0, y: 0.0, z: 15.0 } to=Point3 { x: 16.825, y: 0.0, z: 15.0 }
+QUERY total=1271 exact_repeats=0
+SWEEP budget=98729 steps=5200 distance=13.000000000000 offset=0.003735556372 from=Point3 { x: 20.0, y: 0.0, z: 36.0 } to=Point3 { x: 20.0, y: 0.0, z: 23.0 }
+QUERY total=5200 exact_repeats=0
+SWEEP budget=93529 steps=1272 distance=3.179194954730 offset=0.003607945084 from=Point3 { x: 20.0, y: 0.0, z: 23.0 } to=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=92257 steps=1272 distance=3.179194954730 offset=0.003606346405 from=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 } to=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=90985 steps=1272 distance=3.179194954730 offset=0.003604747725 from=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 } to=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=89713 steps=1272 distance=3.179194954730 offset=0.003603149046 from=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 } to=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=88441 steps=1272 distance=3.179194954730 offset=0.003601550367 from=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 } to=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=87169 steps=1272 distance=3.179194954730 offset=0.003599951687 from=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 } to=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=85897 steps=1272 distance=3.179194954730 offset=0.003598353008 from=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 } to=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=84625 steps=1272 distance=3.179194954730 offset=0.003596754329 from=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 } to=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=83353 steps=1272 distance=3.179194954730 offset=0.003595155650 from=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 } to=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=82081 steps=1272 distance=3.179194954730 offset=0.003593556970 from=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 } to=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=80809 steps=1272 distance=3.179194954730 offset=0.003591958291 from=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 } to=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=79537 steps=1272 distance=3.179194954730 offset=0.003590359612 from=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 } to=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=78265 steps=1272 distance=3.179194954730 offset=0.003588760932 from=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 } to=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=76993 steps=1272 distance=3.179194954730 offset=0.003587162253 from=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 } to=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=75721 steps=1272 distance=3.179194954730 offset=0.003585563574 from=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 } to=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=74449 steps=1272 distance=3.179194954730 offset=0.003583964895 from=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 } to=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=73177 steps=1272 distance=3.179194954730 offset=0.003582366215 from=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 } to=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=71905 steps=1272 distance=3.179194954730 offset=0.003580767536 from=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 } to=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=70633 steps=1272 distance=3.179194954730 offset=0.003579168857 from=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 } to=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=69361 steps=1272 distance=3.179194954730 offset=0.003577570177 from=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 } to=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=68089 steps=1272 distance=3.179194954730 offset=0.003575971498 from=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 } to=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=66817 steps=1272 distance=3.179194954730 offset=0.003574372819 from=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 } to=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=65545 steps=1272 distance=3.179194954730 offset=0.003572774139 from=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 } to=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=64273 steps=1272 distance=3.179194954730 offset=0.003571175460 from=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 } to=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=63001 steps=1272 distance=3.179194954730 offset=0.003569576781 from=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 } to=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=61729 steps=1272 distance=3.179194954730 offset=0.003567978102 from=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 } to=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=60457 steps=1272 distance=3.179194954730 offset=0.003566379422 from=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 } to=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=59185 steps=1272 distance=3.179194954730 offset=0.003564780743 from=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 } to=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=57913 steps=1272 distance=3.179194954730 offset=0.003563182064 from=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 } to=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=56641 steps=1272 distance=3.179194954730 offset=0.003561583384 from=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 } to=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=55369 steps=1272 distance=3.179194954730 offset=0.003559984705 from=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 } to=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=54097 steps=1272 distance=3.179194954730 offset=0.003558386026 from=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 } to=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=52825 steps=1272 distance=3.179194954730 offset=0.003556787346 from=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 } to=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=51553 steps=1272 distance=3.179194954730 offset=0.003555188667 from=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 } to=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=50281 steps=1272 distance=3.179194954730 offset=0.003553589988 from=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 } to=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=49009 steps=1272 distance=3.179194954730 offset=0.003551991309 from=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 } to=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=47737 steps=1272 distance=3.179194954730 offset=0.003550392629 from=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 } to=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=46465 steps=1272 distance=3.179194954730 offset=0.003548793950 from=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 } to=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=45193 steps=1272 distance=3.179194954730 offset=0.003547195271 from=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 } to=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=43921 steps=1272 distance=3.179194954730 offset=0.003545596591 from=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 } to=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=42649 steps=1272 distance=3.179194954730 offset=0.003543997912 from=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 } to=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=41377 steps=1272 distance=3.179194954730 offset=0.003542399233 from=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 } to=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=40105 steps=1272 distance=3.179194954730 offset=0.003540800553 from=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 } to=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=38833 steps=1272 distance=3.179194954730 offset=0.003539201874 from=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 } to=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=37561 steps=1272 distance=3.179194954730 offset=0.003537603195 from=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 } to=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=36289 steps=1272 distance=3.179194954730 offset=0.003536004516 from=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 } to=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=35017 steps=1272 distance=3.179194954730 offset=0.003534405836 from=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 } to=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=33745 steps=1272 distance=3.179194954730 offset=0.003532807157 from=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 } to=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 }
+QUERY total=1272 exact_repeats=0
+SWEEP budget=32473 steps=1258 distance=3.144626118267 offset=0.003531376325 from=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 } to=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 }
+QUERY total=1258 exact_repeats=0
+SWEEP budget=31215 steps=1257 distance=3.140384986511 offset=0.003529084953 from=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 } to=Point3 { x: 20.0, y: 0.0, z: 15.0 }
+QUERY total=1257 exact_repeats=0
+ENTRY_REMAINING budget=29457
+SWEEP budget=100000 steps=1271 distance=3.175000000000 offset=0.003528942769 from=Point3 { x: 20.0, y: 0.0, z: 15.0 } to=Point3 { x: 16.825, y: 0.0, z: 15.0 }
+QUERY total=1271 exact_repeats=1271
+SWEEP budget=98729 steps=1200 distance=3.000000000000 offset=0.003637637265 from=Point3 { x: 20.0, y: 0.0, z: 26.0 } to=Point3 { x: 20.0, y: 0.0, z: 23.0 }
+QUERY total=1200 exact_repeats=0
+SWEEP budget=97529 steps=1272 distance=3.179194954730 offset=0.003607945084 from=Point3 { x: 20.0, y: 0.0, z: 23.0 } to=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=96257 steps=1272 distance=3.179194954730 offset=0.003606346405 from=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 } to=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=94985 steps=1272 distance=3.179194954730 offset=0.003604747725 from=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 } to=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=93713 steps=1272 distance=3.179194954730 offset=0.003603149046 from=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 } to=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=92441 steps=1272 distance=3.179194954730 offset=0.003601550367 from=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 } to=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=91169 steps=1272 distance=3.179194954730 offset=0.003599951687 from=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 } to=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=89897 steps=1272 distance=3.179194954730 offset=0.003598353008 from=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 } to=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=88625 steps=1272 distance=3.179194954730 offset=0.003596754329 from=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 } to=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=87353 steps=1272 distance=3.179194954730 offset=0.003595155650 from=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 } to=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=86081 steps=1272 distance=3.179194954730 offset=0.003593556970 from=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 } to=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=84809 steps=1272 distance=3.179194954730 offset=0.003591958291 from=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 } to=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=83537 steps=1272 distance=3.179194954730 offset=0.003590359612 from=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 } to=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=82265 steps=1272 distance=3.179194954730 offset=0.003588760932 from=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 } to=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=80993 steps=1272 distance=3.179194954730 offset=0.003587162253 from=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 } to=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=79721 steps=1272 distance=3.179194954730 offset=0.003585563574 from=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 } to=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=78449 steps=1272 distance=3.179194954730 offset=0.003583964895 from=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 } to=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=77177 steps=1272 distance=3.179194954730 offset=0.003582366215 from=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 } to=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=75905 steps=1272 distance=3.179194954730 offset=0.003580767536 from=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 } to=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=74633 steps=1272 distance=3.179194954730 offset=0.003579168857 from=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 } to=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=73361 steps=1272 distance=3.179194954730 offset=0.003577570177 from=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 } to=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=72089 steps=1272 distance=3.179194954730 offset=0.003575971498 from=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 } to=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=70817 steps=1272 distance=3.179194954730 offset=0.003574372819 from=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 } to=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=69545 steps=1272 distance=3.179194954730 offset=0.003572774139 from=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 } to=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=68273 steps=1272 distance=3.179194954730 offset=0.003571175460 from=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 } to=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=67001 steps=1272 distance=3.179194954730 offset=0.003569576781 from=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 } to=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=65729 steps=1272 distance=3.179194954730 offset=0.003567978102 from=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 } to=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=64457 steps=1272 distance=3.179194954730 offset=0.003566379422 from=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 } to=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=63185 steps=1272 distance=3.179194954730 offset=0.003564780743 from=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 } to=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=61913 steps=1272 distance=3.179194954730 offset=0.003563182064 from=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 } to=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=60641 steps=1272 distance=3.179194954730 offset=0.003561583384 from=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 } to=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=59369 steps=1272 distance=3.179194954730 offset=0.003559984705 from=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 } to=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=58097 steps=1272 distance=3.179194954730 offset=0.003558386026 from=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 } to=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=56825 steps=1272 distance=3.179194954730 offset=0.003556787346 from=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 } to=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=55553 steps=1272 distance=3.179194954730 offset=0.003555188667 from=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 } to=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=54281 steps=1272 distance=3.179194954730 offset=0.003553589988 from=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 } to=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=53009 steps=1272 distance=3.179194954730 offset=0.003551991309 from=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 } to=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=51737 steps=1272 distance=3.179194954730 offset=0.003550392629 from=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 } to=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=50465 steps=1272 distance=3.179194954730 offset=0.003548793950 from=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 } to=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=49193 steps=1272 distance=3.179194954730 offset=0.003547195271 from=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 } to=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=47921 steps=1272 distance=3.179194954730 offset=0.003545596591 from=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 } to=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=46649 steps=1272 distance=3.179194954730 offset=0.003543997912 from=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 } to=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=45377 steps=1272 distance=3.179194954730 offset=0.003542399233 from=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 } to=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=44105 steps=1272 distance=3.179194954730 offset=0.003540800553 from=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 } to=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=42833 steps=1272 distance=3.179194954730 offset=0.003539201874 from=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 } to=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=41561 steps=1272 distance=3.179194954730 offset=0.003537603195 from=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 } to=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=40289 steps=1272 distance=3.179194954730 offset=0.003536004516 from=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 } to=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=39017 steps=1272 distance=3.179194954730 offset=0.003534405836 from=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 } to=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=37745 steps=1272 distance=3.179194954730 offset=0.003532807157 from=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 } to=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=36473 steps=1258 distance=3.144626118267 offset=0.003531376325 from=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 } to=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 }
+QUERY total=1258 exact_repeats=1258
+SWEEP budget=35215 steps=1257 distance=3.140384986511 offset=0.003529084953 from=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 } to=Point3 { x: 20.0, y: 0.0, z: 15.0 }
+QUERY total=1257 exact_repeats=1257
+ENTRY_REMAINING budget=33457
+SWEEP budget=100000 steps=1271 distance=3.175000000000 offset=0.003528942769 from=Point3 { x: 20.0, y: 0.0, z: 15.0 } to=Point3 { x: 16.825, y: 0.0, z: 15.0 }
+QUERY total=1271 exact_repeats=1271
+SWEEP budget=98729 steps=1200 distance=3.000000000000 offset=0.003637637265 from=Point3 { x: 20.0, y: 0.0, z: 26.0 } to=Point3 { x: 20.0, y: 0.0, z: 23.0 }
+QUERY total=1200 exact_repeats=1200
+SWEEP budget=97529 steps=1272 distance=3.179194954730 offset=0.003607945084 from=Point3 { x: 20.0, y: 0.0, z: 23.0 } to=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=96257 steps=1272 distance=3.179194954730 offset=0.003606346405 from=Point3 { x: 16.825, y: 0.0, z: 22.836734693877553 } to=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=94985 steps=1272 distance=3.179194954730 offset=0.003604747725 from=Point3 { x: 20.0, y: 0.0, z: 22.673469387755105 } to=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=93713 steps=1272 distance=3.179194954730 offset=0.003603149046 from=Point3 { x: 16.825, y: 0.0, z: 22.510204081632658 } to=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=92441 steps=1272 distance=3.179194954730 offset=0.003601550367 from=Point3 { x: 20.0, y: 0.0, z: 22.34693877551021 } to=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=91169 steps=1272 distance=3.179194954730 offset=0.003599951687 from=Point3 { x: 16.825, y: 0.0, z: 22.183673469387763 } to=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=89897 steps=1272 distance=3.179194954730 offset=0.003598353008 from=Point3 { x: 20.0, y: 0.0, z: 22.020408163265316 } to=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=88625 steps=1272 distance=3.179194954730 offset=0.003596754329 from=Point3 { x: 16.825, y: 0.0, z: 21.85714285714287 } to=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=87353 steps=1272 distance=3.179194954730 offset=0.003595155650 from=Point3 { x: 20.0, y: 0.0, z: 21.69387755102042 } to=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=86081 steps=1272 distance=3.179194954730 offset=0.003593556970 from=Point3 { x: 16.825, y: 0.0, z: 21.530612244897974 } to=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=84809 steps=1272 distance=3.179194954730 offset=0.003591958291 from=Point3 { x: 20.0, y: 0.0, z: 21.367346938775526 } to=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=83537 steps=1272 distance=3.179194954730 offset=0.003590359612 from=Point3 { x: 16.825, y: 0.0, z: 21.20408163265308 } to=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=82265 steps=1272 distance=3.179194954730 offset=0.003588760932 from=Point3 { x: 20.0, y: 0.0, z: 21.04081632653063 } to=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=80993 steps=1272 distance=3.179194954730 offset=0.003587162253 from=Point3 { x: 16.825, y: 0.0, z: 20.877551020408184 } to=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=79721 steps=1272 distance=3.179194954730 offset=0.003585563574 from=Point3 { x: 20.0, y: 0.0, z: 20.714285714285737 } to=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=78449 steps=1272 distance=3.179194954730 offset=0.003583964895 from=Point3 { x: 16.825, y: 0.0, z: 20.55102040816329 } to=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=77177 steps=1272 distance=3.179194954730 offset=0.003582366215 from=Point3 { x: 20.0, y: 0.0, z: 20.387755102040842 } to=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=75905 steps=1272 distance=3.179194954730 offset=0.003580767536 from=Point3 { x: 16.825, y: 0.0, z: 20.224489795918394 } to=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=74633 steps=1272 distance=3.179194954730 offset=0.003579168857 from=Point3 { x: 20.0, y: 0.0, z: 20.061224489795947 } to=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=73361 steps=1272 distance=3.179194954730 offset=0.003577570177 from=Point3 { x: 16.825, y: 0.0, z: 19.8979591836735 } to=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=72089 steps=1272 distance=3.179194954730 offset=0.003575971498 from=Point3 { x: 20.0, y: 0.0, z: 19.734693877551052 } to=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=70817 steps=1272 distance=3.179194954730 offset=0.003574372819 from=Point3 { x: 16.825, y: 0.0, z: 19.571428571428605 } to=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=69545 steps=1272 distance=3.179194954730 offset=0.003572774139 from=Point3 { x: 20.0, y: 0.0, z: 19.408163265306158 } to=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=68273 steps=1272 distance=3.179194954730 offset=0.003571175460 from=Point3 { x: 16.825, y: 0.0, z: 19.24489795918371 } to=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=67001 steps=1272 distance=3.179194954730 offset=0.003569576781 from=Point3 { x: 20.0, y: 0.0, z: 19.081632653061263 } to=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=65729 steps=1272 distance=3.179194954730 offset=0.003567978102 from=Point3 { x: 16.825, y: 0.0, z: 18.918367346938815 } to=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=64457 steps=1272 distance=3.179194954730 offset=0.003566379422 from=Point3 { x: 20.0, y: 0.0, z: 18.755102040816368 } to=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=63185 steps=1272 distance=3.179194954730 offset=0.003564780743 from=Point3 { x: 16.825, y: 0.0, z: 18.59183673469392 } to=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=61913 steps=1272 distance=3.179194954730 offset=0.003563182064 from=Point3 { x: 20.0, y: 0.0, z: 18.428571428571473 } to=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=60641 steps=1272 distance=3.179194954730 offset=0.003561583384 from=Point3 { x: 16.825, y: 0.0, z: 18.265306122449026 } to=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=59369 steps=1272 distance=3.179194954730 offset=0.003559984705 from=Point3 { x: 20.0, y: 0.0, z: 18.10204081632658 } to=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=58097 steps=1272 distance=3.179194954730 offset=0.003558386026 from=Point3 { x: 16.825, y: 0.0, z: 17.93877551020413 } to=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=56825 steps=1272 distance=3.179194954730 offset=0.003556787346 from=Point3 { x: 20.0, y: 0.0, z: 17.775510204081684 } to=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=55553 steps=1272 distance=3.179194954730 offset=0.003555188667 from=Point3 { x: 16.825, y: 0.0, z: 17.612244897959236 } to=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=54281 steps=1272 distance=3.179194954730 offset=0.003553589988 from=Point3 { x: 20.0, y: 0.0, z: 17.44897959183679 } to=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=53009 steps=1272 distance=3.179194954730 offset=0.003551991309 from=Point3 { x: 16.825, y: 0.0, z: 17.28571428571434 } to=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=51737 steps=1272 distance=3.179194954730 offset=0.003550392629 from=Point3 { x: 20.0, y: 0.0, z: 17.122448979591894 } to=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=50465 steps=1272 distance=3.179194954730 offset=0.003548793950 from=Point3 { x: 16.825, y: 0.0, z: 16.959183673469447 } to=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=49193 steps=1272 distance=3.179194954730 offset=0.003547195271 from=Point3 { x: 20.0, y: 0.0, z: 16.795918367347 } to=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=47921 steps=1272 distance=3.179194954730 offset=0.003545596591 from=Point3 { x: 16.825, y: 0.0, z: 16.632653061224552 } to=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=46649 steps=1272 distance=3.179194954730 offset=0.003543997912 from=Point3 { x: 20.0, y: 0.0, z: 16.469387755102105 } to=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=45377 steps=1272 distance=3.179194954730 offset=0.003542399233 from=Point3 { x: 16.825, y: 0.0, z: 16.306122448979657 } to=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=44105 steps=1272 distance=3.179194954730 offset=0.003540800553 from=Point3 { x: 20.0, y: 0.0, z: 16.14285714285721 } to=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=42833 steps=1272 distance=3.179194954730 offset=0.003539201874 from=Point3 { x: 16.825, y: 0.0, z: 15.97959183673476 } to=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=41561 steps=1272 distance=3.179194954730 offset=0.003537603195 from=Point3 { x: 20.0, y: 0.0, z: 15.816326530612312 } to=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=40289 steps=1272 distance=3.179194954730 offset=0.003536004516 from=Point3 { x: 16.825, y: 0.0, z: 15.653061224489862 } to=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=39017 steps=1272 distance=3.179194954730 offset=0.003534405836 from=Point3 { x: 20.0, y: 0.0, z: 15.489795918367413 } to=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=37745 steps=1272 distance=3.179194954730 offset=0.003532807157 from=Point3 { x: 16.825, y: 0.0, z: 15.326530612244964 } to=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 }
+QUERY total=1272 exact_repeats=1272
+SWEEP budget=36473 steps=1258 distance=3.144626118267 offset=0.003531376325 from=Point3 { x: 20.0, y: 0.0, z: 15.163265306122515 } to=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 }
+QUERY total=1258 exact_repeats=1258
+SWEEP budget=35215 steps=1257 distance=3.140384986511 offset=0.003529084953 from=Point3 { x: 16.859615013488604, y: 0.0, z: 15.000000000000073 } to=Point3 { x: 20.0, y: 0.0, z: 15.0 }
+QUERY total=1257 exact_repeats=1257
+ENTRY_REMAINING budget=33457
+test req_op_11_req_nfr_04_rampbudget_unchanged_pass_inputs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 2.54s

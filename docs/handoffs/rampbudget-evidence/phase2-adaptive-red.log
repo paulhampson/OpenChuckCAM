@@ -1,0 +1,63 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+────────────
+ Nextest run ID 63f33ce0-e1ae-4e81-9f14-40ddc65ec91c with nextest profile: default
+    Starting 3 tests across 1 binary (6 tests skipped)
+       START [         ] (1/3) openchuck-path::entry_safety req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance
+
+running 1 test
+
+thread 'req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance' (12653) panicked at crates/openchuck-path/tests/entry_safety.rs:299:10:
+called `Result::unwrap()` on an `Err` value: Strategy("back-and-forth ramp clearance: the entry's clearance budget is exhausted")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance ... FAILED
+
+failures:
+
+failures:
+    req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+        FAIL [   0.004s] (1/3) openchuck-path::entry_safety req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance
+       START [         ] (2/3) openchuck-path::entry_safety req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid
+
+running 1 test
+
+thread 'req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid' (12655) panicked at crates/openchuck-path/tests/entry_safety.rs:321:10:
+called `Result::unwrap()` on an `Err` value: Strategy("back-and-forth ramp clearance: the entry's clearance budget is exhausted")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid ... FAILED
+
+failures:
+
+failures:
+    req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+        FAIL [   0.004s] (2/3) openchuck-path::entry_safety req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid
+       START [         ] (3/3) openchuck-path::entry_safety req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded
+
+running 1 test
+
+thread 'req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded' (12657) panicked at crates/openchuck-path/tests/entry_safety.rs:347:5:
+assertion `left == right` failed: even an inconclusive certificate consumes an attempt
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded ... FAILED
+
+failures:
+
+failures:
+    req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+        FAIL [   0.004s] (3/3) openchuck-path::entry_safety req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded
+────────────
+     Summary [   0.012s] 3 tests run: 0 passed, 3 failed, 6 skipped
+        FAIL [   0.004s] (1/3) openchuck-path::entry_safety req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance
+        FAIL [   0.004s] (2/3) openchuck-path::entry_safety req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid
+        FAIL [   0.004s] (3/3) openchuck-path::entry_safety req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded
+error: test run failed
