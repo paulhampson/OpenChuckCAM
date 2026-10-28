@@ -33,10 +33,14 @@ impl ExportPanel {
         self.named = None;
     }
 
-    /// The templates to keep in the user's settings, or `None` while one is
-    /// being typed and not yet confirmed (decision 0233: a draft is not
-    /// applied until it is confirmed).
+    /// The templates to keep in the user's settings: `None` while the dialog
+    /// is closed (it has not been given the user's templates yet, or holds
+    /// them unchanged) and while one is being typed and not yet confirmed
+    /// (decision 0233: a draft is not applied until it is confirmed).
     pub fn file_names_to_keep(&self, ctx: &egui::Context) -> Option<&FileNameTemplates> {
+        if !self.open {
+            return None;
+        }
         let drafting = crate::pending_edits::entries(ctx)
             .iter()
             .any(|e| e.label == GCODE_LABEL || e.label == SHEET_LABEL);

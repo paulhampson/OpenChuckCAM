@@ -429,6 +429,9 @@ fn req_gc_05_req_nfr_07_a_bad_template_blocks_writing_and_says_why() {
 #[test]
 fn req_ui_15_req_ui_07_a_typed_template_is_kept_only_once_confirmed() {
     let mut rig = Rig::new("draft-template");
+    rig.panel.open = false;
+    assert_eq!(rig.panel.file_names_to_keep(&rig.ctx), None, "closed");
+    rig.panel.open = true;
     assert_eq!(
         rig.panel.file_names_to_keep(&rig.ctx),
         Some(&openchuck_app::FileNameTemplates::default())
@@ -490,4 +493,39 @@ fn req_gc_05_req_nfr_07_clashing_names_are_previewed_numbered_with_a_warning() {
     rig.click("Write G-code");
     let report = rig.panel.result.clone().unwrap();
     assert!(report.is_complete(), "{report:?}");
+}
+
+/// Issue 308: the dialog lists every field a template can use.
+#[test]
+fn req_gc_05_the_dialog_lists_the_template_fields() {
+    let mut rig = Rig::new("template-fields");
+    rig.click("Fields");
+    // The list is in the scrolling body: scroll down a little at a time and
+    // gather what is drawn on the way.
+    let mut seen: Vec<String> = rig.texts.iter().map(|(t, _)| t.clone()).collect();
+    let at = rig
+        .texts
+        .iter()
+        .find(|(t, _)| t == "Fields")
+        .unwrap()
+        .1
+        .center();
+    for _ in 0..20 {
+        rig.frame(vec![
+            egui::Event::PointerMoved(at),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -60.0),
+                modifiers: egui::Modifiers::NONE,
+                phase: egui::TouchPhase::Move,
+            },
+        ]);
+        rig.frame(Vec::new());
+        seen.extend(rig.texts.iter().map(|(t, _)| t.clone()));
+    }
+    for field in openchuck_app::output_names::NameField::ALL {
+        let name = format!("{{{}}}", field.as_str());
+        assert!(seen.contains(&name), "{name} not listed");
+        assert!(seen.iter().any(|t| t == field.description()), "{name}");
+    }
 }
