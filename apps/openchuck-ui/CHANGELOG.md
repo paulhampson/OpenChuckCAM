@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- FACING review fix (UI-02/03): replacing a scene job preserves an unconsumed camera-fit request; ordinary rebuilds after the fit is consumed leave the camera unchanged.
+
 - BUG-SIMEND, SIM-03/04, issues #334/#330: draw the final cut surface after
   dragging, jumping, stepping or playing to the end without another interaction.
   Failed cut-part preparation disables Deviation colours with its reason while

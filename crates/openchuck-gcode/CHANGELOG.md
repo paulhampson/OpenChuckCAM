@@ -15,6 +15,11 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- `compare_with_moves` exposes each actual replayed move with its source group/segment, controller counter shift and programmed fed duration. Observations are provisional until the complete comparison succeeds. Existing `compare` delegates with a no-op observer and preserves its result/structural checks; no motion is silently accepted because a callback ran.
+
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
+
+
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
 
 - Use the written rotary angle when identifying rounded-away moves; keep tip comparison against the original IR and unchanged tolerances (issue #324).

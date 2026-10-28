@@ -436,6 +436,9 @@ mod tests {
                     .unwrap_or_else(|| format!("{default} changed")),
             ),
             ParameterKind::AngleList { .. } => ParameterValue::Text("15, 30".into()),
+            ParameterKind::IndexedFaces { .. } => {
+                ParameterValue::Text(r#"[{"angle":15,"offset":3}]"#.into())
+            }
             other => panic!("give the sweep a value for {other:?}"),
         }
     }

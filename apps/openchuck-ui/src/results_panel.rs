@@ -574,6 +574,25 @@ impl ResultsPanel {
             self.summary = None;
         }
         let results = self.summary.as_ref().map(|(_, r)| r.clone());
+        if let Some(run) = run {
+            for info in run.groups.iter().filter(|g| g.facing.is_some()) {
+                let name = run
+                    .project
+                    .operation(info.operation)
+                    .map_or("Facing", |o| o.name.as_str());
+                ui.label(format!(
+                    "{name}: Facing coverage complete (verified path geometry)."
+                ));
+            }
+            for note in &run.notes {
+                if note.contains("Intentionally unfaced:") {
+                    ui.label(note);
+                }
+            }
+            if run.groups.iter().any(|g| g.facing.is_some()) {
+                ui.label("Whole-part deviation below still counts retained stock and every overcut. Simulation is measured at the displayed cell resolution.");
+            }
+        }
         match results {
             Some(results) if !results.is_empty() => {
                 ui.scope(|ui| {

@@ -13,6 +13,9 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
+
+
 - Breaking (0.24.0): `ShortBlockMode` adds `SlowDown`; the profile window uses `usize` and is bounded to 4096. Confirmation lists omit disabled timing settings and the software mode policy.
 
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.

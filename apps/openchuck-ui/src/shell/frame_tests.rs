@@ -1824,3 +1824,20 @@ fn req_ui_09_req_ui_16_the_job_in_the_status_bar_opens_a_dock_the_small_window_c
     assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
     assert!(!rig.shell.collapsed(Region::Dock));
 }
+
+#[test]
+fn req_ui_02_req_ui_03_replacing_a_scene_job_preserves_pending_camera_fit() {
+    let mut rig = Rig::cube("replace-scene-camera-fit", None);
+    // Do not poll between requests: the pending fit belongs to the result
+    // still owed to the viewport, even if its worker has already finished.
+    rig.shell.rebuild_scene(true);
+    rig.shell.rebuild_scene(false);
+    assert!(rig.shell.scene_job.as_ref().unwrap().1);
+    rig.settle();
+    // Once consumed, the next ordinary rebuild must not request another fit.
+    rig.shell.rebuild_scene(false);
+    assert!(!rig.shell.scene_job.as_ref().unwrap().1);
+    rig.shell.rebuild_scene(true);
+    assert!(rig.shell.scene_job.as_ref().unwrap().1);
+    rig.settle();
+}

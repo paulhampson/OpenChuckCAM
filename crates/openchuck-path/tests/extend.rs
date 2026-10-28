@@ -231,6 +231,7 @@ fn req_op_24_req_set_09_an_end_held_by_the_workholding_is_refused_not_cut_short(
     let keep_out = [(-8.0, 0.0)];
     let input = openchuck_path::StrategyInput {
         entry_safety: None,
+        facing: None,
         keep_out: &keep_out,
         ..f.input()
     };
@@ -339,6 +340,15 @@ fn req_op_24_req_op_12_facing_follows_the_part_where_it_rises_above_the_face() {
     // Beyond the part's ends it does go down to the face.
     let lowest = heights(&f, &p).into_iter().fold(f64::INFINITY, f64::min);
     assert!((lowest - 6.0).abs() < 1e-6, "{lowest}");
+}
+
+#[test]
+fn req_op_24_restricted_extent_is_not_silently_ignored_without_whole_setup_context() {
+    let t = tool(ToolShape::FlatEnd, 4.0);
+    let f = fixture(&t);
+    let v = facing(&[(facing::SIZE, num(10.0)), ("extent", text("part"))]);
+    let err = path(&f, &Facing, &v).unwrap_err().to_string();
+    assert!(err.contains("whole-setup geometry"), "{err}");
 }
 
 #[test]

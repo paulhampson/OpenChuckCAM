@@ -18,7 +18,9 @@ mod sim;
 mod sim_ranges;
 
 pub use check::{CheckConfig, FeedLimits, Finding, FindingKind, static_check};
-pub use compare::{CompareError, Comparison, TimingRule, Tolerances, compare};
+pub use compare::{
+    CompareError, ComparedMove, Comparison, TimingRule, Tolerances, compare, compare_with_moves,
+};
 pub use interp::{
     Axes, Dialect, Event, KNOWN_G, KNOWN_M, Motion, Move, Replay, ReplayError, Step, Z1_G, replay,
     replay_axis,
