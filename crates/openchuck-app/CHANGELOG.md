@@ -9,6 +9,10 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OUTPUT2 (proposed decision 0267; #308, #309, #310): the `output_names` module with `FileNameTemplates` (a per-user setting, `UserSettings::file_names`), the template engine, `fields_list`, `template_problem`, `clean_stem`, `collision` and `file_hash`. `Application::set_file_name_templates`, `file_name_templates` and `output_files(run)` give every final name or the reason there is none; `prepare_output` writes under those names. Defaults keep the existing names and bytes. **Changed:** `Application::setup_sheet_file_names` returns `Result<[String; 2], AppError>`; new `AppError::FileNames`. The same-run setup sheet lists each program file with its setup, size, SHA-256 and operations, tools and tool changes in order; a sheet written without files says so. New dependency `sha2` (NFR-14).
+- #332: every output file is staged in full under a hidden name in the destination folder and published without replacing anything (hard link, or an exclusive claim and rename where hard links are missing); approved replacements stay a staged rename.
+- #331: `OutputReport::text` ends with "End of the export result.", so Messages never adds a full stop to the last path.
+
 - FACING review fix: construct whole-setup verification geometry only for modes/extents that require it. Legacy Whole stock/zero-margin generation keeps the existing composite workholding target and pre-scope output; imported stock retains the existing SET-04 refusal.
 
 - Facing shares draft extent/margin/target/dimension geometry and generated finite-cutter outlines between background viewport scenes and Setup panes. Stale generated sweeps are not overlaid on edited drafts. Curved outlines are display approximations, never clearance evidence. `FrontPane`/`EndPane` add Facing guides under the0.25.0 API change.
