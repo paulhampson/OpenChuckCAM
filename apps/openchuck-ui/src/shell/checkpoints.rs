@@ -772,8 +772,22 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
         rig.shell.open(folder.clone());
-        for _ in 0..30 {
+        // Reopening drops the old session and starts the new one only after a
+        // background read of the folder lands on a later frame, so wait for
+        // that state (its own deadline: a loaded runner is slow here).
+        let reopen_deadline = Instant::now() + Duration::from_secs(30);
+        while rig
+            .shell
+            .recovery
+            .active
+            .as_ref()
+            .is_none_or(|s| !s.is_ready())
+        {
             rig.frame(Vec::new());
+            assert!(
+                Instant::now() < reopen_deadline,
+                "the reopened project never started a recovery session"
+            );
             std::thread::sleep(Duration::from_millis(1));
         }
         rig.shell
