@@ -1,6 +1,6 @@
 # 0260: Exact face and trim queries for STEPALL-X: the boundary defect fixed (OI-839), bounded trim and B-spline searches, faces within the tool's reach (lane STEPALL-X1; issue #348)
 
-- **Status:** proposed (28 Oct 2026). Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 28 Oct 2026 (Europe/London). The owner read the condensed record in the coordinator session and answered "Approve" there; the acceptance was relayed to this lane session by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. Proposed 28 Oct 2026. Acceptance changes no product default and enables no exact drop.
 - **Date:** 28 Oct 2026 (Europe/London).
 - **Lane:** STEPALL-X1, branch `claude/lane-stepall-x1-queries`, from `main` at `33a835d` (library family 0.25.0). Issue #348 (STEPALL-0211 step 3 of 6), parent #257.
 - **Requirements:** IMP-02, NFR-05, NFR-06, NFR-07, NFR-12. Verification plan 4.1 and the *Exact surfaces* note of section 5 (IMP-02).
