@@ -41,7 +41,42 @@ The harness tests (`crates/openchuck-app/tests/step_accuracy_bounded.rs`, no ker
 
 ## Results
 
-RESULTS
+Measured on 28 Oct 2026 with the release harness, four threads, Intel Xeon @ 2.80 GHz, 4 cores; blisk at source `4f814fc`, corpus at `0560e4f` (the same checker; the later commit adds the drop-error bound column, which for the blisk is computed from its raw files). Inputs: `testdata/step/valid/blisk.step` (SHA-256 `0e472ff5…b646`, as in 0211), the owner's `blisk.stl` from the trial branch (`48351f42…3f37`, outside the repository) and the corpus parts. Full stepovers (no `--quick`), the operations, tools and stock of decision 0211, form (c) at 0.01 mm / 0.02 rad (the original candidate). Commands, hashes, complete output, derived counts and a raw extract are in [the evidence](0255-bounded-m2-evidence.txt) and [the raw extract](0255-bounded-m2-raw-extract.tsv).
+
+**Every station of every successful operation was bounded on every part and form, and every interval was at most 0.0005 mm wide**: M2 qualifies its own measurement for the first time. The most pieces any station needed was 28,684 (the blisk's axial finishing, against the exact faces), against a budget of 4,000,000; the mean was 217 to 421 pieces a station. The blisk's 4,073,000 station checks across the three forms took 52.5 minutes at four threads.
+
+The blisk, mm (found deepest cut; proven at most; found at the strategy's poses; largest contact gap; proven drop error at contact stations; stations):
+
+| Form | Operation | Deepest cut | Proven at most | At poses | Gap | Drop bound | Stations |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| a | roughing (0.3) | 0 | 0 | 0 | 0.0593 | 0.0596 | 38,840 |
+| a | rest | 0.0734 | 0.0739 | 0.0734 | 0.0624 | 0.0739 | 223,772 |
+| a | pencil | 0.0244 | 0.0248 | 0.0244 | 0.0411 | 0.0423 | 12,100 |
+| a | helical | 0.0734 | 0.0739 | 0.0734 | 0.0624 | 0.0739 | 223,772 |
+| a | axial | 0.0783 | 0.0787 | 0.0783 | 0.0534 | 0.0793 | 517,388 |
+| a | indexed | 0.0704 | 0.0709 | 0.0704 | 0.0600 | 0.0709 | 2,344 |
+| b | roughing (0.3) | 0 | 0 | 0 | 0.0091 | 0.0268 | 38,868 |
+| b | rest | 0.0426 | 0.0430 | 0.0426 | 0.0103 | 0.0431 | 246,096 |
+| b | pencil | 0.0342 | 0.0347 | 0.0342 | 0.0065 | 0.0365 | 9,028 |
+| b | helical | 0.0426 | 0.0430 | 0.0426 | 0.0103 | 0.0431 | 246,088 |
+| b | axial | 0.0428 | 0.0432 | 0.0428 | 0.0095 | 0.0433 | 776,444 |
+| b | indexed | 0.0318 | 0.0322 | 0.0318 | 0.0072 | 0.0323 | 2,328 |
+| c | roughing (0.3) | 0 | 0 | 0 | 0.0050 | 0.0046 | 37,728 |
+| c | rest | 0.0062 | 0.0066 | 0.0051 | 0.0052 | 0.0058 | 227,736 |
+| c | pencil | 0.0009 | 0.0014 | 0.0009 | 0.0014 | 0.0018 | 9,092 |
+| c | helical | 0.0062 | 0.0066 | 0.0051 | 0.0052 | 0.0058 | 227,728 |
+| c | axial | 0.0059 | 0.0064 | 0.0054 | 0.0057 | 0.0058 | 756,352 |
+| c | indexed | 0.0052 | 0.0057 | 0.0037 | 0.0028 | 0.0050 | 2,260 |
+
+Simultaneous finishing refuses the blisk on all three forms, as decision 0211 documents (here 0.0203, 0.1368 and 0.3568 mm at the blades' roots); a refused operation has no stations.
+
+What the blisk shows:
+
+1. **The readings agree with decision 0211's sampled ones and are now proven.** The sampled tables were taken on earlier code, so paths differ a little, but every finishing row except pencil (which now follows the B-rep creases) is within 0.0005 mm of its historical full-stepover counterpart, and the found values are attained at real face points, so the sampled maxima did not overstate the cuts. On form (b) the finishing operations cut 0.032 to 0.043 mm into the exact faces, proven at most 0.0432 mm: well over the 0.01 mm tolerance, as 0211 found.
+2. **The original finer-mesh candidate (c, 0.01 mm / 0.02 rad) does not meet the 0.005 mm allocation at the tool.** Its proven drop error reaches 0.0058 mm on rest, helical and axial finishing (the tessellation's own share of the cut, from both intervals), which agrees with uncapped M1's 0.00570 mm. Its deepest cut, 0.0062 mm found and 0.0066 mm proven, is within the whole 0.01 mm tolerance, but the allocation, not the total, is the criterion for the mesh (verification plan 4.1). Issue #347 qualifies a candidate against it.
+3. **The quarter stations matter.** On (c) the deepest found at the strategy's poses is 0.0051 mm, and between them 0.0062 mm: the fitter's chord adds up to 0.0011 mm, within its 0.004 mm limit (decision 0018 item 12).
+
+The corpus, forms (b) and (c) at full stepovers (complete tables in the evidence): every station of every successful operation was bounded with intervals of at most 0.0005 mm. Pencil clean-up refuses every corpus part (no inside corner of 30 degrees or more), as it should. The worst finishing cut found on (b), proven bound in brackets: cylinder 0.0050 (0.0055), cone 0.0091 (0.0095), sphere 0.0204 (0.0208), torus TORUS_B, `bspline_face` 0.0106 (0.0111), `filleted_box` 0.0065 (0.0069), `revolved_spline` 0.0208 (0.0212); on (c): cylinder 0.0030 (0.0035), cone 0.0027 (0.0032), sphere 0.0060 (0.0065), `bspline_face` 0.0084 (0.0089), `filleted_box` 0.0041 (0.0045), `revolved_spline` 0.0059 (0.0063). Form (c)'s proven drop error stays at or under 0.005 mm on the cylinder, cone, sphere, `filleted_box` and `revolved_spline`, but reaches 0.0078 mm on `bspline_face`. The torus could not be imported at 0.02 rad: the STEP worker stopped the read at its 120 s limit, so the torus is measured on form (b) only, and the original candidate's import cost is a further point for #347.
 
 ## What it does not establish
 
