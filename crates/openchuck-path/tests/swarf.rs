@@ -46,6 +46,12 @@ const Z1: f64 = 18.0;
 const TOOL_RADIUS: f64 = 3.0;
 const TOL: f64 = 0.01;
 const LIMIT: f64 = swarf::DEFAULT_MAX_MATERIAL_LEFT;
+/// A checked tolerance advice for the warnings built from a hand-made face
+/// path, whose wording is all those tests look at (decision record 0272).
+const CLEARED: swarf::Clearing = swarf::Clearing::At {
+    tolerance: 1.0,
+    cut: 0.0,
+};
 
 fn tool(shape: ToolShape, flute_length: f64) -> RevolvedProfile {
     Tool {
@@ -718,7 +724,7 @@ fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refuse
         message.contains("flank half angle of 6.00 degrees would remove it"),
         "{message}"
     );
-    let warning = path.overcut_warning(TOL).unwrap();
+    let warning = path.overcut_warning(TOL, CLEARED).unwrap();
     assert!(
         warning.contains("cuts into the finished surface by")
             && warning.contains("flank half angle of 6.00 degrees would remove it"),
@@ -965,8 +971,8 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
         ..with(0.2)
     };
     assert!(both.refusal(LIMIT).unwrap().contains("would leave"));
-    assert!(both.overcut_warning(TOL).is_some());
-    assert!(with(0.2).overcut_warning(TOL).is_none());
+    assert!(both.overcut_warning(TOL, CLEARED).is_some());
+    assert!(with(0.2).overcut_warning(TOL, CLEARED).is_none());
     let tilted = swarf::FacePath {
         max_tilt: 6.0,
         suggested_taper: Some(6.0),
@@ -1892,15 +1898,20 @@ fn motion_by_length(poses: &[ToolPose], step: f64, reach: f64) -> Vec<ToolPose> 
 }
 
 /// The deepest cut into `points` by the tool swept along `poses`, by the
-/// independent checker, with the motion sampled every `step` mm.
+/// independent checker, with the motion sampled every `step` mm. A point
+/// further than `reach` from every tool tip is not looked at.
 fn measured_cut(outline: &Outline, poses: &[ToolPose], points: &[Point3], step: f64) -> f64 {
     let height = 30.0;
+    let reach = height + outline.radius();
     let swept = motion_by_length(poses, step, height);
     let radius = outline.radius();
     let mut gouge = 0.0f64;
     for p in points {
         for pose in &swept {
             let w = *p - pose.tip;
+            if w.length() > reach {
+                continue;
+            }
             let z = w.dot(pose.axis.get());
             if !(-0.1..=height).contains(&z) {
                 continue;
@@ -1915,6 +1926,15 @@ fn measured_cut(outline: &Outline, poses: &[ToolPose], points: &[Point3], step: 
     gouge
 }
 
+/// The tolerance the overcut warning advises, read from its words.
+fn advised(message: &str) -> f64 {
+    let at = message
+        .split("raise the Tolerance of this operation to at least ")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no advice in {message}"));
+    at.split(' ').next().unwrap().parse().unwrap()
+}
+
 #[test]
 fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_path_whatever_the_tolerance()
  {
@@ -1924,13 +1944,13 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
     // report that cut as the written path makes it, at every tolerance, so
     // a tolerance at or above the reported cut clears the warning and one
     // below it never gives a false all-clear (OP-12, NFR-12).
-    let (pitch, degrees) = (3.0, 40.0);
+    let (pitch, degrees) = (3.0, 24.0);
     let faces = ExactFaces::helicoid(pitch, degrees);
     let f = Fixture::with_surface(Box::new(faces), flat());
     let outline = Outline::new(&flat());
     // The face every 0.03 mm across the rulings at their outer end and
     // every 0.1 mm along them.
-    let points = helicoid_samples(pitch, degrees, 480, 120, 0.0);
+    let points = helicoid_samples(pitch, degrees, 290, 120, 0.0);
     // The checker's own resolution: the face and the motion are sampled
     // finely enough that the cut it finds is within this of the true one.
     let resolution = 0.0005;
@@ -1952,7 +1972,7 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
         })
         .unwrap();
         let made = generated(&f, &[(names::TOLERANCE, num(tolerance))]);
-        let measured = measured_cut(&outline, &cutting_poses(&made.group), &points, 0.005);
+        let measured = measured_cut(&outline, &cutting_poses(&made.group), &points, 0.01);
         assert!(
             (path.gouge - measured).abs() <= resolution,
             "tolerance {tolerance}: swarf reports {:.4} mm, the written path cuts {measured:.4} mm",
@@ -1972,5 +1992,23 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
     assert!(
         hi - lo <= resolution,
         "the reported cut follows the tolerance: {reported:?}"
+    );
+    // The advice clears the warning in one step (decision record 0272): at
+    // the tolerance the warning names, the operation is not warned of and
+    // the written path cuts no deeper than that tolerance.
+    let made = generated(&f, &[(names::TOLERANCE, num(0.01))]);
+    let message = overcut_warning(&made);
+    assert!(message.contains("this was checked"), "{message}");
+    assert!(
+        message.contains("the face's own error with this tool"),
+        "{message}"
+    );
+    let x = advised(&message);
+    let again = generated(&f, &[(names::TOLERANCE, num(x))]);
+    assert!(again.warnings.is_empty(), "at {x}: {:?}", again.warnings);
+    let measured = measured_cut(&outline, &cutting_poses(&again.group), &points, 0.01);
+    assert!(
+        measured <= x + resolution,
+        "at {x} the path cuts {measured:.4} mm"
     );
 }

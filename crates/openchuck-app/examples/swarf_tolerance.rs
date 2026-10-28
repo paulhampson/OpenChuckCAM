@@ -519,6 +519,9 @@ fn main() {
                 }
             };
             let elapsed = t.elapsed().as_secs_f64();
+            for w in &generated.warnings {
+                eprintln!("  warning at tolerance {tol}: {}", w.message);
+            }
             let mut poses = vec![generated.group.start];
             let mut cuts: Vec<(ToolPose, ToolPose)> = Vec::new();
             for s in &generated.group.segments {
