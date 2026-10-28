@@ -505,7 +505,7 @@ Board 4 (SIM-01 to SIM-07).
 
 **Results inspector:**
 
-- “Deviation colours”, available for current and stale simulated results; off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
+- “Deviation colours”, available for current and stale simulated results when cut-part preparation has not failed. A preparation failure disables the checkbox, shows its reason beside it and in its disabled tooltip, and retains the Playback error; no target-model fallback is used (#330). Off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
