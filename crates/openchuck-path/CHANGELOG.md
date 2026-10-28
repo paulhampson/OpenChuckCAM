@@ -13,7 +13,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
-- **Breaking (0.27.0, BUG-SWARF4, proposed decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
+- **Breaking (0.27.0, BUG-SWARF4, decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
 
 - FACING review fixes: preserve cancellation from restricted legacy Flat completion; describe End/Box, arbitrary A and coverage choices in strategy metadata. Completion still refuses every other unfinished/unsupported result with its existing reason.
 
