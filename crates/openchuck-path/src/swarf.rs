@@ -119,8 +119,13 @@ const GUARD_GRID: usize = 33;
 /// Bisections that find where the tool comes too close to an avoid or check
 /// surface.
 const GUARD_STEPS: u32 = 16;
-/// Points of the machine's motion between two poses the gate looks at.
+/// Points of the machine's motion between two poses the guards look at.
 const GATE_STEPS: usize = 4;
+/// The most the gate's own sampling may miss of the deepest cut or the
+/// most material left, in millimetres (decision record 0272).
+pub const GATE_RESOLUTION: f64 = 0.0005;
+/// The most steps the gate cuts one move into (NFR-07).
+const MAX_GATE_STEPS: usize = 4096;
 /// Samples of the directrix that find where the face has rulings.
 const SCAN: usize = 64;
 /// Bisections that refine an extent or a run end.
@@ -1604,25 +1609,24 @@ pub fn face_path(
 
     // The gate: every sample of the face against the union of the tool
     // along the whole motion (decision record 0021 item 3).
+    let step = gate_step(radius);
     let mut positions: Vec<(Point3, UnitVec3, Point3, f64)> = Vec::new();
-    for run in &out_runs {
-        for (i, p) in run.iter().enumerate() {
-            positions.push((p.tip, p.axis, p.contact, p.ruling_length));
-            if let Some(q) = run.get(i + 1) {
-                positions.extend(motion(p, q, rotary));
-            }
-        }
-    }
     let mut samples: Vec<Point3> = Vec::new();
     for run in &out_runs {
         for (i, p) in run.iter().enumerate() {
-            let mut ts = vec![p.t];
-            if let Some(q) = run.get(i + 1) {
-                ts.push(0.5 * (p.t + q.t));
-            }
-            for t in ts {
+            positions.push((p.tip, p.axis, p.contact, p.ruling_length));
+            let Some(q) = run.get(i + 1) else {
+                if let Some(r) = rule(p.t) {
+                    samples.extend(along_ruling(face, family, &r, gate_count(&r, step)));
+                }
+                continue;
+            };
+            let n = moves_of(p, q, step);
+            positions.extend(motion_in(p, q, rotary, n));
+            for k in 0..n {
+                let t = p.t + (q.t - p.t) * k as f64 / n as f64;
                 if let Some(r) = rule(t) {
-                    samples.extend(along_ruling(face, family, &r, GATE_SAMPLES));
+                    samples.extend(along_ruling(face, family, &r, gate_count(&r, step)));
                 }
             }
         }
@@ -1735,8 +1739,53 @@ pub fn face_path(
     })
 }
 
+/// The spacing, in millimetres, at which the gate samples the motion and
+/// the face across the rulings for a tool of cutting radius `radius`: close
+/// enough that the deepest cut it finds is within [`GATE_RESOLUTION`] of the
+/// deepest between its samples (the cut beside a ruling varies about its
+/// deepest as the offset squared over twice the radius).
+fn gate_step(radius: f64) -> f64 {
+    (2.0 * (2.0 * radius.max(0.1) * GATE_RESOLUTION).sqrt()).max(0.005)
+}
+
+/// How many samples the gate takes along `ruling`: none further apart than
+/// `step`, and at least [`GATE_SAMPLES`].
+fn gate_count(ruling: &Ruling, step: f64) -> usize {
+    ((ruling.length() / step).ceil() as usize + 1).clamp(GATE_SAMPLES, MAX_GATE_STEPS)
+}
+
+/// How many steps the gate cuts the move from `p` to `q` into: none longer
+/// than `step` at the tip, at the contact or at the far end of the ruling.
+fn moves_of(p: &Pose, q: &Pose, step: f64) -> usize {
+    let top = |x: &Pose| x.tip + x.axis.get() * x.ruling_length;
+    let far = p
+        .tip
+        .distance(q.tip)
+        .max(p.contact.distance(q.contact))
+        .max(top(p).distance(top(q)));
+    ((far / step).ceil() as usize).clamp(1, MAX_GATE_STEPS)
+}
+
+/// The tool at `n - 1` evenly spaced points of the machine's motion from
+/// `p` to `q`, as (tip, axis, contact, ruling length).
+fn motion_in(
+    p: &Pose,
+    q: &Pose,
+    rotary: RotaryMapping,
+    n: usize,
+) -> Vec<(Point3, UnitVec3, Point3, f64)> {
+    (1..n)
+        .map(|k| {
+            let f = k as f64 / n as f64;
+            let (tip, axis) = between(p, q, f, rotary);
+            let contact = p.contact + (q.contact - p.contact) * f;
+            (tip, axis, contact, p.ruling_length.max(q.ruling_length))
+        })
+        .collect()
+}
+
 /// The tool at the points of the machine's motion from `p` to `q` that the
-/// gate and the guards look at, as (tip, axis, contact, ruling length).
+/// guards look at, as (tip, axis, contact, ruling length).
 fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, Point3, f64)> {
     (1..GATE_STEPS)
         .map(|k| {
