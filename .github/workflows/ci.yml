@@ -400,6 +400,12 @@ jobs:
         run: |
           cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
           cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
+      # The exact face and trim queries on the corpus (lane STEPALL-X1, OI-839), and the measuring
+      # example built so it keeps compiling. The measurement itself is run by hand.
+      - name: STEP exact queries
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_queries
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_queries
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
