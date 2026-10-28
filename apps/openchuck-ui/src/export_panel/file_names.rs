@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The export dialog's file name templates (issues 308 and 310; decision
 //! record 0267). The templates are the user's, kept in the settings file by
-//! the shell; the names, the checks and the collisions are worked out in
-//! `openchuck-app`, so the preview is the list of names that is written.
+//! the shell; the names, the checks and the numbering of clashing names are
+//! worked out in `openchuck-app`, so the preview is the list of names that is
+//! written.
 
 use openchuck_app::output_names::{
     DEFAULT_GCODE_TEMPLATE, DEFAULT_SHEET_TEMPLATE, NameField, fields_list, template_problem,
@@ -75,6 +76,13 @@ impl ExportPanel {
         self.named(app)?.as_ref().err().cloned()
     }
 
+    /// The warning when outputs were given a number so that none is
+    /// written over another (owner option B on OI-1072). It does not stop
+    /// writing; the preview shows the numbered names.
+    pub(super) fn names_warning(&mut self, app: &Application) -> Option<String> {
+        self.named(app)?.as_ref().ok()?.warning()
+    }
+
     /// The two template fields with their fields list, reset buttons and
     /// the problem that stops writing, under the output folder.
     pub(super) fn file_names_section(&mut self, ui: &mut egui::Ui, app: &Application) {
@@ -110,6 +118,8 @@ impl ExportPanel {
         }
         if let Some(problem) = self.names_problem(app) {
             ui.add(egui::Label::new(RichText::new(problem).color(PROBLEM)).wrap());
+        } else if let Some(warning) = self.names_warning(app) {
+            ui.add(egui::Label::new(RichText::new(warning).color(WARNING)).wrap());
         }
         egui::CollapsingHeader::new("Fields")
             .id_salt("export name fields")

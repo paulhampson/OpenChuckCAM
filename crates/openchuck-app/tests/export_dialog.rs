@@ -1078,25 +1078,65 @@ fn req_gc_05_req_gc_07_a_template_names_the_written_files_as_previewed() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-/// Issue 308: two files that would get the same name, or a template that
-/// cannot name a file, write nothing and say how to fix it (NFR-07).
+/// Issue 308 with the owner's option B on OI-1072: outputs whose templates
+/// give one name, across every program file and both sheets and ignoring
+/// letter case, are written under numbered names, with a warning, and none
+/// is written over another; the sheet lists the names written.
 #[test]
-fn req_gc_05_req_nfr_07_a_name_collision_or_bad_template_writes_nothing() {
+fn req_gc_05_req_nfr_07_clashing_names_are_numbered_and_none_is_overwritten() {
     let (dir, mut app) = project("Clash", false);
     let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    // Every program is "clash.nc"; the sheet clashes with nothing.
+    app.set_file_name_templates(templates("{project}", "{project}-setup-sheet"));
+    let named = app.output_files(&run).unwrap();
+    let names: Vec<&str> = named.programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["clash.nc", "clash-2.nc", "clash-3.nc"]);
+    let warning = named.warning().unwrap();
+    assert!(
+        warning.contains("'clash.nc' is written as 'clash-2.nc'"),
+        "{warning}"
+    );
+    assert_eq!(named.renamed.len(), 2);
+    // (Letter case and the sheet pair are covered in `output_names`: the
+    // fields here are all lower case, and the sheet's extensions differ.)
+    app.set_file_name_templates(templates("{project}", "{project}"));
     let out = folder("clash");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    assert_eq!(
+        file_names(&report.written),
+        [
+            "clash.nc",
+            "clash-2.nc",
+            "clash-3.nc",
+            "clash.html",
+            "clash.pdf"
+        ]
+    );
+    for ((_, text), path) in run.gcode.iter().zip(&report.written) {
+        assert_eq!(&std::fs::read_to_string(path).unwrap(), text);
+    }
+    let html = std::fs::read_to_string(out.join("clash.html")).unwrap();
+    for name in ["clash.nc", "clash-2.nc", "clash-3.nc"] {
+        let bytes = std::fs::read(out.join(name)).unwrap();
+        assert!(html.contains(&format!(": {name}</h2>")), "{name}");
+        assert!(html.contains(&openchuck_app::output_names::file_hash::hex(&bytes)));
+    }
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Decision 1 on OI-1070: a template that cannot name a file at all is
+/// still an error, writes nothing and creates nothing.
+#[test]
+fn req_gc_05_req_nfr_07_a_template_that_cannot_name_a_file_writes_nothing() {
+    let (dir, mut app) = project("Unnamed", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    let out = folder("unnamed");
     for (gcode, sheet, says) in [
-        (
-            "{project}",
-            "{project}-setup-sheet",
-            "would both be called 'clash.nc'",
-        ),
-        (
-            "{setup}-{tool}",
-            "{project}-setup-sheet",
-            "would both be called",
-        ),
         ("{n}", "{project", "no matching }"),
+        ("{n}-{nope}", "{project}", "no field {nope}"),
         ("{n}-{operation}", "{tool}", "covers every file"),
     ] {
         app.set_file_name_templates(templates(gcode, sheet));
@@ -1109,7 +1149,7 @@ fn req_gc_05_req_nfr_07_a_name_collision_or_bad_template_writes_nothing() {
         );
     }
     // One file per setup holds three operations: {operation} has no value.
-    let (dir2, mut app2) = project("Clash setup", false);
+    let (dir2, mut app2) = project("Unnamed setup", false);
     let run2 = std::sync::Arc::new(post(&mut app2, OutputGrouping::Setup));
     app2.set_file_name_templates(templates("{operation}", "{project}-setup-sheet"));
     let error = app2.output_files(&run2).unwrap_err().to_string();

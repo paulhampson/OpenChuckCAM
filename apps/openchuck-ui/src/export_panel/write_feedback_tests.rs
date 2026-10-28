@@ -18,8 +18,32 @@ struct Rig {
 
 impl Rig {
     fn new(name: &str) -> Self {
-        let (dir, mut app, _, _) = cube_project(name);
+        Self::build(name, false)
+    }
+
+    /// With `split`, a copy of the operation is added and the files are one
+    /// per operation, so the project has two program files.
+    fn build(name: &str, split: bool) -> Self {
+        let (dir, mut app, op, _) = cube_project(name);
         let mut panel = ExportPanel::new(None);
+        if split {
+            let mut again = app
+                .project()
+                .operations()
+                .iter()
+                .find(|o| o.id == op)
+                .unwrap()
+                .clone();
+            again.id = openchuck_app::project::id::OperationId::new();
+            again.name = "Finish again".into();
+            app.execute(openchuck_app::Command::Add {
+                item: openchuck_app::project::Item::Operation(again),
+                placement: openchuck_app::project::Placement::End,
+            })
+            .unwrap();
+            panel.grouping = OutputGrouping::Operation;
+            app.set_output_grouping(OutputGrouping::Operation);
+        }
         app.set_post(panel.selection());
         let run = Arc::new(app.regenerate().unwrap());
         panel.open(&app);
@@ -439,4 +463,31 @@ fn req_ui_15_req_ui_07_a_typed_template_is_kept_only_once_confirmed() {
     );
     let named = rig.app.output_files(&rig.run).unwrap();
     assert!(named.programs[0].name.ends_with("-x.nc"), "{named:?}");
+}
+
+/// The owner's option B on OI-1072: clashing names get a number, the dialog
+/// warns and previews the numbered names, and writing is not blocked.
+#[test]
+fn req_gc_05_req_nfr_07_clashing_names_are_previewed_numbered_with_a_warning() {
+    let mut rig = Rig::build("clashing-names", true);
+    rig.panel.set_file_names(openchuck_app::FileNameTemplates {
+        gcode: "{project}".into(),
+        setup_sheet: "{project}-setup-sheet".into(),
+    });
+    rig.settle();
+    let named = rig.app.output_files(&rig.run).unwrap();
+    let names: Vec<&str> = named.programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["clashing-names.nc", "clashing-names-2.nc"]);
+    let warning = named.warning().unwrap();
+    assert!(
+        rig.texts.iter().any(|(t, _)| *t == warning),
+        "the warning is shown: {:?}",
+        rig.texts
+    );
+    for program in &named.programs {
+        assert!(drawn(&rig, &program.name), "{} not previewed", program.name);
+    }
+    rig.click("Write G-code");
+    let report = rig.panel.result.clone().unwrap();
+    assert!(report.is_complete(), "{report:?}");
 }

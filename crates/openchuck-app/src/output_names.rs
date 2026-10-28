@@ -299,6 +299,15 @@ pub struct OutputFiles {
     pub programs: Vec<ProgramFile>,
     /// The setup sheet's names, HTML then PDF, written after the programs.
     pub setup_sheet: [String; 2],
+    /// The names given a number because an earlier output had them.
+    pub renamed: Vec<Renamed>,
+}
+
+impl OutputFiles {
+    /// The warning to show when names were given a number.
+    pub fn warning(&self) -> Option<String> {
+        renamed_warning(&self.renamed)
+    }
 }
 
 /// What the whole job gives the fields that do not depend on the file.
@@ -441,20 +450,38 @@ pub fn clean_stem(stem: &str) -> String {
     openchuck_project::new_folder::folder_name(stem)
 }
 
+/// The program file's name for `template`, without its extension.
+pub(crate) fn program_stem(
+    template: &str,
+    job: &JobFacts,
+    file: &FileFacts<'_>,
+) -> Result<String, String> {
+    render(template, false, job, Some(file))
+}
+
 /// The program file's name for `template`.
-pub(crate) fn program_name(
+#[cfg(test)]
+fn program_name(
     template: &str,
     job: &JobFacts,
     file: &FileFacts<'_>,
     extension: &str,
 ) -> Result<String, String> {
-    render(template, false, job, Some(file)).map(|stem| with_extension(&stem, extension))
+    program_stem(template, job, file).map(|stem| with_extension(&stem, extension))
 }
+
+/// The setup sheet's name for `template`, without `.html` or `.pdf`.
+pub(crate) fn sheet_stem(template: &str, job: &JobFacts) -> Result<String, String> {
+    render(template, true, job, None)
+}
+
+/// The extensions the setup sheet is written with, HTML then PDF.
+pub(crate) const SHEET_EXTENSIONS: [&str; 2] = ["html", "pdf"];
 
 /// The setup sheet's two names for `template`, HTML then PDF.
 pub(crate) fn sheet_names(template: &str, job: &JobFacts) -> Result<[String; 2], String> {
-    let stem = render(template, true, job, None)?;
-    Ok([format!("{stem}.html"), format!("{stem}.pdf")])
+    let stem = sheet_stem(template, job)?;
+    Ok(SHEET_EXTENSIONS.map(|e| with_extension(&stem, e)))
 }
 
 fn with_extension(stem: &str, extension: &str) -> String {
@@ -465,38 +492,78 @@ fn with_extension(stem: &str, extension: &str) -> String {
     }
 }
 
-/// The first pair of names that would be the same file on a computer that
-/// ignores letter case (Windows and macOS by default), as a sentence that
-/// says how to tell them apart; `None` when every name is distinct.
-pub fn collision(names: &[String]) -> Option<String> {
-    for (i, name) in names.iter().enumerate() {
-        let folded = name.to_lowercase();
-        if let Some((j, other)) = names
-            .iter()
-            .take(i)
-            .enumerate()
-            .find(|(_, other)| other.to_lowercase() == folded)
-        {
-            let same = if other == name {
-                format!(
-                    "Files {} and {} would both be called '{name}'.",
-                    j + 1,
-                    i + 1
-                )
-            } else {
-                format!(
-                    "Files {} and {} would be called '{}' and '{name}', which are the same file where letter case is ignored (Windows and macOS).",
-                    j + 1,
-                    i + 1,
-                    other
-                )
-            };
-            return Some(format!(
-                "{same} Nothing is written until every name is different: add {{n}} or {{operation_no}} to the program file template, or change the setup sheet template."
-            ));
+/// A name the template gave that is written under another, because an
+/// earlier output of the same write already has it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Renamed {
+    /// The name the template gave.
+    pub template_name: String,
+    /// The name it is written as.
+    pub name: String,
+}
+
+/// Makes the names of one write distinct, ignoring letter case as Windows
+/// and macOS do (owner option B on OI-1072, decision record 0267 item 6).
+/// `groups` are the outputs in write order, each a stem and the extensions
+/// written with it (a program has one, the setup sheet two, which keep one
+/// stem). The first output with a name keeps it; a later one gets `-2`,
+/// `-3` and so on after its stem, skipping any name another output has from
+/// its template, so no output is ever written over another. Returns each
+/// group's names and what was renamed.
+pub(crate) fn unique_names(groups: &[(String, Vec<String>)]) -> (Vec<Vec<String>>, Vec<Renamed>) {
+    use std::collections::BTreeSet;
+    let natural: BTreeSet<String> = groups
+        .iter()
+        .flat_map(|(stem, extensions)| {
+            extensions
+                .iter()
+                .map(move |e| with_extension(stem, e).to_lowercase())
+        })
+        .collect();
+    let mut taken: BTreeSet<String> = BTreeSet::new();
+    let mut named = Vec::new();
+    let mut renamed = Vec::new();
+    for (stem, extensions) in groups {
+        let names_for = |stem: &str| -> Vec<String> {
+            extensions.iter().map(|e| with_extension(stem, e)).collect()
+        };
+        let mut names = names_for(stem);
+        let mut k = 1_usize;
+        while names.iter().any(|n| {
+            let folded = n.to_lowercase();
+            taken.contains(&folded) || (k > 1 && natural.contains(&folded))
+        }) {
+            k += 1;
+            names = names_for(&format!("{stem}-{k}"));
         }
+        if k > 1 {
+            for (template_name, name) in names_for(stem).into_iter().zip(&names) {
+                renamed.push(Renamed {
+                    template_name,
+                    name: name.clone(),
+                });
+            }
+        }
+        taken.extend(names.iter().map(|n| n.to_lowercase()));
+        named.push(names);
     }
-    None
+    (named, renamed)
+}
+
+/// The warning the dialog shows when names were made distinct, or `None`
+/// when every output has the name its template gave.
+pub fn renamed_warning(renamed: &[Renamed]) -> Option<String> {
+    if renamed.is_empty() {
+        return None;
+    }
+    let list = renamed
+        .iter()
+        .map(|r| format!("'{}' is written as '{}'", r.template_name, r.name))
+        .collect::<Vec<_>>()
+        .join("; ");
+    Some(format!(
+        "Some outputs would have had the same name (letter case is ignored, as on Windows and macOS), so a number is added and none is written over another: {list}. To choose these names yourself, add {{n}} or {{operation_no}} to the program file template, or change the setup sheet template."
+    ))
 }
 
 /// The hash the setup sheet gives each program file, of the file's exact
@@ -693,17 +760,79 @@ mod tests {
         assert_eq!(clean_stem("01-setup-1"), "01-setup-1");
     }
 
+    fn groups(names: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> {
+        names
+            .iter()
+            .map(|(stem, ext)| {
+                (
+                    (*stem).to_owned(),
+                    ext.iter().map(|e| (*e).to_owned()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    /// OI-1072, owner option B: clashing names get a number, letter case
+    /// ignored, and no output is written over another.
     #[test]
-    fn req_nfr_07_names_that_differ_only_in_case_collide() {
-        let names = ["01-a.nc", "A.nc", "a.nc"].map(String::from);
-        let said = collision(&names).unwrap();
-        assert!(
-            said.contains("Files 2 and 3") && said.contains("letter case"),
-            "{said}"
+    fn req_gc_05_req_nfr_07_clashing_names_get_a_number_ignoring_case() {
+        let (named, renamed) = unique_names(&groups(&[
+            ("part", &["nc"]),
+            ("Part", &["nc"]),
+            ("part", &["nc"]),
+            ("other", &["nc"]),
+        ]));
+        assert_eq!(
+            named,
+            [
+                vec!["part.nc"],
+                vec!["Part-2.nc"],
+                vec!["part-3.nc"],
+                vec!["other.nc"]
+            ]
         );
-        let same = ["x.nc", "x.nc"].map(String::from);
-        assert!(collision(&same).unwrap().contains("both be called 'x.nc'"));
-        assert!(collision(&["a.nc".into(), "b.nc".into()]).is_none());
+        assert_eq!(
+            renamed,
+            [
+                Renamed {
+                    template_name: "Part.nc".into(),
+                    name: "Part-2.nc".into()
+                },
+                Renamed {
+                    template_name: "part.nc".into(),
+                    name: "part-3.nc".into()
+                },
+            ]
+        );
+        let warning = renamed_warning(&renamed).unwrap();
+        assert!(
+            warning.contains("'Part.nc' is written as 'Part-2.nc'")
+                && warning.contains("letter case")
+                && warning.contains("none is written over another"),
+            "{warning}"
+        );
+        assert_eq!(renamed_warning(&[]), None);
+    }
+
+    /// A number never takes a name another output has from its template.
+    #[test]
+    fn req_nfr_07_a_number_skips_names_other_outputs_have() {
+        let (named, _) = unique_names(&groups(&[("a", &["nc"]), ("a", &["nc"]), ("a-2", &["nc"])]));
+        assert_eq!(named, [vec!["a.nc"], vec!["a-3.nc"], vec!["a-2.nc"]]);
+    }
+
+    /// The sheet's HTML and PDF keep one stem; a program called like either
+    /// moves the pair on together.
+    #[test]
+    fn req_gc_12_the_sheet_pair_keeps_one_stem() {
+        let (named, renamed) =
+            unique_names(&groups(&[("job", &["html"]), ("job", &["html", "pdf"])]));
+        assert_eq!(named, [vec!["job.html"], vec!["job-2.html", "job-2.pdf"]]);
+        assert_eq!(renamed.len(), 2);
+        let (named, renamed) =
+            unique_names(&groups(&[("job", &["nc"]), ("job", &["html", "pdf"])]));
+        assert_eq!(named, [vec!["job.nc"], vec!["job.html", "job.pdf"]]);
+        assert!(renamed.is_empty());
     }
 
     #[test]

@@ -552,7 +552,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
    - Units, A letter and wrap, read from the post (read-only).
    - Files (GC-05, decision 0028 item 1): Project, Setup (default), Operation or Tool. "Project" is disabled while the project has more than one setup run, with the reason.
    - Output folder.
-   - **File names** ([decision 0267](../decisions/0267-output-file-names-sheet-hashes-and-staged-writes.md); #308, #310): a template for the program files (default `{n}-{contents}`) and one for the setup sheet (default `{project}-setup-sheet`), each with Reset, and a folded list of the fields. The defaults give the names written before templates existed. The post adds the program extension; the sheet is `.html` and `.pdf`. They are the user's setting on this computer, kept for every project once a change is confirmed. A template that cannot name the files, a field with no single value for a file, or two outputs with one name (letter case ignored) is shown in red under the fields, and blocks writing with the same sentence.
+   - **File names** ([decision 0267](../decisions/0267-output-file-names-sheet-hashes-and-staged-writes.md); #308, #310): a template for the program files (default `{n}-{contents}`) and one for the setup sheet (default `{project}-setup-sheet`), each with Reset, and a folded list of the fields. The defaults give the names written before templates existed. The post adds the program extension; the sheet is `.html` and `.pdf`. They are the user's setting on this computer, kept for every project once a change is confirmed. A template that cannot name a file (an unknown field, an unmatched brace, a field with no single value for a file) is shown in red under the fields and blocks writing with the same sentence. Outputs whose templates give one name, letter case ignored, across every program file and both sheets, get `-2`, `-3` and so on, with a warning in amber naming each change; writing is not blocked and no output is written over another (owner's choice on OI-1072).
 2. **Tool numbers** (GC-14).
    - One row per tool: library tool, used in, and program number.
    - The machine's range is shown.
@@ -565,7 +565,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 
 **Right column:**
 
-- the files to write, each with the name it is written as (decision 0028 item 1, decision 0267), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189), which says the sheet lists each program file with its SHA-256; while the names cannot be settled each shows a dash and the problem is shown;
+- the files to write, each with the name it is written as (decision 0028 item 1, decision 0267), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189), which says the sheet lists each program file with its SHA-256; the names shown include any number added to tell clashing names apart, with the warning; while a template cannot name the files each shows a dash and the problem is shown;
 - a preview of the first lines.
 
 The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.

@@ -1301,22 +1301,25 @@ impl Application {
         }
     }
 
-    /// Every file a write of `run` makes, with the names the templates give
-    /// them: the program files in write order, then the setup sheet. Fails
-    /// with the reason, before anything is written, when a template cannot
-    /// name a file or two names would be the same file (issues 308 to 310;
-    /// NFR-07). The dialog's preview and the write both use this.
+    /// Every file a write of `run` makes, with the names it is written as:
+    /// the program files in write order, then the setup sheet (issues 308 to
+    /// 310). Two outputs whose templates give one name, letter case ignored,
+    /// are told apart with a number (owner option B on OI-1072), reported
+    /// in [`OutputFiles::renamed`]. Fails with the reason, before anything is
+    /// written, when a template cannot name a file (NFR-07). The dialog's
+    /// preview and the write both use this.
     pub fn output_files(&self, run: &Regeneration) -> Result<OutputFiles, AppError> {
         let job = self.job_facts(
             &run.project,
             run.posted_selection.as_ref().map(|(post, _)| post),
         );
         let mut programs = Vec::new();
-        for (index, (mut file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
+        let mut groups = Vec::new();
+        for (index, (file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
             let extension = std::path::Path::new(&file.posted_name)
                 .extension()
                 .map_or_else(String::new, |e| e.to_string_lossy().into_owned());
-            file.name = output_names::program_name(
+            let stem = output_names::program_stem(
                 &self.file_names.gcode,
                 &job,
                 &output_names::FileFacts {
@@ -1324,24 +1327,32 @@ impl Application {
                     contents: &contents,
                     file: &file,
                 },
-                &extension,
             )
             .map_err(AppError::FileNames)?;
+            groups.push((stem, vec![extension]));
             programs.push(file);
         }
-        let setup_sheet = output_names::sheet_names(&self.file_names.setup_sheet, &job)
+        let sheet = output_names::sheet_stem(&self.file_names.setup_sheet, &job)
             .map_err(AppError::FileNames)?;
-        let names: Vec<String> = programs
-            .iter()
-            .map(|p| p.name.clone())
-            .chain(setup_sheet.iter().cloned())
-            .collect();
-        if let Some(problem) = output_names::collision(&names) {
-            return Err(AppError::FileNames(problem));
+        groups.push((
+            sheet,
+            output_names::SHEET_EXTENSIONS
+                .iter()
+                .map(|e| (*e).to_owned())
+                .collect(),
+        ));
+        let (mut named, renamed) = output_names::unique_names(&groups);
+        let sheet_names = named.pop().unwrap_or_default();
+        for (program, names) in programs.iter_mut().zip(named) {
+            program.name = names.into_iter().next().unwrap_or_default();
         }
+        let [html, pdf]: [String; 2] = sheet_names
+            .try_into()
+            .map_err(|_| AppError::FileNames("the setup sheet has no name".into()))?;
         Ok(OutputFiles {
             programs,
-            setup_sheet,
+            setup_sheet: [html, pdf],
+            renamed,
         })
     }
 

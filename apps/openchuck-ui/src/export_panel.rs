@@ -1066,6 +1066,9 @@ impl ExportPanel {
                 ui.label(format!(
                     "The setup sheet is written with the G-code, from the same run: {html} and {pdf}. It lists each program file with its SHA-256."
                 ));
+                if let Some(warning) = named.warning() {
+                    ui.add(egui::Label::new(RichText::new(warning).color(WARNING)).wrap());
+                }
             }
             Some(Err(problem)) => {
                 ui.add(egui::Label::new(RichText::new(problem).color(PROBLEM)).wrap());
