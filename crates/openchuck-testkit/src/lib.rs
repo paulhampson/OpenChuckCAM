@@ -10,6 +10,9 @@
 //! - [`determinism`]: the 1, 2 and N thread harness (NFR-06, GC-07).
 //! - [`gouge`]: the independent gouge and coverage checker (OP-12,
 //!   architecture section 9), which samples exact analytic surfaces.
+//! - [`contact`]: the bounded tool-contact checker (OP-12; decision 0209
+//!   item 4.1 M2, issue #346), whose clearance is an interval proven to hold
+//!   the exact value on B-rep faces and tessellations.
 //! - [`region`]: the independent oracle for 2D offsets on an unrolled
 //!   cylinder, and the corpus of awkward regions (OP-04, from spike SP-7).
 //! - [`golden`]: plain-text golden-file comparison (NFR-08).
@@ -21,6 +24,7 @@
 #![warn(missing_docs)]
 
 pub mod brep;
+pub mod contact;
 pub mod determinism;
 pub mod golden;
 pub mod gouge;
