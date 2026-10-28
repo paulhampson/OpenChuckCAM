@@ -469,3 +469,4 @@ QUEUED NEXT: FOURSTEP (#322) after OUTPUT2; OUTPUT3 (#312) after FOURSTEP; STEPA
 - #376 OUTPUT2 (Closes #308 #309 #310 #331 #332): record 0267 PROPOSED (OI-1070 A, 1071 A, 1072 B) -> owner accepts in session_017vEinyon11vpX14vxg2XAq. Coverage report-only: app 91.79%, UI 87.72%; found/fixed bug (shell copied default templates over saved ones before dialog opened); OI-1073 (macOS Unicode normalisation) open. No library bump, no schema.
 - #373 GATESFIX released to manager (no decisions).
 - STEPALL-X1 (#348): no report yet.
+28 Oct 22:00 FYI (owner): Merge Manager created lane AROT-2 session_017vEinysSXFVtuTVQdFgQYv to take over Codex PR #364 (codex/lane-arot-pass-resets, head 286cf81, decision 0247 accepted, library 0.26.0). Merge-only; waits for 'RELEASE AROT-2' from manager; #373 GATESFIX merges first. Not my lane; no instructions from me.
