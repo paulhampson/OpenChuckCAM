@@ -1043,6 +1043,45 @@ fn req_gc_12_req_set_09_req_nfr_08_a_sheet_with_held_regions_and_tabs_matches_it
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// OP-21, SET-09: the held region on offset bounding-box stock is placed from
+/// the part extent the caller gives.
+#[test]
+fn req_gc_12_req_set_09_offset_stock_held_region_shows_its_x_interval() {
+    let (dir, mut app) = held_sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+        offset: Millimetres(1.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let sheet = SetupSheet::with_parts(app.project(), app.strategies(), None, &|setup| {
+        let model = setup.part?;
+        let extent = app.inspect_model(model).ok()?.extent?;
+        Some(extent.in_setup(&setup.frame))
+    });
+    let held = facts(&sheet, "Setup: Setup 1");
+    let start = &held
+        .iter()
+        .find(|(k, _)| k == "Held at the start")
+        .unwrap()
+        .1;
+    assert!(start.contains(", X "), "{start}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Inspecting the part costs model I/O; a setup with nothing to place from
+/// the part must not ask for it.
+#[test]
+fn req_gc_12_a_setup_without_workholding_does_not_ask_for_the_part() {
+    let (dir, app) = sheet_project();
+    let asked = std::cell::Cell::new(0);
+    let _ = SetupSheet::with_parts(app.project(), app.strategies(), None, &|_| {
+        asked.set(asked.get() + 1);
+        None
+    });
+    assert_eq!(asked.get(), 0);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn req_gc_12_req_ui_06_a_disabled_operation_is_off_the_sheet_and_out_of_the_files() {
     let (dir, mut app) = sheet_project();
@@ -1372,6 +1411,33 @@ fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_with
     let sheet = app.setup_sheet(Some(&after.toolpath));
     assert!(sheet.to_html().contains("minimum block time"));
     assert!(check_pdf(&sheet.to_pdf()).contains("minimum block time"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_12_a_post_that_overrides_only_the_window_is_labelled_as_a_post_override() {
+    let (dir, mut app) = project("post-window-only", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 1_000_000.0;
+    machine.block_window = 3;
+    machine.short_block_mode = openchuck_types::machine::ShortBlockMode::Report;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let custom = dir.join("custom-post");
+    std::fs::create_dir(&custom).unwrap();
+    let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let manifest = std::fs::read_to_string(builtin.join("post.toml")).unwrap();
+    std::fs::write(
+        custom.join("post.toml"),
+        manifest.replace("[options]", "[options]\nblock_window = 1"),
+    )
+    .unwrap();
+    std::fs::copy(builtin.join("main.post"), custom.join("main.post")).unwrap();
+    app.set_post(Some(PostSelection::Folder(custom)));
+    let after = app.regenerate().unwrap();
+    let html = app.setup_sheet(Some(&after.toolpath)).to_html();
+    assert!(html.contains("(post)"), "the window came from the post");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
