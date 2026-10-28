@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Continuous swept-envelope certificates for fixed-A entry moves (0242).
+//! Continuous swept-envelope certificates for fixed-A entry moves (0242/0248).
+use std::collections::{BTreeMap, VecDeque};
+
 use crate::cutter::{ToolLine, grow_profile};
 use crate::error::{PathError, Result};
 use crate::{MeshSurface, Solid, SurfaceSource};
@@ -46,7 +48,10 @@ impl EntrySafety<'_> {
     /// at least three decimal places; rounding is included in the bound.
     /// For `Float32`, the posted counter must differ from these canonical
     /// coordinates by at most 720 degrees, including any reset offset.
-    /// No endpoints-only acceptance.
+    /// Uses bounded adaptive interval enclosures (0248), never endpoints-only
+    /// acceptance. Each attempted enclosure spends one unit, including failures.
+    /// Shared assembly also memoises exact queries across passes; a standalone
+    /// call retains no cache after returning.
     #[allow(clippy::too_many_arguments)]
     pub fn verify(
         &self,
@@ -57,6 +62,90 @@ impl EntrySafety<'_> {
         budget: &mut usize,
         context: &JobContext<'_>,
     ) -> Result<()> {
+        SweepSession::new(self).verify(from, to, leave, tolerance, budget, context)
+    }
+}
+
+// A cache cannot outlive or change its target/body: both are immutably borrowed
+// for this complete assembly. Offset identifies the deterministic grown profile
+// of that fixed body. No global cache, coordinate quantisation or axial reuse.
+type QueryKey = [u64; 7];
+const MAX_ATTEMPTS: usize = 100_000;
+
+pub(crate) struct SweepSession<'a> {
+    safety: &'a EntrySafety<'a>,
+    answers: BTreeMap<QueryKey, Option<f64>>,
+    insertion_order: VecDeque<QueryKey>,
+    capacity: usize,
+}
+
+impl<'a> SweepSession<'a> {
+    pub(crate) fn new(safety: &'a EntrySafety<'a>) -> Self {
+        Self::with_capacity(safety, MAX_ATTEMPTS)
+    }
+
+    fn with_capacity(safety: &'a EntrySafety<'a>, capacity: usize) -> Self {
+        Self {
+            safety,
+            answers: BTreeMap::new(),
+            insertion_order: VecDeque::new(),
+            capacity,
+        }
+    }
+
+    fn drop_offset(
+        &mut self,
+        grown: &RevolvedProfile,
+        line: &ToolLine,
+        offset: f64,
+        context: &JobContext<'_>,
+    ) -> Result<Option<f64>> {
+        context.check_cancelled()?;
+        let a = line.axis.get();
+        let o = line.origin;
+        let key = [
+            o.x.to_bits(),
+            o.y.to_bits(),
+            o.z.to_bits(),
+            a.x.to_bits(),
+            a.y.to_bits(),
+            a.z.to_bits(),
+            offset.to_bits(),
+        ];
+        let answer = if let Some(answer) = self.answers.get(&key) {
+            let _timing = context.time_stage("entry clearance cache hit");
+            *answer
+        } else {
+            let answer = {
+                let _timing = context.time_stage("entry clearance query");
+                self.safety.target.drop_tool(grown, line).map(|c| c.offset)
+            };
+            context.check_cancelled()?;
+            if self.answers.len() == self.capacity
+                && let Some(oldest) = self.insertion_order.pop_front()
+            {
+                self.answers.remove(&oldest);
+            }
+            self.answers.insert(key, answer);
+            self.insertion_order.push_back(key);
+            answer
+        };
+        context.check_cancelled()?;
+        Ok(answer)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn verify(
+        &mut self,
+        from: ToolPose,
+        to: ToolPose,
+        leave: f64,
+        tolerance: f64,
+        budget: &mut usize,
+        context: &JobContext<'_>,
+    ) -> Result<()> {
+        let _timing = context.time_stage("entry clearance sweep");
+        let proof = self.safety;
         context.check_cancelled()?;
         let refuse =
             |reason: &str| PathError::Strategy(format!("back-and-forth ramp clearance: {reason}"));
@@ -72,18 +161,18 @@ impl EntrySafety<'_> {
         {
             return Err(refuse("invalid or non-fixed-A sweep"));
         }
-        self.machine.validate()?;
-        let frame = RotaryFrame::of_profile(self.machine);
+        proof.machine.validate()?;
+        let frame = RotaryFrame::of_profile(proof.machine);
         let axis = tool_axis_in_model(&frame, from.a);
         if (from.axis.get() - axis.get()).length() > 1e-9
             || (to.axis.get() - axis.get()).length() > 1e-9
-            || !self.body.is_convex()
+            || !proof.body.is_convex()
         {
             return Err(refuse(
                 "the complete tool body has no supported sweep bound",
             ));
         }
-        if let openchuck_types::machine::ARange::Limited { min, max } = self.machine.a_range
+        if let openchuck_types::machine::ARange::Limited { min, max } = proof.machine.a_range
             && (from.a.0 < min.0 || from.a.0 > max.0)
         {
             return Err(refuse("A exceeds the machine limit"));
@@ -92,7 +181,7 @@ impl EntrySafety<'_> {
         // and A. Bound linear rounding plus the displacement of the entire
         // tool under the half-unit rotary rounding error.
         let radial = |p: Point3| p.y.hypot(p.z);
-        let controller_error = match self.rotary_precision {
+        let controller_error = match proof.rotary_precision {
             RotaryPrecision::Decimal => 0.0,
             RotaryPrecision::Float32 => {
                 // Nearest-equivalent connection plus the firmware
@@ -113,17 +202,19 @@ impl EntrySafety<'_> {
             }
         };
         let written_margin = 0.002
-            + (radial(from.tip).max(radial(to.tip)) + self.body.top() + self.body.cutting_radius())
+            + (radial(from.tip).max(radial(to.tip))
+                + proof.body.top()
+                + proof.body.cutting_radius())
                 * (0.0005 + controller_error).to_radians();
         let start = machine_xyz(&frame, from.tip, from.a);
         let end = machine_xyz(&frame, to.tip, to.a);
-        if !self.machine.travel.contains(start) || !self.machine.travel.contains(end) {
+        if !proof.machine.travel.contains(start) || !proof.machine.travel.contains(end) {
             return Err(refuse("the sweep exceeds linear travel"));
         }
         // Bounds of the whole configured tool at every point of the segment.
         // The radial cube is conservative at any supported axis orientation.
-        let r = self.body.cutting_radius() + written_margin;
-        let extension = axis.get() * self.body.top();
+        let r = proof.body.cutting_radius() + written_margin;
+        let extension = axis.get() * proof.body.top();
         let low = Vec3::new(
             extension.x.min(0.0) - r,
             extension.y.min(0.0) - r,
@@ -146,7 +237,7 @@ impl EntrySafety<'_> {
                 from.tip.z.max(to.tip.z),
             ) + high,
         };
-        for protected in self.protected {
+        for protected in proof.protected {
             context.check_cancelled()?;
             let b = protected.bounds();
             if bounds.min.x <= b.max.x
@@ -160,34 +251,59 @@ impl EntrySafety<'_> {
             }
         }
         let distance = start.distance(end);
-        let steps = (distance / (tolerance * 0.25)).ceil().max(1.0);
-        if !steps.is_finite() || steps > 100_000.0 || steps > (*budget as f64) {
-            return Err(refuse("the entry's clearance budget is exhausted"));
+        if !distance.is_finite() || !written_margin.is_finite() {
+            return Err(refuse("the sweep has no finite enclosure"));
         }
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let steps = steps as usize;
-        *budget -= steps;
-        // A ball of half the subsegment length encloses every translation
-        // from its midpoint. Minkowski growth therefore certifies continuous
-        // motion, including arbitrarily thin obstacles between query points.
-        let padding = distance / (2.0 * steps as f64);
-        let offset = leave + padding + written_margin;
-        let grown = grow_profile(self.body, offset)?;
-        for i in 0..steps {
+        // Each attempted interval is a continuous certificate, not a point
+        // sample. At its midpoint, P + B_(leave + written + length/2) encloses
+        // all translations of the complete body, plus leave and written error.
+        // grow_profile restores the tip origin by shifting that Minkowski sum
+        // up by offset, hence the unchanged q + offset <= tolerance test.
+        // It does not require leave < tolerance (0248 clause 3).
+        let mut pending = vec![(start, end)];
+        let mut attempts = 0;
+        while let Some((low, high)) = pending.pop() {
             context.check_cancelled()?;
-            let t = (i as f64 + 0.5) / steps as f64;
-            let xyz = start + (end - start) * t;
-            let origin = tool_tip_in_model(&frame, &MachinePosition { xyz, a: from.a });
-            if self
-                .target
-                .drop_tool(&grown, &ToolLine { origin, axis })
-                .is_some_and(|c| c.offset + offset > tolerance)
-            {
+            if *budget == 0 || attempts == MAX_ATTEMPTS {
+                return Err(refuse("the entry's clearance budget is exhausted"));
+            }
+            *budget -= 1;
+            attempts += 1;
+            let length = low.distance(high);
+            let middle = low + (high - low) * 0.5;
+            let offset = leave + written_margin + length * 0.5;
+            let grown = grow_profile(proof.body, offset)?;
+            let origin = tool_tip_in_model(
+                &frame,
+                &MachinePosition {
+                    xyz: middle,
+                    a: from.a,
+                },
+            );
+            let answer = self.drop_offset(&grown, &ToolLine { origin, axis }, offset, context)?;
+            if answer.is_none_or(|q| q.is_finite() && q + offset <= tolerance) {
+                continue;
+            }
+            // A coarse failure is inconclusive; every child still needs a
+            // certificate. Keep the existing fine-resolution conservative
+            // refusal, and bound work even if the arithmetic cannot bisect.
+            if length <= tolerance * 0.25 {
                 return Err(refuse(
                     "the swept tool reaches the whole target beyond tolerance",
                 ));
             }
+            if middle == low || middle == high {
+                return Err(refuse(
+                    "the sweep cannot make representable subdivision progress",
+                ));
+            }
+            // Stack order is deterministic, independent of worker count.
+            pending.push((middle, high));
+            pending.push((low, middle));
         }
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

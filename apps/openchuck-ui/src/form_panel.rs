@@ -27,6 +27,8 @@ pub struct Edit {
     /// The new value, or `None` to clear it (the default or the cutting
     /// data then applies).
     pub value: Option<ParameterValue>,
+    /// An explicit Reset action, distinct from committing empty manual text.
+    pub reset_to_default: bool,
 }
 
 /// Text for a value in a field, with the fixed places of its unit (14.3).
@@ -118,6 +120,8 @@ pub struct FormOutcome {
     pub edits: Vec<Edit>,
     /// A section was opened or closed: the settings need writing.
     pub settings_changed: bool,
+    /// Select the four standard Box faces as one application command.
+    pub all_four: bool,
 }
 
 /// The sentence under a setting the operation's path warns about (decision
@@ -151,6 +155,24 @@ pub fn show(
     marks: &Marks,
 ) -> FormOutcome {
     let mut outcome = FormOutcome::default();
+    if form.strategy == "facing"
+        && form
+            .fields
+            .iter()
+            .any(|f| matches!(f.kind, FieldKind::IndexedFaces))
+    {
+        let key = ui.id().with(("Facing All four", form.operation));
+        let mut pending = ui
+            .ctx()
+            .data_mut(|d| d.get_temp::<Option<(crate::pending_edits::Ticket, ())>>(key))
+            .flatten();
+        outcome.all_four = crate::pending_edits::take_local(ui.ctx(), &mut pending).is_some();
+        if pending.is_none() && ui.button("All four sides").clicked() {
+            outcome.all_four |=
+                crate::pending_edits::defer_local(ui.ctx(), &mut pending, ()).is_some();
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(key, pending));
+    }
     for section in FormSection::ALL {
         let fields: Vec<&Field> = form
             .fields
@@ -186,7 +208,15 @@ pub fn show(
                     let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
                     let scroll = jump == Some(&field_key)
                         || marks.jump.as_deref() == Some(field.name.as_str());
-                    if let Some(e) = row(ui, field, true, state, need, warned, scroll, None) {
+                    let edit = if matches!(field.kind, FieldKind::IndexedFaces) {
+                        ui.push_id(form.operation, |ui| {
+                            row(ui, field, true, state, need, warned, scroll, None)
+                        })
+                        .inner
+                    } else {
+                        row(ui, field, true, state, need, warned, scroll, None)
+                    };
+                    if let Some(e) = edit {
                         edits.push(e);
                     }
                 }
@@ -253,11 +283,13 @@ fn row(
 ) -> Option<Edit> {
     let name = || field.name.clone();
     match &field.kind {
+        FieldKind::IndexedFaces => crate::facing_rows::show(ui, field, state),
         FieldKind::Flag => {
             let on = matches!(field.value, Some(ParameterValue::Flag(true)));
             field_row::flag_row(ui, &field.label, &field.description, on, true).map(|on| Edit {
                 name: name(),
                 value: Some(ParameterValue::Flag(on)),
+                reset_to_default: false,
             })
         }
         FieldKind::Choice { options } if !options.is_empty() => {
@@ -265,7 +297,10 @@ fn row(
                 Some(ParameterValue::Text(t)) => options.iter().position(|o| o == t),
                 _ => None,
             };
-            let labels: Vec<&str> = options.iter().map(String::as_str).collect();
+            let labels: Vec<&str> = options
+                .iter()
+                .map(|value| choice_label(&field.name, value))
+                .collect();
             field_row::choice_row(
                 ui,
                 &field.name,
@@ -279,6 +314,7 @@ fn row(
             .map(|o| Edit {
                 name: name(),
                 value: Some(ParameterValue::Text(o.clone())),
+                reset_to_default: false,
             })
         }
         FieldKind::Number { .. } | FieldKind::Integer { .. } | FieldKind::Text => {
@@ -346,11 +382,13 @@ fn row(
                 Outcome::Reset => Some(Edit {
                     name: name(),
                     value: None,
+                    reset_to_default: true,
                 }),
                 Outcome::Commit(typed) => match parse(&field.kind, &typed) {
                     Ok(value) => Some(Edit {
                         name: name(),
                         value,
+                        reset_to_default: false,
                     }),
                     Err(e) => {
                         state.refuse(&field.name, &typed, format!("{e} Not applied."));
@@ -372,6 +410,21 @@ fn row(
             );
             None
         }
+    }
+}
+
+fn choice_label<'a>(name: &str, value: &'a str) -> &'a str {
+    match (name, value) {
+        ("shape", "flat") => "Flat along stock",
+        ("shape", "round") => "Round",
+        ("shape", "end") => "Unheld end",
+        ("shape", "box") => "Box sides",
+        ("extent", "whole_stock") => "Whole stock",
+        ("extent", "part") => "Part only",
+        ("extent", "part_plus_tabs") => "Part plus tabs",
+        ("layer_distribution", "full") => "Full stepdown, shorter final pass",
+        ("layer_distribution", "equal") => "Equal stepdowns",
+        _ => value,
     }
 }
 
@@ -469,6 +522,51 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn req_op_24_req_ui_07_arbitrary_faces_show_editable_rows_and_explicit_order_controls() {
+        let ctx = egui::Context::default();
+        let data = r#"[{"angle":130,"offset":9},{"angle":40,"offset":null}]"#;
+        let field = Field {
+            name: "arbitrary_faces".into(),
+            label: "Arbitrary A faces".into(),
+            description: String::new(),
+            kind: FieldKind::IndexedFaces,
+            set: Some(ParameterValue::Text(data.into())),
+            value: Some(ParameterValue::Text(data.into())),
+            source: Source::Operation,
+            section: FormSection::PatternAndTolerance,
+        };
+        let mut state = FormState::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700., 900.),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                row(ui, &field, true, &mut state, None, None, false, None);
+            },
+        );
+        output.textures_delta.clear();
+        let shown = texts(&output.shapes);
+        for label in [
+            "A angle",
+            "Plane offset",
+            "Move up",
+            "Move down",
+            "Sort by A angle",
+            "Add face",
+        ] {
+            assert!(
+                shown.iter().any(|s| s == label),
+                "Missing {label}: {shown:?}"
+            );
+        }
+        assert!(!shown.iter().any(|s| s.contains("\"angle\"")), "{shown:?}");
     }
 
     #[test]

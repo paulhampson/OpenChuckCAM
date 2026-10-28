@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- FACING review fix (UI-02/03): replacing a scene job preserves an unconsumed camera-fit request; ordinary rebuilds after the fit is consumed leave the camera unchanged.
+
+- BUG-SIMEND, SIM-03/04, issues #334/#330: draw the final cut surface after
+  dragging, jumping, stepping or playing to the end without another interaction.
+  Failed cut-part preparation disables Deviation colours with its reason while
+  retaining Playback's error and existing stale/export rules.
 - GC-17: configure minimum block time, window and Off/Report/Slow down in the machine inspector; show effective post settings, command demand and predicted/applied time cost before export and on same-run setup sheets.
 - CHECKPOINT, PRJ-08, issue #295: configure a per-user recovery interval,
   retain three scheduled checkpoints plus a separate fifteen-second interim,

@@ -13,7 +13,7 @@ The owner accepted 0247 directly in this lane on 26 October 2026. Automatic Z1 c
 - `openchuck-post` emits its existing nonmoving `RotaryBoundary` action on continuous axes at declared clear transitions. Existing renderer logic handles signed remainders, exact ±360 and all subsequent absolute A words. A rotate-only post omits bookkeeping rather than inserting a physical return. Limited axes do not receive resets.
 - Independent G-code comparison tracks declared reached pass boundaries, including retracts rounded to no emitted move. It rejects undeclared resets and whole-turn errors after a valid reset.
 
-The new public fields break struct-literal APIs. All repository hosts/fixtures have been migrated. No project or machine-profile field is added; no schema is claimed. The required shared-library minor version **has not been selected**: the owner's instruction requires Merge Manager release and version/merge-order allocation first. Changelogs carry an Unreleased migration entry. No semver exemption or parallel compatibility API is introduced.
+The new public fields break struct-literal APIs. All repository hosts/fixtures have been migrated. No project or machine-profile field is added; no schema is claimed. The required shared-library minor version was held at draft intake until Merge Manager release and allocation. On 28 October 2026 the manager assigned **0.26.0** after FACING's 0.25.0 and released PR #364; library changelogs now carry the 0.26.0 migration entries. No semver exemption or parallel compatibility API is introduced.
 
 ## Controller source check
 
@@ -64,11 +64,38 @@ All aggregates remain below the existing report-only 95% target. The changed cod
 
 Reports and raw run logs are retained under `/workspace/scratch/arot-validation/`. `cargo llvm-cov clean --workspace` completed afterward; reports were saved outside its disposable target directory first.
 
-## Delivery and release hold
+## Delivery and released integration
 
 Phase 2 uses a **second draft PR**, as the original task instructs unless the owner requests an update to the first; no such update instruction was given. The implementation branch includes the original proposal evidence and the owner's directly accepted revision, so Merge Manager should consume this implementation rather than merge the obsolete reporting recommendation from proposal draft #359 separately.
 
-No project/machine schema is claimed and no library version has been chosen. The public-field changes require a family minor bump under decision 0048. The owner specifically requires Merge Manager to release AROT and assign the version/merge order first; the draft intake retains 0.24.0 pending that instruction. The bump and semver checks are mandatory on the released integration push before merge. This is not a semver exemption, a claim that semver checks pass, or permission to mark ready/merge. No parallel type or function was added to avoid the breaking API change.
+No project/machine schema is claimed. The public-field changes require a family minor bump under decision 0048. At draft intake, 0.24.0 was retained pending the owner's required Merge Manager allocation. On **28 October 2026**, the manager marked #364 ready first and [released the lane](https://github.com/paulhampson/OpenChuckCAM/pull/364#issuecomment-6468395245), assigning **0.26.0** after FACING #365 merged at `33a835db7d0c4748f20ee79c5065f1552bdf0ab3` with 0.25.0. That exact main is merged once. Main's decision/OI allocations and all FACING 0.25.0 changelog entries are preserved; the AROT public fields receive their own 0.26.0 entries. No workaround or semver exemption is introduced.
+
+The replay conflict retains FACING's `compare_with_moves` observer with original source segment indices and AROT's input validation, declared reset boundaries and counter shifts. Validation occurs in the common entry point so both APIs enforce it. New fixed-angle Facing passes use `helical_pass_start = false`; newly constructed nominal/proof-only groups use empty reset metadata. Existing canonical groups retain their metadata. No new cutting, rewind, retract or re-entry is introduced by integration. OI-995 remains explicitly deferred and does not require another owner acceptance.
+
+The released allocation audit covers **32 fetched remote refs** and both remaining open owner PRs (#364 and draft #366). Only AROT's proposal/implementation refs carry the 0247 record; no new decision, OI or schema is claimed. All **585** existing main OI rows and main's complete decision files are preserved. Register union reconciliation puts 0246 before 0247; `cargo xtask records` passes after that correction. FACING's complete changelog history is retained verbatim beneath the new AROT 0.26.0 entries.
+
+`cargo semver-checks --package CRATE --baseline-rev 33a835db7d0c4748f20ee79c5065f1552bdf0ab3` passes for all four family crates with the normal pre-1.0 breaking-version allowance. No lint exemption, alternative baseline or compatibility workaround is used. Workspace all-target Clippy, formatting, deps/licences/records/trace/conflicts/testdata, family doctests and the locked all-target fuzz compile check pass; trace remains 100/100 P1. The lockfiles change only workspace package versions relative to merged main, without third-party dependency updates.
+
+The replay integration run passes **9/9** tests in 0.014 s. It initially exposed two FACING fixture failures because their fed segments omitted the contact feed required by IR validation; those fixtures now supply a valid feed without changing their controller words, timing checks or observer assertions. The new malformed-boundary observer regression takes **0.004 s** uninstrumented, and the extended signed/exact-turn test also takes **0.004 s**. No new long-test classification is needed. Both observer and plain comparison preserve source identity across rounded-away retracts and whole-turn resets; invalid IR refuses before any callback.
+
+Released six-crate uninstrumented validation passes **1237/1237** tests, with two pre-existing skips, in **1522.851 s**. The longest individual case is the existing simultaneous-finishing contact-feed regression at **311.900 s** (the finest-resolution simulator oracle takes 261.010 s); no executed uninstrumented test exceeds ten minutes. Released first-cut end-to-end validation passes **3/3** tests in **379.818 s** with both blessing variables removed. Six generations (both posts at 1/2/N threads) match the already-reviewed goldens in **307.988 s**, the setup-sheet check takes **0.067 s**, and stock/held/tab no-overcut simulation takes **71.760 s**. No golden or committed project file changes during integration; the two long cases retain their existing registrations. All six own-crate instrumented runs pass **1190/1190** selected tests.
+
+| Crate | Own selected tests passed | Covered / total source lines | Line coverage |
+| --- | ---: | ---: | ---: |
+| openchuck-types | 63 | 2186 / 2806 | 77.90% |
+| openchuck-path | 445 | 16819 / 18346 | 91.68% |
+| openchuck-post | 56 | 945 / 1075 | 87.91% |
+| openchuck-gcode | 30 | 1098 / 1160 | 94.66% |
+| openchuck-app | 547 | 19035 / 20753 | 91.72% |
+| openchuck-sim | 49 | 1559 / 1722 | 90.53% |
+
+All aggregates remain below the existing report-only 95% development target. These are each crate's own selected tests and source-line totals, not combined workspace coverage. Standard test/example/benchmark directory exclusions are unchanged; no new exclusion or threshold waiver is introduced.
+
+The final formatted source was read against the reports and the added-line audit. Added lines still uncovered are `assemble.rs:451–455,463–465` (missing/invalid existing-retract refusal paths), `simultaneous.rs:970` and `wrap_fit.rs:128` (default-false initialization in pre-existing gap-splitting branches not reached by the selected own-crate cases). New executable types/post/replay/application lines are covered. The connection-index overflow error remains a defensive branch without a dedicated malformed-host test; line coverage alone does not establish every error branch executes. Simulation adds no executable product-source line.
+
+Raw logs, full reports, allocation assertions and the added-line audit are retained under `/workspace/scratch/arot-release/`. `cargo llvm-cov clean --workspace` completed after saving reports outside its disposable target directory. The exact integration head is reported on PR #364 after the single released push.
+
+Full CI and CodeRabbit must complete on the pushed head before Merge Manager considers merge. The lane does not merge or enable auto-merge.
 
 Generated G-code remains the user's to verify before running on a machine. The owner tests the result and closes #337.
 

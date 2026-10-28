@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Physical turns and controller counter changes are distinct (decision 0241).
 #![allow(clippy::unwrap_used, clippy::float_cmp)]
-use openchuck_gcode::{Dialect, TimingRule, Tolerances, compare, read, replay};
+use openchuck_gcode::{Dialect, TimingRule, Tolerances, compare, compare_with_moves, read, replay};
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, Toolpath, ToolpathGroup};
 use openchuck_types::kinematics::{
@@ -162,6 +162,31 @@ fn req_op_15_req_gc_09_declared_pass_resets_preserve_signed_turns_and_exact_boun
         let c = run(&text, &path).unwrap();
         assert_eq!(c.ir_a_travel, 20.0);
         assert_eq!(c.gcode_a_travel, 20.0);
+        // FACING's observer must retain source identities and reconstruct
+        // physical A across an AROT pass reset, including the omitted retract.
+        let motion = replay(&read(&text).unwrap(), Dialect::MakeraZ1).unwrap();
+        let mut observed = Vec::new();
+        let observed_comparison = compare_with_moves(
+            &motion,
+            &path,
+            &frame(),
+            TimingRule::Makera,
+            Tolerances::for_decimals(3, 3),
+            &mut |m| {
+                observed.push((m.group, m.segment, m.movement.to[3] + m.coordinate_shift));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(observed_comparison, c);
+        assert_eq!(
+            observed,
+            vec![
+                (0, None, before - 10.0),
+                (0, Some(0), before),
+                (0, Some(2), before + 10.0),
+            ]
+        );
         let mut undeclared = path.clone();
         undeclared.groups[0].rotary_reset_after.clear();
         assert!(
@@ -178,4 +203,31 @@ fn req_op_15_req_gc_09_declared_pass_resets_preserve_signed_turns_and_exact_boun
             "whole-turn errors after a reset must be detected"
         );
     }
+}
+
+#[test]
+fn req_gc_09_req_nfr_07_invalid_reset_metadata_refuses_before_facing_observation() {
+    let mut g = group(710.0, 720.0);
+    // A final segment cannot declare an internal pass boundary.
+    g.rotary_reset_after = vec![0];
+    let path = Toolpath { groups: vec![g] };
+    let motion = replay(
+        &read("G90 G21 G54\nG0 X0 Y0 Z30 A710\nA720\nM2\n").unwrap(),
+        Dialect::MakeraZ1,
+    )
+    .unwrap();
+    let mut observed = 0;
+    let result = compare_with_moves(
+        &motion,
+        &path,
+        &frame(),
+        TimingRule::Makera,
+        Tolerances::for_decimals(3, 3),
+        &mut |_| {
+            observed += 1;
+            Ok(())
+        },
+    );
+    assert!(result.is_err(), "malformed boundary metadata must refuse");
+    assert_eq!(observed, 0, "invalid IR must not reach the observer");
 }

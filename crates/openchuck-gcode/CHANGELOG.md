@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- Independently validate declared pass-boundary resets, including rounded-away retracts, while rejecting undeclared resets and subsequent whole-turn errors (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
@@ -15,7 +19,10 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
-- Independently validate declared pass-boundary resets, including rounded-away retracts, while rejecting undeclared resets and subsequent whole-turn errors (accepted 0247, #337). Shared-family minor version awaits Merge Manager allocation.
+- `compare_with_moves` exposes each actual replayed move with its source group/segment, controller counter shift and programmed fed duration. Observations are provisional until the complete comparison succeeds. Existing `compare` delegates with a no-op observer and preserves its result/structural checks; no motion is silently accepted because a callback ran.
+
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
+
 
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
 

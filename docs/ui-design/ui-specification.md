@@ -299,7 +299,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 - **Layout.** The label column is 120 wide, the value to its right. Units sit inside the field on its right. The allowed range is in the tooltip.
 - **Hint and source.** An empty field shows the value that applies as a hint, with its source: the operation, the tool's cutting data for the stock material, or the strategy default.
-- **Committing.** Enter applies a value, as does moving to another field in the same form. Leaving a form with unconfirmed changes first asks Keep, Discard or Cancel and names the changed fields (issue 304; the owner’s OI-983 choice, relayed; accepted decision 0233). Keep checks every pending field before applying any, uses the existing undoable commands and staleness, then re-evaluates the requested action. An invalid entry stops departure with its inline reason and keyboard focus. Discard restores the last confirmed buffers before continuing; Cancel stops departure and returns focus to the edited box. This applies to navigation, item or selection changes, generation, opening dialogs, save and close, in inspectors and dialogs alike. Esc restores the last applied text. Existing draft Save and Apply boundaries remain; confirming a field never silently saves or applies its enclosing draft. Each applied project value is one undoable command.
+- **Committing.** Enter applies a value, as does moving to another field in the same form. Leaving a form with unconfirmed changes first asks Keep, Discard or Cancel and names the changed fields (issue 304; the owner’s OI-983 choice, relayed; accepted decision 0233). Keep checks every pending field before applying any, uses the existing undoable commands and staleness, then re-evaluates the requested action. An invalid entry stops departure with its inline reason and keyboard focus. Discard restores the last confirmed buffers before continuing; Cancel stops departure and returns focus to the edited box. This applies to navigation, item or selection changes, generation, opening dialogs, save and close, in inspectors and dialogs alike. The New project dialog's enabled OK and Cancel buttons themselves accept or discard that dialog's input without this additional question ([decision 0246](../decisions/0246-new-project-buttons-resolve-their-own-fields.md)); other departures retain the guard. Esc restores the last applied text. Existing draft Save and Apply boundaries remain; confirming a field never silently saves or applies its enclosing draft. Each applied project value is one undoable command.
 - **Refusals.** A refused value stays in its field with a red border, and the reason in red under it ("Must not exceed the tool diameter (3.0 mm). Not applied."). The project and the undo history are unchanged.
 - **Pending fields in closed sections.** Keep, Cancel, or an invalid entry's restored focus opens the section containing the field. Before any confirmation, Keep checks that every pending field can be drawn. If a field remains hidden, the warning names it and preserves the drafts; Cancel or Esc returns to the form so it can be shown again, and Discard remains explicit. Keep checks interacting setup and tool entries together before applying any, and scene selections resume by geometry identity after any placement rebuild (accepted decision 0233).
 - **Sums in number boxes** (decision 0206; proposed UI-26). A number box accepts numbers with `+ - * /` and brackets ("12.5 + 3", "60 / 2"), worked out when the entry is committed and shown as its result, rounded to the places of the field's unit; a plain number is applied as typed. An entry that cannot be read is refused like any other value: red border and, under the box, a plain line that quotes it ("Cannot read '12*'; expected a number or a sum."); the last good value stays applied, and the step bar reads "Error to fix" until it is corrected or Esc puts the last value back. Units, percent and functions are not read.
@@ -367,6 +367,8 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 ## 11. The steps in detail
 
 ### 11.1 New project (empty state)
+
+File > New project opens a dialog for a parent folder and project name (decision 0165 item 4). Enabled OK accepts these entries and creates the project; Cancel discards them, with no additional unconfirmed-field warning (decision 0246). Empty or unusable input remains refused. Esc in an edited field restores its previous value; the application's window close control remains a guarded application close.
 
 - **The window.** The tree shows each group with "None yet". Steps 2 to 5 are dimmed with their reasons. Undo and Redo are dimmed.
 - **The centre card,** "Start with a model":
@@ -448,6 +450,8 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 
 **Footer** primary: "Continue to operations".
 
+**Facing extent diagram (0252, accepted).** The relevant Setup diagram and viewport use the same geometry description for the operation’s target plane/cylinder and dimensions, coverage rectangle or Round axial span, margin, protected held/tab solids and actual necessary additional cutter sweep. Use existing overlay conventions. An invalid draft carries its reason and does not replace a valid generated preview.
+
 ### 11.4 Operations
 
 Boards 3 and 3b.
@@ -473,7 +477,12 @@ Boards 3 and 3b.
   - **A closing line** says export is blocked while the operation is in error, and that turning it off lets the others export.
 - **Footer** primary: section 5. While generation runs with an operation in error, "Continue to simulate" is disabled, with its reason in the tooltip.
 
+**Facing controls (0252, accepted).** Preserve legacy Flat/Round and add End opposite held end and Box sides. Box sides offers individual standard faces and All four, plus arbitrary-angle rows with per-face model-derived offsets or explicit overrides and Reset to part plus allowance. Show opposite-plane separation. Standard selections run in fixed model order; arbitrary rows follow their listed order with keyboard-accessible Move up/down and an explicit stable Sort by A angle action. Sorting/reordering keeps offsets attached and is one undoable confirmed edit. New box sides offers Full stepdown, shorter final pass by default or Equal stepdowns; legacy layers are unchanged. End mode labels its maximum depth Axial stepdown and shows inferred end, target X and Length to opposite model end. Extents offer Whole stock, Part and Part plus tabs; planar margin expands four edges, Round Axial margin expands both X ends around the full circumference, all defaulting to zero. Tabs are always protected. Unsupported/unreachable requests explain the reason and produce no usable partial path.
+
 ### 11.5 Simulate
+
+**Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.
+
 
 Board 4 (SIM-01 to SIM-07).
 
@@ -503,7 +512,7 @@ Board 4 (SIM-01 to SIM-07).
 
 **Results inspector:**
 
-- “Deviation colours”, available for current and stale simulated results; off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
+- “Deviation colours”, available for current and stale simulated results when cut-part preparation has not failed. A preparation failure disables the checkbox, shows its reason beside it and in its disabled tooltip, and retains the Playback error; no target-model fallback is used (#330). Off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;

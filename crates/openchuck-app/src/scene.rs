@@ -39,6 +39,12 @@ pub enum SceneRole {
     Part,
     /// The stock outline.
     Stock,
+    /// Facing coverage after its explicitly labelled margin.
+    FacingExtent,
+    /// Facing extent before margin, or its nominal target dimension.
+    FacingMargin,
+    /// Actual generated finite-cutter sweep outline (display approximation).
+    FacingSweep,
     /// A held region of the setup's workholding (SET-09), shaded.
     HeldRegion,
     /// A retaining tab (OP-21), shaded.
@@ -333,6 +339,16 @@ pub(crate) fn build_scene(
         match placed {
             Ok(placed) => {
                 part = merge_extent(part, openchuck_geom::part_extent(&placed.mesh));
+                if let Some(setup) = chosen {
+                    crate::facing::display::preview(
+                        project,
+                        setup,
+                        &placed.mesh,
+                        placed.brep.is_none().then_some(0.),
+                        &mut view,
+                        context,
+                    )?;
+                }
                 view.part_silhouette = crate::setup_panes::silhouette(&placed.mesh);
                 let item = part_mesh(model, placed.mesh, placed.brep.as_ref(), &mut view.notes)?;
                 view.meshes.push(item);
@@ -455,6 +471,25 @@ pub(crate) fn build_scene(
             at: end,
             text: text.to_owned(),
         });
+    }
+    for point in view
+        .lines
+        .iter()
+        .filter(|l| {
+            matches!(
+                l.role,
+                SceneRole::FacingExtent | SceneRole::FacingMargin | SceneRole::FacingSweep
+            )
+        })
+        .flat_map(|l| &l.points)
+    {
+        bounds = union(
+            Some(bounds),
+            Aabb {
+                min: *point,
+                max: *point,
+            },
+        );
     }
     view.bounds = Some(bounds);
     Ok(view)

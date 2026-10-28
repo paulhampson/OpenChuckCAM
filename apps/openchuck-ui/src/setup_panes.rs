@@ -494,6 +494,10 @@ fn front_bounds(f: &FrontPane) -> ((f64, f64), (f64, f64)) {
         v = (v.0.min(v0), v.1.max(v1));
     }
     // Room under the clearance for the stock length's dimension.
+    for p in f.facing.iter().flat_map(|g| &g.points) {
+        h = (h.0.min(p[0]), h.1.max(p[0]));
+        v = (v.0.min(p[1]), v.1.max(p[1]));
+    }
     v.0 -= 0.18 * (v.1 - v.0);
     (h, v)
 }
@@ -548,6 +552,36 @@ fn front_solid(
 /// tabs in section (11.3, 7.5). Returns the solids' screen outlines, for
 /// hover.
 #[allow(clippy::too_many_arguments)]
+fn facing_guides(
+    painter: &Painter,
+    map: &Map,
+    guides: &[openchuck_app::setup_panes::FacingGuide],
+    labels: &mut Labels,
+) {
+    use openchuck_app::scene::SceneRole;
+    for guide in guides {
+        let (colour, style) = match guide.role {
+            SceneRole::FacingExtent => (roles::SELECTED, LineStyle::Dashed),
+            SceneRole::FacingMargin => (roles::CLEARANCE, LineStyle::Dashed),
+            _ => (roles::CUT, LineStyle::Solid),
+        };
+        let points = map.polygon(&guide.points);
+        if points.len() > 1 {
+            styled(painter, &points, colour, roles::LINE_WIDTH, style);
+        }
+        if let (Some(text), Some(point)) = (&guide.label, points.first()) {
+            labels.add(
+                painter,
+                (*point, Align2::LEFT_BOTTOM),
+                *point,
+                text,
+                to_color32(colour),
+                Priority::Essential,
+            );
+        }
+    }
+}
+
 fn front(
     painter: &Painter,
     rect: Rect,
@@ -742,6 +776,7 @@ fn front(
     for d in &f.dimensions {
         dimension(&painter, &mut labels, &map, d);
     }
+    facing_guides(&painter, &map, &f.facing, &mut labels);
     labels.draw(&painter, rect.shrink(2.0));
     shapes
 }
@@ -764,6 +799,12 @@ fn end(
         .map(|p| p[0].hypot(p[1]))
         .chain(e.clearance_radius)
         .chain(e.part_radius)
+        .chain(
+            e.facing
+                .iter()
+                .flat_map(|g| &g.points)
+                .map(|p| p[0].hypot(p[1])),
+        )
         .chain(match e.stock {
             Some(EndStock::Circle(r)) => Some(r),
             Some(EndStock::Box(b)) => {
@@ -960,6 +1001,7 @@ fn end(
         "A+ turns the top toward the front",
         roles::OVERLAY_TEXT,
     );
+    facing_guides(&painter, &map, &e.facing, &mut labels);
     labels.draw(&painter, rect.shrink(2.0));
     shapes
 }

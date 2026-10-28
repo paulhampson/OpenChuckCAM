@@ -221,6 +221,12 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# RAMPBUDGET released integration, 27 Oct 2026: existing region/avoid
+# combination test took 62.367 s uninstrumented under concurrent validation.
+# Retain default execution and select nightly long; exclude future coverage.
+# RAMPBUDGET, 26 Oct 2026: existing fit_interior blisk helical sweep test
+# took 60.800 s uninstrumented during concurrent validation (four-core quota).
+# Retain default execution, exclude future local coverage and select nightly long.
 # CHECKPOINT released integration (25 Oct 2026): existing per-selection stock
 # allowance regression took 76.405 s uninstrumented alongside tooling builds.
 # Keep it in default/nightly long and exclude local coverage under AGENTS.md.
@@ -257,8 +263,21 @@ priority = 79
 # req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads: 65.709 s.
 # Released TOOLLIB2 reconciliation (24 Oct 2026):
 # req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
+# FACING validation27Oct2026, uninstrumented app run alongside path coverage/API
+# builds: cylindrical-tab both-post regression75.152s (isolated22.985s), existing
+# square/spline feed/post gate61.950s; held-region roughing79.254s.
+# Existing output-grouping determinism71.006s; tab-volume simulation64.086s.
+# Simulator continuous-roughing envelope75.124s in the concurrent normal run.
+# Keep default tests; coverage excludes and
+# nightly long selects these exact cases. Instrumented costs are not used.
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
+  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
+  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
   | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
   | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
   | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
@@ -275,6 +294,8 @@ default-filter = '''not (
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
+  | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
+  | test(=req_op_02_a_region_and_an_avoid_surface_combine)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
@@ -320,6 +341,12 @@ default-filter = '''not (
 # 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
+  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
+  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
   | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
   | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
   | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
@@ -336,6 +363,8 @@ default-filter = '''
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
+  | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
+  | test(=req_op_02_a_region_and_an_avoid_surface_combine)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)

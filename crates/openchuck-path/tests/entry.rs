@@ -593,3 +593,395 @@ fn req_op_11_req_nfr_07_reversing_ramp_refusal_names_pass_with_no_direction() {
         "{error}"
     );
 }
+
+/// Availability matrix from Phase 1; every formerly budget-limited case
+/// must certify under accepted 0248, with the same tool, geometry and angle.
+/// Verification plan sections 4 (OP-11/12/14 and acceptance thresholds),
+/// 5 (pathing tests) and 8 (environment/tools).
+#[test]
+fn req_op_11_req_op_12_req_op_14_req_nfr_04_req_nfr_07_rampbudget_characterization() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    for (diameter, tolerance, angle) in [
+        (3.175, 0.01, 3.0),
+        (6.0, 0.01, 3.0),
+        (6.0, 0.02, 3.0),
+        (3.175, 0.01, 6.0),
+    ] {
+        for descent in [8.0, 10.0, 12.0, 14.0, 24.0] {
+            let part = Cylinder {
+                radius: 15.0,
+                length: 40.0,
+            };
+            // Explicit approach is 2 mm; descent is stock - target + approach.
+            let fixture = Fixture::new(
+                MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+                15.0 + descent - 2.0,
+                &ball(diameter),
+            );
+            let safety = EntrySafety {
+                rotary_precision: RotaryPrecision::Float32,
+                target: &fixture.surface,
+                protected: &[],
+                body: &fixture.tool,
+                machine: &fixture.machine,
+            };
+            let mut input = fixture.input();
+            input.entry_safety = Some(&safety);
+            let v = values(
+                20.0,
+                30.0,
+                &[
+                    entry("ramp"),
+                    number(names::RAMP_ANGLE, angle),
+                    number(names::TOLERANCE, tolerance),
+                    number(names::APPROACH_DISTANCE, 2.0),
+                    (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+                ],
+            );
+            let start = std::time::Instant::now();
+            let result = run(|ctx| generate(&Line, &input, &v, ctx));
+            eprintln!(
+                "RAMPBUDGET diameter={diameter} tolerance={tolerance} angle={angle} descent={descent} seconds={:.6} result={}",
+                start.elapsed().as_secs_f64(),
+                result
+                    .as_ref()
+                    .map(|_| "certified".to_owned())
+                    .unwrap_or_else(|e| e.to_string())
+            );
+            result.unwrap();
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RepeatedLine;
+impl Strategy for RepeatedLine {
+    fn name(&self) -> &str {
+        "repeated_line"
+    }
+    fn label(&self) -> &str {
+        "Repeated line (measurement)"
+    }
+    fn description(&self) -> &str {
+        "Three identical passes to measure reusable entry queries"
+    }
+    fn schema(&self) -> ParameterSchema {
+        Line.schema()
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        p: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let passes = Line.passes(input, p, context)?;
+        Ok((0..3).flat_map(|_| passes.clone()).collect())
+    }
+}
+
+#[test]
+fn req_op_11_req_nfr_04_rampbudget_unchanged_pass_inputs() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        21.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            number(names::APPROACH_DISTANCE, 2.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    run(|ctx| generate(&RepeatedLine, &input, &v, ctx)).unwrap();
+}
+
+#[test]
+fn req_op_11_req_nfr_07_rampbudget_exact_subinterval_boundary() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        21.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let pose = |x| openchuck_types::ir::ToolPose {
+        tip: openchuck_types::geometry::Point3::new(x, 0.0, 35.0),
+        a: Degrees(0.0),
+        axis: fixture.rotary.tool_axis(Degrees(0.0)),
+    };
+    // Charge the same shared budget across repeated clear sweeps: below,
+    // at and beyond the 100000-attempt cap. Adaptive proof does not precharge
+    // an obsolete uniform grid's theoretical length.
+    let mut budget = 100_000;
+    for _ in 0..99_999 {
+        run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx)).unwrap();
+    }
+    assert_eq!(budget, 1);
+    run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx)).unwrap();
+    assert_eq!(budget, 0);
+    let error = run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx))
+        .unwrap_err();
+    assert!(error.to_string().contains("budget"));
+}
+
+#[test]
+fn req_op_11_req_op_12_req_nfr_04_deep_rampbudget_entry_is_available() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        25.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            number(names::APPROACH_DISTANCE, 2.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    run(|ctx| generate(&Line, &input, &v, ctx)).unwrap();
+}
+
+#[derive(Default)]
+struct EntryCounts(std::sync::Mutex<BTreeMap<String, usize>>);
+impl openchuck_types::job::ProgressSink for EntryCounts {
+    fn report(&self, _: openchuck_types::job::Progress) {}
+    fn wants_timings(&self) -> bool {
+        true
+    }
+    fn timing(&self, stage: &str, _: std::time::Duration) {
+        *self.0.lock().unwrap().entry(stage.to_owned()).or_default() += 1;
+    }
+}
+
+#[test]
+fn req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation()
+ {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        21.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            number(names::APPROACH_DISTANCE, 2.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let counts = EntryCounts::default();
+    let cancel = openchuck_types::job::CancelToken::new();
+    let ctx = JobContext::new(&cancel, &counts);
+    let generated = generate(&RepeatedLine, &input, &v, &ctx).unwrap();
+    let counts = counts.0.lock().unwrap();
+    let ramps = of_kind(&generated.group, MoveKind::LeadIn);
+    // Each ramp segment is either a descending leg (including every reversal)
+    // or its final connection. Plus each entry's approach and corridor.
+    assert_eq!(counts["entry clearance sweep"], ramps.len() + 3 * 2);
+    assert!(counts["entry clearance cache hit"] > 0);
+    eprintln!("RAMPBUDGET adaptive three passes: {:?}", *counts);
+    // Diagnostics do not affect the generated motion.
+    assert_eq!(
+        generated.group,
+        run(|ctx| generate(&RepeatedLine, &input, &v, ctx))
+            .unwrap()
+            .group
+    );
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_deep_reversing_entry_is_identical_at_1_2_and_n_threads() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        25.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            number(names::APPROACH_DISTANCE, 2.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let mut expected = None;
+    for threads in [
+        1,
+        2,
+        std::thread::available_parallelism().map_or(4, usize::from),
+    ] {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        let generated = pool
+            .install(|| run(|ctx| generate(&RepeatedLine, &input, &v, ctx)))
+            .unwrap();
+        let bytes = serde_json::to_vec(&generated.group).unwrap();
+        if let Some(expected) = &expected {
+            assert_eq!(expected, &bytes);
+        } else {
+            expected = Some(bytes);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ClearedLocalStock;
+impl Strategy for ClearedLocalStock {
+    fn name(&self) -> &str {
+        "cleared_local_stock"
+    }
+    fn label(&self) -> &str {
+        "Cleared local stock (test)"
+    }
+    fn description(&self) -> &str {
+        "Prior removal does not waive incoming stock clearance"
+    }
+    fn schema(&self) -> ParameterSchema {
+        Line.schema()
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        p: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let mut passes = RepeatedLine.passes(input, p, context)?;
+        for pass in &mut passes {
+            pass.stock = Some(openchuck_path::PassStock(std::sync::Arc::new(
+                openchuck_path::AnalyticStock::Cylinder {
+                    radius: 15.0,
+                    x_start: 0.0,
+                    x_end: 40.0,
+                },
+            )));
+        }
+        Ok(passes)
+    }
+}
+#[test]
+fn req_op_14_req_op_11_local_stock_removal_does_not_lower_the_unproven_incoming_rapid() {
+    use openchuck_path::entry_safety::{EntrySafety, RotaryPrecision};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        25.0,
+        &ball(3.175),
+    );
+    let safety = EntrySafety {
+        rotary_precision: RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            number(names::APPROACH_DISTANCE, 2.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let generated = run(|ctx| generate(&ClearedLocalStock, &input, &v, ctx)).unwrap();
+    let mut previous = generated.group.start;
+    let mut previous_kind = MoveKind::Rapid;
+    let mut starts = 0;
+    for s in &generated.group.segments {
+        if s.kind == MoveKind::LeadIn && previous_kind != MoveKind::LeadIn {
+            starts += 1;
+            assert!(
+                previous.tip.z >= 27.0,
+                "local stock does not prove the incoming rapid: {previous:?}"
+            );
+        }
+        previous = s.end;
+        previous_kind = s.kind;
+    }
+    assert_eq!(starts, 3);
+}

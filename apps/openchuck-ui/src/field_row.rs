@@ -42,6 +42,14 @@ impl FieldState {
         self.unreadable.clear();
     }
 
+    /// Forgets child buffers after an explicitly guarded structural edit.
+    /// Callers must resolve pending edits before changing indexed row identities.
+    pub fn clear_prefix(&mut self, prefix: &str) {
+        self.text.retain(|key, _| !key.starts_with(prefix));
+        self.errors.retain(|key, _| !key.starts_with(prefix));
+        self.unreadable.retain(|key, _| !key.starts_with(prefix));
+    }
+
     /// Records the outcome of applying a committed value of `key`: accepted
     /// drops the typed text, refused keeps it with the reason.
     pub fn result(&mut self, key: &str, result: Result<(), String>) {

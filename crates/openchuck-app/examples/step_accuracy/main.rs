@@ -1459,6 +1459,7 @@ impl Job<'_> {
                 tags: &tags,
                 keep_out: &[],
                 entry_safety: None,
+                facing: None,
             };
             let started = Instant::now();
             // The application rebuilds B-rep corners for each pencil operation

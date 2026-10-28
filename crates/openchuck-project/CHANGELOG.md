@@ -9,6 +9,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
 
 - CHECKPOINT (PRJ-08): separate checksummed recovery containers, portable exclusive writer ownership, complete publication before independent three-periodic/one-interim retention, and revision-bounded Save/close retirement. Normal project schema and saved files are unchanged by recovery reads.

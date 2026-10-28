@@ -31,6 +31,7 @@ mod about;
 mod arith;
 mod bench;
 mod export_panel;
+mod facing_rows;
 mod field_row;
 mod floating;
 mod form_panel;

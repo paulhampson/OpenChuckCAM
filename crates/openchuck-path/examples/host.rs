@@ -138,6 +138,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: None,
+        facing: None,
         keep_out: &[],
     };
 

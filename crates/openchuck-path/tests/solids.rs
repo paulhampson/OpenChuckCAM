@@ -594,6 +594,7 @@ fn req_op_21_helical_finishing_on_the_composite_never_gouges_the_held_region_or_
         max_feeds: machine.max_feeds,
         tags: &tag,
         entry_safety: None,
+        facing: None,
         keep_out: &[],
     };
     let values: BTreeMap<String, ParameterValue> = [

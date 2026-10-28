@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- Accept explicit clear pass-boundary metadata for nonmoving continuous-axis counter resets. Z1 rebases subsequent absolute words with existing signed/exact-360 semantics; rotate-only posts omit bookkeeping and add no rewind (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
@@ -13,7 +17,8 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
-- Accept explicit clear pass-boundary metadata for nonmoving continuous-axis counter resets. Z1 rebases subsequent absolute words with existing signed/exact-360 semantics; rotate-only posts omit bookkeeping and add no rewind (accepted 0247, #337). Shared-family minor version awaits Merge Manager allocation.
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
+
 
 - Breaking (0.24.0): `ConvertOptions` adds `short_blocks` and `feed_decimals`. Hosts use disabled defaults for legacy behaviour. `PostOutput`/`MachineProgram` return demand reports and an adjusted verification path. `PostOptions` accepts optional per-field overrides.
 
