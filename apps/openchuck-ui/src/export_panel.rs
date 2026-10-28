@@ -32,6 +32,9 @@ use crate::theme::DARK;
 #[path = "export_panel/feedback.rs"]
 mod feedback;
 
+#[path = "export_panel/file_names.rs"]
+mod file_names;
+
 const PROBLEM: Color32 = DARK.error;
 const WARNING: Color32 = DARK.warning;
 /// The safety notice is the warning box of the tokens (14.1).
@@ -100,6 +103,7 @@ struct PendingOutput {
     plan: OutputPlan,
     key: Key,
     folder: String,
+    names: openchuck_app::FileNameTemplates,
 }
 
 /// What the dialog hands back to the shell.
@@ -145,6 +149,10 @@ pub struct ExportPanel {
     skip_lookup: AcknowledgementLookup,
     skip_ticked: bool,
     ticked: bool,
+    /// The user's file name templates (issues 308 and 310).
+    file_names: openchuck_app::FileNameTemplates,
+    /// The names they give the current files.
+    named: Option<file_names::Named>,
 }
 
 impl Default for ExportPanel {
@@ -187,6 +195,8 @@ impl ExportPanel {
                 problem: None,
             },
             ticked: false,
+            file_names: openchuck_app::FileNameTemplates::default(),
+            named: None,
         }
     }
 
@@ -200,7 +210,9 @@ impl ExportPanel {
         if let Some((job, _)) = self.job.take() {
             job.cancel();
         }
+        let names = std::mem::take(&mut self.file_names);
         *self = Self::new(self.ack.take());
+        self.file_names = names;
     }
 
     /// Opens the dialog for `app`'s project (Ctrl E).
@@ -327,7 +339,7 @@ impl ExportPanel {
 
     /// Why "Write G-code" is disabled, if it is: the first thing missing.
     fn write_blocker(
-        &self,
+        &mut self,
         app: &Application,
         checks: &ExportChecks,
         acknowledged: bool,
@@ -353,6 +365,11 @@ impl ExportPanel {
                 return Some("The toolpath is empty, so there is no G-code to write.".to_owned());
             }
             Some(_) => {}
+        }
+        // Nothing is written until every file has a name of its own
+        // (issues 308 to 310).
+        if let Some(problem) = self.names_problem(app) {
+            return Some(problem);
         }
         if self.folder.trim().is_empty() {
             return Some("Choose an output folder.".to_owned());
@@ -447,6 +464,9 @@ impl ExportPanel {
         if self.open {
             self.drive(ctx, app, run, run_error);
         }
+        // The names previewed are the names written: both come from the
+        // application with these templates.
+        app.set_file_name_templates(self.file_names.clone());
         let posted = self.files_current(app).map(|f| Arc::clone(&f.run));
         let checks = app.export_checks(run.map(AsRef::as_ref), posted.as_deref(), run_error);
         let acknowledged = self.ack_lookup.acknowledged || self.ticked;
@@ -482,6 +502,7 @@ impl ExportPanel {
                         if blocker.is_none()
                             && self.key(app).as_ref() == Some(&pending.key)
                             && self.folder == pending.folder
+                            && self.file_names == pending.names
                         {
                             outcome = self.finish_write(app, &pending.plan, true);
                         } else {
@@ -559,6 +580,7 @@ impl ExportPanel {
                         plan,
                         key,
                         folder: self.folder.clone(),
+                        names: self.file_names.clone(),
                     });
                 }
                 Outcome::default()
@@ -566,16 +588,20 @@ impl ExportPanel {
             Ok(plan) => self.finish_write(app, &plan, false),
             Err(error) => {
                 let folder = std::path::absolute(&folder).unwrap_or(folder);
-                let paths: Vec<_> = files
-                    .gcode
-                    .iter()
-                    .map(|(name, _)| folder.join(name))
-                    .chain(
-                        app.setup_sheet_file_names()
+                // The names the templates give, when they give any: a
+                // naming problem lists no destination it did not settle.
+                let paths: Vec<_> = app.output_files(files).map_or_else(
+                    |_| Vec::new(),
+                    |named| {
+                        named
+                            .programs
                             .iter()
-                            .map(|name| folder.join(name)),
-                    )
-                    .collect();
+                            .map(|p| &p.name)
+                            .chain(&named.setup_sheet)
+                            .map(|name| folder.join(name))
+                            .collect()
+                    },
+                );
                 let failed = match &error {
                     openchuck_app::AppError::Io { path, .. } => path.clone(),
                     _ => paths.first().cloned().unwrap_or(folder),
@@ -799,6 +825,7 @@ impl ExportPanel {
                 acts.push(Act::ChooseFolder);
             }
         });
+        self.file_names_section(ui, app);
 
         ui.separator();
         self.numbers(ui, app, acts);
@@ -953,6 +980,12 @@ impl ExportPanel {
         if let Some(error) = &self.files_error {
             ui.colored_label(PROBLEM, error);
         }
+        // The names the templates give, the ones written (issues 308, 310).
+        let named = if current {
+            self.named(app).cloned()
+        } else {
+            None
+        };
         let Some(files) = self.files.as_ref().filter(|_| current) else {
             if self.job.is_none() && self.files_error.is_none() {
                 ui.weak("The files appear here once every operation is generated and up to date.");
@@ -976,10 +1009,8 @@ impl ExportPanel {
                         .iter()
                         .find(|(name, _)| *name == planned.name)
                         .map_or(0, |(_, text)| text.lines().count());
-                    if ui
-                        .selectable_label(self.preview == i, &planned.name)
-                        .clicked()
-                    {
+                    let shown = final_name(named.as_ref(), &planned.name);
+                    if ui.selectable_label(self.preview == i, shown).clicked() {
                         chosen = Some(i);
                     }
                     ui.label(&planned.setup);
@@ -1029,15 +1060,26 @@ impl ExportPanel {
                 report.affected_windows, report.worst_window_ms, report.short_moves, report.longest_run, report.effective_feed, report.added_seconds,
                 if report.settings.mode == openchuck_app::setup::ShortBlockMode::SlowDown { "added" } else { "would be added by Slow down" }));
         }
-        let [html, pdf] = app.setup_sheet_file_names();
-        ui.label(format!(
-            "The setup sheet is written with the G-code, from the same run: {html} and {pdf}."
-        ));
+        match &named {
+            Some(Ok(named)) => {
+                let [html, pdf] = &named.setup_sheet;
+                ui.label(format!(
+                    "The setup sheet is written with the G-code, from the same run: {html} and {pdf}. It lists each program file with its SHA-256."
+                ));
+            }
+            Some(Err(problem)) => {
+                ui.add(egui::Label::new(RichText::new(problem).color(PROBLEM)).wrap());
+            }
+            None => {}
+        }
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
         let shown_index = chosen.unwrap_or(self.preview);
         if let Some(planned) = files.plan.get(shown_index) {
-            ui.strong(format!("Start of {}", planned.name));
+            ui.strong(format!(
+                "Start of {}",
+                final_name(named.as_ref(), &planned.name)
+            ));
             if let Some((_, text)) = files.run.gcode.iter().find(|(n, _)| *n == planned.name) {
                 let shown: Vec<&str> = text.lines().take(PREVIEW_LINES).collect();
                 egui::Frame::group(ui.style()).show(ui, |ui| {
@@ -1098,6 +1140,23 @@ impl ExportPanel {
                     ui.colored_label(WARNING, problem);
                 }
             });
+    }
+}
+
+/// The name the templates give the file posted as `posted`; a dash while the
+/// templates cannot name the files (the problem is shown beside the list).
+fn final_name<'a>(
+    named: Option<&'a Result<openchuck_app::OutputFiles, String>>,
+    posted: &'a str,
+) -> &'a str {
+    match named {
+        Some(Ok(named)) => named
+            .programs
+            .iter()
+            .find(|p| p.posted_name == posted)
+            .map_or(posted, |p| p.name.as_str()),
+        Some(Err(_)) => "—",
+        None => posted,
     }
 }
 
@@ -1333,7 +1392,7 @@ mod tests {
         assert_eq!(panel.result.as_ref().unwrap().written.len(), 3);
         assert!(out.join(&posted.gcode[0].0).exists());
         // The setup sheet is written with the G-code (decision 0189).
-        for name in app.setup_sheet_file_names() {
+        for name in app.setup_sheet_file_names().unwrap() {
             assert!(out.join(&name).exists(), "{name}");
         }
         assert!(

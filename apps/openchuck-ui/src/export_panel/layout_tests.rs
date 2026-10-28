@@ -321,6 +321,7 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
                         plan: app.prepare_output(&folder, &run).unwrap(),
                         key: panel.key(&app).unwrap(),
                         folder: folder.display().to_string(),
+                        names: openchuck_app::FileNameTemplates::default(),
                     });
                     ("export overwrite", ["Cancel", "Replace files"])
                 } else {

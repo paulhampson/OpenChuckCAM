@@ -21,6 +21,8 @@ use openchuck_types::setup::PartExtent;
 use openchuck_types::stock::Stock;
 use openchuck_types::workholding::{HeldRegion, Tab, TabLayout, TabShape, Workholding};
 
+use crate::output_names::{ProgramFile, file_hash};
+
 /// What a section holds.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SheetBody {
@@ -466,6 +468,113 @@ impl SetupSheet {
             });
         }
         self
+    }
+
+    /// The sheet with the program files it is written with, before its
+    /// Notes (issue 309): for each file in the order they run, its name as
+    /// written, its setup, its size and the hash of its exact bytes, then
+    /// its operations, tools and tool changes in the order the program runs
+    /// them. With no files the sheet says that none were written with it.
+    #[must_use]
+    pub fn with_program_files(mut self, files: &[(&ProgramFile, &[u8])]) -> Self {
+        let mut sections = Vec::new();
+        if files.is_empty() {
+            sections.push(SheetSection {
+                heading: "Program files".into(),
+                body: SheetBody::Text(
+                    "No program files were written with this sheet, so none are listed. \
+                     Check each program against the setup sheet written with it."
+                        .into(),
+                ),
+            });
+        } else {
+            sections.push(SheetSection {
+                heading: "Program files".into(),
+                body: SheetBody::Text(format!(
+                    "{} written with this sheet, in the order they run. {}",
+                    match files.len() {
+                        1 => "One program file was".to_owned(),
+                        n => format!("{n} program files were"),
+                    },
+                    file_hash::CHECK
+                )),
+            });
+            for (index, (file, bytes)) in files.iter().enumerate() {
+                sections.push(SheetSection {
+                    heading: format!("File {}: {}", index + 1, file.name),
+                    body: SheetBody::Facts(vec![
+                        (
+                            "Setup".into(),
+                            format!("{}: {}", file.setup_number, file.setup),
+                        ),
+                        (
+                            "Size".into(),
+                            format!(
+                                "{} byte{}",
+                                bytes.len(),
+                                if bytes.len() == 1 { "" } else { "s" }
+                            ),
+                        ),
+                        (file_hash::LABEL.into(), file_hash::hex(bytes)),
+                    ]),
+                });
+                sections.push(SheetSection {
+                    heading: format!("File {}: operations in order", index + 1),
+                    body: SheetBody::Table {
+                        headers: ["Step", "No", "Operation", "Tool", "Tool change"]
+                            .map(String::from)
+                            .to_vec(),
+                        rows: file
+                            .steps
+                            .iter()
+                            .enumerate()
+                            .map(|(i, step)| {
+                                let tool = match (step.tool_number, &step.tool) {
+                                    (Some(n), Some(name)) => format!("T{n} {name}"),
+                                    (Some(n), None) => format!("T{n}"),
+                                    _ => "-".to_owned(),
+                                };
+                                vec![
+                                    (i + 1).to_string(),
+                                    step.operation_number.to_string(),
+                                    step.operation.clone(),
+                                    tool,
+                                    match step.tool_number {
+                                        Some(n) if step.tool_change => format!("Change to T{n}"),
+                                        _ => "No change".to_owned(),
+                                    },
+                                ]
+                            })
+                            .collect(),
+                    },
+                });
+            }
+        }
+        self.insert_before_notes(sections);
+        self
+    }
+
+    /// The sheet saying why its program files could not be listed: a file
+    /// name template could not name them (issue 308). Nothing is written
+    /// in that case; the sheet says so if it is shown.
+    #[must_use]
+    pub fn with_unnamed_program_files(mut self, reason: &str) -> Self {
+        self.insert_before_notes(vec![SheetSection {
+            heading: "Program files".into(),
+            body: SheetBody::Text(format!(
+                "The program files could not be named, so none are listed. {reason}"
+            )),
+        }]);
+        self
+    }
+
+    fn insert_before_notes(&mut self, sections: Vec<SheetSection>) {
+        let at = self
+            .sections
+            .iter()
+            .position(|s| s.heading == "Notes")
+            .unwrap_or(self.sections.len());
+        self.sections.splice(at..at, sections);
     }
 
     /// The sheet with the Traceability section added after the Notes, where

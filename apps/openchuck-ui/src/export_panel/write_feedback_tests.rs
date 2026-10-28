@@ -190,7 +190,7 @@ fn req_gc_05_req_nfr_07_overwrite_cancel_preserves_every_existing_file() {
     let out = rig.dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
     let nc = out.join(&rig.run.gcode[0].0);
-    let sheet = out.join(&rig.app.setup_sheet_file_names()[0]);
+    let sheet = out.join(&rig.app.setup_sheet_file_names().unwrap()[0]);
     std::fs::write(&nc, b"keep NC").unwrap();
     std::fs::write(&sheet, b"keep HTML").unwrap();
     rig.click("Write G-code");
@@ -306,4 +306,137 @@ fn req_ui_12_req_nfr_07_preflight_failure_lists_the_file_and_never_claims_succes
     assert!(rig.panel.result.is_some());
     rig.click("Dismiss");
     assert!(rig.app.output_report(0).unwrap().failed.is_some());
+}
+
+fn drawn(rig: &Rig, text: &str) -> bool {
+    rig.texts.iter().any(|(t, _)| t == text)
+}
+
+/// Issues 308 and 310: the dialog previews the names the templates give,
+/// and those are the names written, sheet included.
+#[test]
+fn req_gc_05_req_gc_12_the_previewed_names_are_the_names_written() {
+    let mut rig = Rig::new("named-export");
+    rig.panel.set_file_names(openchuck_app::FileNameTemplates {
+        gcode: "{project}_S{setup_no}_{n}".into(),
+        setup_sheet: "{project} sheet".into(),
+    });
+    rig.settle();
+    let named = rig.app.output_files(&rig.run).unwrap();
+    assert!(named.programs[0].name.ends_with("_S1_01.nc"), "{named:?}");
+    for program in &named.programs {
+        assert!(drawn(&rig, &program.name), "{} not previewed", program.name);
+    }
+    let [html, pdf] = &named.setup_sheet;
+    assert!(
+        rig.texts
+            .iter()
+            .any(|(t, _)| t.contains(html.as_str()) && t.contains(pdf.as_str())),
+        "the sheet's names are previewed"
+    );
+    rig.click("Write G-code");
+    let report = rig.panel.result.clone().unwrap();
+    assert!(report.is_complete(), "{report:?}");
+    let written: Vec<String> = report
+        .written
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    let mut expected: Vec<String> = named.programs.iter().map(|p| p.name.clone()).collect();
+    expected.extend(named.setup_sheet.iter().cloned());
+    assert_eq!(written, expected);
+}
+
+/// Issue 308: a template that cannot name the files says why and blocks
+/// Write G-code; nothing is written.
+#[test]
+fn req_gc_05_req_nfr_07_a_bad_template_blocks_writing_and_says_why() {
+    let mut rig = Rig::new("bad-template");
+    rig.panel.set_file_names(openchuck_app::FileNameTemplates {
+        gcode: "{nope}".into(),
+        setup_sheet: "{project}-setup-sheet".into(),
+    });
+    rig.settle();
+    assert!(
+        rig.texts
+            .iter()
+            .any(|(t, _)| t.contains("There is no field {nope}")),
+        "{:?}",
+        rig.texts
+    );
+    rig.click("Write G-code");
+    assert!(rig.panel.result.is_none());
+    assert!(!rig.dir.join("out").exists());
+    // Reset brings the default back and writing is possible again.
+    let at = rig
+        .texts
+        .iter()
+        .find(|(t, _)| t == "Reset")
+        .unwrap()
+        .1
+        .center();
+    rig.frame(vec![
+        egui::Event::PointerMoved(at),
+        egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ]);
+    rig.frame(vec![egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    }]);
+    rig.settle();
+    assert_eq!(rig.panel.file_names.gcode, "{n}-{contents}");
+    let left: Vec<_> = rig
+        .texts
+        .iter()
+        .filter(|(t, _)| t.contains("There is no field"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+/// Issues 308 and 310 with decision 0233: a template being typed is a
+/// draft, not kept as the user's setting until it is confirmed.
+#[test]
+fn req_ui_15_req_ui_07_a_typed_template_is_kept_only_once_confirmed() {
+    let mut rig = Rig::new("draft-template");
+    assert_eq!(
+        rig.panel.file_names_to_keep(&rig.ctx),
+        Some(&openchuck_app::FileNameTemplates::default())
+    );
+    rig.click("{n}-{contents}");
+    rig.frame(vec![
+        egui::Event::Key {
+            key: egui::Key::End,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::Text("-x".into()),
+    ]);
+    rig.frame(Vec::new());
+    assert_eq!(rig.panel.file_names.gcode, "{n}-{contents}-x");
+    assert_eq!(rig.panel.file_names_to_keep(&rig.ctx), None);
+    rig.frame(vec![egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }]);
+    rig.settle();
+    assert_eq!(
+        rig.panel
+            .file_names_to_keep(&rig.ctx)
+            .map(|t| t.gcode.as_str()),
+        Some("{n}-{contents}-x")
+    );
+    let named = rig.app.output_files(&rig.run).unwrap();
+    assert!(named.programs[0].name.ends_with("-x.nc"), "{named:?}");
 }
