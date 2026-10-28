@@ -89,6 +89,11 @@ impl Rig {
         self.shapes = output.shapes;
     }
 
+    /// What the last frame painted.
+    pub(super) fn shapes(&self) -> &[egui::epaint::ClippedShape] {
+        &self.shapes
+    }
+
     pub(super) fn press(&mut self, key: Key, modifiers: Modifiers) {
         let event = |pressed| Event::Key {
             key,

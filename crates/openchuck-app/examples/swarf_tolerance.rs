@@ -77,6 +77,7 @@ struct Args {
     sample: f64,
     steps: f64,
     reference: f64,
+    check: bool,
 }
 
 fn numbers<T: std::str::FromStr>(s: &str) -> Vec<T> {
@@ -89,7 +90,9 @@ fn numbers<T: std::str::FromStr>(s: &str) -> Vec<T> {
 fn args() -> Args {
     let mut it = std::env::args().skip(1);
     let mut a = Args {
-        file: it.next().expect("usage: swarf_tolerance <file.step> [options]"),
+        file: it
+            .next()
+            .expect("usage: swarf_tolerance <file.step> [options]"),
         list: false,
         faces: Vec::new(),
         avoid: Vec::new(),
@@ -99,11 +102,13 @@ fn args() -> Args {
         sample: 0.02,
         steps: 0.002,
         reference: 0.0005,
+        check: true,
     };
     while let Some(x) = it.next() {
         let mut v = || it.next().expect("a value");
         match x.as_str() {
             "--list" => a.list = true,
+            "--no-check" => a.check = false,
             "--faces" => a.faces = numbers(&v()),
             "--avoid" => a.avoid = numbers(&v()),
             "--tolerances" => a.tolerances = numbers(&v()),
@@ -281,6 +286,7 @@ fn face_points(face: &dyn ParametricFace, spacing: f64) -> Vec<Point3> {
 /// The worst cut into `points` (positive = into the face) by the tool at
 /// any of `positions`, with where, and the material left at the points the
 /// tool passes within `band` mm of.
+#[derive(Clone, Copy)]
 struct Measure {
     gouge: f64,
     at: Point3,
@@ -387,7 +393,8 @@ fn main() {
     let ids: Vec<FaceId> = a.faces.iter().map(|n| FaceId(*n)).collect();
     let selected = BrepSurface::with_faces(&model, &ids).unwrap();
     let avoid_ids: Vec<FaceId> = a.avoid.iter().map(|n| FaceId(*n)).collect();
-    let avoid = (!avoid_ids.is_empty()).then(|| BrepSurface::with_faces(&model, &avoid_ids).unwrap());
+    let avoid =
+        (!avoid_ids.is_empty()).then(|| BrepSurface::with_faces(&model, &avoid_ids).unwrap());
     let stock_radius = {
         let b = surface_bounds(&model);
         [b.min.y, b.max.y, b.min.z, b.max.z]
@@ -424,7 +431,16 @@ fn main() {
     let points: Vec<(u32, Vec<Point3>)> = selected
         .exact_faces()
         .iter()
-        .map(|f| (f.number, face_points(f.face, a.sample)))
+        .map(|f| {
+            (
+                f.number,
+                if a.check {
+                    face_points(f.face, a.sample)
+                } else {
+                    Vec::new()
+                },
+            )
+        })
         .collect();
     for (n, p) in &points {
         eprintln!("face {n}: {} check points at {} mm", p.len(), a.sample);
@@ -443,8 +459,9 @@ fn main() {
         reverse_direction: false,
     };
     let fine = RegionConstraint::default();
-    for f in selected.exact_faces() {
-        let fp = swarf::face_path(f, &profile, rotary, &settings(a.reference), &fine, &ctx).unwrap();
+    for f in selected.exact_faces().into_iter().filter(|_| a.check) {
+        let fp =
+            swarf::face_path(f, &profile, rotary, &settings(a.reference), &fine, &ctx).unwrap();
         let poses: Vec<At> = fp
             .poses()
             .map(|p| At {
@@ -494,8 +511,7 @@ fn main() {
                 watch: &[],
             };
             let t = Instant::now();
-            let generated = match generate_in_region(&Swarf, &input, &region, &values(tol), &ctx)
-            {
+            let generated = match generate_in_region(&Swarf, &input, &region, &values(tol), &ctx) {
                 Ok(g) => g,
                 Err(e) => {
                     println!("| {with_avoid} | {tol} | - | refused: {e} |");
@@ -522,8 +538,8 @@ fn main() {
                 motion(p, q, sense, height, a.steps, &mut written);
             }
             for f in selected.exact_faces() {
-                let fp = swarf::face_path(f, &profile, rotary, &settings(tol), &region, &ctx)
-                    .unwrap();
+                let fp =
+                    swarf::face_path(f, &profile, rotary, &settings(tol), &region, &ctx).unwrap();
                 // The library's own runs, moved by the checker's kinematics.
                 let mut lib: Vec<At> = Vec::new();
                 for run in &fp.runs {
@@ -544,8 +560,18 @@ fn main() {
                     }
                 }
                 let pts = &points.iter().find(|(n, _)| *n == f.number).unwrap().1;
-                let m = measure(pts, &written, &outline, height);
-                let ml = measure(pts, &lib, &outline, height);
+                let none = Measure {
+                    gouge: f64::NAN,
+                    at: Point3::ORIGIN,
+                };
+                let (m, ml) = if a.check {
+                    (
+                        measure(pts, &written, &outline, height),
+                        measure(pts, &lib, &outline, height),
+                    )
+                } else {
+                    (none, none)
+                };
                 let warned = generated
                     .warnings
                     .iter()

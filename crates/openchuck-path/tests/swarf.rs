@@ -1859,3 +1859,118 @@ fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_
         "{err}"
     );
 }
+
+// ---- the tolerance check measures the written path (issue #296) -----------
+
+/// The poses the machine passes through, each straight move (X, Y, Z and A
+/// linear in the machine frame) cut into steps no longer than `step` mm at
+/// a point `reach` mm up the tool, so the swept flank is sampled finely
+/// whatever the pose spacing.
+fn motion_by_length(poses: &[ToolPose], step: f64, reach: f64) -> Vec<ToolPose> {
+    let mut out = Vec::new();
+    for w in poses.windows(2) {
+        let (p, q) = (w[0], w[1]);
+        let (mp, mq) = (to_machine(p.tip, p.a.0), to_machine(q.tip, q.a.0));
+        let turn = (q.a.0 - p.a.0).abs().to_radians() * reach;
+        let n = ((mq.distance(mp) + turn) / step).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let f = k as f64 / n as f64;
+            let a = p.a.0 + (q.a.0 - p.a.0) * f;
+            let tip = to_model(mp + (mq - mp) * f, a);
+            let axis = UnitVec3::new(to_model(Point3::new(0.0, 0.0, 1.0), a).to_vec()).unwrap();
+            out.push(ToolPose {
+                tip,
+                axis,
+                a: Degrees(a),
+            });
+        }
+    }
+    if let Some(last) = poses.last() {
+        out.push(*last);
+    }
+    out
+}
+
+/// The deepest cut into `points` by the tool swept along `poses`, by the
+/// independent checker, with the motion sampled every `step` mm.
+fn measured_cut(outline: &Outline, poses: &[ToolPose], points: &[Point3], step: f64) -> f64 {
+    let height = 30.0;
+    let swept = motion_by_length(poses, step, height);
+    let radius = outline.radius();
+    let mut gouge = 0.0f64;
+    for p in points {
+        for pose in &swept {
+            let w = *p - pose.tip;
+            let z = w.dot(pose.axis.get());
+            if !(-0.1..=height).contains(&z) {
+                continue;
+            }
+            let r = (w - pose.axis.get() * z).length();
+            if r > radius + 0.1 {
+                continue;
+            }
+            gouge = gouge.max(-outline.clearance(r, z));
+        }
+    }
+    gouge
+}
+
+#[test]
+fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_path_whatever_the_tolerance()
+ {
+    // Issue #296 (F-103): on a face that is ruled but not developable the
+    // straight flank cuts into the face beside each ruling by an amount set
+    // by the twist and the tool radius, not by the tolerance. Swarf must
+    // report that cut as the written path makes it, at every tolerance, so
+    // a tolerance at or above the reported cut clears the warning and one
+    // below it never gives a false all-clear (OP-12, NFR-12).
+    let (pitch, degrees) = (3.0, 40.0);
+    let faces = ExactFaces::helicoid(pitch, degrees);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let outline = Outline::new(&flat());
+    // The face every 0.03 mm across the rulings at their outer end and
+    // every 0.1 mm along them.
+    let points = helicoid_samples(pitch, degrees, 480, 120, 0.0);
+    // The checker's own resolution: the face and the motion are sampled
+    // finely enough that the cut it finds is within this of the true one.
+    let resolution = 0.0005;
+    let mut reported = Vec::new();
+    for tolerance in [0.01, 0.0131, 0.02, 0.05] {
+        let settings = Settings {
+            tolerance,
+            ..f.settings()
+        };
+        let path = run(|ctx| {
+            face_path(
+                f.face(),
+                &f.tool,
+                f.rotary,
+                &settings,
+                &RegionConstraint::default(),
+                ctx,
+            )
+        })
+        .unwrap();
+        let made = generated(&f, &[(names::TOLERANCE, num(tolerance))]);
+        let measured = measured_cut(&outline, &cutting_poses(&made.group), &points, 0.005);
+        assert!(
+            (path.gouge - measured).abs() <= resolution,
+            "tolerance {tolerance}: swarf reports {:.4} mm, the written path cuts {measured:.4} mm",
+            path.gouge
+        );
+        if measured > tolerance + resolution {
+            assert_eq!(
+                made.warnings.len(),
+                1,
+                "tolerance {tolerance}: the path cuts {measured:.4} mm and is not warned of"
+            );
+        }
+        reported.push(path.gouge);
+    }
+    let lo = reported.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = reported.iter().copied().fold(0.0, f64::max);
+    assert!(
+        hi - lo <= resolution,
+        "the reported cut follows the tolerance: {reported:?}"
+    );
+}
