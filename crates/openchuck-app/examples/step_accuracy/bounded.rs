@@ -120,6 +120,10 @@ pub struct Summary {
     pub error_in: f64,
     /// And outside it.
     pub error_out: f64,
+    /// The most the exact and tessellation clearances can differ at a
+    /// contact station, from both intervals: the tessellation's proven
+    /// share of the cut there, mm (verification plan 4.1 allows 0.005).
+    pub drop_bound: f64,
     /// The widest interval of any station, exact or tessellation: the
     /// proven bound on what the checker adds, mm.
     pub proven_error: f64,
@@ -144,6 +148,7 @@ pub fn summarise(observations: &[Observation], leave: f64) -> Summary {
             s.gap = s.gap.max(e.upper - leave);
             s.error_in = s.error_in.max(t.upper - e.upper);
             s.error_out = s.error_out.max(e.upper - t.upper);
+            s.drop_bound = s.drop_bound.max(e.upper - t.lower).max(t.upper - e.lower);
         }
     }
     s

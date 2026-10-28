@@ -410,7 +410,7 @@ fn main() -> Result<(), Error> {
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
                 println!(
-                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | contact stations | widest interval mm"
+                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm"
                 );
                 for (op, group) in ops.iter().zip(&run.groups) {
                     let group = match group {
@@ -429,7 +429,7 @@ fn main() -> Result<(), Error> {
                     )?;
                     let m = bounded::summarise(&observations, op.leave);
                     println!(
-                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6}",
+                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6}",
                         op.label,
                         op.leave,
                         m.stations,
@@ -439,6 +439,7 @@ fn main() -> Result<(), Error> {
                         m.gap,
                         m.error_in,
                         m.error_out,
+                        m.drop_bound,
                         m.contacts,
                         m.proven_error
                     );

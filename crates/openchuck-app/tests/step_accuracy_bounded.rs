@@ -114,6 +114,7 @@ fn req_op_12_m2_detects_the_flat_cutter_counterexample_the_samples_missed() {
     assert!(checks::sampling_bound(Some(m.proven_error)).is_ok());
     // The tessellation is this plane exactly, so the drop error is nil.
     assert!(m.error_in.abs() <= bounded::TOLERANCE && m.error_out.abs() <= bounded::TOLERANCE);
+    assert!(m.drop_bound >= 0.0 && m.drop_bound <= 2.0 * bounded::TOLERANCE + 1e-9);
 }
 
 #[test]

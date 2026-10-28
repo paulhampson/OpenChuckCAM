@@ -635,3 +635,153 @@ fn req_nfr_06_answers_do_not_depend_on_the_thread() {
         assert_eq!(o.lower.to_bits(), first.lower.to_bits());
     }
 }
+
+/// A small deterministic generator for the random cases.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> f64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (self.0 >> 11) as f64 / (1u64 << 53) as f64
+    }
+    fn range(&mut self, a: f64, b: f64) -> f64 {
+        a + (b - a) * self.next()
+    }
+}
+
+/// Cox-de Boor basis of degree `p` at `t`, written separately from the
+/// checker's blossoms.
+fn basis(knots: &[f64], p: usize, i: usize, t: f64) -> f64 {
+    if p == 0 {
+        let last = knots[knots.len() - 1];
+        return if (knots[i] <= t && t < knots[i + 1])
+            || (t == last && knots[i + 1] == last && knots[i] < last)
+        {
+            1.0
+        } else {
+            0.0
+        };
+    }
+    let mut out = 0.0;
+    let d1 = knots[i + p] - knots[i];
+    if d1 > 0.0 {
+        out += (t - knots[i]) / d1 * basis(knots, p - 1, i, t);
+    }
+    let d2 = knots[i + p + 1] - knots[i + 1];
+    if d2 > 0.0 {
+        out += (knots[i + p + 1] - t) / d2 * basis(knots, p - 1, i + 1, t);
+    }
+    out
+}
+
+fn evaluate(p: &BSplinePatch, u: f64, v: f64) -> Point3 {
+    let (nu, nv) = (p.poles_u as usize, p.poles_v as usize);
+    let (mut x, mut y, mut z, mut w) = (0.0, 0.0, 0.0, 0.0);
+    for i in 0..nu {
+        let bu = basis(&p.knots_u, p.degree_u as usize, i, u);
+        if bu == 0.0 {
+            continue;
+        }
+        for j in 0..nv {
+            let b = bu * basis(&p.knots_v, p.degree_v as usize, j, v) * p.weights[i * nv + j];
+            let q = p.poles[i * nv + j];
+            x += b * q.x;
+            y += b * q.y;
+            z += b * q.z;
+            w += b;
+        }
+    }
+    Point3::new(x / w, y / w, z / w)
+}
+
+/// The signed distance of `q` from a flat end mill of radius `r` and
+/// flute `h`, tip at `tip`, axis +Z, in closed form.
+fn flat_clearance(q: Point3, tip: Point3, r: f64, h: f64) -> f64 {
+    let w = q - tip;
+    let rho = w.x.hypot(w.y);
+    let (dr, dz) = (rho - r, (-w.z).max(w.z - h));
+    if dr <= 0.0 && dz <= 0.0 {
+        dr.max(dz)
+    } else {
+        dr.max(0.0).hypot(dz.max(0.0))
+    }
+}
+
+#[test]
+fn req_op_12_bounds_hold_against_dense_samples_on_random_rational_patches() {
+    // Random bicubic-by-quadratic rational patches with uneven knots and
+    // weights, a flat end mill placed over each: the proven lower bound is
+    // never above the smallest of 160,000 independently evaluated samples,
+    // and the found value is within the tolerance of it or below.
+    let mut rng = Lcg(346);
+    let flat = ConvexTool::new(&flat2()).unwrap();
+    for case in 0..12 {
+        let (nu, nv) = (6, 4);
+        let mut knots_u = vec![0.0; 4];
+        let (a, b) = (rng.range(0.05, 0.4), rng.range(0.5, 0.95));
+        knots_u.extend([a, b]);
+        knots_u.extend([1.0; 4]);
+        let knots_v = vec![0.0, 0.0, 0.0, rng.range(0.1, 0.9), 1.0, 1.0, 1.0];
+        let mut poles = Vec::new();
+        let mut weights = Vec::new();
+        for i in 0..nu {
+            for j in 0..nv {
+                poles.push(Point3::new(
+                    i as f64 * 0.6 + rng.range(-0.1, 0.1),
+                    j as f64 * 0.8 + rng.range(-0.1, 0.1),
+                    rng.range(-0.4, 0.4),
+                ));
+                weights.push(rng.range(0.5, 2.0));
+            }
+        }
+        let patch = BSplinePatch {
+            degree_u: 3,
+            degree_v: 2,
+            knots_u,
+            knots_v,
+            poles_u: nu as u32,
+            poles_v: nv as u32,
+            poles,
+            weights,
+        };
+        let n = 400;
+        let samples: Vec<Point3> = (0..=n)
+            .flat_map(|i| (0..=n).map(move |j| (i as f64 / n as f64, j as f64 / n as f64)))
+            .map(|(u, v)| evaluate(&patch, u, v))
+            .collect();
+        let g = Geometry::of_faces(&model(vec![face(
+            Surface::BSpline(patch),
+            [0.0, 1.0, 0.0, 1.0],
+            vec![],
+        )]))
+        .unwrap();
+        for _ in 0..4 {
+            let tip = Point3::new(
+                rng.range(0.5, 2.5),
+                rng.range(0.5, 2.0),
+                rng.range(-0.5, 0.3),
+            );
+            let sampled = samples
+                .iter()
+                .map(|q| flat_clearance(*q, tip, 1.0, 8.0))
+                .fold(f64::INFINITY, f64::min)
+                .min(1.0);
+            let b = g.clearance(&flat, tip, up(), &settings()).unwrap();
+            assert!(
+                b.lower <= sampled + 1e-9,
+                "case {case}: {b:?} above {sampled}"
+            );
+            assert!(
+                b.upper <= sampled + TOL + 1e-9,
+                "case {case}: {b:?} vs {sampled}"
+            );
+            assert!(b.error() <= TOL + 1e-9);
+            if let Some(at) = b.at {
+                assert!((flat_clearance(at, tip, 1.0, 8.0) - b.upper).abs() < 1e-9);
+            }
+        }
+    }
+}
