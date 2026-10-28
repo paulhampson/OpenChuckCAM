@@ -1,0 +1,7 @@
+schema = 17
+name = "groove"
+
+[[models]]
+id = "ce9ef0d9-acb3-44ff-99d0-183cad8acfc6"
+path = "models/part.stl"
+hash = "blake3:292cb4a4863617d8b037506c13db82625b7812390963a84d1e809e7218f77823"

@@ -406,6 +406,7 @@ mod tests {
             groups: vec![group],
         };
         let job = PostJob {
+            block_time: Default::default(),
             a_range: proof.0.machine.a_range,
             safe_z: 50.,
             frame: RotaryFrame::work(&proof.0.machine, &Default::default()),

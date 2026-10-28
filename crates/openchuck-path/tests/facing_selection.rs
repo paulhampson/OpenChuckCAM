@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! New side choices and user order (OP-24; accepted 0244).
+//! New side choices and user order (OP-24; accepted 0252).
 #![allow(clippy::float_cmp, clippy::indexing_slicing)]
 use openchuck_path::facing::selection::{FaceOffset, SideRequest, SideSelection};
 use openchuck_path::rotary::RotaryMapping;

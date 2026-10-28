@@ -53,6 +53,15 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Take them from the controller's settings or the machine's documented limits."
         }
         ProfileField::Clearance => "Set a clearance on the setup to suit its stock.",
+        ProfileField::MinBlockMs => {
+            "Run the block-rate air cut and record the shortest smooth setting, firmware and program delivery method."
+        }
+        ProfileField::BlockWindow => {
+            "Take the planner queue depth from controller documentation; a value of 1 checks each block."
+        }
+        ProfileField::ShortBlockMode => {
+            "Choose Report to inspect demand or Slow down to preserve geometry at a lower feed."
+        }
         ProfileField::SpindleRange => {
             "Check the spindle's lowest and highest speed in the machine's documents or controller settings."
         }
@@ -67,6 +76,15 @@ pub fn tooltip(profile: &MachineProfile, field: ProfileField) -> String {
         .get(&field)
         .map(|p| p.source.trim().trim_end_matches('.'))
         .filter(|s| !s.is_empty());
+    if field == ProfileField::ShortBlockMode {
+        return match source {
+            Some(source) => format!(
+                "Posting policy. Source: {source}. {}",
+                how_to_confirm(field)
+            ),
+            None => format!("Posting policy. {}", how_to_confirm(field)),
+        };
+    }
     let source = match source {
         Some(s) => format!("Source: {s}."),
         None => "No source is recorded, so it is treated as an unconfirmed placeholder.".to_owned(),
@@ -161,6 +179,37 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
             true,
         ));
     }
+    let hardware_fields = profile.fields();
+    values.extend(
+        [
+            value(
+                ProfileField::MinBlockMs,
+                "Minimum block time",
+                format!("{} ms (0 is off)", profile.min_block_ms),
+                false,
+            ),
+            value(
+                ProfileField::BlockWindow,
+                "Block window",
+                format!(
+                    "{} block{}",
+                    profile.block_window,
+                    if profile.block_window == 1 { "" } else { "s" }
+                ),
+                false,
+            ),
+            value(
+                ProfileField::ShortBlockMode,
+                "Short-block mode",
+                profile.short_block_mode.label().into(),
+                false,
+            ),
+        ]
+        .into_iter()
+        .filter(|value| {
+            value.field == ProfileField::ShortBlockMode || hardware_fields.contains(&value.field)
+        }),
+    );
     values
 }
 
@@ -185,7 +234,10 @@ mod tests {
                 "Axis height",
                 "Travel",
                 "Maximum feeds",
-                "Spindle speed"
+                "Spindle speed",
+                "Minimum block time",
+                "Block window",
+                "Short-block mode"
             ]
         );
         let spindle = values.iter().find(|v| v.label == "Spindle speed").unwrap();
@@ -213,6 +265,12 @@ mod tests {
             assert!(!v.tooltip.contains("rotary_origin"), "{}", v.tooltip);
             assert!(!v.value.contains('_'), "{}", v.value);
         }
+        let mode = values
+            .iter()
+            .find(|v| v.field == ProfileField::ShortBlockMode)
+            .unwrap();
+        assert!(mode.tooltip.starts_with("Posting policy."));
+        assert!(!mode.tooltip.contains("confirmed on the machine"));
         assert!(values.iter().filter(|v| v.collapsed).count() == 3);
     }
 

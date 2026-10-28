@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! One nominal coverage/target description for viewport and Setup (0244).
+//! One nominal coverage/target description for viewport and Setup (0252).
 //! Geometry describes the supplied placed mesh; source accuracy stays explicit.
 //! It is not a sweep, clearance or completion certificate.
 

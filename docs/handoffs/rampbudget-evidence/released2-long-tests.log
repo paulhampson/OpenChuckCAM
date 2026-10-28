@@ -1,0 +1,8 @@
+62.370s req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed: covered by both profiles
+159.766s req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts: covered by both profiles
+80.068s req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging: covered by both profiles
+169.473s req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound: covered by both profiles
+143.090s req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal: covered by both profiles
+62.314s req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads: covered by both profiles
+230.020s req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part: covered by both profiles
+All seven measured long tests already registered; no filter change needed.

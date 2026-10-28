@@ -274,3 +274,79 @@ fn req_gc_09_req_op_11_large_z1_counters_reserve_firmware_precision() {
             .is_ok()
     );
 }
+
+#[test]
+fn req_op_11_req_op_12_req_nfr_04_adaptive_certificate_encloses_the_whole_sweep_with_leave_above_tolerance()
+ {
+    let target = MeshSurface::new(&box_at(0.0, 1.0).mesh(8)).unwrap();
+    let body = support::tool(ToolShape::FlatEnd, 1.0).profile().unwrap();
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.rotary_origin = Point3::ORIGIN;
+    let proof = EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &target,
+        protected: &[],
+        body: &body,
+        machine: &machine,
+    };
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    // A single inflated certificate covers all 8 mm, including the target
+    // between the endpoints. Positive leave is 50 times the tolerance.
+    let mut budget = 1;
+    proof
+        .verify(pose(-4.0), pose(4.0), 0.5, 0.01, &mut budget, &ctx)
+        .unwrap();
+    assert_eq!(budget, 0);
+}
+
+#[test]
+fn req_op_12_req_nfr_04_inconclusive_coarse_sweep_refines_without_spending_the_uniform_grid() {
+    let target = MeshSurface::new(&box_at(0.0, 9.9).mesh(8)).unwrap();
+    let body = support::tool(ToolShape::FlatEnd, 1.0).profile().unwrap();
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.rotary_origin = Point3::ORIGIN;
+    let proof = EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &target,
+        protected: &[],
+        body: &body,
+        machine: &machine,
+    };
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut budget = 512;
+    proof
+        .verify(pose(-4.0), pose(4.0), 0.0, 0.01, &mut budget, &ctx)
+        .unwrap();
+    assert!(
+        budget < 511,
+        "the whole-interval enclosure must first be inconclusive"
+    );
+}
+
+#[test]
+fn req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded() {
+    let target = MeshSurface::new(&box_at(0.0, 11.0).mesh(8)).unwrap();
+    let body = support::tool(ToolShape::FlatEnd, 1.0).profile().unwrap();
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.rotary_origin = Point3::ORIGIN;
+    let proof = EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &target,
+        protected: &[],
+        body: &body,
+        machine: &machine,
+    };
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut budget = 1;
+    let error = proof
+        .verify(pose(-4.0), pose(4.0), 0.0, 0.01, &mut budget, &ctx)
+        .unwrap_err();
+    assert_eq!(
+        budget, 0,
+        "even an inconclusive certificate consumes an attempt"
+    );
+    assert!(error.to_string().contains("budget"));
+}

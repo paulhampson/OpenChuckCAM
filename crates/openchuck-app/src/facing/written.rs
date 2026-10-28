@@ -140,7 +140,12 @@ pub(crate) fn verify_output(
                 }
                 None => group.start,
             };
-            let expected = machine_xyz(&job.frame, source.tip, source.a);
+            // Main's #324 correction locates the requested tip at the A
+            // word the controller receives, before rounding linear words.
+            // Preserve exact identity against that convention; actual reached
+            // decimal/float tool sweeps are still validated independently.
+            let a = round_written(source.a.0, definition.options.decimals.a);
+            let expected = machine_xyz(&job.frame, source.tip, openchuck_types::units::Degrees(a));
             for (actual, value) in matched
                 .movement
                 .to
@@ -155,7 +160,6 @@ pub(crate) fn verify_output(
                     )));
                 }
             }
-            let a = round_written(source.a.0, definition.options.decimals.a);
             let allowance = 128. * f64::EPSILON * a.abs().max(1.);
             if (matched.movement.to[3] + matched.coordinate_shift - a).abs() > allowance {
                 return Err(observer_error(

@@ -99,6 +99,15 @@ pub struct ToolChange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PostOptions {
+    /// Optional minimum block duration override, milliseconds (GC-17).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_block_ms: Option<f64>,
+    /// Optional controller window override (1 to 4096).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_window: Option<u32>,
+    /// Optional command-rate action override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_block_mode: Option<openchuck_types::machine::ShortBlockMode>,
     /// Units of the program.
     pub units: Units,
     /// The rotary axis letter.
@@ -158,8 +167,46 @@ fn check_line(name: &str, text: &str) -> Result<()> {
 }
 
 impl PostOptions {
+    /// Resolve each optional post override against the machine profile (GC-17),
+    /// retaining its source even when the action or threshold disables checking.
+    pub fn effective_short_blocks(
+        &self,
+        profile: crate::ShortBlockSettings,
+    ) -> (crate::ShortBlockSettings, crate::ShortBlockSources) {
+        let mut settings = profile;
+        let mut sources = crate::ShortBlockSources::default();
+        if let Some(v) = self.min_block_ms {
+            settings.min_block_ms = v;
+            sources.min_block_ms = crate::SettingSource::Post;
+        }
+        if let Some(v) = self.block_window {
+            settings.block_window = v as usize;
+            sources.block_window = crate::SettingSource::Post;
+        }
+        if let Some(v) = self.short_block_mode {
+            settings.mode = v;
+            sources.mode = crate::SettingSource::Post;
+        }
+        (settings, sources)
+    }
+
+    /// Resolve each post override independently over the canonical machine settings.
+    pub fn block_time(&self, profile: crate::BlockTimeSettings) -> crate::BlockTimeSettings {
+        crate::BlockTimeSettings {
+            min_block_ms: self.min_block_ms.unwrap_or(profile.min_block_ms),
+            block_window: self.block_window.unwrap_or(profile.block_window),
+            mode: self.short_block_mode.unwrap_or(profile.mode),
+        }
+    }
+
     /// Checks every value; the message names the option.
     pub fn validate(&self) -> Result<()> {
+        crate::ShortBlockSettings {
+            min_block_ms: self.min_block_ms.unwrap_or(0.0),
+            block_window: self.block_window.unwrap_or(1) as usize,
+            mode: self.short_block_mode.unwrap_or_default(),
+        }
+        .validate()?;
         if !matches!(self.a_letter.as_str(), "A" | "B" | "C") {
             return Err(bad("a_letter", "must be A, B or C"));
         }

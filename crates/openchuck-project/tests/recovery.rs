@@ -445,13 +445,22 @@ fn req_prj_08_req_nfr_07_generated_ignore_and_lock_cannot_follow_external_symlin
 }
 
 #[test]
-fn req_prj_08_req_prj_04_schema_18_options_survive_format_1_and_future_project_schema_is_refused() {
+fn req_prj_08_req_prj_04_req_gc_17_current_options_survive_format_1_and_future_project_schema_is_refused()
+ {
     use openchuck_project::ParameterValue;
-    assert_eq!(file::SCHEMA, 18);
     assert_eq!(openchuck_project::recovery::FORMAT, 1);
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-1");
     for flag in [None, Some(false), Some(true)] {
         let mut project = file::load(&fixture).unwrap();
+        // The schema-18 ramp option and schema-19 machine settings coexist
+        // in a format-1 recovery snapshot without losing either.
+        project
+            .set_machine(Some(
+                openchuck_project::machines::builtin(openchuck_project::machines::MAKERA_Z1)
+                    .unwrap()
+                    .unwrap(),
+            ))
+            .unwrap();
         let mut operation = project.operations()[0].clone();
         if let Some(flag) = flag {
             operation

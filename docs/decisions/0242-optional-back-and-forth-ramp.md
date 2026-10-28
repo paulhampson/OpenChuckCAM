@@ -37,3 +37,7 @@ Update specifications, work breakdown, changelogs and registers in the implement
 ## Alternatives and risks
 
 Half a diameter permits tighter spaces but adds short reversals; two diameters refuses more entries. The owner selected one diameter. Reversing ramps add engagement, direction changes and potentially long generation; conservative full-envelope certification may refuse an entry that a more capable geometric planner could find. The new checks require more explicit shared safety inputs than the current sampled entry code. Approval does not authorize weakening those checks to make the reported project generate.
+
+## Clearance-cost correction
+
+Accepted [0248](0248-ramp-clearance-budget.md) (RAMPBUDGET, #343; directly accepted under provisional 0247) changes certificate scheduling to conservative adaptive intervals and bounded exact-input reuse. It retains this record's motion rules, one-diameter minimum, global stock-clear start, 10,000 descending legs and 100,000-attempt entry limit. Every adaptive attempt, including inconclusive bounds and cache hits, consumes the shared budget. Protected geometry, machine constraints and the additional target checks remain independent. See [measurements and verification](../rampbudget-verification.md); the historical blisk's missing straight direction remains separate.

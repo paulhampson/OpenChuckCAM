@@ -240,6 +240,71 @@ fn golden(name: &str, text: &str) {
     openchuck_testkit::golden::check(&path, text).unwrap_or_else(|m| panic!("{m}"));
 }
 
+/// The committed project folders (OI-913, OI-922): the STEP reference jobs
+/// are committed whole, their STEP files being small (decision record 0004).
+fn projects_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/projects")
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+/// The committed project of STEP reference job `name` (OI-922): with
+/// `OPENCHUCK_BLESS_PROJECTS=1` first rewritten from `build` (new item IDs,
+/// so review that only they changed), then copied out, opened and
+/// regenerated with both posts: every program passes gates 1 and 2 and
+/// matches its golden file (GC-07, NFR-08).
+fn committed(name: &str, build: impl FnOnce(&str) -> (PathBuf, Application)) {
+    let target = projects_dir().join(name);
+    if std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some() {
+        let (dir, app) = build(&format!("bless-{name}"));
+        app.save().unwrap();
+        let _ = std::fs::remove_dir_all(&target);
+        copy_tree(&dir, &target);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    let dir = std::env::temp_dir().join(format!(
+        "openchuck-step-committed-{name}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    copy_tree(&target, &dir);
+    let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    for (post, ext) in [("makera-z1", "nc"), ("linuxcnc", "ngc")] {
+        app.set_post(Some(PostSelection::parse(post)));
+        let result = app.regenerate().unwrap();
+        let report = &result.reports[0];
+        assert!(
+            report.is_clean(),
+            "{name} / {post}: {:?} {:?}",
+            &report.findings[..report.findings.len().min(5)],
+            report.comparison
+        );
+        golden(&format!("{name}_{post}.{ext}"), &stable(&result.gcode[0].1));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_req_nfr_08_the_committed_drilling_project_writes_the_golden_programs() {
+    committed("drilling", drilling);
+}
+
+#[test]
+fn req_gc_07_req_nfr_08_the_committed_swarf_project_writes_the_golden_programs() {
+    committed("swarf", swarf);
+}
+
 /// The program with the operation's id, which is new on every run, left out.
 fn stable(text: &str) -> String {
     text.lines()

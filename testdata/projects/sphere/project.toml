@@ -1,0 +1,7 @@
+schema = 17
+name = "sphere"
+
+[[models]]
+id = "00158a6f-de48-4dd2-a1e5-218fbe8485f6"
+path = "models/part.stl"
+hash = "blake3:73d7da6620a424e5ec0b7a4badb32fe29b829ab79f0cc856fac7b1203a976757"

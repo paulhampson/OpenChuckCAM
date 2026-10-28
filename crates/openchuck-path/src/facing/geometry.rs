@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Facing's coverage and target geometry (OP-24; accepted decision 0244).
+//! Facing's coverage and target geometry (OP-24; accepted decision 0252).
 //!
 //! Bounds project the supplied placed geometry, not its world-axis bounding
 //! box. Analytic tab projections preserve their shapes. These calculations

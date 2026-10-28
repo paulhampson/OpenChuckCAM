@@ -1,10 +1,10 @@
-# 0244: FACING ends, box sides and extents
+# 0252: FACING ends, box sides and extents
 
-**Status:** ACCEPTED by the project owner directly in the FACING chat on 26 October 2026, after the complete record was shown: “Accept 0244”. Acceptance changes status only; substantive text is unchanged.
+**Status:** ACCEPTED by the project owner directly in the FACING chat on 26 October 2026 after complete-record presentation: “Accept 0244”. The Merge Manager administratively renumbered this record from 0244 to 0252 on 28 October 2026 ([PR365 comment6463322786](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6463322786)); acceptance status and substantive design text are unchanged.
 
 **Issues:** #286, #287, #288. **Branch:** `codex/lane-facing-ends-sides-and-extents`.
 
-**Allocation:** provisional 0244 replaces FACING's unpublished 0237 claim, which collided with merged OPCREATE2. Published branch indexes, main, management reservations and PR evidence were checked; the replacement was announced in PR340 comment6404860631. Merge Manager reviews conflicts. No new OI or schema number is claimed.
+**Allocation:** 0252 assigned by the Merge Manager on 28 October 2026. Published GATES owns 0244; AROT owns 0247; main owns 0248–0251; the open-PR audit found no 0252 claim. This administrative renumber replaces FACING's former 0244 allocation without changing its accepted substance. No new OI or project-schema number is claimed.
 
 ## Context and integration
 

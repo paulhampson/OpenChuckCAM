@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Nominal tangent-view routing around one axial cylindrical tab (0244).
+//! Nominal tangent-view routing around one axial cylindrical tab (0252).
 //! This bounds planar remainder and tab separation of the candidate flute
 //! bands; entries, links, written precision and whole setup proof remain separate.
 

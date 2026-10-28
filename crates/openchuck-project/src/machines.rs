@@ -37,11 +37,43 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   (`max_feeds.rotary_in_feed`, decision record 0076).
 /// - 4: the profile may give the spindle speed range, `min_spindle_rpm` and
 ///   `max_spindle_rpm` (decision record 0231).
-pub const MACHINE_SCHEMA: i64 = 4;
+/// - 5: optional minimum block time, window and mode (decision record 0222).
+/// - 6: Slow down integration; schema 5 Report settings retain their meaning.
+pub const MACHINE_SCHEMA: i64 = 6;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
-const MACHINE_MIGRATIONS: &[crate::file::Migration] =
-    &[machine_1_to_2, machine_2_to_3, machine_3_to_4];
+const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
+    machine_1_to_2,
+    machine_2_to_3,
+    machine_3_to_4,
+    machine_4_to_5,
+    machine_5_to_6,
+];
+
+/// Existing Off/Report settings keep their meaning. Slow down did not exist in schema 5.
+fn machine_5_to_6(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_slow_down(table, 5, 6)
+}
+
+/// Refuse the new policy in a file whose version could only express Off or Report.
+/// This applies even when a zero threshold would make the policy inactive.
+pub(crate) fn premature_slow_down(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    if table
+        .get("machine")
+        .and_then(|machine| machine.get("short_block_mode"))
+        .and_then(toml::Value::as_str)
+        == Some("slow_down")
+    {
+        return Err(format!(
+            "schema {schema} predates `short_block_mode = slow_down`; Slow down requires schema {introduced}. Choose off/report, or set `schema = {introduced}` if this file was written for Slow down"
+        ));
+    }
+    Ok(())
+}
 
 /// Schema 4 adds the optional spindle speed range, which a schema 3 file
 /// does not have, so it needs no change but its number: nothing more is
@@ -67,6 +99,24 @@ pub(crate) fn premature_spindle_range(table: &toml::Table, schema: i64) -> Resul
         )),
         None => Ok(()),
     }
+}
+
+fn machine_4_to_5(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_block_time(table, 4)
+}
+
+/// Refuse fields labelled with a schema that predates them.
+pub(crate) fn premature_block_time(table: &toml::Table, schema: i64) -> Result<(), String> {
+    if let Some(machine) = table.get("machine").and_then(toml::Value::as_table) {
+        for field in ["min_block_ms", "block_window", "short_block_mode"] {
+            if machine.contains_key(field) {
+                return Err(format!(
+                    "schema {schema} predates `{field}`; use the current schema or remove the field"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Schema 2 only adds the optional `id`, so a schema 1 file needs no change
@@ -320,7 +370,7 @@ pub fn list_library(dir: &Path) -> Result<LibraryListing, ProjectError> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::panic, clippy::float_cmp)]
 
     use super::*;
     use openchuck_types::machine::{ASense, ProfileField, RotaryAxis};
@@ -345,6 +395,7 @@ mod tests {
                 ProfileField::RotaryOrigin,
                 ProfileField::Travel,
                 ProfileField::Clearance,
+                ProfileField::BlockWindow,
                 ProfileField::SpindleRange,
             ]
         );
@@ -358,6 +409,44 @@ mod tests {
         }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
+    }
+
+    #[test]
+    fn req_gc_17_req_set_01_new_z1_uses_measured_report_settings_and_old_profiles_stay_off() {
+        use openchuck_types::machine::ShortBlockMode;
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(
+            (z1.min_block_ms, z1.block_window, z1.short_block_mode),
+            (7.0, 32, ShortBlockMode::Report)
+        );
+        assert!(z1.is_confirmed(ProfileField::MinBlockMs));
+        let source = &z1.provenance[&ProfileField::MinBlockMs].source;
+        for fact in ["284", "1.1.2", "WiFi", "version not supplied"] {
+            assert!(source.contains(fact), "{source}");
+        }
+        let written = render_profile(&z1).unwrap();
+        let old = written.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 4");
+        assert!(
+            parse_profile(Path::new("old.toml"), &old)
+                .unwrap_err()
+                .to_string()
+                .contains("min_block_ms")
+        );
+        let mut table: toml::Table = old.parse().unwrap();
+        let machine = table.get_mut("machine").unwrap().as_table_mut().unwrap();
+        for key in ["min_block_ms", "block_window", "short_block_mode"] {
+            machine.remove(key);
+        }
+        let old = toml::to_string(&table).unwrap();
+        let loaded = parse_profile(Path::new("old.toml"), &old).unwrap();
+        assert_eq!(
+            (
+                loaded.min_block_ms,
+                loaded.block_window,
+                loaded.short_block_mode
+            ),
+            (0.0, 1, ShortBlockMode::Off)
+        );
     }
 
     #[test]
@@ -420,12 +509,23 @@ mod tests {
     #[test]
     fn req_gc_14_req_set_01_the_z1_spindle_range_is_unconfirmed_and_needs_schema_4() {
         use openchuck_types::machine::{Confirmation, ProfileField};
-        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
         assert_eq!(z1.max_spindle_rpm.map(|s| s.0), Some(13000.0));
         assert_eq!(z1.min_spindle_rpm, None);
         let p = &z1.provenance[&ProfileField::SpindleRange];
         assert_eq!(p.state, Confirmation::Unconfirmed);
         assert!(p.source.contains("Safety Guidelines"), "{}", p.source);
+        // A pre-schema-5 fixture cannot contain the later GC-17 fields.
+        z1.min_block_ms = 0.0;
+        z1.block_window = 1;
+        z1.short_block_mode = openchuck_types::machine::ShortBlockMode::Off;
+        for field in [
+            ProfileField::MinBlockMs,
+            ProfileField::BlockWindow,
+            ProfileField::ShortBlockMode,
+        ] {
+            z1.provenance.remove(&field);
+        }
         let text = render_profile(&z1).unwrap();
         let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 3");
         let err = parse_profile(Path::new("z1.toml"), &old)
@@ -453,7 +553,18 @@ mod tests {
     fn req_set_01_profiles_written_before_ids_still_read() {
         // A profile file written before IDs (OI-54) still reads; its profile
         // has no ID, so nothing can be compared with it until it gets one.
-        let z1 = render_profile(&builtin(MAKERA_Z1).unwrap().unwrap()).unwrap();
+        let mut profile = builtin(MAKERA_Z1).unwrap().unwrap();
+        profile.min_block_ms = 0.0;
+        profile.block_window = 1;
+        profile.short_block_mode = openchuck_types::machine::ShortBlockMode::Off;
+        for field in [
+            ProfileField::MinBlockMs,
+            ProfileField::BlockWindow,
+            ProfileField::ShortBlockMode,
+        ] {
+            profile.provenance.remove(&field);
+        }
+        let z1 = render_profile(&profile).unwrap();
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")
             .lines()
@@ -463,6 +574,12 @@ mod tests {
         let entry = parse_profile_entry(Path::new("old.toml"), &old).unwrap();
         assert_eq!(entry.id, None);
         assert_eq!(entry.profile.name, "Makera Z1");
+        assert_eq!(entry.profile.min_block_ms, 0.0);
+        assert_eq!(entry.profile.block_window, 1);
+        assert_eq!(
+            entry.profile.short_block_mode,
+            openchuck_types::machine::ShortBlockMode::Off
+        );
         // The built-in profile has its fixed ID, and it round-trips.
         let z1 = builtin_entry(MAKERA_Z1).unwrap().unwrap();
         assert_eq!(

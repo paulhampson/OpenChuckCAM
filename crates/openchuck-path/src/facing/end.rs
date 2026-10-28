@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Candidate flank-end geometry (OP-24;0244), before shared motion assembly.
+//! Candidate flank-end geometry (OP-24;0252), before shared motion assembly.
 //! Like the box candidate planner, this does not clip protections or certify
 //! tool clearance/completion. A host must never publish these passes directly.
 

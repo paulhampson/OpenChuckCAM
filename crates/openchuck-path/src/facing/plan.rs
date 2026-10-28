@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Facing-local pass planning from explicit whole setup geometry (0244).
+//! Facing-local pass planning from explicit whole setup geometry (0252).
 //! Returned passes are candidates BEFORE shared assembly. They must not be
 //! published as completed machining until actual full-tool motion, retained
 //! stock, protected solids and achieved coverage are independently validated.

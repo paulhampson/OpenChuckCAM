@@ -1,0 +1,25 @@
+   Compiling openchuck-path v0.23.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.34s
+────────────
+ Nextest run ID e68c7951-4c73-4904-9487-23ea6aa56316 with nextest profile: default
+    Starting 2 tests across 2 binaries (51 tests skipped)
+       START [         ] (1/2) openchuck-path entry_safety::tests::req_op_12_req_nfr_04_memo_preserves_certificates_and_budget_at_lower_query_cost
+
+running 1 test
+RAMPBUDGET 10000 clear identical sweeps cached=126.935003ms fresh_query_per_sweep=496.274502ms
+test entry_safety::tests::req_op_12_req_nfr_04_memo_preserves_certificates_and_budget_at_lower_query_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.64s
+
+        PASS [   0.652s] (1/2) openchuck-path entry_safety::tests::req_op_12_req_nfr_04_memo_preserves_certificates_and_budget_at_lower_query_cost
+       START [         ] (2/2) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation
+
+running 1 test
+RAMPBUDGET adaptive three passes: {"assembly": 1, "entry clearance cache hit": 2411, "entry clearance query": 1207, "entry clearance sweep": 156}
+test req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.44s
+
+        PASS [   0.527s] (2/2) openchuck-path::entry req_op_11_req_op_12_req_nfr_04_every_leg_reversal_approach_and_connection_is_certified_with_memoisation
+────────────
+     Summary [   1.196s] 2 tests run: 2 passed, 51 skipped

@@ -17,7 +17,9 @@ use openchuck_path::Registry;
 use openchuck_project::{Operation, Project, Setup, ToolSnapshot};
 use openchuck_types::ir::Toolpath;
 use openchuck_types::notice::VERIFY_GCODE_NOTICE;
+use openchuck_types::setup::PartExtent;
 use openchuck_types::stock::Stock;
+use openchuck_types::workholding::{HeldRegion, Tab, TabLayout, TabShape, Workholding};
 
 /// What a section holds.
 #[derive(Debug, Clone, PartialEq)]
@@ -240,6 +242,232 @@ fn describe_shape(tool: &ToolSnapshot) -> String {
 }
 
 impl SetupSheet {
+    /// Records effective controller settings even when the check is disabled.
+    #[must_use]
+    pub fn with_short_block_configuration(
+        mut self,
+        settings: openchuck_post::ShortBlockSettings,
+        sources: openchuck_post::ShortBlockSources,
+    ) -> Self {
+        self.sections.push(SheetSection {
+            heading: "Short-block settings".into(),
+            body: SheetBody::Facts(vec![
+                (
+                    "Mode".into(),
+                    format!("{} ({})", settings.mode.label(), sources.mode.as_str()),
+                ),
+                (
+                    "Minimum average block time".into(),
+                    format!(
+                        "{} ms ({})",
+                        plain(settings.min_block_ms, 3),
+                        sources.min_block_ms.as_str()
+                    ),
+                ),
+                (
+                    "Block window".into(),
+                    format!(
+                        "{} block{} ({})",
+                        settings.block_window,
+                        if settings.block_window == 1 { "" } else { "s" },
+                        sources.block_window.as_str()
+                    ),
+                ),
+                (
+                    "Check".into(),
+                    if settings.min_block_ms == 0.0
+                        || settings.mode == openchuck_types::machine::ShortBlockMode::Off
+                    {
+                        "Off; no slowdown applied"
+                    } else {
+                        "Enabled"
+                    }
+                    .into(),
+                ),
+            ]),
+        });
+        self
+    }
+
+    /// Adds the selected post's effective short-block settings and results.
+    /// Report lists the possible slowdown cost; Slow down lists the applied
+    /// cost. Both formats render these same facts (GC-17, GC-12).
+    #[must_use]
+    pub fn with_short_blocks(
+        mut self,
+        project: &Project,
+        reports: &[openchuck_post::ShortBlockReport],
+    ) -> Self {
+        use openchuck_types::machine::ShortBlockMode;
+        for report in reports {
+            let operation = project
+                .operations()
+                .iter()
+                .find(|o| o.id.to_string() == report.operation)
+                .map_or(report.operation.as_str(), |o| o.name.as_str());
+            let mode = match report.settings.mode {
+                ShortBlockMode::Off => "Off",
+                ShortBlockMode::Report => "Report",
+                ShortBlockMode::SlowDown => "Slow down",
+            };
+            let mut facts = vec![
+                (
+                    "Mode".into(),
+                    format!("{mode} ({})", report.sources.mode.as_str()),
+                ),
+                (
+                    "Minimum average block time".into(),
+                    format!(
+                        "{} ms ({})",
+                        plain(report.settings.min_block_ms, 3),
+                        report.sources.min_block_ms.as_str()
+                    ),
+                ),
+                (
+                    "Block window".into(),
+                    format!(
+                        "{} block{} ({})",
+                        report.settings.block_window,
+                        if report.settings.block_window == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        report.sources.block_window.as_str()
+                    ),
+                ),
+                (
+                    "Moves below the limit".into(),
+                    report.short_moves.to_string(),
+                ),
+                (
+                    "Longest run below the limit".into(),
+                    format!("{} moves", report.longest_run),
+                ),
+                (
+                    "Affected windows".into(),
+                    report.affected_windows.to_string(),
+                ),
+                (
+                    "Worst window".into(),
+                    format!(
+                        "{} ms average before slowdown",
+                        plain(report.worst_window_ms, 3)
+                    ),
+                ),
+                (
+                    "Effective feed".into(),
+                    format!("{} mm/min", plain(report.effective_feed, 3)),
+                ),
+                (
+                    "Added time".into(),
+                    format!(
+                        "{} s ({})",
+                        plain(report.added_seconds, 3),
+                        if report.settings.mode == ShortBlockMode::SlowDown {
+                            "applied"
+                        } else {
+                            "if Slow down is selected"
+                        }
+                    ),
+                ),
+                (
+                    if report.settings.mode == ShortBlockMode::SlowDown {
+                        "Slowed moves"
+                    } else {
+                        "Moves to slow"
+                    }
+                    .into(),
+                    report.slowed_moves.to_string(),
+                ),
+            ];
+            if report.sources.min_block_ms == openchuck_post::SettingSource::Profile
+                && let Some(provenance) = project.machine().and_then(|m| {
+                    m.provenance
+                        .get(&openchuck_types::machine::ProfileField::MinBlockMs)
+                })
+            {
+                facts.push(("Threshold evidence".into(), provenance.source.clone()));
+            }
+            self.sections.push(SheetSection {
+                heading: format!("Short blocks: {operation}"),
+                body: SheetBody::Facts(facts),
+            });
+        }
+        self
+    }
+    /// Add the selected post's GC-17 report to the shared HTML/PDF document.
+    pub(crate) fn with_block_time(
+        mut self,
+        project: &Project,
+        path: Option<&Toolpath>,
+        options: Result<Option<openchuck_post::PostOptions>, String>,
+    ) -> Self {
+        let (Some(path), Some(machine)) = (path, project.machine()) else {
+            return self;
+        };
+        let profile = openchuck_post::BlockTimeSettings {
+            min_block_ms: machine.min_block_ms,
+            // The application's validated profile caps the window at 4096.
+            block_window: machine.block_window as u32,
+            mode: machine.short_block_mode,
+        };
+        let report = options.and_then(|options| {
+            let source = if options.as_ref().is_some_and(|o| o.min_block_ms.is_some()) {
+                "post"
+            } else {
+                "profile"
+            };
+            let settings = options.as_ref().map_or(profile, |o| o.block_time(profile));
+            openchuck_post::block_time_reports(path, settings)
+                .map(|reports| {
+                    (
+                        reports,
+                        source,
+                        settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown,
+                    )
+                })
+                .map_err(|e| e.to_string())
+        });
+        let facts = match report {
+            Ok((reports, source, preview)) => {
+                let mut facts = reports
+                    .into_iter()
+                    .map(|r| {
+                        let name = project
+                            .operations()
+                            .iter()
+                            .find(|o| o.id.to_string() == r.operation)
+                            .map_or_else(|| r.operation.clone(), |o| o.name.clone());
+                        let summary = if preview {
+                            let mean = if r.windows == 0 {
+                                "no complete window".to_owned()
+                            } else {
+                                format!("worst mean {:.3} ms, effective feed in longest run {:.3} mm/min", r.worst_mean_ms, r.effective_feed)
+                            };
+                            format!("minimum block time {:.3} ms ({source}), window {}; {} affected blocks, longest run {}; {mean}; estimated slow-down adds {:.3} s.", r.settings.min_block_ms, r.settings.block_window, r.affected_blocks, r.longest_run, r.seconds_added)
+                        } else {
+                            r.summary(source)
+                        };
+                        (name, summary)
+                    })
+                    .collect::<Vec<_>>();
+                if preview {
+                    facts.push(("Preview".into(), "Toolpath-only preview; selected Slow down has not been applied. Use the same-run setup sheet for posted feeds and times.".into()));
+                }
+                facts
+            }
+            Err(error) => vec![("Report unavailable".into(), error)],
+        };
+        if !facts.is_empty() {
+            self.sections.push(SheetSection {
+                heading: "Minimum block time".into(),
+                body: SheetBody::Facts(facts),
+            });
+        }
+        self
+    }
+
     /// The sheet with the Traceability section added after the Notes, where
     /// a printed copy ends (GC-12, decision 0110).
     #[must_use]
@@ -263,6 +491,19 @@ impl SetupSheet {
     /// the program sees the limit a warning was measured against (decision
     /// record 0175).
     pub fn new(project: &Project, registry: &Registry, toolpath: Option<&Toolpath>) -> Self {
+        Self::with_parts(project, registry, toolpath, &|_| None)
+    }
+
+    /// [`SetupSheet::new`], with `part` giving each setup's part as the setup
+    /// places it, so the tabs placed automatically are shown where the part,
+    /// the stock and the held regions put them (decision record 0202). Without
+    /// a part a tab is shown where it was last stored.
+    pub fn with_parts(
+        project: &Project,
+        registry: &Registry,
+        toolpath: Option<&Toolpath>,
+        part: &dyn Fn(&Setup) -> Option<PartExtent>,
+    ) -> Self {
         let mut times: BTreeMap<String, f64> = BTreeMap::new();
         if let Some(toolpath) = toolpath {
             for group in &toolpath.groups {
@@ -308,10 +549,35 @@ impl SetupSheet {
         });
 
         for setup in project.setups() {
+            // The held regions and tabs the toolpath was made with (SET-09,
+            // OP-21; OI-918), so the stock can be loaded from the sheet.
+            let workholding = setup
+                .workholding
+                .resolved(setup.stock.as_ref(), part(setup).as_ref());
+            let mut facts = setup_facts(project, setup);
+            facts.extend(workholding_facts(setup, &workholding));
             sections.push(SheetSection {
                 heading: format!("Setup: {}", setup.name),
-                body: SheetBody::Facts(setup_facts(project, setup)),
+                body: SheetBody::Facts(facts),
             });
+            if !workholding.tabs.is_empty() {
+                sections.push(SheetSection {
+                    heading: tabs_heading(setup),
+                    body: SheetBody::Table {
+                        headers: [
+                            "Tab", "X from", "X to", "Shape", "Dia mm", "Layout", "Placed",
+                        ]
+                        .map(String::from)
+                        .to_vec(),
+                        rows: workholding
+                            .tabs
+                            .iter()
+                            .enumerate()
+                            .map(|(i, tab)| tab_row(i, tab))
+                            .collect(),
+                    },
+                });
+            }
         }
 
         sections.push(SheetSection {
@@ -555,6 +821,89 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
         ));
     }
     facts
+}
+
+fn tabs_heading(setup: &Setup) -> String {
+    format!("Tabs: {}", setup.name)
+}
+
+/// The setup's grips and a count of its tabs, in plain words.
+fn workholding_facts(setup: &Setup, workholding: &Workholding) -> Vec<(String, String)> {
+    let stock_x = setup
+        .stock
+        .as_ref()
+        .and_then(|s| s.bounds(None))
+        .map(|b| (b.min.x, b.max.x));
+    let (start, end) = stock_x.map_or((None, None), |x| workholding.held_intervals(x));
+    let held = |region: Option<HeldRegion>, span: Option<(f64, f64)>| match region {
+        None => "none".to_string(),
+        Some(region) => {
+            let mut text = format!("{} mm of the stock", mm(region.length.0));
+            if let Some((lo, hi)) = span {
+                let _ = write!(text, ", X {} to {} mm", mm(lo), mm(hi));
+            }
+            match region.diameter {
+                Some(d) => {
+                    let _ = write!(text, ", at diameter {} mm", mm(d.0));
+                }
+                None => text.push_str(", at the stock's own section"),
+            }
+            text
+        }
+    };
+    let tabs = match workholding.tabs.len() {
+        0 => "none".to_string(),
+        n => format!("{n}, listed under {}", tabs_heading(setup)),
+    };
+    vec![
+        (
+            "Held at the start".to_string(),
+            held(workholding.start, start),
+        ),
+        ("Held at the end".to_string(), held(workholding.end, end)),
+        ("Tabs".to_string(), tabs),
+    ]
+}
+
+/// One row of a setup's tab table.
+fn tab_row(index: usize, tab: &Tab) -> Vec<String> {
+    let (shape, diameter) = match tab.shape {
+        TabShape::Cylinder { diameter } => ("cylinder", mm(diameter.0)),
+        TabShape::Frustum {
+            start_diameter,
+            end_diameter,
+        } => (
+            "frustum",
+            format!("{} to {}", mm(start_diameter.0), mm(end_diameter.0)),
+        ),
+        _ => ("of a kind this sheet does not describe", "-".to_string()),
+    };
+    let layout = match tab.layout {
+        TabLayout::OnAxis => "on the axis".to_string(),
+        TabLayout::AroundAxis {
+            count,
+            start_angle,
+            radial_offset,
+        } => format!(
+            "{count} around the axis, {} mm from it, the first at {} deg",
+            mm(radial_offset.0),
+            plain(start_angle.0, 3)
+        ),
+        _ => "of a kind this sheet does not describe".to_string(),
+    };
+    let placed = match tab.auto {
+        Some(end) => format!("automatically, at the {} of the part", end.name()),
+        None => "by hand".to_string(),
+    };
+    vec![
+        (index + 1).to_string(),
+        mm(tab.x_start.0),
+        mm(tab.x_start.0 + tab.length.0),
+        shape.to_string(),
+        diameter,
+        layout,
+        placed,
+    ]
 }
 
 fn operation_row(
@@ -947,6 +1296,35 @@ mod tests {
 
     fn at(seconds: u64) -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(seconds)
+    }
+
+    #[test]
+    fn req_gc_12_req_op_21_tabs_around_the_axis_say_how_many_where_and_how_far() {
+        let tab = Tab {
+            x_start: openchuck_types::units::Millimetres(2.0),
+            length: openchuck_types::units::Millimetres(1.5),
+            shape: TabShape::Cylinder {
+                diameter: openchuck_types::units::Millimetres(3.0),
+            },
+            layout: TabLayout::AroundAxis {
+                count: 3,
+                start_angle: openchuck_types::units::Degrees(30.0),
+                radial_offset: openchuck_types::units::Millimetres(6.0),
+            },
+            auto: None,
+        };
+        assert_eq!(
+            tab_row(1, &tab),
+            [
+                "2",
+                "2",
+                "3.5",
+                "cylinder",
+                "3",
+                "3 around the axis, 6 mm from it, the first at 30 deg",
+                "by hand"
+            ]
+        );
     }
 
     #[test]

@@ -496,3 +496,84 @@ fn req_prj_04_req_nfr_07_an_older_tab_with_auto_or_a_bad_offset_is_refused() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_gc_17_req_prj_04_short_block_settings_roundtrip_and_old_projects_stay_off() {
+    use openchuck_types::machine::ShortBlockMode;
+    let mut p = Project::new("block time");
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.min_block_ms = 7.0;
+    machine.block_window = 32;
+    machine.short_block_mode = ShortBlockMode::SlowDown;
+    p.set_machine(Some(machine)).unwrap();
+    let dir = temp_dir("short-blocks");
+    file::save(&p, &dir).unwrap();
+    assert_eq!(file::load(&dir).unwrap(), p);
+    let path = dir.join(file::MACHINE_FILE);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut report_project = p.clone();
+    let mut report_machine = report_project.machine().unwrap().clone();
+    report_machine.short_block_mode = ShortBlockMode::Report;
+    report_project.set_machine(Some(report_machine)).unwrap();
+    file::save(&report_project, &dir).unwrap();
+    let report_text = std::fs::read_to_string(&path).unwrap();
+    let published = report_text.replacen(&format!("schema = {}", file::SCHEMA), "schema = 19", 1);
+    std::fs::write(&path, published).unwrap();
+    assert_eq!(
+        file::load(&dir).unwrap(),
+        report_project,
+        "published schema 19 keeps its Report settings"
+    );
+    let old = text.replacen(&format!("schema = {}", file::SCHEMA), "schema = 18", 1);
+    std::fs::write(&path, &old).unwrap();
+    assert!(
+        file::load(&dir)
+            .unwrap_err()
+            .to_string()
+            .contains("min_block_ms")
+    );
+    let legacy: String = old
+        .lines()
+        .filter(|l| {
+            !l.starts_with("min_block_ms")
+                && !l.starts_with("block_window")
+                && !l.starts_with("short_block_mode")
+        })
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(&path, legacy).unwrap();
+    let loaded = file::load(&dir).unwrap();
+    let m = loaded.machine().unwrap();
+    assert_eq!(m.min_block_ms.to_bits(), 0.0_f64.to_bits());
+    assert_eq!(m.block_window, 1);
+    assert_eq!(m.short_block_mode, ShortBlockMode::Off);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn req_gc_17_req_prj_04_slow_down_requires_project_schema_20_even_when_inactive() {
+    use openchuck_types::machine::ShortBlockMode;
+    let mut project = Project::new("Slow down format");
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.block_window = 32;
+    machine.short_block_mode = ShortBlockMode::SlowDown;
+    let dir = temp_dir("slow-down-schema");
+    for milliseconds in [0.0, 7.0] {
+        machine.min_block_ms = milliseconds;
+        project.set_machine(Some(machine.clone())).unwrap();
+        file::save(&project, &dir).unwrap();
+        assert_eq!(file::load(&dir).unwrap(), project);
+        let path = dir.join(file::MACHINE_FILE);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let downgraded = text.replacen(&format!("schema = {}", file::SCHEMA), "schema = 19", 1);
+        std::fs::write(path, downgraded).unwrap();
+        let error = file::load(&dir).unwrap_err().to_string();
+        assert!(
+            error.contains("machine.toml")
+                && error.contains("slow_down")
+                && error.contains("schema 20"),
+            "{error}"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}

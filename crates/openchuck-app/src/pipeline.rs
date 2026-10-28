@@ -109,6 +109,24 @@ pub struct Regeneration {
     pub notes: Vec<String>,
     /// What the G-code checks found for each file in `gcode` (GC-08, GC-11).
     pub reports: Vec<crate::posting::GcodeReport>,
+    /// Controller short-block diagnostics from the selected post (GC-17).
+    pub short_blocks: Vec<openchuck_post::ShortBlockReport>,
+    /// Effective short-block configuration and per-field source, even when
+    /// disabled or when no window is affected (GC-17).
+    pub effective_short_blocks: Option<(
+        openchuck_post::ShortBlockSettings,
+        openchuck_post::ShortBlockSources,
+    )>,
+    /// The posted program's durations, including any intentional slowdown;
+    /// the canonical strategy path and simulation retain their own timing.
+    pub posted_toolpath: Option<Toolpath>,
+    /// Programmed time by generated file, after short-block management.
+    pub posted_file_seconds: std::collections::BTreeMap<String, f64>,
+    /// Post and grouping that produced the posted files and times.
+    pub posted_selection: Option<(
+        crate::posting::PostSelection,
+        crate::posting::OutputGrouping,
+    )>,
     /// The material removal simulation, when one was asked for (slice 7).
     pub simulation: Option<crate::simulation::SimulationReport>,
     /// Operations whose toolpath was generated in this run.
@@ -440,11 +458,15 @@ pub(crate) fn regenerate(
     regeneration.toolpath.validate()?;
     if let Some((selection, grouping)) = post {
         context.check_cancelled()?;
-        let (files, reports, notes) =
-            crate::posting::post_toolpath(&regeneration, selection, grouping, context)?;
-        regeneration.gcode = files;
-        regeneration.reports = reports;
-        regeneration.notes.extend(notes);
+        let posted = crate::posting::post_toolpath(&regeneration, selection, grouping, context)?;
+        regeneration.gcode = posted.files;
+        regeneration.reports = posted.reports;
+        regeneration.notes.extend(posted.notes);
+        regeneration.short_blocks = posted.short_blocks;
+        regeneration.effective_short_blocks = posted.settings;
+        regeneration.posted_toolpath = Some(posted.toolpath);
+        regeneration.posted_file_seconds = posted.file_seconds;
+        regeneration.posted_selection = Some((selection.clone(), grouping));
     }
     progress.reach(
         if simulate {

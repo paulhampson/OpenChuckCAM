@@ -1,0 +1,7 @@
+schema = 17
+name = "cone_held_tabs"
+
+[[models]]
+id = "8f3d2c4a-a1ef-49b9-bce5-cc3ed4065356"
+path = "models/part.stl"
+hash = "blake3:e4b0938ec03f4801423bee32b270dc4e01eefaffa0d14be95fb99c3e00b52db1"

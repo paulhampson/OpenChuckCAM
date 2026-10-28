@@ -27,6 +27,59 @@ fn req_op_24_req_ui_03_invalid_box_stock_draft_explains_why_it_cannot_generate()
 }
 
 #[test]
+fn req_op_24_req_gc_17_slowdown_keeps_facing_geometry_and_verifies_delivered_timing() {
+    use openchuck_types::machine::ShortBlockMode;
+    for shape in ["box", "end", "flat", "round"] {
+        for post in ["linuxcnc", "makera-z1"] {
+            let (mut p, _) = project(&format!("facing-slowdown-{shape}-{post}"), shape);
+            let generate = |app: &mut Application| {
+                app.start_regenerate_with_post(
+                    PostSelection::Builtin(post.into()),
+                    OutputGrouping::Operation,
+                )
+                .wait()
+                .unwrap()
+            };
+            let off = generate(&mut p.app);
+            let mut machine = p.app.project().machine().unwrap().clone();
+            // A threshold twice a real fed leg's duration guarantees this
+            // case requests mitigation without relying on strategy defaults.
+            let shortest = off
+                .toolpath
+                .groups
+                .iter()
+                .flat_map(|g| &g.segments)
+                .filter(|s| s.kind.is_fed() && s.duration.0 > 0.)
+                .map(|s| s.duration.0)
+                .fold(f64::INFINITY, f64::min);
+            assert!(shortest.is_finite());
+            machine.min_block_ms = shortest * 2000. + 1.;
+            machine.block_window = 1;
+            machine.short_block_mode = ShortBlockMode::SlowDown;
+            p.app
+                .execute(Command::SetMachine(Some(Box::new(machine))))
+                .unwrap();
+            let slowed = generate(&mut p.app);
+            assert_eq!(
+                slowed.canonical_toolpath, off.canonical_toolpath,
+                "Short-block policy must not change Facing geometry or strategy timing"
+            );
+            assert!(
+                slowed.reports.iter().all(|r| r.is_clean()),
+                "{shape}/{post}: {:?}",
+                slowed.reports
+            );
+            assert!(
+                slowed.posted_toolpath.as_ref().unwrap().total_duration().0
+                    > off.toolpath.total_duration().0,
+                "This fixture must exercise actual slowdown, not just its setting"
+            );
+            assert_ne!(slowed.gcode, off.gcode);
+        }
+    }
+}
+
+#[test]
 fn req_op_24_req_gc_08_controller_programs_cover_all_modes_with_bounded_run_times() {
     for shape in ["box", "end", "flat", "round"] {
         let (mut p, op) = project(&format!("facing-controller-{shape}"), shape);

@@ -1,9 +1,79 @@
-# FACING implementation and draft handoff
+# FACING implementation and released integration handoff
 
-Local implementation and validation are complete for the FACING draft handoff.
-No owner question is pending. This report supersedes earlier preparation
-milestones; decision 0244 is the accepted design authority. Merge Manager
-controls release under 0055.
+## Released integration — 28 October 2026 (local checks complete)
+
+Merge Manager marked PR #365 ready and released one main merge/combined push in
+[comment 6463173029](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6463173029).
+Merged input is `b2278b89c252d2d2c3b67ea2e6ed2368c9d4ecba`; original FACING head
+is `6448dc44db406e285472075690ebf52230d486e6`. This revision completes that one
+released merge and the combined integration corrections; there was no rebase,
+second main merge or intermediate push.
+
+[Numbering instruction 6463322786](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6463322786)
+assigns library **0.25.0**, followed by AROT 0.26.0, and administratively renumbers
+FACING **0244 -> 0252**. Published GATES retains 0244; AROT 0247 and main's
+0245/0246/0248–0251 are preserved. The accepted record's sections from Context
+onward compare byte-for-byte unchanged to the original. Acceptance was given
+under the original number 0244; no new design acceptance is inferred. No OI or
+schema is claimed. Main's schemas 20/6 and OI-998/1000/1002/1003 open versus
+OI-999/1001 closed are retained. Registers and long-test profile filters were
+merged as unions with exact duplicate filter lines removed.
+
+Integration fixes/checks:
+
+- New main's PostJob field is supplied as `block_time: Default::default()` in
+  the Facing test helper. No tool, stock, geometry or written program fixture
+  was changed by that constructor migration. The kernel-gated step_accuracy
+  host example also supplies `facing: None`; its non-Facing benchmark inputs
+  stay unchanged. All direct input/metadata struct literals were audited.
+- Existing fractional-A and all-mode thread tests first failed 0.020/0.224s:
+  Facing's exact word checker still expected XYZ at ideal A. It now follows
+  merged #324's convention, rounding A before computing expected XYZ. Exact
+  word identity, actual decimal/binary32 clearance/coverage/axis-feed checks and
+  all their original tolerances remain. No post producer was modified here.
+- An additional requirement regression covers GC-17 Slow down in all four
+  Facing modes and both posts, asserting unchanged canonical geometry and
+  actual increased delivered duration. Existing feed verification already
+  accommodates intentional slowdown; no bypass or geometry change was needed.
+- Final focused integration 3/3 passes 3.978s, including the corrected fractional
+  angle, both-post 1/2/available-4-thread determinism and all-mode slowdown.
+  All selected Facing library tests 19/19 pass 5.030s; the existing long tab case
+  is checked separately. The initial 500 ms test setup did not exercise slowdown;
+  its corrected threshold explicitly exceeds a real baseline fed-leg duration.
+- All four library `cargo-semver-checks` runs pass against b2278b89 for 0.24->0.25.
+  Normal workspace all-target compilation passes after the constructor migration.
+  The uninstrumented seven-crate run passes **1675/1675** in **567.153s**
+  (51 existing profile exclusions). The isolated cylindrical-tab case passes
+  **1/1** in **20.035s**; no individual test exceeded ten minutes or added a new
+  long classification (longest selected normal case: 38.385s). Workspace all-target Clippy with warnings denied passes
+  (17.95s), and formatting passes. Fuzz all-target compilation with the locked 0.25 family passes (22.98s).
+  The golden audit passes without fixture changes. `cargo xtask all` passes:
+  dependencies, licences, records, testdata, conflicts, publish and traceability
+  (**100/100 P1 requirements**). The staged Facing delta passes whitespace checks
+  against merged main. Main's imported PDF/STEP whitespace is retained unchanged. Results below are the original draft snapshots unless
+  explicitly labelled released integration; do not count them as reruns.
+
+Fresh own-app focused coverage passes 19/19 in 14.187s instrumented (not a cost
+measurement). The modified `facing/written.rs` has 421/469 executable lines hit
+(89.765%); both new rounded-A/expected-XYZ lines are hit 85,832 times. Uncovered
+lines are existing unsupported format/controller, numeric/work-budget,
+metadata/footer and motion-refusal branches plus early no-proof returns; none of
+the production lines changed for this integration remains uncovered. This is a
+focused changed-line check, not a new aggregate own-app coverage claim. The
+original full-own-crate snapshots below remain below the 95% development target.
+LCOV and text reports were inspected with no LLVM mismatch warning in this run;
+`cargo llvm-cov clean --workspace` ran and its generated build directory was
+removed after reporting.
+
+No golden G-code, built-in post, stored mesh/STEP/project or replay fixture is
+changed relative to merged main. Rust test helper construction and a new runtime
+slowdown regression are the fixture-related edits; profile policy defaults stay
+Off. The version banner advances to 0.25.0. Main's existing #324 producer
+correction is preserved; Facing default path/setting semantics remain intact.
+
+Regular watches remain stopped; only this authorised integration is active.
+Merge Manager owns readiness/main-order control/merge under 0055. FINSTEP consumes
+FACING's shared hooks only after this PR merges, retaining adaptive semantics.
 
 ## Scope and baseline
 
@@ -18,8 +88,9 @@ No unmerged prerequisite or cherry-pick was used. Prerequisite merge commits:
 | SWARF3 #320 | `e590f4de67bbde573edf30982982d6d0c5d92707` |
 | ROUGHPATH #340 | `ab863f6531d1e8fab8c2562e88d92b9277937c3f` |
 
-[0244](../decisions/0244-facing-ends-sides-and-extents.md) was accepted directly
-by the owner after full presentation on 26 October 2026. Its substantive text is
+[0252](../decisions/0252-facing-ends-sides-and-extents.md) was accepted directly
+by the owner under original number 0244 after full presentation on 26 October 2026,
+and administratively renumbered by Merge Manager on 28 October 2026. Its substantive text is
 unchanged. The old unpublished 0237 claim was superseded. No new open-item or
 project-schema number is used. Number allocation was owner-authorised, subject
 to Merge Manager conflict review. Regular watches remain stopped; cross-lane
@@ -79,10 +150,11 @@ keeps its original branch. Pre-scope IR/diagnostic fingerprints remain identical
 at 1/2/4 threads: Flat `2ed1e05d2c113015`/346775bytes and Round
 `9a9c29f3ec238440`/184577bytes. Existing post formats and committed goldens are
 unchanged. Same-version legacy output identity is preserved; across releases,
-the generator-version comment changes to0.22.0. The previously accepted ROUGHPATH
+the generator-version comment changes to0.25.0 in the released integration. The previously accepted ROUGHPATH
 rotary correction is already in the baseline, not a new FACING exception.
 
-Under 0048 the family/workspace minor version is 0.22.0. `StrategyInput` adds
+Under 0048 the released family/workspace version is 0.25.0 (the initial draft
+used 0.22.0 before main advanced). `StrategyInput` adds
 `facing: Option<&FacingSetup>`; other strategies and legacy default hosts pass
 None. New/restricted Facing requires whole placed geometry, stock, configured
 tool/machine, held intervals, separate tabs/protections and a source-error bound.
@@ -265,13 +337,17 @@ proxy and CA configuration remain in effect; no proxy or network bypass was used
   here; heavy CI is for Merge Manager release. Existing NFR-12 user verification
   remains required before machining.
 
-## Delivery
+## Initial delivery and release ownership
 
-The draft references all three issues and includes the shared-hook ordering
+The initial draft references all three issues and includes the shared-hook ordering
 above. Human author and committer: Paul Hampson <528002+paulhampson@users.noreply.github.com>, the linked GitHub noreply address for the connected account. GitHub rejected
 the private-email push before publishing it; the unpublished commit was amended
 to this address without changing account privacy settings. Agent credit:
 `Co-Authored-By: Codex <noreply@openai.com>`. Commit/push once for initial delivery;
 report the actual head/PR URL in the draft and its Merge Manager handoff comment.
+The released integration follows the same identity, one combined push, and an
+exact-head comment on PR #365 after all local checks; Merge Manager already
+marked the PR ready in comment 6463173029. AROT follows this 0.25.0 release at
+0.26.0 per comment 6463322786. No new design, OI or schema acceptance is implied.
 Merge Manager owns readiness, ordered main updates and merge. Remain available
 for corrections and batch review fixes under 0055; do not restart regular watches.

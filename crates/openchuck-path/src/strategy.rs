@@ -118,7 +118,7 @@ pub struct StrategyInput<'a> {
     /// Whole placed setup for Facing's model-derived targets and extents.
     /// This is separate from selected/composite surfaces and entry clearance;
     /// it is not a complete-tool safety certificate. None preserves legacy
-    /// whole-stock Facing and all other strategies (decision0244).
+    /// whole-stock Facing and all other strategies (decision0252).
     pub facing: Option<&'a crate::facing::plan::FacingSetup<'a>>,
     /// Model X intervals, as (low, high), that the tool's tip never enters
     /// while it cuts: each held region of the setup widened on both sides by
@@ -341,7 +341,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     ///
     /// This hook cannot mutate the path. Connection between operations and
     /// posting happen later and require any applicable separate validation.
-    /// Owner-approved FACING interface under decision0244 (OP-24/OP-12).
+    /// Owner-approved FACING interface under decision0252 (OP-24/OP-12).
     fn validate_path(
         &self,
         _input: &StrategyInput<'_>,
@@ -455,7 +455,10 @@ fn generate_with(
     context.check_cancelled()?;
     let mid = part_middle(input);
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
-    let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
+    let mut path = {
+        let _timing = context.time_stage("assembly");
+        assemble_with_entry(&passes, input, &common, &entry, context)?
+    };
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes
     // still says it (decision record 0175).

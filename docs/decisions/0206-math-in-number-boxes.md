@@ -22,7 +22,7 @@ Number boxes took a plain number only. The owner asked (F-27) that they accept s
 
 ## Tests
 
-`arith::tests::req_ui_07_*` (grammar, precedence, signs, exponents, determinism, every fault and its message, no panic over every short string and over hostile ones, rounding, plain numbers unchanged, the boxes with their own text) and `shell::numbox_tests::req_ui_07_*` (the reason under the box, the step bar mark until fixed or Esc, a sum shown as its result and not kept, the project unchanged while an entry is unreadable). The existing `req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing` still passes: the reason line replaces the one a refusal already used.
+`arith::tests::req_ui_26_*` (renamed from `req_ui_07_*` by lane GATES, OI-802; grammar, precedence, signs, exponents, determinism, every fault and its message, no panic over every short string and over hostile ones, rounding, plain numbers unchanged, the boxes with their own text) and `shell::numbox_tests::req_ui_26_*` (the reason under the box, the step bar mark until fixed or Esc, a sum shown as its result and not kept, the project unchanged while an entry is unreadable). The existing `req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing` still passes: the reason line replaces the one a refusal already used.
 
 ## Alternatives considered
 

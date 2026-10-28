@@ -1,0 +1,11 @@
+schema = 17
+id = "da33220c-8dd1-43c5-a207-71cf0ed64663"
+order = "V"
+name = "Finish"
+setup = "bcb40180-2d31-4966-a516-a9617b06d3d6"
+strategy = "axial_finishing"
+tool = "5f0c2d1e-7a3b-4c6d-8e9f-0000000000e2"
+selections = []
+
+[parameters]
+max_x_step = 3.0

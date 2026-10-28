@@ -319,7 +319,7 @@ pub fn parameter_form(
     })
 }
 
-// Canonical model faces use the same fixed order as 0244/SideSelection.
+// Canonical model faces use the same fixed order as 0252/SideSelection.
 // Show the actual machine sense, leaving the face name alone if it is unknown.
 fn facing_face_label(project: &Project, strategy: &str, name: &str) -> Option<String> {
     if strategy != openchuck_path::facing::NAME {

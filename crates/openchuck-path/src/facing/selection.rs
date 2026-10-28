@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Ordered indexed box faces and model-derived offsets (OP-24; decision0244).
+//! Ordered indexed box faces and model-derived offsets (OP-24; decision0252).
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::units::Degrees;

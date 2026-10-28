@@ -91,6 +91,7 @@ pub(crate) fn fit_curve(
         pieces.push(current);
     }
 
+    let _timing = context.time_stage("fitting");
     context.report(
         &format!("{label}: fitting the path"),
         0,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Independent geometric oracles for accepted decision 0244 (OP-24).
+//! Independent geometric oracles for accepted decision 0252 (OP-24).
 #![allow(clippy::float_cmp)] // Exact end-frame integer extrema/defaults are required.
 
 use openchuck_path::Solid;

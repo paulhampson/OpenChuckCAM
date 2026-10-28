@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Ordered indexed-face controls (OP-24, UI-07/26; decision0244).
+//! Ordered indexed-face controls (OP-24, UI-07/26; decision0252).
 //! Persistence is one validated parent parameter edit, never exposed JSON.
 
 use eframe::egui::{self, RichText};

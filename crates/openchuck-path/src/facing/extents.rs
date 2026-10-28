@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Whole-stock, part and part-plus-tabs coverage (OP-24; decision0244).
+//! Whole-stock, part and part-plus-tabs coverage (OP-24; decision0252).
 //! The caller supplies tabs separately from held solids: extent membership
 //! never changes either kind's protection during generation or simulation.
 

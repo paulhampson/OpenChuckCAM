@@ -1,11 +1,26 @@
 # Changelog
 
+## 0.23.0
+
+- STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
+
+## 0.22.0
+
+- GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
+
+
 All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
-- Version 0.22.0 with the library family for FACING (decision0244). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
 
+
+- Breaking (0.24.0): `ConvertOptions` adds `short_blocks` and `feed_decimals`. Hosts use disabled defaults for legacy behaviour. `PostOutput`/`MachineProgram` return demand reports and an adjusted verification path. `PostOptions` accepts optional per-field overrides.
+
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
+- Correct XYZ at the written rotary angle before linear rounding, retaining the existing precision and replay error budget (issue #324).
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Fix the Makera Z1's A-coordinate adjustment after `G92.4 A0 S0` at exactly +360 or -360 degrees (GC-04/09, decision 0241, #292). Firmware retains these values; following absolute A words now retain that offset too, avoiding an unintended full turn. The command remains a non-moving whole-turn counter reset, not a change to the saved work offset.

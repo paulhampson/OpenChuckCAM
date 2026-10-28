@@ -1,17 +1,31 @@
 # Changelog
 
+## 0.23.0
+
+- STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
+
+## 0.22.0
+
+- Lockstep library-family version for GC-17’s machine-profile and post API additions (accepted decision 0222, lane GATES). Path geometry and G-code replay behavior are unchanged.
+
+
 All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
-- FACING (OP-24, accepted0244): unheld-end flank facing and indexed box sides, four independent selections/All four plus ordered arbitrary A faces, model-derived or explicit per-face offsets, full/equal side stepdowns, projected stock/part/part-plus-tabs extents and zero-default margin. Existing Flat/Round whole-stock defaults retain their original roughing/layer branch and output fingerprints.
+- FACING (OP-24, accepted0252): unheld-end flank facing and indexed box sides, four independent selections/All four plus ordered arbitrary A faces, model-derived or explicit per-face offsets, full/equal side stepdowns, projected stock/part/part-plus-tabs extents and zero-default margin. Existing Flat/Round whole-stock defaults retain their original roughing/layer branch and output fingerprints.
 - Independent final validation checks actual assembled and connected machine/rapid/tool/part/protection/shank motion, layer engagement including cutter overlap, and complete requested coverage. End uses finite axial slices/flute bands and cylindrical-tab tangent views; alternate slice view order retains controller phase while bands remain top first. Prior removal includes provable finite flute capsules, without treating rapid motion as cutting. Unsupported geometry/precision refuses without a usable partial result.
 - Restricted legacy Flat coalesces actual finishing sweeps; restricted Round proves full-circumference axial coverage over every affine helix phase slab. Unfinished or unsupported raised composite-target regions refuse explicitly. New End/Box stock-edge extension requests currently refuse; legacy extension distances and protection rules are unchanged. Exact placed triangles and a supported flat tool are required by the new final proofs; unknown STEP projection accuracy is not treated as zero.
 - `Facing::validate_group` lets hosts recheck contextual nominal groups using retained generation geometry. It does not replace written/controller verification. The application separately verifies both decimal post words and binary32 modal replay.
 - Owner-approved optional internal Facing scope limits Flat cut lines per A or Round's axial span while retaining original stock and stock-history bounds. No-scope legacy fingerprints match at1/2/4 threads.
 - `Strategy::validate_path` is a provided no-op hook called once after final assembly/checks/diagnostics on all generation routes; error/cancellation prevents usable return. FINSTEP's zoned-result and warning seam is unchanged.
-- **Breaking (0.22.0, FACING):** `StrategyInput` adds `facing: Option<&FacingSetup>` for whole placed part, stock, tool/machine and separate tab/held protections. Existing hosts use `None`; restricted extents/new modes require the context. Provided `Strategy::schema_for` / `resolve_parameters` select active fields/defaults while retaining inactive stored edits in the host. FACING delivers these hooks/common host wiring before FINSTEP consumes their merged interfaces; FINSTEP owns adaptive overrides. No project-schema migration.
+- **Breaking (0.25.0, FACING):** `StrategyInput` adds `facing: Option<&FacingSetup>` for whole placed part, stock, tool/machine and separate tab/held protections. Existing hosts use `None`; restricted extents/new modes require the context. Provided `Strategy::schema_for` / `resolve_parameters` select active fields/defaults while retaining inactive stored edits in the host. FACING delivers these hooks/common host wiring before FINSTEP consumes their merged interfaces; FINSTEP owns adaptive overrides. No project-schema migration.
 
+
+- RAMPBUDGET (#343, accepted decision 0248): certify optional reversing ramps with bounded adaptive continuous-envelope intervals and operation-scoped exact whole-target query reuse. Deep entries in the regression matrix now certify within the unchanged entry limits. Preserve motion, stock-clear start, full-tool/protected/machine checks, cancellation and option-off output. Public APIs and project format are unchanged; no library version is selected by this lane.
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
+- Report optional fitting and assembly scope durations to the host for STEPALL-M measurements; timing does not affect generated paths. Axial/indexed quiet pass contexts forward opted-in timing callbacks while keeping their inner progress counts suppressed.
 - **Breaking (0.21.0, ROUGHPATH):** `StrategyInput` adds `entry_safety: Option<&EntrySafety>`; hosts without optional reversing ramp support pass `None`. `EntryParameters` adds `back_and_forth`, false by default. To support it, supply the whole mesh target, protected solids, complete convex cutter/shank body, matching machine profile and `RotaryPrecision` valid for all output posts. The certificate reserves written coordinate precision and controller float uncertainty. Hosts must write at least three XYZ/A decimals and, for `Float32`, bound connection/reset offsets from certified canonical A to 720 degrees or recertify the contextual path. Missing or unsupported certificates refuse the enabled option. `program::connect_group` assembles explicit timed inter-operation links from canonical groups; never reconnect a previously connected group as canonical input.
 - Optional `ramp_back_and_forth` uses a verified corridor of at least one cutting diameter, fixed A, plunge feed and bounded/cancellable descending legs. Original single-line behavior is retained when absent/false. Roughing uses clearance-height links for this option; no low-link shortcut is used before the stock-clear approach.
 

@@ -1682,6 +1682,7 @@ impl Shell {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
+        let new_project = matches!(dialog, Dialog::Folder { create: true, .. });
         let mut close = false;
         let mut form_submit = false;
         let mut form_browse = false;
@@ -1916,12 +1917,21 @@ impl Shell {
             return;
         }
         if form_submit {
+            if new_project {
+                // OK explicitly accepts this dialog's values; its own
+                // validation has already decided whether OK is enabled.
+                crate::pending_edits::clear(ctx);
+            }
             if !self.defer(Self::accept_form_dialog) {
                 self.accept_form_dialog();
             }
             return;
         }
         if close {
+            if new_project {
+                // Cancel explicitly abandons this dialog's input.
+                crate::pending_edits::clear(ctx);
+            }
             let deferred_ctx = ctx.clone();
             if !crate::pending_edits::entries(ctx).is_empty() {
                 self.defer(move |s| {
