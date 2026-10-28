@@ -237,7 +237,7 @@ fn corpus_cone() -> ExactFace {
 }
 
 #[test]
-fn req_imp_02_oi_839_closest_of_a_point_on_the_cone_rim_is_itself() {
+fn req_imp_02_closest_of_a_point_on_the_cone_rim_is_itself() {
     let f = corpus_cone();
     let mut worst = (0.0_f64, 0.0_f64);
     // The rim's tessellation vertices: on the circle z = 0 of radius 12, in
@@ -780,4 +780,69 @@ fn req_imp_02_a_model_query_answers_beside_a_loop_off_its_face_box() {
             .fold(f64::INFINITY, f64::min);
         assert!((all.unwrap().point.distance(q) - best).abs() < 2e-6);
     }
+}
+
+#[test]
+fn req_imp_02_a_patch_with_a_full_multiplicity_knot_still_finds_its_closest_point() {
+    // A ruled patch whose interior u knot has multiplicity two, above its
+    // degree: the surface jumps there. Each span is still a Bezier piece, so
+    // the cells hold it; the grid search of before missed its nearest point
+    // (4.34 mm against a sample at 3.74 mm).
+    let mut poles = Vec::new();
+    for (i, x) in [0.0, 10.0, 10.0, 20.0].iter().enumerate() {
+        for j in 0..3 {
+            let z = if i == 2 { 4.0 } else { 0.0 } + f64::from(j) * 0.5;
+            poles.push(p3(*x, 6.0 * f64::from(j), z));
+        }
+    }
+    let patch = BSplinePatch {
+        degree_u: 1,
+        degree_v: 2,
+        knots_u: vec![0.0, 0.0, 0.5, 0.5, 1.0, 1.0],
+        knots_v: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        poles_u: 4,
+        poles_v: 3,
+        poles,
+        weights: vec![1.0; 12],
+    };
+    let f = face(
+        Surface::BSpline(patch),
+        [0.0, 1.0, 0.0, 1.0],
+        &[],
+        one_triangle(p3(0.0, 0.0, 0.0), p3(20.0, 0.0, 0.0), p3(0.0, 12.0, 0.0)),
+    );
+    let Ok(f) = ExactFace::new(&f) else {
+        // A patch the evaluator refuses is not this test's concern.
+        return;
+    };
+    let mut seed = 13;
+    for _ in 0..30 {
+        let q = p3(
+            25.0 * lcg(&mut seed) - 2.0,
+            14.0 * lcg(&mut seed) - 1.0,
+            10.0 * lcg(&mut seed) - 3.0,
+        );
+        let got = f.closest(q).unwrap();
+        let want = sampled(&f, &[], q);
+        assert!(
+            got.distance <= want + 1e-7,
+            "{} against {want}",
+            got.distance
+        );
+    }
+}
+
+#[test]
+fn req_nfr_07_reach_queries_refuse_invalid_input() {
+    let source = BrepSurface::new(&spread_model()).unwrap();
+    let nan = p3(f64::NAN, 0.0, 0.0);
+    assert!(source.faces_near(nan, 1.0).is_empty());
+    assert!(source.faces_near(p3(0.0, 0.0, 0.0), f64::NAN).is_empty());
+    let line = ToolLine {
+        origin: nan,
+        axis: UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap(),
+    };
+    assert!(source.faces_in_reach(&ball(1.0), &line).is_empty());
+    assert!(source.project_within(nan, 1.0).is_none());
+    assert!(source.project_within(p3(0.0, 0.0, 0.0), f64::NAN).is_none());
 }

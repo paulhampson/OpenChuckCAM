@@ -56,7 +56,7 @@ fn worst(part: &str, kind: SurfaceKind) -> (f64, f64, usize) {
 }
 
 #[test]
-fn req_imp_02_oi_839_corpus_cone_vertices_lie_on_their_face() {
+fn req_imp_02_corpus_cone_vertices_lie_on_their_face() {
     let (own, whole, n) = worst("cone", SurfaceKind::Cone);
     assert!(n > 1000, "{n} vertices");
     assert!(
@@ -70,7 +70,7 @@ fn req_imp_02_oi_839_corpus_cone_vertices_lie_on_their_face() {
 }
 
 #[test]
-fn req_imp_02_oi_839_corpus_torus_vertices_lie_on_their_face() {
+fn req_imp_02_corpus_torus_vertices_lie_on_their_face() {
     let (own, whole, n) = worst("shouldered_shaft", SurfaceKind::Torus);
     assert!(n > 1000, "{n} vertices");
     assert!(

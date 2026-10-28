@@ -326,22 +326,29 @@ fn pieces(knots: &[f64], p: usize, ctrl: &[Hom], cuts: &[f64]) -> Vec<(f64, f64,
             insert(&mut k, p, &mut c, t);
         }
     }
-    // Each interior break now has multiplicity p and the ends p + 1, so the
-    // pieces share end points; anything else (an interior knot of higher
-    // multiplicity, ends not clamped exactly) is not split here.
-    if c.len() != (breaks.len() + 1) * p + 1 || k.len() != c.len() + p + 1 {
-        return Vec::new();
-    }
+    // Each interior break now has multiplicity at least p, so on each span
+    // the p + 1 basis functions that do not vanish are the Bernstein
+    // polynomials over it, and their control points are the span's Bezier
+    // piece. A span whose knots do not show that (ends not clamped exactly)
+    // gives no pieces, and the face keeps its grid search.
     let mut edges = vec![lo];
     edges.extend(breaks);
     edges.push(hi);
     let mut out = Vec::new();
-    for (i, w) in edges.windows(2).enumerate() {
+    for w in edges.windows(2) {
         let (Some(&t0), Some(&t1)) = (w.first(), w.get(1)) else {
             continue;
         };
-        if let Some(seg) = c.get(i * p..=i * p + p) {
-            out.push((t0, t1, seg.to_vec()));
+        // The span: the last knot at t0.
+        let Some(s) = k.iter().rposition(|&x| x.total_cmp(&t0).is_eq()) else {
+            return Vec::new();
+        };
+        let bezier = s >= p
+            && (s + 1 - p..=s).all(|i| k.get(i).is_some_and(|x| x.total_cmp(&t0).is_eq()))
+            && (s + 1..=s + p).all(|i| k.get(i).is_some_and(|x| x.total_cmp(&t1).is_eq()));
+        match s.checked_sub(p).and_then(|first| c.get(first..=s)) {
+            Some(seg) if bezier => out.push((t0, t1, seg.to_vec())),
+            _ => return Vec::new(),
         }
     }
     out

@@ -16,7 +16,7 @@ Decision 0211 measured an exact ball drop built on the historical queries at 1.1
 
 The corpus cone's large-end face (`cone.step`, face 0) has a trim loop that is its parameter box: four points, so the whole large rim is **one segment** from u = 2 pi back to u = 0. A rim vertex projects to v just above 0, outside the box by rounding, so the closest point is the closest point of the boundary. The boundary search sampled each segment at nine points and refined about the nearest sample; on a segment whose image closes on itself the samples at t = 0 and t = 1 are the same point, the tie went to t = 0, and the refinement bracketed the wrong end of the circle. A seam point then beat it. `shouldered_shaft.step`'s torus has the same defect (14 vertices, up to 3.42 mm), which the benchmark below found.
 
-Regressions, both failing on `33a835d` before the fix: `req_imp_02_oi_839_closest_of_a_point_on_the_cone_rim_is_itself` (`crates/openchuck-path/tests/brep_queries.rs`, the face rebuilt from the importer's data, no kernel; 4.64 mm before) and `req_imp_02_oi_839_corpus_cone_vertices_lie_on_their_face` / `..._torus_...` (`crates/openchuck-app/tests/step_queries.rs`, kernel; 4.163 mm and 3.421 mm before, under 1e-6 mm after, asked of the face and of the whole part).
+Regressions, both failing on `33a835d` before the fix: `req_imp_02_closest_of_a_point_on_the_cone_rim_is_itself` (`crates/openchuck-path/tests/brep_queries.rs`, the face rebuilt from the importer's data, no kernel; 4.64 mm before) and `req_imp_02_corpus_cone_vertices_lie_on_their_face` / `req_imp_02_corpus_torus_vertices_lie_on_their_face` (`crates/openchuck-app/tests/step_queries.rs`, kernel; 4.163 mm and 3.421 mm before, under 1e-6 mm after, asked of the face and of the whole part).
 
 ## Decision
 
@@ -29,7 +29,7 @@ All in `openchuck-path` (`brep.rs` and the new `brep/bound.rs`, `brep/hull.rs`, 
    - **Seed.** `ExactFace::closest_from(point, seed, max)` starts the Newton search from a (u, v) (the face position of the tessellation's contact, or of the previous answer along a tool line); `BrepSurface::project_from(point, hint, max)` asks the hint's face first. The answer is the same with any seed: the seed only gives the search a near answer early. This is the correctness-preserving fallback #348 asks for: the cells, not the seed, decide.
    - **Budget.** At or near a focal point (a point on the axis of a concave fillet of the same radius, the centre of a sphere, a point about 1 mm off a blade's tightly curved edge) a whole region is almost equally far, and no convex-hull bound separates it cell by cell. The search stops after 4,096 cells there with the best answer found, within the remaining gap of the cells' bounds; on the blisk that gap was at most 1.3e-5 mm (OI-1041, and the benchmark below).
 4. **Faces within reach.** `ExactFace::closest_within(point, max)` and `BrepSurface::project_within(point, max)` answer only within a limit, and a model query now starts from an upper bound before any face is searched: the nearest image of a loop segment's middle over the faces whose box is near enough (every one is a point of a face). Faces are then visited nearest box first, each passed the best distance so far. `BrepSurface::faces_near(point, reach)` and `faces_in_reach(profile, line)` list the faces whose box comes within `reach`, or within the tool's largest radius of the tool line (the exact distance from the line to the box, through the hull of its eight corners projected across the line). The tool lies within its largest radius of its axis and each face in its box, so a face left out cannot be touched anywhere on the line. The model query's starting bound is never below the face's own box distance (a loop can stray off its face's surface box), and if nothing is found within it the faces are searched again within the caller's limit; a regression test covers a loop off its box, and the benchmark found one such point on `filleted_box` before this was added. To make the reach bound hold for analytic faces too, their boxes now add a margin of half a sampling step weighted by the speed bounds (they were a sampled box widened by 2 %, which held the samples, not provably the face).
-5. **Determinism, errors, cancellation.** Everything is single-threaded and ordered by bound then by a push counter or index, so answers are the same on every thread and run (NFR-06; tested). A point or limit that is not a number, or a negative limit, gives no answer, not a panic (NFR-07; tested); a patch whose knots cannot be split exactly keeps the previous grid search. Each query is bounded (the cell budget, 40 splits beyond a stored cell, 4,096 pieces a segment), so the callers' existing cancellation checks between drops stay sufficient; no query takes a cancel token.
+5. **Determinism, errors, cancellation.** Everything is single-threaded and ordered by bound then by a push counter or index, so answers are the same on every thread and run (NFR-06; tested). A point or limit that is not a number, or a negative limit, gives no answer, not a panic (NFR-07; tested); a patch whose knot vector does not show its Bezier spans exactly (ends not clamped to the same value) keeps the previous grid search. A patch that jumps at an interior knot of multiplicity above its degree is split like any other; the grid search had missed such a patch's nearest point (a test covers it). Each query is bounded (the cell budget, 40 splits beyond a stored cell, 4,096 pieces a segment), so the callers' existing cancellation checks between drops stay sufficient; no query takes a cancel token.
 
 ### Benchmark
 
@@ -41,41 +41,41 @@ Full output, commands, binary and input hashes: [0260-benchmark-evidence.txt](02
 
 | Part | `on` before | after | `off` before | after | `model` before | after | `mesh` drop | `drop` probe before | after |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **blisk** | 2,843 | 42.3 | 1,938 | 54.2 | **44,394** | **258** | 49.9 | **728,816** | **12,506** |
-| box | 20.2 | 1.1 | 18.6 | 0.5 | 67.3 | 2.0 | 7.7 | 1,136 | 29 |
-| cylinder | 181.5 | 7.8 | 182.8 | 12.0 | 380.1 | 4.4 | 39.7 | 7,638 | 196 |
-| cone | 67.3 | 1.7 | 67.1 | 1.1 | 150.2 | 2.1 | 21.0 | 2,786 | 37 |
-| sphere | 0.4 | 0.4 | 0.4 | 0.4 | 0.4 | 0.5 | 29.3 | 8 | 11 |
-| torus | 0.4 | 0.4 | 0.4 | 0.4 | 0.4 | 0.9 | 32.2 | 9 | 14 |
-| filleted_box | 87.7 | 1.7 | 30.8 | 1.3 | 672.9 | 6.1 | 31.4 | 12,762 | 156 |
-| rotary_blank_drilled | 289.7 | 4.5 | 317.4 | 4.5 | 1,089.2 | 8.3 | 101.7 | 16,074 | 135 |
-| bspline_face | 323.4 | 28.9 | 323.3 | 44.7 | 315.5 | 33.6 | 58.5 | 6,517 | 666 |
-| revolved_spline | 621.1 | 91.9 | 615.0 | 136.4 | 646.4 | 119.9 | 29.0 | 12,462 | 2,366 |
-| revolved_spline_partial | 506.7 | 56.4 | 503.6 | 98.3 | 479.7 | 90.9 | 29.5 | 9,663 | 1,870 |
-| extruded_spline | 361.7 | 25.0 | 360.6 | 41.9 | 446.3 | 39.5 | 58.6 | 9,243 | 871 |
-| hex_bar | 18.8 | 0.8 | 19.3 | 0.6 | 78.6 | 2.1 | 13.6 | 1,613 | 44 |
-| shouldered_shaft | 49.4 | 1.6 | 50.0 | 1.5 | 530.4 | 5.6 | 74.2 | 11,082 | 112 |
+| **blisk** | 2,843 | 40.8 | 1,938 | 54.3 | **44,394** | **270.1** | 54.3 | **728,816** | **12,602** |
+| box | 20.2 | 1.0 | 18.6 | 0.5 | 67.3 | 1.9 | 7.4 | 1,136 | 40.2 |
+| cylinder | 181.5 | 3.9 | 182.8 | 3.2 | 380.1 | 4.3 | 24.6 | 7,638 | 78.3 |
+| cone | 67.3 | 2.0 | 67.1 | 1.2 | 150.2 | 2.1 | 20.1 | 2,786 | 36.9 |
+| sphere | 0.4 | 0.4 | 0.4 | 0.4 | 0.4 | 0.6 | 25.3 | 7.9 | 9.1 |
+| torus | 0.4 | 0.4 | 0.4 | 0.4 | 0.4 | 0.6 | 31.9 | 8.8 | 13.1 |
+| filleted_box | 87.7 | 1.1 | 30.8 | 0.8 | 672.9 | 6.0 | 27.3 | 12,762 | 120.4 |
+| rotary_blank_drilled | 289.7 | 6.6 | 317.4 | 6.2 | 1,089 | 11.0 | 109.1 | 16,074 | 154.1 |
+| bspline_face | 323.4 | 25.7 | 323.3 | 40.3 | 315.5 | 32.2 | 58.9 | 6,517 | 636.6 |
+| revolved_spline | 621.1 | 90.8 | 615.0 | 134.0 | 646.4 | 133.1 | 37.3 | 12,462 | 2,594 |
+| revolved_spline_partial | 506.7 | 60.8 | 503.6 | 104.6 | 479.7 | 91.6 | 35.9 | 9,663 | 2,053 |
+| extruded_spline | 361.7 | 27.1 | 360.6 | 45.6 | 446.3 | 42.9 | 57.5 | 9,243 | 816.6 |
+| hex_bar | 18.8 | 0.9 | 19.3 | 0.6 | 78.6 | 2.0 | 14.4 | 1,613 | 42.3 |
+| shouldered_shaft | 49.4 | 1.6 | 50.0 | 1.5 | 530.4 | 5.6 | 76.9 | 11,082 | 113.8 |
 
 **The blisk by face kind**, mean µs before / after (`model` is the whole part asked from points off that kind of face):
 
 | Kind | Points | `on` | `off` | `model` | `model` after, p99 / max |
 | --- | ---: | --- | --- | --- | --- |
-| Blades (B-spline) | 1,674 | 3,663 / 56.6 | 2,398 / 74.0 | 41,287 / 91.8 | 207 / 643 |
-| Cones | 378 | 324 / 3.7 | 15.2 / 0.6 | 61,124 / 188.8 | 3,209 / 3,940 |
-| Cylinders | 211 | 1,369 / 13.9 | 1,676 / 17.5 | 37,663 / 1,836.9 | 4,622 / 4,791 |
-| Planes | 130 | 1,993 / 15.9 | 2,025 / 14.0 | 46,682 / 44.3 | 111 / 136 |
+| Blades (B-spline) | 1,674 | 3,663 / 54.5 | 2,398 / 74.2 | 41,287 / 92.9 | 204.8 / 267.5 |
+| Cones | 378 | 324.2 / 3.8 | 15.2 / 0.7 | 61,124 / 199.7 | 3,521 / 4,113 |
+| Cylinders | 211 | 1,369 / 13.9 | 1,676 / 17.0 | 37,662 / 1,941 | 5,710 / 6,264 |
+| Planes | 130 | 1,993 / 16.2 | 2,025 / 13.0 | 46,682 / 44.5 | 116.6 / 129.0 |
 
-The whole-part query on the blisk has median 86 µs, p90 150 µs, p99 3.9 ms after. Decision 0211's probe has median 1.7 ms, p90 77 ms, max 105 ms per drop after (before: median 816 ms, max 2.7 s); the tessellation drop's median is 48 µs.
+The whole-part query on the blisk has median 87 µs, p90 164 µs, p99 3.9 ms after. Decision 0211's probe has median 1.8 ms, p90 78 ms, max 120 ms per drop after (before: median 816 ms, max 2.7 s); the tessellation drop's median is 52 µs.
 
 **Correctness, answer by answer** (`--compare`, before against after, a difference over 1e-6 mm): no `on`, `off` or `model` answer anywhere is further than before. Nearer: `cone` 13 `on` (up to 4.163 mm, OI-839), 2 `off`, 23 `model` (up to 0.00033 mm); `shouldered_shaft` 14 `on` (up to 3.421 mm, OI-839's torus) and 21 `off` (up to 2.531 mm); `rotary_blank_drilled` 14 `off` (up to 2.852 mm) and 28 `model` (up to 0.0256 mm, the long trim loops of its drilled faces); `cylinder` 14 `model` (up to 0.00023 mm). Every other answer of every part and the blisk agrees within 1e-6 mm. The probe's results move the same way: 11 lines on `cone`, `cylinder` and `rotary_blank_drilled` find the exact contact higher (up to 0.0256 mm) because a nearer face point is now found. The `on` set's remaining "wrong" answers (corpus plane rims up to 0.0256 mm, blisk planes 0.043 mm, `rotary_blank_drilled` cylinder 0.0023 mm) are the same before and after: rim vertices outside the trim polylines, which are coarser than the tessellation (OI-1040), not a search failure.
 
-**The cell budget** was reached 702 times in the blisk run, all on blade faces from points about 1 mm off near their tightly curved edges, close to a focal line; the largest remaining gap was 1.3e-5 mm. With 1,024 cells the probe's mean falls to 4.9 ms and the gap rises to 2.4e-4 mm; with 512, 3.1 ms and 1.2e-3 mm (OI-1041). 4,096 is kept: accuracy first.
+**The cell budget** was reached 702 times in the blisk run, all on blade faces from points about 1 mm off near their tightly curved edges, close to a focal line; the largest remaining gap was 1.3e-5 mm. With 1,024 cells (a separate run of the same source with the budget changed) the probe's mean falls from 12.5 to 4.9 ms and the gap rises to 2.4e-4 mm; with 512, 3.1 ms and 1.2e-3 mm (OI-1041). 4,096 is kept: accuracy first.
 
 ### What the benchmark shows
 
 1. **OI-839 is fixed** and its class with it: the cone's 13 and the torus's 14 rim vertices, and 37 `off` points of the corpus answered up to 2.85 mm too far, are now on their faces; nothing got further.
-2. **The queries are two to three orders of magnitude cheaper on the blisk**: one whole-part query 44.4 ms to 0.26 ms (median 86 µs), one trimmed face query 1.9 to 2.8 ms to 42 to 54 µs. Long-trimmed planes and cylinders, the historical 0.7 ms, now take 14 to 18 µs.
-3. **Against the 2-times objective (decision 0211 item 4, OI-835) an exact drop built naively on these queries is still far out**: decision 0211's probe, 21 unlimited `distance` queries per drop, costs 12.5 ms a drop on the blisk (median 1.7 ms) against a tessellation drop of 50 µs (median 48 µs): about 250 times on the mean, 36 times on the median; before it was about 11,000 times (729 ms against 66 µs). Helical finishing's 256,000 drops would take about 53 minutes of one core at the mean (about 7 minutes at the median), against about 90 hours before. The remaining cost is the probe's design as much as the queries: it asks the whole part without a limit and from no seed, 21 times. STEPALL-X2 has `project_within` (a limit of the ball's radius plus its band prunes all but the faces near the contact), `project_from` (the previous answer along the line as the seed) and `faces_in_reach`, and the budget trade above; whether those bring a drop within 2 times is X2's measurement. Nothing here qualifies performance.
+2. **The queries are two to three orders of magnitude cheaper on the blisk**: one whole-part query 44.4 ms to 0.27 ms (median 87 µs), one trimmed face query 1.9 to 2.8 ms to 41 to 54 µs. Long-trimmed planes and cylinders, the historical 0.7 ms, now take 14 to 18 µs.
+3. **Against the 2-times objective (decision 0211 item 4, OI-835) an exact drop built naively on these queries is still far out**: decision 0211's probe, 21 unlimited `distance` queries per drop, costs 12.6 ms a drop on the blisk (median 1.8 ms) against a tessellation drop of 54 µs (median 52 µs): about 230 times on the mean, 35 times on the median; before it was about 11,000 times (729 ms against 66 µs). Helical finishing's 256,000 drops would take about 54 minutes of one core at the mean (about 8 minutes at the median), against about 90 hours before. The remaining cost is the probe's design as much as the queries: it asks the whole part without a limit and from no seed, 21 times. STEPALL-X2 has `project_within` (a limit of the ball's radius plus its band prunes all but the faces near the contact), `project_from` (the previous answer along the line as the seed) and `faces_in_reach`, and the budget trade above; whether those bring a drop within 2 times is X2's measurement. Nothing here qualifies performance.
 4. **No accuracy claim about contacts follows.** These are query answers checked against the previous code and brute force; tool contacts wait for lane STEPALL-T's checker (#346) and the exact drop (#349).
 
 ## Alternatives considered
