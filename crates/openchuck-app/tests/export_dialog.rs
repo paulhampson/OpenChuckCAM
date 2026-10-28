@@ -1148,6 +1148,12 @@ fn req_gc_05_req_nfr_07_a_template_that_cannot_name_a_file_writes_nothing() {
             "nothing is created before the names are settled"
         );
     }
+    // The same-run sheet, if shown, says why it lists no files.
+    let html = app.setup_sheet_for_run(&run).to_html();
+    assert!(
+        html.contains("The program files could not be named"),
+        "{html}"
+    );
     // One file per setup holds three operations: {operation} has no value.
     let (dir2, mut app2) = project("Unnamed setup", false);
     let run2 = std::sync::Arc::new(post(&mut app2, OutputGrouping::Setup));

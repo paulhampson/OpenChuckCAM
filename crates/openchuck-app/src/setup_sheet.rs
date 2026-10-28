@@ -1481,4 +1481,68 @@ mod tests {
         assert_eq!(FixedClock(at(7)).now(), at(7));
         assert!(SystemClock.now() > at(1_700_000_000));
     }
+
+    /// Issue 309: each step says whether the program changes tool before it;
+    /// a step without a tool shows a dash.
+    #[test]
+    fn req_gc_12_the_operations_table_marks_each_tool_change() {
+        use crate::output_names::ProgramStep;
+        let step = |no: usize, tool: Option<u32>, name: Option<&str>, change: bool| ProgramStep {
+            operation_number: no,
+            operation: format!("Op {no}"),
+            tool_number: tool,
+            tool: name.map(str::to_owned),
+            tool_change: change,
+        };
+        let file = ProgramFile {
+            posted_name: "01-a.nc".into(),
+            name: "a.nc".into(),
+            setup_number: 2,
+            setup: "Side".into(),
+            steps: vec![
+                step(1, Some(3), Some("6 mm flat"), true),
+                step(2, Some(3), Some("6 mm flat"), false),
+                step(3, Some(4), None, true),
+                step(4, None, None, false),
+            ],
+        };
+        let sheet = SetupSheet {
+            title: "t".into(),
+            sections: vec![SheetSection {
+                heading: "Notes".into(),
+                body: SheetBody::Text("n".into()),
+            }],
+        }
+        .with_program_files(&[(&file, b"x")]);
+        let headings: Vec<&str> = sheet.sections.iter().map(|s| s.heading.as_str()).collect();
+        assert_eq!(
+            headings,
+            [
+                "Program files",
+                "File 1: a.nc",
+                "File 1: operations in order",
+                "Notes"
+            ]
+        );
+        assert!(sheet.to_html().contains("<dt>Size</dt><dd>1 byte</dd>"));
+        let SheetBody::Table { rows, .. } = &sheet.sections[2].body else {
+            panic!("a table")
+        };
+        let cells: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|r| (r[3].as_str(), r[4].as_str()))
+            .collect();
+        assert_eq!(
+            cells,
+            [
+                ("T3 6 mm flat", "Change to T3"),
+                ("T3 6 mm flat", "No change"),
+                ("T4", "Change to T4"),
+                ("-", "No change"),
+            ]
+        );
+        assert!(
+            matches!(&sheet.sections[0].body, SheetBody::Text(t) if t.starts_with("One program file was"))
+        );
+    }
 }

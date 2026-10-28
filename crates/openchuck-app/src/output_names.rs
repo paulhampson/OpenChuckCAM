@@ -832,7 +832,8 @@ mod tests {
         let (named, renamed) =
             unique_names(&groups(&[("job", &["nc"]), ("job", &["html", "pdf"])]));
         assert_eq!(named, [vec!["job.nc"], vec!["job.html", "job.pdf"]]);
-        assert!(renamed.is_empty());
+        assert!(renamed.is_empty()); // A post with no extension writes the bare name.
+        assert_eq!(unique_names(&groups(&[("job", &[""])])).0, [vec!["job"]]);
     }
 
     #[test]
