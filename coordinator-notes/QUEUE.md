@@ -476,3 +476,4 @@ WAITING OWNER: accept 0255 (#374 session_017vEinzmWMqPnNgiFcMoT8u), 0260 (#377 s
 28 Oct 22:40 OWNER APPROVED record 0255 (#374) in coordinator session after reading condensed record; relayed to STEPALL-T (relayed acceptance, decision 0049); lane to push status update and tell Merge Manager.
 28 Oct 22:55 OWNER APPROVED record 0260 (#377) in coordinator session; relayed to STEPALL-X1 (relayed acceptance, decision 0049). Remaining to show: 0267 (#376 OUTPUT2), 0272 (#375 BUG-SWARF4).
 28 Oct 23:10 OWNER APPROVED record 0267 (#376) in coordinator session (incl. tensions a, b with option B); relayed to OUTPUT2. Remaining to show: 0272 (#375 BUG-SWARF4).
+28 Oct 23:25 OWNER APPROVED record 0272 (#375) in coordinator session; relayed to BUG-SWARF4. ALL FOUR records (0255, 0260, 0267, 0272) approved and relayed; lanes to push status updates and tell the Merge Manager. Still open: #294 tooltip questions (a-d) to owner; 0256 (STEPALL-T #347 FAIL disposition) when written.
