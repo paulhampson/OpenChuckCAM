@@ -703,3 +703,81 @@ fn req_imp_02_faces_near_a_point_and_limited_projection() {
         }
     }
 }
+
+#[test]
+fn req_imp_02_a_point_on_a_loop_segment_is_answered_on_it() {
+    // A point at the image of a loop segment's middle is the boundary
+    // search's own first bound; it must still be the answer (a seam of the
+    // corpus's rotary blank once came back with none).
+    for (name, f, loops) in kinds() {
+        for l in &loops {
+            for k in (0..l.len()).step_by(7) {
+                let (a, b) = (l[k], l[(k + 1) % l.len()]);
+                let uv = Uv {
+                    u: 0.5 * (a.0 + b.0),
+                    v: 0.5 * (a.1 + b.1),
+                };
+                let Some(p) = f.point_normal(uv) else {
+                    continue;
+                };
+                let c = f.closest(p.point);
+                assert!(
+                    c.is_some_and(|c| c.distance < 1e-9),
+                    "{name}: segment {k} answered {:?}",
+                    c.map(|c| c.distance)
+                );
+            }
+        }
+    }
+    // The seam of the corpus cone's face: a box loop, asked at its middle.
+    let f = corpus_cone();
+    let p = f
+        .point_normal(Uv {
+            u: TAU,
+            v: -15.524_174_696_260_026,
+        })
+        .unwrap();
+    assert!(f.closest(p.point).is_some_and(|c| c.distance < 1e-9));
+}
+
+#[test]
+fn req_imp_02_a_model_query_answers_beside_a_loop_off_its_face_box() {
+    // A trim loop that strays outside its face's parameter box: its points
+    // lie outside the face's surface box, yet bound a whole-model query
+    // (the corpus `filleted_box` once answered nothing there).
+    let mut faces = Vec::new();
+    for (k, (_, mut f, _)) in kind_faces().into_iter().take(2).enumerate() {
+        f.id = FaceId(u32::try_from(k).unwrap());
+        faces.push(f);
+    }
+    // The plane's loop runs 20 mm past its box on one side.
+    faces[0].uv_bounds = [-10.0, 10.0, -8.0, 8.0];
+    faces[0].trims = vec![TrimLoop(
+        [(-9.0, -7.0), (30.0, -7.0), (30.0, 7.0), (-9.0, 7.0)]
+            .iter()
+            .map(|&(u, v)| UvPoint { u, v })
+            .collect(),
+    )];
+    let model = BrepModel {
+        faces,
+        ..BrepModel::default()
+    };
+    let source = BrepSurface::new(&model).unwrap();
+    let mut seed = 77;
+    for _ in 0..200 {
+        let q = p3(
+            60.0 * lcg(&mut seed) - 20.0,
+            40.0 * lcg(&mut seed) - 20.0,
+            20.0 * lcg(&mut seed) - 10.0,
+        );
+        let all = source.project(q);
+        assert!(all.is_some(), "no answer at {q:?}");
+        let best = source
+            .faces()
+            .iter()
+            .filter_map(|f| f.closest(q))
+            .map(|c| c.distance)
+            .fold(f64::INFINITY, f64::min);
+        assert!((all.unwrap().point.distance(q) - best).abs() < 2e-6);
+    }
+}

@@ -20,20 +20,29 @@
 //!   parameters (u of every revolved surface, v of the torus) are wrapped
 //!   into the face's parameter box, and the loops are also tested shifted by
 //!   one period, so a face that straddles the seam is classified correctly.
-//!   A face with no loops is its whole parameter box.
-//! - The closest point of a trimmed face is the closed-form or iterated
+//!   A face with no loops is its whole parameter box. The loop segments
+//!   are bucketed in strips of v, so a test reads only its strip's segments
+//!   (the `trim` module; lane STEPALL-X1, decision 0260).
+//! - The closest point of a trimmed face is the closed-form or searched
 //!   closest point of the surface when that lies on the face, otherwise the
-//!   closest point on the trim loops (the polylines, mapped to the surface:
-//!   as accurate as the polylines are, which is the import's tolerance).
-//! - B-spline closest points seed from the parameter grid, from its local
-//!   minima and from the nearest tessellation vertex, run a damped
-//!   (Levenberg-Marquardt) Gauss-Newton clamped to the parameter box, and
-//!   finish with a derivative-free pattern search. The damping and the
-//!   search deal with singular parametrisations such as the poles of a
-//!   sphere (OI-72: undamped Gauss-Newton stalled there, worst 0.48 mm).
+//!   nearer of the face's inside points and the closest point on the trim
+//!   loops (the polylines, mapped to the surface: as accurate as the
+//!   polylines are, which is the import's tolerance). The loops are searched
+//!   by a branch and bound on each segment image's bounds (a ball from the
+//!   surface's speed bounds and a capsule about its chord from its second
+//!   derivative bounds), which cannot pick the wrong end of a segment that
+//!   closes on itself (OI-839).
+//! - B-spline closest points are a branch and bound over a tree of Bezier
+//!   cells (the `hull` module), each held by the boxes of its control points,
+//!   to [`SEARCH_TOLERANCE`]; a damped (Levenberg-Marquardt) Gauss-Newton
+//!   from promising cells tightens the bound, and the answer is refined by it
+//!   and, near a pole, by a derivative-free pattern search and the parameter
+//!   grid's seeds (OI-72: undamped Gauss-Newton stalled there, worst 0.48
+//!   mm). A seed only speeds the search up; the cells decide the answer.
 //! - Face bounding boxes are conservative: the control-point hull for
-//!   B-splines, a sampled box widened by 2 % of its diagonal for analytic
-//!   faces. They only prune; answers do not depend on them.
+//!   B-splines, a sampled box widened by 2 % of its diagonal or by half a
+//!   sampling step weighted by the speed bounds, whichever is more, for
+//!   analytic faces. They only prune; answers do not depend on them.
 //! - Everything is deterministic and single-threaded (NFR-06).
 //!
 //! # Tool drops
@@ -1258,6 +1267,7 @@ impl ExactFace {
                     (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
                     (a, b) => a.or(b),
                 }
+                .map(|c| self.refine(n, point, c))
             }
             (Geometry::Nurbs(n, g), None) => {
                 let mut cands = self.nurbs_candidates(n, g, point);
@@ -1289,6 +1299,36 @@ impl ExactFace {
         })
     }
 
+    /// The searches' answer `(distance, u, v)` is good to their tolerance: a
+    /// Newton search from it, and near a singular point of the
+    /// parametrisation (a pole, where Newton stalls: OI-72) the pattern
+    /// search, pin it down, kept where they gain and stay on the face.
+    fn refine(&self, n: &Nurbs, q: Point3, c: (f64, f64, f64)) -> (f64, f64, f64) {
+        let mut best = c;
+        let keep = |d: f64, u: f64, v: f64, best: &mut (f64, f64, f64)| {
+            if d < best.0 && self.contains(Uv { u, v }) {
+                *best = (d, u, v);
+            }
+        };
+        let (u, v, d) = self.lm_closest(n, q, best.1, best.2);
+        keep(d, u, v, &mut best);
+        let near_pole = n.d1(best.1, best.2).is_none_or(|(_, du, dv)| {
+            du.length() <= 1e-2 * n.scale_u || dv.length() <= 1e-2 * n.scale_v
+        });
+        if near_pole {
+            let (u, v, d) = self.polish(q, best.1, best.2);
+            keep(d, u, v, &mut best);
+            // From the grid's seeds as well, which reach the pole from the
+            // side of the nearest regular points.
+            if let Geometry::Nurbs(_, g) = &self.geometry {
+                for (d, u, v) in self.nurbs_candidates(n, g, q) {
+                    keep(d, u, v, &mut best);
+                }
+            }
+        }
+        best
+    }
+
     /// The nearest point of a B-spline face's inside (within its trims) to
     /// `q`, no further than `limit`: a branch and bound over the face's
     /// cells. A cell is passed over when its lower bound is within
@@ -1307,12 +1347,11 @@ impl ExactFace {
         seed: Option<Uv>,
     ) -> Option<(f64, f64, f64)> {
         let mut best: (f64, f64, f64) = (limit, f64::NAN, f64::NAN);
-        let mut found = false;
         let trimmed = !self.loops.is_empty();
-        let mut offer = |d: f64, u: f64, v: f64, best: &mut (f64, f64, f64)| {
+        // (u, v) stay not-a-number until something on the face is found.
+        let offer = |d: f64, u: f64, v: f64, best: &mut (f64, f64, f64)| {
             if d < best.0 && d.is_finite() && self.contains(Uv { u, v }) {
                 *best = (d, u, v);
-                found = true;
             }
         };
         if let Some(s) = seed
@@ -1407,7 +1446,10 @@ impl ExactFace {
                 });
             }
         }
-        found.then_some(best)
+        if best.1.is_nan() {
+            return None;
+        }
+        Some(best)
     }
 
     /// The closest point on the trim loops (the box for an untrimmed face)
@@ -1415,9 +1457,17 @@ impl ExactFace {
     /// bound is no nearer than the best answer so far are skipped (see the
     /// `trim` module), and each segment left is searched by its own bound.
     fn boundary_closest(&self, q: Point3, limit: f64) -> Option<(f64, f64, f64)> {
-        let limit = limit.min(self.trim.nearest_centre(q) + SEARCH_TOLERANCE);
-        // The best (distance, u, v, t) and its segment.
+        // The image of the nearest segment middle is a point of the
+        // boundary: the answer to beat, and the answer if nothing does.
         let mut best: Option<(Found, &trim::Segment)> = None;
+        if let Some((d, i)) = self.trim.nearest_centre(q)
+            && d <= limit
+            && let Some(seg) = self.trim.segments.get(i)
+        {
+            let (u, v) =
+                self.clamp_search_if_nurbs(0.5 * (seg.a.0 + seg.b.0), 0.5 * (seg.a.1 + seg.b.1));
+            best = Some(((d, u, v, 0.5), seg));
+        }
         for (lower, i) in self.trim.candidates(q, limit) {
             let bound = best.map_or(limit, |b| b.0.0);
             if lower >= bound - SEARCH_TOLERANCE {
@@ -1553,7 +1603,7 @@ impl ExactFace {
     /// The distance from `q` to a point of the face's boundary (the image
     /// of a loop segment's middle): no nearer than the face's answer.
     fn boundary_bound(&self, q: Point3) -> f64 {
-        self.trim.nearest_centre(q)
+        self.trim.nearest_centre(q).map_or(f64::INFINITY, |c| c.0)
     }
 
     /// The surface point at (u, v), clamped to the search box for a
@@ -2212,30 +2262,41 @@ impl BrepSurface {
             .filter(|(d, _)| *d <= limit)
             .collect();
         order.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        // Every face's boundary holds points of the face, so the nearest of
-        // them bounds the answer before any face is searched: a far face
-        // met first is then passed over at its bounds.
-        let mut limit = limit;
+        // The boundary points of the faces (trim loop middles) bound the
+        // answer before any face is searched, so a far face met first is
+        // passed over at its bounds. A trim loop can stray off its face's
+        // surface box, so when nothing is found within that bound the faces
+        // are searched again within the caller's limit.
+        let mut tight = limit;
         for &(lower, i) in &order {
-            if lower > limit {
+            if lower > tight {
                 break;
             }
+            // Never below the face's own box distance, so the face whose
+            // boundary gave the bound is searched and can answer it.
             if let Some(f) = self.faces.get(i) {
-                limit = limit.min(f.boundary_bound(point));
+                tight = tight.min(f.boundary_bound(point).max(lower));
             }
         }
-        for (lower, i) in order {
-            let bound = best.as_ref().map_or(limit, |b| b.distance.min(limit));
-            if lower > bound {
-                break;
+        for pass_limit in [tight, limit] {
+            for &(lower, i) in &order {
+                let bound = best
+                    .as_ref()
+                    .map_or(pass_limit, |b| b.distance.min(pass_limit));
+                if lower > bound {
+                    break;
+                }
+                if let Some(c) = self
+                    .faces
+                    .get(i)
+                    .and_then(|f| f.closest_within(point, bound))
+                    && best.as_ref().is_none_or(|b| c.distance < b.distance)
+                {
+                    best = Some(c);
+                }
             }
-            if let Some(c) = self
-                .faces
-                .get(i)
-                .and_then(|f| f.closest_within(point, bound))
-                && best.as_ref().is_none_or(|b| c.distance < b.distance)
-            {
-                best = Some(c);
+            if best.is_some() || tight >= limit {
+                break;
             }
         }
         best

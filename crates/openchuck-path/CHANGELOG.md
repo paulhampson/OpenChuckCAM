@@ -13,6 +13,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- STEPALL-X1 (issue #348, proposed decision 0260): exact face and trim queries. `ExactFace::closest` no longer answers a point on a face's own boundary on the wrong edge (OI-839: a seam face's rim was one segment whose ends meet, and the sample search bracketed the wrong end). Trim loops are indexed (strips in v for the trim test; per-segment bounds from first- and second-derivative bounds for the boundary search), B-spline faces search a tree of Bezier hull cells (branch and bound to `brep::SEARCH_TOLERANCE`, 1e-6 mm), and faces are visited from a boundary-point upper bound. Additive API: `ExactFace::closest_within` / `closest_from`, `BrepSurface::project_within` / `project_from` / `faces_near` / `faces_in_reach`. Answers are never further than before on the corpus and blisk benchmark; tool drops still use the tessellation (OI-81).
+
 - FACING review fixes: preserve cancellation from restricted legacy Flat completion; describe End/Box, arbitrary A and coverage choices in strategy metadata. Completion still refuses every other unfinished/unsupported result with its existing reason.
 
 - FACING CI regression: compare default Flat/Round IR and diagnostics byte-for-byte against a frozen pre-scope entry computed in the same process at 1/2/4 threads. Native full-precision Round JSON fingerprints are diagnostic, not a cross-platform oracle; no production geometry, post, tolerance or golden fixture changes.

@@ -217,11 +217,7 @@ impl TrimIndex {
     /// The segments whose image may lie nearer `q` than `limit`, nearest
     /// bound first, with that bound: `(bound, segment)`. Ties go by
     /// segment order, so the order is deterministic.
-    pub fn candidates(
-        &self,
-        q: openchuck_types::geometry::Point3,
-        limit: f64,
-    ) -> Vec<(f64, usize)> {
+    pub fn candidates(&self, q: Point3, limit: f64) -> Vec<(f64, usize)> {
         let mut out: Vec<(f64, usize)> = self
             .segments
             .iter()
@@ -235,12 +231,17 @@ impl TrimIndex {
         out
     }
 
-    /// The nearest segment centre: an upper bound on the distance from `q`
-    /// to the loops, since every centre is a point of their image.
-    pub fn nearest_centre(&self, q: openchuck_types::geometry::Point3) -> f64 {
+    /// The nearest segment centre and its segment: the distance bounds the
+    /// distance from `q` to the loops, since every centre is a point of
+    /// their image. Ties go to the first segment.
+    pub fn nearest_centre(&self, q: Point3) -> Option<(f64, usize)> {
         self.segments
             .iter()
-            .map(|s| q.distance(s.centre))
-            .fold(f64::INFINITY, f64::min)
+            .enumerate()
+            .map(|(i, s)| (q.distance(s.centre), i))
+            .fold(None, |best: Option<(f64, usize)>, c| match best {
+                Some(b) if b.0 <= c.0 => Some(b),
+                _ => Some(c),
+            })
     }
 }

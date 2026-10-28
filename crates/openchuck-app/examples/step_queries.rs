@@ -23,6 +23,15 @@
 //! - `model`: the `off` points of every face, asked of the whole model with
 //!   `BrepSurface::distance`, as a ball drop asks (decision 0211, M3 item 1).
 //!
+//! - `mesh` and `drop`: every eighth `off` point's vertex, a ball of radius
+//!   `--offset` dropped along the vertex normal onto the tessellation
+//!   (`BrepSurface::drop_tool`, the product's drop today; its time, and the
+//!   tip offset as the "distance"), then decision 0211's exact probe (M3 item
+//!   1): 20 halvings of a 0.05 mm band about that offset on the ball centre's
+//!   `BrepSurface::distance` (its time, and how far the exact contact lies
+//!   from the tessellation's). The probe ignores the flutes; it measures what
+//!   an exact drop built on these queries costs, not lane STEPALL-X2's design.
+//!
 //! Every answer is written to `DIR/<part>.tsv` (set, face, kind, vertex
 //! index, the point, the distance, nanoseconds), so two runs compare
 //! answer by answer; a summary per part, set and face kind is printed. A run
@@ -49,14 +58,38 @@ use std::time::Instant;
 use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
 use openchuck_path::surface::ParametricFace;
-use openchuck_path::{BrepSurface, SurfaceSource};
+use openchuck_path::{BrepSurface, SurfaceSource, ToolLine};
 use openchuck_types::brep::BrepModel;
-use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::model::ModelGeometry;
+use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, RevolvedProfile, ToolProfile};
 
 /// A vertex answered further than this, mm, from its own face is wrong.
 const FLAG: f64 = 1e-3;
+
+/// Every this many `off` points, a ball drop is timed (`mesh`, `drop`).
+const DROP_STRIDE: usize = 8;
+
+/// Half the band, mm, of the exact probe about the tessellation's drop.
+const BAND: f64 = 0.05;
+
+/// A ball end of radius `r` with straight flutes `4 r` long.
+fn ball(r: f64) -> RevolvedProfile {
+    ToolProfile {
+        segments: vec![
+            ProfileSegment::Arc {
+                to: ProfilePoint::new(r, r),
+                centre: ProfilePoint::new(0.0, r),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(r, 4.0 * r),
+            },
+        ],
+    }
+    .validate()
+    .unwrap()
+}
 
 const PARTS: &[&str] = &[
     "blisk",
@@ -164,6 +197,58 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
                 });
             }
             offs.push((face.id.0, kind.clone(), index, *v + normals[index] * offset));
+        }
+    }
+    let profile = ball(offset);
+    for (k, (face, kind, index, q)) in offs.iter().cloned().enumerate() {
+        if k % DROP_STRIDE != 0 {
+            continue;
+        }
+        // The normal at the vertex, from the `off` point.
+        let v = model
+            .faces
+            .iter()
+            .find(|f| f.id.0 == face)
+            .map(|f| f.tessellation.vertices[index])
+            .unwrap();
+        let Ok(n) = UnitVec3::new(q - v) else {
+            continue;
+        };
+        let line = ToolLine {
+            origin: v + n.get() * (offset + 3.0),
+            axis: n,
+        };
+        let t = Instant::now();
+        let contact = surface.drop_tool(&profile, &line);
+        let mesh_nanos = t.elapsed().as_nanos();
+        let Some(contact) = contact else { continue };
+        // Decision 0211's probe: 20 halvings of a 0.05 mm band about the
+        // tessellation's answer, on the ball centre's distance to the faces.
+        let t = Instant::now();
+        let (mut lo, mut hi) = (contact.offset - BAND, contact.offset + BAND);
+        for _ in 0..20 {
+            let mid = 0.5 * (lo + hi);
+            let centre = line.at(mid) + n.get() * offset;
+            if surface.distance(centre).is_some_and(|d| d >= offset) {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        let probe_nanos = t.elapsed().as_nanos();
+        for (set, distance, nanos) in [
+            ("mesh", contact.offset, mesh_nanos),
+            ("drop", hi - contact.offset, probe_nanos),
+        ] {
+            rows.push(Row {
+                set,
+                face,
+                kind: kind.clone(),
+                index,
+                point: line.origin,
+                distance,
+                nanos,
+            });
         }
     }
     for (face, kind, index, q) in offs {
