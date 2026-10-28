@@ -1,5 +1,64 @@
 # FACING implementation and released integration handoff
 
+## Cross-platform CI correction — 28 October 2026
+
+Merge Manager released one fix push in [comment 6464548181](https://github.com/paulhampson/OpenChuckCAM/pull/365#issuecomment-6464548181).
+Main is still `b2278b89c252d2d2c3b67ea2e6ed2368c9d4ecba`, so no further main
+merge is needed. The four failed Windows/macOS jobs share one raw-IR fingerprint assertion. Linux and all other CI families passed, including all three
+platforms' STEP kernel, UI smoke and Gate 3 jobs.
+
+Native CI logs confirm Flat's raw IR is identical on all three platforms. Round's
+full-precision JSON is 184577 bytes / `9a9c29f3ec238440` on Linux, 184561 /
+`ba3bd5f98b8a414c` on macOS, and 184558 / `87f565a02430a68a` on Windows. The old
+test incorrectly made Linux's raw floating-point serialization the universal
+oracle. Decision 0113 explains native transcendental differences; verification
+policy 7 requires exact raw toolpaths across runs/threads on a platform and shared
+production G-code goldens across platforms, not a universal unrounded IR hash.
+
+The same named regression now lives under `roughing::legacy_identity_tests` to
+access the crate-private legacy services without exporting a test API. It keeps
+a frozen test-only copy of the pre-scope Facing schema, dispatch and face entry
+from merged main b2278b89, independently of the new face(scope) entry. It resolves
+the old and current schemas separately and compares **every serialized byte of
+IR, notes and warnings** at 1/2/4 threads against the native, one-thread pre-scope
+result. No rounding, numeric tolerance, hash-only acceptance or OS exclusion is
+used. Both sides invoke the same native math and unchanged legacy roughing/layer/
+assembly services; guarded scope additions are inactive in the reference. Native
+last-bit values can vary between platforms, but they cannot create a spurious
+old-versus-new mismatch. A real change to Facing defaults or emitted motion still
+fails on that platform. Existing independent analytic/proof and posted-output
+checks remain in place.
+
+A temporary 0.01mm candidate finished-size mutation failed the paired comparison
+at its first differing byte (0.684s); restoring it passed. No production algorithm
+or post output changed, and no stored golden/geometry/project/replay fixture was
+regenerated. The Rust test oracle changes from a Linux hash constant to computed
+legacy output. This is explicitly reported for Merge Manager review.
+
+Local correction checks: the focused exact native comparison passes in 1.942s;
+all selected path tests pass **442/442 in 120.438s**, with 16 existing long-profile
+exclusions. Longest selected case is 19.015s; no new long registration is needed.
+Workspace all-target Clippy with warnings denied passes (15.27s); formatting
+passes. Focused own-path coverage passes 1/1 in 1.982s instrumented. Reports were
+inspected: both current no-scope Flat/Round branches execute (three calls each);
+this valid-default case does not exercise scoped/error branches. Only test code
+and its cfg(test) registration changed, with no new production executable lines;
+this focused check makes no new aggregate 95% claim. Original own-crate coverage
+gaps remain as documented below. No LLVM mismatch warning occurred. Instrumented
+data was cleaned with `cargo llvm-cov clean --workspace` and its generated build
+directory removed. `cargo xtask all` passes deps, licences, records, testdata,
+conflicts, publish and trace (100/100 P1 requirements). Whitespace checks pass.
+The frozen reference was mechanically checked against b2278b89 after only
+identifier/path adaptation and rustfmt; source substance matches. Library0.25.0,
+decision0252 and schemas20/6 are unchanged. The correction is delivered in the
+one fix push released by Merge Manager; no new allocation, main merge, golden
+regeneration or readiness/merge action is included.
+
+Windows and macOS execution is not available locally; their exact before/after assertions and production golden
+checks must pass on the new CI head. No platform production G-code divergence has
+been established by the failing raw-IR fingerprint; discovery of one would stop
+the fix for Merge Manager review rather than permit a new platform golden.
+
 ## Released integration — 28 October 2026 (local checks complete)
 
 Merge Manager marked PR #365 ready and released one main merge/combined push in

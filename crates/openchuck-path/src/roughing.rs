@@ -69,6 +69,9 @@ pub(crate) use scope::FacingScope;
 #[cfg(test)]
 #[path = "roughing/facing_scope_tests.rs"]
 mod facing_scope_tests;
+#[cfg(test)]
+#[path = "roughing/legacy_identity_tests.rs"]
+mod legacy_identity_tests;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
