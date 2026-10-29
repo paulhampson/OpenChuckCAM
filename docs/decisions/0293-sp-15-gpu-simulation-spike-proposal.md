@@ -1,6 +1,6 @@
 # 0293: SP-15 proposal, GPU acceleration of the simulation stock
 
-- **Status:** proposed. It is guidance, not authority, until the project owner accepts it. It amends nothing yet: no requirement, architecture rule or accepted record changes unless the spike passes and a later record says so.
+- **Status:** accepted by the project owner on 29 Oct 2026, in this session ("accept 0293"; decision 0049). Accepting it approves running spike SP-15 as described. It amends nothing yet: no requirement, architecture rule or accepted record changes unless the spike passes and a later record says so.
 - **Date:** 29 Oct 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): opens OI-1221 to OI-1223.
 - **Spike:** SP-15 in the work breakdown spike table. Its code goes on `spike/sp-15-gpu-simulation` (never merged); its write-up is `spikes/gpu-simulation/RESULT.md` on that branch. Neither exists yet.
