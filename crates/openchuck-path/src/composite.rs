@@ -25,6 +25,10 @@ use crate::holes::Hole;
 use crate::solid::Solid;
 use crate::surface::{FaceRef, RayHit, SurfacePoint, SurfaceSource};
 
+/// Rounding allowed for when a solid is skipped in a drop, mm: far above the
+/// rounding of a solid's drop (about 1e-13 mm on a part a metre across).
+const SOLID_BOUND_SLACK: f64 = 1e-7;
+
 /// Segments around a solid in the composite's tessellation.
 const TESSELLATION_SEGMENTS: u32 = 96;
 
@@ -129,6 +133,15 @@ impl SurfaceSource for CompositeSurface {
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         let mut best = self.model.drop_tool(profile, line);
         for solid in &self.solids {
+            // A solid that lies wholly below the contact found, less a tie,
+            // cannot replace it, so it is not dropped onto: the answer is the
+            // same, bit for bit, and a solid far below the part costs nothing
+            // (issue #382).
+            if best.is_some_and(|b| {
+                solid.highest_along(line) + SOLID_BOUND_SLACK <= b.offset + crate::cutter::TIP_TIE
+            }) {
+                continue;
+            }
             // A solid higher by less than a tie keeps the model's contact, so
             // rounding cannot choose (decision record 0113).
             if let Some(c) = solid.drop_tool(profile, line)

@@ -269,7 +269,8 @@ impl MeshSurface {
     /// radius of the line and whose best possible tip, the box's highest
     /// point less the lowest the profile gets at the box's nearest distance
     /// from the axis, is not below the floor. Conservative: it may return
-    /// triangles that cannot lift the tool, never fewer. Index order.
+    /// triangles that cannot lift the tool, never fewer. In the hierarchy's
+    /// order: the drop orders them itself.
     pub(crate) fn triangles_for_drop(
         &self,
         line: &ToolLine,
@@ -301,8 +302,8 @@ impl MeshSurface {
             // Slightly below the floor is kept, so ties are decided as before.
             floor.is_none_or(|f| top - lowest >= f - 1e-9)
         };
-        let mut found: Vec<u32> = self.bvh.bvh().leaves(near).collect();
-        found.sort_unstable();
+        let mut found = Vec::with_capacity(64);
+        found.extend(self.bvh.bvh().leaves(near));
         found
     }
 
