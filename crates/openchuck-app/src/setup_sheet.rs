@@ -413,6 +413,8 @@ impl SetupSheet {
             mode: machine.short_block_mode,
         };
         let report = options.and_then(|options| {
+            // The label sits beside the minimum block time, so it names that
+            // setting's source only (OI-1063: the window and mode have none).
             let source = if options.as_ref().is_some_and(|o| o.min_block_ms.is_some()) {
                 "post"
             } else {
@@ -551,11 +553,18 @@ impl SetupSheet {
         for setup in project.setups() {
             // The held regions and tabs the toolpath was made with (SET-09,
             // OP-21; OI-918), so the stock can be loaded from the sheet.
+            // The part is inspected only when something needs it: an
+            // automatic tab, or a held region on offset-stock, whose extent
+            // comes from the part.
+            let held = setup.workholding.start.is_some() || setup.workholding.end.is_some();
+            let needs_part = setup.workholding.tabs.iter().any(|t| t.auto.is_some())
+                || (held && matches!(setup.stock, Some(Stock::OffsetBoundingBox { .. })));
+            let extent = if needs_part { part(setup) } else { None };
             let workholding = setup
                 .workholding
-                .resolved(setup.stock.as_ref(), part(setup).as_ref());
+                .resolved(setup.stock.as_ref(), extent.as_ref());
             let mut facts = setup_facts(project, setup);
-            facts.extend(workholding_facts(setup, &workholding));
+            facts.extend(workholding_facts(setup, &workholding, extent.as_ref()));
             sections.push(SheetSection {
                 heading: format!("Setup: {}", setup.name),
                 body: SheetBody::Facts(facts),
@@ -828,11 +837,15 @@ fn tabs_heading(setup: &Setup) -> String {
 }
 
 /// The setup's grips and a count of its tabs, in plain words.
-fn workholding_facts(setup: &Setup, workholding: &Workholding) -> Vec<(String, String)> {
+fn workholding_facts(
+    setup: &Setup,
+    workholding: &Workholding,
+    part: Option<&PartExtent>,
+) -> Vec<(String, String)> {
     let stock_x = setup
         .stock
         .as_ref()
-        .and_then(|s| s.bounds(None))
+        .and_then(|s| s.bounds(part))
         .map(|b| (b.min.x, b.max.x));
     let (start, end) = stock_x.map_or((None, None), |x| workholding.held_intervals(x));
     let held = |region: Option<HeldRegion>, span: Option<(f64, f64)>| match region {
