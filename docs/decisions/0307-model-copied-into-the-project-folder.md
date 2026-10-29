@@ -1,6 +1,6 @@
 # 0307: A model from outside the project folder is copied into it (lane MODELCOPY)
 
-- **Status:** proposed (29 Oct 2026). Items 1 to 9 carry out the owner's answers to the lane's decisions D1 to D8 and D3a, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7) on 29 Oct 2026: D1 B, D2 the owner's own direction (a unique identifier with a mapping to the original name), D3 B with D3a A, D4 B (the wording below, plus the project tree's link mark), D5 the size shown with no warning yet (OI-1250), D6 A, D7 A, D8 A. The record stays proposed until the owner accepts it.
+- **Status:** accepted (30 Oct 2026) by the project owner, who read the condensed record (items 1 to 11, OI-1250 and OI-1251, schema 21) in the coordinator session and answered "Approve". The acceptance was relayed to this lane by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. Items 1 to 9 carry out the owner's answers to the lane's decisions D1 to D8 and D3a, relayed the same way on 29 Oct 2026: D1 B, D2 the owner's own direction (a unique identifier with a mapping to the original name), D3 B with D3a A, D4 B (the wording below, plus the project tree's link mark), D5 the size shown with no warning yet (OI-1250), D6 A, D7 A, D8 A.
 - **Date:** 29 Oct 2026.
 - **Lane/issue:** MODELCOPY, [#385](https://github.com/paulhampson/OpenChuckCAM/issues/385).
 - **Requirements:** PRJ-01, PRJ-02, PRJ-04, PRJ-06, IMP-01, GC-07, NFR-02, NFR-06, NFR-07, UI-11.
