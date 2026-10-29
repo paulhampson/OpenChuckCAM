@@ -420,7 +420,7 @@ fn main() -> Result<(), Error> {
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
                 println!(
-                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm"
+                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm | cut within {TOOLPATH_TOLERANCE} mm | gap within {TOOLPATH_TOLERANCE} mm"
                 );
                 for (op, group) in ops.iter().zip(&run.groups) {
                     let group = match group {
@@ -439,7 +439,7 @@ fn main() -> Result<(), Error> {
                     )?;
                     let m = bounded::summarise(&observations, op.leave);
                     println!(
-                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6}",
+                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6} | {} | {}",
                         op.label,
                         op.leave,
                         m.stations,
@@ -451,7 +451,9 @@ fn main() -> Result<(), Error> {
                         m.error_out,
                         m.drop_bound,
                         m.contacts,
-                        m.proven_error
+                        m.proven_error,
+                        checks::verdict(m.deepest_bound, TOOLPATH_TOLERANCE),
+                        checks::verdict(m.gap, TOOLPATH_TOLERANCE)
                     );
                     proven_error = Some(proven_error.unwrap_or(0.0).max(m.proven_error));
                     if let Some(raw) = &args.raw {
@@ -620,9 +622,14 @@ fn main() -> Result<(), Error> {
                 library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
             }
             let one = serde_json::to_string(&first.groups)?;
-            let posted = posting::post_run(&job.connected_groups(&first.groups)?, &post_job)?;
-            if let Some(letter) = name.chars().next() {
-                library_posts.insert(letter, posted.clone());
+            let connected = job.connected_groups(&first.groups)?;
+            let mut posted = BTreeMap::new();
+            for post in POSTS {
+                let text = posting::post_run(&connected, &post_job, post)?;
+                if let Some(letter) = name.chars().next() {
+                    library_posts.insert((letter, post), text.clone());
+                }
+                posted.insert(post, text);
             }
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
@@ -631,12 +638,18 @@ fn main() -> Result<(), Error> {
                     &serde_json::to_string(&again.groups)?,
                     &format!("form {name}, {n} threads, serialized toolpath"),
                 )?;
-                checks::identical(
-                    &posted,
-                    &posting::post_run(&job.connected_groups(&again.groups)?, &post_job)?,
-                    &format!("form {name}, {n} threads, posted G-code"),
-                )?;
-                println!("{n} threads: toolpath and posted G-code identical");
+                let connected = job.connected_groups(&again.groups)?;
+                for post in POSTS {
+                    checks::identical(
+                        posted.get(post).ok_or("no library program")?,
+                        &posting::post_run(&connected, &post_job, post)?,
+                        &format!("form {name}, {n} threads, posted G-code ({post})"),
+                    )?;
+                }
+                println!(
+                    "{n} threads: toolpath and posted G-code identical (posts: {})",
+                    POSTS.join(", ")
+                );
             }
         }
     }
@@ -647,54 +660,61 @@ fn main() -> Result<(), Error> {
         // off (UI-06): the rest is generated as the library made it.
         disable(&mut app, &ids, refused.get(&APP_FORM))?;
         app.save()?;
-        let mut reference = None;
-        for n in [1, 2, cores] {
-            let mut again = Application::open(&dir, Threads::Exactly(n))?;
-            again.set_post(Some(PostSelection::parse("makera-z1")));
-            let started = Instant::now();
-            let result = again.regenerate()?;
-            let took = started.elapsed();
-            let clean = result.reports.iter().all(|r| r.is_clean());
-            let gcode = result.gcode.clone();
-            if let Some(library) = library_posts.get(&APP_FORM) {
-                checks::identical(&1, &gcode.len(), "form d application file count")?;
-                let (_, text) = gcode.first().ok_or("no form d G-code")?;
-                checks::identical(library, text, "form d library/application G-code")?;
-            }
-            checks::clean(clean, &format!("application, {n} threads, replay gates"))?;
-            if let Some(expected) = &reference {
-                checks::identical(
-                    expected,
-                    &gcode,
-                    &format!("application, {n} threads, G-code"),
-                )?;
-            }
-            println!(
-                "application, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
-                took.as_secs_f64()
-            );
-            if n == cores
-                && let Some(library) = &library_b
-            {
-                if let Some(dump) = std::env::var_os("X2_DUMP") {
-                    let dump = std::path::PathBuf::from(dump);
-                    std::fs::write(
-                        dump.join("library.json"),
-                        serde_json::to_string_pretty(library)?,
-                    )?;
-                    std::fs::write(
-                        dump.join("app.json"),
-                        serde_json::to_string_pretty(&result.canonical_toolpath.groups)?,
+        for post in POSTS {
+            let mut reference = None;
+            for n in [1, 2, cores] {
+                let mut again = Application::open(&dir, Threads::Exactly(n))?;
+                again.set_post(Some(PostSelection::parse(post)));
+                let started = Instant::now();
+                let result = again.regenerate()?;
+                let took = started.elapsed();
+                let clean = result.reports.iter().all(|r| r.is_clean());
+                let gcode = result.gcode.clone();
+                if let Some(library) = library_posts.get(&(APP_FORM, post)) {
+                    checks::identical(&1, &gcode.len(), "form d application file count")?;
+                    let (_, text) = gcode.first().ok_or("no form d G-code")?;
+                    checks::identical(
+                        library,
+                        text,
+                        &format!("form d library/application G-code ({post})"),
                     )?;
                 }
-                checks::identical(
-                    library,
-                    &result.canonical_toolpath.groups,
-                    "form d application path",
+                checks::clean(
+                    clean,
+                    &format!("application, {post}, {n} threads, replay gates"),
                 )?;
-                println!("the library's form d path is the application's");
+                if let Some(expected) = &reference {
+                    checks::identical(
+                        expected,
+                        &gcode,
+                        &format!("application, {post}, {n} threads, G-code"),
+                    )?;
+                }
+                println!(
+                    "application, {post}, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
+                    took.as_secs_f64()
+                );
+                if n == cores
+                    && let Some(library) = &library_b
+                {
+                    // The paths agree to rounding: OI-1110 (decision 0277).
+                    let largest = checks::within_rounding(
+                        &serde_json::to_value(library)?,
+                        &serde_json::to_value(&result.canonical_toolpath.groups)?,
+                        PATH_ROUNDING,
+                        "form d application path",
+                    )?;
+                    println!(
+                        "the library's form d path is the application's{}",
+                        if largest > 0.0 {
+                            format!(" to {largest:e} mm (OI-1110)")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+                reference.get_or_insert(gcode);
             }
-            reference.get_or_insert(gcode);
         }
         if let Some(path) = &args.stl {
             let mut reference = None;
@@ -708,7 +728,7 @@ fn main() -> Result<(), Error> {
                 let started = Instant::now();
                 let result = again.regenerate()?;
                 let gcode = result.gcode.clone();
-                if let Some(library) = library_posts.get(&'a') {
+                if let Some(library) = library_posts.get(&('a', "makera-z1")) {
                     checks::identical(&1, &gcode.len(), "form a application file count")?;
                     let (_, text) = gcode.first().ok_or("no form a G-code")?;
                     checks::identical(library, text, "form a library/application G-code")?;
@@ -1188,6 +1208,18 @@ fn project_stl(
     }];
     project(dir, path, &placement, bounds, ops)
 }
+
+/// The toolpath tolerance of every measured operation (the default, OP-11):
+/// M2 says whether the proven deepest cut and the largest gap are within it
+/// (lane STEPALL-X2).
+const TOOLPATH_TOLERANCE: f64 = 0.01;
+
+/// The built-in posts M4 writes and replays (lane STEPALL-X2).
+const POSTS: [&str; 2] = ["makera-z1", "linuxcnc"];
+
+/// How far, in millimetres, a number of the library's path may differ from
+/// the application's (OI-1110): far below any written resolution.
+const PATH_ROUNDING: f64 = 1e-9;
 
 /// The library form the application's output equals: the STEP part with
 /// exact contacts for the strategies that take them (decision 0277).

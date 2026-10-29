@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- STEPALL-X2 (issue #349, decision 0277): on a STEP part, helical, indexed, rest and simultaneous finishing drop a ball-end tool on the exact faces (`Strategy::exact_contact`), and their region, avoid, check, watched and stock-to-leave face sets are the exact faces too (OI-833); other tools and strategies keep the tessellation. The operation note names which surface the tool was dropped on. Output of those operations on STEP parts changes; STL parts are unchanged. Decision 0211's `step_accuracy` example adds form (d), exact contacts where the strategy takes them, which the application's output is checked against; `step_queries` adds the exact drop's timing (`exact`).
+
 - FACING review fix: construct whole-setup verification geometry only for modes/extents that require it. Legacy Whole stock/zero-margin generation keeps the existing composite workholding target and pre-scope output; imported stock retains the existing SET-04 refusal.
 
 - Facing shares draft extent/margin/target/dimension geometry and generated finite-cutter outlines between background viewport scenes and Setup panes. Stale generated sweeps are not overlaid on edited drafts. Curved outlines are display approximations, never clearance evidence. `FrontPane`/`EndPane` add Facing guides under the0.25.0 API change.
