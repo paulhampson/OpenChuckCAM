@@ -346,7 +346,7 @@ fn main() -> Result<(), Error> {
             "d (STEP, exact contacts where the strategy takes them)",
             Form::Brep(
                 BrepSurface::new(&placed_b)?,
-                Some(BrepSurface::new(&placed_b)?.with_exact_drops(true)),
+                Some(Box::new(BrepSurface::new(&placed_b)?.with_exact_drops(true))),
                 &placed_b,
             ),
         ),
@@ -1198,7 +1198,7 @@ const APP_FORM: char = 'd';
 /// ball drops, which the operations whose strategy takes exact contacts use
 /// (decision 0277), as the application does.
 enum Form<'a> {
-    Brep(BrepSurface, Option<BrepSurface>, &'a BrepModel),
+    Brep(BrepSurface, Option<Box<BrepSurface>>, &'a BrepModel),
     Mesh(MeshSurface),
 }
 
