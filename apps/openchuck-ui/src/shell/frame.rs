@@ -1206,10 +1206,18 @@ impl Shell {
                 None if running => {
                     response.on_disabled_hover_text("Wait for the running job, or cancel it")
                 }
-                None => response,
+                // An enabled action says what it does on focus as well as
+                // hover (section 16).
+                None => crate::field_row::tip(response, action_tip(action.kind)),
             };
             if !enabled && response.hovered() {
                 self.highlight = action.message;
+            }
+            // The keyboard goes back to "Post and export…" when the dialog
+            // it opened closes.
+            if index == 1 && self.export_from_footer && !self.export.is_open() {
+                self.export_from_footer = false;
+                response.request_focus();
             }
             if let Some(click) = clicked.get_mut(index) {
                 *click = response.clicked();
@@ -1220,6 +1228,7 @@ impl Shell {
         }
         if clicked[1] {
             self.post_and_export();
+            self.export_from_footer = self.export.is_open();
         }
     }
 
@@ -1473,6 +1482,19 @@ fn step_purpose(step: Step) -> &'static str {
         Step::Setup => "machine, stock, part position, work offset, clearance",
         Step::Operations => "select geometry, add operations, generate",
         Step::Simulate => "play the cut and compare stock with model; then post and export",
+    }
+}
+
+/// What a footer action does, for its tooltip (section 16).
+fn action_tip(kind: openchuck_app::overview::PrimaryKind) -> &'static str {
+    use openchuck_app::overview::PrimaryKind;
+    match kind {
+        PrimaryKind::OpenExport => "Open the export dialog (Ctrl E or Alt 5)",
+        PrimaryKind::RunSimulation => "Simulate the cut",
+        PrimaryKind::GenerateAndSimulate(_) => "Generate the operation, then simulate the cut",
+        PrimaryKind::GenerateStale(_) => "Generate the stale operations",
+        PrimaryKind::Generate => "Generate the toolpaths; the stock simulation is skipped",
+        PrimaryKind::ImportModel | PrimaryKind::Continue(_) => "",
     }
 }
 

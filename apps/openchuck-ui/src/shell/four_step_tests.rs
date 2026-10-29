@@ -369,3 +369,304 @@ fn req_ui_16_the_step_bar_and_simulate_footer_fit_at_the_supported_sizes() {
         }
     }
 }
+
+/// Tabs until `label`'s footer button has the keyboard; panics if it never
+/// does.
+fn focus_footer(rig: &mut Rig, label: &str) {
+    let at = footer_text(rig, label);
+    for _ in 0..400 {
+        rig.press(Key::Tab, Modifiers::NONE);
+        let focused = rig
+            .ctx
+            .memory(|m| m.focused())
+            .and_then(|id| rig.ctx.read_response(id))
+            .map(|r| r.rect);
+        if focused.is_some_and(|r| r.contains_rect(at)) {
+            return;
+        }
+    }
+    panic!("{label} never had the keyboard");
+}
+
+#[test]
+fn req_ui_10_req_ui_14_a_running_job_disables_both_simulate_actions() {
+    // Decision 0282 item 3: both footer actions wait while a job runs, as
+    // every footer action does; File > Post and export and Ctrl E are not
+    // footer actions and keep their own rule (0148).
+    let mut rig = on_simulate("four-running", egui::vec2(1440.0, 900.0));
+    set_stepover(&mut rig, 0.5);
+    let export = footer_text(&rig, "Post and export…");
+    let simulation = footer_text(&rig, "Generate and simulate op 1");
+    rig.shell.generate(true);
+    assert!(rig.shell.run.is_running());
+    // Both through the shell's own path...
+    rig.shell.post_and_export();
+    assert!(!rig.shell.export.is_open());
+    rig.shell.simulation();
+    // ...and by a click on each button while the job runs.
+    rig.click(export.center());
+    if rig.shell.run.is_running() {
+        assert!(
+            !rig.shell.export.is_open(),
+            "Post and export waits for the job"
+        );
+    }
+    rig.click(simulation.center());
+    rig.settle();
+    // Once the job is done, Post and export works again.
+    let export = footer_text(&rig, "Post and export…");
+    rig.click(export.center());
+    assert!(rig.shell.export.is_open());
+}
+
+#[test]
+fn req_ui_14_closing_the_dialog_returns_the_keyboard_to_post_and_export() {
+    // Opened from the keyboard, closed with the dialog's own Cancel (its
+    // Esc and footer are OUTPUT-1's and unchanged): the keyboard goes back
+    // to "Post and export…" (section 16, decision 0282 item 8).
+    let mut rig = on_simulate("four-return", egui::vec2(1440.0, 900.0));
+    focus_footer(&mut rig, "Post and export…");
+    rig.press(Key::Enter, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(rig.shell.export.is_open());
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let cancel = last_text(&rig, "Cancel");
+    rig.click(cancel.center());
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(!rig.shell.export.is_open(), "Cancel closes the dialog");
+    let export = footer_text(&rig, "Post and export…");
+    let focused = rig
+        .ctx
+        .memory(|m| m.focused())
+        .and_then(|id| rig.ctx.read_response(id))
+        .map(|r| r.rect);
+    assert!(
+        focused.is_some_and(|r| r.contains_rect(export)),
+        "the keyboard is back on Post and export: {focused:?}"
+    );
+}
+
+#[test]
+fn req_ui_14_req_ui_10_footer_actions_explain_themselves_without_a_pointer() {
+    // Section 16: tooltips open on focus as well as hover. egui never gives
+    // the keyboard to a disabled button, so a disabled action's reason is in
+    // the footer status (section 5, "the footer status says the same").
+    let mut rig = on_simulate("four-tips", egui::vec2(1440.0, 900.0));
+    focus_footer(&mut rig, "Post and export…");
+    rig.frame(Vec::new());
+    assert!(
+        rig.shows("Open the export dialog (Ctrl E or Alt 5)"),
+        "{:?}",
+        rig.texts()
+    );
+    // An operation in error blocks both actions: the filled one's reason is
+    // in the footer status, with no pointer over it.
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    let app = rig.shell.app.as_mut().unwrap();
+    let model = app.project().models()[0].clone();
+    let op = app.project().operations()[0].id;
+    app.execute(openchuck_app::Command::Add {
+        item: openchuck_app::project::Item::SelectionSet(openchuck_app::project::SelectionSet {
+            id: set,
+            order: openchuck_app::project::OrderKey::default(),
+            name: "Roof".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: openchuck_app::project::SelectionTarget::Triangles(Default::default()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: openchuck_app::project::Placement::End,
+    })
+    .unwrap();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.selections = vec![set];
+    app.execute(openchuck_app::Command::Replace(
+        openchuck_app::project::Item::Operation(operation),
+    ))
+    .unwrap();
+    rig.settle();
+    let primary = rig.shell.overview.primary(Step::Simulate);
+    let reason = primary
+        .blocked
+        .clone()
+        .expect("the filled action is blocked");
+    assert!(reason.contains("'Roof'"), "{reason}");
+    assert!(rig.shell.overview.export_action().blocked.is_some());
+    assert!(
+        rig.shows(&reason),
+        "the footer status names it: {:?}",
+        rig.texts()
+    );
+}
+
+/// Writes the project through the export dialog that `open` opens, into
+/// `out`, and gives the written files' names and bytes.
+fn write_through_dialog(
+    rig: &mut Rig,
+    out: &std::path::Path,
+    open: impl Fn(&mut Rig),
+) -> Vec<(String, Vec<u8>)> {
+    open(rig);
+    assert!(rig.shell.export.is_open());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while !rig.shows("Start of") {
+        // The body keeps its scroll between openings: back to the top,
+        // where the folder and the preview are.
+        let top = rig
+            .ctx
+            .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+            .map(|r| r.center());
+        let events = top.map_or_else(Vec::new, |at| {
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    phase: egui::TouchPhase::Move,
+                    delta: egui::vec2(0.0, 400.0),
+                    modifiers: Modifiers::NONE,
+                },
+            ]
+        });
+        rig.frame(events);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "files prepared: {:?}",
+            rig.texts()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    type_unconfirmed(rig, "Output folder", &out.display().to_string());
+    // Enter confirms the typed folder (0233), so nothing is pending.
+    rig.press(Key::Enter, Modifiers::NONE);
+    rig.frame(Vec::new());
+    let centre = rig
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .unwrap()
+        .center();
+    for _ in 0..12 {
+        if rig.visible_text_rects().iter().any(|(t, _)| {
+            t == openchuck_app::EXPORT_ACKNOWLEDGE_LABEL
+                || t == "Acknowledged for this project on this computer"
+        }) {
+            break;
+        }
+        rig.frame(vec![
+            egui::Event::PointerMoved(centre),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: egui::vec2(0.0, -160.0),
+                modifiers: Modifiers::NONE,
+            },
+        ]);
+    }
+    // The acknowledgement is not kept between openings here (no settings
+    // folder), so it is ticked each time (GC-16).
+    for _ in 0..3 {
+        if !rig.shows("Tick the box to say you will verify") {
+            break;
+        }
+        let tick = last_text(rig, openchuck_app::EXPORT_ACKNOWLEDGE_LABEL);
+        rig.click(tick.center());
+        for _ in 0..3 {
+            rig.frame(Vec::new());
+        }
+    }
+    assert!(
+        !rig.shows("Tick the box to say you will verify"),
+        "ticked: {:?}",
+        rig.texts()
+    );
+    let write = last_text(rig, "Write G-code");
+    rig.click(write.center());
+    // The typed folder is resolved by the pending-edit guard first (0233).
+    if rig.shows("Unconfirmed changes") {
+        let keep = last_text(rig, "Keep");
+        rig.click(keep.center());
+    }
+    for _ in 0..8 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Export result"), "{:?}", rig.texts());
+    let dismiss = last_text(rig, "Dismiss");
+    rig.click(dismiss.center());
+    if rig.shell.export.is_open() {
+        let cancel = last_text(rig, "Cancel");
+        rig.click(cancel.center());
+    }
+    let mut files: Vec<_> = std::fs::read_dir(out)
+        .unwrap()
+        .map(|e| {
+            let e = e.unwrap();
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_req_ui_10_the_simulate_button_and_ctrl_e_write_the_same_bytes() {
+    // Decision 0282 items 1 and 8: Post and export on Simulate opens the
+    // same dialog as Ctrl E, so the same project writes the same files,
+    // name for name and byte for byte (GC-07, NFR-06). The clock is pinned
+    // so the setup sheet's Generated line is the same in both (OI-1001).
+    let mut rig = on_simulate("four-bytes", egui::vec2(1920.0, 1080.0));
+    // The application's style, which the field lookups expect.
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.ctx
+        .style_mut_of(egui::Theme::Dark, |style| style.animation_time = 0.0);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    rig.shell.export = crate::export_panel::ExportPanel::new(None);
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_clock(Box::new(openchuck_app::FixedClock(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_792_575_005),
+        )));
+    let button = rig.dirs[0].join("from-simulate");
+    let keys = rig.dirs[0].join("from-ctrl-e");
+    let from_button = write_through_dialog(&mut rig, &button, |rig| {
+        let at = footer_text(rig, "Post and export…");
+        rig.click(at.center());
+    });
+    assert!(
+        rig.shell.overview.g_code_written(),
+        "a complete write is the current export"
+    );
+    let from_keys = write_through_dialog(&mut rig, &keys, |rig| {
+        rig.press(Key::E, Modifiers::COMMAND);
+    });
+    assert_eq!(from_button.len(), 3, "the program and both sheets");
+    assert_eq!(from_button, from_keys);
+}
+
+#[test]
+fn req_ui_10_req_ui_14_the_view_menu_lists_the_four_steps() {
+    let mut rig = on_simulate("four-view-menu", egui::vec2(1440.0, 900.0));
+    let view = bar_text(&rig, "View");
+    rig.click(view.center());
+    rig.frame(Vec::new());
+    for step in Step::ALL {
+        assert!(
+            rig.shows(&format!("Alt+{}", step.number())),
+            "{}",
+            step.name()
+        );
+    }
+    assert!(!rig.shows("Alt+5"), "no fifth step in the View menu");
+    assert!(!rig.shows("Post and export ("));
+}

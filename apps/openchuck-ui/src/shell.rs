@@ -194,6 +194,10 @@ pub struct Shell {
     run: RunPanel,
     /// Post and export (slice 19 item 4).
     export: ExportPanel,
+    /// The export dialog was opened from Simulate's "Post and export…", so
+    /// the keyboard goes back to it when the dialog closes (UI-14; decision
+    /// record 0282 item 8).
+    export_from_footer: bool,
     /// A text field had the keyboard at the end of the last frame.
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
@@ -298,6 +302,7 @@ impl Shell {
             run: RunPanel::default(),
             results: ResultsPanel::default(),
             export: ExportPanel::default(),
+            export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
             simulate_camera: None,
