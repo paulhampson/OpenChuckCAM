@@ -345,6 +345,8 @@ M2 now prints its measurements but exits with an explicit unqualified-sampling e
 
 Follow-up (lane STEPALL-T, issue #346, 28 Oct 2026): [decision 0255](0255-bounded-tool-contact-checker.md) (accepted 28 Oct 2026) replaces the sampled clearance with a bounded checker whose intervals are proven to hold the exact value, keeps this counterexample as a regression, and reruns M2 on the blisk and the corpus with it. The sampled readings in this record are unchanged.
 
+Follow-up (issue #347, 29 Oct 2026): [decision 0256](0256-no-fixed-toolpath-mesh-qualifies.md) (proposed) records that no fixed finer toolpath mesh qualifies, so the owner's interim direction of item 2 is not adopted and the import mesh stays; OI-834 and OI-835 stay open.
+
 ## Measuring every M1 triangle (24 Oct 2026)
 
 The historical 20,000-triangle-per-face cap was a methodological departure from decision 0209. It is removed: M1 now measures every triangle's corners, edge midpoints and barycentric grid. A regression places the only 0.02 mm deviation at a triangle index skipped by the old stride. It failed with a reported maximum of zero before the change, then passed after it. All 13 native harness tests pass uninstrumented in 3.086 s; native clippy also passes. The focused instrumented regression also passes; the changed example code is outside the product coverage report, whose application product-line coverage is zero for this selection. Instrumented artifacts were cleaned. [Commands and red/green evidence](0211-m1-triangle-coverage.txt).

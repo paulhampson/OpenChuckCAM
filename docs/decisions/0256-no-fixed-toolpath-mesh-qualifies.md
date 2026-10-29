@@ -3,10 +3,10 @@
 - **Status:** proposed (29 Oct 2026, Europe/London). The disposition (option A) was chosen by the project owner on 28 Oct 2026 and relayed by the coordinator; this record is guidance until the owner accepts it directly in the lane session (decision 0049).
 - **Date:** 28 to 29 Oct 2026 (Europe/London).
 - **Requirements:** IMP-02, IMP-06, OP-03 to OP-06, OP-09, OP-12, OP-23, NFR-04, NFR-05, NFR-06, NFR-12, GC-07. Verification plan 4.1 (the 0.005 mm tessellation allocation; the job and per-operation 2-times limits).
-- **Builds on:** [decision 0211](0211-step-accuracy-measured.md) (accepted: the owner's choice of a fixed finer toolpath mesh as a direction to verify, OI-834; the job and per-operation limits, OI-835); [decision 0255](0255-bounded-tool-contact-checker.md) (the bounded checker; proposed at the time of writing, issue #346, PR #374).
-- **Open items:** OI-834 and OI-835 stay open with this evidence; OI-831 stays open (a fixed internal setting would not give IMP-06's user control in any case); OI-81 stays STEPALL-X's. OI-990 (#344) is separate and unchanged.
+- **Builds on:** [decision 0211](0211-step-accuracy-measured.md) (accepted: the owner's choice of a fixed finer toolpath mesh as a direction to verify, OI-834; the job and per-operation limits, OI-835); [decision 0255](0255-bounded-tool-contact-checker.md) (accepted 28 Oct 2026: the bounded checker, issue #346, merged in PR #374).
+- **Open items:** OI-834 and OI-835 stay open with this evidence; OI-831 stays open (a fixed internal setting would not give IMP-06's user control in any case); OI-81 stays STEPALL-X's; OI-833 (the face-region test) and OI-839 (`ExactFace::closest` at a face's boundary) are untouched, since nothing here exercises them. OI-990 (#344) is separate and unchanged.
 
-Numbering: the lane's allocation is 0255 to 0259 and OI-1020 to OI-1039. On 29 Oct 2026 0256 was unused on `main` and on every fetched branch (0255 is this lane's, PR #374); no new open item is needed, because the blocker belongs to OI-834 and OI-835, which stay open. No project schema number, no library version change: nothing in the product changes.
+Numbering: the lane's allocation is 0255 to 0259 and OI-1020 to OI-1039. On 29 Oct 2026 0256 was unused on `main` and on every fetched branch (0255 is this lane's, merged in PR #374); no new open item is needed, because the blocker belongs to OI-834 and OI-835, which stay open. No project schema number, no library version change: nothing in the product changes.
 
 ## Context
 
