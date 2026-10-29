@@ -1583,8 +1583,11 @@ fn provenance(args: &Args, form: &str, fine: f64, op: &Op, part: &Path) -> Strin
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .ok()
+        .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map_or_else(|| "unknown".to_owned(), |s| s.trim().to_owned());
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
     let t = &op.tool.tool;
     format!(
         "step_accuracy M2, bounded checker (issue #346; decision 0209 item 4.1)\n\

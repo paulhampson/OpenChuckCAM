@@ -876,3 +876,37 @@ fn req_op_12_bounds_hold_against_dense_samples_on_random_rational_patches() {
         }
     }
 }
+
+#[test]
+fn req_op_12_a_trims_top_edge_inside_the_box_bounds_the_face() {
+    // The counterexample plane widened to 0 <= y <= 0.5, trimmed to
+    // y <= 0.1 by a loop whose top edge lies inside the parameter box and
+    // whose sides lie outside it. A flat cutter at y = 0.4 would cut the
+    // untrimmed plane 0.01 mm deep; the trimmed face, all of it at y <= 0.1,
+    // stays clear of it. The exact clearance is the smallest distance from
+    // the face's nearest line, y = 0.1, to the tool, found here by dense
+    // sampling along x (the distance grows away from y = 0.1).
+    let u = |x: f64| (x - 0.95) / S;
+    let mut f = counterexample_plane(vec![TrimLoop(vec![
+        UvPoint { u: -0.01, v: 0.0 },
+        UvPoint { u: u(1.06), v: 0.0 },
+        UvPoint { u: u(1.06), v: 0.1 },
+        UvPoint { u: -0.01, v: 0.1 },
+    ])]);
+    f.uv_bounds[3] = 0.5;
+    let g = Geometry::of_faces(&model(vec![f])).unwrap();
+    let t = ConvexTool::new(&flat2()).unwrap();
+    let tip = Point3::new(0.0, 0.4, 0.0);
+    let exact = (0..=100_000)
+        .map(|i| {
+            let x = 0.95 + 0.1 * f64::from(i) / 100_000.0;
+            flat_clearance(Point3::new(x, 0.1, x - 0.98), tip, 1.0, 8.0)
+        })
+        .fold(f64::INFINITY, f64::min);
+    assert!(exact > 0.015 && exact < 0.025, "{exact}");
+    let b = g.clearance(&t, tip, up(), &settings()).unwrap();
+    assert!(b.at.is_some(), "the face was dropped: {b:?}");
+    assert!(b.lower <= exact + 1e-6, "{b:?} against {exact}");
+    assert!(b.upper <= exact + TOL + 1e-6, "{b:?} against {exact}");
+    assert!(b.error() <= TOL + 1e-9);
+}

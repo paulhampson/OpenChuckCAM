@@ -848,11 +848,13 @@ impl Trims {
         let mut buckets = vec![Vec::new(); count];
         for (i, s) in segs.iter().enumerate() {
             let (a, b) = (s[0].1.min(s[1].1), s[0].1.max(s[1].1));
+            // A segment at the top height lands at `count`: clamp both ends,
+            // or a top edge of the trims would be in no bucket.
             let (ka, kb) = (
-                ((a - lo) / step).floor().max(0.0) as usize,
-                ((b - lo) / step).floor().max(0.0) as usize,
+                (((a - lo) / step).floor().max(0.0) as usize).min(count - 1),
+                (((b - lo) / step).floor().max(0.0) as usize).min(count - 1),
             );
-            for k in ka..=kb.min(count - 1) {
+            for k in ka..=kb {
                 if let Some(bucket) = buckets.get_mut(k) {
                     bucket.push(i as u32);
                 }
