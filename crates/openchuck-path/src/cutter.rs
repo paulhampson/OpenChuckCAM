@@ -154,21 +154,62 @@ fn better(best: &mut Option<Best>, tip_z: f64, contact: Local, triangle: u32) {
     }
 }
 
+/// A drop's working lists: the triangles that could lift the tool, each
+/// with its bound and its corners in the line's frame, and the breaks along
+/// an edge (see [`edge`]).
+#[derive(Default)]
+struct Scratch {
+    found: Vec<u32>,
+    order: Vec<(f64, u32, [Local; 3])>,
+    breaks: Vec<f64>,
+}
+
+/// The most candidates a thread's [`Scratch`] keeps between drops (about
+/// 6 MB with their corners); when either list is larger, both are freed
+/// after the drop.
+const SCRATCH_KEPT: usize = 1 << 16;
+
+thread_local! {
+    /// Each thread's [`Scratch`], reused from drop to drop. Built anew for
+    /// every drop, the lists cost a few dozen allocations each, and on a mesh
+    /// of long thin triangles the threads then queue for the allocator's
+    /// lock: STL pencil clean-up gained nothing from four threads (issue
+    /// #344, OI-990; NFR-04). The lists are emptied before each use, so what
+    /// a drop finds never depends on the drops before it on the thread
+    /// (NFR-06).
+    static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::default();
+}
+
 /// Drops the tool along `line` onto `mesh`.
 pub(crate) fn drop_on_mesh(
     mesh: &MeshSurface,
     profile: &RevolvedProfile,
     line: &ToolLine,
 ) -> Option<Contact> {
-    drop_on_mesh_with::<true>(mesh, profile, line)
+    // The thread's lists, or new ones when they are in use or gone (a drop
+    // made while the thread ends).
+    SCRATCH
+        .try_with(|scratch| match scratch.try_borrow_mut() {
+            Ok(mut scratch) => {
+                let contact = drop_with::<true>(mesh, profile, line, &mut scratch);
+                if scratch.found.capacity().max(scratch.order.capacity()) > SCRATCH_KEPT {
+                    *scratch = Scratch::default();
+                }
+                contact
+            }
+            Err(_) => drop_with::<true>(mesh, profile, line, &mut Scratch::default()),
+        })
+        .unwrap_or_else(|_| drop_with::<true>(mesh, profile, line, &mut Scratch::default()))
 }
 
-/// [`drop_on_mesh`], skipping the edges [`edge_can_win`] rules out when
-/// `SKIP_EDGES` (the tests compare it with every edge tested).
-fn drop_on_mesh_with<const SKIP_EDGES: bool>(
+/// [`drop_on_mesh`] with the lists in `scratch`, skipping the edges
+/// [`edge_can_win`] rules out when `SKIP_EDGES` (the tests compare it with
+/// every edge tested).
+fn drop_with<const SKIP_EDGES: bool>(
     mesh: &MeshSurface,
     profile: &RevolvedProfile,
     line: &ToolLine,
+    scratch: &mut Scratch,
 ) -> Option<Contact> {
     let frame = Frame::new(line);
     // A tip height the answer cannot be below: the tool's tip rests on the
@@ -179,37 +220,39 @@ fn drop_on_mesh_with<const SKIP_EDGES: bool>(
     // triangle comes to the axis (h(r) never decreases with r). Triangles
     // are visited from the highest bound down, and the search stops once none
     // can beat the best so far, which skips most of a dense mesh.
-    let mut order: Vec<(f64, u32, [Local; 3])> = mesh
-        .triangles_for_drop(line, profile, floor)
-        .into_iter()
-        .filter_map(|i| {
-            let [a, b, c] = mesh.triangle(i)?;
-            let tri = [frame.local(a), frame.local(b), frame.local(c)];
-            let top = tri.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
-            let (lo_x, hi_x) = tri
-                .iter()
-                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
-                    (lo.min(v.x), hi.max(v.x))
-                });
-            let (lo_y, hi_y) = tri
-                .iter()
-                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
-                    (lo.min(v.y), hi.max(v.y))
-                });
-            // Distance from the axis to the triangle's box in the plane.
-            let near_x = lo_x.max(0.0).max(-hi_x);
-            let near_y = lo_y.max(0.0).max(-hi_y);
-            let nearest = radial(near_x, near_y);
-            let bound = top - profile.height_at(nearest)?;
-            Some((bound, i, tri))
-        })
-        .collect();
-    // Each triangle comes once, so the order is total and an unstable sort
-    // gives the same order as a stable one.
+    let Scratch {
+        found,
+        order,
+        breaks,
+    } = scratch;
+    mesh.triangles_for_drop(line, profile, floor, found);
+    order.clear();
+    order.extend(found.iter().filter_map(|&i| {
+        let [a, b, c] = mesh.triangle(i)?;
+        let tri = [frame.local(a), frame.local(b), frame.local(c)];
+        let top = tri.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
+        let (lo_x, hi_x) = tri
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v.x), hi.max(v.x))
+            });
+        let (lo_y, hi_y) = tri
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v.y), hi.max(v.y))
+            });
+        // Distance from the axis to the triangle's box in the plane.
+        let near_x = lo_x.max(0.0).max(-hi_x);
+        let near_y = lo_y.max(0.0).max(-hi_y);
+        let nearest = radial(near_x, near_y);
+        let bound = top - profile.height_at(nearest)?;
+        Some((bound, i, tri))
+    }));
+    // Each triangle is in the list once, so no two keys are equal and the
+    // unstable sort gives the one order, with no buffer to allocate.
     order.sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut best: Option<Best> = None;
-    let mut scratch = Vec::new();
-    for (bound, i, tri) in &order {
+    for (bound, i, tri) in order.iter() {
         // A triangle that cannot reach within a tie of the best is skipped,
         // and so is every one after it.
         if best.is_some_and(|b| *bound < b.tip_z - TIP_TIE) {
@@ -221,7 +264,7 @@ fn drop_on_mesh_with<const SKIP_EDGES: bool>(
         }
         for (p, q) in [(a, b), (b, c), (c, a)] {
             if !SKIP_EDGES || edge_can_win(profile, p, q, best) {
-                edge(profile, p, q, &mut best, *i, &mut scratch);
+                edge(profile, p, q, &mut best, *i, breaks);
             }
         }
         facet(profile, tri, &mut best, *i);
@@ -243,14 +286,14 @@ pub(crate) fn drop_on_triangles(
 ) -> Option<Contact> {
     let frame = Frame::new(line);
     let mut best: Option<Best> = None;
-    let mut scratch = Vec::new();
+    let mut breaks = Vec::new();
     for (i, tri) in (0u32..).zip(triangles) {
         let [a, b, c] = tri.map(|p| frame.local(p));
         for v in [a, b, c] {
             vertex(profile, v, &mut best, i);
         }
         for (p, q) in [(a, b), (b, c), (c, a)] {
-            edge(profile, p, q, &mut best, i, &mut scratch);
+            edge(profile, p, q, &mut best, i, &mut breaks);
         }
         facet(profile, &[a, b, c], &mut best, i);
     }
@@ -387,8 +430,10 @@ fn edge_can_win(profile: &RevolvedProfile, p0: Local, p1: Local, best: Option<Be
     p0.z.max(p1.z) - lowest + EDGE_BOUND_SLACK > best.tip_z - TIP_TIE
 }
 
-/// The edge test. `ts` is working space, cleared on entry, so a drop that
-/// tests many edges allocates once.
+/// The tool against the edge from `p0` to `p1`: tried between the points
+/// where the edge's distance from the axis crosses a break of the tool's
+/// envelope, which are put in `ts` (emptied first, so a caller can keep it
+/// from edge to edge).
 fn edge(
     profile: &RevolvedProfile,
     p0: Local,
@@ -926,8 +971,8 @@ mod tests {
                 let a = 11.7 * f64::from(i);
                 let across = 0.37 * (f64::from(i % 7) - 3.0);
                 let line = rotary.tool_line(Millimetres(x), Degrees(a), Millimetres(across));
-                let fast = drop_on_mesh_with::<true>(&mesh, &profile, &line);
-                let every = drop_on_mesh_with::<false>(&mesh, &profile, &line);
+                let fast = drop_with::<true>(&mesh, &profile, &line, &mut Scratch::default());
+                let every = drop_with::<false>(&mesh, &profile, &line, &mut Scratch::default());
                 assert_eq!(bits(fast), bits(every), "x {x}, A {a}, across {across}");
                 skipped += usize::from(fast.is_some());
             }

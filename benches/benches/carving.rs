@@ -82,12 +82,18 @@ fn carving(c: &mut Criterion) {
     );
     let mut group = c.benchmark_group("carving");
     group.sample_size(10);
-    group.bench_function("4000 V-bit drops along a pass, 454k-triangle carving", |b| {
-        b.iter(|| std::hint::black_box(drops(model.as_ref(), &tool, &rotary)));
-    });
-    group.bench_function("4000 V-bit drops along a pass, with a held box and a tab", |b| {
-        b.iter(|| std::hint::black_box(drops(&held, &tool, &rotary)));
-    });
+    group.bench_function(
+        "4000 V-bit drops along a pass, 454k-triangle carving",
+        |b| {
+            b.iter(|| std::hint::black_box(drops(model.as_ref(), &tool, &rotary)));
+        },
+    );
+    group.bench_function(
+        "4000 V-bit drops along a pass, with a held box and a tab",
+        |b| {
+            b.iter(|| std::hint::black_box(drops(&held, &tool, &rotary)));
+        },
+    );
 
     let middle = MeshSurface::new(&TriangleMesh {
         vertices: mesh.vertices.clone(),
@@ -147,13 +153,17 @@ fn carving(c: &mut Criterion) {
     .collect();
     let (cancel, progress) = (CancelToken::new(), NoProgress);
     let context = JobContext::new(&cancel, &progress);
-    group.bench_function("axial finishing of a 300k-triangle region, 21 passes", |b| {
-        b.iter(|| {
-            std::hint::black_box(
-                generate_in_region(&AxialFinishing, &input, &region, &values, &context).unwrap(),
-            )
-        });
-    });
+    group.bench_function(
+        "axial finishing of a 300k-triangle region, 21 passes",
+        |b| {
+            b.iter(|| {
+                std::hint::black_box(
+                    generate_in_region(&AxialFinishing, &input, &region, &values, &context)
+                        .unwrap(),
+                )
+            });
+        },
+    );
     group.finish();
 }
 

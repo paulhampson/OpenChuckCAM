@@ -1,0 +1,409 @@
+Decision 0256 / issue #347: toolpath-mesh candidate evidence (lane STEPALL-T), 28 to 29 Oct 2026 (Europe/London).
+
+Harness: the step_accuracy example at source 0560e4fd9f1c1ce9cdff287b8130e6703856ed49 (branch claude/lane-stepall-t1-checker; the M2 drop-error bound of decision 0255), release build, executable SHA-256 f5c5d88bde07bce29958b6f8c81e76ae802ba0cb71de8b475d859e1b20d2ed5e; STEP worker 056d379378091889e8ea54a49062603d4f1cdeedf63bf89cfbd5adf4447dc698; blisk.step 0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646. Cloud container, 4 cores, 15 GiB, rustc 1.97.0. OPENCHUCK_STEP_WORKER=target/release/openchuck-step-worker; RAYON_NUM_THREADS=4 unless stated.
+
+== 1. Candidate screening: bounded M2, quick stepovers, form c only (host Intel Xeon @ 2.80GHz, 28 Oct)
+Command per candidate: target/release/examples/step_accuracy --only m2 --part blisk --forms c --fine LINEAR --angular ANGULAR --quick
+Columns: operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+=== linear 0.001 angular 0.01
+## form c (STEP, finer tessellation): 371688 triangles
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0000 | 0.0023 | 0.0024 | 0.0006 | 0.0029 | 7695 | 0.000500
+rest | 0 | 67920 | 0.0060 | 0.0065 | 0.0025 | 0.0026 | 0.0029 | 0.0009 | 0.0034 | 63987 | 0.000500
+pencil | 0 | 9632 | 0.0100 | 0.0105 | 0.0004 | 0.0017 | 0.0005 | 0.0005 | 0.0009 | 9005 | 0.000500
+helical | 0 | 67912 | 0.0060 | 0.0065 | 0.0025 | 0.0026 | 0.0029 | 0.0009 | 0.0034 | 63979 | 0.000500
+axial | 0 | 91208 | 0.0058 | 0.0063 | 0.0027 | 0.0023 | 0.0030 | 0.0008 | 0.0035 | 85776 | 0.000500
+indexed | 0 | 2252 | 0.0053 | 0.0058 | 0.0022 | 0.0023 | 0.0026 | 0.0005 | 0.0031 | 2077 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	5m1.638s
+=== linear 0.0025 angular 0.01
+## form c (STEP, finer tessellation): 317658 triangles
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0000 | 0.0018 | 0.0024 | 0.0010 | 0.0029 | 7700 | 0.000500
+rest | 0 | 68016 | 0.0060 | 0.0065 | 0.0025 | 0.0029 | 0.0029 | 0.0012 | 0.0034 | 63863 | 0.000500
+pencil | 0 | 9624 | 0.0066 | 0.0071 | 0.0007 | 0.0018 | 0.0007 | 0.0006 | 0.0012 | 9026 | 0.000500
+helical | 0 | 68008 | 0.0060 | 0.0065 | 0.0025 | 0.0029 | 0.0029 | 0.0012 | 0.0034 | 63855 | 0.000500
+axial | 0 | 91204 | 0.0058 | 0.0063 | 0.0027 | 0.0026 | 0.0031 | 0.0011 | 0.0036 | 85712 | 0.000500
+indexed | 0 | 2236 | 0.0053 | 0.0058 | 0.0022 | 0.0021 | 0.0026 | 0.0012 | 0.0031 | 2044 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m48.293s
+=== linear 0.005 angular 0.01
+## form c (STEP, finer tessellation): 448676 triangles
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0000 | 0.0018 | 0.0024 | 0.0010 | 0.0029 | 7696 | 0.000500
+rest | 0 | 68044 | 0.0060 | 0.0065 | 0.0025 | 0.0029 | 0.0029 | 0.0014 | 0.0034 | 63952 | 0.000500
+pencil | 0 | 9648 | 0.0066 | 0.0071 | 0.0004 | 0.0016 | 0.0004 | 0.0005 | 0.0010 | 9007 | 0.000500
+helical | 0 | 68036 | 0.0060 | 0.0065 | 0.0025 | 0.0029 | 0.0029 | 0.0014 | 0.0034 | 63944 | 0.000500
+axial | 0 | 91140 | 0.0058 | 0.0063 | 0.0027 | 0.0026 | 0.0031 | 0.0012 | 0.0036 | 85627 | 0.000500
+indexed | 0 | 2228 | 0.0053 | 0.0058 | 0.0022 | 0.0022 | 0.0026 | 0.0012 | 0.0031 | 2033 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m59.044s
+=== linear 0.01 angular 0.01
+## form c (STEP, finer tessellation): 597424 triangles
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0000 | 0.0018 | 0.0024 | 0.0005 | 0.0029 | 7699 | 0.000500
+rest | 0 | 68040 | 0.0060 | 0.0065 | 0.0025 | 0.0023 | 0.0029 | 0.0014 | 0.0034 | 64163 | 0.000500
+pencil | 0 | 9116 | 0.0066 | 0.0071 | 0.0003 | 0.0022 | 0.0004 | 0.0005 | 0.0010 | 8572 | 0.000500
+helical | 0 | 68032 | 0.0060 | 0.0065 | 0.0025 | 0.0023 | 0.0029 | 0.0014 | 0.0034 | 64155 | 0.000500
+axial | 0 | 91136 | 0.0058 | 0.0063 | 0.0027 | 0.0023 | 0.0031 | 0.0008 | 0.0036 | 85662 | 0.000500
+indexed | 0 | 2252 | 0.0053 | 0.0058 | 0.0022 | 0.0021 | 0.0026 | 0.0007 | 0.0031 | 2066 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	5m24.492s
+=== linear 0.001 angular 0.02
+## form c (STEP, finer tessellation): 161266 triangles
+roughing | 0.3 | 37732 | 0.0000 | 0.0000 | 0.0000 | 0.0019 | 0.0024 | 0.0007 | 0.0029 | 7707 | 0.000500
+rest | 0 | 67952 | 0.0060 | 0.0065 | 0.0045 | 0.0026 | 0.0045 | 0.0009 | 0.0050 | 63757 | 0.000500
+pencil | 0 | 9476 | 0.0067 | 0.0071 | 0.0007 | 0.0017 | 0.0009 | 0.0004 | 0.0014 | 8803 | 0.000500
+helical | 0 | 67944 | 0.0060 | 0.0065 | 0.0045 | 0.0026 | 0.0045 | 0.0009 | 0.0050 | 63749 | 0.000500
+axial | 0 | 91092 | 0.0057 | 0.0062 | 0.0054 | 0.0023 | 0.0056 | 0.0010 | 0.0060 | 85586 | 0.000500
+indexed | 0 | 2256 | 0.0053 | 0.0058 | 0.0041 | 0.0022 | 0.0041 | 0.0007 | 0.0046 | 2083 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m31.011s
+=== linear 0.0025 angular 0.015
+## form c (STEP, finer tessellation): 149642 triangles
+roughing | 0.3 | 37732 | 0.0000 | 0.0000 | 0.0000 | 0.0026 | 0.0023 | 0.0014 | 0.0028 | 7703 | 0.000500
+rest | 0 | 68092 | 0.0059 | 0.0064 | 0.0025 | 0.0032 | 0.0030 | 0.0022 | 0.0035 | 63788 | 0.000500
+pencil | 0 | 9640 | 0.0068 | 0.0073 | 0.0011 | 0.0022 | 0.0011 | 0.0011 | 0.0016 | 8987 | 0.000500
+helical | 0 | 68084 | 0.0059 | 0.0064 | 0.0025 | 0.0032 | 0.0030 | 0.0022 | 0.0035 | 63780 | 0.000500
+axial | 0 | 91084 | 0.0057 | 0.0062 | 0.0034 | 0.0037 | 0.0035 | 0.0019 | 0.0039 | 85570 | 0.000500
+indexed | 0 | 2224 | 0.0052 | 0.0057 | 0.0021 | 0.0023 | 0.0026 | 0.0018 | 0.0031 | 2038 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m47.524s
+=== linear 0.005 angular 0.015
+## form c (STEP, finer tessellation): 152570 triangles
+roughing | 0.3 | 37732 | 0.0000 | 0.0000 | 0.0000 | 0.0028 | 0.0024 | 0.0017 | 0.0029 | 7710 | 0.000500
+rest | 0 | 68164 | 0.0060 | 0.0065 | 0.0026 | 0.0036 | 0.0029 | 0.0026 | 0.0034 | 63803 | 0.000500
+pencil | 0 | 9636 | 0.0067 | 0.0072 | 0.0014 | 0.0017 | 0.0015 | 0.0017 | 0.0022 | 9000 | 0.000500
+helical | 0 | 68156 | 0.0060 | 0.0065 | 0.0026 | 0.0036 | 0.0029 | 0.0026 | 0.0034 | 63795 | 0.000500
+axial | 0 | 91172 | 0.0058 | 0.0063 | 0.0034 | 0.0035 | 0.0035 | 0.0025 | 0.0040 | 85635 | 0.000500
+indexed | 0 | 2252 | 0.0053 | 0.0058 | 0.0021 | 0.0028 | 0.0026 | 0.0024 | 0.0031 | 2060 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m50.473s
+=== linear 0.01 angular 0.015
+## form c (STEP, finer tessellation): 256474 triangles
+roughing | 0.3 | 37732 | 0.0000 | 0.0000 | 0.0000 | 0.0018 | 0.0023 | 0.0007 | 0.0028 | 7704 | 0.000500
+rest | 0 | 68020 | 0.0059 | 0.0064 | 0.0025 | 0.0030 | 0.0030 | 0.0023 | 0.0034 | 64033 | 0.000500
+pencil | 0 | 9424 | 0.0068 | 0.0073 | 0.0008 | 0.0017 | 0.0010 | 0.0008 | 0.0015 | 8788 | 0.000500
+helical | 0 | 68012 | 0.0059 | 0.0064 | 0.0025 | 0.0030 | 0.0030 | 0.0023 | 0.0034 | 64025 | 0.000500
+axial | 0 | 91068 | 0.0057 | 0.0062 | 0.0034 | 0.0030 | 0.0035 | 0.0020 | 0.0039 | 85559 | 0.000500
+indexed | 0 | 2240 | 0.0052 | 0.0057 | 0.0021 | 0.0022 | 0.0026 | 0.0014 | 0.0031 | 2060 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+real	4m54.025s
+
+== 2. One-run timing screens, all threads (host Intel Xeon @ 2.80GHz, 28 Oct). Not the approved method: one run each.
+Columns: run | operation | threads | generate s | drops | drop s (summed) | exact queries | simulate s | fitting s | assembly s | status
+-- 0.0025 mm / 0.01 rad, seven operations including simultaneous's refusal:
+target/release/examples/step_accuracy --only m3 --part blisk --forms b,c --fine 0.0025 --angular 0.01 --runs 1 --threads all --skip-probe
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+run 1 | roughing | all (4) | 1.295462 | 10369 | 0.581651 | 0 | 7.988406 | 0.000000 | 0.767588 | success
+run 1 | rest | all (4) | 5.366677 | 256235 | 18.287750 | 0 | 21.044356 | 4.215391 | 0.127721 | success
+run 1 | pencil | all (4) | 8.178291 | 359338 | 10.123446 | 0 | 0.128108 | 0.089612 | 0.076756 | success
+run 1 | helical | all (4) | 3.932788 | 256205 | 14.303108 | 0 | 14.108817 | 3.333349 | 0.113325 | success
+run 1 | axial | all (4) | 12.160700 | 828608 | 43.616439 | 0 | 338.818653 | 41.251411 | 0.932301 | success
+run 1 | indexed | all (4) | 0.047718 | 2372 | 0.100148 | 0 | 0.070667 | 0.093858 | 0.017147 | success
+run 1 | simultaneous | all (4) | 113.170129 | 108092 | 3.855862 | 198112 | 0.000000 | 27.828538 | 0.000000 | REFUSED (time to refusal)
+run 1 | job wall time | all (4) | 526.335772 s | REFUSED sequence
+## form c (STEP, finer tessellation): 317658 triangles
+run 1 | roughing | all (4) | 1.912843 | 10369 | 3.362023 | 0 | 7.809632 | 0.000000 | 0.738763 | success
+run 1 | rest | all (4) | 15.018261 | 236967 | 56.060157 | 0 | 20.974587 | 12.532468 | 0.176002 | success
+run 1 | pencil | all (4) | 12.617788 | 357176 | 14.365810 | 0 | 0.110804 | 0.307957 | 0.085936 | success
+run 1 | helical | all (4) | 9.794034 | 236937 | 38.213050 | 0 | 14.890295 | 8.845422 | 0.101300 | success
+run 1 | axial | all (4) | 29.378063 | 810080 | 111.011223 | 0 | 379.337400 | 104.860054 | 1.099550 | success
+run 1 | indexed | all (4) | 0.127452 | 2308 | 0.389556 | 0 | 0.071405 | 0.367411 | 0.018056 | success
+run 1 | simultaneous | all (4) | 136.446931 | 104443 | 10.386373 | 196364 | 0.000000 | 34.761398 | 0.000000 | REFUSED (time to refusal)
+run 1 | job wall time | all (4) | 628.516725 s | REFUSED sequence
+-- 0.0025 mm / 0.015 rad, the six successful operations:
+target/release/examples/step_accuracy --only m3 --part blisk --forms b,c --fine 0.0025 --angular 0.015 --runs 1 --threads all --skip-probe --ops roughing,rest,pencil,helical,axial,indexed
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+run 1 | roughing | all (4) | 1.231429 | 10369 | 0.596211 | 0 | 7.187127 | 0.000000 | 0.762654 | success
+run 1 | rest | all (4) | 4.498012 | 256235 | 15.371840 | 0 | 20.233068 | 3.355346 | 0.120240 | success
+run 1 | pencil | all (4) | 5.406533 | 359338 | 4.065391 | 0 | 0.101154 | 0.084802 | 0.072034 | success
+run 1 | helical | all (4) | 3.108584 | 256205 | 11.183111 | 0 | 12.246699 | 2.684745 | 0.106205 | success
+run 1 | axial | all (4) | 9.962103 | 828608 | 35.166424 | 0 | 342.248322 | 33.263320 | 1.012464 | success
+run 1 | indexed | all (4) | 0.045882 | 2372 | 0.093262 | 0 | 0.076861 | 0.088773 | 0.016640 | success
+run 1 | job wall time | all (4) | 406.370612 s | success
+## form c (STEP, finer tessellation): 149642 triangles
+run 1 | roughing | all (4) | 1.438174 | 10369 | 1.703880 | 0 | 7.605578 | 0.000000 | 0.717777 | success
+run 1 | rest | all (4) | 8.283417 | 237295 | 30.242686 | 0 | 20.165121 | 6.497571 | 0.101897 | success
+run 1 | pencil | all (4) | 9.556214 | 358193 | 11.090882 | 0 | 0.149300 | 0.203373 | 0.079352 | success
+run 1 | helical | all (4) | 6.175931 | 237265 | 23.902852 | 0 | 12.634993 | 5.175146 | 0.099989 | success
+run 1 | axial | all (4) | 19.433497 | 809928 | 71.716840 | 0 | 325.818396 | 67.546538 | 0.852038 | success
+run 1 | indexed | all (4) | 0.074492 | 2300 | 0.207183 | 0 | 0.061323 | 0.192280 | 0.013956 | success
+run 1 | job wall time | all (4) | 411.417972 s | success
+
+== 3. Corpus torus import (host Intel Xeon @ 2.80GHz, 28 Oct)
+target/release/examples/step_accuracy --only m1 --parts torus --deflections LINEAR --angular ANGULAR (wall time of the whole M1 run; the import column is the last)
+angular 0.05 linear 0.01: 8.2 s :: torus | 0.01 | torus | 1 | 127008 | 127008 | 2667168 | 0.00311 | 0.00294 | 0.00311 | 0.00311 | 0.34 | 0.4 | 5.68
+angular 0.05 linear 0.0025: 8.3 s :: torus | 0.0025 | torus | 1 | 127008 | 127008 | 2667168 | 0.00311 | 0.00294 | 0.00311 | 0.00311 | 0.34 | 0.4 | 5.91
+angular 0.03 linear 0.01: 83.6 s :: torus | 0.01 | torus | 1 | 351122 | 351122 | 7373562 | 0.00112 | 0.00106 | 0.00112 | 0.00112 | 0.20 | 0.4 | 76.90
+angular 0.03 linear 0.0025: 88.7 s :: torus | 0.0025 | torus | 1 | 351122 | 351122 | 7373562 | 0.00112 | 0.00106 | 0.00112 | 0.00112 | 0.20 | 0.4 | 81.69
+angular 0.025 linear 0.01: 120.1 s :: Error: Worker("the STEP reader did not finish within 120 s and was stopped")
+angular 0.025 linear 0.0025: 120.1 s :: Error: Worker("the STEP reader did not finish within 120 s and was stopped")
+angular 0.015 linear 0.0025: 120.1 s :: Error: Worker("the STEP reader did not finish within 120 s and was stopped")
+angular 0.02 linear 0.01 (decision 0255 corpus run): Error: Worker("the STEP reader did not finish within 120 s and was stopped")
+
+== 4. Five-run qualification of 0.0025 mm / 0.015 rad (the approved method)
+Runner script (each thread count's b/c pair back to back on one host; a pair interrupted by a restart is rerun whole):
+#!/bin/bash
+# Each thread count's b/c pair runs back to back on one host; a pair left
+# unfinished by a restart is rerun whole (its partial logs are archived).
+cd /home/user/OpenChuckCAM
+export OPENCHUCK_STEP_WORKER=$PWD/target/release/openchuck-step-worker RAYON_NUM_THREADS=4
+host="$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2) boot $(cat /proc/sys/kernel/random/boot_id)"
+for threads in all 1; do
+  [ -f <scratch>/m3/pair-$threads.done ] && continue
+  rm -f <scratch>/m3/m3-?-$threads.log*
+  for form in b c; do
+    log=<scratch>/m3/m3-$form-$threads.log
+    echo "start $form $threads $(date -u) host$host" >> <scratch>/m3/status.txt
+    <scratch>/m3/m3-step-accuracy --only m3 --part blisk --forms $form --ops roughing,rest,pencil,helical,axial,indexed --runs 5 --threads $threads --skip-probe --fine 0.0025 --angular 0.015 > $log 2>&1
+    code=$?; echo "end $form $threads exit=$code $(date -u)" >> <scratch>/m3/status.txt
+    [ $code -eq 0 ] || exit 1
+  done
+  echo "$host" > <scratch>/m3/pair-$threads.done
+done
+echo COMPLETE >> <scratch>/m3/status.txt
+
+Two container restarts interrupted earlier attempts (runtime 1: host 2.80 GHz, b-all done, c-all killed; runtime 2: host 2.10 GHz, b-all done, c-all killed). Their logs are archived and not used; no sample from another runtime is combined. Runtime 3 provenance:
+runtime 3
+24ffa3fb98952c336c764473733a3aacf04f85cf
+f5c5d88bde07bce29958b6f8c81e76ae802ba0cb71de8b475d859e1b20d2ed5e  <scratch>/m3/m3-step-accuracy
+056d379378091889e8ea54a49062603d4f1cdeedf63bf89cfbd5adf4447dc698  target/release/openchuck-step-worker
+0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646  testdata/step/valid/blisk.step
+model name	: Intel(R) Xeon(R) Processor @ 2.80GHz
+b66cd70e-7d22-4b9c-8e1e-391b04f8cc71
+Wed Oct 28 23:56:51 UTC 2026
+
+start b all Wed Oct 28 23:56:51 UTC 2026 host Intel(R) Xeon(R) Processor @ 2.80GHz boot b66cd70e-7d22-4b9c-8e1e-391b04f8cc71
+end b all exit=0 Thu Oct 29 00:34:23 UTC 2026
+start c all Thu Oct 29 00:34:23 UTC 2026 host Intel(R) Xeon(R) Processor @ 2.80GHz boot b66cd70e-7d22-4b9c-8e1e-391b04f8cc71
+end c all exit=0 Thu Oct 29 01:14:23 UTC 2026
+start b 1 Thu Oct 29 01:14:23 UTC 2026 host Intel(R) Xeon(R) Processor @ 2.80GHz boot b66cd70e-7d22-4b9c-8e1e-391b04f8cc71
+end b 1 exit=0 Thu Oct 29 03:10:36 UTC 2026
+start c 1 Thu Oct 29 03:10:36 UTC 2026 host Intel(R) Xeon(R) Processor @ 2.80GHz boot b66cd70e-7d22-4b9c-8e1e-391b04f8cc71
+end c 1 exit=0 Thu Oct 29 05:13:27 UTC 2026
+COMPLETE
+
+---- form b, threads all: complete log
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.0025 mm and 0.015 rad
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | all (4) | 1.104685 | 10369 | 0.425938 | 0 | 7.011587 | 0.000000 | 0.715449 | success
+run 1 | rest | all (4) | 5.999870 | 256235 | 19.405120 | 0 | 19.218195 | 4.474650 | 0.108967 | success
+run 1 | pencil | all (4) | 5.640576 | 359338 | 4.803010 | 0 | 0.104203 | 0.084277 | 0.071271 | success
+run 1 | helical | all (4) | 2.432483 | 256205 | 9.015775 | 0 | 12.340191 | 2.039205 | 0.121555 | success
+run 1 | axial | all (4) | 9.658384 | 828608 | 32.825217 | 0 | 310.916985 | 31.054558 | 1.029947 | success
+run 1 | indexed | all (4) | 0.040627 | 2372 | 0.078106 | 0 | 0.064754 | 0.072597 | 0.013145 | success
+run 1 | job wall time | all (4) | 374.552104 s | success
+run 2 | roughing | all (4) | 1.169681 | 10369 | 0.486362 | 0 | 6.881870 | 0.000000 | 0.742871 | success
+run 2 | rest | all (4) | 6.216935 | 256235 | 20.086372 | 0 | 19.251625 | 4.483234 | 0.108250 | success
+run 2 | pencil | all (4) | 6.000760 | 359338 | 5.386595 | 0 | 0.123538 | 0.090936 | 0.080262 | success
+run 2 | helical | all (4) | 2.936280 | 256205 | 10.588136 | 0 | 12.268341 | 2.565888 | 0.108118 | success
+run 2 | axial | all (4) | 13.193511 | 828608 | 40.253083 | 0 | 312.621146 | 38.053924 | 0.962974 | success
+run 2 | indexed | all (4) | 0.049216 | 2372 | 0.107335 | 0 | 0.057753 | 0.100796 | 0.011191 | success
+run 2 | job wall time | all (4) | 380.824455 s | success
+run 3 | roughing | all (4) | 1.219926 | 10369 | 0.564625 | 0 | 7.047948 | 0.000000 | 0.747579 | success
+run 3 | rest | all (4) | 5.139564 | 256235 | 15.934278 | 0 | 18.640879 | 3.654097 | 0.141807 | success
+run 3 | pencil | all (4) | 5.172496 | 359338 | 3.579045 | 0 | 0.103405 | 0.083309 | 0.067584 | success
+run 3 | helical | all (4) | 2.409672 | 256205 | 8.947398 | 0 | 11.972098 | 1.984366 | 0.113918 | success
+run 3 | axial | all (4) | 9.480276 | 828608 | 32.482391 | 0 | 309.727662 | 30.692155 | 1.068346 | success
+run 3 | indexed | all (4) | 0.037987 | 2372 | 0.087268 | 0 | 0.059801 | 0.081107 | 0.013024 | success
+run 3 | job wall time | all (4) | 371.082190 s | success
+run 4 | roughing | all (4) | 1.204264 | 10369 | 0.426280 | 0 | 7.052592 | 0.000000 | 0.792377 | success
+run 4 | rest | all (4) | 5.855370 | 256235 | 18.858691 | 0 | 19.989320 | 4.142616 | 0.113808 | success
+run 4 | pencil | all (4) | 5.044464 | 359338 | 3.147269 | 0 | 0.108380 | 0.084411 | 0.072662 | success
+run 4 | helical | all (4) | 2.354991 | 256205 | 8.707750 | 0 | 12.476506 | 2.002852 | 0.121530 | success
+run 4 | axial | all (4) | 9.668202 | 828608 | 32.349647 | 0 | 308.791097 | 30.582481 | 1.095154 | success
+run 4 | indexed | all (4) | 0.034040 | 2372 | 0.073759 | 0 | 0.062447 | 0.068431 | 0.011284 | success
+run 4 | job wall time | all (4) | 372.673140 s | success
+run 5 | roughing | all (4) | 1.190368 | 10369 | 0.628870 | 0 | 6.913800 | 0.000000 | 0.732877 | success
+run 5 | rest | all (4) | 4.148972 | 256235 | 13.918469 | 0 | 19.221130 | 3.088193 | 0.110742 | success
+run 5 | pencil | all (4) | 6.247085 | 359338 | 5.813935 | 0 | 0.093312 | 0.094969 | 0.072929 | success
+run 5 | helical | all (4) | 2.440089 | 256205 | 9.152185 | 0 | 11.995403 | 2.038797 | 0.102461 | success
+run 5 | axial | all (4) | 9.705779 | 828608 | 32.382869 | 0 | 306.576028 | 30.614110 | 1.061581 | success
+run 5 | indexed | all (4) | 0.040388 | 2372 | 0.085600 | 0 | 0.057051 | 0.080302 | 0.010390 | success
+run 5 | job wall time | all (4) | 368.647421 s | success
+roughing | all (4) | 1.190368 | 10369 | 0.486362 | 0 | 7.011587 | 0.000000 | 0.742871
+rest | all (4) | 5.855370 | 256235 | 18.858691 | 0 | 19.221130 | 4.142616 | 0.110742
+pencil | all (4) | 5.640576 | 359338 | 4.803010 | 0 | 0.104203 | 0.084411 | 0.072662
+helical | all (4) | 2.432483 | 256205 | 9.015775 | 0 | 12.268341 | 2.038797 | 0.113918
+axial | all (4) | 9.668202 | 828608 | 32.482391 | 0 | 309.727662 | 30.692155 | 1.061581
+indexed | all (4) | 0.040388 | 2372 | 0.085600 | 0 | 0.059801 | 0.080302 | 0.011284
+job generation median | all (4) | 24.161329 s
+job wall median | all (4) | 372.673140 s
+
+---- form c, threads all: complete log
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.0025 mm and 0.015 rad
+
+## form c (STEP, finer tessellation): 149642 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | all (4) | 1.483308 | 10369 | 1.665311 | 0 | 6.458078 | 0.000000 | 0.769838 | success
+run 1 | rest | all (4) | 8.614728 | 237295 | 29.873848 | 0 | 19.368168 | 6.306471 | 0.140763 | success
+run 1 | pencil | all (4) | 10.139831 | 358193 | 12.783721 | 0 | 0.097709 | 0.186435 | 0.068539 | success
+run 1 | helical | all (4) | 5.529861 | 237265 | 21.503427 | 0 | 12.045828 | 4.836118 | 0.093894 | success
+run 1 | axial | all (4) | 19.391030 | 809928 | 70.439317 | 0 | 305.945770 | 66.423434 | 1.040367 | success
+run 1 | indexed | all (4) | 0.082485 | 2300 | 0.230068 | 0 | 0.060553 | 0.213001 | 0.010865 | success
+run 1 | job wall time | all (4) | 389.309136 s | success
+run 2 | roughing | all (4) | 1.445693 | 10369 | 1.742786 | 0 | 6.786200 | 0.000000 | 0.716360 | success
+run 2 | rest | all (4) | 9.856209 | 237295 | 36.770669 | 0 | 18.859568 | 8.212712 | 0.093385 | success
+run 2 | pencil | all (4) | 8.566260 | 358193 | 8.990543 | 0 | 0.121156 | 0.187609 | 0.073863 | success
+run 2 | helical | all (4) | 6.322356 | 237265 | 24.606475 | 0 | 12.604419 | 5.533711 | 0.093773 | success
+run 2 | axial | all (4) | 24.899665 | 809928 | 82.695757 | 0 | 311.788302 | 77.846112 | 1.095470 | success
+run 2 | indexed | all (4) | 0.096137 | 2300 | 0.260595 | 0 | 0.070387 | 0.241736 | 0.012800 | success
+run 2 | job wall time | all (4) | 401.433685 s | success
+run 3 | roughing | all (4) | 1.507273 | 10369 | 1.846528 | 0 | 7.117481 | 0.000000 | 0.752870 | success
+run 3 | rest | all (4) | 10.405147 | 237295 | 37.114625 | 0 | 20.194099 | 8.217790 | 0.107156 | success
+run 3 | pencil | all (4) | 8.603245 | 358193 | 8.552948 | 0 | 0.101292 | 0.188104 | 0.068672 | success
+run 3 | helical | all (4) | 5.712585 | 237265 | 21.959943 | 0 | 12.433658 | 4.978472 | 0.137036 | success
+run 3 | axial | all (4) | 19.573484 | 809928 | 71.559311 | 0 | 314.341784 | 67.521299 | 1.228667 | success
+run 3 | indexed | all (4) | 0.071634 | 2300 | 0.202380 | 0 | 0.063323 | 0.187076 | 0.012040 | success
+run 3 | job wall time | all (4) | 400.148389 s | success
+run 4 | roughing | all (4) | 1.428484 | 10369 | 1.666270 | 0 | 7.170265 | 0.000000 | 0.723123 | success
+run 4 | rest | all (4) | 10.219934 | 237295 | 36.095374 | 0 | 19.360973 | 8.231041 | 0.098417 | success
+run 4 | pencil | all (4) | 8.470421 | 358193 | 8.643059 | 0 | 0.106959 | 0.197328 | 0.071487 | success
+run 4 | helical | all (4) | 5.730085 | 237265 | 22.219181 | 0 | 12.653746 | 5.037863 | 0.106330 | success
+run 4 | axial | all (4) | 19.376076 | 809928 | 71.277589 | 0 | 316.929090 | 67.231324 | 1.073563 | success
+run 4 | indexed | all (4) | 0.074112 | 2300 | 0.204157 | 0 | 0.061377 | 0.188913 | 0.012962 | success
+run 4 | job wall time | all (4) | 401.606593 s | success
+run 5 | roughing | all (4) | 1.454097 | 10369 | 1.619580 | 0 | 6.916576 | 0.000000 | 0.738572 | success
+run 5 | rest | all (4) | 10.148029 | 237295 | 36.043482 | 0 | 19.518735 | 8.169348 | 0.097080 | success
+run 5 | pencil | all (4) | 9.531207 | 358193 | 10.793375 | 0 | 0.111462 | 0.184234 | 0.069602 | success
+run 5 | helical | all (4) | 5.909348 | 237265 | 22.882265 | 0 | 12.644657 | 4.962258 | 0.101341 | success
+run 5 | axial | all (4) | 19.271061 | 809928 | 71.003791 | 0 | 316.044255 | 66.955586 | 0.999508 | success
+run 5 | indexed | all (4) | 0.072838 | 2300 | 0.207593 | 0 | 0.060143 | 0.192700 | 0.011167 | success
+run 5 | job wall time | all (4) | 401.717300 s | success
+roughing | all (4) | 1.454097 | 10369 | 1.666270 | 0 | 6.916576 | 0.000000 | 0.738572
+rest | all (4) | 10.148029 | 237295 | 36.095374 | 0 | 19.368168 | 8.212712 | 0.098417
+pencil | all (4) | 8.603245 | 358193 | 8.990543 | 0 | 0.106959 | 0.187609 | 0.069602
+helical | all (4) | 5.730085 | 237265 | 22.219181 | 0 | 12.604419 | 4.978472 | 0.101341
+axial | all (4) | 19.391030 | 809928 | 71.277589 | 0 | 314.341784 | 67.231324 | 1.073563
+indexed | all (4) | 0.074112 | 2300 | 0.207593 | 0 | 0.061377 | 0.192700 | 0.012040
+job generation median | all (4) | 45.873368 s
+job wall median | all (4) | 401.433685 s
+
+---- form b, threads 1: complete log
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.0025 mm and 0.015 rad
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | 1 | 1.497327 | 10369 | 0.386873 | 0 | 21.683282 | 0.000000 | 0.709745 | success
+run 1 | rest | 1 | 10.225625 | 256235 | 8.792368 | 0 | 60.691710 | 8.157905 | 0.100512 | success
+run 1 | pencil | 1 | 14.257818 | 359338 | 3.026842 | 0 | 0.221068 | 0.080107 | 0.065877 | success
+run 1 | helical | 1 | 8.887240 | 256205 | 8.663938 | 0 | 40.403916 | 7.805540 | 0.103266 | success
+run 1 | axial | 1 | 33.933913 | 828608 | 32.430006 | 0 | 1115.308584 | 30.595834 | 1.097970 | success
+run 1 | indexed | 1 | 0.090048 | 2372 | 0.079000 | 0 | 0.216596 | 0.073605 | 0.009780 | success
+run 1 | job wall time | 1 | 1307.473675 s | success
+run 2 | roughing | 1 | 1.534497 | 10369 | 0.410557 | 0 | 22.238099 | 0.000000 | 0.703943 | success
+run 2 | rest | 1 | 9.793280 | 256235 | 8.915752 | 0 | 63.205215 | 8.217754 | 0.114991 | success
+run 2 | pencil | 1 | 14.575933 | 359338 | 3.239321 | 0 | 0.227835 | 0.087020 | 0.064973 | success
+run 2 | helical | 1 | 8.948405 | 256205 | 8.721836 | 0 | 41.091981 | 7.943769 | 0.104420 | success
+run 2 | axial | 1 | 34.345631 | 828608 | 32.880346 | 0 | 1124.657101 | 31.024343 | 1.043961 | success
+run 2 | indexed | 1 | 0.093604 | 2372 | 0.081435 | 0 | 0.204600 | 0.076201 | 0.010726 | success
+run 2 | job wall time | 1 | 1320.935475 s | success
+run 3 | roughing | 1 | 1.611962 | 10369 | 0.402903 | 0 | 22.273568 | 0.000000 | 0.800107 | success
+run 3 | rest | 1 | 9.647819 | 256235 | 8.774621 | 0 | 61.774139 | 8.135222 | 0.107381 | success
+run 3 | pencil | 1 | 14.312657 | 359338 | 3.056537 | 0 | 0.220418 | 0.085010 | 0.065362 | success
+run 3 | helical | 1 | 8.866605 | 256205 | 8.644328 | 0 | 40.842620 | 7.848751 | 0.104371 | success
+run 3 | axial | 1 | 34.278062 | 828608 | 32.825397 | 0 | 1113.218247 | 30.978455 | 1.026685 | success
+run 3 | indexed | 1 | 0.088556 | 2372 | 0.075820 | 0 | 0.202615 | 0.070616 | 0.011464 | success
+run 3 | job wall time | 1 | 1307.354669 s | success
+run 4 | roughing | 1 | 1.555053 | 10369 | 0.453588 | 0 | 23.356703 | 0.000000 | 0.708067 | success
+run 4 | rest | 1 | 10.161924 | 256235 | 9.111161 | 0 | 61.968632 | 8.451464 | 0.103207 | success
+run 4 | pencil | 1 | 14.955231 | 359338 | 3.066490 | 0 | 0.224929 | 0.081229 | 0.066452 | success
+run 4 | helical | 1 | 8.879228 | 256205 | 8.654278 | 0 | 40.595050 | 7.851095 | 0.105565 | success
+run 4 | axial | 1 | 33.504852 | 828608 | 32.121682 | 0 | 1122.680964 | 30.302176 | 0.982624 | success
+run 4 | indexed | 1 | 0.082986 | 2372 | 0.072594 | 0 | 0.196021 | 0.067345 | 0.009278 | success
+run 4 | job wall time | 1 | 1318.179290 s | success
+run 5 | roughing | 1 | 1.571992 | 10369 | 0.417869 | 0 | 22.006976 | 0.000000 | 0.727528 | success
+run 5 | rest | 1 | 9.923945 | 256235 | 8.880358 | 0 | 65.922273 | 8.159779 | 0.125369 | success
+run 5 | pencil | 1 | 17.016460 | 359338 | 3.437161 | 0 | 0.270895 | 0.087773 | 0.068749 | success
+run 5 | helical | 1 | 9.602911 | 256205 | 9.353992 | 0 | 43.810360 | 8.350143 | 0.112101 | success
+run 5 | axial | 1 | 35.289220 | 828608 | 33.674207 | 0 | 1135.660602 | 31.793127 | 1.165295 | success
+run 5 | indexed | 1 | 0.086746 | 2372 | 0.075171 | 0 | 0.201538 | 0.069880 | 0.010325 | success
+run 5 | job wall time | 1 | 1341.381022 s | success
+roughing | 1 | 1.555053 | 10369 | 0.410557 | 0 | 22.238099 | 0.000000 | 0.709745
+rest | 1 | 9.923945 | 256235 | 8.880358 | 0 | 61.968632 | 8.159779 | 0.107381
+pencil | 1 | 14.575933 | 359338 | 3.066490 | 0 | 0.224929 | 0.085010 | 0.065877
+helical | 1 | 8.887240 | 256205 | 8.663938 | 0 | 40.842620 | 7.851095 | 0.104420
+axial | 1 | 34.278062 | 828608 | 32.825397 | 0 | 1122.680964 | 30.978455 | 1.043961
+indexed | 1 | 0.088556 | 2372 | 0.075820 | 0 | 0.202615 | 0.070616 | 0.010325
+job generation median | 1 | 69.139273 s
+job wall median | 1 | 1318.179290 s
+
+---- form c, threads 1: complete log
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.0025 mm and 0.015 rad
+
+## form c (STEP, finer tessellation): 149642 triangles
+### M3: time (median of 5 runs)
+operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status
+run 1 | roughing | 1 | 2.765602 | 10369 | 1.606578 | 0 | 21.329955 | 0.000000 | 0.743171 | success
+run 1 | rest | 1 | 23.406664 | 237295 | 21.989075 | 0 | 61.136351 | 19.988293 | 0.115157 | success
+run 1 | pencil | 1 | 21.090079 | 358193 | 8.086382 | 0 | 0.218002 | 0.192137 | 0.065505 | success
+run 1 | helical | 1 | 21.591600 | 237265 | 21.373426 | 0 | 39.503974 | 19.275282 | 0.093027 | success
+run 1 | axial | 1 | 71.452307 | 809928 | 70.053704 | 0 | 1103.353800 | 65.928742 | 0.922399 | success
+run 1 | indexed | 1 | 0.227795 | 2300 | 0.216064 | 0 | 0.237028 | 0.200111 | 0.010123 | success
+run 1 | job wall time | 1 | 1366.339366 s | success
+run 2 | roughing | 1 | 2.932425 | 10369 | 1.794105 | 0 | 22.371780 | 0.000000 | 0.741657 | success
+run 2 | rest | 1 | 22.989606 | 237295 | 21.918346 | 0 | 62.067490 | 19.933636 | 0.153826 | success
+run 2 | pencil | 1 | 22.010924 | 358193 | 8.310330 | 0 | 0.219913 | 0.184491 | 0.066764 | success
+run 2 | helical | 1 | 22.155322 | 237265 | 21.912683 | 0 | 41.387356 | 19.744500 | 0.106366 | success
+run 2 | axial | 1 | 73.524992 | 809928 | 72.003569 | 0 | 1146.353338 | 67.820272 | 1.008363 | success
+run 2 | indexed | 1 | 0.212166 | 2300 | 0.201402 | 0 | 0.197004 | 0.186413 | 0.009393 | success
+run 2 | job wall time | 1 | 1416.439082 s | success
+run 3 | roughing | 1 | 2.834431 | 10369 | 1.724015 | 0 | 22.536513 | 0.000000 | 0.701582 | success
+run 3 | rest | 1 | 23.277491 | 237295 | 22.139297 | 0 | 62.951675 | 20.243661 | 0.098612 | success
+run 3 | pencil | 1 | 21.404478 | 358193 | 8.485325 | 0 | 0.227000 | 0.190199 | 0.066559 | success
+run 3 | helical | 1 | 22.580075 | 237265 | 22.300378 | 0 | 40.794962 | 20.145397 | 0.133580 | success
+run 3 | axial | 1 | 72.586563 | 809928 | 71.181988 | 0 | 1121.267761 | 66.980102 | 0.918424 | success
+run 3 | indexed | 1 | 0.266850 | 2300 | 0.255370 | 0 | 0.190750 | 0.238186 | 0.009274 | success
+run 3 | job wall time | 1 | 1390.944601 s | success
+run 4 | roughing | 1 | 3.312761 | 10369 | 2.153056 | 0 | 22.821483 | 0.000000 | 0.716309 | success
+run 4 | rest | 1 | 23.531459 | 237295 | 22.522767 | 0 | 62.692375 | 20.474920 | 0.095030 | success
+run 4 | pencil | 1 | 21.560933 | 358193 | 8.289782 | 0 | 0.235022 | 0.201823 | 0.068570 | success
+run 4 | helical | 1 | 22.090090 | 237265 | 21.831938 | 0 | 40.455442 | 19.643628 | 0.123911 | success
+run 4 | axial | 1 | 76.096193 | 809928 | 74.481688 | 0 | 1113.607178 | 70.192103 | 1.079351 | success
+run 4 | indexed | 1 | 0.236552 | 2300 | 0.219805 | 0 | 0.204873 | 0.205990 | 0.014088 | success
+run 4 | job wall time | 1 | 1386.860487 s | success
+run 5 | roughing | 1 | 2.872788 | 10369 | 1.627871 | 0 | 22.489278 | 0.000000 | 0.798175 | success
+run 5 | rest | 1 | 23.321074 | 237295 | 22.304509 | 0 | 64.802263 | 20.453757 | 0.105626 | success
+run 5 | pencil | 1 | 22.050276 | 358193 | 8.902232 | 0 | 0.287579 | 0.208014 | 0.066959 | success
+run 5 | helical | 1 | 21.621516 | 237265 | 21.401096 | 0 | 42.295367 | 19.222837 | 0.092750 | success
+run 5 | axial | 1 | 73.582588 | 809928 | 72.030996 | 0 | 1119.875343 | 67.791808 | 1.054668 | success
+run 5 | indexed | 1 | 0.211455 | 2300 | 0.200786 | 0 | 0.202865 | 0.185617 | 0.009325 | success
+run 5 | job wall time | 1 | 1393.634899 s | success
+roughing | 1 | 2.872788 | 10369 | 1.724015 | 0 | 22.489278 | 0.000000 | 0.741657
+rest | 1 | 23.321074 | 237295 | 22.139297 | 0 | 62.692375 | 20.243661 | 0.105626
+pencil | 1 | 21.560933 | 358193 | 8.310330 | 0 | 0.227000 | 0.192137 | 0.066764
+helical | 1 | 22.090090 | 237265 | 21.831938 | 0 | 40.794962 | 19.643628 | 0.106366
+axial | 1 | 73.524992 | 809928 | 72.003569 | 0 | 1119.875343 | 67.791808 | 1.008363
+indexed | 1 | 0.227795 | 2300 | 0.216064 | 0 | 0.202865 | 0.200111 | 0.009393
+job generation median | 1 | 143.659696 s
+job wall median | 1 | 1390.944601 s

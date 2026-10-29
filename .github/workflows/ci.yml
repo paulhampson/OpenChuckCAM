@@ -264,8 +264,11 @@ jobs:
       - name: Doctests
         if: matrix.shard == 1
         run: cargo test --workspace --doc --locked
+      # bash, so a failing example is not hidden behind the next one on the Windows leg (pwsh
+      # reports only the last command's exit code).
       - name: Examples run
         if: matrix.shard == 1
+        shell: bash
         run: |
           cargo run --locked -p openchuck-types --example kinematics
           cargo run --locked -p openchuck-geom --example check_and_place
@@ -402,7 +405,10 @@ jobs:
         run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
       # The STEP accuracy measurement (decision 0211): its functions checked on closed forms, and
       # the measuring example built so it keeps compiling. The measurement itself is run by hand.
+      # bash, so the test's failure is not hidden behind the build on the Windows leg (pwsh
+      # reports only the last command's exit code).
       - name: STEP accuracy measurement
+        shell: bash
         run: |
           cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
           cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
