@@ -1,6 +1,6 @@
 # 0256: No fixed finer toolpath mesh qualifies; the default stays (lane STEPALL-T; issue #347)
 
-- **Status:** proposed (29 Oct 2026, Europe/London). The disposition (option A) was chosen by the project owner on 28 Oct 2026 and relayed by the coordinator; this record is guidance until the owner accepts it directly in the lane session (decision 0049).
+- **Status:** accepted by the project owner on 29 Oct 2026 (Europe/London). The owner read the condensed record, including the five-run table and the torus import blocker, in the coordinator session and answered "Approve" there; the acceptance was relayed to this lane session by the coordinator session (decision 0049). The disposition itself (option A) was chosen by the owner on 28 Oct 2026, also relayed. Proposed 29 Oct 2026. It changes no product output, default, schema or library API.
 - **Date:** 28 to 29 Oct 2026 (Europe/London).
 - **Requirements:** IMP-02, IMP-06, OP-03 to OP-06, OP-09, OP-12, OP-23, NFR-04, NFR-05, NFR-06, NFR-12, GC-07. Verification plan 4.1 (the 0.005 mm tessellation allocation; the job and per-operation 2-times limits).
 - **Builds on:** [decision 0211](0211-step-accuracy-measured.md) (accepted: the owner's choice of a fixed finer toolpath mesh as a direction to verify, OI-834; the job and per-operation limits, OI-835); [decision 0255](0255-bounded-tool-contact-checker.md) (accepted 28 Oct 2026: the bounded checker, issue #346, merged in PR #374).
