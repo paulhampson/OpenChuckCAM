@@ -811,10 +811,7 @@ fn req_imp_02_a_patch_with_a_full_multiplicity_knot_still_finds_its_closest_poin
         &[],
         one_triangle(p3(0.0, 0.0, 0.0), p3(20.0, 0.0, 0.0), p3(0.0, 12.0, 0.0)),
     );
-    let Ok(f) = ExactFace::new(&f) else {
-        // A patch the evaluator refuses is not this test's concern.
-        return;
-    };
+    let f = ExactFace::new(&f).expect("the evaluator accepts a full-multiplicity interior knot");
     let mut seed = 13;
     for _ in 0..30 {
         let q = p3(

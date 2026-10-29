@@ -408,7 +408,10 @@ jobs:
           cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
       # The exact face and trim queries on the corpus (lane STEPALL-X1, OI-839), and the measuring
       # example built so it keeps compiling. The measurement itself is run by hand.
+      # bash, so the test's failure is not hidden behind the build on the Windows leg (pwsh
+      # reports only the last command's exit code).
       - name: STEP exact queries
+        shell: bash
         run: |
           cargo test --locked -p openchuck-app --features kernel-tests --test step_queries
           cargo build --locked -p openchuck-app --features kernel-tests --example step_queries
