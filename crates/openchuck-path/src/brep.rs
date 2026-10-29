@@ -59,7 +59,7 @@ mod hull;
 mod tests;
 mod trim;
 
-pub use drop::DROP_TOLERANCE;
+pub use drop::{DEBUG, DROP_TOLERANCE};
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -2047,16 +2047,15 @@ impl ParametricFace for ExactFace {
             return false;
         }
         let (u, v) = self.wrapped(uv);
-        let us = match self.period_u {
-            Some(p) => vec![u, u - p, u + p],
-            None => vec![u],
+        let shifts = |x: f64, period: Option<f64>| match period {
+            Some(p) => ([x, x - p, x + p], 3),
+            None => ([x, x, x], 1),
         };
-        let vs = match self.period_v {
-            Some(p) => vec![v, v - p, v + p],
-            None => vec![v],
-        };
+        let (us, nu) = shifts(u, self.period_u);
+        let (vs, nv) = shifts(v, self.period_v);
         us.iter()
-            .any(|&x| vs.iter().any(|&y| self.inside_one(x, y)))
+            .take(nu)
+            .any(|&x| vs.iter().take(nv).any(|&y| self.inside_one(x, y)))
     }
 }
 
@@ -2582,6 +2581,12 @@ impl SurfaceSource for BrepSurface {
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
+        // STAGE 1 MEASUREMENT HACK (not for merge).
+        if std::env::var_os("OPENCHUCK_X2_EXACT").is_some()
+            && let Some(d) = self.drop_ball(profile, line)
+        {
+            return Some(d.contact);
+        }
         // No exact solver yet (OI-81): drop onto the tessellation.
         self.fallback.as_ref()?.drop_tool(profile, line)
     }

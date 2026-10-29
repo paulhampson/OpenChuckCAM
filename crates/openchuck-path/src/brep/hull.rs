@@ -112,12 +112,104 @@ impl Net {
         lu >= lv
     }
 
+    /// Whether to split along u for a drop: the direction in which the
+    /// control net bends more (its second differences, weighted by the
+    /// degree), since that is what keeps a cell's box thick; the longer
+    /// direction when neither bends (a flat or bilinear net).
+    pub fn bendier_in_u(&self) -> bool {
+        let (du, dv) = (self.du, self.dv);
+        let p = |i: usize, j: usize| project(self.at(i, j));
+        let mut bu = 0.0_f64;
+        let mut bv = 0.0_f64;
+        for i in 0..=du {
+            for j in 0..=dv {
+                if i >= 1 && i < du {
+                    let d = (p(i + 1, j) - p(i, j)) - (p(i, j) - p(i - 1, j));
+                    bu = bu.max(d.length());
+                }
+                if j >= 1 && j < dv {
+                    let d = (p(i, j + 1) - p(i, j)) - (p(i, j) - p(i, j - 1));
+                    bv = bv.max(d.length());
+                }
+            }
+        }
+        let (bu, bv) = (bu * (du * du) as f64, bv * (dv * dv) as f64);
+        if bu == 0.0 && bv == 0.0 {
+            return self.longer_in_u();
+        }
+        bu >= bv
+    }
+
+    /// A cone that holds the patch's normals `S_u x S_v` (up to sign and
+    /// length): its unit axis and the sine of half its angle. The patch is
+    /// taken as polynomial, which holds when its weights are equal; `None`
+    /// when they differ by more than rounding, when the derivative nets
+    /// vanish, or when the cone is not narrower than a half space.
+    ///
+    /// `S_u` is a positive combination of the differences of the net along
+    /// u, `S_v` of those along v, so `S_u x S_v` is a positive combination
+    /// of their cross products, and lies in the cone they span.
+    pub fn normal_cone(&self) -> Option<(Vec3, f64)> {
+        let (du, dv) = (self.du, self.dv);
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for h in &self.pts {
+            lo = lo.min(h[3]);
+            hi = hi.max(h[3]);
+        }
+        if !(lo > 0.0) || hi - lo > 1e-9 * lo {
+            return None;
+        }
+        let p = |i: usize, j: usize| project(self.at(i, j));
+        let mut ds_u = Vec::with_capacity(du * (dv + 1));
+        for i in 0..du {
+            for j in 0..=dv {
+                ds_u.push(p(i + 1, j) - p(i, j));
+            }
+        }
+        let mut ds_v = Vec::with_capacity((du + 1) * dv);
+        for i in 0..=du {
+            for j in 0..dv {
+                ds_v.push(p(i, j + 1) - p(i, j));
+            }
+        }
+        let mut gens = Vec::with_capacity(ds_u.len() * ds_v.len());
+        let mut sum = Vec3::ZERO;
+        for a in &ds_u {
+            for b in &ds_v {
+                let c = a.cross(*b);
+                let l = c.length();
+                if l > 0.0 && l.is_finite() {
+                    let c = c * (1.0 / l);
+                    sum = sum + c;
+                    gens.push(c);
+                }
+            }
+        }
+        let ls = sum.length();
+        if gens.is_empty() || !(ls > 0.0) {
+            return None;
+        }
+        let axis = sum * (1.0 / ls);
+        let cos = gens
+            .iter()
+            .map(|g| g.dot(axis))
+            .fold(f64::INFINITY, f64::min);
+        // A margin for the rounding of the generators and of weights equal
+        // only to rounding.
+        let cos = cos - 1e-9;
+        if !(cos > 0.0) {
+            return None;
+        }
+        // sin(theta / 2) = sqrt((1 - cos theta) / 2).
+        Some((axis, (0.5 * (1.0 - cos)).max(0.0).sqrt()))
+    }
+
     /// The boxes that hold the patch.
     pub fn bound(&self) -> Bound {
-        let pts: Vec<Point3> = self.pts.iter().map(|h| project(*h)).collect();
+        let pts = self.pts.iter().map(|h| project(*h));
         let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
         let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for p in &pts {
+        for p in pts.clone() {
             min = Point3::new(min.x.min(p.x), min.y.min(p.y), min.z.min(p.z));
             max = Point3::new(max.x.max(p.x), max.y.max(p.y), max.z.max(p.z));
         }
@@ -142,10 +234,13 @@ impl Net {
             Some([a, b, n])
         })();
         let oriented = frame.map(|axes| {
-            let origin = pts.first().copied().unwrap_or(Point3::ORIGIN);
+            let origin = self
+                .pts
+                .first()
+                .map_or(Point3::ORIGIN, |h| project(*h));
             let mut range = [(f64::INFINITY, f64::NEG_INFINITY); 3];
-            for q in &pts {
-                let d = *q - origin;
+            for q in pts {
+                let d = q - origin;
                 for (r, a) in range.iter_mut().zip(axes) {
                     let x = d.dot(a);
                     *r = (r.0.min(x), r.1.max(x));
@@ -168,6 +263,24 @@ impl Net {
     /// The surface point at the middle of the parameter box.
     pub fn centre(&self) -> Point3 {
         let (du, dv) = (self.du, self.dv);
+        if du >= MAX_POINTS || dv >= MAX_POINTS {
+            return self.centre_alloc();
+        }
+        let mut col = [[0.0; 4]; MAX_POINTS];
+        let mut row = [[0.0; 4]; MAX_POINTS];
+        for i in 0..=du {
+            for (j, r) in row.iter_mut().enumerate().take(dv + 1) {
+                *r = self.at(i, j);
+            }
+            if let (Some(c), Some(r)) = (col.get_mut(i), row.get_mut(..=dv)) {
+                *c = casteljau(r);
+            }
+        }
+        project(casteljau(col.get_mut(..=du).unwrap_or(&mut [])))
+    }
+
+    fn centre_alloc(&self) -> Point3 {
+        let (du, dv) = (self.du, self.dv);
         let mut col = vec![[0.0; 4]; du + 1];
         let mut row = vec![[0.0; 4]; dv + 1];
         for (i, c) in col.iter_mut().enumerate() {
@@ -179,6 +292,10 @@ impl Net {
         project(casteljau(&mut col))
     }
 }
+
+/// The most control points along one direction a net's middle is found
+/// for on the stack.
+const MAX_POINTS: usize = 16;
 
 /// The point at 1/2 of a Bezier curve (destroys `pts`).
 fn casteljau(pts: &mut [Hom]) -> Hom {

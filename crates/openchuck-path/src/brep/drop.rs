@@ -40,6 +40,19 @@ use super::{Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CE
 use crate::cutter::{TIP_TIE, ToolLine};
 use crate::surface::{ParametricFace, Uv};
 
+/// Debug counters (stage 1 only): convex_top calls, iterations, split cells.
+pub static DEBUG: [std::sync::atomic::AtomicUsize; 3] = [
+    std::sync::atomic::AtomicUsize::new(0),
+    std::sync::atomic::AtomicUsize::new(0),
+    std::sync::atomic::AtomicUsize::new(0),
+];
+
+fn bump(i: usize, n: usize) {
+    if let Some(c) = DEBUG.get(i) {
+        c.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// The exact drop answers within this, mm, of the highest contact.
 pub const DROP_TOLERANCE: f64 = 1e-4;
 
@@ -94,7 +107,9 @@ impl Ball {
         dist: impl Fn(Point3) -> (f64, Vec3),
     ) -> Option<f64> {
         let mut s = start;
+        bump(0, 1);
         for _ in 0..24 {
+            bump(1, 1);
             if s <= floor {
                 return Some(s);
             }
@@ -242,13 +257,21 @@ impl ExactFace {
 
     fn boundary_drop(&self, search: &mut Search) {
         let ball = search.ball;
-        let mut order: Vec<(f64, usize)> = self
-            .trim
-            .segments
-            .iter()
-            .enumerate()
-            .filter_map(|(i, seg)| ball.top_within(seg.centre, ball.r + seg.radius).map(|t| (t, i)))
-            .collect();
+        let floor = search.floor();
+        let mut order: Vec<(f64, usize)> = Vec::new();
+        for &(c, r, first, end) in &self.trim.chunks {
+            if ball.top_within(c, ball.r + r).is_none_or(|t| t <= floor) {
+                continue;
+            }
+            for i in first..end {
+                if let Some(seg) = self.trim.segments.get(i)
+                    && let Some(t) = ball.top_within(seg.centre, ball.r + seg.radius)
+                    && t > floor
+                {
+                    order.push((t, i));
+                }
+            }
+        }
         order.sort_by(|x, y| y.0.total_cmp(&x.0).then(x.1.cmp(&y.1)));
         search.stats[1] += self.trim.segments.len();
         for (top, i) in order {
@@ -502,12 +525,21 @@ impl ExactFace {
                     (std::borrow::Cow::Borrowed(net), SEARCH_DEPTH, node.bound.size())
                 }
                 Cell::Split(net, depth, size) => {
+                    bump(2, 1);
                     if trimmed && self.trim.box_side(net.uv) == Some(false) {
                         continue;
                     }
                     (std::borrow::Cow::Owned(net), depth, size)
                 }
             };
+            // A cell where the ball cannot rest tangentially on the surface
+            // holds no interior maximum of the lift: the face's maximum is
+            // at such a point or on its boundary, which the boundary search
+            // has settled.
+            if !self.may_rest_on(&net, &ball) {
+                search.stats[3] += 1;
+                continue;
+            }
             let [u0, u1, v0, v1] = net.uv;
             let (cu, cv) = (0.5 * (u0 + u1), 0.5 * (v0 + v1));
             let middle = net.centre();
@@ -524,7 +556,6 @@ impl ExactFace {
                     .iter()
                     .any(|&(u, v)| u >= u0 && u <= u1 && v >= v0 && v <= v1);
                 if gain && !tried && top > search.floor() {
-                    search.stats[3] += 1;
                     let end = self.nurbs_contact(n, cu, cv, search);
                     settled.push(end);
                 }
@@ -549,6 +580,28 @@ impl ExactFace {
                 }
             }
         }
+    }
+
+    /// Whether the ball can rest tangentially on the surface of `net` with
+    /// its centre on the line: false when the line keeps away from every
+    /// point `p + r n` and `p - r n`, `p` in the net's box and `n` in its
+    /// normal cone (the `hull` module). True when there is no cone.
+    fn may_rest_on(&self, net: &Net, ball: &Ball) -> bool {
+        let Some((m, sin_half)) = net.normal_cone() else {
+            return true;
+        };
+        let b = net.bound().aabb;
+        let spread = 2.0 * ball.r * sin_half;
+        let size = (b.max - b.min).length() + b.max.to_vec().length() + ball.r;
+        let margin = 1e-9 * (1.0 + size);
+        [1.0, -1.0].into_iter().any(|k| {
+            let shift = m * (k * ball.r);
+            let moved = openchuck_types::geometry::Aabb {
+                min: b.min + shift,
+                max: b.max + shift,
+            };
+            super::line_box_distance(&moved, ball.o, ball.a) <= spread + margin
+        })
     }
 
     /// Newton steps of the contact condition from (u, v): the ball's centre

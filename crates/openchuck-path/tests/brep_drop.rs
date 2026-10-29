@@ -167,6 +167,14 @@ fn kind_faces() -> Vec<Kind<BrepFace>> {
             Surface::BSpline(wavy_patch()),
             [0.0, 1.0, 0.0, 1.0],
         ),
+        (
+            "polynomial",
+            Surface::BSpline(BSplinePatch {
+                weights: vec![1.0; 30],
+                ..wavy_patch()
+            }),
+            [0.0, 1.0, 0.0, 1.0],
+        ),
     ] {
         let loops = quad(box_);
         out.push((name, face(geometry, box_, &loops, tri.clone()), loops));
