@@ -1400,9 +1400,10 @@ pub enum Clearing {
         /// The deepest cut at that tolerance, in millimetres.
         cut: f64,
     },
-    /// No tolerance tried clears it: the last one tried and its cut.
+    /// No tolerance tried clears it: the last tolerance the face was made
+    /// at and its cut there.
     NotFound {
-        /// The last tolerance tried, in millimetres.
+        /// The last tolerance the face was made at, in millimetres.
         tolerance: f64,
         /// The deepest cut at that tolerance, in millimetres.
         cut: f64,
@@ -1425,9 +1426,10 @@ fn up_to_shown(x: f64) -> f64 {
 /// tolerance spaces the poses further apart, which can cut a little deeper,
 /// so the advice is checked: the face is made again at the cut, rounded up
 /// to the four decimals shown, and while the cut there is still beyond it,
-/// at that cut, up to [`CLEARING_TRIES`] times. Only cancellation fails it;
-/// a face that cannot be made at a tolerance tried is reported as not
-/// cleared there.
+/// at that cut, up to [`CLEARING_TRIES`] times. Only cancellation fails it.
+/// When none clears, [`Clearing::NotFound`] names the last tolerance at
+/// which the face was made and its cut there (the operation's own, when
+/// the face could not be made at any tolerance tried).
 pub fn clearing_tolerance(
     face: FaceRef<'_>,
     path: &FacePath,
@@ -1437,29 +1439,45 @@ pub fn clearing_tolerance(
     region: &RegionConstraint<'_>,
     context: &JobContext<'_>,
 ) -> Result<Clearing> {
-    let mut tolerance = up_to_shown(path.gouge);
-    let mut cut = path.gouge;
-    for _ in 0..CLEARING_TRIES {
+    search_clearing(settings.tolerance, path.gouge, |tolerance| {
         let again = Settings {
             tolerance,
             ..*settings
         };
-        match face_path(face, tool, rotary, &again, region, context) {
-            Ok(made) if made.gouge <= tolerance => {
+        face_path(face, tool, rotary, &again, region, context).map(|made| made.gouge)
+    })
+}
+
+/// The search of [`clearing_tolerance`], with `cut_at` making the face at a
+/// tolerance and giving its cut, from the operation's `tolerance` and `cut`.
+fn search_clearing(
+    tolerance: f64,
+    cut: f64,
+    mut cut_at: impl FnMut(f64) -> Result<f64>,
+) -> Result<Clearing> {
+    // The last tolerance the face was made at, and its cut.
+    let mut made = (tolerance, cut);
+    let mut next = up_to_shown(cut);
+    for _ in 0..CLEARING_TRIES {
+        match cut_at(next) {
+            Ok(cut) if cut <= next => {
                 return Ok(Clearing::At {
-                    tolerance,
-                    cut: made.gouge,
+                    tolerance: next,
+                    cut,
                 });
             }
-            Ok(made) => {
-                cut = made.gouge;
-                tolerance = up_to_shown(made.gouge.max(tolerance + 1e-4));
+            Ok(cut) => {
+                made = (next, cut);
+                next = up_to_shown(cut.max(next + 1e-4));
             }
             Err(PathError::Cancelled) => return Err(PathError::Cancelled),
             Err(_) => break,
         }
     }
-    Ok(Clearing::NotFound { tolerance, cut })
+    Ok(Clearing::NotFound {
+        tolerance: made.0,
+        cut: made.1,
+    })
 }
 
 /// Plans the swarf of one face: detection, placement, spacing, the limits
@@ -2364,4 +2382,47 @@ fn swarf(
         notes,
         warnings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decision record 0272 item 4: when no tolerance tried clears the
+    /// warning, it names a tolerance the face was made at and the cut there,
+    /// never the next one, which was not tried.
+    #[test]
+    fn req_op_12_req_nfr_12_an_unclear_advice_names_the_last_tolerance_made_and_its_cut() {
+        let mut tried = Vec::new();
+        let clearing = search_clearing(0.01, 0.0172, |t| {
+            tried.push(t);
+            Ok(2.0 * t)
+        });
+        assert_eq!(tried.len(), CLEARING_TRIES);
+        let last = *tried.last().unwrap_or(&0.0);
+        assert_eq!(
+            clearing,
+            Ok(Clearing::NotFound {
+                tolerance: last,
+                cut: 2.0 * last
+            })
+        );
+        // A face that cannot be made at the first tolerance tried: the
+        // operation's own tolerance and cut, which are true.
+        let clearing = search_clearing(0.01, 0.0172, |_| {
+            Err(PathError::Strategy("no rulings".to_owned()))
+        });
+        assert_eq!(
+            clearing,
+            Ok(Clearing::NotFound {
+                tolerance: 0.01,
+                cut: 0.0172
+            })
+        );
+        // Cancelled, the search fails.
+        assert_eq!(
+            search_clearing(0.01, 0.0172, |_| Err(PathError::Cancelled)),
+            Err(PathError::Cancelled)
+        );
+    }
 }

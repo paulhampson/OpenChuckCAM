@@ -2084,7 +2084,7 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
     }
     // A face ruled only within about 0.002 mm cannot be made at the first
     // tolerance tried (0.0001 mm): the advice says the warning is not
-    // cleared, and why.
+    // cleared, naming the operation's own tolerance and cut, which are true.
     let bent = Fixture::with_surface(
         Box::new(ExactFaces::bent_helicoid(3.0, 0.0002, 24.0)),
         flat(),
@@ -2097,13 +2097,13 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
     assert_eq!(
         clearing,
         swarf::Clearing::NotFound {
-            tolerance: 0.0001,
+            tolerance: TOL,
             cut: 1e-6
         }
     );
     let message = path.overcut_warning(TOL, clearing).unwrap();
     assert!(
-        message.contains("Raising the Tolerance does not clear this warning: at 0.0001 mm"),
+        message.contains("Raising the Tolerance does not clear this warning: at 0.0100 mm"),
         "{message}"
     );
     assert!(!message.contains("raise the Tolerance"), "{message}");

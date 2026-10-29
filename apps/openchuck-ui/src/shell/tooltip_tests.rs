@@ -90,9 +90,10 @@ fn req_ui_07_the_warn_only_tooltip_stays_put_while_the_pointer_moves_over_it() {
             label.center().y + if i % 2 == 0 { -2.0 } else { 2.0 },
         );
         rig.frame(vec![Event::PointerMoved(at)]);
-        if let Some(p) = rig.text_starting(WARN_TIP) {
-            seen.push(p);
-        }
+        let p = rig
+            .text_starting(WARN_TIP)
+            .expect("the tooltip stays shown while the pointer is over the label");
+        seen.push(p);
     }
     let moved: Vec<&egui::Pos2> = seen.iter().filter(|p| p.distance(first) > 0.5).collect();
     assert!(
