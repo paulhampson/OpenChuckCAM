@@ -103,6 +103,35 @@ fn add(app: &mut Application, item: Item) {
 /// oak, two ball tools (T1 4 mm, T2 6 mm), and three operations in this order:
 /// "Finish A" (T1), "Finish B" (T2) and "Touch up A" (T1). Coarse angle steps
 /// keep the programs short.
+/// A clock that reads one second later each time anything asks it, across
+/// every app of the test. A setup sheet reads it once, so two sheets are a
+/// second apart, as when the real clock crosses a second between two builds
+/// (OI-1001, issue #361). The test project and [`open`] install it, so a test
+/// that compares two sheets without pinning the clock fails every run instead
+/// of once in a while; such a test pins a `FixedClock` (GC-07).
+#[derive(Debug)]
+struct TickingClock;
+
+static TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1_792_575_000);
+
+impl openchuck_app::Clock for TickingClock {
+    fn now(&self) -> std::time::SystemTime {
+        let seconds = TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds)
+    }
+}
+
+fn ticking_clock() -> Box<dyn openchuck_app::Clock> {
+    Box::new(TickingClock)
+}
+
+/// Opens the project at `dir` with the ticking clock, as [`project`] does.
+fn open(dir: &Path, threads: usize) -> Application {
+    let mut app = Application::open(dir, Threads::Exactly(threads)).unwrap();
+    app.set_clock(ticking_clock());
+    app
+}
+
 fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
     // Tests run in parallel: each gets a folder of its own, whatever the project is called.
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -110,6 +139,7 @@ fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
     let dir = std::env::temp_dir().join(format!("openchuck-out-{unique}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+    app.set_clock(ticking_clock());
     std::fs::create_dir_all(dir.join("models")).unwrap();
     let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
     std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
@@ -352,7 +382,7 @@ fn req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count()
     for grouping in OutputGrouping::ALL {
         let first = post(&mut app, grouping).gcode;
         for threads in [1, 4] {
-            let mut again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+            let mut again = open(&dir, threads);
             assert_eq!(
                 post(&mut again, grouping).gcode,
                 first,
@@ -556,6 +586,8 @@ fn req_gc_12_req_tl_05_the_sheet_says_where_each_spindle_speed_came_from() {
     typed.spindle_speed = Some(SpindleSpeed(8000.0));
     app.execute(Command::Replace(Item::Operation(typed)))
         .unwrap();
+    // Two builds are compared below, so the clock is pinned (GC-07, OI-1001).
+    app.set_clock(at(1_792_575_005));
     let sheet = app.setup_sheet(None);
     let operations = cell_rows(&sheet, "Operations");
     assert_eq!(operations[0][5], "8000");
@@ -799,7 +831,7 @@ fn req_gc_12_req_gc_07_the_sheet_is_the_same_bytes_each_time() {
     let result = app.regenerate().unwrap();
     let first = app.setup_sheet(Some(&result.toolpath));
     for threads in [1, 4] {
-        let mut again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        let mut again = open(&dir, threads);
         again.set_clock(at(1_792_575_005));
         again.set_post(None);
         let regenerated = again.regenerate().unwrap();
@@ -946,11 +978,15 @@ fn req_gc_12_req_set_09_a_holding_diameter_is_named_on_the_sheet() {
 #[test]
 fn req_gc_12_req_gc_07_req_set_09_the_sheet_with_held_regions_and_tabs_is_the_same_bytes_each_time()
 {
-    let (dir, app) = held_sheet_project();
+    let (dir, mut app) = held_sheet_project();
+    // The traceability section carries the generated time, so every build is
+    // made with the same pinned clock (GC-07, OI-1001).
+    app.set_clock(at(1_792_575_005));
     app.save().unwrap();
     let first = app.setup_sheet(None);
     for threads in [1, 4] {
-        let again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        let mut again = open(&dir, threads);
+        again.set_clock(at(1_792_575_005));
         let sheet = again.setup_sheet(None);
         assert_eq!(sheet.sections, first.sections, "{threads} threads");
     }
@@ -1004,6 +1040,45 @@ fn req_gc_12_req_set_09_req_nfr_08_a_sheet_with_held_regions_and_tabs_matches_it
     sheet_golden("held_project.html", &sheet.to_html());
     let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
     sheet_golden("held_project.pdf", &pdf);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// OP-21, SET-09: the held region on offset bounding-box stock is placed from
+/// the part extent the caller gives.
+#[test]
+fn req_gc_12_req_set_09_offset_stock_held_region_shows_its_x_interval() {
+    let (dir, mut app) = held_sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+        offset: Millimetres(1.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let sheet = SetupSheet::with_parts(app.project(), app.strategies(), None, &|setup| {
+        let model = setup.part?;
+        let extent = app.inspect_model(model).ok()?.extent?;
+        Some(extent.in_setup(&setup.frame))
+    });
+    let held = facts(&sheet, "Setup: Setup 1");
+    let start = &held
+        .iter()
+        .find(|(k, _)| k == "Held at the start")
+        .unwrap()
+        .1;
+    assert!(start.contains(", X "), "{start}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Inspecting the part costs model I/O; a setup with nothing to place from
+/// the part must not ask for it.
+#[test]
+fn req_gc_12_a_setup_without_workholding_does_not_ask_for_the_part() {
+    let (dir, app) = sheet_project();
+    let asked = std::cell::Cell::new(0);
+    let _ = SetupSheet::with_parts(app.project(), app.strategies(), None, &|_| {
+        asked.set(asked.get() + 1);
+        None
+    });
+    assert_eq!(asked.get(), 0);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -1217,6 +1292,34 @@ fn req_gc_12_req_nfr_08_the_traceability_block_is_the_same_every_run_with_a_fixe
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// OI-1001, issue #361: a sheet built a second later differs in its
+/// `Generated` line and nowhere else, so a test that compares two sheets must
+/// pin the clock (GC-07). The test project's clock ticks a second per build,
+/// which makes the race the same on every run.
+#[test]
+fn req_gc_12_req_gc_07_two_sheets_a_second_apart_differ_only_in_generated() {
+    let (dir, mut app) = sheet_project();
+    app.save().unwrap();
+    let (first, second) = (app.setup_sheet(None), app.setup_sheet(None));
+    assert_ne!(first.to_html(), second.to_html(), "the clock must tick");
+    let (a, b) = (trace_facts(&first), trace_facts(&second));
+    assert_ne!(a["Generated"], b["Generated"]);
+    for key in a.keys().filter(|k| *k != "Generated") {
+        assert_eq!(a[key], b[key], "{key}");
+    }
+    assert_eq!(
+        first.sections[..first.sections.len() - 1],
+        second.sections[..second.sections.len() - 1],
+        "everything before the Traceability section is the same"
+    );
+    // Pinned, the same two builds are the same bytes.
+    app.set_clock(at(1_792_575_005));
+    let (first, second) = (app.setup_sheet(None), app.setup_sheet(None));
+    assert_eq!(first.to_html(), second.to_html());
+    assert_eq!(first.to_pdf(), second.to_pdf());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn req_gc_12_the_last_saved_time_is_the_project_files_modification_time() {
     let (dir, mut app) = sheet_project();
@@ -1308,6 +1411,35 @@ fn req_gc_17_req_gc_12_report_reaches_warnings_and_both_setup_sheet_formats_with
     let sheet = app.setup_sheet(Some(&after.toolpath));
     assert!(sheet.to_html().contains("minimum block time"));
     assert!(check_pdf(&sheet.to_pdf()).contains("minimum block time"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_17_req_gc_12_a_window_only_override_leaves_the_minimum_block_time_labelled_profile() {
+    let (dir, mut app) = project("post-window-only", false);
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_block_ms = 1_000_000.0;
+    machine.block_window = 3;
+    machine.short_block_mode = openchuck_types::machine::ShortBlockMode::Report;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let custom = dir.join("custom-post");
+    std::fs::create_dir(&custom).unwrap();
+    let builtin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../openchuck-post/posts/makera-z1");
+    let manifest = std::fs::read_to_string(builtin.join("post.toml")).unwrap();
+    std::fs::write(
+        custom.join("post.toml"),
+        manifest.replace("[options]", "[options]\nblock_window = 1"),
+    )
+    .unwrap();
+    std::fs::copy(builtin.join("main.post"), custom.join("main.post")).unwrap();
+    app.set_post(Some(PostSelection::Folder(custom)));
+    let after = app.regenerate().unwrap();
+    let html = app.setup_sheet(Some(&after.toolpath)).to_html();
+    // The label sits beside the minimum block time, which the post did not set.
+    assert!(html.contains("(profile)"), "{html}");
+    assert!(!html.contains("(post)"), "only the window is overridden");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

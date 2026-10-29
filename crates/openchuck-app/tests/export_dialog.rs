@@ -104,6 +104,35 @@ fn add(app: &mut Application, item: Item) {
 /// oak, two ball tools (T1 4 mm, T2 6 mm), and three operations in this order:
 /// "Finish A" (T1), "Finish B" (T2) and "Touch up A" (T1). Coarse angle steps
 /// keep the programs short.
+/// A clock that reads one second later each time anything asks it, across
+/// every app of the test. A setup sheet reads it once, so two sheets are a
+/// second apart, as when the real clock crosses a second between two builds
+/// (OI-1001, issue #361). The test project and [`open`] install it, so a test
+/// that compares two sheets without pinning the clock fails every run instead
+/// of once in a while; such a test pins a `FixedClock` (GC-07).
+#[derive(Debug)]
+struct TickingClock;
+
+static TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1_792_575_000);
+
+impl openchuck_app::Clock for TickingClock {
+    fn now(&self) -> std::time::SystemTime {
+        let seconds = TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds)
+    }
+}
+
+fn ticking_clock() -> Box<dyn openchuck_app::Clock> {
+    Box::new(TickingClock)
+}
+
+/// Opens the project at `dir` with the ticking clock, as [`project`] does.
+fn open(dir: &Path, threads: usize) -> Application {
+    let mut app = Application::open(dir, Threads::Exactly(threads)).unwrap();
+    app.set_clock(ticking_clock());
+    app
+}
+
 fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
     // Tests run in parallel: each gets a folder of its own, whatever the project is called.
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -111,6 +140,7 @@ fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
     let dir = std::env::temp_dir().join(format!("openchuck-out-{unique}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+    app.set_clock(ticking_clock());
     std::fs::create_dir_all(dir.join("models")).unwrap();
     let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
     std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
@@ -425,7 +455,7 @@ fn req_gc_14_numbers_chosen_in_the_dialog_are_saved_and_give_the_same_bytes_agai
     let first = post(&mut app, OutputGrouping::Setup).gcode;
     assert!(first[0].1.contains("T7 M6") && first[0].1.contains("T3 M6"));
     app.save().unwrap();
-    let mut again = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    let mut again = open(&dir, 1);
     again.set_post(Some(PostSelection::Builtin("makera-z1".into())));
     assert_eq!(again.regenerate().unwrap().gcode, first);
     // Renumbering only changes how the program is posted: the toolpaths stay current.
@@ -647,6 +677,12 @@ fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_r
     // Decision 0189: the sheet is written with the G-code, from the run the
     // G-code was posted from, so its times and settings match the program.
     let (dir, mut app) = project("Together", false);
+    // The sheet written and the sheet rebuilt below are two builds: pin the
+    // clock so the Generated second cannot differ between them (GC-07,
+    // OI-1001). Only the clock is pinned; every other line is compared.
+    app.set_clock(Box::new(openchuck_app::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_792_575_005),
+    )));
     let run = post(&mut app, OutputGrouping::Operation);
     let out = folder("together-out");
     let run = std::sync::Arc::new(run);

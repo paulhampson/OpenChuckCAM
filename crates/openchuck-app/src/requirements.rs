@@ -264,7 +264,11 @@ pub(crate) fn operation_requirements(
         // In the order the inspector shows them, so "Show first" goes to the
         // field nearest the top (a stable sort keeps the schema's order
         // within a section).
-        let mut parameters = missing_parameters(project, op, &strategy.schema());
+        let mut parameters = missing_parameters(
+            project,
+            op,
+            &crate::operation::effective_schema(op, strategy),
+        );
         parameters.sort_by_key(|(name, _)| crate::form::FormSection::of(name));
         for (name, label) in parameters {
             // The feeds and the stepover come from the tool's cutting data:

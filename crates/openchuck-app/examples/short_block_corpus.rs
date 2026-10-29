@@ -126,6 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let seconds = amount * 60.0 / m.feed.ok_or("fed move without feed")?;
             let group = current.get_or_insert_with(|| ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: PathTags {
                     operation: file.clone(),
                     setup: "corpus".into(),

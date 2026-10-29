@@ -67,6 +67,7 @@ impl Strategy for OneRing {
             })
             .collect();
         Ok(vec![Pass {
+            helical_pass_start: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -137,6 +138,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: None,
+        facing: None,
         keep_out: &[],
     };
 

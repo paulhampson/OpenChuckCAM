@@ -110,6 +110,9 @@ fn style(role: SceneRole) -> (Colour, bool) {
     match role {
         SceneRole::Part => (roles::PART, false),
         SceneRole::Stock => (roles::STOCK, false),
+        SceneRole::FacingExtent => (roles::SELECTED, true),
+        SceneRole::FacingMargin => (roles::CLEARANCE, true),
+        SceneRole::FacingSweep => (roles::CUT, false),
         SceneRole::HeldRegion => (roles::HELD, false),
         SceneRole::Tab => (roles::TAB, false),
         SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
@@ -485,6 +488,9 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
         let (colour, on_top) = style(line.role);
         let (width, line_style) = match line.role {
             SceneRole::Stock => (roles::LINE_WIDTH, LineStyle::Dashed),
+            SceneRole::FacingExtent | SceneRole::FacingMargin => {
+                (roles::LINE_WIDTH, LineStyle::Dashed)
+            }
             SceneRole::RotaryAxis => (roles::LINE_WIDTH, LineStyle::DashDot),
             SceneRole::ADirection => (roles::OUTLINE_WIDTH, LineStyle::Solid),
             SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ => {

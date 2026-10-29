@@ -65,6 +65,10 @@ impl PartialEq for PassStock {
 /// A run of cut points cut without lifting the tool.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pass {
+    /// Starts a complete helical traversal (e.g. a new roughing layer), not a
+    /// fragment separated by a gap. Shared assembly may mark the existing
+    /// clear transition for a nonmoving controller reset (decision 0247).
+    pub helical_pass_start: bool,
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
     /// The material when this pass starts, if the strategy tracks it. Passes
@@ -115,6 +119,11 @@ pub struct StrategyInput<'a> {
     pub tags: &'a PathTags,
     /// Whole-target clearance inputs for optional back-and-forth ramp entry.
     pub entry_safety: Option<&'a crate::entry_safety::EntrySafety<'a>>,
+    /// Whole placed setup for Facing's model-derived targets and extents.
+    /// This is separate from selected/composite surfaces and entry clearance;
+    /// it is not a complete-tool safety certificate. None preserves legacy
+    /// whole-stock Facing and all other strategies (decision0252).
+    pub facing: Option<&'a crate::facing::plan::FacingSetup<'a>>,
     /// Model X intervals, as (low, high), that the tool's tip never enters
     /// while it cuts: each held region of the setup widened on both sides by
     /// the tool's largest radius, so no part of the tool reaches over the
@@ -185,6 +194,32 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// The parameters, including the common ones
     /// ([`ParameterSchema::with_common`]).
     fn schema(&self) -> ParameterSchema;
+
+    /// Active fields for these stored values. A strategy with mode-specific
+    /// controls overrides this; the default preserves its existing full schema.
+    /// Inactive stored edits are retained by the host, not supplied to passes.
+    fn schema_for(&self, _values: &BTreeMap<String, ParameterValue>) -> ParameterSchema {
+        self.schema()
+    }
+
+    /// Resolve active fields while rejecting genuinely unknown parameter names.
+    /// Known inactive fields may remain stored when the user changes mode.
+    fn resolve_parameters(&self, values: &BTreeMap<String, ParameterValue>) -> Result<Parameters> {
+        let all = self.schema();
+        if let Some(name) = values.keys().find(|name| all.get(name).is_none()) {
+            return Err(PathError::parameter(
+                name,
+                "this strategy has no parameter of that name",
+            ));
+        }
+        let active = self.schema_for(values);
+        let values = values
+            .iter()
+            .filter(|(name, _)| active.get(name).is_some())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        active.resolve(&values)
+    }
 
     /// Things to tell the user about `parameters` for `tool` that do not stop
     /// the operation: a setting the strategy cannot use with this tool and
@@ -300,6 +335,26 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>>;
+
+    /// Validate the final canonical operation path before it is returned.
+    /// All generation entry points call this once after keep-out processing,
+    /// entry/link/retract assembly, shared checks and diagnostic attachment.
+    /// Returning an error refuses the operation without a usable partial path.
+    /// The default leaves existing strategies and their diagnostics unchanged.
+    /// Long validation honours cancellation through `context`.
+    ///
+    /// This hook cannot mutate the path. Connection between operations and
+    /// posting happen later and require any applicable separate validation.
+    /// Owner-approved FACING interface under decision0252 (OP-24/OP-12).
+    fn validate_path(
+        &self,
+        _input: &StrategyInput<'_>,
+        _parameters: &Parameters,
+        _path: &GeneratedPath,
+        _context: &JobContext<'_>,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Runs `strategy` and assembles its passes into a toolpath group: checks
@@ -352,7 +407,7 @@ fn generate_with(
     values: &BTreeMap<String, ParameterValue>,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
-    let parameters = strategy.schema().resolve(values)?;
+    let parameters = strategy.resolve_parameters(values)?;
     let mut common = CommonParameters::read(&parameters)?;
     let entry = EntryParameters::read(&parameters)?;
     if let Some(bad) = zones.iter().find(|z| !z.leave.is_finite() || z.leave < 0.0) {
@@ -428,6 +483,9 @@ fn generate_with(
         notes.append(&mut path.notes);
         path.notes = notes;
     }
+    context.check_cancelled()?;
+    strategy.validate_path(input, &parameters, &path, context)?;
+    context.check_cancelled()?;
     Ok(path)
 }
 
@@ -527,7 +585,9 @@ fn keep_clear(
         !reaches_in(keep_out, a.tip.x.min(b.tip.x), a.tip.x.max(b.tip.x))
     };
     let (mut kept, mut cut_short, mut holes) = (Vec::new(), false, 0usize);
+    let mut helical_start_pending = false;
     for pass in passes {
+        helical_start_pending |= pass.helical_pass_start;
         if !pass.rapids.is_empty() {
             let whole = pass.points.iter().all(clear)
                 && pass.points.windows(2).all(|w| match w {
@@ -535,6 +595,9 @@ fn keep_clear(
                     _ => true,
                 });
             if whole {
+                let mut pass = pass;
+                pass.helical_pass_start = helical_start_pending;
+                helical_start_pending = false;
                 kept.push(pass);
             } else {
                 note_reach(&pass.points);
@@ -566,10 +629,12 @@ fn keep_clear(
         }
         for points in pieces {
             kept.push(Pass {
+                helical_pass_start: helical_start_pending,
                 points,
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
             });
+            helical_start_pending = false;
         }
     }
     let names = held_names(&reached);
@@ -731,6 +796,7 @@ mod tests {
 
     fn pass(xs: &[f64]) -> Pass {
         Pass {
+            helical_pass_start: false,
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),
@@ -889,6 +955,7 @@ mod tests {
     fn path(moves: &[(MoveKind, f64)]) -> GeneratedPath {
         GeneratedPath {
             group: ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: PathTags {
                     operation: "op".into(),
                     setup: "setup".into(),

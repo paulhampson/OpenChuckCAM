@@ -282,18 +282,23 @@ jobs:
     # all three legs block: a failed leg fails this job and so `CI required checks`
     # (owner's decision, 17 Oct 2026, OI-320). Every leg must find an adapter: the
     # render tests skip their assertions without one unless OPENCHUCK_REQUIRE_ADAPTER
-    # is set, and a blocking leg must not pass by skipping.
+    # is set, and a blocking leg must not pass by skipping. The Linux leg runs on
+    # the pinned ubuntu-24.04 image, not ubuntu-latest, which moved to Ubuntu
+    # 26.04 (Mesa 26.0.8, LLVM 21.1.8) on 27 Oct 2026 and crashes the render tests
+    # with SIGSEGV; the job name still reads `ubuntu-latest` (decision 0250,
+    # OI-1002).
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
+            runner: ubuntu-24.04
             require_adapter: "1"
           - os: windows-latest
             require_adapter: "1"
           - os: macos-latest
             require_adapter: "1"
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 30
     env:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
@@ -351,8 +356,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          # The Linux leg runs on the pinned ubuntu-24.04 image: on ubuntu-latest (now Ubuntu 26.04)
+          # the worker built against OpenCASCADE crashes with SIGSEGV. The job name still reads
+          # `ubuntu-latest` (decisions 0250 and 0251, OI-1002, OI-1003).
+          - os: ubuntu-latest
+            runner: ubuntu-24.04
+          - os: windows-latest
+          - os: macos-latest
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7

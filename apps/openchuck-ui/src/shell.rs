@@ -474,15 +474,19 @@ impl Shell {
     }
 
     /// Starts building the scene again after the project or the chosen setup changed.
-    fn rebuild_scene(&mut self, fit: bool) {
+    fn rebuild_scene(&mut self, mut fit: bool) {
         if let Some(app) = &self.app {
-            if let Some((old, _)) = self.scene_job.take() {
+            if let Some((old, pending_fit)) = self.scene_job.take() {
                 old.cancel();
+                fit |= pending_fit;
             }
             let setup = self
                 .setup
                 .filter(|id| app.project().setups().iter().any(|s| s.id == *id));
-            self.scene_job = Some((app.start_scene(setup), fit));
+            self.scene_job = Some((
+                app.start_scene_with_facing(setup, self.run.last().cloned()),
+                fit,
+            ));
         }
     }
 
@@ -565,7 +569,8 @@ impl Shell {
         if self.checks_job.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        if self.overview_dirty || self.overview.revision != revision {
+        let geometry_changed = self.overview.revision != revision;
+        if self.overview_dirty || geometry_changed {
             let mut overview = app.overview(self.checks.as_deref(), &self.jobs);
             for note in &self.viewport.view().notes {
                 overview.push(Message::new(Severity::Info, note.clone(), None, None));
@@ -579,6 +584,9 @@ impl Shell {
             self.overview = overview;
             self.overview_dirty = false;
             self.highlight = None;
+        }
+        if geometry_changed {
+            self.rebuild_scene(false);
         }
     }
 
@@ -1325,10 +1333,12 @@ impl Shell {
     /// (slice 9).
     fn run_frame(&mut self, ctx: &egui::Context) {
         let mut error = None;
+        let mut regenerated = false;
         let mut added = None;
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
             if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+                regenerated = true;
                 self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
                 self.play.set_run(app, run);
@@ -1364,6 +1374,9 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+        }
+        if regenerated {
+            self.rebuild_scene(false);
         }
         // The tool library window works with or without a project (12.1). Its
         // folded groups and size filter are kept in the settings (UI-15).
@@ -1670,6 +1683,7 @@ impl Shell {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
+        let new_project = matches!(dialog, Dialog::Folder { create: true, .. });
         let mut close = false;
         let mut form_submit = false;
         let mut form_browse = false;
@@ -1904,12 +1918,21 @@ impl Shell {
             return;
         }
         if form_submit {
+            if new_project {
+                // OK explicitly accepts this dialog's values; its own
+                // validation has already decided whether OK is enabled.
+                crate::pending_edits::clear(ctx);
+            }
             if !self.defer(Self::accept_form_dialog) {
                 self.accept_form_dialog();
             }
             return;
         }
         if close {
+            if new_project {
+                // Cancel explicitly abandons this dialog's input.
+                crate::pending_edits::clear(ctx);
+            }
             let deferred_ctx = ctx.clone();
             if !crate::pending_edits::entries(ctx).is_empty() {
                 self.defer(move |s| {

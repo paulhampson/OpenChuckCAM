@@ -529,3 +529,82 @@ fn req_nfr_07_too_fine_a_stepover_in_a_new_direction_is_refused_by_name() {
         );
     }
 }
+
+/// A host exercising the legacy motion policy without marking pass boundaries.
+#[derive(Debug)]
+struct UnmarkedRoughing;
+impl openchuck_path::Strategy for UnmarkedRoughing {
+    fn name(&self) -> &str {
+        "unmarked_roughing"
+    }
+    fn label(&self) -> &str {
+        "Unmarked roughing"
+    }
+    fn description(&self) -> &str {
+        "Test host for unchanged physical motion."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::Strategy::schema(&RotaryRoughing)
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        params: &openchuck_path::Parameters,
+        ctx: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        let mut passes = openchuck_path::Strategy::passes(&RotaryRoughing, input, params, ctx)?;
+        for pass in &mut passes {
+            pass.helical_pass_start = false;
+        }
+        Ok(passes)
+    }
+}
+
+#[test]
+fn req_op_15_req_op_14_req_set_09_pass_markers_add_no_motion_and_keep_limited_axes_in_range() {
+    let part = Cylinder {
+        radius: 8.0,
+        length: 6.0,
+    };
+    for range in [
+        openchuck_types::machine::ARange::Continuous,
+        openchuck_types::machine::ARange::Limited {
+            min: openchuck_types::units::Degrees(-1080.0),
+            max: openchuck_types::units::Degrees(1080.0),
+        },
+    ] {
+        for holding in [false, true] {
+            let mut f = fixture(&part, 10.0, &flat(3.0));
+            f.rotary.range = range;
+            let mut input = f.input();
+            if holding {
+                input.keep_out = &[(0.0, 1.0)];
+            }
+            let params = values(&[(parameter::STEPDOWN, num(0.5))]);
+            let marked = run(|ctx| generate(&RotaryRoughing, &input, &params, ctx))
+                .unwrap()
+                .group;
+            let legacy = run(|ctx| generate(&UnmarkedRoughing, &input, &params, ctx))
+                .unwrap()
+                .group;
+            assert_eq!(marked.start, legacy.start);
+            assert_eq!(
+                marked.segments, legacy.segments,
+                "counter resets must add zero physical motion, including near held regions"
+            );
+            match range {
+                openchuck_types::machine::ARange::Continuous => {
+                    assert!(!marked.rotary_reset_after.is_empty())
+                }
+                openchuck_types::machine::ARange::Limited { min, max } => {
+                    assert!(marked.rotary_reset_after.is_empty());
+                    assert!(
+                        std::iter::once(marked.start.a)
+                            .chain(marked.segments.iter().map(|s| s.end.a))
+                            .all(|a| a.0 >= min.0 && a.0 <= max.0)
+                    );
+                }
+            }
+        }
+    }
+}

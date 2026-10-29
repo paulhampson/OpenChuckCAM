@@ -50,6 +50,18 @@ pub struct Dimension {
     pub text: String,
 }
 
+/// Facing geometry projected from the same viewport description, never
+/// independently recomputed from a silhouette or a bounding box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FacingGuide {
+    /// Coverage, pre-margin boundary or actual cutter sweep.
+    pub role: crate::scene::SceneRole,
+    /// Projected points in millimetres; one point anchors a label.
+    pub points: Vec<[f64; 2]>,
+    /// Target/dimension/margin label, when present.
+    pub label: Option<String>,
+}
+
 /// A held region or a tab in the front view.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontSolid {
@@ -68,6 +80,8 @@ pub struct FrontSolid {
 /// The front view, orthographic from −Y (11.3).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FrontPane {
+    /// Shared Facing extent, margin, target and actual sweep.
+    pub facing: Vec<FacingGuide>,
     /// The stock as (X, Z) bounds; `None` while it cannot be drawn.
     pub stock: Option<Rect2>,
     /// The part's silhouette: X with the lowest and highest Z there.
@@ -120,6 +134,8 @@ pub struct EndTab {
 /// The end view from +X (11.3), 270 pixels wide.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EndPane {
+    /// Shared Facing extent, margin, target and actual sweep.
+    pub facing: Vec<FacingGuide>,
     /// The stock.
     pub stock: Option<EndStock>,
     /// The radius of the part: its largest distance from the axis.
@@ -439,6 +455,37 @@ pub fn setup_panes(
     }
     if !front.tabs.is_empty() {
         legend.push(LegendEntry::Tab);
+    }
+    for (guides, end_view) in [(&mut front.facing, false), (&mut end.facing, true)] {
+        let point = |p: Point3| [if end_view { p.y } else { p.x }, p.z];
+        let facing = |role| {
+            matches!(
+                role,
+                crate::scene::SceneRole::FacingExtent
+                    | crate::scene::SceneRole::FacingMargin
+                    | crate::scene::SceneRole::FacingSweep
+            )
+        };
+        guides.extend(
+            view.lines
+                .iter()
+                .filter(|l| facing(l.role))
+                .map(|l| FacingGuide {
+                    role: l.role,
+                    points: l.points.iter().copied().map(point).collect(),
+                    label: None,
+                }),
+        );
+        guides.extend(
+            view.labels
+                .iter()
+                .filter(|l| facing(l.role))
+                .map(|l| FacingGuide {
+                    role: l.role,
+                    points: vec![point(l.at)],
+                    label: Some(l.text.clone()),
+                }),
+        );
     }
     Some(SetupPanes { front, end, legend })
 }

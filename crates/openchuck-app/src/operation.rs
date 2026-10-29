@@ -52,6 +52,30 @@ pub struct ResolvedValues {
     pub notes: Vec<String>,
 }
 
+/// Stored values translated without defaults, preserving inactive mode edits.
+pub(crate) fn stored_values(operation: &Operation) -> BTreeMap<String, ParameterValue> {
+    operation
+        .parameters
+        .iter()
+        .map(|(k, v)| {
+            let v = match v {
+                openchuck_project::ParameterValue::Integer(v) => ParameterValue::Integer(*v),
+                openchuck_project::ParameterValue::Number(v) => ParameterValue::Number(*v),
+                openchuck_project::ParameterValue::Flag(v) => ParameterValue::Flag(*v),
+                openchuck_project::ParameterValue::Text(v) => ParameterValue::Text(v.clone()),
+            };
+            (k.clone(), v)
+        })
+        .collect()
+}
+
+pub(crate) fn effective_schema(
+    operation: &Operation,
+    strategy: &dyn Strategy,
+) -> openchuck_path::ParameterSchema {
+    strategy.schema_for(&stored_values(operation))
+}
+
 /// The operation's parameter values in the library's form, with the feed,
 /// plunge feed and stepover filled from the tool's cutting data for the
 /// setup's stock material where the operation leaves them out and the
@@ -68,20 +92,8 @@ pub fn parameter_values(
     registry: &Registry,
 ) -> Result<ResolvedValues, AppError> {
     let strategy = registry.get(&operation.strategy)?;
-    let schema = strategy.schema();
-    let mut values: BTreeMap<String, ParameterValue> = operation
-        .parameters
-        .iter()
-        .map(|(k, v)| {
-            let v = match v {
-                openchuck_project::ParameterValue::Integer(i) => ParameterValue::Integer(*i),
-                openchuck_project::ParameterValue::Number(n) => ParameterValue::Number(*n),
-                openchuck_project::ParameterValue::Flag(b) => ParameterValue::Flag(*b),
-                openchuck_project::ParameterValue::Text(t) => ParameterValue::Text(t.clone()),
-            };
-            (k.clone(), v)
-        })
-        .collect();
+    let schema = effective_schema(operation, strategy);
+    let mut values = stored_values(operation);
     let material = crate::preset::material_of(project, operation);
     let snapshot = operation
         .tool
@@ -199,6 +211,9 @@ pub struct OperationPath {
     /// finished surface deeper than the tolerance (NFR-12; decision record
     /// 0175). Each is in `notes` too.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// Immutable whole-setup inputs for Facing's actual connected-path checks.
+    /// None preserves legacy default Facing and every other strategy.
+    pub facing: Option<crate::facing::FacingVerification>,
 }
 
 /// Generates the toolpath of operation `id` of the project in `root`.
@@ -488,6 +503,50 @@ pub(crate) fn generate_with_part(
         (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
     };
+    let facing_geometry = if crate::facing::needs_verification(operation) {
+        let part = openchuck_geom::part_extent(mesh)
+            .ok_or_else(|| missing(operation, "the whole facing part has no extent"))?;
+        let bounds = stock
+            .bounds(Some(&part))
+            .ok_or_else(|| missing(operation, "the facing stock has no established bounds"))?;
+        let (start, end) = setup
+            .workholding
+            .held_intervals((bounds.min.x, bounds.max.x));
+        let protected = crate::workholding::solids(&setup.workholding, Some(stock), &part)?;
+        // Resolve automatic tabs against the real held regions first. Removing
+        // holding to obtain the tab-only union must not reposition those tabs.
+        let resolved = setup.workholding.resolved(Some(stock), Some(&part));
+        let tab_only = openchuck_types::workholding::Workholding {
+            start: None,
+            end: None,
+            tabs: resolved
+                .tabs
+                .into_iter()
+                .map(|mut tab| {
+                    tab.auto = None;
+                    tab
+                })
+                .collect(),
+        };
+        let tabs = crate::workholding::solids(&tab_only, Some(stock), &part)?;
+        Some((tabs, protected, [start, end]))
+    } else {
+        None
+    };
+    let facing_setup = facing_geometry.as_ref().map(|(tabs, protected, held)| {
+        openchuck_path::facing::plan::FacingSetup {
+            part: mesh,
+            stock,
+            tool: &snapshot.tool,
+            machine,
+            tabs,
+            protected,
+            held: *held,
+            // STL triangles are the source geometry. A STEP tessellation's
+            // nominal deflection alone is not a proved projection bound.
+            projection_error: placed.brep.is_none().then_some(0.0),
+        }
+    });
     let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
     let stock: &dyn StockModel = carried.unwrap_or(&analytic);
     let tags = PathTags {
@@ -550,12 +609,13 @@ pub(crate) fn generate_with_part(
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: entry_safety.as_ref(),
+        facing: facing_setup.as_ref(),
         keep_out: &keep_out,
     };
     let resolved = parameter_values(project, operation, registry)?;
     // The values as the strategy's schema reads them (a whole number given for
     // a number is a number), resolved once for everything below.
-    let parameters = strategy.schema().resolve(&resolved.values)?;
+    let parameters = strategy.resolve_parameters(&resolved.values)?;
     if operation.strategy == swarf::NAME && placed.brep.is_some() {
         swarf_compatibility(
             operation,
@@ -699,7 +759,20 @@ pub(crate) fn generate_with_part(
             .iter()
             .map(|n| format!("move {}: {}", n.segment, n.message)),
     );
+    let facing = facing_setup
+        .as_ref()
+        .map(|setup| crate::facing::FacingVerification::capture(setup, &parameters))
+        .transpose()?
+        .flatten();
+    if let Some(proof) = &facing {
+        notes.push("Facing coverage complete (verified path geometry); simulation remains resolution-limited and whole-part deviation is unchanged".into());
+        if proof.description()?.extent != openchuck_path::facing::extents::FacingExtent::WholeStock
+        {
+            notes.push("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted.".into());
+        }
+    }
     Ok(OperationPath {
+        facing,
         group: path.group,
         notes,
         tool: profile,

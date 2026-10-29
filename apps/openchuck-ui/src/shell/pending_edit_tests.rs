@@ -623,6 +623,15 @@ fn req_ui_07_req_ui_10_navigation_selection_dialog_generation_and_save_share_the
 }
 
 #[test]
+fn req_ui_07_req_ui_10_operation_form_still_warns_after_a_typed_edit() {
+    let mut rig = generated("new-project-guard-regression");
+    type_unconfirmed(&mut rig, "Stepover", "1.6");
+    click(&mut rig, "Continue to simulate");
+    assert!(rig.shows("Unconfirmed changes"));
+    assert_eq!(rig.shell.step, Step::Operations);
+}
+
+#[test]
 fn req_ui_07_req_ui_10_native_close_is_vetoed_even_when_the_project_is_saved() {
     let mut rig = generated("pending-native-close");
     rig.shell.app.as_ref().unwrap().save().unwrap();

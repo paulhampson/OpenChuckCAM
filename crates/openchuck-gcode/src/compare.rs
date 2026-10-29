@@ -149,6 +149,42 @@ pub fn compare(
     rule: TimingRule,
     tolerances: Tolerances,
 ) -> Result<Comparison, CompareError> {
+    compare_with_moves(replay, toolpath, frame, rule, tolerances, &mut |_| Ok(()))
+}
+
+/// One replayed move matched to a source operation. Observer values are
+/// provisional until the ENTIRE comparison succeeds. A dropped sub-resolution
+/// IR segment has no reached move; counter resets consume no segment.
+#[derive(Debug, Clone, Copy)]
+pub struct ComparedMove<'a> {
+    /// Zero-based group index in the supplied toolpath.
+    pub group: usize,
+    /// Source segment, or None for a move to an operation's starting pose.
+    pub segment: Option<usize>,
+    /// Actual replayed work-coordinate words. A uses the replay's sign.
+    pub movement: &'a Move,
+    /// Add to the written A counter to recover the physical unwrapped A.
+    pub coordinate_shift: f64,
+    /// Programmed fed-move duration under the requested timing rule.
+    /// None for a rapid. This is not a measured controller duration.
+    pub seconds: Option<f64>,
+}
+
+/// Compare with the same structural/tolerance checks as [`compare`], exposing
+/// reached moves for independent operation-specific checks. Observation cannot
+/// waive a later comparison failure. An observer error aborts the comparison;
+/// callers must discard all provisional output if any check fails.
+pub fn compare_with_moves(
+    replay: &Replay,
+    toolpath: &Toolpath,
+    frame: &impl AsRotaryFrame,
+    rule: TimingRule,
+    tolerances: Tolerances,
+    observe: &mut impl FnMut(ComparedMove<'_>) -> Result<(), CompareError>,
+) -> Result<Comparison, CompareError> {
+    toolpath
+        .validate()
+        .map_err(|e| CompareError::Structure(e.to_string()))?;
     let frame = frame.rotary_frame();
     let axis = axis_direction(frame.axis);
     let axis = [axis.x, axis.y, axis.z];
@@ -174,13 +210,14 @@ pub fn compare(
     };
 
     // Every IR segment is physical motion. Non-moving controller resets
-    // may occur only after an operation boundary, consuming no IR pose.
+    // may occur only at declared clear pass or operation boundaries, consuming no IR pose.
     struct Expected {
         tip: Point3,
         a: f64,
         boundary_after: bool,
         fed: Option<f64>,
         group: usize,
+        segment: Option<usize>,
         /// The program's first move, from wherever the controller is to the
         /// first group's start pose: the IR counts no A travel for it, so
         /// neither does the G-code. Later group starts count on both sides.
@@ -204,10 +241,11 @@ pub fn compare(
                 boundary_after: false,
                 fed: None,
                 group: g,
+                segment: None,
                 start: before.is_none(),
             });
         }
-        for segment in &group.segments {
+        for (index, segment) in group.segments.iter().enumerate() {
             let to = machine_of(segment.end.tip, segment.end.a.0);
             let moved = !same(&prev, &to);
             if moved {
@@ -219,8 +257,14 @@ pub fn compare(
                     boundary_after: false,
                     fed,
                     group: g,
+                    segment: Some(index),
                     start: false,
                 });
+            }
+            if group.rotary_reset_after.binary_search(&index).is_ok()
+                && let Some(last) = expected.last_mut()
+            {
+                last.boundary_after = true;
             }
             prev = to;
         }
@@ -280,6 +324,13 @@ pub fn compare(
                 mv.line
             )));
         }
+        observe(ComparedMove {
+            group: e.group,
+            segment: e.segment,
+            movement: mv,
+            coordinate_shift,
+            seconds: e.fed.and_then(|_| gcode_seconds(mv, rule, axis)),
+        })?;
         boundary = e.boundary_after.then_some(e.a);
     }
     if next_move(
@@ -324,7 +375,7 @@ pub fn compare(
     Ok(out)
 }
 
-/// Counter resets are bookkeeping at a reached operation boundary. Track
+/// Counter resets are bookkeeping at a reached declared pass or operation boundary. Track
 /// their offset explicitly so even a whole-turn error in a later command
 /// cannot be hidden by comparing only equivalent orientations.
 fn next_move<'a>(
@@ -350,7 +401,7 @@ fn next_move<'a>(
                     || (to - expected_to).abs() > tolerance
                 {
                     return Err(CompareError::Structure(format!(
-                        "line {line}: rotary counter reset is not at the reached operation boundary or does not match the controller"
+                        "line {line}: rotary counter reset is not at a reached declared boundary or does not match the controller"
                     )));
                 }
                 *shift += delta;

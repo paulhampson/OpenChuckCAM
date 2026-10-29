@@ -63,6 +63,15 @@ use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
 use crate::field::HeightStock;
+mod scope;
+pub(crate) use scope::FacingScope;
+
+#[cfg(test)]
+#[path = "roughing/facing_scope_tests.rs"]
+mod facing_scope_tests;
+#[cfg(test)]
+#[path = "roughing/legacy_identity_tests.rs"]
+mod legacy_identity_tests;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
@@ -397,6 +406,7 @@ pub(crate) fn face(
     parameters: &Parameters,
     round: bool,
     level: f64,
+    scope: Option<&FacingScope>,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let label = "facing";
@@ -405,6 +415,10 @@ pub(crate) fn face(
         PathError::Strategy("facing needs the stock's ends, and the stock model gives none".into())
     })?;
     job.x_range = job.extension.map_or(ends, |e| e.widen(ends));
+    if let Some(scope) = scope {
+        scope.validate(round, parameters)?;
+        job.face_scope = Some(scope.clone());
+    }
     if !level.is_finite() || level <= 0.0 || level >= job.r_top - job.min_cut {
         return Err(PathError::Parameter {
             name: crate::facing::parameter::SIZE.to_owned(),
@@ -526,6 +540,8 @@ struct Job<'a> {
     /// Facing on a flat past its sides: the half width of the face, beyond
     /// which the material at the side decides whether the tool cuts.
     side_reach: Option<f64>,
+    /// Optional emitted-cut bounds only. The stock field retains x_range.
+    face_scope: Option<FacingScope>,
 }
 
 impl<'a> Job<'a> {
@@ -573,6 +589,7 @@ impl<'a> Job<'a> {
             extension,
             face: None,
             side_reach: None,
+            face_scope: None,
         })
     }
 
@@ -810,6 +827,7 @@ impl<'a> Job<'a> {
 
     fn pass(&self, sites: &[(Site, f64)], stock: &PassStock) -> Pass {
         Pass {
+            helical_pass_start: false,
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
             rapids: Vec::new(),
@@ -868,7 +886,15 @@ impl<'a> Job<'a> {
         // that end without advancing, so the stock beside the keep-out is
         // cleared all round, as it is beyond the part's ends where the
         // margin gives a whole first and last turn (decision record 0161).
-        let (x0, x1, ring_start, ring_end) = self.cut_range();
+        let (x0, x1, ring_start, ring_end) =
+            if let Some(FacingScope::Round(span)) = &self.face_scope {
+                let (lo, hi) = self.scoped_range(*span)?;
+                // Explicit axial coverage has a full-circumference boundary at
+                // both ends. No-scope legacy arithmetic is unchanged below.
+                (lo, hi, true, true)
+            } else {
+                self.cut_range()
+            };
         let length = x1 - x0;
         let turns = (length / self.stepover).ceil().max(1.0);
         let rings = f64::from(u8::from(ring_start) + u8::from(ring_end));
@@ -959,7 +985,9 @@ impl<'a> Job<'a> {
             let mut layer = Vec::new();
             for (first, last) in Self::runs(&active, |i| Self::joined(&allowed, i)) {
                 let sites = self.run_points((first, last), *level, &floors, &site, &ends);
-                passes.push(self.pass(&sites, &snapshot));
+                let mut pass = self.pass(&sites, &snapshot);
+                pass.helical_pass_start = layer.is_empty();
+                passes.push(pass);
                 layer.push(sites);
             }
             for sites in &layer {
@@ -1112,6 +1140,13 @@ impl<'a> Job<'a> {
                 crate::facing::parameter::ANGLES,
                 "at least one angle to face at",
             ));
+        }
+        if let Some(FacingScope::Flat(rectangles)) = &self.face_scope {
+            if self.extension.is_some_and(|e| e.sides) {
+                self.side_reach = Some((self.r_top * self.r_top - level * level).max(0.).sqrt());
+            }
+            let lines = self.scoped_flat_lines(&angles, rectangles, level, context)?;
+            return self.cut_lines(&lines, context);
         }
         let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;

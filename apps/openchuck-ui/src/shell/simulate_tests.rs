@@ -499,7 +499,8 @@ fn req_sim_05_req_ui_15_cut_part_opacity_defaults_to_translucent_and_changes_cur
 }
 
 #[test]
-fn req_nfr_04_req_ui_11_preparation_failure_removes_progress_and_keeps_old_results_stale() {
+fn req_nfr_04_req_ui_11_req_nfr_12_req_gc_15_preparation_failure_removes_progress_and_keeps_old_results_stale()
+ {
     let mut rig = simulated("simui-progress-failed");
     let run = rig.shell.run.last().unwrap().clone();
     let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;

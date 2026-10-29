@@ -1068,6 +1068,11 @@ impl Shell {
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
                 }
+                if outcome.all_four
+                    && let Err(error) = app.select_all_facing_sides(id)
+                {
+                    ui.colored_label(DARK.error, error.user_message());
+                }
                 outcome.edits
             }
             Err(e) => {
@@ -1078,9 +1083,12 @@ impl Shell {
         // The jump has been drawn this frame.
         self.requirement_jump = None;
         for edit in edits {
-            let result = app
-                .set_parameter(id, &edit.name, edit.value)
-                .map_err(|e| form_panel::refusal(&e.user_message()));
+            let result = if edit.reset_to_default {
+                app.reset_parameter(id, &edit.name)
+            } else {
+                app.set_parameter(id, &edit.name, edit.value)
+            }
+            .map_err(|e| form_panel::refusal(&e.user_message()));
             self.form.result(&edit.name, result);
         }
         let result = match role_edit {

@@ -314,11 +314,13 @@ fn req_gc_04_req_gc_09_z1_reset_adjusts_following_a_at_signed_turn_boundaries() 
         let path = Toolpath {
             groups: vec![
                 ToolpathGroup {
+                    rotary_reset_after: Vec::new(),
                     tags: small_part().groups[0].tags.clone(),
                     start: fixed(before - 10.0),
                     segments: vec![seg(MoveKind::Rapid, fixed(before), 1.0, 0.0)],
                 },
                 ToolpathGroup {
+                    rotary_reset_after: Vec::new(),
                     tags: small_part().groups[0].tags.clone(),
                     start: fixed(before),
                     segments: vec![seg(MoveKind::Rapid, fixed(before + 10.0), 1.0, 0.0)],

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- **Breaking (0.26.0):** `ToolpathGroup` carries explicit `rotary_reset_after` segment indices for certified clear helical-pass boundaries (accepted 0247, #337). Host struct literals supply `Vec::new()` unless they certify eligible boundaries; copies retain the indices. Empty metadata defaults on deserialization and is omitted on serialization. Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
@@ -12,6 +16,9 @@
 All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
+
+- **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
+
 
 - Breaking (0.24.0): `ShortBlockMode` adds `SlowDown`; the profile window uses `usize` and is bounded to 4096. Confirmation lists omit disabled timing settings and the software mode policy.
 

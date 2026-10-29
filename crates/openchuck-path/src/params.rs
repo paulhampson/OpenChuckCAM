@@ -98,6 +98,12 @@ pub enum ParameterKind {
         /// The default text, possibly empty.
         default: String,
     },
+    /// Ordered indexed-face rows: a finite A angle and optional plane offset
+    /// per row. Stored as validated JSON text in the generic parameter map.
+    IndexedFaces {
+        /// Default row data, normally an empty array.
+        default: String,
+    },
 }
 
 /// One parameter of a strategy.
@@ -231,6 +237,15 @@ fn resolve_one(spec: &ParameterSpec, value: Option<&ParameterValue>) -> Result<P
                 Some(_) => return Err(wrong("a list of angles in degrees")),
             };
             parse_angles(&v).map_err(|reason| PathError::parameter(name, reason))?;
+            Ok(ParameterValue::Text(v))
+        }
+        ParameterKind::IndexedFaces { default } => {
+            let v = match value {
+                None => default.clone(),
+                Some(ParameterValue::Text(text)) => text.clone(),
+                Some(_) => return Err(wrong("indexed angle and offset rows")),
+            };
+            crate::facing::selection::decode_rows(&v)?;
             Ok(ParameterValue::Text(v))
         }
         ParameterKind::Choice { options, default } => {
