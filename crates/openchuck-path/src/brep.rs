@@ -53,10 +53,13 @@
 //! error is the tessellation's.
 
 mod bound;
+mod drop;
 mod hull;
 #[cfg(test)]
 mod tests;
 mod trim;
+
+pub use drop::DROP_TOLERANCE;
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -2233,6 +2236,56 @@ impl BrepSurface {
             .collect()
     }
 
+    /// The tool dropped along `line` onto the exact faces, when the tool's
+    /// lower envelope is a ball (a ball end, or one grown for stock to
+    /// leave): within [`DROP_TOLERANCE`] of the highest contact, or, when a
+    /// search ran out of its budget, at the bound it stopped at, which is
+    /// never below the contact (lane STEPALL-X2, OI-81). `None` for another
+    /// profile, or when a face has no exact drop; the caller then drops onto
+    /// the tessellation.
+    pub fn drop_ball(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
+        let r = ball_radius(profile)?;
+        if !line.origin.is_finite() {
+            return None;
+        }
+        let ball = drop::Ball::new(line, r);
+        let mut order: Vec<(f64, usize)> = self
+            .faces
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| f.drop_top(&ball).map(|t| (t, i)))
+            .collect();
+        order.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut search = drop::Search::new(ball);
+        for (top, i) in order {
+            if top <= search.floor() {
+                break;
+            }
+            if let Some(f) = self.faces.get(i) {
+                f.drop_ball(&mut search);
+            }
+            if search.unsupported {
+                return None;
+            }
+        }
+        let best = search.best?;
+        let offset = best.s.max(search.unresolved);
+        Some(ExactDrop {
+            contact: Contact {
+                tip: line.at(offset),
+                contact: best.point,
+                offset,
+            },
+            position: FacePosition {
+                face: best.face,
+                uv: best.uv,
+            },
+            raised: (search.unresolved - best.s).max(0.0),
+            looked: search.looked,
+            stats: search.stats,
+        })
+    }
+
     fn nearest(
         &self,
         point: Point3,
@@ -2301,6 +2354,47 @@ impl BrepSurface {
         }
         best
     }
+}
+
+/// An exact ball drop's answer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExactDrop {
+    /// The contact, as [`SurfaceSource::drop_tool`] gives it.
+    pub contact: Contact,
+    /// Where on the faces the contact lies.
+    pub position: FacePosition,
+    /// How far the tip was raised above the best contact found to the bound
+    /// a search stopped at (0 when every search settled to the tolerance).
+    pub raised: f64,
+    /// Cells and boundary pieces looked at.
+    pub looked: usize,
+    /// Debug counters.
+    pub stats: [usize; 4],
+}
+
+/// The radius of the ball that is the profile's lower envelope, or `None`
+/// when its envelope is not a ball centred on the axis one radius above the
+/// tip.
+pub fn ball_radius(profile: &RevolvedProfile) -> Option<f64> {
+    let [e] = profile.envelope() else {
+        return None;
+    };
+    let ProfilePiece::Arc {
+        centre,
+        radius,
+        convex: true,
+        ..
+    } = e.piece
+    else {
+        return None;
+    };
+    let tie = 1e-9 * (1.0 + radius.abs());
+    (radius > 0.0
+        && centre.radius.0.abs() <= tie
+        && (centre.height.0 - radius).abs() <= tie
+        && e.r_start <= tie
+        && (e.r_end - radius).abs() <= tie)
+        .then_some(radius)
 }
 
 /// The largest distance of any point of the tool from its axis.

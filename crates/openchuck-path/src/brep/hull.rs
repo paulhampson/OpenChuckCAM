@@ -211,6 +211,14 @@ pub(super) struct Bound {
 }
 
 impl Bound {
+    /// The bound of a box alone.
+    pub fn from_aabb(aabb: Aabb) -> Self {
+        Self {
+            aabb,
+            oriented: None,
+        }
+    }
+
     /// A lower bound on the distance from `q` to any point of the cell.
     pub fn lower(&self, q: Point3) -> f64 {
         let b = &self.aabb;
@@ -230,6 +238,44 @@ impl Bound {
             lower = lower.max(s.sqrt() * (1.0 - 1e-12));
         }
         lower
+    }
+
+    /// The distance from `q` to the cell's boxes (the larger of the two
+    /// box distances, a lower bound on the distance to the cell) and its
+    /// gradient with respect to `q`: zero inside both boxes. The distance
+    /// to a box is convex, and so is the larger of two, which is what lets
+    /// a drop bound a cell by a Newton search from above (the `drop`
+    /// module).
+    pub fn distance_gradient(&self, q: Point3) -> (f64, Vec3) {
+        let b = &self.aabb;
+        let ex = |lo: f64, hi: f64, x: f64| {
+            if x < lo {
+                x - lo
+            } else if x > hi {
+                x - hi
+            } else {
+                0.0
+            }
+        };
+        let e = Vec3::new(
+            ex(b.min.x, b.max.x, q.x),
+            ex(b.min.y, b.max.y, q.y),
+            ex(b.min.z, b.max.z, q.z),
+        );
+        let mut best = (e.length(), e);
+        if let Some(o) = &self.oriented {
+            let d = q - o.origin;
+            let mut g = Vec3::ZERO;
+            for (a, r) in o.axes.iter().zip(o.range) {
+                g = g + *a * ex(r.0, r.1, d.dot(*a));
+            }
+            let l = g.length() * (1.0 - 1e-12);
+            if l > best.0 {
+                best = (l, g);
+            }
+        }
+        let (d, g) = best;
+        if d > 0.0 { (d, g * (1.0 / g.length())) } else { (0.0, Vec3::ZERO) }
     }
 
     /// The diagonal of the axis-aligned box: no two points of the cell are
