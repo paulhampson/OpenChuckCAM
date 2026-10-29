@@ -83,7 +83,7 @@ wgpu = "=30.0.1"
 # Native open and save dialogs, `openchuck-ui` only (decision record 0029 item 15, OI-127).
 rfd = "=0.17.2"
 log = "=0.4.34"
-windows-sys = { version = "=0.60.2", default-features = false, features = ["Win32_System_Console"] }
+windows-sys = { version = "=0.61.2", default-features = false, features = ["Win32_System_Console"] }
 
 # Test, golden-file and benchmark crates (dev-dependencies only).
 proptest = "=1.12.0"
