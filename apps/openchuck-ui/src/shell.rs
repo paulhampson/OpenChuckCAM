@@ -139,6 +139,21 @@ enum Dialog {
     /// A command the user gave failed outright; the message says what
     /// (specification section 9: the only pop-up errors).
     Error(String),
+    /// The opened project has models outside its folder: ask, each time it
+    /// is opened, whether to copy them in (decision record 0307 item 5).
+    CopyLinked(usize),
+}
+
+/// The question asked on opening a project with `count` models outside its
+/// folder (decision record 0307 item 5).
+fn copy_linked_question(count: usize) -> String {
+    if count == 1 {
+        "This project's model is outside its folder. Copy it into the project now?".to_owned()
+    } else {
+        format!(
+            "This project has {count} models outside its folder. Copy them into the project now?"
+        )
+    }
 }
 
 /// The shell's state.
@@ -411,6 +426,22 @@ impl Shell {
         }
     }
 
+    /// Copies every linked model into the project folder (the opening
+    /// question's Copy), reporting any refused with what to do.
+    fn copy_linked_models(&mut self) {
+        let Some(app) = &mut self.app else { return };
+        let (copied, refused) = app.copy_linked_models();
+        self.status = match copied.len() {
+            0 => String::new(),
+            1 => "Copied 1 model into the project folder".to_owned(),
+            n => format!("Copied {n} models into the project folder"),
+        };
+        if !refused.is_empty() {
+            self.dialog = Some(Dialog::Error(refused.join("\n")));
+        }
+        self.overview_dirty = true;
+    }
+
     fn create(&mut self, folder: PathBuf, name: &str) {
         let defaults = openchuck_app::NewProject {
             skip_stock_simulation: self.settings.simulate.skip_stock_simulation,
@@ -468,6 +499,10 @@ impl Shell {
         } else {
             Step::Operations
         };
+        let linked = app.linked_models().len();
+        if linked > 0 && self.bench.is_none() {
+            self.dialog = Some(Dialog::CopyLinked(linked));
+        }
         self.app = Some(app);
         self.overview_dirty = true;
         self.rebuild_scene(true);
@@ -1662,7 +1697,7 @@ impl Shell {
         }
         match session.poll_adding() {
             None => {}
-            Some(Ok(prepared)) => match app.add_prepared_model(prepared) {
+            Some(Ok(prepared)) => match app.add_prepared_model_as(prepared, session.storage()) {
                 Ok(_) => {
                     self.status = format!("Added {}", session.path.display());
                     self.import = None;
@@ -1789,6 +1824,25 @@ impl Shell {
                                 name,
                             });
                         }));
+                    }
+                });
+            }
+            Dialog::CopyLinked(count) => {
+                ui.label(copy_linked_question(count));
+                ui.label(
+                    egui::RichText::new(
+                        "The originals are not changed, and selections and toolpaths stay as \
+                         they are.",
+                    )
+                    .color(DARK.muted),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Copy").clicked() {
+                        close = true;
+                        action = Some(Box::new(|s: &mut Self| s.copy_linked_models()));
+                    }
+                    if ui.button("Not now").clicked() {
+                        close = true;
                     }
                 });
             }
@@ -2523,3 +2577,5 @@ mod tooltip_tests;
 
 #[cfg(test)]
 mod import_layout_tests;
+#[cfg(test)]
+mod model_copy_tests;

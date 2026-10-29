@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- MODELCOPY (#385, proposed decision 0307): the import dialog's "Copy the file into the project folder" tick box (ticked by default) with the file's size and a line saying what happens; the Model inspector's Source section says where the file is and has "Copy model into project" for a linked model; the project tree names a model by its original file name and marks a linked one with a link mark and "linked"; opening a project with linked models asks whether to copy them in.
+
 - OUTPUT2 (accepted decision 0267; #308, #310): the export dialog has File names fields for the program files and the setup sheet, with Reset, a list of the fields, and the problem in red when a template cannot name the files; the files list and the sheet line preview the names written, with the numbered names and an amber warning when names clash; Write G-code is blocked only while a template cannot name a file. The templates are the user's setting, kept by the shell once a change is confirmed (a draft is not kept, decision 0233).
 
 - FACING review fix (UI-02/03): replacing a scene job preserves an unconsumed camera-fit request; ordinary rebuilds after the fit is consumed leave the camera unchanged.

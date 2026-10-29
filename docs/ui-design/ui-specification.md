@@ -121,7 +121,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 
 **One tree in every step** (UI-06). Groups, in pipeline order:
 
-1. **Model.** One row per model, with child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
+1. **Model.** One row per model, named by its original file name; a model linked from outside the project folder has a small link mark and the chip "linked" after its name, with a tooltip saying moving the folder will lose it ([decision 0307](../decisions/0307-model-copied-into-the-project-folder.md)). Child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
 2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Operations.** In machining order, each with its tool's number as a chip.
@@ -397,6 +397,7 @@ File > New project opens a dialog for a parent folder and project name (decision
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
 - **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
+- **Copy into the project folder** ([decision 0307](../decisions/0307-model-copied-into-the-project-folder.md), proposed). Once the check has run, above the footer's buttons: the tick box "Copy the file into the project folder", ticked by default, with the file's size beside it ("84.2 MB"), and a line under it: ticked, "It will be copied into the project's models folder and listed as part.stl, so the project folder can be moved, zipped or shared. The original file is not changed."; cleared, "The file stays where it is and is linked by its path. If the project folder is moved without it, the model will be missing." A file already in the project folder turns the tick box off, with "The file is already in the project folder." The copy is named by the file's content hash (`models/<hash>.stl`) and listed by its original name.
 - **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary), which stays off until the check has run.
 
 **Model step** (board 1):
@@ -412,7 +413,7 @@ File > New project opens a dialog for a parent folder and project name (decision
     - removing a step is one undoable command;
     - "Add step" offers centre, orient, translate, rotate, scale and mirror;
   - mesh check summary and "Open full report";
-  - source: the content hash, "Replace file…" and "Show in folder".
+  - source: where the file is ("part.stl, stored in the project folder (models/d2a8b35f….stl)", or for a model linked from outside the folder "part.stl, linked from outside the project folder (../../elsewhere/part.stl). Moving the project folder will lose this model." in the warning colour, with "Copy model into project"; the section opens by default for a linked model; [decision 0307](../decisions/0307-model-copied-into-the-project-folder.md)), the content hash, "Replace file…" (which copies its file into the project folder too) and "Show in folder". Opening a project with linked models asks, each time, "This project's model is outside its folder. Copy it into the project now?" (Copy, Not now), and Messages keeps an information note for each.
 - **Dock.** Messages and Import history.
 - **Footer** primary: "Continue to setup".
 

@@ -537,13 +537,7 @@ impl Shell {
             self.selected = None;
             return;
         };
-        let name = reference
-            .path
-            .as_str()
-            .rsplit('/')
-            .next()
-            .unwrap_or(reference.path.as_str())
-            .to_owned();
+        let name = reference.display_name().to_owned();
         self.header(ui, ItemRef::Model(id), &name, false);
         let Some(app) = &mut self.app else { return };
         let panel = match &mut self.model_panel {
@@ -559,6 +553,16 @@ impl Shell {
         }
         if outcome.show_report {
             self.open_model_report(id);
+        }
+        let Some(app) = &mut self.app else { return };
+        if outcome.copy_into_project {
+            let refused = app.copy_model_into_project(id).err().map(|e| e.to_string());
+            if refused.is_none() {
+                self.status = "Copied the model into the project folder".to_owned();
+            }
+            if let Some(panel) = &mut self.model_panel {
+                panel.copy_error = refused;
+            }
         }
         let Some(app) = &mut self.app else { return };
         if let Some(prepared) = outcome.replaced

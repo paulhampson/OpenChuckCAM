@@ -16,7 +16,7 @@ use openchuck_app::model::{
     Axis, AxisDirection, ImportPreview, LengthUnit, PreparedModel, TransformStep,
     orient_to_rotary_axis,
 };
-use openchuck_app::{AppError, Application, JobHandle};
+use openchuck_app::{AppError, Application, JobHandle, ModelStorage};
 
 use crate::floating::{WindowEvent, floating_fixed};
 use crate::roles;
@@ -30,6 +30,51 @@ const WINDOW_SIZE: [f32; 2] = [460.0, 520.0];
 /// The label of the button that starts the check (the owner's decision on
 /// issue 144, option B).
 const CHECK_LABEL: &str = "Check and preview";
+
+/// The tick box that copies a file from outside the project folder into it
+/// (decision record 0307 items 1 and 8), ticked by default.
+pub(crate) const COPY_LABEL: &str = "Copy the file into the project folder";
+
+/// What the copy tick box's line says for a file outside the project folder,
+/// ticked or not, and for one already in it (decision record 0307 item 8).
+fn copy_line(placement: FilePlacement, copy: bool, name: &str) -> String {
+    match (placement, copy) {
+        (FilePlacement::Inside, _) => "The file is already in the project folder.".to_owned(),
+        (FilePlacement::Outside, true) => format!(
+            "It will be copied into the project's models folder and listed as {name}, so the \
+             project folder can be moved, zipped or shared. The original file is not changed."
+        ),
+        (FilePlacement::Outside, false) => "The file stays where it is and is linked by its \
+             path. If the project folder is moved without it, the model will be missing."
+            .to_owned(),
+    }
+}
+
+/// A file size in plain words, shown beside the copy tick box (decision
+/// record 0307 item 9): bytes below a kilobyte, then KB, MB and GB to one
+/// decimal place (1 KB is 1000 bytes, as file browsers show).
+pub(crate) fn size_text(bytes: u64) -> String {
+    const UNITS: [&str; 3] = ["KB", "MB", "GB"];
+    if bytes < 1000 {
+        return format!("{bytes} bytes");
+    }
+    let mut value = bytes as f64 / 1000.0;
+    let mut unit = 0;
+    while value >= 999.95 && unit + 1 < UNITS.len() {
+        value /= 1000.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS.get(unit).copied().unwrap_or("GB"))
+}
+
+/// Where the chosen file is, against the project folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FilePlacement {
+    /// In the project folder: used where it is.
+    Inside,
+    /// Outside it: copied, or linked if the tick box is cleared.
+    Outside,
+}
 
 /// The line under the path that says where the flow is and that nothing is
 /// in the project yet (IMP-03, OI-432).
@@ -142,6 +187,11 @@ pub struct ImportSession {
     pub fresh: bool,
     /// The model being read and checked for adding, off the UI thread.
     adding: Option<JobHandle<PreparedModel>>,
+    /// Whether a file from outside the project folder is copied into it
+    /// (the tick box, ticked by default; decision record 0307 item 1).
+    pub copy: bool,
+    /// Where the checked file is, and its size, found when it is checked.
+    placement: Option<(FilePlacement, Option<u64>)>,
 }
 
 impl std::fmt::Debug for ImportSession {
@@ -168,6 +218,8 @@ impl ImportSession {
             error: None,
             fresh: false,
             adding: None,
+            copy: true,
+            placement: None,
         };
         session.check(app);
         session
@@ -188,6 +240,8 @@ impl ImportSession {
             error: None,
             fresh: false,
             adding: None,
+            copy: true,
+            placement: None,
         }
     }
 
@@ -224,6 +278,13 @@ impl ImportSession {
         if let Some(old) = self.job.take() {
             old.cancel();
         }
+        let placement = if app.is_in_project_folder(&self.path) {
+            FilePlacement::Inside
+        } else {
+            FilePlacement::Outside
+        };
+        let size = std::fs::metadata(&self.path).ok().map(|m| m.len());
+        self.placement = Some((placement, size));
         self.job = Some(app.start_import_preview(&self.path, self.units, &self.steps()));
     }
 
@@ -276,6 +337,42 @@ impl ImportSession {
         let result = self.adding.as_ref()?.try_result()?;
         self.adding = None;
         Some(result)
+    }
+
+    /// How a file from outside the project folder is kept when it is added.
+    pub fn storage(&self) -> ModelStorage {
+        if self.copy {
+            ModelStorage::Copy
+        } else {
+            ModelStorage::Link
+        }
+    }
+
+    /// The copy tick box and its line, for a checked file (decision record
+    /// 0307 items 1, 8 and 9).
+    fn copy_choice(&mut self, ui: &mut egui::Ui) {
+        let Some((placement, size)) = self.placement else {
+            return;
+        };
+        let name = self
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        ui.horizontal(|ui| {
+            let mut ticked = self.copy && placement == FilePlacement::Outside;
+            let response = ui.add_enabled(
+                placement == FilePlacement::Outside,
+                egui::Checkbox::new(&mut ticked, COPY_LABEL),
+            );
+            if response.changed() {
+                self.copy = ticked;
+            }
+            if let Some(size) = size {
+                ui.weak(size_text(size));
+            }
+        });
+        ui.weak(copy_line(placement, self.copy, &name));
     }
 
     /// Whether an add is in progress.
@@ -353,6 +450,9 @@ impl ImportSession {
                 .resizable(false)
                 .show(ui, |ui| {
                     ui.add_space(4.0);
+                    if self.preview.is_some() {
+                        self.copy_choice(ui);
+                    }
                     ui.weak(
                         "The file is not changed. Its path and hash are stored in the project.",
                     );
@@ -790,6 +890,49 @@ mod tests {
             Orientation::Centred.steps(),
             vec![TransformStep::CentreOnRotaryAxis]
         );
+    }
+
+    /// A file from outside the project folder is copied by default; the line
+    /// under the tick box says what happens either way, and a file already in
+    /// the folder is used where it is (issue 385, decision record 0307).
+    #[test]
+    fn req_prj_02_the_copy_choice_is_ticked_by_default_and_says_what_happens() {
+        let session = ImportSession::blank();
+        assert!(session.copy);
+        assert_eq!(session.storage(), ModelStorage::Copy);
+        assert_eq!(COPY_LABEL, "Copy the file into the project folder");
+        assert_eq!(
+            copy_line(FilePlacement::Outside, true, "part.stl"),
+            "It will be copied into the project's models folder and listed as part.stl, so \
+             the project folder can be moved, zipped or shared. The original file is not changed."
+        );
+        assert_eq!(
+            copy_line(FilePlacement::Outside, false, "part.stl"),
+            "The file stays where it is and is linked by its path. If the project folder is \
+             moved without it, the model will be missing."
+        );
+        assert_eq!(
+            copy_line(FilePlacement::Inside, true, "part.stl"),
+            "The file is already in the project folder."
+        );
+        let linked = ImportSession {
+            copy: false,
+            ..ImportSession::blank()
+        };
+        assert_eq!(linked.storage(), ModelStorage::Link);
+    }
+
+    /// The size beside the tick box, in plain words (decision record 0307
+    /// item 9).
+    #[test]
+    fn req_prj_02_the_file_size_is_shown_in_plain_words() {
+        assert_eq!(size_text(0), "0 bytes");
+        assert_eq!(size_text(999), "999 bytes");
+        assert_eq!(size_text(1000), "1.0 KB");
+        assert_eq!(size_text(84_210_000), "84.2 MB");
+        assert_eq!(size_text(999_960), "1.0 MB");
+        assert_eq!(size_text(3_400_000_000), "3.4 GB");
+        assert_eq!(size_text(u64::MAX), "18446744073.7 GB");
     }
 
     #[test]
