@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0
+
+- **Breaking family release (0.27.0, BUG-SWARF4, decision 0272):** `openchuck_path::swarf::FacePath::overcut_warning` takes a checked `Clearing`. No change in this crate; all family crates advance together under 0048. No project-schema migration.
+
 ## 0.26.0
 
 - Independently validate declared pass-boundary resets, including rounded-away retracts, while rejecting undeclared resets and subsequent whole-turn errors (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.

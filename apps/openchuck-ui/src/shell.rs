@@ -1080,6 +1080,9 @@ impl Shell {
             return;
         }
         if let Some(app) = &self.app {
+            // The user's file name templates, kept across projects (issues
+            // 308 and 310).
+            self.export.set_file_names(self.settings.file_names.clone());
             self.export.open(app);
         }
     }
@@ -1353,6 +1356,13 @@ impl Shell {
                 .frame(ctx, app, self.run.last(), self.run.last_error());
             if outcome.reported {
                 self.overview_dirty = true;
+            }
+            // A confirmed template change is the user's setting from now on.
+            if let Some(names) = self.export.file_names_to_keep(ctx)
+                && *names != self.settings.file_names
+            {
+                self.settings.file_names = names.clone();
+                self.settings_changed = Some(Instant::now());
             }
             if let Some(status) = outcome.status {
                 self.status = status;
@@ -2507,6 +2517,9 @@ mod smoke_tests;
 
 #[cfg(test)]
 mod tool_library_tests;
+
+#[cfg(test)]
+mod tooltip_tests;
 
 #[cfg(test)]
 mod import_layout_tests;

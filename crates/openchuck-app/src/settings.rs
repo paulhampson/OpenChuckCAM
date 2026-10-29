@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::acknowledgement::SETTINGS_FILE;
 use crate::error::AppError;
+use crate::output_names::FileNameTemplates;
 use crate::tool_library::ToolLibraryView;
 
 /// The table of `settings.toml` this module owns.
@@ -186,6 +187,11 @@ pub struct UserSettings {
     /// 0199; issues 192 and 193). A file written before the field existed
     /// reads it as unfolded with no filter.
     pub tool_library: ToolLibraryView,
+    /// The program file and setup sheet name templates (issues 308 and 310;
+    /// decision record 0267), remembered across projects. A file written
+    /// before the field existed reads the defaults, which give the names
+    /// written before templates existed.
+    pub file_names: FileNameTemplates,
 }
 
 impl Default for UserSettings {
@@ -204,6 +210,7 @@ impl Default for UserSettings {
             checkpoint_minutes: 3,
             simulate: SimulateSettings::default(),
             tool_library: ToolLibraryView::default(),
+            file_names: FileNameTemplates::default(),
         }
     }
 }
@@ -230,6 +237,7 @@ impl UserSettings {
         self.dock = self.dock.clamped(range(region::DOCK), region::DOCK.0);
         self.recent.truncate(RECENT_KEPT);
         self.simulate = self.simulate.clamped();
+        self.file_names = self.file_names.clamped();
         self.window = self.window.filter(|[w, h]| {
             (WINDOW_RANGE.0..=WINDOW_RANGE.1).contains(w)
                 && (WINDOW_RANGE.0..=WINDOW_RANGE.1).contains(h)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0
+
+- **Breaking family release (0.27.0, BUG-SWARF4, decision 0272):** `openchuck_path::swarf::FacePath::overcut_warning` takes a checked `Clearing`. No change in this crate; all family crates advance together under 0048. No project-schema migration.
+
 ## 0.26.0
 
 - Accept explicit clear pass-boundary metadata for nonmoving continuous-axis counter resets. Z1 rebases subsequent absolute words with existing signed/exact-360 semantics; rotate-only posts omit bookkeeping and add no rewind (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.

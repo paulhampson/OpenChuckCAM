@@ -88,6 +88,9 @@ impl OutputReport {
         for path in &self.not_attempted {
             text.push_str(&format!("\nNot attempted: {}", path.display()));
         }
+        // A closing sentence, so Messages' sentence ending is never added to
+        // the last path, which must stay a real file name (issue 331).
+        text.push_str("\nEnd of the export result.");
         text
     }
 
@@ -161,34 +164,71 @@ pub(crate) fn prepare(
     })
 }
 
-/// New files use exclusive creation, so a destination appearing after
-/// preflight is never silently replaced. Existing files are prepared at a
-/// uniquely claimed temporary path before rename; no delete-before-replace.
+/// Every file is first written completely under a uniquely claimed staging
+/// name in the destination folder, then published under its final name
+/// (issue 332), so stopping part way leaves a hidden staging file, never a
+/// final name holding part of a program. A new destination is published
+/// without replacing anything: a file that appears there after preflight is
+/// kept and the write fails. An approved existing destination is replaced
+/// by renaming the staged file over it, never by deleting it first. Staged
+/// bytes are flushed before publishing; this is best effort, not a promise
+/// of durability after a power cut, and the batch stays non-atomic.
 fn write_one(path: &Path, bytes: &[u8], replace: bool) -> io::Result<()> {
-    if !replace {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)?;
-        let result = file.write_all(bytes);
-        drop(file);
-        return match result {
-            Ok(()) => Ok(()),
-            Err(error) => match std::fs::remove_file(path) {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(io::Error::new(
-                    error.kind(),
-                    format!("{error}; the incomplete file could not be removed: {cleanup}"),
-                )),
-            },
-        };
-    }
-    static NEXT: AtomicU64 = AtomicU64::new(0);
+    write_one_with(path, bytes, replace, |from, to| {
+        std::fs::hard_link(from, to)
+    })
+}
+
+/// [`write_one`] with the no-clobber publication step given, so tests can
+/// stand in for a file system without hard links.
+fn write_one_with(
+    path: &Path,
+    bytes: &[u8],
+    replace: bool,
+    link: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::other("output path has no parent"))?;
+    let staged = stage(parent, bytes)?;
+    let published = if replace {
+        std::fs::rename(&staged, path)
+    } else {
+        publish_new(&staged, path, link)
+    };
+    match published {
+        Ok(()) => match std::fs::remove_file(&staged) {
+            // A rename leaves nothing to remove; a hard link leaves the
+            // staging name beside the published one.
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Ok(()) => Ok(()),
+            Err(cleanup) => Err(io::Error::new(
+                cleanup.kind(),
+                format!(
+                    "the file was written completely, but its staging file '{}' could not be removed: {cleanup}",
+                    staged.display()
+                ),
+            )),
+        },
+        Err(error) => match std::fs::remove_file(&staged) {
+            Ok(()) => Err(error),
+            Err(cleanup) => Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "{error}; staging file '{}' could not be removed: {cleanup}",
+                    staged.display()
+                ),
+            )),
+        },
+    }
+}
+
+/// Writes `bytes` completely to a new, uniquely claimed hidden file in
+/// `parent` and returns its path. A failed write removes it.
+fn stage(parent: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     for _ in 0..32 {
-        let temporary = parent.join(format!(
+        let staged = parent.join(format!(
             ".openchuck-export-{}-{}.part",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
@@ -196,33 +236,72 @@ fn write_one(path: &Path, bytes: &[u8], replace: bool) -> io::Result<()> {
         let mut file = match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&temporary)
+            .open(&staged)
         {
             Ok(file) => file,
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e),
         };
-        let result = file.write_all(bytes);
+        let result = file.write_all(bytes).and_then(|()| file.sync_all());
         drop(file);
-        let result = result.and_then(|()| std::fs::rename(&temporary, path));
-        if let Err(error) = result {
-            return match std::fs::remove_file(&temporary) {
+        return match result {
+            Ok(()) => Ok(staged),
+            Err(error) => match std::fs::remove_file(&staged) {
                 Ok(()) => Err(error),
                 Err(cleanup) => Err(io::Error::new(
                     error.kind(),
                     format!(
-                        "{error}; temporary file '{}' could not be removed: {cleanup}",
-                        temporary.display()
+                        "{error}; staging file '{}' could not be removed: {cleanup}",
+                        staged.display()
                     ),
                 )),
-            };
-        }
-        return Ok(());
+            },
+        };
     }
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "could not claim a temporary output file",
+        "could not claim a staging file for the output",
     ))
+}
+
+/// Publishes the complete `staged` file at the new destination `path`
+/// without replacing anything there. A hard link does this in one step. A
+/// file system without hard links (FAT and exFAT memory cards, some network
+/// shares) instead claims the destination exclusively as an empty file and
+/// renames the staged file over that claim, so an interruption can leave an
+/// empty file but never part of a program.
+fn publish_new(
+    staged: &Path,
+    path: &Path,
+    link: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    let appeared = || {
+        io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "a file appeared at the destination after the review; it was kept and not replaced",
+        )
+    };
+    match link(staged, path) {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Err(appeared()),
+        Err(_) => {}
+    }
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(claim) => drop(claim),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Err(appeared()),
+        Err(e) => return Err(e),
+    }
+    std::fs::rename(staged, path).map_err(|error| match std::fs::remove_file(path) {
+        Ok(()) => error,
+        Err(cleanup) => io::Error::new(
+            error.kind(),
+            format!("{error}; the empty claimed file could not be removed: {cleanup}"),
+        ),
+    })
 }
 
 pub(crate) fn write(plan: &OutputPlan, replace: bool) -> OutputReport {
@@ -327,5 +406,123 @@ mod tests {
         assert_eq!(std::fs::read(destination.join("keep")).unwrap(), b"keep");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn scratch(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("openchuck-stage-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Issue 332: the final name appears only once the staged file holds
+    /// every byte, so stopping during the write cannot leave part of a
+    /// program under the final name.
+    #[test]
+    fn req_nfr_07_req_gc_05_a_new_file_is_complete_before_its_final_name_appears() {
+        let dir = scratch("complete");
+        let path = dir.join("01-part.nc");
+        let bytes = b"G0 X0\nM30\n".repeat(1000);
+        write_one_with(&path, &bytes, false, |staged, to| {
+            assert!(!to.exists(), "the final name is not used while staging");
+            assert_eq!(staged.parent(), to.parent(), "staged in the same folder");
+            assert_eq!(std::fs::read(staged).unwrap(), bytes);
+            std::fs::hard_link(staged, to)
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(names(&dir), ["01-part.nc"], "no staging file is left");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// The accepted no-overwrite rule (decision 0240 item 4) holds at the
+    /// moment of publication, with and without hard links.
+    #[test]
+    fn req_nfr_07_a_file_appearing_before_publication_is_kept() {
+        for hard_links in [true, false] {
+            let dir = scratch(&format!("appeared-{hard_links}"));
+            let path = dir.join("01-part.nc");
+            let error = write_one_with(&path, b"new", false, |staged, to| {
+                std::fs::write(to, b"someone else's").unwrap();
+                if hard_links {
+                    std::fs::hard_link(staged, to)
+                } else {
+                    Err(io::Error::new(io::ErrorKind::Unsupported, "no hard links"))
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert!(
+                error.to_string().contains("kept and not replaced"),
+                "{error}"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), b"someone else's");
+            assert_eq!(names(&dir), ["01-part.nc"], "the staging file is removed");
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    /// A memory card formatted FAT or exFAT has no hard links: the file is
+    /// still staged and published complete under its name.
+    #[test]
+    fn req_nfr_07_a_file_system_without_hard_links_still_publishes_complete_files() {
+        let dir = scratch("no-links");
+        let path = dir.join("01-part.nc");
+        write_one_with(&path, b"G0 X0", false, |_, to| {
+            assert!(!to.exists());
+            Err(io::Error::new(io::ErrorKind::Unsupported, "no hard links"))
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"G0 X0");
+        assert_eq!(names(&dir), ["01-part.nc"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A staging failure that the program sees is reported and leaves
+    /// nothing under the final name.
+    #[test]
+    fn req_nfr_07_a_failed_staging_write_leaves_no_final_file() {
+        let dir = scratch("missing");
+        let path = dir.join("absent").join("01-part.nc");
+        assert!(write_one(&path, b"G0", false).is_err());
+        assert!(!path.exists());
+        assert!(names(&dir).is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Approved replacement keeps using a staged rename over the old file.
+    #[test]
+    fn req_nfr_07_an_approved_replacement_is_staged_and_renamed() {
+        let dir = scratch("replace");
+        let path = dir.join("01-part.nc");
+        std::fs::write(&path, b"old").unwrap();
+        write_one(&path, b"new", true).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert_eq!(names(&dir), ["01-part.nc"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Issue 331: the report's last line is a sentence, not a path.
+    #[test]
+    fn req_ui_12_the_report_text_ends_with_a_sentence_after_the_paths() {
+        let report = OutputReport {
+            written: vec![PathBuf::from("/out/a.nc")],
+            failed: None,
+            not_attempted: Vec::new(),
+        };
+        assert_eq!(
+            report.text(),
+            "Export: Wrote 1 file.\nWritten: /out/a.nc\nEnd of the export result."
+        );
     }
 }

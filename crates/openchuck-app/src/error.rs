@@ -89,6 +89,11 @@ pub enum AppError {
     /// The toolpath could not be posted to G-code.
     #[error("cannot post the G-code: {0}")]
     Post(String),
+
+    /// A file name template cannot name the files, or two names would be the
+    /// same file (issues 308 to 310). The text is a sentence for the user.
+    #[error("{0}")]
+    FileNames(String),
     /// The pathing library reported an error.
     #[error(transparent)]
     Path(#[from] openchuck_path::PathError),
