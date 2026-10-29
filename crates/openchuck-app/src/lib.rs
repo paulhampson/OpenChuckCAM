@@ -44,6 +44,7 @@ pub mod model;
 pub mod note_groups;
 pub mod operation;
 pub mod opflow;
+pub mod output_names;
 mod output_write;
 pub mod overview;
 pub mod pathview;
@@ -112,6 +113,7 @@ pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use opflow::{SetOptionsShown, StrategyChoice};
+pub use output_names::{FileNameTemplates, OutputFiles, ProgramFile, ProgramStep};
 pub use output_write::{OutputFailure, OutputPlan, OutputReport};
 pub use pipeline::{GroupInfo, Regeneration, STAGE_GENERATE, STAGE_SIMULATE};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
@@ -218,6 +220,9 @@ pub struct Application {
     actions: Vec<String>,
     /// Where a setup sheet reads its generation time (decision 0110).
     clock: Box<dyn Clock>,
+    /// The user's file name templates (issues 308 and 310); the defaults
+    /// give the names written before templates existed.
+    file_names: output_names::FileNameTemplates,
 }
 
 /// What a new project starts with, from the user's settings
@@ -312,6 +317,7 @@ impl Application {
             record: std::sync::Arc::default(),
             actions: Vec::new(),
             clock: Box::new(SystemClock),
+            file_names: output_names::FileNameTemplates::default(),
         })
     }
 
@@ -1235,7 +1241,7 @@ impl Application {
         folder: &Path,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
     ) -> Result<Vec<PathBuf>, AppError> {
-        export::write_bytes(folder, &self.setup_sheet_files(toolpath))
+        export::write_bytes(folder, &self.setup_sheet_files(toolpath)?)
     }
 
     /// Writes the same-run setup sheets, including post-adjusted durations
@@ -1245,29 +1251,124 @@ impl Application {
         folder: &Path,
         run: &Regeneration,
     ) -> Result<Vec<PathBuf>, AppError> {
-        export::write_bytes(folder, &self.sheet_files(self.setup_sheet_for_run(run)))
+        let [html, pdf] = self.output_files(run)?.setup_sheet;
+        let sheet = self.setup_sheet_for_run(run);
+        export::write_bytes(
+            folder,
+            &[(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())],
+        )
     }
 
-    /// The setup sheet's two file names, HTML then PDF, named after the
-    /// project (GC-12).
-    pub fn setup_sheet_file_names(&self) -> [String; 2] {
-        let stem = format!(
-            "{}-setup-sheet",
-            posting::slug(self.document.project.name(), "project")
+    /// The setup sheet's two file names, HTML then PDF, from the setup
+    /// sheet template with the application's post (GC-12, issue 310). With
+    /// the default template they are named after the project, as before.
+    pub fn setup_sheet_file_names(&self) -> Result<[String; 2], AppError> {
+        output_names::sheet_names(
+            &self.file_names.setup_sheet,
+            &self.job_facts(&self.document.project, self.post.as_ref()),
+        )
+        .map_err(AppError::FileNames)
+    }
+
+    /// Uses `templates` for the names of the files written from now on
+    /// (issues 308 and 310). They are the user's, not the project's: the
+    /// front end keeps them in the user's settings.
+    pub fn set_file_name_templates(&mut self, templates: output_names::FileNameTemplates) {
+        self.file_names = templates;
+    }
+
+    /// The file name templates in use.
+    pub fn file_name_templates(&self) -> &output_names::FileNameTemplates {
+        &self.file_names
+    }
+
+    /// What the templates' job-wide fields read for `project` and `post`.
+    fn job_facts(&self, project: &Project, post: Option<&PostSelection>) -> output_names::JobFacts {
+        let generated = setup_sheet::iso8601_utc(self.clock.now());
+        output_names::JobFacts {
+            project: project.name().to_owned(),
+            machine: project
+                .machine()
+                .map_or_else(String::new, |m| m.name.clone()),
+            post: match post {
+                Some(PostSelection::Builtin(id)) => id.clone(),
+                Some(PostSelection::Folder(path)) => path
+                    .file_name()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+                None => String::new(),
+            },
+            date: generated.get(..10).unwrap_or(&generated).to_owned(),
+        }
+    }
+
+    /// Every file a write of `run` makes, with the names it is written as:
+    /// the program files in write order, then the setup sheet (issues 308 to
+    /// 310). Two outputs whose templates give one name, letter case ignored,
+    /// are told apart with a number (owner option B on OI-1072), reported
+    /// in [`OutputFiles::renamed`]. Fails with the reason, before anything is
+    /// written, when a template cannot name a file (NFR-07). The dialog's
+    /// preview and the write both use this.
+    pub fn output_files(&self, run: &Regeneration) -> Result<OutputFiles, AppError> {
+        let job = self.job_facts(
+            &run.project,
+            run.posted_selection.as_ref().map(|(post, _)| post),
         );
-        [format!("{stem}.html"), format!("{stem}.pdf")]
+        let mut programs = Vec::new();
+        let mut groups = Vec::new();
+        for (index, (file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
+            let extension = std::path::Path::new(&file.posted_name)
+                .extension()
+                .map_or_else(String::new, |e| e.to_string_lossy().into_owned());
+            let stem = output_names::program_stem(
+                &self.file_names.gcode,
+                &job,
+                &output_names::FileFacts {
+                    index,
+                    contents: &contents,
+                    file: &file,
+                },
+            )
+            .map_err(AppError::FileNames)?;
+            groups.push((stem, vec![extension]));
+            programs.push(file);
+        }
+        let sheet = output_names::sheet_stem(&self.file_names.setup_sheet, &job)
+            .map_err(AppError::FileNames)?;
+        groups.push((
+            sheet,
+            output_names::SHEET_EXTENSIONS
+                .iter()
+                .map(|e| (*e).to_owned())
+                .collect(),
+        ));
+        let (mut named, renamed) = output_names::unique_names(&groups);
+        let sheet_names = named.pop().unwrap_or_default();
+        for (program, names) in programs.iter_mut().zip(named) {
+            program.name = names.into_iter().next().unwrap_or_default();
+        }
+        let [html, pdf]: [String; 2] = sheet_names
+            .try_into()
+            .map_err(|_| AppError::FileNames("the setup sheet has no name".into()))?;
+        Ok(OutputFiles {
+            programs,
+            setup_sheet: [html, pdf],
+            renamed,
+        })
     }
 
     fn setup_sheet_files(
         &self,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
-    ) -> Vec<(String, Vec<u8>)> {
+    ) -> Result<Vec<(String, Vec<u8>)>, AppError> {
         self.sheet_files(self.setup_sheet(toolpath))
     }
 
-    fn sheet_files(&self, sheet: SetupSheet) -> Vec<(String, Vec<u8>)> {
-        let [html, pdf] = self.setup_sheet_file_names();
-        vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
+    fn sheet_files(&self, sheet: SetupSheet) -> Result<Vec<(String, Vec<u8>)>, AppError> {
+        let [html, pdf] = self.setup_sheet_file_names()?;
+        Ok(vec![
+            (html, sheet.to_html().into_bytes()),
+            (pdf, sheet.to_pdf()),
+        ])
     }
 
     /// Preflights every full destination without creating anything. The
@@ -1286,12 +1387,26 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let mut files: Vec<(String, Vec<u8>)> = run
-            .gcode
-            .iter()
-            .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
-            .collect();
-        files.extend(self.sheet_files(self.setup_sheet_for_run(run)));
+        let named = self.output_files(run)?;
+        let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+        for program in &named.programs {
+            let text = run
+                .gcode
+                .iter()
+                .find(|(name, _)| *name == program.posted_name)
+                .map(|(_, text)| text)
+                .ok_or_else(|| {
+                    AppError::Post(format!("no G-code for '{}'", program.posted_name))
+                })?;
+            files.push((program.name.clone(), text.as_bytes().to_vec()));
+        }
+        // The sheet lists the program files by these names and the hashes
+        // of these exact bytes, so it is made from the same frozen files
+        // (issue 309; decision 0189).
+        let sheet = self.setup_sheet_for_files(run, &named, &files);
+        let [html, pdf] = named.setup_sheet;
+        files.push((html, sheet.to_html().into_bytes()));
+        files.push((pdf, sheet.to_pdf()));
         output_write::prepare(folder, std::sync::Arc::clone(run), files)
     }
 
@@ -1363,12 +1478,64 @@ impl Application {
             .map_err(|error| error.to_string());
         SetupSheet::with_parts(&self.document.project, &self.strategies, toolpath, &part)
             .with_block_time(&self.document.project, toolpath, options)
+            .with_program_files(&[])
             .with_traceability(&self.traceability())
     }
 
     /// The selected post's same-run setup sheet, including its adjusted
-    /// programmed times and controller diagnostics (GC-12, GC-17).
+    /// programmed times and controller diagnostics (GC-12, GC-17), and the
+    /// program files it is written with: their names from the templates,
+    /// what each holds in order and the hash of each file's bytes (issue
+    /// 309). A run with no program files gives a sheet that says so.
     pub fn setup_sheet_for_run(&self, run: &Regeneration) -> SetupSheet {
+        match self.output_files(run) {
+            Ok(named) => {
+                let files: Vec<(String, Vec<u8>)> = named
+                    .programs
+                    .iter()
+                    .map(|p| {
+                        let bytes = run
+                            .gcode
+                            .iter()
+                            .find(|(name, _)| *name == p.posted_name)
+                            .map_or_else(Vec::new, |(_, text)| text.as_bytes().to_vec());
+                        (p.name.clone(), bytes)
+                    })
+                    .collect();
+                self.setup_sheet_for_files(run, &named, &files)
+            }
+            Err(error) => self
+                .setup_sheet_without_files(run)
+                .with_unnamed_program_files(&error.to_string())
+                .with_traceability(&self.traceability()),
+        }
+    }
+
+    /// The same-run sheet listing `named`'s program files with the hashes of
+    /// `files`, the exact bytes that are written under those names.
+    fn setup_sheet_for_files(
+        &self,
+        run: &Regeneration,
+        named: &OutputFiles,
+        files: &[(String, Vec<u8>)],
+    ) -> SetupSheet {
+        let listed: Vec<(&output_names::ProgramFile, &[u8])> = named
+            .programs
+            .iter()
+            .map(|program| {
+                let bytes = files
+                    .iter()
+                    .find(|(name, _)| *name == program.name)
+                    .map_or(&[][..], |(_, bytes)| bytes.as_slice());
+                (program, bytes)
+            })
+            .collect();
+        self.setup_sheet_without_files(run)
+            .with_program_files(&listed)
+            .with_traceability(&self.traceability())
+    }
+
+    fn setup_sheet_without_files(&self, run: &Regeneration) -> SetupSheet {
         let cancel = openchuck_types::job::CancelToken::new();
         let context =
             openchuck_types::job::JobContext::new(&cancel, &openchuck_types::job::NoProgress);
@@ -1394,7 +1561,7 @@ impl Application {
         if let Some((settings, sources)) = run.effective_short_blocks {
             sheet = sheet.with_short_block_configuration(settings, sources);
         }
-        sheet.with_traceability(&self.traceability())
+        sheet
     }
 
     /// Replaces the clock a setup sheet reads its generation time from, so a

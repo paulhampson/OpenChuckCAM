@@ -29,6 +29,10 @@ required-features = ["kernel-tests"]
 name = "pencil_creases"
 required-features = ["kernel-tests"]
 
+[[example]]
+name = "swarf_tolerance"
+required-features = ["kernel-tests"]
+
 # The exact face and trim queries, measured for correctness and cost (lane
 # STEPALL-X1, issue 348): it reads STEP files, so it needs the kernel.
 [[example]]
@@ -47,6 +51,7 @@ openchuck-project.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 
