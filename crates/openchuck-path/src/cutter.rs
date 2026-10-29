@@ -165,7 +165,8 @@ struct Scratch {
 }
 
 /// The most candidates a thread's [`Scratch`] keeps between drops (about
-/// 6 MB with their corners); a larger list is freed after its drop.
+/// 6 MB with their corners); when either list is larger, both are freed
+/// after the drop.
 const SCRATCH_KEPT: usize = 1 << 16;
 
 thread_local! {
@@ -191,7 +192,7 @@ pub(crate) fn drop_on_mesh(
         .try_with(|scratch| match scratch.try_borrow_mut() {
             Ok(mut scratch) => {
                 let contact = drop_with(mesh, profile, line, &mut scratch);
-                if scratch.order.capacity() > SCRATCH_KEPT {
+                if scratch.found.capacity().max(scratch.order.capacity()) > SCRATCH_KEPT {
                     *scratch = Scratch::default();
                 }
                 contact

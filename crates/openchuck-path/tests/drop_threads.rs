@@ -156,10 +156,12 @@ fn req_nfr_06_req_gc_07_a_drop_on_a_mesh_is_the_same_on_any_thread_and_after_any
         let fresh: Vec<String> = std::thread::scope(|s| {
             lines
                 .chunks(1)
-                .map(|line| s.spawn(|| answers(&surface, line, &profile)))
-                .collect::<Vec<_>>()
-                .into_iter()
-                .flat_map(|h| h.join().unwrap())
+                .flat_map(|line| {
+                    // Joined before the next starts, so only one is alive.
+                    s.spawn(|| answers(&surface, line, &profile))
+                        .join()
+                        .unwrap()
+                })
                 .collect()
         });
         // In order, backwards (so each follows drops of other sizes), and on
