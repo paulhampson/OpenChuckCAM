@@ -13,6 +13,7 @@ fn req_gc_09_req_gc_10_original_rotary_rounding_failure_stays_rejected() {
     // Original issue #324 pose, transformed independently by sin/cos about X.
     let path = Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "rounding".into(),
                 setup: "s".into(),

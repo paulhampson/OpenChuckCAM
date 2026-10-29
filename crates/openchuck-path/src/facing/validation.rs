@@ -301,6 +301,7 @@ fn verify_box_removal_domain(
                 });
             if !covered {
                 let mut air = ToolpathGroup {
+                    rotary_reset_after: Vec::new(),
                     tags: group.tags.clone(),
                     start: from,
                     segments: Vec::with_capacity(1),

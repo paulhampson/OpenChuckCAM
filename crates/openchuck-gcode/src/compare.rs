@@ -182,6 +182,9 @@ pub fn compare_with_moves(
     tolerances: Tolerances,
     observe: &mut impl FnMut(ComparedMove<'_>) -> Result<(), CompareError>,
 ) -> Result<Comparison, CompareError> {
+    toolpath
+        .validate()
+        .map_err(|e| CompareError::Structure(e.to_string()))?;
     let frame = frame.rotary_frame();
     let axis = axis_direction(frame.axis);
     let axis = [axis.x, axis.y, axis.z];
@@ -207,7 +210,7 @@ pub fn compare_with_moves(
     };
 
     // Every IR segment is physical motion. Non-moving controller resets
-    // may occur only after an operation boundary, consuming no IR pose.
+    // may occur only at declared clear pass or operation boundaries, consuming no IR pose.
     struct Expected {
         tip: Point3,
         a: f64,
@@ -257,6 +260,11 @@ pub fn compare_with_moves(
                     segment: Some(index),
                     start: false,
                 });
+            }
+            if group.rotary_reset_after.binary_search(&index).is_ok()
+                && let Some(last) = expected.last_mut()
+            {
+                last.boundary_after = true;
             }
             prev = to;
         }
@@ -367,7 +375,7 @@ pub fn compare_with_moves(
     Ok(out)
 }
 
-/// Counter resets are bookkeeping at a reached operation boundary. Track
+/// Counter resets are bookkeeping at a reached declared pass or operation boundary. Track
 /// their offset explicitly so even a whole-turn error in a later command
 /// cannot be hidden by comparing only equivalent orientations.
 fn next_move<'a>(
@@ -393,7 +401,7 @@ fn next_move<'a>(
                     || (to - expected_to).abs() > tolerance
                 {
                     return Err(CompareError::Structure(format!(
-                        "line {line}: rotary counter reset is not at the reached operation boundary or does not match the controller"
+                        "line {line}: rotary counter reset is not at a reached declared boundary or does not match the controller"
                     )));
                 }
                 *shift += delta;

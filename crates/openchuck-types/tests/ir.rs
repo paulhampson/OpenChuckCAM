@@ -26,6 +26,7 @@ fn pose(x: f64, a: f64) -> ToolPose {
 fn sample() -> Toolpath {
     Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "op-1".to_owned(),
                 setup: "setup-1".to_owned(),
@@ -184,6 +185,7 @@ proptest! {
     ) {
         let ir = Toolpath {
             groups: vec![ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: PathTags { operation: "o".into(), setup: "s".into(), tool: "t".into() },
                 start,
                 segments: ends
@@ -203,5 +205,32 @@ proptest! {
         let back: Toolpath = serde_json::from_str(&json).unwrap();
         // Double precision survives the text form exactly (NFR-05).
         prop_assert_eq!(back, ir);
+    }
+}
+
+#[test]
+fn req_gc_01_req_op_15_pass_boundary_metadata_roundtrips_without_motion() {
+    let original = sample();
+    let mut value = serde_json::to_value(&original).unwrap();
+    value["groups"][0]["rotary_reset_after"] = serde_json::json!([0]);
+    let marked: Toolpath = serde_json::from_value(value).unwrap();
+    marked.validate().unwrap();
+    assert_eq!(marked.groups[0].start, original.groups[0].start);
+    assert_eq!(marked.groups[0].segments, original.groups[0].segments);
+    assert_eq!(marked.total_duration(), original.total_duration());
+    assert_eq!(
+        serde_json::to_value(&marked).unwrap()["groups"][0]["rotary_reset_after"],
+        serde_json::json!([0])
+    );
+}
+
+#[test]
+fn req_op_15_req_nfr_07_invalid_or_cutting_reset_boundaries_are_rejected() {
+    for indices in [vec![2], vec![3], vec![4], vec![0, 0], vec![1, 0]] {
+        let mut value = serde_json::to_value(sample()).unwrap();
+        value["groups"][0]["rotary_reset_after"] = serde_json::json!(indices);
+        if let Ok(path) = serde_json::from_value::<Toolpath>(value) {
+            assert!(path.validate().is_err(), "{indices:?}");
+        }
     }
 }

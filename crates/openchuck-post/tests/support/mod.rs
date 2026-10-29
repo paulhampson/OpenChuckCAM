@@ -69,6 +69,7 @@ pub fn small_part() -> Toolpath {
     segments.push(seg(MoveKind::Rapid, pose(6.0, 0.0, 30.0, 1080.0), 0.2, 0.0));
     Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "groove (finish)".into(),
                 setup: "s1".into(),

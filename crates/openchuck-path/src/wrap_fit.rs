@@ -125,6 +125,7 @@ pub(crate) fn fit_curve(
                 None => {
                     if !points.is_empty() {
                         passes.push(Pass {
+                            helical_pass_start: false,
                             points: std::mem::take(&mut points),
                             stock: None,
                             rapids: Vec::new(),
@@ -135,6 +136,7 @@ pub(crate) fn fit_curve(
         }
         if !points.is_empty() {
             passes.push(Pass {
+                helical_pass_start: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),
