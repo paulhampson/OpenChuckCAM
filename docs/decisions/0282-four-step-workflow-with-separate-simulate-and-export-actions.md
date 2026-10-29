@@ -1,12 +1,12 @@
 # 0282: Four-step workflow with separate Simulate and Post and export actions (lane FOURSTEP)
 
-- **Status:** proposed (29 Oct 2026). The owner approved the direction on 24 Oct 2026 in the OUTPUT-1 chat: "Have two buttons - one for triggering simulation and the other for triggering post and export. I approve going to 4 step flow." That approval is the direction only. The scope below, the five choices in items 2 to 6 (OI-1140 to OI-1144) and the requirement and specification wording in item 1 (OI-1145) wait for the owner's answers, relayed by the coordinator session (decision 0049). Nothing is built until every one is answered.
+- **Status:** proposed (29 Oct 2026), awaiting the owner's acceptance of the whole record. The owner approved the direction on 24 Oct 2026 in the OUTPUT-1 chat: "Have two buttons - one for triggering simulation and the other for triggering post and export. I approve going to 4 step flow." On 29 Oct 2026 the owner chose option A for each of the six questions in the coordinator session (OI-1140 to OI-1145), relayed to this lane by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7, decision 0049), and agreed the UI-10 wording of item 1 as proposed. Those answers are recorded in items 1 to 6; they are not acceptance of this record.
 - **Date:** 29 Oct 2026.
 - **Lane/issue:** FOURSTEP, [#322](https://github.com/paulhampson/OpenChuckCAM/issues/322) (follow-up of the OUTPUT-1 assessment, #306).
 - **Requirements:** UI-10 (amended, item 1), UI-11, UI-12, UI-14, UI-15, UI-16, GC-15, GC-16, NFR-12, NFR-15; GC-07 and NFR-06 (output bytes unchanged).
 - **Builds on:** [OUTPUT-1 assessment](../ui-design/output-workflow-assessment.md); [0240](0240-export-write-results-and-replacement-confirmation.md) (accepted: preflight, replacement confirmation, write results and Messages history); [0267](0267-output-file-names-sheet-hashes-and-staged-writes.md) (accepted: file names, sheet hashes, staged writes); [0238](0238-simulate-display-and-operation-navigation.md) (accepted: Simulate display, out-of-date banner, guarded row navigation, SIMUI boundary); [0233](0233-unconfirmed-edits-before-leaving-a-form.md) (accepted: pending-edit guard); [0189](0189-setup-sheet-written-with-the-g-code.md), [0172](0172-stale-state-and-removed-paths.md), [0173](0173-status-bar-and-required-values.md), [0192](0192-simulate-result-out-of-date.md), [0148](0148-menus-and-view-directions.md) (post blocker), [0117](0117-slice-22-shell-frame.md) (per-user settings), [0114](0114-slice-22-conformance-report.md) (conformance accounting).
-- **Amends (once accepted):** requirement UI-10 (item 1, owner's wording agreement needed first); UI specification sections 2, 3, 4, 5, 10, 11.1, 11.5, 11.6, 16 and 20; verification plan rows UI-10 and UI-14; decision 0114's C2 accounting (five steps become four). No architecture text changes. No project schema change. No library-family crate changes (`openchuck-app` and `openchuck-ui` only), so no library version bump.
-- **Open items:** OI-1140 (action placement and styling), OI-1141 (when each action is enabled), OI-1142 (Alt 5), OI-1143 (the current-export indication), OI-1144 (overall health), OI-1145 (requirement and specification wording). All open, for the owner.
+- **Amends:** requirement UI-10 (item 1; wording agreed by the owner on 29 Oct 2026 and edited in this change); UI specification sections 2, 3, 4, 5, 10, 11.1, 11.5, 11.6, 16 and 20; verification plan rows UI-10 and UI-14; decision 0114's C2 accounting (five steps become four). No architecture text changes. No project schema change. No library-family crate changes (`openchuck-app` and `openchuck-ui` only), so no library version bump.
+- **Open items:** OI-1140 (action placement and styling), OI-1141 (when each action is enabled), OI-1142 (Alt 5), OI-1143 (the current-export indication), OI-1144 (overall health), OI-1145 (requirement and specification wording): each closed by the owner's option A on 29 Oct 2026 (relayed). Native Windows and macOS display checks of the step bar and footer stay with OI-580. No new open item.
 
 ## Context
 
@@ -31,31 +31,33 @@ The fifth step, Post and export, shows the same tree, inspector and viewport as 
 
 The current step is not kept in `settings.toml` (`UserSettings` in `crates/openchuck-app/src/settings.rs` has no step); the shell opens a project on Model or Operations. Nothing per user refers to the fifth step.
 
-## Decision (proposed)
+## Decision
 
-1. **Four steps; Post and export is an action (OI-1145, wording for the owner).**
+Items 1 to 6 are the owner's answers (option A each, 29 Oct 2026, relayed). The recommendations and alternatives are kept as they were put.
+
+1. **Four steps; Post and export is an action (OI-1145: A, wording agreed).**
    - The steps are Model, Setup, Operations and Simulate. `Step::Export` and `ViewStep::Export` are removed; Simulate has no next step.
    - Post and export is reached from: a button on Simulate's footer (item 2), File > Post and export… (unchanged), Ctrl E or Cmd E (unchanged), and Alt 5 if the owner keeps it (item 4).
    - The dialog is unchanged: post choice and read-only post values, grouping, output folder, file names (0267), tool numbers (GC-14), checks before writing (GC-15), the NC file list with names, line counts and programmed time, the existing first-lines preview, the setup sheet in HTML and PDF from the same run (0189), the NFR-12 notice and GC-16 and skip-stock acknowledgements, preflight and replacement (0240), write results and Messages history (0240). OUTPUT3's full preview (#312) is not part of this lane.
-   - **Proposed UI-10 wording** (requirements.md, edited only after the owner agrees): "Organise the work as ordered steps (model, setup, operations, simulate) that the user can move between at any time, with post and export as an action of its own, on the simulate step and in the menu. A step or action whose inputs do not exist yet is unavailable and says why."
-   - **Proposed specification wording** is in the appendix (sections 2, 3, 4, 5, 10, 11.1, 11.5, 11.6 and 16), with the verification plan rows.
+   - **UI-10 wording** (agreed by the owner on 29 Oct 2026, edited in requirements.md): "Organise the work as ordered steps (model, setup, operations, simulate) that the user can move between at any time, with post and export as an action of its own, on the simulate step and in the menu. A step or action whose inputs do not exist yet is unavailable and says why."
+   - **Specification wording** is in the appendix (sections 2, 3, 4, 5, 10, 11.1, 11.5, 11.6 and 16), with the verification plan rows, edited in this change as agreed with answers 1 to 5 applied.
 
-2. **Placement and styling (OI-1140).** On Simulate the footer's right end holds two buttons in fixed places, in workflow order: the simulation action, then "Post and export…" right-most. Neither ever changes into the other, and neither moves. Exactly one is filled (primary), by the section 5 rule:
+2. **Placement and styling (OI-1140: A).** On Simulate the footer's right end holds two buttons in fixed places, in workflow order: the simulation action, then "Post and export…" right-most. Neither ever changes into the other, and neither moves. Exactly one is filled (primary), by the section 5 rule:
    - while the simulation is not current (section 5 rules 1 to 3: "Generate stale (n)", "Run simulation", "Generate and simulate op N", or with stock simulation skipped "Generate toolpaths"), the simulation action is filled and "Post and export…" is a plain (secondary) button to its right;
    - once the simulation is current, "Post and export…" is filled and the simulation action is plain.
    - Section 5's "right-most" rule gets one stated exception for Simulate: the two actions keep their places and the filled one is the next required step. Every other screen keeps one filled button, right-most.
    - Recommended over: (B) keep the filled button right-most by swapping the two buttons' places when the next step changes (a button that moves under the pointer and in the tab order); (C) the simulation action always filled (two different "next steps", against principle 6).
 
-3. **When each action is enabled (OI-1141). No accepted check changes.**
-   - **Simulation action:** exactly today's Simulate primary (section 5; 0168, 0172, 0192): disabled by an enabled item's blocking error, naming it and highlighting its message; disabled while a job runs ("Wait for the running job, or cancel it"). When the simulation is current it reads "Run simulation", disabled, with "The simulation matches the project". The viewport's "Simulation out of date" banner and its "Run simulation again" (0238, SIMUI) stay as they are.
+3. **When each action is enabled (OI-1141: A). No accepted check changes.**
+   - **Simulation action:** exactly today's Simulate primary (section 5; 0168, 0172, 0192): disabled by an enabled item's blocking error, naming it and highlighting its message; disabled while a job runs ("Wait for the running job, or cancel it"). When the simulation is current it reads "Run simulation", disabled, with "The simulation matches the project" (while the stock simulation is skipped: "Generate toolpaths", disabled, with "The toolpaths match the project"); with every operation turned off it is disabled with "Turn on an operation to simulate", and the out-of-date banner keeps no run button (0238). The viewport's "Simulation out of date" banner and its "Run simulation again" (0238, SIMUI) stay as they are.
    - **Footer "Post and export…":** exactly today's fifth-step footer button: disabled by the post blocker of 0148/0173 item 6 (with its reason: "Fill in the missing values first" and so on) or an enabled item's blocking error (naming it); disabled while a job runs, as every footer action is. It is not disabled because the simulation is stale or missing: the dialog keeps GC-15 (stale or failed enabled toolpaths block writing; operations not simulated and unconfirmed machine values warn; skipped stock needs its acknowledgement), the current-file checks and the 0240 revalidation. Two buttons do not allow writing from a stale run.
    - **File > Post and export…, Ctrl E (and Alt 5):** unchanged: the post blocker only (0148).
    - The pending-edit guard (0233) runs before either button acts, as before (`Shell::defer`).
    - Recommended over: disabling "Post and export…" while the simulation is stale (stricter than the File menu and Ctrl E, so the same command would be enabled in one place and not another, and it changes 0148 by implication).
 
-4. **Alt 5 (OI-1142).** Recommended: keep Alt 5 as a compatibility shortcut that does exactly what Ctrl E does (same blocker, same guard). Help > Keyboard shortcuts and section 16 list "Alt 1 to Alt 4: Workflow steps" and "Alt 5: Post and export (as Ctrl E)". The View menu lists the four steps; it does not list Post and export (File does). Alternative: drop Alt 5 (one less rule to learn, but a user of the fifth step finds the key does nothing).
+4. **Alt 5 (OI-1142: A).** Keep Alt 5 as a compatibility shortcut that does exactly what Ctrl E does (same blocker, same guard). Help > Keyboard shortcuts and section 16 list "Alt 1 to Alt 4: Workflow steps" and "Alt 5: Post and export (as Ctrl E)". The View menu lists the four steps; it does not list Post and export (File does). Alternative: drop Alt 5 (one less rule to learn, but a user of the fifth step finds the key does nothing).
 
-5. **The current-export indication (OI-1143).** The green ring of step 5 goes, so the same fact needs a home. Recommended: a status item in the step bar, right after step 4 and before the workflow-bar actions, visible on every step, not a button and not in the tab order as a control (it is exposed to screen readers as a label, and its tooltip opens on focus of step 4's neighbour per section 16):
+5. **The current-export indication (OI-1143: A).** The green ring of step 5 goes, so the same fact needs a home: a status item in the step bar, right after step 4 and before the workflow-bar actions, visible on every step, not a button and not in the tab order as a control (it is exposed to screen readers as a label with its words; its tooltip opens on hover):
    - **"G-code written"** with the green ring the step used (a ring round a tick), when the last complete write was made from every enabled operation as it is now (the same test as today's ring: `exported_all`);
    - **"G-code not written"** with a hollow grey circle otherwise; its tooltip says either "No G-code has been written in this session" or "The project has changed since G-code was last written", so a past write does not read as current.
    - The tooltip says where past results are: "Past write results are in Messages". Messages keeps its history (0240) and is not changed.
@@ -63,7 +65,7 @@ The current step is not kept in `settings.toml` (`UserSettings` in `crates/openc
    - The bar is narrower by one step, so this fits at 1366 × 768 (to be checked, item 8).
    - Alternatives: (B) only on Simulate's footer, beside the two buttons (visible on one step only, so less than the ring gave); (C) only in the health badge tooltip (hidden). Partial writes leave it "not written" (unchanged: only a complete write records an export).
 
-6. **Overall health (OI-1144).** Recommended: the badge shows the worst of the four steps, with the same words and shapes (0173). The fifth step's health was Attention only with a post blocker, and every post blocker is already counted by another step: no model (Model, Attention), no setup or machine (Setup), a missing value (Setup or Operations, Error), no operation (Operations, Attention), no tool (an enabled operation then misses its tool: Operations, Error; with every operation off, Operations is Attention). So the worst of four equals the worst of five for every project; a test proves it on the existing cases. Whether G-code was written does not change health, as today (0173: not exporting is not a problem). Alternative: make "not written" Attention (it would leave the bar amber after every edit, a new check by implication; not recommended).
+6. **Overall health (OI-1144: A).** The badge shows the worst of the four steps, with the same words and shapes (0173). The fifth step's health was Attention only with a post blocker, and every post blocker is already counted by another step: no model (Model, Attention), no setup or machine (Setup), a missing value (Setup or Operations, Error), no operation (Operations, Attention), no tool (an enabled operation then misses its tool: Operations, Error; with every operation off, Operations is Attention). So the worst of four equals the worst of five for every project; a test proves it on the existing cases. Whether G-code was written does not change health, as today (0173: not exporting is not a problem). Alternative: make "not written" Attention (it would leave the bar amber after every edit, a new check by implication; not recommended).
 
 7. **Per-user state (UI-15).** No step, ring or health is kept in `settings.toml`, so there is no migration and no new setting. Panel sizes, the export acknowledgements and the file name templates are unchanged. No project schema change.
 
@@ -83,9 +85,19 @@ The current step is not kept in `settings.toml` (`UserSettings` in `crates/openc
 - **One button on Simulate that changes from Simulate to Post and export.** Rejected by the owner.
 - **Move the dialog's controls into Simulate.** Crowds Simulate's results and the shared layout (assessment).
 
+## How it is built
+
+- `openchuck-app` (`overview.rs`): `Step` has four values; `Overview::export_action` (the old fifth-step button's rules), `Overview::simulation_action` (Simulate's own action, disabled with "The simulation matches the project" or "The toolpaths match the project" once current), `Overview::primary(Step::Simulate)` (the filled one), `Overview::g_code_written` and `Overview::wrote_g_code_before` (the step bar's status, from the existing export record). `PrimaryKind::Continue(Step::Export)` and the fifth `StepState` are gone; `Overview::health` is the worst of four.
+- `openchuck-ui` (`shell.rs`, `shell/frame.rs`, `viewport.rs`): the step keys are Alt 1 to Alt 4 and Alt 5 calls `open_export` (the same guard, blocker and modal check as Ctrl E); `Shell::simulation` and `Shell::post_and_export` act through the pending-edit guard (`defer`) and the running-job check; the Simulate footer puts each button in its own place measured from the right edge, made in reading order; the step bar draws the G-code status after step 4; the keyboard help, the empty state, the step notes and `ViewStep` lose the fifth step.
+- The export dialog, its checks, preflight, writes, names and bytes are unchanged; the command line is unchanged.
+
+## Conformance accounting (decision 0114)
+
+Decision 0114 counted section 4 (C2) as five steps. With this record C2 is four steps, the G-code status and Simulate's two actions, all built and tested here. The boards that drew the fifth step (images 00, 01, 02, 03, 04, 14, 15, 16) are re-rendered with the four steps (OI-342, lane by lane); images 03b, 03c, 05, 13 and 17 do not draw the step bar and are unchanged.
+
 ## Verification
 
-As item 8. Run and timed uninstrumented with `cargo nextest run`; coverage checked locally per crate (decision 0102).
+As item 8. The results are in the lane's pull request: tests run and timed uninstrumented (`cargo test`; `cargo nextest` is not installed in the lane's container), coverage checked locally per crate (decision 0102).
 
 ## Appendix: proposed specification and verification-plan wording (for the owner's agreement, OI-1145)
 

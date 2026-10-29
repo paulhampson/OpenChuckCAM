@@ -41,7 +41,7 @@ Every workspace board has a dark and a light theme (its Tweaks panel on the canv
 The user is the one in requirements section 2: a machinist, maker or small-shop programmer, comfortable with G-code, tooling, feeds and speeds, who may know Fusion, SolidWorks or FreeCAD. The workflow is the eight steps of that section.
 
 1. **Familiar CAD layout.** Menu bar, project tree on the left, 3D view in the centre, properties on the right, messages below, status at the bottom. A user of another CAD or CAM tool should find each thing where they expect it.
-2. **The workflow order is visible.** The five steps (Model, Setup, Operations, Simulate, Post and export) follow requirements section 2 and architecture section 6, left to right.
+2. **The workflow order is visible.** The four steps (Model, Setup, Operations, Simulate) follow requirements section 2 and architecture section 6, left to right. Post and export is an action at the end of Simulate ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)).
 3. **Hierarchy of importance.** On any screen, in this order: whether the job can go on (errors, stale results, running work), then the result of the selected item, then its parameters, then reference information. Layout, size and weight follow that order.
 4. **State is always visible, and never by colour alone.** Each state has a shape as well as a colour, and a legend that does not scroll away.
 5. **Problems are shown where they are, and in one list.** A problem is marked on its item, explained in the inspector, and listed in the messages panel with a way to fix it.
@@ -58,7 +58,7 @@ Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148
 | Region | Size | Contents |
 | --- | --- | --- |
 | Title bar | 32 high | Menus (File, Edit, View, Project, Tools, Help); project name and save state; command search *(UI-17)*; Undo, Redo, Undo history *(UI-22)* |
-| Workflow bar | 44 high | The five steps (section 4) on the left; actions that start something new or change context on the right (New operation, Duplicate, Add setup, Import model, Simulate from). Nothing that moves the job forward is here (section 5) |
+| Workflow bar | 44 high | The four steps and the G-code status (section 4) on the left; actions that start something new or change context on the right (New operation, Duplicate, Add setup, Import model, Simulate from). Nothing that moves the job forward is here (section 5) |
 | Project panel | 264 wide (200 to 400) | The project tree (section 6) and its status legend |
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
 | Viewport | the rest | The 3D view and at most five overlays (section 7.2) |
@@ -85,8 +85,9 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 | 1 Model | Import, check units and mesh, place on the rotary axis (IMP-01 to IMP-06) | Always | | "Import model…" with no model; "Continue to setup" otherwise |
 | 2 Setup | Machine, stock, part position, work offset, clearance (SET-01, SET-03, SET-05, SET-06) | A model is in the project | "Import a model first" | "Continue to operations" |
 | 3 Operations | Select geometry, add operations, generate (OP, UI-04 to UI-07) | The setup has a machine and stock | "Set up the machine and stock first" | Section 5 |
-| 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 |
-| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation, and no required value is missing (generated or not: the dialog makes its own files; decision 0148 item 1, amended by decision 0173 item 6) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first", "Add an operation first" or "Fill in the missing values first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
+| 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 (two actions) |
+
+**Post and export** is not a step ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)). It writes G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) from the export dialog (11.6), opened from "Post and export…" on Simulate's footer, from File > Post and export…, with Ctrl E, or with Alt 5. It is available when the project has a model, a setup, a machine, a tool and an operation, and no required value is missing (generated or not: the dialog makes its own files; decision 0148 item 1, amended by decision 0173 item 6); otherwise it gives the first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first", "Add an operation first" or "Fill in the missing values first". "Write G-code" is the dialog's primary action.
 
 **The step indicator.** Each step shows a numbered circle and a name.
 
@@ -95,24 +96,25 @@ The steps are views over one project, not modes. The tree, menus, undo history a
   - Model: there is a model and none is in error;
   - Setup: there is a machine, every setup has stock and a part, and no setup check warns;
   - Operations: every enabled operation is up to date;
-  - Simulate: every enabled operation has been simulated as it is now;
-  - Post and export: G-code has been written from every enabled operation as it is now.
+  - Simulate: every enabled operation has been simulated as it is now.
 - An unavailable step is dimmed, and its tooltip gives the reason.
 - Each available step shows its own health after its name, by shape as well as colour: a green filled circle (good to go), an amber triangle outline (stale or needs attention) or a red filled triangle (an error to deal with, such as a missing tool or stock); its tooltip names what needs attention (decision 0173).
 - Machine values not confirmed on the machine do not change the bar (they are in the footer and on the machine row; decision 0173, OI-624). The bar stays amber until every enabled operation is simulated as it is now (OI-625).
-- A badge at the right end of the bar shows the worst of the five as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
-- Alt 1 to Alt 5 open the steps.
+- **The G-code status.** After step 4 the bar says whether G-code has been written, completely, from every enabled operation as it is now: "G-code written" with a green ring round a tick, or "G-code not written" with a hollow grey circle. Its tooltip says why ("No G-code has been written in this session" or "The project has changed since G-code was last written") and that past write results are in Messages. It does not change the health, and it is not a button (decision 0282 item 5).
+- A badge at the right end of the bar shows the worst of the four as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
+- Alt 1 to Alt 4 open the steps. Alt 5 opens Post and export, as Ctrl E does (decision 0282 item 4).
 
 *(UI-10)*
 
 ## 5. The primary action
 
 - **One per screen.** Each screen has exactly one primary (filled) button, right-most in the footer. Secondary actions sit to its left, the most likely nearest. Cancel for running work sits left of them.
+- **Simulate has two actions in fixed places** ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md) item 2): the simulation action (rules 1 to 3), and right-most "Post and export…". Neither moves or changes into the other. Exactly one is filled: the simulation action while the simulation does not match the project, otherwise "Post and export…"; so on Simulate the filled button may not be right-most. Each is enabled by its own rules (item 3): the simulation action by the rules below, and once the simulation matches the project it reads "Run simulation" (or "Generate toolpaths" while the stock simulation is skipped), disabled, with the reason, and with every operation turned off it is disabled with "Turn on an operation to simulate"; "Post and export…" is disabled by an enabled item's error that blocks it, naming it, or by the first missing item of section 4, but not by a stale or missing simulation, since the dialog blocks writing from a stale run (GC-15). Both are disabled while a job runs, and both wait for the pending-edit guard (decision 0233).
 - **It is the next required step.** It is the first of these that applies:
   1. If an enabled item has an error that blocks the next step, the primary button is disabled. Its tooltip names the problem, and the problem's row in the messages panel is highlighted.
   2. If enabled operations are stale, it is "Generate stale (n)".
   3. On Simulate, if an operation has not been simulated, it is "Run simulation". If it has not been generated either, it is "Generate and simulate op N". On Simulate this rule is checked before rule 2, since simulating generates.
-  4. Otherwise it continues to the next step.
+  4. Otherwise it continues to the next step; on Simulate, it is "Post and export…".
 - **Disabled means explained.** A disabled primary button always has a tooltip with the reason, and the footer status says the same.
 - **Dialogs follow the rule.** Import has "Add to project", the tool library "Add to project" (primary when opened to add a tool or to choose an operation's tool), and export "Write G-code". Each is bottom right.
 - **Other actions go elsewhere.** Actions that start something new (New operation, Add setup, Import model) go in the workflow bar. Row actions go on the row.
@@ -361,7 +363,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - the tolerance of the selected operation or setup;
   - machine warnings in amber, linking to Setup;
   - a separator;
-  - the step's actions, with the primary right-most (section 5).
+  - the step's actions, with the primary right-most (section 5; Simulate keeps its two actions in fixed places).
 - **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited". Amber is kept for warnings.
 
 ## 11. The steps in detail
@@ -370,11 +372,11 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 File > New project opens a dialog for a parent folder and project name (decision 0165 item 4). Enabled OK accepts these entries and creates the project; Cancel discards them, with no additional unconfirmed-field warning (decision 0246). Empty or unusable input remains refused. Esc in an edited field restores its previous value; the application's window close control remains a guarded application close.
 
-- **The window.** The tree shows each group with "None yet". Steps 2 to 5 are dimmed with their reasons. Undo and Redo are dimmed.
+- **The window.** The tree shows each group with "None yet". Steps 2 to 4 are dimmed with their reasons. Undo and Redo are dimmed.
 - **The centre card,** "Start with a model":
   - a drop zone for a model file;
   - "Import model…" and "Open project…";
-  - the five steps, one line each;
+  - the four steps, one line each;
   - recent projects *(UI-23)*.
 - **The footer** primary is "Import model…".
 
@@ -538,11 +540,11 @@ Board 4 (SIM-01 to SIM-07).
 - **The readout** gives A as in 7.2.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
 
-**Footer** primary: section 5.
+**Footer:** the simulation action and "Post and export…", in fixed places (section 5).
 
 ### 11.6 Post and export
 
-Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](../decisions/0071-slice-19-export-dialogs.md), accepted): until step 5 exists it opens from File, "Post and export…" as well as with Ctrl E; the post, grouping and folder are not remembered between openings (OI-248); a file that fails its own checks also blocks writing; the acknowledgement is kept when the first write succeeds.
+Board 5. Opened from "Post and export…" on Simulate, from File > Post and export…, with Ctrl E, or with Alt 5 ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md); before it, step 5). Built in lane S ([decision 0071](../decisions/0071-slice-19-export-dialogs.md), accepted): until step 5 exists it opens from File, "Post and export…" as well as with Ctrl E; the post, grouping and folder are not remembered between openings (OI-248); a file that fails its own checks also blocks writing; the acknowledgement is kept when the first write succeeds.
 
 **Left column:**
 
@@ -603,8 +605,8 @@ written. The fixed NFR-12 notice is shown. Result/confirmation actions remain
 outside scrolling content, whose scrollbar has its own strip. Messages keeps
 each result for the open project session and offers Show result through the
 shared pending-edit guard. Dismissal and project edits do not remove history;
-historical failures do not block present readiness. Full batch success marks
-export complete. The existing unattended CLI behaviour is unchanged.
+historical failures do not block present readiness. Full batch success shows
+"G-code written" in the step bar (section 4). The existing unattended CLI behaviour is unchanged.
 
 ### 11.7 Workholding and retaining tabs
 
@@ -874,7 +876,8 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | Ctrl E | Post and export |
 | Ctrl Z, Ctrl Y, Ctrl H | Undo, redo, undo history |
 | Ctrl K | Search commands *(UI-17)* |
-| Alt 1 to Alt 5 | Workflow steps |
+| Alt 1 to Alt 4 | Workflow steps |
+| Alt 5 | Post and export (as Ctrl E) |
 | Ctrl 1, Ctrl 2, Ctrl 3 | Collapse the project panel, inspector, dock |
 | F, V, S, M | Fit; show or hide; section; measure |
 | Numpad 1, 3, 7, 0 | Front, right, top, isometric |
@@ -952,7 +955,7 @@ Tracked in [open-items.md](../open-items.md):
 
 ## 20. Rendered mockups
 
-Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3; images 01, 02, 03, 04, 13, 14, 15 and 16 again, and 03c added, on 21 Oct 2026 by lane BUG-STALE for the step bar's status (decision 0173), [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3; images 01, 02, 03, 04, 13, 14, 15 and 16 again, and 03c added, on 21 Oct 2026 by lane BUG-STALE for the step bar's status (decision 0173), [decision 0119](../decisions/0119-slice-22-viewport-drawing.md); images 00, 01, 02, 03, 04, 14, 15 and 16 again on 29 Oct 2026 by lane FOURSTEP for the four steps, the G-code status and Simulate's two actions, [decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
 
 | Image | Board | Section |
 | --- | --- | --- |

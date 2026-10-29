@@ -12,7 +12,7 @@ use openchuck_app::project::ParameterValue;
 use super::Selection;
 use super::frame_tests::Rig;
 
-fn generated(name: &str) -> Rig {
+pub(super) fn generated(name: &str) -> Rig {
     let mut rig = Rig::cube(name, None);
     crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
     rig.ctx

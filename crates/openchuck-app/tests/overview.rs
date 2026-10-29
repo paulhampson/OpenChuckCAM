@@ -272,13 +272,29 @@ impl Fixture {
 }
 
 #[test]
-fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
+fn req_ui_10_req_ui_11_req_ui_14_post_and_export_names_the_first_thing_missing() {
     // Decision 0148 item 1 (issue 140): the File menu's Post and export is
     // enabled with a model, a setup, a machine, a tool and an operation, and
     // otherwise names the first of them that is missing. Operations need not
     // be generated: the export dialog makes its own files.
     let (dir, mut app) = empty("post-blocker");
-    let blocker = |app: &Application| app.overview(None, &JobLog::default()).post_blocker();
+    // The Post and export action gives the same reason, and every reason
+    // is counted by one of the four steps, so the bar's health is no better
+    // than it was with a fifth step (decision 0282 items 1 and 6).
+    let blocker = |app: &Application| {
+        let o = app.overview(None, &JobLog::default());
+        assert_eq!(o.export_action().blocked.as_deref(), o.post_blocker());
+        assert_eq!(o.export_action().kind, PrimaryKind::OpenExport);
+        assert_eq!(o.export_action().label, "Post and export…");
+        if o.post_blocker().is_some() {
+            assert!(
+                o.health() >= StepHealth::Attention,
+                "{:?}",
+                o.post_blocker()
+            );
+        }
+        o.post_blocker()
+    };
     assert_eq!(blocker(&app), Some("Import a model first"));
     let model = add_model(&dir, &mut app, "cube_ascii.stl");
     assert_eq!(blocker(&app), Some("Add a setup first"));
@@ -360,8 +376,9 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     })
     .unwrap();
     // Nothing is generated, and the menu item is still enabled. So is the
-    // Post and export step, which gives the same reason (OI-436, decision
-    // 0148 item 1); Simulate still needs a generated operation.
+    // Post and export action, which gives the same reason (OI-436, decision
+    // 0148 item 1, decision 0282 item 3); Simulate still needs a generated
+    // operation.
     assert_eq!(blocker(&app), None);
     // Decision 0173 (issue 140): a missing value blocks it too.
     let id = app.project().operations()[0].id;
@@ -373,7 +390,7 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     app.undo().unwrap();
     assert_eq!(blocker(&app), None);
     let o = app.overview(None, &JobLog::default());
-    assert!(o.step(Step::Export).is_available());
+    assert!(o.export_action().blocked.is_none());
     assert!(!o.step(Step::Simulate).is_available());
     drop(app);
     let _ = std::fs::remove_dir_all(dir);
@@ -398,15 +415,13 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
         reason(&o, Step::Simulate).as_deref(),
         Some("Generate an operation first")
     );
-    // Post and export names what the File menu names (decision 0148).
+    // Post and export, an action and not a step, names what the File menu
+    // names (decision 0148, decision 0282 item 1).
     assert_eq!(
-        reason(&o, Step::Export).as_deref(),
+        o.export_action().blocked.as_deref(),
         Some("Import a model first")
     );
-    assert_eq!(
-        reason(&o, Step::Export).as_deref(),
-        o.post_blocker().map(str::to_owned).as_deref()
-    );
+    assert_eq!(o.export_action().blocked.as_deref(), o.post_blocker());
     assert_eq!(o.primary(Step::Model).kind, PrimaryKind::ImportModel);
 
     // A model only: Setup opens; Operations still waits for the machine.
@@ -434,13 +449,13 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
     assert!(o.step(Step::Operations).is_available());
     assert!(!o.step(Step::Simulate).is_available());
     assert_eq!(
-        o.step(Step::Export).unavailable.as_deref(),
+        o.export_action().blocked.as_deref(),
         Some("Add an operation first")
     );
     assert!(o.step(Step::Model).complete);
     assert!(!o.step(Step::Operations).complete);
 
-    // A generated operation: Simulate and Post and export open.
+    // A generated operation: Simulate opens, and Post and export with it.
     let op = f.add_operation("Ring", "one_ring");
     let o = f.overview();
     assert_eq!(
@@ -481,18 +496,26 @@ fn req_ui_10_the_primary_action_follows_the_rule_on_simulate_and_export() {
     let run = f.app.simulate().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
+    // Simulated: Post and export is the filled one, and the simulation
+    // action stays in its place, disabled with its reason (decision 0282
+    // items 2 and 3).
+    assert_eq!(o.primary(Step::Simulate).label, "Post and export…");
+    assert_eq!(o.primary(Step::Simulate), o.export_action());
+    let simulation = o.simulation_action();
+    assert_eq!(simulation.kind, PrimaryKind::RunSimulation);
+    assert_eq!(simulation.label, "Run simulation");
     assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        simulation.blocked.as_deref(),
+        Some("The simulation matches the project")
     );
-    assert_eq!(
-        o.primary(Step::Simulate).label,
-        "Continue to post and export"
-    );
-    assert_eq!(o.primary(Step::Export).kind, PrimaryKind::OpenExport);
-    assert!(!o.step(Step::Export).complete);
+    // G-code written only after a complete write from the run as it is now
+    // (decision 0282 item 5).
+    assert!(!o.g_code_written());
+    assert!(!o.wrote_g_code_before());
     f.app.record_export(&run);
-    assert!(f.overview().step(Step::Export).complete);
+    assert!(f.overview().g_code_written());
+    assert!(f.overview().wrote_g_code_before());
     // An edit makes the first stale; simulating it generates it too.
     f.set_stepover(first, 0.5);
     let o = f.overview();
@@ -500,7 +523,15 @@ fn req_ui_10_the_primary_action_follows_the_rule_on_simulate_and_export() {
         o.primary(Step::Simulate).kind,
         PrimaryKind::GenerateAndSimulate(1)
     );
-    assert!(!o.step(Step::Export).complete);
+    // The two actions never change into each other: the simulation action
+    // is filled, and Post and export keeps its own rules (stale runs are
+    // blocked by the dialog's checks, GC-15).
+    assert_eq!(o.primary(Step::Simulate), o.simulation_action());
+    assert!(o.export_action().blocked.is_none());
+    assert!(!o.g_code_written());
+    // The past write is still known, so the bar can say the project changed
+    // since (decision 0282 item 5).
+    assert!(o.wrote_g_code_before());
 }
 
 #[test]
@@ -1479,7 +1510,6 @@ fn req_ui_11_the_bar_is_green_only_when_nothing_is_stale_or_missing() {
     assert_eq!(health(&o, Step::Setup), StepHealth::Good);
     assert_eq!(health(&o, Step::Operations), StepHealth::Good);
     assert_eq!(health(&o, Step::Simulate), StepHealth::Good);
-    assert_eq!(health(&o, Step::Export), StepHealth::Good);
     assert_eq!(o.health(), StepHealth::Good);
 
     // A rename does not turn it yellow (issue 209).
@@ -1529,7 +1559,7 @@ fn req_ui_11_a_missing_tool_or_stock_is_red_and_agrees_with_the_marks() {
             .contains("Ring")
     );
     assert_eq!(o.post_blocker(), Some("Fill in the missing values first"));
-    assert!(!o.step(Step::Export).is_available());
+    assert!(o.export_action().blocked.is_some());
     assert_eq!(o.first_problem(), Some(ItemRef::Operation(op)));
     // Generation still stops with its own message about the same thing
     // (NFR-07).
@@ -1690,10 +1720,7 @@ fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_
     f.app.start_generate().wait().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     let simulate = o.step(Step::Simulate);
     assert_eq!(simulate.health, StepHealth::Attention);
     assert_eq!(
@@ -1753,7 +1780,7 @@ fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_ask
     f.app.start_generate().wait().unwrap();
     assert_eq!(
         f.overview().primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        PrimaryKind::OpenExport
     );
     f.app
         .execute(Command::SetOperationEnabled {
@@ -1764,11 +1791,19 @@ fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_ask
     let primary = f.overview().primary(Step::Simulate);
     assert_eq!(primary.kind, PrimaryKind::Generate);
     assert_eq!(primary.label, "Generate toolpaths");
+    assert_eq!(f.overview().simulation_action(), primary);
     let run = f.app.start_generate().wait().unwrap();
     assert!(run.simulation.is_none());
+    // Generated: the toolpath action stays, disabled (decision 0282 item 3).
+    let simulation = f.overview().simulation_action();
+    assert_eq!(simulation.label, "Generate toolpaths");
+    assert_eq!(
+        simulation.blocked.as_deref(),
+        Some("The toolpaths match the project")
+    );
     assert_eq!(
         f.overview().primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        PrimaryKind::OpenExport
     );
 }
 
@@ -1852,10 +1887,7 @@ fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again
     let (mut f, [_, _, three]) = three_operations("sim-off");
     f.app.simulate().unwrap();
     let o = f.overview();
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     f.app
         .execute(Command::SetOperationEnabled {
             operation: three,
@@ -1874,10 +1906,7 @@ fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again
     f.app.simulate().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     // Undoing the turn-off: the operation is back, and not simulated.
     f.app.undo().unwrap();
     assert_eq!(
@@ -1929,4 +1958,28 @@ fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
             .iter()
             .any(|m| m.text.contains("The grip at the"))
     );
+}
+
+#[test]
+fn req_ui_10_req_nfr_12_with_every_operation_off_the_simulation_action_says_why() {
+    // Decision 0282 item 3: the simulation action keeps its place on
+    // Simulate, disabled with the reason; it never claims the simulation
+    // matches a project with nothing to simulate (decision 0238).
+    let mut f = calm("sim-action-off");
+    let op = f.add_operation("Ring", "one_ring");
+    f.app.simulate().unwrap();
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+    let o = f.overview();
+    let simulation = o.simulation_action();
+    assert_eq!(simulation.label, "Run simulation");
+    assert_eq!(
+        simulation.blocked.as_deref(),
+        Some("Turn on an operation to simulate")
+    );
+    assert_eq!(o.primary(Step::Simulate), o.export_action());
 }

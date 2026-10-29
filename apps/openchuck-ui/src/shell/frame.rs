@@ -10,7 +10,7 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText, Stroke};
-use openchuck_app::overview::{ItemStatus, Overview, Step, StepHealth, StepState};
+use openchuck_app::overview::{ItemStatus, Overview, PrimaryAction, Step, StepHealth, StepState};
 use openchuck_app::settings::{SCALE_RANGE, region};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
@@ -86,7 +86,8 @@ pub(super) const KEY_MAP: &[(&str, &str)] = &[
     ("Ctrl I", "Import model"),
     ("Ctrl E", "Post and export"),
     ("Ctrl Z, Ctrl Y", "Undo, redo"),
-    ("Alt 1 to Alt 5", "Workflow steps"),
+    ("Alt 1 to Alt 4", "Workflow steps"),
+    ("Alt 5", "Post and export (as Ctrl E)"),
     (
         "Ctrl 1, Ctrl 2, Ctrl 3",
         "Collapse the project panel, inspector, dock",
@@ -976,6 +977,8 @@ impl Shell {
                                     self.open_step(step);
                                 }
                             }
+                            ui.separator();
+                            self.g_code_status(ui);
                         });
                     });
             });
@@ -1053,6 +1056,7 @@ impl Shell {
         let primary = self.app.as_ref().map(|_| self.overview.primary(self.step));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             match &primary {
+                Some(p) if self.step == Step::Simulate => self.simulate_actions(ui, p),
                 Some(p) => {
                     let enabled = p.blocked.is_none() && !self.run.is_running();
                     let response = primary_button(ui, &p.label, enabled);
@@ -1147,6 +1151,132 @@ impl Shell {
                 ui.add(egui::Label::new(RichText::new(note).color(DARK.muted)).truncate());
             });
         });
+    }
+
+    /// Simulate's two footer actions in fixed places, in workflow order:
+    /// the simulation action, then "Post and export…" right-most. Exactly
+    /// one is filled, `primary`, the next required step; neither moves or
+    /// changes into the other (decision record 0282 item 2). Each is put in
+    /// its own place measured from the right edge, and they are made in
+    /// reading order, so Tab reaches the simulation action first.
+    fn simulate_actions(&mut self, ui: &mut egui::Ui, primary: &PrimaryAction) {
+        let actions = [
+            self.overview.simulation_action(),
+            self.overview.export_action(),
+        ];
+        let gap = ui.spacing().item_spacing.x;
+        let widths = actions.clone().map(|a| {
+            let text = egui::WidgetText::from(RichText::new(&a.label).strong()).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Button,
+            );
+            (text.size().x + 2.0 * ui.spacing().button_padding.x).ceil()
+        });
+        let (area, _) = ui.allocate_exact_size(
+            egui::vec2(widths[0] + gap + widths[1], 28.0),
+            egui::Sense::hover(),
+        );
+        let export =
+            egui::Rect::from_min_max(egui::pos2(area.right() - widths[1], area.top()), area.max);
+        let simulation =
+            egui::Rect::from_min_max(area.min, egui::pos2(export.left() - gap, area.bottom()));
+        let running = self.run.is_running();
+        let mut clicked = [false; 2];
+        for (index, (action, place)) in actions.iter().zip([simulation, export]).enumerate() {
+            let enabled = action.blocked.is_none() && !running;
+            // A child in the space allocated above: it takes no more room
+            // from the footer's row.
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(place)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            let response = if action == primary {
+                primary_button(&mut child, &action.label, enabled)
+            } else {
+                child.add_enabled(
+                    enabled,
+                    egui::Button::new(&action.label).min_size(egui::vec2(0.0, 28.0)),
+                )
+            };
+            let response = match &action.blocked {
+                Some(reason) => response.on_disabled_hover_text(reason),
+                None if running => {
+                    response.on_disabled_hover_text("Wait for the running job, or cancel it")
+                }
+                None => response,
+            };
+            if !enabled && response.hovered() {
+                self.highlight = action.message;
+            }
+            if let Some(click) = clicked.get_mut(index) {
+                *click = response.clicked();
+            }
+        }
+        if clicked[0] {
+            self.simulation();
+        }
+        if clicked[1] {
+            self.post_and_export();
+        }
+    }
+
+    /// The step bar's G-code status, after the steps: whether G-code was
+    /// last written, completely, from every enabled operation as it is now
+    /// (decision record 0282 item 5). Not a button, and no part of the
+    /// health; past write results are in Messages (decision 0240).
+    fn g_code_status(&self, ui: &mut egui::Ui) {
+        let written = self.app.is_some() && self.overview.g_code_written();
+        let (label, tip) = if written {
+            (
+                "G-code written",
+                "G-code was written from the project as it is now",
+            )
+        } else if self.overview.wrote_g_code_before() {
+            (
+                "G-code not written",
+                "The project has changed since G-code was last written",
+            )
+        } else {
+            (
+                "G-code not written",
+                "No G-code has been written in this session",
+            )
+        };
+        let font = egui::FontId::proportional(13.0);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(label.to_owned(), font, Color32::PLACEHOLDER);
+        let size = egui::vec2(galley.size().x + 40.0, WORKFLOW_BAR - 4.0);
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let painter = ui.painter();
+        let centre = egui::pos2(rect.left() + 18.0, rect.center().y);
+        let text = if written { DARK.ok } else { DARK.muted };
+        if written {
+            // The ring the fifth step had, round a tick.
+            painter.circle_stroke(centre, 9.0, Stroke::new(2.0, DARK.ok));
+            painter.line(
+                vec![
+                    centre + egui::vec2(-4.0, 0.0),
+                    centre + egui::vec2(-1.0, 3.0),
+                    centre + egui::vec2(4.5, -3.5),
+                ],
+                Stroke::new(2.0, DARK.ok),
+            );
+        } else {
+            painter.circle_stroke(centre, 9.0, Stroke::new(1.0, DARK.muted));
+        }
+        painter.galley(
+            egui::pos2(rect.left() + 32.0, rect.center().y - galley.size().y / 2.0),
+            galley,
+            text,
+        );
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+        response.on_hover_text(format!(
+            "{label}: {tip}.\nPast write results are in Messages."
+        ));
     }
 
     /// The tolerance of the selected operation, for the footer.
@@ -1342,8 +1472,7 @@ fn step_purpose(step: Step) -> &'static str {
         Step::Model => "import, check units and mesh, place on the rotary axis",
         Step::Setup => "machine, stock, part position, work offset, clearance",
         Step::Operations => "select geometry, add operations, generate",
-        Step::Simulate => "play the cut and compare stock with model",
-        Step::Export => "write G-code and the setup sheet",
+        Step::Simulate => "play the cut and compare stock with model; then post and export",
     }
 }
 
@@ -1355,7 +1484,6 @@ fn step_note(step: Step) -> &'static str {
             "Enter confirms; leaving a form asks about unconfirmed changes; undo with Ctrl Z"
         }
         Step::Simulate => "Results show the latest simulation",
-        Step::Export => "Write G-code from the export dialog",
     }
 }
 
@@ -1366,7 +1494,6 @@ fn view_step(step: Step) -> ViewStep {
         Step::Setup => ViewStep::Setup,
         Step::Operations => ViewStep::Operations,
         Step::Simulate => ViewStep::Simulate,
-        Step::Export => ViewStep::Export,
     }
 }
 

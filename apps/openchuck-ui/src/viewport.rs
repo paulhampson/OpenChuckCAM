@@ -214,8 +214,6 @@ pub enum ViewStep {
     Operations,
     /// Simulate.
     Simulate,
-    /// Post and export.
-    Export,
 }
 
 /// The workholding draft to draw instead of what the setup stores, while
@@ -2638,8 +2636,8 @@ pub(crate) mod tests {
         );
         viewport.set_layer(Layer::Paths, paths);
         assert_eq!(viewport.step(), ViewStep::Operations);
-        viewport.set_step(Some(ViewStep::Export));
-        assert_eq!(viewport.step(), ViewStep::Export);
+        viewport.set_step(Some(ViewStep::Simulate));
+        assert_eq!(viewport.step(), ViewStep::Simulate);
         viewport.set_step(None);
         // Hiding toolpaths or the selections hides their layers; Simulate's
         // "Show: Stock" hides the toolpaths, "Part + path" the stock.
