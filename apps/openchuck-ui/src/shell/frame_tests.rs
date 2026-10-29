@@ -25,6 +25,9 @@ pub(super) struct Rig {
     pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
     pub(super) dirs: Vec<PathBuf>,
+    /// The scope id of the root `Ui` the shell draws into: egui 0.37 derives a
+    /// panel's id from its parent's scope id and its salt.
+    root: egui::Id,
 }
 
 impl Rig {
@@ -35,6 +38,7 @@ impl Rig {
             size: egui::vec2(1440.0, 900.0),
             shapes: Vec::new(),
             dirs,
+            root: egui::Id::NULL,
         };
         rig.frame(Vec::new());
         rig
@@ -83,10 +87,27 @@ impl Rig {
             events,
             ..Default::default()
         };
-        let Self { shell, ctx, .. } = self;
-        let mut output = ctx.run_ui(input, |ui| shell.draw(ui));
+        let Self {
+            shell, ctx, root, ..
+        } = self;
+        let mut output = ctx.run_ui(input, |ui| {
+            *root = ui.scope_id();
+            shell.draw(ui);
+        });
         output.textures_delta.clear();
         self.shapes = output.shapes;
+    }
+
+    /// The state egui kept for the panel salted `salt`: the side panels are shown in
+    /// the root `Ui`. The dock is shown in the central panel's `Ui`, whose id the shell records.
+    pub(super) fn panel_state(&self, salt: &str) -> Option<egui::PanelState> {
+        let parent = if salt == "dock" {
+            self.ctx
+                .data(|d| d.get_temp(egui::Id::unique("test dock parent")))?
+        } else {
+            self.root
+        };
+        egui::PanelState::load(&self.ctx, parent.with(salt))
     }
 
     /// What the last frame painted.

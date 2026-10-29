@@ -129,7 +129,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
     type_unconfirmed(&mut rig, "Output folder", &out.display().to_string());
     let at = rig
         .ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
         .unwrap()
         .center();
     for _ in 0..12 {
@@ -144,6 +144,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
             Event::PointerMoved(at),
             Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(0.0, -160.0),
                 modifiers: Modifiers::NONE,

@@ -289,7 +289,7 @@ impl ModelPanel {
             let focused = focus == Some(key);
             let section = field_row::section(
                 ui,
-                egui::Id::new(("model section", key)),
+                egui::Id::unique(("model section", key)),
                 title,
                 open,
                 focused,

@@ -54,14 +54,15 @@ impl Dialog {
 
 /// The log text for an egui output event: a button or a menu item (or a
 /// link, or a check box) clicked, by its label. `None` for anything else:
-/// typed text, a choice among values, a drag value or a slider would show a
+/// typed text, a choice among values (a button with a selected state), a drag value or a slider would show a
 /// value (NFR-18).
 pub(super) fn click_text(event: &OutputEvent) -> Option<String> {
-    use egui::WidgetType::{Button, Checkbox, Link};
+    use egui::Role::{Button, CheckBox, Link};
     let OutputEvent::Clicked(info) = event else {
         return None;
     };
-    if !matches!(info.typ, Button | Checkbox | Link) {
+    let is_choice = info.role == Button && info.selected.is_some();
+    if !matches!(info.role, Button | CheckBox | Link) || is_choice {
         return None;
     }
     let label = info
@@ -192,51 +193,57 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use eframe::egui::{WidgetInfo, WidgetType};
+    use eframe::egui::{Role, WidgetInfo};
 
     use super::*;
 
-    fn clicked(typ: WidgetType, label: &str) -> OutputEvent {
-        OutputEvent::Clicked(WidgetInfo::labeled(typ, true, label))
+    fn clicked(role: Role, label: &str) -> OutputEvent {
+        OutputEvent::Clicked(WidgetInfo::labeled(role, true, label))
     }
 
     #[test]
     fn req_nfr_18_a_clicked_button_is_logged_by_its_label() {
         assert_eq!(
-            click_text(&clicked(WidgetType::Button, "Undo")).as_deref(),
+            click_text(&clicked(Role::Button, "Undo")).as_deref(),
             Some("click: 'Undo'")
         );
         assert_eq!(
-            click_text(&clicked(WidgetType::Button, "  Open\n project… ")).as_deref(),
+            click_text(&clicked(Role::Button, "  Open\n project… ")).as_deref(),
             Some("click: 'Open project…'")
         );
         let long = "x".repeat(100);
-        let text = click_text(&clicked(WidgetType::Link, &long)).unwrap();
+        let text = click_text(&clicked(Role::Link, &long)).unwrap();
         assert_eq!(text.chars().filter(|c| *c == 'x').count(), LABEL_LIMIT);
         assert!(text.ends_with("…'"));
     }
 
     #[test]
     fn req_nfr_18_values_and_typed_text_are_never_logged() {
-        for typ in [
-            WidgetType::TextEdit,
-            WidgetType::DragValue,
-            WidgetType::Slider,
-            WidgetType::RadioButton,
-            WidgetType::SelectableLabel,
-            WidgetType::ComboBox,
+        for role in [
+            Role::TextInput,
+            Role::SpinButton,
+            Role::Slider,
+            Role::RadioButton,
+            Role::ComboBox,
         ] {
-            assert_eq!(click_text(&clicked(typ, "1234.5")), None, "{typ:?}");
+            assert_eq!(click_text(&clicked(role, "1234.5")), None, "{role:?}");
+        }
+        // A choice among values (egui's selectable button, `SelectableLabel`
+        // before egui 0.37) is a button with a selected state: not logged,
+        // chosen or not.
+        for chosen in [false, true] {
+            let choice = WidgetInfo::selected(Role::Button, true, chosen, "1234.5");
+            assert_eq!(click_text(&OutputEvent::Clicked(choice)), None);
         }
         let mut typed = WidgetInfo::text_edit(true, "old", "secret text", "");
         typed.label = Some("secret text".into());
         assert_eq!(click_text(&OutputEvent::ValueChanged(typed)), None);
         // A button with no text, and a click that is not a click.
-        let mut icon = WidgetInfo::new(WidgetType::Button);
+        let mut icon = WidgetInfo::new(Role::Button);
         icon.label = None;
         assert_eq!(click_text(&OutputEvent::Clicked(icon)), None);
-        assert_eq!(click_text(&clicked(WidgetType::Button, "  ")), None);
-        let focus = OutputEvent::FocusGained(WidgetInfo::labeled(WidgetType::Button, true, "Save"));
+        assert_eq!(click_text(&clicked(Role::Button, "  ")), None);
+        let focus = OutputEvent::FocusGained(WidgetInfo::labeled(Role::Button, true, "Save"));
         assert_eq!(click_text(&focus), None);
     }
 

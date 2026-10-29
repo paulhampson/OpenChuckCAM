@@ -316,7 +316,7 @@ fn preview(ui: &mut egui::Ui, profile: &ToolProfile, valid: bool, selected: Opti
     let (rect, response) = ui.allocate_exact_size(vec2(size, size * 1.3), Sense::hover());
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
-            egui::WidgetType::Other,
+            egui::Role::Unknown,
             true,
             "Profile preview: the revolved tool silhouette",
         )

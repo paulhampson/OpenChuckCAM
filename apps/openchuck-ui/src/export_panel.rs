@@ -865,7 +865,7 @@ impl ExportPanel {
                             {
                                 let before = text.clone();
                                 let response = ui.add(
-                                    egui::TextEdit::singleline(&mut *text).desired_width(48.0),
+                                    crate::theme::single_line(ui, &mut *text).desired_width(48.0),
                                 );
                                 crate::pending_edits::draft_text(
                                     ui,
