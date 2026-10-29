@@ -416,11 +416,14 @@ pub(crate) fn generate_with_part(
         }
         _ => None,
     };
+    // A strategy that takes exact contacts drops its ball onto the exact
+    // faces of a STEP part (decision 0277); the others onto its tessellation.
+    let exact = placed.brep.is_some() && strategy.exact_contact();
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
-            Arc::new(BrepSurface::with_faces(brep, &choice.faces)?)
+            Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
         }
-        (Some(brep), _) => Arc::new(BrepSurface::new(brep)?),
+        (Some(brep), _) => Arc::new(BrepSurface::new(brep)?.with_exact_drops(exact)),
         (None, _) => Arc::new(MeshSurface::new(mesh)?),
     };
     // The whole placed part, not the selected faces: bounding-box stock and
@@ -481,7 +484,7 @@ pub(crate) fn generate_with_part(
             model,
             file_hash,
             mesh,
-            Some(&crate::selection::FaceTriangles::of(brep)),
+            Some(&crate::selection::FaceTriangles::of(brep, exact)),
         )?,
         _ => None,
     };

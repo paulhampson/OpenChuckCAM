@@ -30,22 +30,38 @@ fn main() {
     let bytes = std::fs::read(&input).unwrap();
     let cancel = CancelToken::new();
     let imported = StepImporter::new()
-        .import(&bytes, &ImportOptions::default(), &JobContext::new(&cancel, &NoProgress))
+        .import(
+            &bytes,
+            &ImportOptions::default(),
+            &JobContext::new(&cancel, &NoProgress),
+        )
         .unwrap();
-    let ModelGeometry::Brep(model) = imported.geometry else { panic!() };
+    let ModelGeometry::Brep(model) = imported.geometry else {
+        panic!()
+    };
     let b = bounds(&model);
     let spans = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
     let mut steps = Vec::new();
     if spans[2] > spans[0] && spans[2] > spans[1] {
-        steps.push(TransformStep::Rotate { axis: Axis::Y, angle: Degrees(90.0) });
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Y,
+            angle: Degrees(90.0),
+        });
     } else if spans[1] > spans[0] && spans[1] > spans[2] {
-        steps.push(TransformStep::Rotate { axis: Axis::Z, angle: Degrees(-90.0) });
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Z,
+            angle: Degrees(-90.0),
+        });
     }
     steps.push(TransformStep::CentreOnRotaryAxis);
     let map = brep_placement(&model, &steps).unwrap();
     let rotated = transform_brep(&model, &map).unwrap();
     let x0 = bounds(&rotated).min.x;
-    steps.push(TransformStep::Translate { x: 10.0 - x0, y: 0.0, z: 0.0 });
+    steps.push(TransformStep::Translate {
+        x: 10.0 - x0,
+        y: 0.0,
+        z: 0.0,
+    });
     let map = brep_placement(&model, &steps).unwrap();
     let placed = transform_brep(&model, &map).unwrap();
     println!("{:?}", bounds(&placed));

@@ -112,34 +112,6 @@ impl Net {
         lu >= lv
     }
 
-    /// Whether to split along u for a drop: the direction in which the
-    /// control net bends more (its second differences, weighted by the
-    /// degree), since that is what keeps a cell's box thick; the longer
-    /// direction when neither bends (a flat or bilinear net).
-    pub fn bendier_in_u(&self) -> bool {
-        let (du, dv) = (self.du, self.dv);
-        let p = |i: usize, j: usize| project(self.at(i, j));
-        let mut bu = 0.0_f64;
-        let mut bv = 0.0_f64;
-        for i in 0..=du {
-            for j in 0..=dv {
-                if i >= 1 && i < du {
-                    let d = (p(i + 1, j) - p(i, j)) - (p(i, j) - p(i - 1, j));
-                    bu = bu.max(d.length());
-                }
-                if j >= 1 && j < dv {
-                    let d = (p(i, j + 1) - p(i, j)) - (p(i, j) - p(i, j - 1));
-                    bv = bv.max(d.length());
-                }
-            }
-        }
-        let (bu, bv) = (bu * (du * du) as f64, bv * (dv * dv) as f64);
-        if bu == 0.0 && bv == 0.0 {
-            return self.longer_in_u();
-        }
-        bu >= bv
-    }
-
     /// A cone that holds the patch's normals `S_u x S_v` (up to sign and
     /// length): its unit axis and the sine of half its angle. The patch is
     /// taken as polynomial, which holds when its weights are equal; `None`
@@ -156,7 +128,7 @@ impl Net {
             lo = lo.min(h[3]);
             hi = hi.max(h[3]);
         }
-        if !(lo > 0.0) || hi - lo > 1e-9 * lo {
+        if lo.is_nan() || lo <= 0.0 || hi - lo > 1e-9 * lo {
             return None;
         }
         let p = |i: usize, j: usize| project(self.at(i, j));
@@ -186,7 +158,7 @@ impl Net {
             }
         }
         let ls = sum.length();
-        if gens.is_empty() || !(ls > 0.0) {
+        if gens.is_empty() || ls.is_nan() || ls <= 0.0 {
             return None;
         }
         let axis = sum * (1.0 / ls);
@@ -197,7 +169,7 @@ impl Net {
         // A margin for the rounding of the generators and of weights equal
         // only to rounding.
         let cos = cos - 1e-9;
-        if !(cos > 0.0) {
+        if cos.is_nan() || cos <= 0.0 {
             return None;
         }
         // sin(theta / 2) = sqrt((1 - cos theta) / 2).
@@ -234,10 +206,7 @@ impl Net {
             Some([a, b, n])
         })();
         let oriented = frame.map(|axes| {
-            let origin = self
-                .pts
-                .first()
-                .map_or(Point3::ORIGIN, |h| project(*h));
+            let origin = self.pts.first().map_or(Point3::ORIGIN, |h| project(*h));
             let mut range = [(f64::INFINITY, f64::NEG_INFINITY); 3];
             for q in pts {
                 let d = q - origin;
@@ -392,7 +361,11 @@ impl Bound {
             }
         }
         let (d, g) = best;
-        if d > 0.0 { (d, g * (1.0 / g.length())) } else { (0.0, Vec3::ZERO) }
+        if d > 0.0 {
+            (d, g * (1.0 / g.length()))
+        } else {
+            (0.0, Vec3::ZERO)
+        }
     }
 
     /// The diagonal of the axis-aligned box: no two points of the cell are

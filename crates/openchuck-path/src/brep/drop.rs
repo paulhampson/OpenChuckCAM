@@ -36,25 +36,19 @@ use openchuck_types::geometry::{Point3, Vec3};
 
 use super::hull::{Bound, HullTree, Net};
 use super::trim::Segment;
-use super::{Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH};
+use super::{
+    Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH,
+};
 use crate::cutter::{TIP_TIE, ToolLine};
 use crate::surface::{ParametricFace, Uv};
 
-/// Debug counters (stage 1 only): convex_top calls, iterations, split cells.
-pub static DEBUG: [std::sync::atomic::AtomicUsize; 3] = [
-    std::sync::atomic::AtomicUsize::new(0),
-    std::sync::atomic::AtomicUsize::new(0),
-    std::sync::atomic::AtomicUsize::new(0),
-];
-
-fn bump(i: usize, n: usize) {
-    if let Some(c) = DEBUG.get(i) {
-        c.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
 /// The exact drop answers within this, mm, of the highest contact.
 pub const DROP_TOLERANCE: f64 = 1e-4;
+
+/// Whether `x` is a number above `floor` (false for not-a-number).
+fn above(x: f64, floor: f64) -> bool {
+    x > floor
+}
 
 /// A ball along a tool line.
 #[derive(Debug, Clone, Copy)]
@@ -107,9 +101,7 @@ impl Ball {
         dist: impl Fn(Point3) -> (f64, Vec3),
     ) -> Option<f64> {
         let mut s = start;
-        bump(0, 1);
         for _ in 0..24 {
-            bump(1, 1);
             if s <= floor {
                 return Some(s);
             }
@@ -118,7 +110,7 @@ impl Ball {
                 return Some(s);
             }
             let slope = g.dot(self.a);
-            if !(slope > 0.0) {
+            if !above(slope, 0.0) {
                 // The distance falls (or stays) below `s` and is above the
                 // radius here: it is above it everywhere below.
                 return None;
@@ -153,7 +145,10 @@ impl Ball {
     fn capsule_top(&self, a: Point3, b: Point3, q: f64, floor: f64) -> Option<f64> {
         let mid = a + (b - a) * 0.5;
         let start = self.top_within(mid, self.r + q + 0.5 * a.distance(b))?;
-        let ball = Self { r: self.r + q, ..*self };
+        let ball = Self {
+            r: self.r + q,
+            ..*self
+        };
         ball.convex_top(start, floor, |p| {
             let d = b - a;
             let l2 = d.dot(d);
@@ -164,7 +159,11 @@ impl Ball {
             };
             let w = p - (a + d * t);
             let l = w.length();
-            if l > 0.0 { (l, w * (1.0 / l)) } else { (0.0, Vec3::ZERO) }
+            if l > 0.0 {
+                (l, w * (1.0 / l))
+            } else {
+                (0.0, Vec3::ZERO)
+            }
         })
     }
 }
@@ -190,8 +189,6 @@ pub(super) struct Search {
     pub looked: usize,
     /// A face with no exact drop (a B-spline face searched by its grid).
     pub unsupported: bool,
-    /// Debug: boundary pieces, segments ordered, cells, contact solves.
-    pub stats: [usize; 4],
 }
 
 impl Search {
@@ -202,13 +199,13 @@ impl Search {
             unresolved: f64::NEG_INFINITY,
             looked: 0,
             unsupported: false,
-            stats: [0; 4],
         }
     }
 
     /// What a part must beat to matter.
     pub fn floor(&self) -> f64 {
-        self.best.map_or(f64::NEG_INFINITY, |b| b.s + DROP_TOLERANCE)
+        self.best
+            .map_or(f64::NEG_INFINITY, |b| b.s + DROP_TOLERANCE)
     }
 
     fn offer(&mut self, p: Point3, face: u32, uv: Uv) {
@@ -273,7 +270,6 @@ impl ExactFace {
             }
         }
         order.sort_by(|x, y| y.0.total_cmp(&x.0).then(x.1.cmp(&y.1)));
-        search.stats[1] += self.trim.segments.len();
         for (top, i) in order {
             if top <= search.floor() {
                 break;
@@ -359,7 +355,6 @@ impl ExactFace {
             }
             looked += 1;
             search.looked += 1;
-            search.stats[0] += 1;
             let m = 0.5 * (lo + hi);
             fresh.extend([(lo, m, plo, pm), (m, hi, pm, phi)]);
         }
@@ -494,7 +489,6 @@ impl ExactFace {
             }
             looked += 1;
             search.looked += 1;
-            search.stats[2] += 1;
             let (net, depth, size): (std::borrow::Cow<'_, Net>, usize, f64) = match cell {
                 Cell::Stored(i) => {
                     let Some(node) = tree.nodes.get(i as usize) else {
@@ -522,10 +516,13 @@ impl ExactFace {
                     let Some(net) = node.net.and_then(|k| tree.nets.get(k as usize)) else {
                         continue;
                     };
-                    (std::borrow::Cow::Borrowed(net), SEARCH_DEPTH, node.bound.size())
+                    (
+                        std::borrow::Cow::Borrowed(net),
+                        SEARCH_DEPTH,
+                        node.bound.size(),
+                    )
                 }
                 Cell::Split(net, depth, size) => {
-                    bump(2, 1);
                     if trimmed && self.trim.box_side(net.uv) == Some(false) {
                         continue;
                     }
@@ -535,9 +532,9 @@ impl ExactFace {
             // A cell where the ball cannot rest tangentially on the surface
             // holds no interior maximum of the lift: the face's maximum is
             // at such a point or on its boundary, which the boundary search
-            // has settled.
-            if !self.may_rest_on(&net, &ball) {
-                search.stats[3] += 1;
+            // has settled, or on a crease of the patch (a knot where it is
+            // only continuous), so a cell along one is always searched.
+            if !n.touches_crease(net.uv) && !self.may_rest_on(&net, &ball) {
                 continue;
             }
             let [u0, u1, v0, v1] = net.uv;
@@ -623,11 +620,11 @@ impl ExactFace {
             if self.contains(Uv { u, v }) {
                 search.offer(p, self.number, Uv { u, v });
             }
-            if !(d > 0.0) {
+            if !above(d, 0.0) {
                 break;
             }
             let slope = (c - p).dot(ball.a) / d;
-            if !(slope > 1e-6) {
+            if !above(slope, 1e-6) {
                 break;
             }
             let next = s - (d - ball.r) / slope;

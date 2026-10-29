@@ -18,8 +18,10 @@
 //!   an interval proven to hold the exact value, against the exact faces
 //!   and the tessellation the tool was dropped on. The forms compared are
 //!   (a) the owner's `blisk.stl`, when its path is given, (b) the STEP part
-//!   as built today, dropping on the import's tessellation, and (c) the STEP
-//!   part dropping on a finer tessellation. M2 fails when any station's
+//!   dropping on the import's tessellation, (c) the STEP part dropping on a
+//!   finer tessellation, and (d) the STEP part with exact contacts for the
+//!   strategies that take them (lane STEPALL-X2, decision 0277): what the
+//!   application makes today. M2 fails when any station's
 //!   interval cannot be closed below the tolerance; `--raw DIR` keeps one
 //!   file of raw observations per form and operation, with provenance.
 //! - **M3**, time: each form's generation, drops, fitting, assembly and stock
@@ -28,14 +30,14 @@
 //!   an optional probe estimates exact-drop cost by refining sampled drops
 //!   against the exact faces.
 //! - **M4**, determinism: each form's toolpath at 1, 2 and all threads, and
-//!   each form's posted G-code, with (a) and (b) checked through the application, byte
-//!   for byte (GC-07, NFR-06); and the library's path of form (b) against
+//!   each form's posted G-code, with (a) and (d) checked through the application, byte
+//!   for byte (GC-07, NFR-06); and the library's path of form (d) against
 //!   the application's, so the harness measures what the application makes.
 //!
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--skip-probe] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c,d] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -334,11 +336,19 @@ fn main() -> Result<(), Error> {
     let mut forms: Vec<(&str, Form<'_>)> = vec![
         (
             "b (STEP, import tessellation 0.01 mm)",
-            Form::Brep(BrepSurface::new(&placed_b)?, &placed_b),
+            Form::Brep(BrepSurface::new(&placed_b)?, None, &placed_b),
         ),
         (
             "c (STEP, finer tessellation)",
-            Form::Brep(BrepSurface::new(&placed_c)?, &placed_c),
+            Form::Brep(BrepSurface::new(&placed_c)?, None, &placed_c),
+        ),
+        (
+            "d (STEP, exact contacts where the strategy takes them)",
+            Form::Brep(
+                BrepSurface::new(&placed_b)?,
+                Some(BrepSurface::new(&placed_b)?.with_exact_drops(true)),
+                &placed_b,
+            ),
         ),
     ];
     if let Some((mesh, _)) = &stl {
@@ -396,7 +406,7 @@ fn main() -> Result<(), Error> {
         );
         if wants("m2") || wants("m3") {
             let run = job.run(form, Threads::All)?;
-            if name.starts_with('b') {
+            if name.starts_with(APP_FORM) {
                 library_b = Some(
                     run.groups
                         .iter()
@@ -559,7 +569,7 @@ fn main() -> Result<(), Error> {
                         )
                     );
                 }
-                if let Form::Brep(surface, _) = form
+                if let Form::Brep(surface, _, _) = form
                     && !args.skip_probe
                 {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
@@ -606,7 +616,7 @@ fn main() -> Result<(), Error> {
             if let Some(letter) = name.chars().next() {
                 refused.insert(letter, first.groups.iter().map(Result::is_err).collect());
             }
-            if name.starts_with('b') && library_b.is_none() {
+            if name.starts_with(APP_FORM) && library_b.is_none() {
                 library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
             }
             let one = serde_json::to_string(&first.groups)?;
@@ -635,7 +645,7 @@ fn main() -> Result<(), Error> {
         println!("\n## M4: the application's G-code at 1, 2 and {cores} threads");
         // The application stops at a refused operation, so those are turned
         // off (UI-06): the rest is generated as the library made it.
-        disable(&mut app, &ids, refused.get(&'b'))?;
+        disable(&mut app, &ids, refused.get(&APP_FORM))?;
         app.save()?;
         let mut reference = None;
         for n in [1, 2, cores] {
@@ -646,17 +656,17 @@ fn main() -> Result<(), Error> {
             let took = started.elapsed();
             let clean = result.reports.iter().all(|r| r.is_clean());
             let gcode = result.gcode.clone();
-            if let Some(library) = library_posts.get(&'b') {
-                checks::identical(&1, &gcode.len(), "form b application file count")?;
-                let (_, text) = gcode.first().ok_or("no form b G-code")?;
-                checks::identical(library, text, "form b library/application G-code")?;
+            if let Some(library) = library_posts.get(&APP_FORM) {
+                checks::identical(&1, &gcode.len(), "form d application file count")?;
+                let (_, text) = gcode.first().ok_or("no form d G-code")?;
+                checks::identical(library, text, "form d library/application G-code")?;
             }
-            checks::clean(clean, &format!("form b, {n} threads, replay gates"))?;
+            checks::clean(clean, &format!("application, {n} threads, replay gates"))?;
             if let Some(expected) = &reference {
-                checks::identical(expected, &gcode, &format!("form b, {n} threads, G-code"))?;
+                checks::identical(expected, &gcode, &format!("application, {n} threads, G-code"))?;
             }
             println!(
-                "form b, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
+                "application, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
                 took.as_secs_f64()
             );
             if n == cores
@@ -665,9 +675,9 @@ fn main() -> Result<(), Error> {
                 checks::identical(
                     library,
                     &result.canonical_toolpath.groups,
-                    "form b application path",
+                    "form d application path",
                 )?;
-                println!("the library's form b path is the application's");
+                println!("the library's form d path is the application's");
             }
             reference.get_or_insert(gcode);
         }
@@ -1164,17 +1174,32 @@ fn project_stl(
     project(dir, path, &placement, bounds, ops)
 }
 
-/// The surface a form drops the tool on.
+/// The library form the application's output equals: the STEP part with
+/// exact contacts for the strategies that take them (decision 0277).
+const APP_FORM: char = 'd';
+
+/// The surface a form drops the tool on: for a STEP form, its faces with
+/// drops on the tessellation, and for form (d) the same faces with exact
+/// ball drops, which the operations whose strategy takes exact contacts use
+/// (decision 0277), as the application does.
 enum Form<'a> {
-    Brep(BrepSurface, &'a BrepModel),
+    Brep(BrepSurface, Option<BrepSurface>, &'a BrepModel),
     Mesh(MeshSurface),
 }
 
 impl Form<'_> {
     fn surface(&self) -> &dyn SurfaceSource {
         match self {
-            Self::Brep(s, _) => s,
+            Self::Brep(s, _, _) => s,
             Self::Mesh(s) => s,
+        }
+    }
+
+    /// The surface `strategy` drops on in this form.
+    fn surface_for(&self, strategy: &dyn Strategy) -> &dyn SurfaceSource {
+        match self {
+            Self::Brep(_, Some(exact), _) if strategy.exact_contact() => exact,
+            _ => self.surface(),
         }
     }
 }
@@ -1229,6 +1254,13 @@ impl SurfaceSource for Timed<'_> {
     fn distance(&self, point: Point3) -> Option<f64> {
         self.exact.fetch_add(1, Ordering::Relaxed);
         self.inner.distance(point)
+    }
+    fn within(&self, point: Point3, max_distance: f64) -> bool {
+        self.exact.fetch_add(1, Ordering::Relaxed);
+        self.inner.within(point, max_distance)
+    }
+    fn drop_accuracy(&self) -> f64 {
+        self.inner.drop_accuracy()
     }
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit> {
         self.exact.fetch_add(1, Ordering::Relaxed);
@@ -1464,7 +1496,7 @@ impl Job<'_> {
             let values =
                 openchuck_app::operation::parameter_values(self.project, operation, self.registry)?;
             let registered = self.registry.get(&operation.strategy)?;
-            let timed = Timed::new(form.surface());
+            let timed = Timed::new(form.surface_for(registered));
             let tags = PathTags {
                 operation: operation.id.to_string(),
                 setup: setup.id.to_string(),
@@ -1489,7 +1521,7 @@ impl Job<'_> {
             // (decision 0226). Include that preparation in each generation
             // timing, rather than caching it outside the measured run.
             let pencil_on_brep = match form {
-                Form::Brep(_, model) if operation.strategy == openchuck_path::pencil::NAME => {
+                Form::Brep(_, _, model) if operation.strategy == openchuck_path::pencil::NAME => {
                     Some(PencilFinishing::on_brep(model)?)
                 }
                 _ => None,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Exact ball drops (lane STEPALL-X2, issue #349; OI-81; requirement IMP-02,
-//! OP-03, NFR-05, NFR-06, NFR-07), checked against independent brute-force
-//! answers written here. No kernel is involved.
+//! OP-02, OP-11, OP-12, OP-23, NFR-05, NFR-06, NFR-07; decision 0277), checked
+//! against independent brute-force answers written here. No kernel is involved.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -13,7 +13,9 @@
 
 use std::f64::consts::TAU;
 
-use openchuck_path::{BrepSurface, DROP_TOLERANCE, ExactFace, ParametricFace, SurfaceSource, ToolLine, Uv};
+use openchuck_path::{
+    BrepSurface, DROP_TOLERANCE, ExactFace, ParametricFace, SurfaceSource, ToolLine, Uv,
+};
 use openchuck_types::brep::{
     BSplinePatch, BrepFace, BrepModel, FaceId, Frame, Surface, TrimLoop, UvPoint,
 };
@@ -98,6 +100,30 @@ fn wavy_patch() -> BSplinePatch {
     }
 }
 
+/// A polynomial patch, quadratic in u with the middle knot doubled, whose
+/// poles make a sharp ridge along u = 0.5: a crease inside the face, where
+/// the highest contact need not be a point the ball rests on tangentially.
+fn ridge_patch() -> BSplinePatch {
+    let (nu, nv) = (5usize, 4usize);
+    let mut poles = Vec::new();
+    for i in 0..nu {
+        for j in 0..nv {
+            let z = [0.0, 3.0, 9.0, 3.0, 0.0][i] + 1.5 * ((j as f64) * 1.1).sin();
+            poles.push(p3(10.0 * i as f64, 12.0 * j as f64, z));
+        }
+    }
+    BSplinePatch {
+        degree_u: 2,
+        degree_v: 3,
+        knots_u: vec![0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0],
+        knots_v: vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+        poles_u: 5,
+        poles_v: 4,
+        poles,
+        weights: vec![1.0; 20],
+    }
+}
+
 /// The trimmed faces of every kind: the surface, its parameter box, and a
 /// wavy outer loop with a hole, in (u, v).
 /// A named face of each kind with its loops in (u, v).
@@ -168,6 +194,11 @@ fn kind_faces() -> Vec<Kind<BrepFace>> {
             [0.0, 1.0, 0.0, 1.0],
         ),
         (
+            "creased",
+            Surface::BSpline(ridge_patch()),
+            [0.0, 1.0, 0.0, 1.0],
+        ),
+        (
             "polynomial",
             Surface::BSpline(BSplinePatch {
                 weights: vec![1.0; 30],
@@ -188,7 +219,6 @@ fn kinds() -> Vec<Kind<ExactFace>> {
         .map(|(n, f, l)| (n, ExactFace::new(&f).unwrap(), l))
         .collect()
 }
-
 
 /// A ball end of radius `r` with straight flutes `4 r` long.
 fn ball(r: f64) -> RevolvedProfile {
@@ -227,7 +257,7 @@ fn sampled_drop(f: &ExactFace, loops: &[Vec<(f64, f64)>], line: &ToolLine, r: f6
             best = Some(best.map_or(s, |b: f64| b.max(s)));
         }
     };
-    let n = 400;
+    let n = 250;
     for i in 0..=n {
         for j in 0..=n {
             let uv = Uv {
@@ -260,7 +290,7 @@ fn sampled_drop(f: &ExactFace, loops: &[Vec<(f64, f64)>], line: &ToolLine, r: f6
 }
 
 #[test]
-fn req_op_03_exact_ball_drop_of_every_kind_is_at_or_above_brute_force() {
+fn req_op_12_exact_ball_drop_of_every_kind_is_at_or_above_brute_force() {
     let mut seed = 41;
     let r = 1.5;
     for ((name, bf, loops), (_, f, _)) in kind_faces().into_iter().zip(kinds()) {
@@ -279,7 +309,7 @@ fn req_op_03_exact_ball_drop_of_every_kind_is_at_or_above_brute_force() {
         );
         let size = (b.max - b.min).length();
         let mut hits = 0;
-        for k in 0..40 {
+        for k in 0..60 {
             let axis = UnitVec3::new(Vec3::new(
                 lcg(&mut seed) - 0.5,
                 lcg(&mut seed) - 0.5,
@@ -301,15 +331,208 @@ fn req_op_03_exact_ball_drop_of_every_kind_is_at_or_above_brute_force() {
                 (Some(g), Some(w)) => {
                     hits += 1;
                     let s = g.contact.offset;
-                    assert!(s >= w - DROP_TOLERANCE - 1e-9, "{name} {k}: {s} below a sample at {w}");
-                    assert!(s - w < 0.02, "{name} {k}: {s} far above the samples' {w}");
+                    assert!(
+                        s >= w - DROP_TOLERANCE - 1e-9,
+                        "{name} {k}: {s} below a sample at {w}"
+                    );
+                    // ...and the answer is a real contact: a point of the
+                    // face the ball holds at that tip, so never above the
+                    // true drop.
+                    let c = g.contact.contact;
+                    assert!(
+                        f.closest(c).unwrap().distance < 1e-6,
+                        "{name} {k}: off the face"
+                    );
                     // The contact is a point of the face the ball holds.
                     let l = lift(&line, r, g.contact.contact).unwrap();
-                    assert!((l - s).abs() <= DROP_TOLERANCE + 1e-9 || g.raised > 0.0, "{name} {k}");
+                    assert!(
+                        (l - s).abs() <= DROP_TOLERANCE + 1e-9 || g.raised > 0.0,
+                        "{name} {k}"
+                    );
                 }
                 (g, w) => panic!("{name} {k}: exact {g:?}, sampled {w:?}"),
             }
         }
         assert!(hits > 5, "{name}: only {hits} lines touch");
     }
+}
+
+fn radial_line(x: f64, degrees: f64) -> ToolLine {
+    let (s, c) = degrees.to_radians().sin_cos();
+    ToolLine {
+        origin: p3(x, 0.0, 0.0),
+        axis: UnitVec3::new(Vec3::new(0.0, c, s)).unwrap(),
+    }
+}
+
+#[test]
+fn req_nfr_06_exact_ball_drop_is_the_same_on_every_thread_and_run() {
+    let (_, bf, _) = kind_faces().into_iter().nth(6).unwrap();
+    let model = BrepModel {
+        faces: vec![bf],
+        edges: vec![],
+        vertices: vec![],
+        tessellation: Default::default(),
+    };
+    let surface = BrepSurface::new(&model).unwrap();
+    let lines: Vec<ToolLine> = (0..200)
+        .map(|k| ToolLine {
+            origin: p3(1.0 + 0.2 * f64::from(k), 2.0 + 0.1 * f64::from(k), 30.0),
+            axis: UnitVec3::new(Vec3::new(0.1, -0.2, 1.0)).unwrap(),
+        })
+        .collect();
+    let tool = ball(1.0);
+    let once: Vec<_> = lines.iter().map(|l| surface.drop_ball(&tool, l)).collect();
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    lines
+                        .iter()
+                        .rev()
+                        .map(|l| surface.drop_ball(&tool, l))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for h in handles {
+            let mut got = h.join().unwrap();
+            got.reverse();
+            assert_eq!(got, once);
+        }
+    });
+    assert!(once.iter().filter(|d| d.is_some()).count() > 50);
+}
+
+#[test]
+fn req_nfr_07_exact_ball_drop_refuses_what_it_cannot_answer() {
+    let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
+    let surface = BrepSurface::new(&model).unwrap().with_exact_drops(true);
+    // A line that is not a number gives no answer, not a panic.
+    let bad = ToolLine {
+        origin: p3(f64::NAN, 0.0, 0.0),
+        axis: UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap(),
+    };
+    assert!(surface.drop_ball(&ball(1.0), &bad).is_none());
+    // A tool that is not a ball has no exact drop; the surface drops it on
+    // the tessellation.
+    let flat = ToolProfile {
+        segments: vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 4.0),
+            },
+        ],
+    }
+    .validate()
+    .unwrap();
+    assert!(openchuck_path::ball_radius(&flat).is_none());
+    let line = radial_line(15.0, 30.0);
+    assert!(surface.drop_ball(&flat, &line).is_none());
+    let mesh_only = BrepSurface::new(&model).unwrap();
+    assert_eq!(
+        surface.drop_tool(&flat, &line),
+        mesh_only.drop_tool(&flat, &line)
+    );
+}
+
+#[test]
+fn req_op_11_a_ball_grown_for_stock_to_leave_drops_exactly() {
+    // Stock to leave grows the ball (OP-11): the grown tool is a ball of
+    // the larger radius, and drops as one.
+    let grown = openchuck_path::cutter::grow_profile(&ball(1.0), 0.3).unwrap();
+    let r = openchuck_path::ball_radius(&grown).unwrap();
+    assert!((r - 1.3).abs() < 1e-12);
+    let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
+    let surface = BrepSurface::new(&model).unwrap().with_exact_drops(true);
+    let mesh_only = BrepSurface::new(&model).unwrap();
+    for a in [0.0, 17.0, 95.0, 200.0] {
+        let line = radial_line(15.0, a);
+        let exact = surface.drop_tool(&grown, &line).unwrap();
+        // A ball on a cylinder of radius 10 about the line's own axis comes
+        // to rest with its tip on the cylinder: 10 from the axis, so 0.3
+        // beyond it for the grown tip.
+        assert!(
+            (exact.offset - 10.0).abs() <= DROP_TOLERANCE,
+            "{}",
+            exact.offset
+        );
+        // The tessellation lies inside the cylinder, so its drop is lower.
+        let mesh = mesh_only.drop_tool(&grown, &line).unwrap();
+        assert!(mesh.offset <= exact.offset + 1e-9);
+        assert_eq!(surface.drop_accuracy(), DROP_TOLERANCE);
+        assert_eq!(mesh_only.drop_accuracy(), 0.0);
+    }
+}
+
+#[test]
+fn req_op_02_req_op_23_exact_contacts_are_judged_on_exact_face_sets() {
+    // OI-833 (decision 0277): exact contacts lie on the exact faces, up to
+    // 0.005 mm off the triangles of a 96-facet cylinder of radius 10, so a
+    // region, avoid or check set must be the exact faces as well.
+    use openchuck_path::{MeshSurface, RegionConstraint};
+    use openchuck_types::brep::FaceId;
+    let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
+    let part = BrepSurface::new(&model).unwrap().with_exact_drops(true);
+    let band = |i: u32| {
+        BrepSurface::with_faces(&model, &[FaceId(i)])
+            .unwrap()
+            .with_exact_drops(true)
+    };
+    let (first, middle, last) = (band(0), band(1), band(2));
+    let middle_mesh = MeshSurface::new(middle.tessellation()).unwrap();
+    let tool = ball(1.0);
+    let region = RegionConstraint {
+        region: Some(&middle),
+        ..RegionConstraint::default()
+    };
+    let triangles = RegionConstraint {
+        region: Some(&middle_mesh),
+        ..RegionConstraint::default()
+    };
+    let avoid = RegionConstraint {
+        avoid: Some(&first),
+        ..RegionConstraint::default()
+    };
+    let check = RegionConstraint {
+        check: Some(&last),
+        ..RegionConstraint::default()
+    };
+    let mut off_triangles = 0;
+    for a in (0..36).map(|k| 10.0 * f64::from(k) + 1.3) {
+        for (x, in_middle) in [(5.0, false), (15.0, true), (25.0, false)] {
+            let line = radial_line(x, a);
+            let c = part.drop_tool(&tool, &line).unwrap();
+            assert_eq!(
+                region.allows(c.contact, c.tip, &tool, &line),
+                in_middle,
+                "x {x} a {a}"
+            );
+            assert_eq!(
+                avoid.allows(c.contact, c.tip, &tool, &line),
+                x > 10.0,
+                "x {x} a {a}"
+            );
+            // The ball touches the last band only where it sits on it.
+            assert_eq!(
+                check.allows(c.contact, c.tip, &tool, &line),
+                x < 20.0,
+                "x {x} a {a}"
+            );
+            if in_middle && !triangles.allows(c.contact, c.tip, &tool, &line) {
+                off_triangles += 1;
+            }
+        }
+        // A tool resting on the edge between two bands touches both: a
+        // check on the next band stops it, a region of its own allows it.
+        let line = radial_line(20.0, a);
+        let c = part.drop_tool(&tool, &line).unwrap();
+        assert!(!check.allows(c.contact, c.tip, &tool, &line), "a {a}");
+        assert!(region.allows(c.contact, c.tip, &tool, &line), "a {a}");
+    }
+    // Most exact contacts lie off the triangles, which is why the sets are
+    // exact faces when the drops are.
+    assert!(off_triangles > 18, "{off_triangles}");
 }

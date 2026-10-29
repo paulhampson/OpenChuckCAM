@@ -151,6 +151,13 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
         self.project(point).map(|p| p.point.distance(point))
     }
 
+    /// Whether `point` lies within `max_distance` of the surface. The same
+    /// as comparing [`distance`](Self::distance), which a source may answer
+    /// more cheaply by searching only within the limit.
+    fn within(&self, point: Point3, max_distance: f64) -> bool {
+        self.distance(point).is_some_and(|d| d <= max_distance)
+    }
+
     /// The first surface point on the ray from `origin` along `direction`,
     /// no further than `max_distance`.
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit>;
@@ -164,6 +171,16 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
     /// point. `None` when the tool would not touch the surface anywhere on
     /// the line.
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact>;
+
+    /// How far, in millimetres, a [`drop_tool`](Self::drop_tool) answer may
+    /// lie below the highest contact on this surface: 0 for a drop solved
+    /// to rounding (a mesh, which is its own surface), the exact drop's
+    /// tolerance for a B-rep source dropping onto its exact faces (decision
+    /// 0277). Tests that compare two drops, or a contact with a surface,
+    /// accept differences within it (OI-833).
+    fn drop_accuracy(&self) -> f64 {
+        0.0
+    }
 
     /// The round holes of the selected surfaces, found from their cylindrical
     /// faces (OP-10; decision record 0051). Only an exact (B-rep) surface has
