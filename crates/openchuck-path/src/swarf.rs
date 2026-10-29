@@ -47,12 +47,15 @@
 //! 5. **The gate** (decision 0021 item 3; OP-12). After placement the face
 //!    is sampled across and along its rulings and each sample is measured
 //!    against the union of the tool at every pose and at points of the
-//!    machine's motion between poses. A face the tool cuts into by more
-//!    than the tolerance (beyond the stock to leave) is still cut, with a
-//!    warning naming the depth and the place, the twist and the tilt, the
-//!    tool taper that would remove the tilt where one exists, and the
-//!    tolerance to raise to accept it (decision record 0175, amending
-//!    decision record 0061 item 4). Material left beyond the
+//!    machine's motion between poses, all close enough together that the
+//!    gate's own error is at most [`GATE_RESOLUTION`] whatever the tolerance
+//!    (decision record 0272, amending decision record 0061 item 7). A face
+//!    the tool cuts into by more than the tolerance (beyond the stock to
+//!    leave) is still cut, with a warning naming the depth and the place,
+//!    the twist and the tilt, the tool taper that would remove the tilt
+//!    where one exists, and the tolerance to raise to accept it, checked by
+//!    making the face again at it ([`clearing_tolerance`]; decision record
+//!    0175, amending decision record 0061 item 4, and decision record 0272). Material left beyond the
 //!    allowance is silent within the tolerance, a note up to
 //!    `max_material_left`, and beyond that a refusal naming the amount,
 //!    where, and what to change (decision record 0061 item 7). The limit
@@ -62,6 +65,7 @@
 //! Everything here is deterministic (NFR-06): the only parallel work is the
 //! gate's sampling, through [`crate::parallel`].
 
+use std::collections::BTreeMap;
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -119,8 +123,13 @@ const GUARD_GRID: usize = 33;
 /// Bisections that find where the tool comes too close to an avoid or check
 /// surface.
 const GUARD_STEPS: u32 = 16;
-/// Points of the machine's motion between two poses the gate looks at.
+/// Points of the machine's motion between two poses the guards look at.
 const GATE_STEPS: usize = 4;
+/// The most the gate's own sampling may miss of the deepest cut or the
+/// most material left, in millimetres (decision record 0272).
+pub const GATE_RESOLUTION: f64 = 0.0005;
+/// The most steps the gate cuts one move into (NFR-07).
+const MAX_GATE_STEPS: usize = 4096;
 /// Samples of the directrix that find where the face has rulings.
 const SCAN: usize = 64;
 /// Bisections that refine an extent or a run end.
@@ -507,6 +516,16 @@ fn distance_to_piece(piece: &ProfilePiece, rho: f64, h: f64) -> f64 {
     }
 }
 
+/// A lower bound of [`clearance_at`] that costs two dot products: the tool
+/// lies within `radius` of its axis and above its tip, so a point is at
+/// least as far from it as from that half cylinder.
+fn bound_at(radius: f64, tip: Point3, axis: UnitVec3, p: Point3) -> f64 {
+    let w = p - tip;
+    let h = w.dot(axis.get());
+    let rho = (w - axis.get() * h).length();
+    (rho - radius).max(-h)
+}
+
 /// `clearance` for a model point against the tool at `tip` along `axis`.
 fn clearance_at(profile: &RevolvedProfile, tip: Point3, axis: UnitVec3, p: Point3) -> f64 {
     let w = p - tip;
@@ -786,19 +805,37 @@ impl FacePath {
     /// by more than `tolerance` (OP-12; decision record 0175, amending
     /// decision record 0061 item 4): the path is still made, and the
     /// warning names the depth and the place, why, and what the user can
-    /// change. `None` within the tolerance.
-    pub fn overcut_warning(&self, tolerance: f64) -> Option<String> {
+    /// change. The tolerance it advises is the one `clearing` found by
+    /// making the face again ([`clearing_tolerance`]; decision record 0272).
+    /// `None` within the tolerance.
+    pub fn overcut_warning(&self, tolerance: f64, clearing: Clearing) -> Option<String> {
         if self.gouge <= tolerance {
             return None;
         }
+        let own = if self.twist > 0.01 || self.max_tilt > NO_TILT {
+            " Most of this cut is the face's own error with this tool, so a tighter tolerance \
+             does not remove it."
+        } else {
+            ""
+        };
+        let accept = match clearing {
+            Clearing::At { tolerance: x, cut } => format!(
+                " To accept this cut, raise the Tolerance of this operation to at least {x:.4} \
+                 mm (in the operation inspector's parameters, where the field is marked): this \
+                 was checked, and at {x:.4} mm the face is cut {cut:.4} mm deep, within it."
+            ),
+            Clearing::NotFound { tolerance: x, cut } => format!(
+                " Raising the Tolerance does not clear this warning: at {x:.4} mm the face is \
+                 still cut {cut:.4} mm deep, because a looser tolerance also puts the tool's \
+                 positions further apart."
+            ),
+        };
         Some(format!(
             "Swarf on face {} cuts into the finished surface by {:.4} mm at ({:.3}, {:.3}, \
-             {:.3}), more than this operation's tolerance of {tolerance} mm.{}{} To accept this \
-             cut, raise the Tolerance of this operation to at least {:.4} mm (in the operation \
-             inspector's parameters, where the field is marked); to cut less into the face, use \
-             a tool with a smaller tool radius or the taper named here, or machine this face \
-             with another strategy. The program is made with this cut in it: check the program \
-             and the simulation before running it.",
+             {:.3}), more than this operation's tolerance of {tolerance} mm.{}{}{own}{accept} To \
+             cut less into the face, use a tool with a smaller tool radius or the taper named \
+             here, or machine this face with another strategy. The program is made with this cut \
+             in it: check the program and the simulation before running it.",
             self.number,
             self.gouge,
             self.gouge_at.x,
@@ -806,7 +843,6 @@ impl FacePath {
             self.gouge_at.z,
             self.describe_twist(),
             self.describe_tilt(),
-            self.gouge,
         ))
     }
 
@@ -1352,6 +1388,98 @@ fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<Point3> {
     points
 }
 
+/// What raising the tolerance does for a face the tool cuts into beyond it
+/// (decision record 0272): the face made again at the tolerance advised.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Clearing {
+    /// At `tolerance` the face is cut `cut` deep, within it: raising the
+    /// operation's tolerance to this clears the warning.
+    At {
+        /// The tolerance advised, in millimetres, at the four decimals shown.
+        tolerance: f64,
+        /// The deepest cut at that tolerance, in millimetres.
+        cut: f64,
+    },
+    /// No tolerance tried clears it: the last tolerance the face was made
+    /// at and its cut there.
+    NotFound {
+        /// The last tolerance the face was made at, in millimetres.
+        tolerance: f64,
+        /// The deepest cut at that tolerance, in millimetres.
+        cut: f64,
+    },
+}
+
+/// How many tolerances [`clearing_tolerance`] tries.
+pub const CLEARING_TRIES: usize = 4;
+
+/// `x` rounded up to the four decimals the warning shows, as the user would
+/// type it.
+fn up_to_shown(x: f64) -> f64 {
+    format!("{:.4}", (x * 1e4).ceil() / 1e4)
+        .parse()
+        .unwrap_or(x)
+}
+
+/// The tolerance to advise for `path`, the face made at `settings`, when the
+/// tool cuts into it beyond the tolerance (decision record 0272). A looser
+/// tolerance spaces the poses further apart, which can cut a little deeper,
+/// so the advice is checked: the face is made again at the cut, rounded up
+/// to the four decimals shown, and while the cut there is still beyond it,
+/// at that cut, up to [`CLEARING_TRIES`] times. Only cancellation fails it.
+/// When none clears, [`Clearing::NotFound`] names the last tolerance at
+/// which the face was made and its cut there (the operation's own, when
+/// the face could not be made at any tolerance tried).
+pub fn clearing_tolerance(
+    face: FaceRef<'_>,
+    path: &FacePath,
+    tool: &RevolvedProfile,
+    rotary: RotaryMapping,
+    settings: &Settings,
+    region: &RegionConstraint<'_>,
+    context: &JobContext<'_>,
+) -> Result<Clearing> {
+    search_clearing(settings.tolerance, path.gouge, |tolerance| {
+        let again = Settings {
+            tolerance,
+            ..*settings
+        };
+        face_path(face, tool, rotary, &again, region, context).map(|made| made.gouge)
+    })
+}
+
+/// The search of [`clearing_tolerance`], with `cut_at` making the face at a
+/// tolerance and giving its cut, from the operation's `tolerance` and `cut`.
+fn search_clearing(
+    tolerance: f64,
+    cut: f64,
+    mut cut_at: impl FnMut(f64) -> Result<f64>,
+) -> Result<Clearing> {
+    // The last tolerance the face was made at, and its cut.
+    let mut made = (tolerance, cut);
+    let mut next = up_to_shown(cut);
+    for _ in 0..CLEARING_TRIES {
+        match cut_at(next) {
+            Ok(cut) if cut <= next => {
+                return Ok(Clearing::At {
+                    tolerance: next,
+                    cut,
+                });
+            }
+            Ok(cut) => {
+                made = (next, cut);
+                next = up_to_shown(cut.max(next + 1e-4));
+            }
+            Err(PathError::Cancelled) => return Err(PathError::Cancelled),
+            Err(_) => break,
+        }
+    }
+    Ok(Clearing::NotFound {
+        tolerance: made.0,
+        cut: made.1,
+    })
+}
+
 /// Plans the swarf of one face: detection, placement, spacing, the limits
 /// of `region` and the gate. Fails when the face is not ruled, its rulings
 /// cannot be reached on four axes, a ruling is longer than the flank, the
@@ -1604,44 +1732,61 @@ pub fn face_path(
 
     // The gate: every sample of the face against the union of the tool
     // along the whole motion (decision record 0021 item 3).
+    let step = gate_step(radius);
+    // Each sample with the position of the tool at its own ruling, which
+    // gives the gate a close first clearance to prune the others by.
     let mut positions: Vec<(Point3, UnitVec3, Point3, f64)> = Vec::new();
+    let mut rulings: Vec<(f64, usize)> = Vec::new();
     for run in &out_runs {
         for (i, p) in run.iter().enumerate() {
+            let base = positions.len();
             positions.push((p.tip, p.axis, p.contact, p.ruling_length));
-            if let Some(q) = run.get(i + 1) {
-                positions.extend(motion(p, q, rotary));
-            }
-        }
-    }
-    let mut samples: Vec<Point3> = Vec::new();
-    for run in &out_runs {
-        for (i, p) in run.iter().enumerate() {
-            let mut ts = vec![p.t];
-            if let Some(q) = run.get(i + 1) {
-                ts.push(0.5 * (p.t + q.t));
-            }
-            for t in ts {
-                if let Some(r) = rule(t) {
-                    samples.extend(along_ruling(face, family, &r, GATE_SAMPLES));
-                }
-            }
-        }
-    }
-    let deviations: Vec<f64> = parallel::map_in_order(&samples, |p| {
-        let mut best = f64::INFINITY;
-        for (tip, axis, contact, length) in &positions {
-            if p.distance(*contact) > 0.5 * length + reach {
+            let Some(q) = run.get(i + 1) else {
+                rulings.push((p.t, base));
                 continue;
-            }
-            best = best.min(clearance_at(tool, *tip, *axis, *p) - leave);
+            };
+            let n = moves_of(p, q, step);
+            positions.extend(motion_in(p, q, rotary, n));
+            rulings.extend((0..n).map(|k| (p.t + (q.t - p.t) * k as f64 / n as f64, base + k)));
         }
+    }
+    let samples: Vec<(Point3, usize)> = parallel::map_in_order(&rulings, |(t, seed)| {
+        rule(*t).map_or_else(Vec::new, |r| {
+            along_ruling(face, family, &r, gate_count(&r, step))
+                .into_iter()
+                .map(|x| (x, *seed))
+                .collect::<Vec<_>>()
+        })
+    })
+    .into_iter()
+    .flatten()
+    .collect();
+    let near = Near::new(&positions, reach);
+    let deviations: Vec<f64> = parallel::map_in_order(&samples, |(p, seed)| {
+        let reaches = |(_, _, contact, length): &(Point3, UnitVec3, Point3, f64)| {
+            p.distance(*contact) <= 0.5 * length + reach
+        };
+        let mut best = positions
+            .get(*seed)
+            .filter(|x| reaches(x))
+            .map_or(f64::INFINITY, |(tip, axis, _, _)| {
+                clearance_at(tool, *tip, *axis, *p) - leave
+            });
+        near.each(*p, |i| {
+            if let Some(x @ (tip, axis, _, _)) = positions.get(i)
+                && reaches(x)
+                && bound_at(radius, *tip, *axis, *p) - leave < best
+            {
+                best = best.min(clearance_at(tool, *tip, *axis, *p) - leave);
+            }
+        });
         best
     });
     let mut gouge = 0.0f64;
     let mut gouge_at = Point3::ORIGIN;
     let mut left = 0.0f64;
     let mut left_at = Point3::ORIGIN;
-    for (p, d) in samples.iter().zip(&deviations) {
+    for ((p, _), d) in samples.iter().zip(&deviations) {
         if !d.is_finite() {
             continue;
         }
@@ -1735,8 +1880,99 @@ pub fn face_path(
     })
 }
 
+/// The gate's tool positions by where they cut: a grid of cells as wide as
+/// the furthest any position reaches from its contact, so the positions
+/// that can reach a sample are in its cell and the 26 around it. The gate
+/// takes the least clearance over them, which does not depend on the order
+/// they are visited in (NFR-06).
+struct Near {
+    cell: f64,
+    cells: BTreeMap<[i64; 3], Vec<usize>>,
+}
+
+impl Near {
+    fn new(positions: &[(Point3, UnitVec3, Point3, f64)], reach: f64) -> Self {
+        let cell = positions
+            .iter()
+            .map(|(_, _, _, length)| 0.5 * length + reach)
+            .fold(reach, f64::max);
+        let mut cells: BTreeMap<[i64; 3], Vec<usize>> = BTreeMap::new();
+        for (i, (_, _, contact, _)) in positions.iter().enumerate() {
+            cells.entry(Self::key(*contact, cell)).or_default().push(i);
+        }
+        Self { cell, cells }
+    }
+
+    fn key(p: Point3, cell: f64) -> [i64; 3] {
+        [
+            (p.x / cell).floor() as i64,
+            (p.y / cell).floor() as i64,
+            (p.z / cell).floor() as i64,
+        ]
+    }
+
+    /// Calls `visit` with each position whose cell is next to `p`'s.
+    fn each(&self, p: Point3, mut visit: impl FnMut(usize)) {
+        let [x, y, z] = Self::key(p, self.cell);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    if let Some(list) = self.cells.get(&[x + dx, y + dy, z + dz]) {
+                        list.iter().for_each(|i| visit(*i));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The spacing, in millimetres, at which the gate samples the motion and
+/// the face across the rulings for a tool of cutting radius `radius`: close
+/// enough that the deepest cut it finds is within [`GATE_RESOLUTION`] of the
+/// deepest between its samples (the cut beside a ruling varies about its
+/// deepest as the offset squared over twice the radius).
+fn gate_step(radius: f64) -> f64 {
+    (2.0 * (2.0 * radius.max(0.1) * GATE_RESOLUTION).sqrt()).max(0.005)
+}
+
+/// How many samples the gate takes along `ruling`: none further apart than
+/// `step`, and at least [`GATE_SAMPLES`].
+fn gate_count(ruling: &Ruling, step: f64) -> usize {
+    ((ruling.length() / step).ceil() as usize + 1).clamp(GATE_SAMPLES, MAX_GATE_STEPS)
+}
+
+/// How many steps the gate cuts the move from `p` to `q` into: none longer
+/// than `step` at the tip, at the contact or at the far end of the ruling.
+fn moves_of(p: &Pose, q: &Pose, step: f64) -> usize {
+    let top = |x: &Pose| x.tip + x.axis.get() * x.ruling_length;
+    let far = p
+        .tip
+        .distance(q.tip)
+        .max(p.contact.distance(q.contact))
+        .max(top(p).distance(top(q)));
+    ((far / step).ceil() as usize).clamp(1, MAX_GATE_STEPS)
+}
+
+/// The tool at `n - 1` evenly spaced points of the machine's motion from
+/// `p` to `q`, as (tip, axis, contact, ruling length).
+fn motion_in(
+    p: &Pose,
+    q: &Pose,
+    rotary: RotaryMapping,
+    n: usize,
+) -> Vec<(Point3, UnitVec3, Point3, f64)> {
+    (1..n)
+        .map(|k| {
+            let f = k as f64 / n as f64;
+            let (tip, axis) = between(p, q, f, rotary);
+            let contact = p.contact + (q.contact - p.contact) * f;
+            (tip, axis, contact, p.ruling_length.max(q.ruling_length))
+        })
+        .collect()
+}
+
 /// The tool at the points of the machine's motion from `p` to `q` that the
-/// gate and the guards look at, as (tip, axis, contact, ruling length).
+/// guards look at, as (tip, axis, contact, ruling length).
 fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, Point3, f64)> {
     (1..GATE_STEPS)
         .map(|k| {
@@ -2083,11 +2319,22 @@ fn swarf(
         if let Some(why) = path.refusal(limit) {
             return Err(PathError::Strategy(why));
         }
-        if let Some(message) = path.overcut_warning(settings.tolerance) {
-            warnings.push(PathWarning {
-                message,
-                parameter: Some(names::TOLERANCE.to_owned()),
-            });
+        if path.gouge > settings.tolerance {
+            let clearing = clearing_tolerance(
+                face,
+                &path,
+                input.tool,
+                input.rotary,
+                &settings,
+                region,
+                context,
+            )?;
+            if let Some(message) = path.overcut_warning(settings.tolerance, clearing) {
+                warnings.push(PathWarning {
+                    message,
+                    parameter: Some(names::TOLERANCE.to_owned()),
+                });
+            }
         }
         for broken in &path.limits.watched {
             if let Some((length, faces)) = watched.get_mut(broken.index) {
@@ -2135,4 +2382,47 @@ fn swarf(
         notes,
         warnings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decision record 0272 item 4: when no tolerance tried clears the
+    /// warning, it names a tolerance the face was made at and the cut there,
+    /// never the next one, which was not tried.
+    #[test]
+    fn req_op_12_req_nfr_12_an_unclear_advice_names_the_last_tolerance_made_and_its_cut() {
+        let mut tried = Vec::new();
+        let clearing = search_clearing(0.01, 0.0172, |t| {
+            tried.push(t);
+            Ok(2.0 * t)
+        });
+        assert_eq!(tried.len(), CLEARING_TRIES);
+        let last = *tried.last().unwrap_or(&0.0);
+        assert_eq!(
+            clearing,
+            Ok(Clearing::NotFound {
+                tolerance: last,
+                cut: 2.0 * last
+            })
+        );
+        // A face that cannot be made at the first tolerance tried: the
+        // operation's own tolerance and cut, which are true.
+        let clearing = search_clearing(0.01, 0.0172, |_| {
+            Err(PathError::Strategy("no rulings".to_owned()))
+        });
+        assert_eq!(
+            clearing,
+            Ok(Clearing::NotFound {
+                tolerance: 0.01,
+                cut: 0.0172
+            })
+        );
+        // Cancelled, the search fails.
+        assert_eq!(
+            search_clearing(0.01, 0.0172, |_| Err(PathError::Cancelled)),
+            Err(PathError::Cancelled)
+        );
+    }
 }

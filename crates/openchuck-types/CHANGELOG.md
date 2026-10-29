@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0
+
+- **Breaking family release (0.27.0, BUG-SWARF4, decision 0272):** `openchuck_path::swarf::FacePath::overcut_warning` takes a checked `Clearing`. No change in this crate; all family crates advance together under 0048. No project-schema migration.
+
 ## 0.26.0
 
 - **Breaking (0.26.0):** `ToolpathGroup` carries explicit `rotary_reset_after` segment indices for certified clear helical-pass boundaries (accepted 0247, #337). Host struct literals supply `Vec::new()` unless they certify eligible boundaries; copies retain the indices. Empty metadata defaults on deserialization and is omitted on serialization. Library family advances together to 0.26.0 under decision 0048.

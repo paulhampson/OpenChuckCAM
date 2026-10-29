@@ -2519,4 +2519,7 @@ mod smoke_tests;
 mod tool_library_tests;
 
 #[cfg(test)]
+mod tooltip_tests;
+
+#[cfg(test)]
 mod import_layout_tests;
