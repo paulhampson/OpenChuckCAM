@@ -8,8 +8,9 @@
 #   decision 0103) or .github/workflows/ turns them on, because the golden G-code tests read the
 #   posts and testdata/ and the workflow is part of what is tested.
 # - `records` and `any` still see Markdown, because `cargo xtask records`, `testdata`, `trace` and
-#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/open-items.md and others), so
-#   Fast checks run on a Markdown-only pull request and the heavy jobs do not.
+#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/work-breakdown.md,
+#   docs/dependencies.md, docs/open-items.md and docs/decisions/**), so Fast checks run on a
+#   Markdown-only pull request that changes one of those, and the heavy jobs do not.
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
@@ -74,6 +75,11 @@ jobs:
               - 'docs/requirements.md'
               - 'docs/work-breakdown.md'
               - 'docs/dependencies.md'
+              # The register checks of `cargo xtask records` (registers.rs) read the open-items
+              # register, the decision index and the decision file names; `deps` checks that the
+              # record an allow-list entry names exists (decisions 0249 addendum, OI-1000).
+              - 'docs/open-items.md'
+              - 'docs/decisions/**'
               - 'testdata/**'
             # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
             any:
@@ -400,6 +406,15 @@ jobs:
         run: |
           cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
           cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
+      # The exact face and trim queries on the corpus (lane STEPALL-X1, OI-839), and the measuring
+      # example built so it keeps compiling. The measurement itself is run by hand.
+      # bash, so the test's failure is not hidden behind the build on the Windows leg (pwsh
+      # reports only the last command's exit code).
+      - name: STEP exact queries
+        shell: bash
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_queries
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_queries
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

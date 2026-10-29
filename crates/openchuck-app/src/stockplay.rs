@@ -128,6 +128,7 @@ impl StockPlayback {
         partial.duration.0 *= fraction;
         partial.contact_length.0 *= fraction;
         let partial = openchuck_types::ir::ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: original.tags.clone(),
             start,
             segments: vec![partial],

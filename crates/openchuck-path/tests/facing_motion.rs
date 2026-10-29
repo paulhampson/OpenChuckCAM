@@ -26,6 +26,7 @@ fn machine() -> MachineProfile {
 }
 fn group() -> ToolpathGroup {
     ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: PathTags {
             operation: "op".into(),
             setup: "setup".into(),

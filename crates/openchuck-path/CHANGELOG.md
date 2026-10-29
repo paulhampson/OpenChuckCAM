@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- **Breaking (0.26.0):** `Pass::helical_pass_start` distinguishes complete roughing-layer helices from fragments. Host struct literals use `false` for ordinary cuts/fragments, marking only the first retained fragment of a complete helix as `true`. Assembly marks existing clear transitions without changing any physical segment; connections preserve/remap indices. Existing limited-axis fitting/refusal is unchanged (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
@@ -12,6 +16,8 @@
 All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
+
+- STEPALL-X1 (issue #348, decision 0260): exact face and trim queries. `ExactFace::closest` no longer answers a point on a face's own boundary on the wrong edge (OI-839: a seam face's rim was one segment whose ends meet, and the sample search bracketed the wrong end). Trim loops are indexed (strips in v for the trim test; per-segment bounds from first- and second-derivative bounds for the boundary search), B-spline faces search a tree of Bezier hull cells (branch and bound to `brep::SEARCH_TOLERANCE`, 1e-6 mm), and faces are visited from a boundary-point upper bound. Additive API: `ExactFace::closest_within` / `closest_from`, `BrepSurface::project_within` / `project_from` / `faces_near` / `faces_in_reach`. Answers are never further than before on the corpus and blisk benchmark; tool drops still use the tessellation (OI-81).
 
 - FACING review fixes: preserve cancellation from restricted legacy Flat completion; describe End/Box, arbitrary A and coverage choices in strategy metadata. Completion still refuses every other unfinished/unsupported result with its existing reason.
 

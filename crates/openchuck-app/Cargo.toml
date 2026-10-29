@@ -29,6 +29,12 @@ required-features = ["kernel-tests"]
 name = "pencil_creases"
 required-features = ["kernel-tests"]
 
+# The exact face and trim queries, measured for correctness and cost (lane
+# STEPALL-X1, issue 348): it reads STEP files, so it needs the kernel.
+[[example]]
+name = "step_queries"
+required-features = ["kernel-tests"]
+
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true

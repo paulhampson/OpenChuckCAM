@@ -1,0 +1,518 @@
+Decision 0260 benchmark evidence (lane STEPALL-X1, issue #348), 28 Oct 2026 (Europe/London).
+
+Machine: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 CPUs, 15 GB, cloud container; release build; one thread; nothing else running.
+Source: crates/openchuck-app/examples/step_queries.rs, identical for both sides (it uses only ExactFace::closest,
+BrepSurface::distance and BrepSurface::drop_tool, which exist before and after).
+  before: main 33a835db7d0c4748f20ee79c5065f1552bdf0ab3 with the example added (binary sha256 9601f377...)
+  after:  this branch's final source (binary sha256 f32f75e9...); the after side was run again on the final source, the before side is unchanged
+Inputs: testdata/step/valid/*.step at default import options, unplaced; blisk.step sha256 0e472ff5374c6bc4... (OI-832).
+Commands (OPENCHUCK_STEP_WORKER set to the release worker):
+  step_queries --out DIR --parts box,cylinder,cone,sphere,torus,filleted_box,rotary_blank_drilled,bspline_face,revolved_spline,revolved_spline_partial,extruded_spline,hex_bar,shouldered_shaft
+  step_queries --out DIR --parts blisk --stride 4
+  step_queries --compare BEFORE_DIR AFTER_DIR
+Per-answer TSV files (38 MB) are not committed; the commands regenerate them.
+
+Counts: corpus every vertex (on/off/model 66,351 points each; mesh/drop 8,300 lines); blisk every 4th vertex (2,393; 300).
+
+==== before: corpus
+box: 6 faces, 12 triangles, import 0.02 s, build 0.000 s
+  drop  Plane     n      3  mean     1136.3 us  max     1420.5 us
+  mesh  Plane     n      3  mean        8.7 us  max        9.3 us
+  model Plane     n     24  mean       67.3 us  max       94.2 us
+  off   Plane     n     24  mean       18.6 us  max       29.5 us
+  on    Plane     n     24  mean       20.2 us  max       57.1 us
+  drop  all       n      3  mean     1136.3 us  total 0.003 s
+  mesh  all       n      3  mean        8.7 us  total 0.000 s
+  model all       n     24  mean       67.3 us  total 0.002 s
+  off   all       n     24  mean       18.6 us  total 0.000 s
+  on    all       n     24  mean       20.2 us  total 0.000 s
+cylinder: 3 faces, 500 triangles, import 0.02 s, build 0.001 s
+  drop  Cylinder  n     32  mean     7011.6 us  max     7658.2 us
+  drop  Plane     n     32  mean     8265.1 us  max    10677.1 us
+  mesh  Cylinder  n     32  mean       27.1 us  max       48.0 us
+  mesh  Plane     n     32  mean       55.6 us  max      125.0 us
+  model Cylinder  n    254  mean      382.0 us  max      562.9 us
+  model Plane     n    252  mean      378.1 us  max      505.1 us
+  off   Cylinder  n    254  mean       11.9 us  max       57.0 us
+  off   Plane     n    252  mean      355.0 us  max     1619.5 us
+  on    Cylinder  n    254  mean       12.1 us  max       91.6 us
+  on    Plane     n    252  mean      352.2 us  max      599.4 us  WRONG 240 (worst 0.0214 mm)
+  drop  all       n     64  mean     7638.4 us  total 0.489 s
+  mesh  all       n     64  mean       41.3 us  total 0.003 s
+  model all       n    506  mean      380.1 us  total 0.192 s
+  off   all       n    506  mean      182.8 us  total 0.092 s
+  on    all       n    506  mean      181.5 us  total 0.092 s
+cone: 3 faces, 2194 triangles, import 0.06 s, build 0.002 s
+  drop  Cone      n    139  mean     1753.9 us  max    10541.3 us
+  drop  Plane     n     32  mean     7271.3 us  max     8119.3 us
+  mesh  Cone      n    139  mean       27.3 us  max       72.3 us
+  mesh  Plane     n     32  mean       21.3 us  max       48.0 us
+  model Cone      n   1112  mean       82.8 us  max     3025.6 us
+  model Plane     n    252  mean      448.0 us  max     1053.5 us
+  off   Cone      n   1112  mean        0.8 us  max       33.0 us
+  off   Plane     n    252  mean      359.3 us  max     1570.5 us
+  on    Cone      n   1112  mean        3.6 us  max       76.8 us  WRONG 13 (worst 4.1634 mm)
+  on    Plane     n    252  mean      348.3 us  max      651.2 us  WRONG 240 (worst 0.0256 mm)
+  drop  all       n    171  mean     2786.4 us  total 0.476 s
+  mesh  all       n    171  mean       26.2 us  total 0.004 s
+  model all       n   1364  mean      150.2 us  total 0.205 s
+  off   all       n   1364  mean       67.1 us  total 0.091 s
+  on    all       n   1364  mean       67.3 us  total 0.092 s
+sphere: 1 faces, 15024 triangles, import 0.19 s, build 0.014 s
+  drop  Sphere    n    948  mean        7.9 us  max       68.5 us
+  mesh  Sphere    n    948  mean       23.4 us  max      387.9 us
+  model Sphere    n   7577  mean        0.4 us  max       32.8 us
+  off   Sphere    n   7577  mean        0.4 us  max       22.4 us
+  on    Sphere    n   7577  mean        0.4 us  max       59.8 us
+  drop  all       n    948  mean        7.9 us  total 0.007 s
+  mesh  all       n    948  mean       23.4 us  total 0.022 s
+  model all       n   7577  mean        0.4 us  total 0.003 s
+  off   all       n   7577  mean        0.4 us  total 0.003 s
+  on    all       n   7577  mean        0.4 us  total 0.003 s
+torus: 1 faces, 31752 triangles, import 0.47 s, build 0.038 s
+  drop  Torus     n   2017  mean        8.8 us  max      364.3 us
+  mesh  Torus     n   2017  mean       27.8 us  max      321.9 us
+  model Torus     n  16129  mean        0.4 us  max       37.4 us
+  off   Torus     n  16129  mean        0.4 us  max       92.0 us
+  on    Torus     n  16129  mean        0.4 us  max      108.5 us
+  drop  all       n   2017  mean        8.8 us  total 0.018 s
+  mesh  all       n   2017  mean       27.8 us  total 0.056 s
+  model all       n  16129  mean        0.4 us  total 0.007 s
+  off   all       n  16129  mean        0.4 us  total 0.006 s
+  on    all       n  16129  mean        0.4 us  total 0.007 s
+filleted_box: 26 faces, 9460 triangles, import 0.09 s, build 0.008 s
+  drop  Cylinder  n     99  mean    16817.2 us  max    45686.3 us
+  drop  Plane     n      3  mean    18518.2 us  max    29469.8 us
+  drop  Sphere    n    592  mean    12054.4 us  max    39603.5 us
+  mesh  Cylinder  n     99  mean       40.6 us  max       72.0 us
+  mesh  Plane     n      3  mean       42.0 us  max       55.6 us
+  mesh  Sphere    n    592  mean       42.5 us  max      137.1 us
+  model Cylinder  n    792  mean      955.1 us  max     3550.2 us
+  model Plane     n     24  mean     1077.1 us  max     1762.2 us
+  model Sphere    n   4736  mean      623.6 us  max     4741.8 us
+  off   Cylinder  n    792  mean      212.3 us  max      863.3 us
+  off   Plane     n     24  mean       23.1 us  max       78.6 us
+  off   Sphere    n   4736  mean        0.5 us  max       30.9 us
+  on    Cylinder  n    792  mean      216.7 us  max      864.0 us
+  on    Plane     n     24  mean       23.5 us  max       58.0 us
+  on    Sphere    n   4736  mean       66.5 us  max     1361.1 us
+  drop  all       n    694  mean    12761.7 us  total 8.857 s
+  mesh  all       n    694  mean       42.2 us  total 0.029 s
+  model all       n   5552  mean      672.9 us  total 3.736 s
+  off   all       n   5552  mean       30.8 us  total 0.171 s
+  on    all       n   5552  mean       87.7 us  total 0.487 s
+rotary_blank_drilled: 4 faces, 1168 triangles, import 0.03 s, build 0.001 s
+  drop  Cylinder  n    116  mean    13074.6 us  max    34772.2 us
+  drop  Plane     n     31  mean    27297.3 us  max    37930.3 us
+  mesh  Cylinder  n    116  mean      116.7 us  max      592.9 us
+  mesh  Plane     n     31  mean       64.1 us  max      139.1 us
+  model Cylinder  n    922  mean     1048.2 us  max     4751.4 us
+  model Plane     n    252  mean     1239.3 us  max     1585.5 us
+  off   Cylinder  n    922  mean      315.8 us  max     2365.5 us
+  off   Plane     n    252  mean      323.1 us  max      508.3 us
+  on    Cylinder  n    922  mean      280.6 us  max     4969.6 us  WRONG 29 (worst 0.0023 mm)
+  on    Plane     n    252  mean      322.8 us  max      443.6 us  WRONG 240 (worst 0.0256 mm)
+  drop  all       n    147  mean    16073.9 us  total 2.363 s
+  mesh  all       n    147  mean      105.6 us  total 0.016 s
+  model all       n   1174  mean     1089.2 us  total 1.279 s
+  off   all       n   1174  mean      317.4 us  total 0.373 s
+  on    all       n   1174  mean      289.7 us  total 0.340 s
+bspline_face: 1 faces, 1614 triangles, import 0.02 s, build 0.001 s
+  drop  BSpline   n    106  mean     6517.3 us  max    12605.7 us
+  mesh  BSpline   n    106  mean       63.7 us  max      185.8 us
+  model BSpline   n    842  mean      315.5 us  max      789.5 us
+  off   BSpline   n    842  mean      323.3 us  max     1127.5 us
+  on    BSpline   n    842  mean      323.4 us  max      930.8 us
+  drop  all       n    106  mean     6517.3 us  total 0.691 s
+  mesh  all       n    106  mean       63.7 us  total 0.007 s
+  model all       n    842  mean      315.5 us  total 0.266 s
+  off   all       n    842  mean      323.3 us  total 0.272 s
+  on    all       n    842  mean      323.4 us  total 0.272 s
+revolved_spline: 1 faces, 29538 triangles, import 0.94 s, build 0.026 s
+  drop  Other     n   1876  mean    12462.4 us  max    40883.5 us
+  mesh  Other     n   1876  mean       60.1 us  max     1494.0 us
+  model Other     n  15006  mean      646.4 us  max     7229.0 us
+  off   Other     n  15006  mean      615.0 us  max     7713.4 us
+  on    Other     n  15006  mean      621.1 us  max     6412.3 us
+  drop  all       n   1876  mean    12462.4 us  total 23.379 s
+  mesh  all       n   1876  mean       60.1 us  total 0.113 s
+  model all       n  15006  mean      646.4 us  total 9.701 s
+  off   all       n  15006  mean      615.0 us  total 9.229 s
+  on    all       n  15006  mean      621.1 us  total 9.320 s
+revolved_spline_partial: 1 faces, 16644 triangles, import 0.39 s, build 0.025 s
+  drop  Other     n   1063  mean     9662.5 us  max    20555.7 us
+  mesh  Other     n   1063  mean       47.1 us  max      297.4 us
+  model Other     n   8503  mean      479.7 us  max     3319.2 us
+  off   Other     n   8503  mean      503.6 us  max     5956.1 us
+  on    Other     n   8503  mean      506.7 us  max     3376.6 us
+  drop  all       n   1063  mean     9662.5 us  total 10.271 s
+  mesh  all       n   1063  mean       47.1 us  total 0.050 s
+  model all       n   8503  mean      479.7 us  total 4.079 s
+  off   all       n   8503  mean      503.6 us  total 4.282 s
+  on    all       n   8503  mean      506.7 us  total 4.309 s
+extruded_spline: 6 faces, 7450 triangles, import 0.09 s, build 0.006 s
+  drop  Other     n    466  mean     8952.1 us  max    27400.3 us
+  drop  Plane     n     26  mean    14457.7 us  max    24087.8 us
+  mesh  Other     n    466  mean       69.5 us  max      280.2 us
+  mesh  Plane     n     26  mean       37.5 us  max       61.4 us
+  model Other     n   3723  mean      429.3 us  max     4597.8 us
+  model Plane     n    206  mean      752.0 us  max     1510.8 us
+  off   Other     n   3723  mean      370.9 us  max     1726.0 us
+  off   Plane     n    206  mean      175.8 us  max      658.7 us
+  on    Other     n   3723  mean      372.2 us  max     2199.7 us
+  on    Plane     n    206  mean      173.1 us  max      482.3 us  WRONG 78 (worst 0.0111 mm)
+  drop  all       n    492  mean     9243.1 us  total 4.548 s
+  mesh  all       n    492  mean       67.8 us  total 0.033 s
+  model all       n   3929  mean      446.3 us  total 1.753 s
+  off   all       n   3929  mean      360.6 us  total 1.417 s
+  on    all       n   3929  mean      361.7 us  total 1.421 s
+hex_bar: 8 faces, 20 triangles, import 0.02 s, build 0.000 s
+  drop  Plane     n      5  mean     1613.3 us  max     1810.6 us
+  mesh  Plane     n      5  mean       14.7 us  max       25.9 us
+  model Plane     n     36  mean       78.6 us  max      129.9 us
+  off   Plane     n     36  mean       19.3 us  max       42.9 us
+  on    Plane     n     36  mean       18.8 us  max       44.6 us
+  drop  all       n      5  mean     1613.3 us  total 0.008 s
+  mesh  all       n      5  mean       14.7 us  total 0.000 s
+  model all       n     36  mean       78.6 us  total 0.003 s
+  off   all       n     36  mean       19.3 us  total 0.001 s
+  on    all       n     36  mean       18.8 us  total 0.001 s
+shouldered_shaft: 8 faces, 9572 triangles, import 0.10 s, build 0.008 s
+  drop  Cylinder  n     95  mean     9282.5 us  max    16820.3 us
+  drop  Plane     n     95  mean     9970.1 us  max    20430.2 us
+  drop  Torus     n    524  mean    11609.8 us  max    24766.5 us
+  mesh  Cylinder  n     95  mean       35.9 us  max      109.4 us
+  mesh  Plane     n     95  mean       49.5 us  max      145.5 us
+  mesh  Torus     n    524  mean      132.9 us  max      450.2 us
+  model Cylinder  n    762  mean      353.9 us  max     1668.3 us
+  model Plane     n    756  mean      400.5 us  max     3043.9 us
+  model Torus     n   4191  mean      585.9 us  max     3149.3 us
+  off   Cylinder  n    762  mean       13.1 us  max       74.8 us
+  off   Plane     n    756  mean      351.0 us  max     1119.2 us
+  off   Torus     n   4191  mean        2.5 us  max       78.8 us
+  on    Cylinder  n    762  mean       13.4 us  max       96.4 us
+  on    Plane     n    756  mean      351.1 us  max     1033.6 us  WRONG 480 (worst 0.0256 mm)
+  on    Torus     n   4191  mean        1.5 us  max      100.1 us  WRONG 14 (worst 3.4214 mm)
+  drop  all       n    714  mean    11082.0 us  total 7.913 s
+  mesh  all       n    714  mean      108.9 us  total 0.078 s
+  model all       n   5709  mean      530.4 us  total 3.028 s
+  off   all       n   5709  mean       50.0 us  total 0.286 s
+  on    all       n   5709  mean       49.4 us  total 0.282 s
+
+==== before: blisk
+blisk: 25 faces, 15936 triangles, import 0.34 s, build 0.040 s
+  drop  BSpline   n    209  mean   654857.7 us  max  2643256.6 us
+  drop  Cone      n     48  mean   939035.9 us  max  2374935.8 us
+  drop  Cylinder  n     27  mean   837975.0 us  max  1791888.6 us
+  drop  Plane     n     16  mean   880024.4 us  max  2722840.8 us
+  mesh  BSpline   n    209  mean       69.4 us  max      128.9 us
+  mesh  Cone      n     48  mean       66.6 us  max      122.3 us
+  mesh  Cylinder  n     27  mean       39.5 us  max       78.0 us
+  mesh  Plane     n     16  mean       58.0 us  max      111.1 us
+  model BSpline   n   1674  mean    41286.6 us  max   263835.3 us
+  model Cone      n    378  mean    61123.6 us  max   195111.5 us
+  model Cylinder  n    211  mean    37662.5 us  max   129598.8 us
+  model Plane     n    130  mean    46681.5 us  max   150219.4 us
+  off   BSpline   n   1674  mean     2398.0 us  max    44106.1 us
+  off   Cone      n    378  mean       15.2 us  max     1304.4 us
+  off   Cylinder  n    211  mean     1675.7 us  max     4802.5 us
+  off   Plane     n    130  mean     2024.6 us  max     9158.3 us
+  on    BSpline   n   1674  mean     3663.0 us  max    49917.0 us
+  on    Cone      n    378  mean      324.2 us  max     1763.8 us  WRONG 13 (worst 0.0012 mm)
+  on    Cylinder  n    211  mean     1369.2 us  max     8883.5 us  WRONG 25 (worst 0.0024 mm)
+  on    Plane     n    130  mean     1992.6 us  max     7758.6 us  WRONG 43 (worst 0.0428 mm)
+  drop  all       n    300  mean   728815.7 us  total 218.645 s
+  mesh  all       n    300  mean       65.6 us  total 0.020 s
+  model all       n   2393  mean    44393.6 us  total 106.234 s
+  off   all       n   2393  mean     1937.7 us  total 4.637 s
+  on    all       n   2393  mean     2842.6 us  total 6.802 s
+
+==== after: corpus
+box: 6 faces, 12 triangles, import 0.02 s, build 0.000 s
+  drop  Plane     n      3  mean       40.2 us  max       57.3 us
+  mesh  Plane     n      3  mean        7.4 us  max        8.2 us
+  model Plane     n     24  mean        1.9 us  max        2.4 us
+  off   Plane     n     24  mean        0.5 us  max        0.8 us
+  on    Plane     n     24  mean        1.0 us  max        6.7 us
+  drop  all       n      3  mean       40.2 us  total 0.000 s
+  mesh  all       n      3  mean        7.4 us  total 0.000 s
+  model all       n     24  mean        1.9 us  total 0.000 s
+  off   all       n     24  mean        0.5 us  total 0.000 s
+  on    all       n     24  mean        1.0 us  total 0.000 s
+cylinder: 3 faces, 500 triangles, import 0.02 s, build 0.001 s
+  drop  Cylinder  n     32  mean       64.7 us  max      194.9 us
+  drop  Plane     n     32  mean       91.9 us  max      127.3 us
+  mesh  Cylinder  n     32  mean       20.5 us  max       38.7 us
+  mesh  Plane     n     32  mean       28.6 us  max       97.4 us
+  model Cylinder  n    254  mean        3.4 us  max       39.2 us
+  model Plane     n    252  mean        5.3 us  max       26.3 us
+  off   Cylinder  n    254  mean        2.1 us  max        5.9 us
+  off   Plane     n    252  mean        4.3 us  max       30.6 us
+  on    Cylinder  n    254  mean        2.7 us  max       29.4 us
+  on    Plane     n    252  mean        5.1 us  max       55.2 us  WRONG 240 (worst 0.0214 mm)
+  drop  all       n     64  mean       78.3 us  total 0.005 s
+  mesh  all       n     64  mean       24.6 us  total 0.002 s
+  model all       n    506  mean        4.3 us  total 0.002 s
+  off   all       n    506  mean        3.2 us  total 0.002 s
+  on    all       n    506  mean        3.9 us  total 0.002 s
+cone: 3 faces, 2194 triangles, import 0.06 s, build 0.002 s
+  drop  Cone      n    139  mean       18.5 us  max      156.0 us
+  drop  Plane     n     32  mean      116.8 us  max      177.2 us
+  mesh  Cone      n    139  mean       22.0 us  max       53.5 us
+  mesh  Plane     n     32  mean       11.8 us  max       22.0 us
+  model Cone      n   1112  mean        1.0 us  max       90.5 us
+  model Plane     n    252  mean        7.1 us  max       26.9 us
+  off   Cone      n   1112  mean        0.5 us  max        9.1 us
+  off   Plane     n    252  mean        4.6 us  max       37.6 us
+  on    Cone      n   1112  mean        1.1 us  max       35.6 us
+  on    Plane     n    252  mean        6.2 us  max       52.8 us  WRONG 240 (worst 0.0256 mm)
+  drop  all       n    171  mean       36.9 us  total 0.006 s
+  mesh  all       n    171  mean       20.1 us  total 0.003 s
+  model all       n   1364  mean        2.1 us  total 0.003 s
+  off   all       n   1364  mean        1.2 us  total 0.002 s
+  on    all       n   1364  mean        2.0 us  total 0.003 s
+sphere: 1 faces, 15024 triangles, import 0.19 s, build 0.017 s
+  drop  Sphere    n    948  mean        9.1 us  max       91.3 us
+  mesh  Sphere    n    948  mean       25.3 us  max      405.9 us
+  model Sphere    n   7577  mean        0.6 us  max      470.7 us
+  off   Sphere    n   7577  mean        0.4 us  max       30.0 us
+  on    Sphere    n   7577  mean        0.4 us  max       32.6 us
+  drop  all       n    948  mean        9.1 us  total 0.009 s
+  mesh  all       n    948  mean       25.3 us  total 0.024 s
+  model all       n   7577  mean        0.6 us  total 0.005 s
+  off   all       n   7577  mean        0.4 us  total 0.003 s
+  on    all       n   7577  mean        0.4 us  total 0.003 s
+torus: 1 faces, 31752 triangles, import 0.52 s, build 0.033 s
+  drop  Torus     n   2017  mean       13.1 us  max      254.2 us
+  mesh  Torus     n   2017  mean       31.9 us  max      170.4 us
+  model Torus     n  16129  mean        0.6 us  max      121.0 us
+  off   Torus     n  16129  mean        0.4 us  max       71.5 us
+  on    Torus     n  16129  mean        0.4 us  max      202.3 us
+  drop  all       n   2017  mean       13.1 us  total 0.026 s
+  mesh  all       n   2017  mean       31.9 us  total 0.064 s
+  model all       n  16129  mean        0.6 us  total 0.010 s
+  off   all       n  16129  mean        0.4 us  total 0.007 s
+  on    all       n  16129  mean        0.4 us  total 0.007 s
+filleted_box: 26 faces, 9460 triangles, import 0.09 s, build 0.009 s
+  drop  Cylinder  n     99  mean      177.1 us  max     1969.0 us
+  drop  Plane     n      3  mean      172.7 us  max      204.7 us
+  drop  Sphere    n    592  mean      110.7 us  max      846.1 us
+  mesh  Cylinder  n     99  mean       28.5 us  max       66.7 us
+  mesh  Plane     n      3  mean       30.0 us  max       50.0 us
+  mesh  Sphere    n    592  mean       27.1 us  max      103.4 us
+  model Cylinder  n    792  mean        7.8 us  max       46.3 us
+  model Plane     n     24  mean       17.5 us  max       36.7 us
+  model Sphere    n   4736  mean        5.6 us  max       55.5 us
+  off   Cylinder  n    792  mean        3.1 us  max       28.8 us
+  off   Plane     n     24  mean        0.6 us  max        1.6 us
+  off   Sphere    n   4736  mean        0.4 us  max       26.6 us
+  on    Cylinder  n    792  mean        2.4 us  max       52.4 us
+  on    Plane     n     24  mean        1.7 us  max       12.0 us
+  on    Sphere    n   4736  mean        0.9 us  max       83.7 us
+  drop  all       n    694  mean      120.4 us  total 0.084 s
+  mesh  all       n    694  mean       27.3 us  total 0.019 s
+  model all       n   5552  mean        6.0 us  total 0.033 s
+  off   all       n   5552  mean        0.8 us  total 0.004 s
+  on    all       n   5552  mean        1.1 us  total 0.006 s
+rotary_blank_drilled: 4 faces, 1168 triangles, import 0.04 s, build 0.001 s
+  drop  Cylinder  n    116  mean      134.7 us  max      424.9 us
+  drop  Plane     n     31  mean      226.7 us  max      294.6 us
+  mesh  Cylinder  n    116  mean      124.5 us  max      534.3 us
+  mesh  Plane     n     31  mean       51.4 us  max       91.6 us
+  model Cylinder  n    922  mean       10.8 us  max       70.0 us
+  model Plane     n    252  mean       11.8 us  max       61.1 us
+  off   Cylinder  n    922  mean        6.4 us  max     1155.2 us
+  off   Plane     n    252  mean        5.6 us  max       53.6 us
+  on    Cylinder  n    922  mean        6.7 us  max     1775.5 us  WRONG 29 (worst 0.0023 mm)
+  on    Plane     n    252  mean        6.4 us  max       39.9 us  WRONG 240 (worst 0.0256 mm)
+  drop  all       n    147  mean      154.1 us  total 0.023 s
+  mesh  all       n    147  mean      109.1 us  total 0.016 s
+  model all       n   1174  mean       11.0 us  total 0.013 s
+  off   all       n   1174  mean        6.2 us  total 0.007 s
+  on    all       n   1174  mean        6.6 us  total 0.008 s
+bspline_face: 1 faces, 1614 triangles, import 0.02 s, build 0.003 s
+  drop  BSpline   n    106  mean      636.6 us  max      890.1 us
+  mesh  BSpline   n    106  mean       58.9 us  max      128.0 us
+  model BSpline   n    842  mean       32.2 us  max       85.2 us
+  off   BSpline   n    842  mean       40.3 us  max      175.2 us
+  on    BSpline   n    842  mean       25.7 us  max      115.6 us
+  drop  all       n    106  mean      636.6 us  total 0.067 s
+  mesh  all       n    106  mean       58.9 us  total 0.006 s
+  model all       n    842  mean       32.2 us  total 0.027 s
+  off   all       n    842  mean       40.3 us  total 0.034 s
+  on    all       n    842  mean       25.7 us  total 0.022 s
+revolved_spline: 1 faces, 29538 triangles, import 0.94 s, build 0.032 s
+  drop  Other     n   1876  mean     2593.7 us  max     8787.2 us
+  mesh  Other     n   1876  mean       37.3 us  max      520.1 us
+  model Other     n  15006  mean      133.1 us  max     4499.2 us
+  off   Other     n  15006  mean      134.0 us  max    11643.1 us
+  on    Other     n  15006  mean       90.8 us  max     2713.8 us
+  drop  all       n   1876  mean     2593.7 us  total 4.866 s
+  mesh  all       n   1876  mean       37.3 us  total 0.070 s
+  model all       n  15006  mean      133.1 us  total 1.997 s
+  off   all       n  15006  mean      134.0 us  total 2.011 s
+  on    all       n  15006  mean       90.8 us  total 1.362 s
+revolved_spline_partial: 1 faces, 16644 triangles, import 0.40 s, build 0.025 s
+  drop  Other     n   1063  mean     2053.0 us  max     6648.9 us
+  mesh  Other     n   1063  mean       35.9 us  max      118.8 us
+  model Other     n   8503  mean       91.6 us  max     1225.5 us
+  off   Other     n   8503  mean      104.6 us  max     1267.9 us
+  on    Other     n   8503  mean       60.8 us  max     2257.6 us
+  drop  all       n   1063  mean     2053.0 us  total 2.182 s
+  mesh  all       n   1063  mean       35.9 us  total 0.038 s
+  model all       n   8503  mean       91.6 us  total 0.779 s
+  off   all       n   8503  mean      104.6 us  total 0.889 s
+  on    all       n   8503  mean       60.8 us  total 0.517 s
+extruded_spline: 6 faces, 7450 triangles, import 0.10 s, build 0.007 s
+  drop  Other     n    466  mean      845.0 us  max     3547.0 us
+  drop  Plane     n     26  mean      307.0 us  max      415.9 us
+  mesh  Other     n    466  mean       58.9 us  max      238.2 us
+  mesh  Plane     n     26  mean       31.3 us  max      129.9 us
+  model Other     n   3723  mean       44.5 us  max     2896.7 us
+  model Plane     n    206  mean       15.1 us  max       41.5 us
+  off   Other     n   3723  mean       48.0 us  max      439.2 us
+  off   Plane     n    206  mean        2.0 us  max       21.5 us
+  on    Other     n   3723  mean       28.4 us  max      287.4 us
+  on    Plane     n    206  mean        2.5 us  max       14.6 us  WRONG 78 (worst 0.0111 mm)
+  drop  all       n    492  mean      816.6 us  total 0.402 s
+  mesh  all       n    492  mean       57.5 us  total 0.028 s
+  model all       n   3929  mean       42.9 us  total 0.169 s
+  off   all       n   3929  mean       45.6 us  total 0.179 s
+  on    all       n   3929  mean       27.1 us  total 0.106 s
+hex_bar: 8 faces, 20 triangles, import 0.03 s, build 0.000 s
+  drop  Plane     n      5  mean       42.3 us  max       76.3 us
+  mesh  Plane     n      5  mean       14.4 us  max       25.1 us
+  model Plane     n     36  mean        2.0 us  max        2.5 us
+  off   Plane     n     36  mean        0.6 us  max        1.5 us
+  on    Plane     n     36  mean        0.9 us  max        6.7 us
+  drop  all       n      5  mean       42.3 us  total 0.000 s
+  mesh  all       n      5  mean       14.4 us  total 0.000 s
+  model all       n     36  mean        2.0 us  total 0.000 s
+  off   all       n     36  mean        0.6 us  total 0.000 s
+  on    all       n     36  mean        0.9 us  total 0.000 s
+shouldered_shaft: 8 faces, 9572 triangles, import 0.13 s, build 0.009 s
+  drop  Cylinder  n     95  mean       87.9 us  max      196.5 us
+  drop  Plane     n     95  mean      135.6 us  max      261.9 us
+  drop  Torus     n    524  mean      114.6 us  max      456.5 us
+  mesh  Cylinder  n     95  mean       23.0 us  max       89.6 us
+  mesh  Plane     n     95  mean       23.6 us  max       98.2 us
+  mesh  Torus     n    524  mean       96.3 us  max      277.5 us
+  model Cylinder  n    762  mean        4.7 us  max       38.9 us
+  model Plane     n    756  mean        6.6 us  max       35.0 us
+  model Torus     n   4191  mean        5.5 us  max       68.1 us
+  off   Cylinder  n    762  mean        3.0 us  max       27.9 us
+  off   Plane     n    756  mean        3.7 us  max       57.9 us
+  off   Torus     n   4191  mean        0.9 us  max       33.8 us
+  on    Cylinder  n    762  mean        3.5 us  max       27.5 us
+  on    Plane     n    756  mean        4.7 us  max      118.8 us  WRONG 480 (worst 0.0256 mm)
+  on    Torus     n   4191  mean        0.8 us  max       93.1 us
+  drop  all       n    714  mean      113.8 us  total 0.081 s
+  mesh  all       n    714  mean       76.9 us  total 0.055 s
+  model all       n   5709  mean        5.6 us  total 0.032 s
+  off   all       n   5709  mean        1.5 us  total 0.009 s
+  on    all       n   5709  mean        1.6 us  total 0.009 s
+
+==== after: blisk
+blisk: 25 faces, 15936 triangles, import 0.24 s, build 0.031 s
+  drop  BSpline   n    209  mean     9083.6 us  max   102878.0 us
+  drop  Cone      n     48  mean    17845.8 us  max   119509.4 us
+  drop  Cylinder  n     27  mean    37038.4 us  max    86917.0 us
+  drop  Plane     n     16  mean     1597.0 us  max     4159.2 us
+  mesh  BSpline   n    209  mean       56.0 us  max      109.9 us
+  mesh  Cone      n     48  mean       56.7 us  max       99.4 us
+  mesh  Cylinder  n     27  mean       34.3 us  max       72.3 us
+  mesh  Plane     n     16  mean       58.6 us  max      139.5 us
+  model BSpline   n   1674  mean       92.9 us  max      267.5 us
+  model Cone      n    378  mean      199.7 us  max     4113.2 us
+  model Cylinder  n    211  mean     1941.4 us  max     6264.2 us
+  model Plane     n    130  mean       44.5 us  max      129.0 us
+  off   BSpline   n   1674  mean       74.2 us  max     3897.3 us
+  off   Cone      n    378  mean        0.7 us  max       18.1 us
+  off   Cylinder  n    211  mean       17.0 us  max       78.8 us
+  off   Plane     n    130  mean       13.0 us  max       61.0 us
+  on    BSpline   n   1674  mean       54.5 us  max      671.4 us
+  on    Cone      n    378  mean        3.8 us  max       39.2 us  WRONG 13 (worst 0.0012 mm)
+  on    Cylinder  n    211  mean       13.9 us  max       80.6 us  WRONG 25 (worst 0.0024 mm)
+  on    Plane     n    130  mean       16.2 us  max       84.4 us  WRONG 43 (worst 0.0428 mm)
+  drop  all       n    300  mean    12602.2 us  total 3.781 s
+  mesh  all       n    300  mean       54.3 us  total 0.016 s
+  model all       n   2393  mean      270.1 us  total 0.646 s
+  off   all       n   2393  mean       54.3 us  total 0.130 s
+  on    all       n   2393  mean       40.8 us  total 0.098 s
+
+==== compare (answers differing by more than 1e-6 mm; drop rows are offsets, not distances)
+blisk.tsv                    drop  n    300  within 1e-9:    300  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+blisk.tsv                    mesh  n    300  within 1e-9:    300  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+blisk.tsv                    model n   2393  within 1e-9:   2393  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+blisk.tsv                    off   n   2393  within 1e-9:   2393  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+blisk.tsv                    on    n   2393  within 1e-9:   2393  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+box.tsv                      drop  n      3  within 1e-9:      3  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+box.tsv                      mesh  n      3  within 1e-9:      3  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+box.tsv                      model n     24  within 1e-9:     24  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+box.tsv                      off   n     24  within 1e-9:     24  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+box.tsv                      on    n     24  within 1e-9:     24  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+bspline_face.tsv             drop  n    106  within 1e-9:    106  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+bspline_face.tsv             mesh  n    106  within 1e-9:    106  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+bspline_face.tsv             model n    842  within 1e-9:    842  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+bspline_face.tsv             off   n    842  within 1e-9:    842  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+bspline_face.tsv             on    n    842  within 1e-9:    842  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+cone.tsv                     drop  n    171  within 1e-9:    167  nearer     0 (up to 0.000000 mm)  further     4 (up to 0.000329 mm)
+cone.tsv                     mesh  n    171  within 1e-9:    171  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+cone.tsv                     model n   1364  within 1e-9:   1341  nearer    23 (up to 0.000329 mm)  further     0 (up to 0.000000 mm)
+cone.tsv                     off   n   1364  within 1e-9:   1362  nearer     2 (up to 0.000269 mm)  further     0 (up to 0.000000 mm)
+cone.tsv                     on    n   1364  within 1e-9:   1351  nearer    13 (up to 4.163383 mm)  further     0 (up to 0.000000 mm)
+cylinder.tsv                 drop  n     64  within 1e-9:     60  nearer     0 (up to 0.000000 mm)  further     3 (up to 0.000233 mm)
+cylinder.tsv                 mesh  n     64  within 1e-9:     64  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+cylinder.tsv                 model n    506  within 1e-9:    492  nearer    14 (up to 0.000228 mm)  further     0 (up to 0.000000 mm)
+cylinder.tsv                 off   n    506  within 1e-9:    506  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+cylinder.tsv                 on    n    506  within 1e-9:    506  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+extruded_spline.tsv          drop  n    492  within 1e-9:    491  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+extruded_spline.tsv          mesh  n    492  within 1e-9:    492  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+extruded_spline.tsv          model n   3929  within 1e-9:   3929  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+extruded_spline.tsv          off   n   3929  within 1e-9:   3929  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+extruded_spline.tsv          on    n   3929  within 1e-9:   3929  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+filleted_box.tsv             drop  n    694  within 1e-9:    693  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+filleted_box.tsv             mesh  n    694  within 1e-9:    694  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+filleted_box.tsv             model n   5552  within 1e-9:   5552  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+filleted_box.tsv             off   n   5552  within 1e-9:   5552  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+filleted_box.tsv             on    n   5552  within 1e-9:   5552  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+hex_bar.tsv                  drop  n      5  within 1e-9:      5  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+hex_bar.tsv                  mesh  n      5  within 1e-9:      5  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+hex_bar.tsv                  model n     36  within 1e-9:     36  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+hex_bar.tsv                  off   n     36  within 1e-9:     36  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+hex_bar.tsv                  on    n     36  within 1e-9:     36  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline.tsv          drop  n   1876  within 1e-9:   1876  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline.tsv          mesh  n   1876  within 1e-9:   1876  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline.tsv          model n  15006  within 1e-9:  15004  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline.tsv          off   n  15006  within 1e-9:  15004  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline.tsv          on    n  15006  within 1e-9:  15006  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline_partial.tsv  drop  n   1063  within 1e-9:   1063  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline_partial.tsv  mesh  n   1063  within 1e-9:   1063  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline_partial.tsv  model n   8503  within 1e-9:   8503  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline_partial.tsv  off   n   8503  within 1e-9:   8503  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+revolved_spline_partial.tsv  on    n   8503  within 1e-9:   8503  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+rotary_blank_drilled.tsv     drop  n    147  within 1e-9:    142  nearer     0 (up to 0.000000 mm)  further     4 (up to 0.025630 mm)
+rotary_blank_drilled.tsv     mesh  n    147  within 1e-9:    147  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+rotary_blank_drilled.tsv     model n   1174  within 1e-9:   1146  nearer    28 (up to 0.025632 mm)  further     0 (up to 0.000000 mm)
+rotary_blank_drilled.tsv     off   n   1174  within 1e-9:   1160  nearer    14 (up to 2.851554 mm)  further     0 (up to 0.000000 mm)
+rotary_blank_drilled.tsv     on    n   1174  within 1e-9:   1174  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+shouldered_shaft.tsv         drop  n    714  within 1e-9:    714  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+shouldered_shaft.tsv         mesh  n    714  within 1e-9:    714  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+shouldered_shaft.tsv         model n   5709  within 1e-9:   5709  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+shouldered_shaft.tsv         off   n   5709  within 1e-9:   5688  nearer    21 (up to 2.530878 mm)  further     0 (up to 0.000000 mm)
+shouldered_shaft.tsv         on    n   5709  within 1e-9:   5695  nearer    14 (up to 3.421358 mm)  further     0 (up to 0.000000 mm)
+sphere.tsv                   drop  n    948  within 1e-9:    948  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+sphere.tsv                   mesh  n    948  within 1e-9:    948  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+sphere.tsv                   model n   7577  within 1e-9:   7577  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+sphere.tsv                   off   n   7577  within 1e-9:   7577  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+sphere.tsv                   on    n   7577  within 1e-9:   7577  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+torus.tsv                    drop  n   2017  within 1e-9:   2017  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+torus.tsv                    mesh  n   2017  within 1e-9:   2017  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+torus.tsv                    model n  16129  within 1e-9:  16129  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+torus.tsv                    off   n  16129  within 1e-9:  16129  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+torus.tsv                    on    n  16129  within 1e-9:  16129  nearer     0 (up to 0.000000 mm)  further     0 (up to 0.000000 mm)
+
+==== cell budget on the blisk (an earlier run of the same search, with only the budget constant changed; budget hits counted over the whole blisk run; largest remaining gap)
+4096 cells (kept): 702 hits, largest gap 1.345e-5 mm; model mean 258 us, probe mean 12.5 ms
+1024 cells: 1110 hits, largest gap 2.441e-4 mm; model mean 146 us, probe mean 4.9 ms
+ 512 cells: 1221 hits, largest gap 1.248e-3 mm; model mean 113 us, probe mean 3.1 ms

@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let path = Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "gate3-short-blocks".into(),
                 setup: "simulator".into(),

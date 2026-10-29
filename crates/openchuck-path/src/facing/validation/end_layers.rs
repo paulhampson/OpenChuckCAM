@@ -64,6 +64,7 @@ pub(super) fn verify(
     let r = setup.tool.diameter.0 * 0.5;
     let rotary = RotaryMapping::of_profile(setup.machine);
     let mut prefix = ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         start: group.start,
         tags: group.tags.clone(),
         segments: Vec::new(),

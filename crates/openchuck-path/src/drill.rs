@@ -534,6 +534,7 @@ fn hole_pass(
         points.push(at(depth_of(k)));
     }
     Ok(Pass {
+        helical_pass_start: false,
         points,
         stock: None,
         rapids,
