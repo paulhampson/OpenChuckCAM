@@ -8,8 +8,9 @@
 #   decision 0103) or .github/workflows/ turns them on, because the golden G-code tests read the
 #   posts and testdata/ and the workflow is part of what is tested.
 # - `records` and `any` still see Markdown, because `cargo xtask records`, `testdata`, `trace` and
-#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/open-items.md and others), so
-#   Fast checks run on a Markdown-only pull request and the heavy jobs do not.
+#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/work-breakdown.md,
+#   docs/dependencies.md, docs/open-items.md and docs/decisions/**), so Fast checks run on a
+#   Markdown-only pull request that changes one of those, and the heavy jobs do not.
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
@@ -74,6 +75,11 @@ jobs:
               - 'docs/requirements.md'
               - 'docs/work-breakdown.md'
               - 'docs/dependencies.md'
+              # The register checks of `cargo xtask records` (registers.rs) read the open-items
+              # register, the decision index and the decision file names; `deps` checks that the
+              # record an allow-list entry names exists (decisions 0249 addendum, OI-1000).
+              - 'docs/open-items.md'
+              - 'docs/decisions/**'
               - 'testdata/**'
             # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
             any:
