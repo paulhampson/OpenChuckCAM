@@ -148,15 +148,13 @@ fn file_stem(index: usize, parts: &[String]) -> String {
     stem
 }
 
-/// The name of the file at `index`: the running number, the project name
+/// What a file's name says after its running number: the project name
 /// (`Project`) or the setup name, then what the unit holds beyond its setup.
-fn file_name(
+fn contents(
     project: &Project,
     setup: &str,
     label: Option<&(String, String)>,
     grouping: OutputGrouping,
-    index: usize,
-    extension: &str,
 ) -> String {
     let mut parts = Vec::new();
     if grouping == OutputGrouping::Project {
@@ -167,7 +165,111 @@ fn file_name(
     if let Some((_, part)) = label {
         parts.push(part.clone());
     }
-    format!("{}.{extension}", file_stem(index, &parts))
+    parts.join("-")
+}
+
+/// The name of the file at `index`: the running number, then
+/// [`contents`].
+fn file_name(
+    project: &Project,
+    setup: &str,
+    label: Option<&(String, String)>,
+    grouping: OutputGrouping,
+    index: usize,
+    extension: &str,
+) -> String {
+    let stem = file_stem(index, &[contents(project, setup, label, grouping)]);
+    format!("{stem}.{extension}")
+}
+
+/// What each posted file of `run` holds, in write order, with the part of
+/// its posted name after the number and the post's extension (issues 308
+/// and 309). A run made without a post has no files.
+pub(crate) fn program_files(
+    run: &crate::Regeneration,
+) -> Result<Vec<(crate::output_names::ProgramFile, String)>, AppError> {
+    let Some((_, grouping)) = &run.posted_selection else {
+        return Ok(Vec::new());
+    };
+    let project = &run.project;
+    let enabled: Vec<String> = project
+        .operations()
+        .iter()
+        .filter(|o| o.enabled)
+        .map(|o| o.id.to_string())
+        .collect();
+    let units = split_units(project, &run.canonical_toolpath, *grouping)?;
+    if units.len() != run.gcode.len() {
+        return Err(AppError::Post(format!(
+            "the run has {} program files but its toolpath splits into {}; generate again",
+            run.gcode.len(),
+            units.len()
+        )));
+    }
+    units
+        .into_iter()
+        .zip(&run.gcode)
+        .map(|(unit, (posted_name, _))| {
+            let (setup_number, setup) = project
+                .setups()
+                .iter()
+                .enumerate()
+                .find(|(_, s)| s.id.to_string() == unit.setup)
+                .ok_or_else(|| {
+                    AppError::Post(format!(
+                        "setup '{}' of the toolpath is not in the project",
+                        unit.setup
+                    ))
+                })?;
+            let mut steps: Vec<crate::output_names::ProgramStep> = Vec::new();
+            let mut current_tool = None;
+            for group in &unit.groups {
+                let operation = project
+                    .operations()
+                    .iter()
+                    .find(|o| o.id.to_string() == group.tags.operation);
+                let number = enabled
+                    .iter()
+                    .position(|id| *id == group.tags.operation)
+                    .map_or(0, |i| i + 1);
+                if steps
+                    .last()
+                    .is_some_and(|s: &crate::output_names::ProgramStep| {
+                        s.operation_number == number
+                    })
+                {
+                    continue;
+                }
+                let tool = project
+                    .tools()
+                    .iter()
+                    .find(|t| t.id.to_string() == group.tags.tool);
+                let tool_number = tool.map(|t| t.controller.number);
+                let tool_change = tool_number.is_some() && tool_number != current_tool;
+                if tool_number.is_some() {
+                    current_tool = tool_number;
+                }
+                steps.push(crate::output_names::ProgramStep {
+                    operation_number: number,
+                    operation: operation
+                        .map_or_else(|| group.tags.operation.clone(), |o| o.name.clone()),
+                    tool_number,
+                    tool: tool.map(|t| t.name.clone()),
+                    tool_change,
+                });
+            }
+            Ok((
+                crate::output_names::ProgramFile {
+                    posted_name: posted_name.clone(),
+                    name: posted_name.clone(),
+                    setup_number: setup_number + 1,
+                    setup: setup.name.clone(),
+                    steps,
+                },
+                contents(project, &setup.name, unit.label.as_ref(), *grouping),
+            ))
+        })
+        .collect()
 }
 
 /// One G-code file the grouping would write, known before anything is posted

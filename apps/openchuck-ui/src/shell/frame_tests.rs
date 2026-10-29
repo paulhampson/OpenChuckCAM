@@ -1841,3 +1841,42 @@ fn req_ui_02_req_ui_03_replacing_a_scene_job_preserves_pending_camera_fit() {
     assert!(rig.shell.scene_job.as_ref().unwrap().1);
     rig.settle();
 }
+
+/// Issues 308 and 310: a template the user confirms in the export dialog is
+/// their setting, kept for the next project and the next start; the dialog
+/// opens with it.
+#[test]
+fn req_ui_15_req_gc_05_a_confirmed_file_name_template_is_kept_across_projects() {
+    let config = temp("frame-file-names-config");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-file-names", Some(file.clone()));
+    rig.dirs.push(config.clone());
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(rig.shell.export.is_open());
+    let mine = openchuck_app::FileNameTemplates {
+        gcode: "{project}_{n}".into(),
+        setup_sheet: "{project}_sheet".into(),
+    };
+    rig.shell.export.set_file_names(mine.clone());
+    rig.shell.settings_changed = None;
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.settings.file_names, mine);
+    assert!(rig.shell.settings_changed.is_some());
+    rig.shell.save_settings();
+    assert_eq!(file.load().settings.file_names, mine);
+    // A restart opens the dialog with them.
+    let mut again = Rig::cube("frame-file-names-2", Some(file));
+    // Frames before the dialog opens leave the user's templates alone.
+    again.frame(Vec::new());
+    assert_eq!(again.shell.settings.file_names, mine);
+    again.press(Key::E, Modifiers::COMMAND);
+    assert!(
+        again.shell.export.is_open(),
+        "{:?}",
+        again.shell.post_blocker()
+    );
+    assert_eq!(
+        again.shell.export.file_names_to_keep(&again.ctx),
+        Some(&mine)
+    );
+}
