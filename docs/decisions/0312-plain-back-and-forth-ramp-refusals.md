@@ -1,10 +1,10 @@
 # 0312: Plain refusals for the back-and-forth ramp, said before Generate where they can be (lane RAMPERRORS; issue #291)
 
-- **Status:** proposed 29 Oct 2026 by lane RAMPERRORS. The owner's choices it records (D1 = C, D2 = A, D3 = A) were relayed by the coordinator session on 29 Oct 2026 (decision 0049); the record itself stays proposed until the owner accepts it.
+- **Status:** proposed 29 Oct 2026 by lane RAMPERRORS. The owner's choices it records (D1 = C, D2 = A, D3 = A, and D4 = C for follow-up work) were relayed by the coordinator session on 29 Oct 2026 (decision 0049); the record itself stays proposed until the owner accepts it.
 - **What it amends:** [decision 0242](0242-optional-back-and-forth-ramp.md) item 3 (accepted): the second sentence of the approved refusal ("Choose another entry or change the entry geometry.") is replaced by the cause and the fix (item 2 below). The first sentence, the one-diameter minimum, the checks and the motion are unchanged. [Decision 0248](0248-ramp-clearance-budget.md) is unchanged.
 - **Date:** 29 Oct 2026.
 - **Requirements:** OP-11, NFR-07, NFR-12; specification section 15 (decision 0114: plain words, no internal names).
-- **Open items** ([docs/open-items.md](../open-items.md)): opens OI-1270 (the back-and-forth ramp on STEP parts) and OI-1271 (a single-point pass under the back-and-forth ramp).
+- **Open items** ([docs/open-items.md](../open-items.md)): opens OI-1270 (the back-and-forth ramp on STEP parts) and OI-1271 (a second option to plunge into a single-point pass, owner's choice D4 = C); both go to follow-up lane STEPRAMP.
 
 Numbering: the coordinator gave lane RAMPERRORS records 0312 to 0316 and OI-1270 to OI-1289. On 29 Oct 2026 the highest record on `main` and on every unmerged branch was 0307, and no OI-1270 to OI-1289 was in use.
 
@@ -25,7 +25,7 @@ The other refusals of the ramp named internal checks ("clearance budget", "whole
 
 ## Evidence
 
-On the owner's project (numbers only; the project is kept outside the repository): `main` refuses in 1.0 s with the old text; with this change Regenerate refuses in 0.006 s, before the part is read, with item 1's text. With the option off the single-line ramp refuses at pass 200 (a 114.547 mm run to descend 6.003 mm at 3.00 degrees would cut 4.952 mm into the part), the helix at pass 200 likewise (4.956 mm), and Plunge generates in 3.1 s. A local diagnostic build that allowed the ramp on the STEP part's triangles (never committed) certified passes 1 to 98 and refused pass 99, a single point (OI-1271).
+On the owner's project (numbers only; the project is kept outside the repository): `main` refuses in 1.0 s with the old text; with this change Regenerate refuses in 0.006 s, before the part is read, with item 1's text. With the option off the single-line ramp refuses at pass 200 (a 114.547 mm run to descend 6.003 mm at 3.00 degrees would cut 4.952 mm into the part), the helix at pass 200 likewise (4.956 mm), and Plunge generates in 3.1 s. A local diagnostic build that allowed the ramp on the STEP part's triangles (never committed) certified passes 1 to 98 and refused pass 99, a single point (OI-1271). The owner chose D4 = C (relayed by the coordinator, 29 Oct 2026): a second option, off by default, will enter such a pass by the existing plunge; it is not built here and needs its own record (follow-up lane STEPRAMP, with OI-1270).
 
 ## Verification
 
