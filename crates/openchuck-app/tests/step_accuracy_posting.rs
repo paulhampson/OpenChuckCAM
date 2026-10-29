@@ -36,7 +36,10 @@ fn req_gc_07_m4_posts_only_the_operations_that_generated_successfully() {
     let successful = posting::post_run(&groups, &job, "makera-z1").unwrap();
     assert!(!successful.is_empty());
     groups.push(Err("simultaneous finishing refused this part".into()));
-    assert_eq!(posting::post_run(&groups, &job, "makera-z1").unwrap(), successful);
+    assert_eq!(
+        posting::post_run(&groups, &job, "makera-z1").unwrap(),
+        successful
+    );
 }
 
 #[test]
@@ -57,7 +60,10 @@ fn req_gc_07_req_nfr_06_m4_posts_for_both_built_in_posts() {
     let groups: Vec<_> = support::small_part().groups.into_iter().map(Ok).collect();
     let z1 = posting::post_run(&groups, &job, "makera-z1").unwrap();
     let linuxcnc = posting::post_run(&groups, &job, "linuxcnc").unwrap();
-    assert_eq!(linuxcnc, posting::post_run(&groups, &job, "linuxcnc").unwrap());
+    assert_eq!(
+        linuxcnc,
+        posting::post_run(&groups, &job, "linuxcnc").unwrap()
+    );
     assert_ne!(z1, linuxcnc);
     assert!(linuxcnc.contains("G1"));
     assert!(posting::post_run(&groups, &job, "no-such-post").is_err());

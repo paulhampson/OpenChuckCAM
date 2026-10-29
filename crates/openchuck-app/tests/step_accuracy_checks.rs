@@ -74,7 +74,10 @@ fn req_op_23_m4_paths_agree_only_within_a_stated_rounding() {
         serde_json::json!([{"x": 10.0, "a": 90.0, "kind": "cutting"}, {"x": 1.0}]),
     ] {
         let r = checks::within_rounding(&path, &other, 1e-9, "form d application path");
-        assert!(r.is_err_and(|m| m.contains("form d application path")), "{other}");
+        assert!(
+            r.is_err_and(|m| m.contains("form d application path")),
+            "{other}"
+        );
     }
 }
 

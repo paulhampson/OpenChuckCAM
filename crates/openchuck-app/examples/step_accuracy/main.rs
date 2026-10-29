@@ -346,7 +346,9 @@ fn main() -> Result<(), Error> {
             "d (STEP, exact contacts where the strategy takes them)",
             Form::Brep(
                 BrepSurface::new(&placed_b)?,
-                Some(Box::new(BrepSurface::new(&placed_b)?.with_exact_drops(true))),
+                Some(Box::new(
+                    BrepSurface::new(&placed_b)?.with_exact_drops(true),
+                )),
                 &placed_b,
             ),
         ),
