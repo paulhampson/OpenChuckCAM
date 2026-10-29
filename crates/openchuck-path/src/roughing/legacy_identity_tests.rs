@@ -285,7 +285,7 @@ mod legacy {
         }
         job.face = Some(level);
         let passes = if round {
-            job.continuous(parameters, context)?
+            job.continuous(parameters, context)?.0
         } else {
             job.flat(parameters, level, context)?
         };

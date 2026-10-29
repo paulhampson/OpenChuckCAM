@@ -35,11 +35,12 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
+use crate::faces;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
-use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{Fit, fit_region, region_index, region_spacing, zone_fits};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput, StrategyOutput};
+use crate::wrap_fit::{Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
 
@@ -169,7 +170,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context)
+        passes(input, region, zones, parameters, context).map(|(p, _)| p)
     }
 
     fn passes(
@@ -178,7 +179,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context)
+        passes(input, None, &[], parameters, context).map(|(p, _)| p)
     }
 
     fn passes_in_region(
@@ -188,18 +189,72 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context)
+        passes(input, Some(region), &[], parameters, context).map(|(p, _)| p)
+    }
+
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let (passes, turns) = passes(input, region, &[], parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes: faces::note(&turns).into_iter().collect(),
+            warnings: Vec::new(),
+        })
     }
 }
 
-/// The passes of helical finishing, limited to `region` when given.
+/// The passes of one whole turn of A at constant `x`, from A `start` turning
+/// by `sign`, with the tool across the rotary axis dropped onto the surface
+/// as helical finishing drops it (`grown` by `leave`), no more than `step`
+/// degrees between seeds, each part of the surface left its own stock where
+/// `zones` gives one: a face's turn (decision record 0297), for helical
+/// finishing and the simultaneous spiral.
+pub(crate) fn turn_passes(
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    (grown, leave, zones): (&RevolvedProfile, f64, &[ZoneFit<'_>]),
+    tolerance: f64,
+    (x, start, sign): (f64, f64, f64),
+    step: f64,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    let n = (360.0 / step).ceil().max(1.0) as usize;
+    let fit = Fit {
+        input,
+        drop_profile: grown,
+        leave,
+        zones,
+        x0: x,
+        length: 0.0,
+        start,
+        sign,
+        total_angle: 360.0,
+        chord: CHORD_FACTOR * tolerance,
+        region,
+        constrained: region.is_some_and(|r| !r.is_empty()),
+        candidates: None,
+        spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
+        thin: false,
+        max_dt: 1.0 / n as f64,
+        wanted: None,
+    };
+    fit_region(&fit, n, "a turn at a face", context)
+}
+
+/// The passes of helical finishing, limited to `region` when given, with
+/// the X of the turns it made at faces across the axis.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<(Vec<Pass>, Vec<f64>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -280,9 +335,30 @@ fn passes(
         };
 
         let passes = fit_region(&fit, seeds, "helical finishing", context)?;
-        Ok(match extension {
+        let mut passes = match extension {
             Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
             None => passes,
-        })
+        };
+        // One whole turn at each face across the axis, where the tool's side
+        // touches it, cut after the helix as its own pass, so the helix is
+        // as before (decision record 0297).
+        let turns: Vec<f64> = faces::turns(input, &grown, (x0, x1), pitch, tolerance, context)?
+            .into_iter()
+            .map(|t| t.x)
+            .collect();
+        for &x in &turns {
+            context.check_cancelled()?;
+            let at = start + sign * 360.0 * (x - x0) / pitch;
+            passes.extend(turn_passes(
+                input,
+                region,
+                (&grown, leave, &zone_fits),
+                tolerance,
+                (x, at, sign),
+                step,
+                context,
+            )?);
+        }
+        Ok((passes, turns))
     }
 }
