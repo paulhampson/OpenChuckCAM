@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0
+
+- **Breaking (0.27.0, BUG-SWARF4, decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
+
 ## 0.26.0
 
 - **Breaking (0.26.0):** `Pass::helical_pass_start` distinguishes complete roughing-layer helices from fragments. Host struct literals use `false` for ordinary cuts/fragments, marking only the first retained fragment of a complete helix as `true`. Assembly marks existing clear transitions without changing any physical segment; connections preserve/remap indices. Existing limited-axis fitting/refusal is unchanged (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
