@@ -35,13 +35,6 @@ required-features = ["kernel-tests"]
 name = "step_queries"
 required-features = ["kernel-tests"]
 
-[[example]]
-name = "x2_dump"
-required-features = ["kernel-tests"]
-
-[[example]]
-name = "x2_bench"
-
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true
