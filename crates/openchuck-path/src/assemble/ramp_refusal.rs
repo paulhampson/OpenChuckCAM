@@ -58,33 +58,38 @@ pub(super) fn above_clearance(pass: usize, top: f64, at: f64, field: &str) -> St
     )
 }
 
-/// The first cut point is at or above the height the ramp would start at.
-pub(super) fn nothing_to_descend(pass: usize) -> String {
+/// The first cut point is at or above the height the ramp would start at,
+/// `above` mm over the stock (owner's choice D3 = A: refused, reworded).
+pub(super) fn nothing_to_descend(pass: usize, above: f64) -> String {
     format!(
-        "Pass {} starts outside the stock, at or above the height where the back-and-forth ramp \
-         would begin, so the ramp has nothing to descend into. {ENTRY_FIX}",
+        "Pass {} starts {above:.3} mm above the stock, so the back-and-forth ramp has nothing \
+         to ramp down into. In the operation's Entry, links and retract settings, turn off \
+         Back-and-forth ramp or set Entry to Plunge.",
         pass + 1
     )
 }
 
 /// The first straight run of one tool diameter at the cut's depth could
 /// not be proved clear. The first sentence is the one the owner approved
-/// (decision 0242 item 3).
+/// (decision 0242 item 3); the cause and the fix replace its second
+/// (owner's choice D2 = A, #291).
 pub(super) fn corridor(length: f64, blocked: Blocked) -> String {
-    let _ = blocked;
+    let fix = match blocked {
+        Blocked::Target => format!("{ENTRY_FIX} A smaller tool needs a shorter run."),
+        other => other.fix(),
+    };
     format!(
         "Back-and-forth ramp needs at least {length:.3} mm of usable tool-centre travel; only \
-         0.000 mm could be verified. Choose another entry or change the entry geometry."
+         0.000 mm could be verified: within one tool diameter behind the first cut, {}. {fix}",
+        blocked.cause()
     )
 }
 
 /// The descending legs could not be planned.
 pub(super) fn plan(pass: usize, refusal: Refusal, rise: f64, length: f64, angle: f64) -> String {
     let n = pass + 1;
-    let angle_fix = format!(
-        "In the operation's Entry, links and retract settings, raise Ramp angle, or turn off \
-         Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
-    );
+    let angle_fix = "In the operation's Entry, links and retract settings, raise Ramp angle, or \
+         turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix.";
     match refusal {
         Refusal::TooMany => format!(
             "Pass {n}: the back-and-forth ramp would need more than 10000 runs back and forth to \

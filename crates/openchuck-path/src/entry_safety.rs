@@ -137,8 +137,9 @@ impl Blocked {
                 lower_first(ENTRY_FIX)
             ),
             Self::Travel => format!(
-                "In the Setup step, under Machine, check Travel (in Travel and maximum feeds) \
-                 and the stock's position, or change the entry: {}",
+                "In the Setup step, under Machine, check Travel (in Travel and maximum feeds), \
+                 or move the part with Offset along X under Part position, or change the \
+                 entry: {}",
                 lower_first(ENTRY_FIX)
             ),
             Self::ALimit => format!(

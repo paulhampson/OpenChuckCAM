@@ -318,7 +318,10 @@ impl<'a> Entry<'a> {
         }
         let rise = top - goal.height;
         if rise <= EPS {
-            return Err(PathError::Strategy(ramp_refusal::nothing_to_descend(pass)));
+            return Err(PathError::Strategy(ramp_refusal::nothing_to_descend(
+                pass,
+                goal.height - radius,
+            )));
         }
         let length = 2.0 * input.tool.cutting_radius();
         let angle = self.ramp_tan.atan().to_degrees();
@@ -638,10 +641,6 @@ impl<'a> Entry<'a> {
         worst
     }
 
-    /// The refusal of an entry or exit that would cut into the finished
-    /// surface. Where that is a held region (the tool is then over its
-    /// keep-out), the message names it, as the user may not see why a ramp
-    /// beside the part fails (SET-09; decision records 0114, 0161).
     /// As [`Self::refuse`], for the back-and-forth ramp, which has no size
     /// or angle that would avoid the cut.
     fn ramp_refused(&self, input: &StrategyInput<'_>, pass: usize, found: Gouge) -> PathError {
@@ -650,7 +649,7 @@ impl<'a> Entry<'a> {
             match crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
                 Some(end) => ramp_refusal::over_held(
                     pass,
-                    &crate::strategy::held_names(&std::collections::BTreeSet::from([end])),
+                    crate::strategy::held_names(&std::collections::BTreeSet::from([end])),
                     found.x,
                 ),
                 None => ramp_refusal::into_part(pass, found.depth, self.tolerance),
@@ -658,6 +657,10 @@ impl<'a> Entry<'a> {
         )
     }
 
+    /// The refusal of an entry or exit that would cut into the finished
+    /// surface. Where that is a held region (the tool is then over its
+    /// keep-out), the message names it, as the user may not see why a ramp
+    /// beside the part fails (SET-09; decision records 0114, 0161).
     fn refuse(
         &self,
         input: &StrategyInput<'_>,

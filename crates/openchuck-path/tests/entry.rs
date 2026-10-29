@@ -1362,7 +1362,17 @@ fn req_op_11_req_nfr_07_ramp_beyond_the_machine_travel_names_the_travel() {
     machine.travel.max.x = machine.travel.min.x + 1.0;
     let safety = safety_of(&fixture, &machine, &[]);
     let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(error, "x");
+    assert_eq!(
+        error,
+        concat!(
+            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only ",
+            "0.000 mm could be verified: within one tool diameter behind the first cut, the tool ",
+            "would go beyond the machine's X, Y or Z travel. In the Setup step, under Machine, ",
+            "check Travel (in Travel and maximum feeds), or move the part with Offset along X ",
+            "under Part position, or change the entry: in the operation's Entry, links and ",
+            "retract settings, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
+        )
+    );
 }
 
 #[test]
@@ -1376,15 +1386,36 @@ fn req_op_11_req_nfr_07_ramp_into_a_protected_solid_names_the_workholding() {
     let protected = [solid];
     let safety = safety_of(&fixture, &fixture.machine, &protected);
     let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(error, "x");
+    assert_eq!(
+        error,
+        concat!(
+            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only ",
+            "0.000 mm could be verified: within one tool diameter behind the first cut, the tool ",
+            "would reach a held region or a retaining tab. In the Setup step, under Workholding ",
+            "and tabs, move the held region or tab clear of the start of the pass, or change the ",
+            "entry: in the operation's Entry, links and retract settings, turn off Back-and-forth ",
+            "ramp or set Entry to Plunge, Lead or Helix."
+        )
+    );
 }
 
 #[test]
-fn req_op_11_req_nfr_07_ramp_corridor_into_the_part_keeps_the_approved_refusal() {
+fn req_op_11_req_nfr_07_ramp_corridor_into_the_part_keeps_the_approved_sentence_and_names_the_cause()
+ {
     let (_, fixture) = cone();
     let safety = safety_of(&fixture, &fixture.machine, &[]);
     let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
-    assert_eq!(error, "x");
+    // The owner's approved first sentence, word for word (decision 0242
+    // item 3), then the cause and the fix (owner's choice D2 = A, #291).
+    assert_eq!(
+        error,
+        format!(
+            "Back-and-forth ramp needs at least 6.000 mm of usable tool-centre travel; only \
+             0.000 mm could be verified: within one tool diameter behind the first cut, the \
+             tool would cut into the finished part by more than the tolerance. {ENTRY_FIX} A \
+             smaller tool needs a shorter run."
+        )
+    );
 }
 
 #[test]
@@ -1404,9 +1435,42 @@ fn req_op_11_req_nfr_07_ramp_approach_beyond_the_travel_names_the_machine_travel
         format!(
             "Pass 1: the back-and-forth ramp cannot be used here: the tool would go beyond the \
              machine's X, Y or Z travel. In the Setup step, under Machine, check Travel (in \
-             Travel and maximum feeds) and the stock's position, or change the entry: in the \
-             operation's Entry, links and retract settings, turn off Back-and-forth ramp or set \
+             Travel and maximum feeds), or move the part with Offset along X under Part \
+             position, or change the entry: in the operation's Entry, links and retract settings, turn off Back-and-forth ramp or set \
              Entry to Plunge, Lead or Helix."
         )
+    );
+}
+
+/// A pass that starts above the stock has nothing to ramp down into: still
+/// refused (owner's choice D3 = A, #291), saying by how much and what to set.
+#[test]
+fn req_op_11_req_nfr_07_ramp_on_a_pass_above_the_stock_says_what_to_change() {
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    // Stock 14 mm, part 15 mm: the first cut point is 1 mm above the stock,
+    // and level with the safe Z the tool starts at, so there is no descent.
+    let mut fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        14.0,
+        &ball(6.0),
+    );
+    fixture.clearance.radius = Millimetres(15.0);
+    fixture.clearance.safe_z = Millimetres(15.0);
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let error = reversing_refusal(
+        &fixture,
+        Some(&safety),
+        &[],
+        (20.0, 30.0),
+        &[number(names::APPROACH_DISTANCE, 0.5)],
+    );
+    assert_eq!(
+        error,
+        "Pass 1 starts 1.000 mm above the stock, so the back-and-forth ramp has nothing to ramp \
+         down into. In the operation's Entry, links and retract settings, turn off \
+         Back-and-forth ramp or set Entry to Plunge."
     );
 }
