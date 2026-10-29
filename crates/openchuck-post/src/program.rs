@@ -60,9 +60,9 @@ pub enum Step {
         /// The feed word under the post's feed rule.
         feed: FeedWord,
     },
-    /// Safe operation boundary on a continuous axis. A supporting post may
+    /// Certified clear helical-pass or safe operation boundary on a continuous axis. A supporting post may
     /// rebase the live rotary counter by whole turns here, without motion;
-    /// other posts omit it. Never substitute a physical return (decision 0241).
+    /// other posts omit it. Never substitute a physical return (decisions 0241 and 0247).
     RotaryBoundary {
         /// The physical position in the unwrapped program. During rendering,
         /// `a` becomes the controller's counter after the non-moving reset.

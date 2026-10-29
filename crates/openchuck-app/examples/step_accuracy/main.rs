@@ -13,13 +13,15 @@
 //! - **M2**, each strategy's cut against the exact faces: the deepest cut
 //!   into them and the largest gap above them beyond the stock to leave, at
 //!   every fed pose and at the middle and quarter points of every move
-//!   (decisions 0115 and 0133), by the independent checker's tool outline
-//!   against points sampled on the exact faces. The forms compared are
+//!   (decisions 0115 and 0133), by the bounded checker
+//!   (`openchuck_testkit::contact`, issue #346): each station's clearance is
+//!   an interval proven to hold the exact value, against the exact faces
+//!   and the tessellation the tool was dropped on. The forms compared are
 //!   (a) the owner's `blisk.stl`, when its path is given, (b) the STEP part
 //!   as built today, dropping on the import's tessellation, and (c) the STEP
-//!   part dropping on a finer tessellation. Raw samples are printed, but M2
-//!   exits unqualified until its physical sampling error is proven below
-//!   0.001 mm; nominal grid spacing is not that proof.
+//!   part dropping on a finer tessellation. M2 fails when any station's
+//!   interval cannot be closed below the tolerance; `--raw DIR` keeps one
+//!   file of raw observations per form and operation, with provenance.
 //! - **M3**, time: each form's generation, drops, fitting, assembly and stock
 //!   simulation, plus complete job wall time. At 1 thread and at all threads,
 //!   medians require at least five successful runs. For ball-end operations,
@@ -53,6 +55,7 @@
     clippy::too_many_lines
 )]
 
+mod bounded;
 mod checks;
 mod measure;
 mod posting;
@@ -81,7 +84,6 @@ use openchuck_path::{
     RotaryMapping, StockModel, Strategy, StrategyInput, SurfaceSource, ToolLine, generate,
 };
 use openchuck_sim::{DexelStock, Simulator};
-use openchuck_testkit::gouge::Outline;
 use openchuck_types::brep::{BrepModel, TessellationSettings};
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::ir::{MoveKind, PathTags, ToolpathGroup};
@@ -92,7 +94,8 @@ use openchuck_types::model::ModelGeometry;
 use openchuck_types::tool::{ControllerMapping, CuttingData, RevolvedProfile, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
 
-use measure::{Cloud, Station};
+use measure::Station;
+use openchuck_testkit::contact::{ConvexTool, Geometry};
 
 type Error = Box<dyn std::error::Error>;
 
@@ -102,17 +105,6 @@ const DEFLECTIONS: [f64; 4] = [0.01, 0.005, 0.0025, 0.001];
 /// The tessellation's share of the 0.01 mm toolpath budget (verification
 /// plan 4.1).
 const SHARE: f64 = 0.005;
-
-/// Spacing of the points on the exact faces and on the tessellations for
-/// M2, mm. A ball of radius `r` between points `h` apart reaches at most
-/// `h^2 / (8 r)` past them: 0.0003 mm for the 2 mm ball, 0.0013 mm for the
-/// tapered ball's 0.25 mm tip. This is not a generic sampling bound: a
-/// flat-cutter/plane counterexample misses 0.00667 mm (decision 0211).
-const SPACING: f64 = 0.05;
-
-/// Points within this of the tool are seen by the pose check, mm: enough to
-/// measure a gap over the largest stock to leave.
-const MARGIN: f64 = 1.0;
 
 fn repo(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -137,6 +129,7 @@ struct Args {
     sim_step: f64,
     part: String,
     keep: Option<PathBuf>,
+    raw: Option<PathBuf>,
 }
 
 fn args() -> Result<Args, Error> {
@@ -168,6 +161,7 @@ fn args() -> Result<Args, Error> {
         sim_step: 2.0,
         part: "blisk".to_owned(),
         keep: None,
+        raw: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -228,6 +222,7 @@ fn args() -> Result<Args, Error> {
                     .collect::<Result<_, _>>()?;
             }
             "--keep" => out.keep = Some(PathBuf::from(it.next().ok_or("--keep DIR")?)),
+            "--raw" => out.raw = Some(PathBuf::from(it.next().ok_or("--raw DIR")?)),
             "--part" => out.part = it.next().ok_or("--part NAME")?,
             "--sim-tilt" => out.sim_tilt = it.next().ok_or("--sim-tilt DEG")?.parse()?,
             "--sim-step" => out.sim_step = it.next().ok_or("--sim-step DEG")?.parse()?,
@@ -354,13 +349,24 @@ fn main() -> Result<(), Error> {
     }
     println!("form c deflection: {fine} mm and {} rad", args.angular);
 
-    let exact = wants("m2").then(|| Cloud::of_faces(&placed_b, SPACING));
-    if let Some(exact) = &exact {
+    let exact = if wants("m2") {
+        let g = Geometry::of_faces(&placed_b)?;
         println!(
-            "exact samples: {} points; nominal UV-grid target {SPACING} mm (physical coverage bound not established)",
-            exact.len()
+            "M2 bounded checker: {} faces in {} starting pieces; tolerance {} mm, margin {} mm, budget {} pieces a station",
+            g.faces(),
+            g.leaves(),
+            bounded::TOLERANCE,
+            bounded::MARGIN,
+            bounded::BUDGET
         );
+        Some(g)
+    } else {
+        None
+    };
+    if let Some(raw) = &args.raw {
+        workspace::create_destination(raw)?;
     }
+    let mut proven_error: Option<f64> = None;
     let job = Job {
         project: app.project(),
         registry: app.strategies(),
@@ -379,8 +385,11 @@ fn main() -> Result<(), Error> {
         .iter()
         .filter(|(name, _)| name.chars().next().is_some_and(|c| args.forms.contains(&c)))
     {
-        let tessellation =
-            wants("m2").then(|| Cloud::of_mesh(form.surface().tessellation(), SPACING));
+        let tessellation = if wants("m2") {
+            Some(Geometry::of_mesh(form.surface().tessellation())?)
+        } else {
+            None
+        };
         println!(
             "\n## form {name}: {} triangles",
             form.surface().tessellation().triangles.len()
@@ -401,7 +410,7 @@ fn main() -> Result<(), Error> {
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
                 println!(
-                    "operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses"
+                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm"
                 );
                 for (op, group) in ops.iter().zip(&run.groups) {
                     let group = match group {
@@ -411,25 +420,36 @@ fn main() -> Result<(), Error> {
                             continue;
                         }
                     };
-                    let m = m2(
+                    let observations = m2(
                         &job,
                         op,
                         group,
-                        exact.as_ref().ok_or("missing M2 face cloud")?,
-                        tessellation.as_ref().ok_or("missing M2 mesh cloud")?,
+                        exact.as_ref().ok_or("missing M2 faces")?,
+                        tessellation.as_ref().ok_or("missing M2 tessellation")?,
                     )?;
+                    let m = bounded::summarise(&observations, op.leave);
                     println!(
-                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {}",
+                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6}",
                         op.label,
                         op.leave,
-                        m.poses,
+                        m.stations,
                         m.deepest,
-                        m.deepest_at_ends,
+                        m.deepest_bound,
+                        m.deepest_at_poses,
                         m.gap,
                         m.error_in,
                         m.error_out,
-                        m.contacts
+                        m.drop_bound,
+                        m.contacts,
+                        m.proven_error
                     );
+                    proven_error = Some(proven_error.unwrap_or(0.0).max(m.proven_error));
+                    if let Some(raw) = &args.raw {
+                        let letter = name.chars().next().unwrap_or('x');
+                        let header = provenance(&args, name, fine, op, &part_path);
+                        let file = raw.join(format!("m2-{letter}-{}.tsv", op.label));
+                        std::fs::write(&file, bounded::raw(&header, &observations))?;
+                    }
                 }
             }
             if wants("m3") {
@@ -693,10 +713,13 @@ fn main() -> Result<(), Error> {
         println!("project kept in {}", dir.display());
     }
     if wants("m2") {
-        // Keep raw measurements available, but never turn this nominal grid
-        // into a successful decision-0209 verification. A proven bound must
-        // come from a replacement checker, not from the requested spacing.
-        checks::sampling_bound(None)?;
+        // Every station was bounded, or `m2` failed above; qualification
+        // still requires the widest interval to be under 0.001 mm.
+        checks::sampling_bound(proven_error)?;
+        println!(
+            "M2 qualified: widest interval {:.6} mm (under 0.001 mm)",
+            proven_error.unwrap_or(0.0)
+        );
     }
     Ok(())
 }
@@ -1506,74 +1529,93 @@ impl Job<'_> {
     }
 }
 
-struct M2 {
-    poses: usize,
-    deepest: f64,
-    deepest_at_ends: f64,
-    gap: f64,
-    error_in: f64,
-    error_out: f64,
-    contacts: usize,
-}
-
-/// M2 for one operation's moves: every fed pose and the middle and quarter
-/// points of every fed move, against the exact faces and against the
-/// tessellation the tool was dropped on.
+/// M2 for one operation's moves: every fed pose and the quarter, middle
+/// and three-quarter points of every fed move (decisions 0115 and 0133),
+/// each bounded against the exact faces and against the tessellation the
+/// tool was dropped on.
 fn m2(
     job: &Job<'_>,
     op: &Op,
     group: &ToolpathGroup,
-    exact: &Cloud,
-    tess: &Cloud,
-) -> Result<M2, Error> {
-    use rayon::prelude::*;
-    let profile = op.profile()?;
-    let outline = Outline::new(&profile);
-    let height = profile.end().height.0;
-    // (station, at a pose the strategy dropped, the move is a cut)
-    let mut stations = Vec::new();
+    exact: &Geometry,
+    tess: &Geometry,
+) -> Result<Vec<bounded::Observation>, Error> {
+    let tool = ConvexTool::new(&op.profile()?)?;
+    let mut stops = Vec::new();
     let mut last = group.start;
     for s in &group.segments {
         if s.kind.is_fed() {
-            for st in Station::along(&job.rotary, &last, &s.end) {
-                stations.push((st, false, s.kind == MoveKind::Cutting));
+            let cut = s.kind == MoveKind::Cutting;
+            for (k, st) in Station::along(&job.rotary, &last, &s.end)
+                .into_iter()
+                .enumerate()
+            {
+                stops.push(bounded::Stop {
+                    tip: st.tip,
+                    axis: st.axis,
+                    place: bounded::Place::Quarter(k as u8 + 1),
+                    cut,
+                });
             }
-            stations.push((Station::at(&s.end), true, s.kind == MoveKind::Cutting));
+            let st = Station::at(&s.end);
+            stops.push(bounded::Stop {
+                tip: st.tip,
+                axis: st.axis,
+                place: bounded::Place::Pose,
+                cut,
+            });
         }
         last = s.end;
     }
-    let results: Vec<(f64, f64, bool, bool)> = stations
-        .par_iter()
-        .map(|(st, end, cut)| {
-            let e = exact.clearance(&outline, st.tip, st.axis, height, MARGIN);
-            let t = tess.clearance(&outline, st.tip, st.axis, height, MARGIN);
-            (e, t, *end, *cut)
-        })
-        .collect();
-    let mut m = M2 {
-        poses: results.len(),
-        deepest: 0.0,
-        deepest_at_ends: 0.0,
-        gap: 0.0,
-        error_in: 0.0,
-        error_out: 0.0,
-        contacts: 0,
-    };
-    for (e, t, end, cut) in results {
-        m.deepest = m.deepest.max(-e);
-        if end {
-            m.deepest_at_ends = m.deepest_at_ends.max(-e);
-        }
-        // A contact: a cutting pose the drop put on the tessellation at the
-        // stock to leave (within the sampling and fitting slack).
-        if cut && (t - op.leave).abs() <= 0.002 {
-            m.contacts += 1;
-            m.gap = m.gap.max(e - op.leave);
-            m.error_in = m.error_in.max(t - e);
-            m.error_out = m.error_out.max(e - t);
-        }
-    }
-    Ok(m)
+    Ok(bounded::observe(
+        exact,
+        tess,
+        &tool,
+        &stops,
+        &bounded::settings(),
+    )?)
+}
+
+/// The provenance written above each raw M2 file.
+fn provenance(args: &Args, form: &str, fine: f64, op: &Op, part: &Path) -> String {
+    let source = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
+    let t = &op.tool.tool;
+    format!(
+        "step_accuracy M2, bounded checker (issue #346; decision 0209 item 4.1)\n\
+         source: {source}\n\
+         part: {}\n\
+         stl: {}\n\
+         form: {form}; form c deflection {fine} mm and {} rad; form b the import's default\n\
+         operation: {} ({}); stock to leave {} mm; quick {}\n\
+         tool: {:?}, diameter {} mm, flute {} mm\n\
+         checker: tolerance {} mm, margin {} mm, budget {} pieces; slack {} mm\n\
+         values: signed clearance, mm (negative inside the tool); upper is found at a point of the geometry, lower is proven",
+        part.display(),
+        args.stl
+            .as_ref()
+            .map_or_else(|| "none".to_owned(), |p| p.display().to_string()),
+        args.angular,
+        op.label,
+        op.strategy,
+        op.leave,
+        args.quick,
+        t.shape,
+        t.diameter.0,
+        t.flute_length.0,
+        bounded::TOLERANCE,
+        bounded::MARGIN,
+        bounded::BUDGET,
+        openchuck_testkit::contact::SLACK,
+    )
 }
 
 struct Probe {

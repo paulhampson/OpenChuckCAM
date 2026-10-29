@@ -827,6 +827,7 @@ impl<'a> Job<'a> {
 
     fn pass(&self, sites: &[(Site, f64)], stock: &PassStock) -> Pass {
         Pass {
+            helical_pass_start: false,
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
             rapids: Vec::new(),
@@ -984,7 +985,9 @@ impl<'a> Job<'a> {
             let mut layer = Vec::new();
             for (first, last) in Self::runs(&active, |i| Self::joined(&allowed, i)) {
                 let sites = self.run_points((first, last), *level, &floors, &site, &ends);
-                passes.push(self.pass(&sites, &snapshot));
+                let mut pass = self.pass(&sites, &snapshot);
+                pass.helical_pass_start = layer.is_empty();
+                passes.push(pass);
                 layer.push(sites);
             }
             for sites in &layer {

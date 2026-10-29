@@ -891,6 +891,7 @@ pub fn follow_chains(
                     })
                     .collect();
                 passes.push(Pass {
+                    helical_pass_start: false,
                     points,
                     stock: None,
                     rapids: Vec::new(),

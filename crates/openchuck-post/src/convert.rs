@@ -294,6 +294,13 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                 seg.duration.0 = 0.0;
             }
             here = to;
+            if options.a_range == ARange::Continuous
+                && group.rotary_reset_after.binary_search(&s).is_ok()
+            {
+                // The producer certifies this existing clear helical-pass
+                // transition; its local-stock retract need not be global safe Z.
+                program.steps.push(Step::RotaryBoundary { at: here });
+            }
         }
         if options.short_blocks.enabled() {
             manage_group(

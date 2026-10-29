@@ -170,6 +170,19 @@ fn write_projects_with(
     jobs: &[String],
     mut write_part: impl FnMut(&dyn RadialPart, (u32, u32), &Path) -> std::io::Result<()>,
 ) -> std::io::Result<Vec<PathBuf>> {
+    // Check every name first: a job must be a committed project, so a name
+    // such as "../x" or an absolute path cannot copy outside `out`, and a typo
+    // leaves no empty folder behind (NFR-07).
+    let committed = committed_jobs()?;
+    if let Some(bad) = jobs.iter().find(|job| !committed.contains(job)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "{bad:?} is not a committed project; choose one of: {}",
+                committed.join(", ")
+            ),
+        ));
+    }
     let mut written = Vec::new();
     for job in jobs {
         let target = out.join(job);
@@ -219,6 +232,29 @@ mod tests {
 
     use super::*;
     use openchuck_app::project::{ContentHash, Item, ModelCheck, file};
+
+    /// NFR-07: a job name that is not a committed project, including one that
+    /// climbs out of the output folder, is refused with a clear error before
+    /// anything is created or copied.
+    #[test]
+    fn req_nfr_07_uncommitted_or_escaping_job_names_are_refused() {
+        let base = std::env::temp_dir().join(format!("openchuck-jobname-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let out = base.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        for bad in ["../escaped", "..", "a/b", "/abs", "no_such_job", ""] {
+            let err = write_projects(&out, &[bad.to_string()]).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{bad:?}");
+            assert!(err.to_string().contains("not a committed project"), "{err}");
+        }
+        assert_eq!(
+            std::fs::read_dir(&out).unwrap().count(),
+            0,
+            "no stray folder"
+        );
+        assert!(!base.join("escaped").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// A generated model belongs to the new export, so its recorded identity
     /// must describe its actual bytes even when platform math changes them.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- **Breaking (0.26.0):** `Pass::helical_pass_start` distinguishes complete roughing-layer helices from fragments. Host struct literals use `false` for ordinary cuts/fragments, marking only the first retained fragment of a complete helix as `true`. Assembly marks existing clear transitions without changing any physical segment; connections preserve/remap indices. Existing limited-axis fitting/refusal is unchanged (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.

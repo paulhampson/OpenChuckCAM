@@ -345,6 +345,7 @@ pub fn assemble_with_entry(
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut rapids: Vec<Vec<usize>> = Vec::new();
+    let mut helical_starts = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -385,6 +386,7 @@ pub fn assemble_with_entry(
         placed.push(points);
         stocks.push(pass.stock.clone());
         rapids.push(pass.rapids.clone());
+        helical_starts.push(pass.helical_pass_start);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -420,6 +422,7 @@ pub fn assemble_with_entry(
     let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
+    let mut rotary_reset_after = Vec::new();
     for (i, points) in placed.iter().enumerate() {
         context.check_cancelled()?;
         context.report("assemble passes", i as u64, Some(total));
@@ -440,6 +443,25 @@ pub fn assemble_with_entry(
             let height = local.unwrap_or(link_height);
             leave(&mut b, view(&stocks, i - 1, input), common, height)?;
             b.retract(height)?;
+            if helical_starts.get(i).copied().unwrap_or(false)
+                && rotary.range == openchuck_types::machine::ARange::Continuous
+                && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
+            {
+                let before = index
+                    .checked_sub(1)
+                    .and_then(|s| b.segments.get(s))
+                    .map_or(start, |s| s.end);
+                // A pass already at clearance may need no retract. Preserve
+                // its valid motion without inventing a reset boundary. A
+                // pass that adds no motion leaves the same segment last, so
+                // it is recorded once and the list stays strictly increasing.
+                if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
+                    && segment.end.a == before.a
+                    && rotary_reset_after.last() != Some(&index)
+                {
+                    rotary_reset_after.push(index);
+                }
+            }
             let target = rotary.to_axis(head.tip, head.a);
             let at = b.at().height.max(height);
             let tip = rotary.to_model(
@@ -483,6 +505,7 @@ pub fn assemble_with_entry(
     context.report("assemble passes", total, Some(total));
     Ok(GeneratedPath {
         group: ToolpathGroup {
+            rotary_reset_after,
             tags: input.tags.clone(),
             start,
             segments: b.segments,

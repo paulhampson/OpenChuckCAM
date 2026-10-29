@@ -65,6 +65,10 @@ impl PartialEq for PassStock {
 /// A run of cut points cut without lifting the tool.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pass {
+    /// Starts a complete helical traversal (e.g. a new roughing layer), not a
+    /// fragment separated by a gap. Shared assembly may mark the existing
+    /// clear transition for a nonmoving controller reset (decision 0247).
+    pub helical_pass_start: bool,
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
     /// The material when this pass starts, if the strategy tracks it. Passes
@@ -581,7 +585,9 @@ fn keep_clear(
         !reaches_in(keep_out, a.tip.x.min(b.tip.x), a.tip.x.max(b.tip.x))
     };
     let (mut kept, mut cut_short, mut holes) = (Vec::new(), false, 0usize);
+    let mut helical_start_pending = false;
     for pass in passes {
+        helical_start_pending |= pass.helical_pass_start;
         if !pass.rapids.is_empty() {
             let whole = pass.points.iter().all(clear)
                 && pass.points.windows(2).all(|w| match w {
@@ -589,6 +595,9 @@ fn keep_clear(
                     _ => true,
                 });
             if whole {
+                let mut pass = pass;
+                pass.helical_pass_start = helical_start_pending;
+                helical_start_pending = false;
                 kept.push(pass);
             } else {
                 note_reach(&pass.points);
@@ -620,10 +629,12 @@ fn keep_clear(
         }
         for points in pieces {
             kept.push(Pass {
+                helical_pass_start: helical_start_pending,
                 points,
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
             });
+            helical_start_pending = false;
         }
     }
     let names = held_names(&reached);
@@ -785,6 +796,7 @@ mod tests {
 
     fn pass(xs: &[f64]) -> Pass {
         Pass {
+            helical_pass_start: false,
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),
@@ -943,6 +955,7 @@ mod tests {
     fn path(moves: &[(MoveKind, f64)]) -> GeneratedPath {
         GeneratedPath {
             group: ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: PathTags {
                     operation: "op".into(),
                     setup: "setup".into(),

@@ -378,6 +378,7 @@ fn verify_replay(
         .zip(inputs)
         .map(|(g, input)| {
             input.map(|_| ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: g.tags.clone(),
                 start: g.start,
                 segments: vec![],

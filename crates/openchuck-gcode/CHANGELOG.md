@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- Independently validate declared pass-boundary resets, including rounded-away retracts, while rejecting undeclared resets and subsequent whole-turn errors (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.

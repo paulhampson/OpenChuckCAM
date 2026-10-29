@@ -2098,6 +2098,7 @@ fn swarf(
         notes.push(path.note(settings.tolerance, limit));
         for run in &path.runs {
             passes.push(Pass {
+                helical_pass_start: false,
                 points: run
                     .iter()
                     .map(|p| CutPoint {

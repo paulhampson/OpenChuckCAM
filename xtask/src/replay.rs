@@ -189,6 +189,9 @@ fn prepare_programs(programs: Vec<PathBuf>) -> Result<PreparedPrograms> {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&work)?;
+    // `check` looks programs up by canonical path; a symlinked temp folder
+    // (macOS `/var`) would otherwise lose the boundary checks silently.
+    let work = work.canonicalize()?;
     let mut out = PreparedPrograms {
         programs: Vec::new(),
         boundaries: BTreeMap::new(),
