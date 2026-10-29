@@ -276,6 +276,7 @@ pub fn plan_end(
             })
             .to_vec();
             passes.push(Pass {
+                helical_pass_start: false,
                 points,
                 stock: None,
                 rapids: vec![],

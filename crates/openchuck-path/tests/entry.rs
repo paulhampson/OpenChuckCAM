@@ -84,6 +84,7 @@ impl Strategy for Line {
             })
             .collect();
         Ok(vec![Pass {
+            helical_pass_start: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -983,4 +984,235 @@ fn req_op_14_req_op_11_local_stock_removal_does_not_lower_the_unproven_incoming_
         previous_kind = s.kind;
     }
     assert_eq!(starts, 3);
+}
+
+/// Public library hosts may supply complete traversals already at clearance.
+/// They need no extra motion solely to manufacture a counter-reset boundary.
+fn clear_helices(fixture: &Fixture, height: f64) -> Vec<Pass> {
+    [0.0, 10.0]
+        .into_iter()
+        .map(|start| Pass {
+            helical_pass_start: true,
+            points: (0..=6)
+                .map(|i| {
+                    let a = Degrees(f64::from(i) * 120.0);
+                    let tip = fixture.rotary.to_model(
+                        openchuck_path::rotary::AxisPosition {
+                            along: start + f64::from(i) * 0.5,
+                            across: 0.0,
+                            height,
+                        },
+                        a,
+                    );
+                    CutPoint {
+                        tip,
+                        a,
+                        contact: tip,
+                    }
+                })
+                .collect(),
+            stock: None,
+            rapids: Vec::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn req_op_11_req_op_14_req_op_15_clear_pass_transitions_without_a_reset_preserve_motion() {
+    use openchuck_path::params::{CommonParameters, EntryParameters};
+    let part = Cylinder {
+        radius: 8.0,
+        length: 6.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        10.0,
+        &support::tool(openchuck_types::tool::ToolShape::FlatEnd, 3.0),
+    );
+    for (style, rotary_rapid) in [("lead", false), ("plunge", false), ("plunge", true)] {
+        let mut passes = clear_helices(&fixture, fixture.clearance.radius.0);
+        if rotary_rapid {
+            passes[0].rapids = vec![6];
+        }
+        let resolved = Line
+            .schema()
+            .resolve(&values(0.0, 6.0, &[entry(style)]))
+            .unwrap();
+        let common = CommonParameters::read(&resolved).unwrap();
+        let entry = EntryParameters::read(&resolved).unwrap();
+        let mut unmarked = passes.clone();
+        for pass in &mut unmarked {
+            pass.helical_pass_start = false;
+        }
+        let assemble = |passes: &[Pass]| {
+            run(|ctx| {
+                openchuck_path::assemble::assemble_with_entry(
+                    passes,
+                    &fixture.input(),
+                    &common,
+                    &entry,
+                    ctx,
+                )
+            })
+        };
+        let legacy = assemble(&unmarked).unwrap();
+        let final_kind = if style == "lead" {
+            MoveKind::LeadOut
+        } else if rotary_rapid {
+            MoveKind::Rapid
+        } else {
+            MoveKind::Cutting
+        };
+        assert!(
+            legacy.group.segments.windows(2).any(|pair| {
+                let from = fixture.rotary.to_axis(pair[0].end.tip, pair[0].end.a);
+                let to = fixture.rotary.to_axis(pair[1].end.tip, pair[1].end.a);
+                pair[0].kind == final_kind
+                    && pair[1].kind == MoveKind::Rapid
+                    && (from.height - fixture.clearance.radius.0).abs() < 1e-9
+                    && (from.height - to.height).abs() < 1e-9
+                    && (from.along - to.along).abs() > 1.0
+            }),
+            "fixture must link directly from the completed traversal at clearance"
+        );
+        let generated = assemble(&passes).unwrap_or_else(|error| {
+            panic!("a valid clear transition must not require an optional reset: {error}")
+        });
+        assert_eq!(
+            generated, legacy,
+            "no added reset, motion, feed or diagnostic: {style}"
+        );
+        assert!(generated.group.rotary_reset_after.is_empty());
+    }
+}
+
+#[test]
+fn req_op_11_req_op_14_req_op_15_an_empty_pass_prefix_does_not_require_a_reset_segment() {
+    use openchuck_path::params::{CommonParameters, EntryParameters};
+    let part = Cylinder {
+        radius: 8.0,
+        length: 6.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        10.0,
+        &support::tool(openchuck_types::tool::ToolShape::FlatEnd, 3.0),
+    );
+    let mut passes = clear_helices(&fixture, fixture.clearance.safe_z.0);
+    passes[0].points.truncate(1);
+    passes[0].helical_pass_start = false;
+    let resolved = Line
+        .schema()
+        .resolve(&values(0.0, 6.0, &[entry("plunge")]))
+        .unwrap();
+    let common = CommonParameters::read(&resolved).unwrap();
+    let entry = EntryParameters::read(&resolved).unwrap();
+    let assemble = |passes: &[Pass]| {
+        run(|ctx| {
+            openchuck_path::assemble::assemble_with_entry(
+                passes,
+                &fixture.input(),
+                &common,
+                &entry,
+                ctx,
+            )
+        })
+    };
+    let mut unmarked = passes.clone();
+    unmarked[1].helical_pass_start = false;
+    let legacy = assemble(&unmarked).unwrap();
+    assert_eq!(legacy.group.segments[0].kind, MoveKind::Rapid);
+    assert_eq!(legacy.group.segments[0].end.tip, passes[1].points[0].tip);
+    let generated = assemble(&passes).unwrap_or_else(|error| {
+        panic!("an empty prefix must not require a reset segment: {error}")
+    });
+    assert_eq!(generated, legacy);
+    assert!(generated.group.rotary_reset_after.is_empty());
+}
+
+/// A marked pass that adds no motion of its own (a single point where the
+/// previous pass ended) leaves the same qualifying segment last for the next
+/// marked pass. That segment is recorded once, so the list stays ordered.
+#[test]
+fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motionless_passes() {
+    use openchuck_path::params::{CommonParameters, EntryParameters};
+    let part = Cylinder {
+        radius: 8.0,
+        length: 6.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        10.0,
+        &support::tool(openchuck_types::tool::ToolShape::FlatEnd, 3.0),
+    );
+    let height = fixture.clearance.radius.0;
+    let point = |along: f64, degrees: f64| {
+        let a = Degrees(degrees);
+        let tip = fixture.rotary.to_model(
+            openchuck_path::rotary::AxisPosition {
+                along,
+                across: 0.0,
+                height,
+            },
+            a,
+        );
+        CutPoint {
+            tip,
+            a,
+            contact: tip,
+        }
+    };
+    let pass = |points: Vec<CutPoint>, rapids: Vec<usize>| Pass {
+        helical_pass_start: true,
+        points,
+        stock: None,
+        rapids,
+    };
+    // The first pass ends in a rapid along the axis, with no rotary motion.
+    let passes = vec![
+        pass(
+            vec![point(0.0, 0.0), point(1.0, 90.0), point(4.0, 90.0)],
+            vec![2],
+        ),
+        pass(vec![point(4.0, 90.0)], Vec::new()),
+        pass(vec![point(4.0, 90.0)], Vec::new()),
+        pass(vec![point(8.0, 90.0), point(9.0, 180.0)], Vec::new()),
+    ];
+    let resolved = Line
+        .schema()
+        .resolve(&values(0.0, 6.0, &[entry("plunge")]))
+        .unwrap();
+    let common = CommonParameters::read(&resolved).unwrap();
+    let entry = EntryParameters::read(&resolved).unwrap();
+    let assemble = |passes: &[Pass]| {
+        run(|ctx| {
+            openchuck_path::assemble::assemble_with_entry(
+                passes,
+                &fixture.input(),
+                &common,
+                &entry,
+                ctx,
+            )
+        })
+    };
+    let mut unmarked = passes.clone();
+    for pass in &mut unmarked {
+        pass.helical_pass_start = false;
+    }
+    let control = assemble(&unmarked).unwrap();
+    let generated = assemble(&passes).unwrap();
+    let toolpath = openchuck_types::ir::Toolpath {
+        groups: vec![generated.group.clone()],
+    };
+    toolpath
+        .validate()
+        .unwrap_or_else(|error| panic!("a valid operation must validate: {error}"));
+    let reset = &generated.group.rotary_reset_after;
+    assert!(reset.windows(2).all(|pair| pair[0] < pair[1]), "{reset:?}");
+    let mut without = generated.clone();
+    without.group.rotary_reset_after.clear();
+    assert_eq!(
+        without, control,
+        "marking adds no motion, feed or diagnostic"
+    );
 }

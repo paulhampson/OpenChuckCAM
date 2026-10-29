@@ -23,6 +23,10 @@ This crate belongs to the reusable library family (`openchuck-types`, `openchuck
 
 Licence: AGPL-3.0-or-later.
 
+### Helical pass counter reset metadata (0247)
+
+Library hosts initialize `Pass::helical_pass_start` to false for ordinary cuts/fragments, and true only on the first retained fragment of a complete new helical traversal. Rotary roughing sets it at layer starts. Assembly preserves physical motion and records existing clear transition segments in `ToolpathGroup::rotary_reset_after`; an index means **after** that segment. It does not authorize a mid-cut reset or add motion. Hosts creating IR directly must certify boundary identity and clearance; empty metadata preserves previous behavior. `connect_group` shifts indices when prepending a physical connection, without mutating canonical paths. Do not drop metadata when caching/copying groups or reuse connected groups as canonical file inputs. Public struct literals need the new fields; this is a breaking family change assigned 0.26.0 in Merge Manager order.
+
 Optional back-and-forth ramp clearance uses adaptive continuous-envelope certificates
 (decisions 0242/0248). An inconclusive coarse bound subdivides deterministically;
 all accepted intervals enclose the complete tool sweep. Each attempted interval,

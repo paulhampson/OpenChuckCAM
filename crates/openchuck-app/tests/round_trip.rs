@@ -240,6 +240,7 @@ fn near_a_part() -> openchuck_types::ir::Toolpath {
     ));
     Toolpath {
         groups: vec![ToolpathGroup {
+            rotary_reset_after: Vec::new(),
             tags: PathTags {
                 operation: "near A".into(),
                 setup: "s1".into(),

@@ -66,6 +66,7 @@ impl Strategy for Plain {
         _: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
         Ok(vec![Pass {
+            helical_pass_start: false,
             points: [-8., -4., 0., 4., 8.]
                 .into_iter()
                 .map(|x| {

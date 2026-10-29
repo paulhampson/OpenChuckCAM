@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OUTPUT2 (accepted decision 0267; #308, #310): the export dialog has File names fields for the program files and the setup sheet, with Reset, a list of the fields, and the problem in red when a template cannot name the files; the files list and the sheet line preview the names written, with the numbered names and an amber warning when names clash; Write G-code is blocked only while a template cannot name a file. The templates are the user's setting, kept by the shell once a change is confirmed (a draft is not kept, decision 0233).
+
 - FACING review fix (UI-02/03): replacing a scene job preserves an unconsumed camera-fit request; ordinary rebuilds after the fit is consumed leave the camera unchanged.
 
 - BUG-SIMEND, SIM-03/04, issues #334/#330: draw the final cut surface after

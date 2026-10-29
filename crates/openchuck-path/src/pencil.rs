@@ -762,6 +762,7 @@ impl Strategy for PencilFinishing {
                 }
             }
             passes.extend(runs.into_iter().map(|points| Pass {
+                helical_pass_start: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),

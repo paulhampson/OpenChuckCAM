@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.27.0
+
+- **Breaking (0.27.0, BUG-SWARF4, decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
+
+## 0.26.0
+
+- **Breaking (0.26.0):** `Pass::helical_pass_start` distinguishes complete roughing-layer helices from fragments. Host struct literals use `false` for ordinary cuts/fragments, marking only the first retained fragment of a complete helix as `true`. Assembly marks existing clear transitions without changing any physical segment; connections preserve/remap indices. Existing limited-axis fitting/refusal is unchanged (accepted 0247, #337). Library family advances together to 0.26.0 under decision 0048.
+
 ## 0.23.0
 
 - STEPALL-M release integration: optional host stage timing (types/path) and corrected XYZ rounding at the written rotary angle (post/replay, issue #324); retain main’s GC-17 block-time and rotary-boundary APIs. Library family advances together after 0.22.0.
@@ -13,7 +21,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
-- **Breaking (0.27.0, BUG-SWARF4, decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
+- STEPALL-X1 (issue #348, decision 0260): exact face and trim queries. `ExactFace::closest` no longer answers a point on a face's own boundary on the wrong edge (OI-839: a seam face's rim was one segment whose ends meet, and the sample search bracketed the wrong end). Trim loops are indexed (strips in v for the trim test; per-segment bounds from first- and second-derivative bounds for the boundary search), B-spline faces search a tree of Bezier hull cells (branch and bound to `brep::SEARCH_TOLERANCE`, 1e-6 mm), and faces are visited from a boundary-point upper bound. Additive API: `ExactFace::closest_within` / `closest_from`, `BrepSurface::project_within` / `project_from` / `faces_near` / `faces_in_reach`. Answers are never further than before on the corpus and blisk benchmark; tool drops still use the tessellation (OI-81).
 
 - FACING review fixes: preserve cancellation from restricted legacy Flat completion; describe End/Box, arbitrary A and coverage choices in strategy metadata. Completion still refuses every other unfinished/unsupported result with its existing reason.
 

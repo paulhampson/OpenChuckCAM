@@ -117,6 +117,11 @@ pub fn connect_group(
         };
         link.validate("operation connection")?;
         group.segments.insert(0, link);
+        for index in &mut group.rotary_reset_after {
+            *index = index
+                .checked_add(1)
+                .ok_or_else(|| refuse(next, "invalid pass boundary index"))?;
+        }
         link_segments = 1;
     }
     group.start = from;

@@ -787,6 +787,7 @@ fn actual_sweeps(
         })
         .collect();
     ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         start,
         segments,
         tags: PathTags {

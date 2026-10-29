@@ -537,6 +537,7 @@ mod tests {
                 })
                 .collect();
             Ok(vec![Pass {
+                helical_pass_start: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),
