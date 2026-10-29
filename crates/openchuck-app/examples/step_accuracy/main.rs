@@ -1213,7 +1213,7 @@ impl Form<'_> {
     /// The surface `strategy` drops on in this form.
     fn surface_for(&self, strategy: &dyn Strategy) -> &dyn SurfaceSource {
         match self {
-            Self::Brep(_, Some(exact), _) if strategy.exact_contact() => exact,
+            Self::Brep(_, Some(exact), _) if strategy.exact_contact() => exact.as_ref(),
             _ => self.surface(),
         }
     }
