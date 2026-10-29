@@ -452,9 +452,12 @@ pub fn assemble_with_entry(
                     .and_then(|s| b.segments.get(s))
                     .map_or(start, |s| s.end);
                 // A pass already at clearance may need no retract. Preserve
-                // its valid motion without inventing a reset boundary.
+                // its valid motion without inventing a reset boundary. A
+                // pass that adds no motion leaves the same segment last, so
+                // it is recorded once and the list stays strictly increasing.
                 if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
                     && segment.end.a == before.a
+                    && rotary_reset_after.last() != Some(&index)
                 {
                     rotary_reset_after.push(index);
                 }
