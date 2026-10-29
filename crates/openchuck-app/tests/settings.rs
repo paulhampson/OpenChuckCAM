@@ -252,3 +252,52 @@ fn req_sim_03_req_ui_15_the_simulate_view_choices_are_kept_and_never_empty() {
     assert!(loaded.settings.simulate.show_cut_part);
     let _ = std::fs::remove_dir_all(config);
 }
+
+/// Issues 308 and 310: the file name templates are the user's, kept on this
+/// computer across projects, never in a project, with defaults that give the
+/// names written before templates existed.
+#[test]
+fn req_ui_15_req_gc_05_file_name_templates_are_personal_and_kept_across_projects() {
+    let config = folder("file-names");
+    let file = SettingsFile::in_folder(&config);
+    let defaults = file.load().settings.file_names;
+    assert_eq!(defaults.gcode, "{n}-{contents}");
+    assert_eq!(defaults.setup_sheet, "{project}-setup-sheet");
+    let settings = UserSettings {
+        file_names: openchuck_app::FileNameTemplates {
+            gcode: "{project}_{n}".into(),
+            setup_sheet: "{project}_sheet".into(),
+        },
+        ..UserSettings::default()
+    };
+    file.save(&settings).unwrap();
+    let text = std::fs::read_to_string(file.file()).unwrap();
+    assert!(text.contains("[interface.file_names]"), "{text}");
+    assert_eq!(file.load().settings.file_names, settings.file_names);
+    // A file written before the field existed reads the defaults.
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    assert_eq!(file.load().settings.file_names, defaults);
+    // An emptied template reads its default.
+    std::fs::write(
+        file.file(),
+        "[interface.file_names]\ngcode = \"\"\nsetup_sheet = \"{project}\"\n",
+    )
+    .unwrap();
+    let read = file.load().settings.file_names;
+    assert_eq!(
+        (read.gcode.as_str(), read.setup_sheet.as_str()),
+        ("{n}-{contents}", "{project}")
+    );
+    // The project does not hold them: a project saved after they change is
+    // the same bytes.
+    let dir = folder("file-names-project");
+    let mut app = Application::create(&dir, "Templates", Threads::Exactly(1)).unwrap();
+    app.save().unwrap();
+    let before = std::fs::read(dir.join("project.toml")).unwrap();
+    app.set_file_name_templates(settings.file_names.clone());
+    app.save().unwrap();
+    assert_eq!(std::fs::read(dir.join("project.toml")).unwrap(), before);
+    assert!(!String::from_utf8(before).unwrap().contains("{project}"));
+    std::fs::remove_dir_all(config).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}

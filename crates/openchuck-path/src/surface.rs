@@ -269,13 +269,15 @@ impl MeshSurface {
     /// radius of the line and whose best possible tip, the box's highest
     /// point less the lowest the profile gets at the box's nearest distance
     /// from the axis, is not below the floor. Conservative: it may return
-    /// triangles that cannot lift the tool, never fewer. Index order.
+    /// triangles that cannot lift the tool, never fewer. Index order, in
+    /// `found`, which is emptied first.
     pub(crate) fn triangles_for_drop(
         &self,
         line: &ToolLine,
         profile: &RevolvedProfile,
         floor: Option<f64>,
-    ) -> Vec<u32> {
+        found: &mut Vec<u32>,
+    ) {
         let origin = line.origin;
         let axis = line.axis.get();
         let near = |node: &BvhNode| {
@@ -301,9 +303,9 @@ impl MeshSurface {
             // Slightly below the floor is kept, so ties are decided as before.
             floor.is_none_or(|f| top - lowest >= f - 1e-9)
         };
-        let mut found: Vec<u32> = self.bvh.bvh().leaves(near).collect();
+        found.clear();
+        found.extend(self.bvh.bvh().leaves(near));
         found.sort_unstable();
-        found
     }
 
     /// The highest point of the surface on the infinite line, as a position

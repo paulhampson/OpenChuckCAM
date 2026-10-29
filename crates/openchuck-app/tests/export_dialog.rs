@@ -695,10 +695,10 @@ fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_r
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
     let mut expected: Vec<String> = run.gcode.iter().map(|(n, _)| n.clone()).collect();
-    expected.extend(app.setup_sheet_file_names());
+    expected.extend(app.setup_sheet_file_names().unwrap());
     assert_eq!(names, expected);
     assert_eq!(
-        app.setup_sheet_file_names(),
+        app.setup_sheet_file_names().unwrap(),
         ["together-setup-sheet.html", "together-setup-sheet.pdf"]
     );
     for ((name, text), path) in run.gcode.iter().zip(&written) {
@@ -765,7 +765,7 @@ fn req_gc_05_req_gc_12_req_ui_12_write_messages_retain_every_actual_full_path_an
             assert_eq!(path, &out.join(name));
             assert_eq!(std::fs::read(path).unwrap(), text.as_bytes());
         }
-        let [html, pdf] = app.setup_sheet_file_names();
+        let [html, pdf] = app.setup_sheet_file_names().unwrap();
         let sheet = app.setup_sheet_for_run(&run);
         assert_eq!(
             std::fs::read(out.join(html)).unwrap(),
@@ -797,7 +797,7 @@ fn req_gc_05_req_nfr_07_overwrite_plan_lists_existing_files_without_writing() {
     assert!(!out.exists(), "preflight and cancellation create nothing");
     std::fs::create_dir_all(&out).unwrap();
     let old = out.join(&run.gcode[0].0);
-    let sheet = out.join(app.setup_sheet_file_names()[1].clone());
+    let sheet = out.join(app.setup_sheet_file_names().unwrap()[1].clone());
     std::fs::write(&old, b"old NC").unwrap();
     std::fs::write(&sheet, b"old PDF").unwrap();
     let review = app.prepare_output(&out, &run).unwrap();
@@ -950,4 +950,320 @@ fn req_nfr_12_req_gc_16_skipping_the_stock_simulation_is_acknowledged_apart_from
     for d in [dir, settings] {
         std::fs::remove_dir_all(d).unwrap();
     }
+}
+
+/// Issue 331: Messages adds a full stop to text that does not end a
+/// sentence, so a path on the last line gained a "." that is not part of the
+/// file name. Each path line must be exactly the path.
+#[test]
+fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
+    let (dir, app) = project("Exact paths", false);
+    let written = PathBuf::from("/out/01-part.nc");
+    let failed = PathBuf::from("/out/02-part.nc");
+    let skipped = PathBuf::from("/out/part-setup-sheet.pdf");
+    app.record_output_report(openchuck_app::OutputReport {
+        written: vec![written],
+        failed: Some(openchuck_app::OutputFailure {
+            path: failed,
+            reason: "The disk is full".to_owned(),
+        }),
+        not_attempted: vec![skipped],
+    });
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+        .unwrap();
+    assert_eq!(
+        message.text,
+        "Export: Wrote 1 file; export incomplete.\n\
+         Written: /out/01-part.nc\n\
+         Failed: /out/02-part.nc — The disk is full\n\
+         Not attempted: /out/part-setup-sheet.pdf\n\
+         End of the export result."
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn templates(gcode: &str, setup_sheet: &str) -> openchuck_app::FileNameTemplates {
+    openchuck_app::FileNameTemplates {
+        gcode: gcode.to_owned(),
+        setup_sheet: setup_sheet.to_owned(),
+    }
+}
+
+fn file_names(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Issue 308: untouched templates keep every name and byte as before, for
+/// every grouping (GC-05, GC-07).
+#[test]
+fn req_gc_05_req_gc_07_the_default_templates_keep_the_names_and_bytes() {
+    for grouping in [
+        OutputGrouping::Project,
+        OutputGrouping::Setup,
+        OutputGrouping::Operation,
+        OutputGrouping::Tool,
+    ] {
+        let (dir, mut app) = project("Default names", false);
+        let run = std::sync::Arc::new(post(&mut app, grouping));
+        let named = app.output_files(&run).unwrap();
+        let names: Vec<&str> = named.programs.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, self::names(&run), "{grouping:?}");
+        assert_eq!(
+            named.setup_sheet,
+            [
+                "default-names-setup-sheet.html",
+                "default-names-setup-sheet.pdf"
+            ]
+        );
+        let plan = app.prepare_output(&folder("default-names"), &run).unwrap();
+        let expected: Vec<String> = run
+            .gcode
+            .iter()
+            .map(|(n, _)| n.clone())
+            .chain(named.setup_sheet.iter().cloned())
+            .collect();
+        assert_eq!(file_names(plan.paths()), expected);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+/// Issue 308: the names the dialog previews are the names written, and a
+/// template changes only the names, never the program bytes (GC-07).
+#[test]
+fn req_gc_05_req_gc_07_a_template_names_the_written_files_as_previewed() {
+    let (dir, mut app) = project("Bracket", false);
+    app.set_clock(Box::new(openchuck_app::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_792_575_005),
+    )));
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Tool));
+    app.set_file_name_templates(templates(
+        "{project}_{setup_no}_{n}_T{tool_no}_{tool}_{date}",
+        "{machine} {post} sheet",
+    ));
+    let named = app.output_files(&run).unwrap();
+    let previewed: Vec<String> = named.programs.iter().map(|p| p.name.clone()).collect();
+    assert_eq!(
+        previewed,
+        [
+            "bracket_1_01_T1_4-mm-ball_2026-10-21.nc",
+            "bracket_1_02_T2_6-mm-ball_2026-10-21.nc",
+            "bracket_1_03_T1_4-mm-ball_2026-10-21.nc",
+        ]
+    );
+    assert_eq!(
+        named.setup_sheet,
+        [
+            "example-x-rotary makera-z1 sheet.html",
+            "example-x-rotary makera-z1 sheet.pdf"
+        ]
+    );
+    let out = folder("templated");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    let mut expected = previewed.clone();
+    expected.extend(named.setup_sheet.iter().cloned());
+    assert_eq!(file_names(&report.written), expected);
+    for ((_, text), path) in run.gcode.iter().zip(&report.written) {
+        assert_eq!(&std::fs::read_to_string(path).unwrap(), text);
+    }
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Issue 308 with the owner's option B on OI-1072: outputs whose templates
+/// give one name, across every program file and both sheets and ignoring
+/// letter case, are written under numbered names, with a warning, and none
+/// is written over another; the sheet lists the names written.
+#[test]
+fn req_gc_05_req_nfr_07_clashing_names_are_numbered_and_none_is_overwritten() {
+    let (dir, mut app) = project("Clash", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    // Every program is "clash.nc"; the sheet clashes with nothing.
+    app.set_file_name_templates(templates("{project}", "{project}-setup-sheet"));
+    let named = app.output_files(&run).unwrap();
+    let names: Vec<&str> = named.programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["clash.nc", "clash-2.nc", "clash-3.nc"]);
+    let warning = named.warning().unwrap();
+    assert!(
+        warning.contains("'clash.nc' is written as 'clash-2.nc'"),
+        "{warning}"
+    );
+    assert_eq!(named.renamed.len(), 2);
+    // (Letter case and the sheet pair are covered in `output_names`: the
+    // fields here are all lower case, and the sheet's extensions differ.)
+    app.set_file_name_templates(templates("{project}", "{project}"));
+    let out = folder("clash");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    assert_eq!(
+        file_names(&report.written),
+        [
+            "clash.nc",
+            "clash-2.nc",
+            "clash-3.nc",
+            "clash.html",
+            "clash.pdf"
+        ]
+    );
+    for ((_, text), path) in run.gcode.iter().zip(&report.written) {
+        assert_eq!(&std::fs::read_to_string(path).unwrap(), text);
+    }
+    let html = std::fs::read_to_string(out.join("clash.html")).unwrap();
+    for name in ["clash.nc", "clash-2.nc", "clash-3.nc"] {
+        let bytes = std::fs::read(out.join(name)).unwrap();
+        assert!(html.contains(&format!(": {name}</h2>")), "{name}");
+        assert!(html.contains(&openchuck_app::output_names::file_hash::hex(&bytes)));
+    }
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Decision 1 on OI-1070: a template that cannot name a file at all is
+/// still an error, writes nothing and creates nothing.
+#[test]
+fn req_gc_05_req_nfr_07_a_template_that_cannot_name_a_file_writes_nothing() {
+    let (dir, mut app) = project("Unnamed", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    let out = folder("unnamed");
+    for (gcode, sheet, says) in [
+        ("{n}", "{project", "no matching }"),
+        ("{n}-{nope}", "{project}", "no field {nope}"),
+        ("{n}-{operation}", "{tool}", "covers every file"),
+    ] {
+        app.set_file_name_templates(templates(gcode, sheet));
+        let error = app.prepare_output(&out, &run).unwrap_err().to_string();
+        assert!(error.contains(says), "{gcode} / {sheet}: {error}");
+        assert_eq!(app.output_files(&run).unwrap_err().to_string(), error);
+        assert!(
+            !out.exists(),
+            "nothing is created before the names are settled"
+        );
+    }
+    // The same-run sheet, if shown, says why it lists no files.
+    let html = app.setup_sheet_for_run(&run).to_html();
+    assert!(
+        html.contains("The program files could not be named"),
+        "{html}"
+    );
+    // One file per setup holds three operations: {operation} has no value.
+    let (dir2, mut app2) = project("Unnamed setup", false);
+    let run2 = std::sync::Arc::new(post(&mut app2, OutputGrouping::Setup));
+    app2.set_file_name_templates(templates("{operation}", "{project}-setup-sheet"));
+    let error = app2.output_files(&run2).unwrap_err().to_string();
+    assert!(
+        error.contains("holds 3 operations") && error.contains("one file per operation"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(dir2).unwrap();
+}
+
+/// Issue 309: the sheet lists each program file by its written name, in
+/// the order they run, with the SHA-256 of the bytes on disk, its setup,
+/// and its operations, tools and tool changes in order.
+#[test]
+fn req_gc_12_req_gc_05_the_sheet_lists_each_file_its_hash_and_its_tool_changes() {
+    let (dir, mut app) = project("Hashes", false);
+    app.set_clock(Box::new(openchuck_app::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_792_575_005),
+    )));
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
+    app.set_file_name_templates(templates("{project}-{setup_no}", "{project}-sheet"));
+    let out = folder("hashes");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    let html = std::fs::read_to_string(out.join("hashes-sheet.html")).unwrap();
+    let nc = std::fs::read(out.join("hashes-1.nc")).unwrap();
+    let hash = openchuck_app::output_names::file_hash::hex(&nc);
+    assert_eq!(hash.len(), 64);
+    assert!(html.contains("File 1: hashes-1.nc"), "{html}");
+    assert!(html.contains(&format!("<dt>SHA-256</dt><dd>{hash}</dd>")));
+    assert!(html.contains(&format!("<dt>Size</dt><dd>{} bytes</dd>", nc.len())));
+    assert!(html.contains("<dt>Setup</dt><dd>1: Setup 1</dd>"));
+    assert!(html.contains("sha256sum"));
+    // T1, then T2, then back to T1: three tool changes, in program order,
+    // as the post writes them (one M6 for each).
+    let rows = [
+        "<tr><td>1</td><td>1</td><td>Finish A</td><td>T1 4 mm ball</td><td>Change to T1</td></tr>",
+        "<tr><td>2</td><td>2</td><td>Finish B</td><td>T2 6 mm ball</td><td>Change to T2</td></tr>",
+        "<tr><td>3</td><td>3</td><td>Touch up A</td><td>T1 4 mm ball</td><td>Change to T1</td></tr>",
+    ];
+    let mut at = 0;
+    for row in rows {
+        let found = html[at..]
+            .find(row)
+            .unwrap_or_else(|| panic!("{row}\n{html}"));
+        at += found + row.len();
+    }
+    let text = String::from_utf8(nc).unwrap();
+    assert_eq!(text.matches("M6").count(), 3);
+    // The PDF carries the same full hash on one line.
+    let pdf = std::fs::read(out.join("hashes-sheet.pdf")).unwrap();
+    assert!(
+        String::from_utf8_lossy(&pdf).contains(&hash),
+        "the PDF holds the whole hash"
+    );
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Issue 309: consecutive operations with one tool change tool once.
+#[test]
+fn req_gc_12_the_sheet_marks_only_real_tool_changes() {
+    let (dir, mut app) = project("Changes", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Tool));
+    let named = app.output_files(&run).unwrap();
+    for program in &named.programs {
+        let changes: Vec<bool> = program.steps.iter().map(|s| s.tool_change).collect();
+        assert_eq!(changes.first(), Some(&true), "{program:?}");
+        assert!(changes.iter().skip(1).all(|c| !c), "{program:?}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Issue 309: a sheet written without program files says so, and lists
+/// none.
+#[test]
+fn req_gc_12_a_sheet_written_alone_says_no_program_files_were_written_with_it() {
+    let (dir, mut app) = project("Alone", false);
+    app.set_post(None);
+    let run = app.regenerate().unwrap();
+    assert!(run.gcode.is_empty());
+    let out = folder("alone");
+    let written = app.write_setup_sheet_for_run(&out, &run).unwrap();
+    let html = std::fs::read_to_string(&written[0]).unwrap();
+    assert!(
+        html.contains("No program files were written with this sheet"),
+        "{html}"
+    );
+    assert!(!html.contains("SHA-256"));
+    let preview = app.setup_sheet(None).to_html();
+    assert!(preview.contains("No program files were written with this sheet"));
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Issue 309 and decision 0240 item 3: the sheets are written after every
+/// program file, and writing stops at the first failure, so a sheet is
+/// written only once every file it lists has been written.
+#[test]
+fn req_gc_12_req_nfr_07_the_sheets_are_written_after_every_program_file() {
+    let (dir, mut app) = project("Order", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Operation));
+    let plan = app.prepare_output(&folder("order"), &run).unwrap();
+    let names = file_names(plan.paths());
+    let sheets = app.output_files(&run).unwrap().setup_sheet;
+    assert_eq!(names.len(), run.gcode.len() + 2);
+    assert_eq!(names[run.gcode.len()..], sheets);
+    std::fs::remove_dir_all(dir).unwrap();
 }
