@@ -234,6 +234,21 @@ def tutorial(args):
     shot("13-generated")
     click(90, 579, 1)                                # show it again
 
+    # Hero 1 (README): the finishing path in a large 3D view. The side panels and
+    # the dock are folded away to give the view the whole window, then restored.
+    click(90, 551, 1)                                # hide the Rough path
+    click(244, 92, 1)                                # fold the project panel
+    click(1347, 92, 1)                               # fold the Inspector
+    click(1321, 477, 1.5)                            # fold the dock
+    click(662, 99, 1)                                # Iso view
+    click(475, 99, 2)                                # Fit
+    scroll(690, 420, 3, down=False)                  # zoom in
+    shot("hero-1-toolpaths")
+    click(13, 92, 1)                                 # unfold the project panel
+    click(1352, 92, 1)                               # unfold the Inspector
+    click(285, 707, 1.5)                             # unfold the dock
+    click(90, 551, 1)                                # show the Rough path again
+
     # 7. Simulate.
     click(1297, 746, 5)                              # Continue to simulate
     pause(100)                                       # the cut part of the whole program
@@ -248,6 +263,16 @@ def tutorial(args):
     click(355, 520, 1)                               # play
     pause(25)
     shot("14-simulate-final")
+
+    # Hero 2 (README): the cut part coloured by deviation from the model.
+    scroll(1190, 300, 8, down=False)                 # Inspector back to its top
+    click(1042, 135, 2)                              # Deviation colours
+    click(662, 99, 1)                                # Iso view
+    click(1004, 477, 2)                              # fold the dock
+    scroll(640, 290, 2, down=False)                  # zoom in a little
+    shot("hero-2-deviation")
+    click(1042, 135, 1)                              # Deviation colours off
+    click(285, 707, 1.5)                             # unfold the dock
 
     # 8. Post and export.
     click(1275, 746, 3)                              # Continue to post and export

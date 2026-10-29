@@ -2,9 +2,11 @@
 
 OpenChuckCAM is a CAM program: you give it a 3D model, and it works out the tool movements and writes the G-code that a CNC machine reads. It is for **true 4-axis (XYZA) machining**, where the work is held in a chuck and turned by a rotary axis (called A) while the cutter moves along and around it. Typical jobs are turned and carved pieces such as legs, finials, handles, blades and bladed disks. The first machine it supports is the **Makera Z1**; a LinuxCNC post is also included and is used to check the output.
 
-![OpenChuckCAM on its Simulate step: the cut part of the tutorial piece, with the project tree on the left, the 3D view in the middle and the results on the right.](docs/tutorial/images/14-simulate-final.png)
+![OpenChuckCAM on its Operations step: the finishing toolpath of the tutorial piece drawn in orange around the part in a large 3D view, with the rapid moves, the held region and the rotary axis.](docs/tutorial/images/hero-1-toolpaths.png)
 
-*The real application on its Simulate step, from [the tutorial](TUTORIAL.md). The stepped look of the cut part is the simulation's cell size (0.1 mm), not the surface the machine would leave.*
+![OpenChuckCAM on its Simulate step: the simulated cut part in 3D, coloured by how far each point is from the model, with the project tree on the left and the results on the right.](docs/tutorial/images/hero-2-deviation.png)
+
+*The real application, with the example piece from [the tutorial](TUTORIAL.md). Top: the toolpath of a finishing operation. Bottom: the simulated cut part, coloured by deviation from the model (grey is on the surface; the blue areas still have material left). The stepped look of the cut part is the simulation's cell size (0.1 mm), not the surface the machine would leave.*
 
 > **Read this first.** OpenChuckCAM is in early development. Generated G-code **must be verified by you before it is run on a machine** (NFR-12). OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup. It has not been approved for any machine. The project owner has run a few attended test programs on one Makera Z1 (see [Limitations](#main-limitations)); that does not make any program safe for your machine.
 

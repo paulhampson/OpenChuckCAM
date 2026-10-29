@@ -1,0 +1,16 @@
+schema = 20
+id = "9e15131a-f150-4709-a4e3-9648489d7128"
+order = "V"
+name = "Rough"
+setup = "4737d085-aad5-47b3-9ea9-dcb2db743c38"
+strategy = "rotary_roughing"
+tool = "c0de0001-0000-4000-8000-000000000104"
+selections = []
+spindle_speed = 10000.0
+
+[parameters]
+feed = 1000.0
+plunge_feed = 300.0
+stepdown = 1.0
+stepover = 2.2225
+stock_to_leave = 0.3

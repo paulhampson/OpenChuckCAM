@@ -1,0 +1,87 @@
+schema = 20
+id = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01"
+
+[machine]
+name = "Makera Z1"
+rotary_axis = "x"
+a_sense = "positive"
+max_tool_number = 1000
+max_spindle_rpm = 13000.0
+min_block_ms = 7.0
+block_window = 32
+short_block_mode = "report"
+
+[machine.rotary_origin]
+x = -180.4
+y = -108.8
+z = -55.0
+
+[machine.a_range]
+type = "continuous"
+
+[machine.travel.min]
+x = -200.0
+y = -200.0
+z = -100.0
+
+[machine.travel.max]
+x = 0.0
+y = 0.0
+z = 0.0
+
+[machine.max_feeds]
+linear = 1200.0
+z = 600.0
+rotary = 3600.0
+rapid_linear = 1200.0
+rapid_z = 600.0
+rapid_rotary = 3600.0
+rotary_in_feed = "makera"
+
+[machine.clearance]
+radius = 45.0
+safe_z = 50.0
+
+[machine.provenance.rotary_axis]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the rotary axis is along X. Consistent with 7 of 7 Makera 4-axis profiles (Fusion Z1, Carvera, Carvera Air and Carvera Harmonic; FreeCAD Z1, C1 and Air) and the Makera Mastercam and Carveco posts (decision 0013)"
+
+[machine.provenance.a_sense]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Checked again on the machine on 13 Oct 2026 by sending an A+ command: a camera behind the chuck, looking toward home, sees the top of the chuck turn toward the front of the machine (away from home, -Y): clockwise from that view, counter-clockwise looking at the chuck from +X. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The SP-12 air cut (14 Oct 2026, firmware 1.1.2, decision 0007) confirmed it a third time: at A +90 the top moved toward the front"
+
+[machine.provenance.rotary_origin]
+state = "unconfirmed"
+source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is the owner's measurement, the chuck centre 45 mm above the bed (13 Oct 2026), turned into machine Z -55 by taking the bed at the bottom of the Z travel (-100), which is itself unconfirmed (decision 0013, OI-60)"
+
+[machine.provenance.a_range]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the A axis is continuous. Consistent with Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous) and the Z1 firmware (no A soft limit). The air cut turned A to 570 and -370 and unwound by `G92.4 A0 S0` with no limit stop"
+
+[machine.provenance.travel]
+state = "unconfirmed"
+source = "spans 200 x 200 x 100 mm: FreeCAD Z1 exactly, Fusion Z1 with 10 mm extra on X and Y, firmware soft limits -206/-206/-102 (disabled by default). Frame is the firmware's G53 with home at 0; with the rotary module and soft limits on, the firmware holds Y above -160. Stock defaults: a user who changes them makes their own profile (decision 0013)"
+
+[machine.provenance.max_feeds]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 1200 mm/min, Z 600 mm/min, A 3600 deg/min (10 RPM). Consistent with Makera's published A rate, the Z1 and Z1 Pro firmware default config (Carvera and Air differ) and the 1200 reported from Makera Studio; the CAM profiles' figures are template values and were not used (decision 0013). How the firmware counts A in the F word was measured by the SP-12 air cut on firmware 1.1.2 (decision 0007, tests T3 and T4); the feed limits are applied to that length (decision 0076)"
+
+[machine.provenance.clearance]
+state = "unconfirmed"
+source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"
+
+[machine.provenance.min_block_ms]
+state = "confirmed"
+source = "Owner gate 4, PR 284 comment 6399134358, submitted 25 Oct 2026: firmware 1.1.2, ESP32 (version not supplied), WiFi upload; 7, 10 and 20 ms passed in both parts, 5/3/2/1 ms stuttered. K4 retained by the owner as a release waiver; subsequent LinuxCNC replay passed. This measured program/transport only (decision 0222)."
+
+[machine.provenance.block_window]
+state = "unconfirmed"
+source = "32-block planner queue in firmware source; accepted averaging rule, decision 0222 item 3; not a separately measured queue depth."
+
+[machine.provenance.short_block_mode]
+state = "unconfirmed"
+source = "Report first, accepted decision 0222; software policy, not a controller measurement."
+
+[machine.provenance.spindle_range]
+state = "unconfirmed"
+source = "Makera's published specification: the Makera Z1 Safety Guidelines, V1.3 (makera.com, file MakeraZ1-Safety_Guidelines-V1.3-multi-lan-260709-1.pdf), give the spindle as 0 to 13 000 rpm with closed-loop control; reviews (CNX Software, 1 Sep 2026) give the same. Not yet checked on the machine (decision 0231)"

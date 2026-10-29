@@ -79,7 +79,7 @@ Under **Workholding and tabs**, tick **Held at the start** and set **Grip length
 
 The first 8 mm of the stock, from X = -1 to X = 7, is now a held region: it is where the chuck grips. It is never cut and the paths keep clear of it. The program warns that this length covers 7 mm of the part (the plain end), which therefore stays as bar. That is what you want here; the warning would matter if you had held part of the shape you meant to cut.
 
-The program also reminds you that, without tabs, the part is not joined to the stock when its last support is cut. For this piece the held bar is the support, so no tab is needed. A **tab** is a small bridge left uncut so that a part stays attached until you separate it yourself.
+The program also reminds you that, without tabs, the part is not joined to the stock when its last support is cut. This piece stays joined to the held bar, so this tutorial uses no tab; add tabs if your own job cuts the part free. A **tab** is a small bridge left uncut so that a part stays attached until you separate it yourself.
 
 If you also support the far end of the stock, tick **Held at the end** the same way. The program treats the tailstock end as a held length only, so keep your own track of clearances there.
 
@@ -150,11 +150,11 @@ Press **Continue to simulate**.
 
 The Simulate step plays the whole program back as a cut and compares the result with the model. The program first prepares the cut part, which takes a little longer than generating.
 
-Press **Show** and set **Cut part display** to **Solid** if you want a solid view, then use the playback controls under the view. The buttons skip to the start, step back, play, step forward, and skip to the next operation. **Speed** sets how fast it plays.
+Press **Show** and set **Cut part display** to **Solid** if you want a solid view, then use the playback controls under the view. The buttons go to the start, step back one move (left arrow), play or pause (Space), step on one move (right arrow), and go to the next operation (Shift and right arrow). **Speed** sets how fast it plays.
 
 Jump to the start of the Finish operation to see the stock after roughing:
 
-![The stock after the Rough operation: a rough, stepped shape following the part with 0.3 mm to spare.](docs/tutorial/images/15-after-roughing.png)
+![The stock after the Rough operation: the rough shape that roughing leaves, with 0.3 mm of stock left for the finishing tool.](docs/tutorial/images/15-after-roughing.png)
 
 Then play on to the end of the program:
 
@@ -162,7 +162,7 @@ Then play on to the end of the program:
 
 The results on the right say how closely the cut matches the model:
 
-- **Largest material left** (1.320 mm for this run) and **Within ±0.100 mm** (91.6 % of the sampled points). The rest is mostly a thin skin of material the tool left in places it cannot reach, such as the sharp shoulder and the flutes.
+- **Largest material left** (1.320 mm for this run) and **Within ±0.100 mm** (91.6 % of the sampled points). The rest is material the finishing tool left. Tick **Deviation colours** at the top of the Inspector to colour the cut part by how far each point is from the model (grey is on the surface, blue still has material left) and see where it is.
 - The **deviation distribution** counts samples in each band of material left; below zero would mean cut *under* the surface.
 - **By operation**: how many moves each makes and the volume it removes.
 - **Cell size 0.100 mm** is the simulation's resolution. The stepped surface in the view is that cell size; it is not the finish the machine would leave. A finer cell is more accurate and slower.

@@ -1,0 +1,10 @@
+schema = 20
+id = "3e3d583c-5dd9-4d5a-bb2c-791bd1fcc5d9"
+order = "W"
+name = "Finish"
+setup = "4737d085-aad5-47b3-9ea9-dcb2db743c38"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000204"
+selections = []
+
+[parameters]
