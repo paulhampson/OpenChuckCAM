@@ -32,6 +32,11 @@
 //!   from the tessellation's). The probe ignores the flutes; it measures what
 //!   an exact drop built on these queries costs, not lane STEPALL-X2's design.
 //!
+//! - `exact`: on the same lines, the exact ball drop of lane STEPALL-X2
+//!   (`BrepSurface::drop_ball`, decision 0277): its time, and how far its tip
+//!   lies from the tessellation's (exact less mesh). It exists only from that
+//!   lane on, so a run on earlier code has no `exact` rows.
+//!
 //! Every answer is written to `DIR/<part>.tsv` (set, face, kind, vertex
 //! index, the point, the distance, nanoseconds), so two runs compare
 //! answer by answer; a summary per part, set and face kind is printed. A run
@@ -236,9 +241,16 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
             }
         }
         let probe_nanos = t.elapsed().as_nanos();
+        // The exact ball drop of lane STEPALL-X2 (decision 0277): how far its
+        // tip lies from the tessellation's, signed (exact less mesh).
+        let t = Instant::now();
+        let exact = surface.drop_ball(&profile, &line);
+        let exact_nanos = t.elapsed().as_nanos();
+        let exact_offset = exact.map_or(f64::NAN, |e| e.contact.offset - contact.offset);
         for (set, distance, nanos) in [
             ("mesh", contact.offset, mesh_nanos),
             ("drop", hi - contact.offset, probe_nanos),
+            ("exact", exact_offset, exact_nanos),
         ] {
             rows.push(Row {
                 set,

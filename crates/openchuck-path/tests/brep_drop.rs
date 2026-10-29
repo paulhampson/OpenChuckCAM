@@ -536,3 +536,51 @@ fn req_op_02_req_op_23_exact_contacts_are_judged_on_exact_face_sets() {
     // exact faces when the drops are.
     assert!(off_triangles > 18, "{off_triangles}");
 }
+
+#[test]
+fn req_op_12_a_ball_rests_on_the_point_of_a_cone() {
+    // The apex of a cone is a point of its own (decision 0277): a ball over
+    // the point of a sharp cone rests on it, not on a wall, since the walls
+    // fall away faster than the ball curves.
+    let down = Frame {
+        origin: Point3::ORIGIN,
+        x: Vec3::new(1.0, 0.0, 0.0),
+        y: Vec3::new(0.0, -1.0, 0.0),
+        z: Vec3::new(0.0, 0.0, -1.0),
+    };
+    let cone = face(
+        Surface::Cone {
+            frame: down,
+            radius: 0.0,
+            semi_angle: 0.3,
+        },
+        [0.0, TAU, 0.0, 10.0],
+        &[],
+        one_triangle(p3(0.0, 0.0, 0.0), p3(1.0, 0.0, -3.0), p3(0.0, 1.0, -3.0)),
+    );
+    let model = BrepModel {
+        faces: vec![cone],
+        edges: vec![],
+        vertices: vec![],
+        tessellation: Default::default(),
+    };
+    let surface = BrepSurface::new(&model).unwrap();
+    let r = 1.0;
+    for dx in [0.0, 0.05, 0.2, 0.4] {
+        let line = ToolLine {
+            origin: p3(dx, 0.1 * dx, 10.0),
+            axis: UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap(),
+        };
+        let got = surface.drop_ball(&ball(r), &line).unwrap();
+        let want = lift(&line, r, Point3::ORIGIN).unwrap();
+        assert!(
+            (got.contact.offset - want).abs() < 1e-9,
+            "dx {dx}: {} against {want}",
+            got.contact.offset
+        );
+        assert!(
+            got.contact.contact.distance(Point3::ORIGIN) < 1e-9,
+            "dx {dx}"
+        );
+    }
+}
