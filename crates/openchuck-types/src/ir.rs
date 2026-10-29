@@ -95,6 +95,12 @@ pub struct PathTags {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolpathGroup {
+    /// Indices of existing clear retract segments after which a supporting post
+    /// may remove whole A turns without motion (decision 0247). The producer
+    /// certifies complete-helical-pass boundaries and clearance; arbitrary
+    /// gaps/retracts do not authorize resets. Sorted, unique, never final.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rotary_reset_after: Vec<usize>,
     /// Where the moves came from.
     pub tags: PathTags,
     /// The pose before the first move.
@@ -145,6 +151,28 @@ impl Toolpath {
     pub fn validate(&self) -> Result<()> {
         for (g, group) in self.groups.iter().enumerate() {
             group.start.validate(&format!("groups[{g}].start"))?;
+            for (i, &index) in group.rotary_reset_after.iter().enumerate() {
+                let field = format!("groups[{g}].rotary_reset_after[{i}]");
+                let Some(segment) = group.segments.get(index) else {
+                    return Err(Error::invalid(field, "boundary segment is out of range"));
+                };
+                let before = index
+                    .checked_sub(1)
+                    .and_then(|s| group.segments.get(s))
+                    .map_or(group.start, |s| s.end);
+                if index + 1 >= group.segments.len()
+                    || !matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
+                    || segment.end.a != before.a
+                    || i.checked_sub(1)
+                        .and_then(|j| group.rotary_reset_after.get(j))
+                        .is_some_and(|previous| *previous >= index)
+                {
+                    return Err(Error::invalid(
+                        field,
+                        "must identify an ordered nonfinal retract without rotary motion",
+                    ));
+                }
+            }
             for (s, segment) in group.segments.iter().enumerate() {
                 segment.validate(&format!("groups[{g}].segments[{s}]"))?;
             }

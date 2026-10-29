@@ -10,7 +10,7 @@ use openchuck_types::kinematics::{
     MachinePosition, RotaryFrame, tool_axis_in_model, tool_tip_in_model,
 };
 use openchuck_types::machine::{ASense, RotaryAxis};
-use openchuck_types::units::{Degrees, Millimetres, Seconds};
+use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 fn frame() -> RotaryFrame {
     RotaryFrame {
         axis: RotaryAxis::X,
@@ -72,6 +72,7 @@ fn req_gc_08_req_gc_09_fed_observations_use_independent_controller_durations() {
     ] {
         let path = Toolpath {
             groups: vec![ToolpathGroup {
+                rotary_reset_after: Vec::new(),
                 tags: PathTags {
                     operation: "fed".into(),
                     setup: "s".into(),
@@ -82,7 +83,7 @@ fn req_gc_08_req_gc_09_fed_observations_use_independent_controller_durations() {
                     kind: MoveKind::Cutting,
                     end: pose_at(x, a, r),
                     duration: Seconds(seconds),
-                    contact_feed: None,
+                    contact_feed: Some(FeedRate(600.)),
                     contact_length: Millimetres(0.),
                 }],
             }],
@@ -138,6 +139,7 @@ fn req_gc_08_req_gc_09_fed_observations_use_independent_controller_durations() {
 }
 fn fixture() -> (Toolpath, String) {
     let group = |name: &str, start, end| ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: PathTags {
             operation: name.into(),
             setup: "s".into(),
@@ -172,6 +174,7 @@ fn fixture() -> (Toolpath, String) {
 #[test]
 fn req_gc_08_observations_remain_provisional_until_position_angle_time_and_total_travel_pass() {
     let group = ToolpathGroup {
+        rotary_reset_after: Vec::new(),
         tags: PathTags {
             operation: "checks".into(),
             setup: "s".into(),
@@ -182,7 +185,7 @@ fn req_gc_08_observations_remain_provisional_until_position_angle_time_and_total
             kind: MoveKind::Cutting,
             end: pose(3., 90.),
             duration: Seconds(1.),
-            contact_feed: None,
+            contact_feed: Some(FeedRate(600.)),
             contact_length: Millimetres(3.),
         }],
     };
@@ -226,7 +229,7 @@ fn req_gc_08_observations_remain_provisional_until_position_angle_time_and_total
             kind: MoveKind::Cutting,
             end: pose(0., a),
             duration: Seconds(1.),
-            contact_feed: None,
+            contact_feed: Some(FeedRate(600.)),
             contact_length: Millimetres(0.),
         });
     }
