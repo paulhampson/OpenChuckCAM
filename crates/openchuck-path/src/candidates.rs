@@ -154,7 +154,8 @@ impl Cells {
     /// could reach; `None` when the line covers half the period or more (then
     /// every triangle is tried).
     fn near(&self, lu0: f64, lu1: f64, period: f64) -> Option<Vec<u32>> {
-        if !(lu1 - lu0 < 0.5 * period) {
+        let span = lu1 - lu0;
+        if span.is_nan() || span >= 0.5 * period {
             return None;
         }
         let cell_of =

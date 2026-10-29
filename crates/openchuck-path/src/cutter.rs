@@ -956,7 +956,7 @@ mod tests {
                     z: (next() - 0.5) * 2.0,
                 };
                 let (p, q) = (point(), point());
-                let best = Some(Best {
+                let best = Best {
                     tip_z: (next() - 0.5) * 2.0,
                     contact: Local {
                         x: 0.0,
@@ -964,15 +964,15 @@ mod tests {
                         z: 0.0,
                     },
                     triangle: 5,
-                });
-                if edge_can_win(&profile, p, q, best) {
+                };
+                if edge_can_win(&profile, p, q, Some(best)) {
                     continue;
                 }
                 ruled_out += 1;
                 for triangle in [0, 9] {
-                    let mut after = best;
+                    let mut after = Some(best);
                     edge(&profile, p, q, &mut after, triangle, &mut Vec::new());
-                    let (a, b) = (after.unwrap(), best.unwrap());
+                    let (a, b) = (after.unwrap(), best);
                     assert_eq!(
                         (a.tip_z.to_bits(), a.triangle),
                         (b.tip_z.to_bits(), b.triangle),

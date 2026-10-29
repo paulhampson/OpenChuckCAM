@@ -240,7 +240,8 @@ impl CarvedRelief {
         let key = {
             let a = iu as i64 as u64;
             let b = (iv as i64).rem_euclid(around as i64) as u64;
-            let mut h = a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+            let mut h =
+                a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
             h ^= h >> 29;
             h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
             h ^ (h >> 32)
