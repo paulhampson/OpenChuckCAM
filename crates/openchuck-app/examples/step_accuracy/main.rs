@@ -663,7 +663,11 @@ fn main() -> Result<(), Error> {
             }
             checks::clean(clean, &format!("application, {n} threads, replay gates"))?;
             if let Some(expected) = &reference {
-                checks::identical(expected, &gcode, &format!("application, {n} threads, G-code"))?;
+                checks::identical(
+                    expected,
+                    &gcode,
+                    &format!("application, {n} threads, G-code"),
+                )?;
             }
             println!(
                 "application, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
@@ -672,6 +676,17 @@ fn main() -> Result<(), Error> {
             if n == cores
                 && let Some(library) = &library_b
             {
+                if let Some(dump) = std::env::var_os("X2_DUMP") {
+                    let dump = std::path::PathBuf::from(dump);
+                    std::fs::write(
+                        dump.join("library.json"),
+                        serde_json::to_string_pretty(library)?,
+                    )?;
+                    std::fs::write(
+                        dump.join("app.json"),
+                        serde_json::to_string_pretty(&result.canonical_toolpath.groups)?,
+                    )?;
+                }
                 checks::identical(
                     library,
                     &result.canonical_toolpath.groups,
