@@ -708,6 +708,11 @@ fn req_ui_11_req_ui_12_a_selection_set_with_a_problem_is_an_error_up_the_tree() 
     let primary = o.primary(Step::Operations);
     assert_eq!(primary.message, Some(index));
     assert!(primary.blocked.unwrap().contains("'Roof'"));
+    // Post and export, the action on Simulate, is blocked by it the same
+    // way, as the fifth step's button was (decision 0282 item 3).
+    let export = o.export_action();
+    assert_eq!(export.message, Some(index));
+    assert!(export.blocked.unwrap().contains("'Roof'"));
 }
 
 #[test]
