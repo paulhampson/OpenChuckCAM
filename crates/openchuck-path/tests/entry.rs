@@ -589,7 +589,7 @@ fn req_op_11_req_nfr_07_reversing_ramp_refusal_names_pass_with_no_direction() {
         .unwrap_err()
         .to_string();
     assert!(
-        error.contains("pass 1") && error.contains("no usable straight entry direction"),
+        error.starts_with("Pass 1 is a single point") && error.ends_with(ENTRY_FIX),
         "{error}"
     );
 }
@@ -749,7 +749,13 @@ fn req_op_11_req_nfr_07_rampbudget_exact_subinterval_boundary() {
     assert_eq!(budget, 0);
     let error = run(|ctx| safety.verify(pose(20.0), pose(21.0), 0.0, 0.00004, &mut budget, ctx))
         .unwrap_err();
-    assert!(error.to_string().contains("budget"));
+    assert_eq!(
+        error.to_string(),
+        "The back-and-forth ramp cannot be used here: the clearance check reached its limit of \
+         100000 checks for one entry before it could prove every move clear. In the operation's \
+         Entry, links and retract settings, turn off Back-and-forth ramp or set Entry to Plunge, \
+         Lead or Helix."
+    );
 }
 
 #[test]
@@ -1214,5 +1220,193 @@ fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motion
     assert_eq!(
         without, control,
         "marking adds no motion, feed or diagnostic"
+    );
+}
+
+/// What the operation's Entry settings say to change, in every refusal of
+/// the back-and-forth ramp that the entry itself can avoid (#291).
+const ENTRY_FIX: &str = "In the operation's Entry, links and retract settings, turn off \
+     Back-and-forth ramp or set Entry to Plunge, Lead or Helix.";
+
+/// The refusal of a back-and-forth ramp entry on the line from `x0` to
+/// `x1`, with `extra` values and the clearance inputs `safety` gives.
+fn reversing_refusal(
+    fixture: &Fixture,
+    safety: Option<&openchuck_path::entry_safety::EntrySafety<'_>>,
+    protected: &[(f64, f64)],
+    x: (f64, f64),
+    extra: &[(&'static str, ParameterValue)],
+) -> String {
+    let mut input = fixture.input();
+    input.entry_safety = safety;
+    input.keep_out = protected;
+    let mut all = vec![
+        entry("ramp"),
+        (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+    ];
+    all.extend(extra.iter().cloned());
+    let v = values(x.0, x.1, &all);
+    run(|ctx| generate(&Line, &input, &v, ctx))
+        .unwrap_err()
+        .to_string()
+}
+
+fn safety_of<'a>(
+    fixture: &'a Fixture,
+    machine: &'a openchuck_types::machine::MachineProfile,
+    protected: &'a [openchuck_path::Solid],
+) -> openchuck_path::entry_safety::EntrySafety<'a> {
+    openchuck_path::entry_safety::EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected,
+        body: &fixture.tool,
+        machine,
+    }
+}
+
+fn small_cylinder() -> Fixture {
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        20.0,
+        &ball(6.0),
+    )
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_without_clearance_inputs_says_what_to_change() {
+    let fixture = small_cylinder();
+    let error = reversing_refusal(&fixture, None, &[], (20.0, 30.0), &[]);
+    assert_eq!(
+        error,
+        format!(
+            "The back-and-forth ramp cannot check its clearance in this operation: it needs the \
+             whole part, the complete tool and the machine's travel, and they were not \
+             supplied. {ENTRY_FIX}"
+        )
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_on_a_single_point_pass_says_what_to_change() {
+    let fixture = small_cylinder();
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 20.0), &[]);
+    assert_eq!(
+        error,
+        format!(
+            "Pass 1 is a single point, so the back-and-forth ramp, which keeps the A angle \
+             fixed while it descends, has no straight line to ramp along. {ENTRY_FIX}"
+        )
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_above_the_safe_radius_names_safe_radius_and_approach() {
+    let fixture = small_cylinder();
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let error = reversing_refusal(
+        &fixture,
+        Some(&safety),
+        &[],
+        (20.0, 30.0),
+        &[number(names::APPROACH_DISTANCE, 16.0)],
+    );
+    assert_eq!(
+        error,
+        "Pass 1: the back-and-forth ramp starts 36.000 mm from the rotary axis (the stock's \
+         largest radius plus the approach distance), above the 35.000 mm the tool is at before \
+         this pass. In the Setup step, under Work offset and clearance, set Safe Z to at least \
+         36.000 mm; or, in the operation's Entry, links and retract settings, lower \
+         Approach distance, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_with_too_many_runs_names_the_ramp_angle() {
+    // A deep first pass (stock 40 mm, part 15 mm) at a very shallow angle.
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        40.0,
+        &ball(6.0),
+    );
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let error = reversing_refusal(
+        &fixture,
+        Some(&safety),
+        &[],
+        (20.0, 30.0),
+        &[number(names::RAMP_ANGLE, 0.024)],
+    );
+    assert_eq!(
+        error,
+        "Pass 1: the back-and-forth ramp would need more than 10000 runs back and forth to \
+         descend 26.000 mm at 0.02 degrees along 6.000 mm (one tool diameter). In the \
+         operation's Entry, links and retract settings, raise Ramp angle, or turn off \
+         Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_beyond_the_machine_travel_names_the_travel() {
+    let fixture = small_cylinder();
+    let mut machine = fixture.machine.clone();
+    machine.travel.max.x = machine.travel.min.x + 1.0;
+    let safety = safety_of(&fixture, &machine, &[]);
+    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
+    assert_eq!(error, "x");
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_into_a_protected_solid_names_the_workholding() {
+    let fixture = small_cylinder();
+    let solid = openchuck_path::Solid::cuboid(openchuck_types::geometry::Aabb {
+        min: openchuck_types::geometry::Point3::new(10.0, -30.0, -30.0),
+        max: openchuck_types::geometry::Point3::new(18.0, 30.0, 30.0),
+    })
+    .unwrap();
+    let protected = [solid];
+    let safety = safety_of(&fixture, &fixture.machine, &protected);
+    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
+    assert_eq!(error, "x");
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_corridor_into_the_part_keeps_the_approved_refusal() {
+    let (_, fixture) = cone();
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
+    assert_eq!(error, "x");
+}
+
+#[test]
+fn req_op_11_req_nfr_07_ramp_approach_beyond_the_travel_names_the_machine_travel() {
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
+    let fixture = small_cylinder();
+    // The run at the cut's depth (tip 15 mm from the axis) is within the
+    // travel; the approach from above the stock (21 mm) is not.
+    let mut machine = fixture.machine.clone();
+    let frame = RotaryFrame::of_profile(&machine);
+    machine.travel.max.z = machine_xyz(&frame, Point3::new(20.0, 0.0, 18.0), Degrees(0.0)).z;
+    let safety = safety_of(&fixture, &machine, &[]);
+    let error = reversing_refusal(&fixture, Some(&safety), &[], (20.0, 30.0), &[]);
+    assert_eq!(
+        error,
+        format!(
+            "Pass 1: the back-and-forth ramp cannot be used here: the tool would go beyond the \
+             machine's X, Y or Z travel. In the Setup step, under Machine, check Travel (in \
+             Travel and maximum feeds) and the stock's position, or change the entry: in the \
+             operation's Entry, links and retract settings, turn off Back-and-forth ramp or set \
+             Entry to Plunge, Lead or Helix."
+        )
     );
 }

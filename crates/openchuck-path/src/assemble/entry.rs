@@ -31,8 +31,10 @@ use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use super::ramp_refusal;
 use super::{Builder, EPS, View};
 use crate::cutter::{self, ToolLine};
+use crate::entry_safety::{Blocked, Refused};
 use crate::error::{PathError, Result};
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
@@ -285,34 +287,41 @@ impl<'a> Entry<'a> {
         points: &[CutPoint],
         context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<()> {
-        let safety=self.sweep.as_ref().ok_or_else(|| PathError::Strategy("back-and-forth ramp needs whole-target, complete-tool and machine clearance inputs".into()))?;
+        let safety = self
+            .sweep
+            .as_ref()
+            .ok_or_else(|| PathError::Strategy(ramp_refusal::missing_inputs()))?;
         let mut safety = safety.borrow_mut();
-        let d = direction_at_start(b, points).ok_or_else(|| {
-            PathError::Strategy(format!(
-                "pass {}: back-and-forth ramp has no usable straight entry direction",
-                pass + 1
-            ))
-        })?;
+        let d = direction_at_start(b, points)
+            .ok_or_else(|| PathError::Strategy(ramp_refusal::no_direction(pass, points.len())))?;
         let goal = b.rotary.to_axis(head.tip, head.a);
-        let radius = input.stock.max_radius().ok_or_else(|| {
-            PathError::Strategy(
-                "back-and-forth ramp cannot establish a stock-clear approach height".into(),
-            )
-        })?;
+        let radius = input
+            .stock
+            .max_radius()
+            .ok_or_else(|| PathError::Strategy(ramp_refusal::no_stock_size()))?;
         let top =
             stop_height(b, stock, common, goal.height).max(radius + common.approach_distance.0);
         if top > b.at().height + EPS {
-            return Err(PathError::Strategy(
-                "back-and-forth ramp needs a larger setup clearance for its approach".into(),
-            ));
+            // The first pass starts at the safe Z; the others at the height
+            // their links retract to.
+            let field = match common.retract {
+                _ if pass == 0 => "Safe Z",
+                crate::params::Retract::Clearance => "Safe radius",
+                crate::params::Retract::SafeZ => "Safe Z",
+            };
+            return Err(PathError::Strategy(ramp_refusal::above_clearance(
+                pass,
+                top,
+                b.at().height,
+                field,
+            )));
         }
         let rise = top - goal.height;
         if rise <= EPS {
-            return Err(PathError::Strategy(
-                "back-and-forth ramp has no descending entry to make".into(),
-            ));
+            return Err(PathError::Strategy(ramp_refusal::nothing_to_descend(pass)));
         }
         let length = 2.0 * input.tool.cutting_radius();
+        let angle = self.ramp_tan.atan().to_degrees();
         let position = |distance: f64, height: f64| {
             b.rotary.to_model(
                 AxisPosition {
@@ -328,41 +337,48 @@ impl<'a> Entry<'a> {
             axis: b.rotary.tool_axis(head.a),
             a: head.a,
         };
+        let refused = |refused: Refused| match refused {
+            Refused::Blocked(blocked) => PathError::Strategy(ramp_refusal::blocked(pass, blocked)),
+            Refused::Error(error) => error,
+        };
         let mut budget = 100_000;
         // Prove the complete corridor at target depth before planning any leg.
         // Every descending leg, reversal and final connection is checked again.
-        safety.verify(pose(0.0,goal.height),pose(length,goal.height),self.leave,self.tolerance,&mut budget,context).map_err(|error| if matches!(error,PathError::Cancelled) {error} else {PathError::Strategy(format!("Back-and-forth ramp needs at least {length:.3} mm of usable tool-centre travel; only 0.000 mm could be verified. Choose another entry or change the entry geometry."))})?;
-        let legs = super::ramp::plan(
-            rise,
-            length,
-            length,
-            self.ramp_tan.atan().to_degrees(),
-            || context.cancel.is_cancelled(),
-        )
-        .map_err(|e| {
-            if e == super::ramp::Refusal::Cancelled {
-                PathError::Cancelled
-            } else {
-                let reason=match e {
-                    super::ramp::Refusal::TooMany=>"needs more than 10000 descending legs",
-                    super::ramp::Refusal::NoProgress=>"cannot make a descending move at the supported output precision",
-                    super::ramp::Refusal::TooShort=>"has less than one cutting diameter of usable travel",
-                    _=>"has invalid descent dimensions",
-                };
-                PathError::Strategy(format!("pass {}: back-and-forth ramp {reason}; choose another entry or change the entry geometry",pass+1))
-            }
+        safety
+            .verify(
+                pose(0.0, goal.height),
+                pose(length, goal.height),
+                self.leave,
+                self.tolerance,
+                &mut budget,
+                context,
+            )
+            .map_err(|error| match error {
+                Refused::Blocked(blocked) => {
+                    PathError::Strategy(ramp_refusal::corridor(length, blocked))
+                }
+                Refused::Error(error) => error,
+            })?;
+        let legs = super::ramp::plan(rise, length, length, angle, || {
+            context.cancel.is_cancelled()
+        })
+        .map_err(|e| match e {
+            super::ramp::Refusal::Cancelled => PathError::Cancelled,
+            refusal => PathError::Strategy(ramp_refusal::plan(pass, refusal, rise, length, angle)),
         })?;
         let mut motions = Vec::new();
         let mut previous = b.pose;
         let start = pose(0.0, top);
-        safety.verify(
-            previous,
-            start,
-            self.leave,
-            self.tolerance,
-            &mut budget,
-            context,
-        )?;
+        safety
+            .verify(
+                previous,
+                start,
+                self.leave,
+                self.tolerance,
+                &mut budget,
+                context,
+            )
+            .map_err(refused)?;
         motions.push((MoveKind::Rapid, start));
         previous = start;
         let mut height = top;
@@ -370,26 +386,30 @@ impl<'a> Entry<'a> {
             context.check_cancelled()?;
             height = (height - leg.drop).max(goal.height);
             let end = pose(leg.to, height);
-            safety.verify(
+            safety
+                .verify(
+                    previous,
+                    end,
+                    self.leave,
+                    self.tolerance,
+                    &mut budget,
+                    context,
+                )
+                .map_err(refused)?;
+            motions.push((MoveKind::LeadIn, end));
+            previous = end;
+        }
+        let end = pose(0.0, goal.height);
+        safety
+            .verify(
                 previous,
                 end,
                 self.leave,
                 self.tolerance,
                 &mut budget,
                 context,
-            )?;
-            motions.push((MoveKind::LeadIn, end));
-            previous = end;
-        }
-        let end = pose(0.0, goal.height);
-        safety.verify(
-            previous,
-            end,
-            self.leave,
-            self.tolerance,
-            &mut budget,
-            context,
-        )?;
+            )
+            .map_err(refused)?;
         motions.push((MoveKind::LeadIn, end));
         // Retain the existing target/refusal checks for approach, every leg,
         // reversal and final connection, in addition to the continuous proof.
@@ -402,21 +422,16 @@ impl<'a> Entry<'a> {
             let positions =
                 lerp_positions(from, to, distance / (0.25 * input.tool.cutting_radius()));
             if positions.len() > budget {
-                return Err(PathError::Strategy(
-                    "back-and-forth ramp clearance budget exhausted by target checks".into(),
-                ));
+                return Err(PathError::Strategy(ramp_refusal::blocked(
+                    pass,
+                    Blocked::Budget,
+                )));
             }
             budget -= positions.len();
             for chunk in positions.chunks(64) {
                 context.check_cancelled()?;
                 if let Some(g) = self.gouge(b, input, head.a, chunk) {
-                    return Err(self.refuse(
-                        input,
-                        pass,
-                        "back-and-forth ramp",
-                        "a verified entry move",
-                        g,
-                    ));
+                    return Err(self.ramp_refused(input, pass, g));
                 }
             }
             previous = *end;
@@ -627,6 +642,22 @@ impl<'a> Entry<'a> {
     /// surface. Where that is a held region (the tool is then over its
     /// keep-out), the message names it, as the user may not see why a ramp
     /// beside the part fails (SET-09; decision records 0114, 0161).
+    /// As [`Self::refuse`], for the back-and-forth ramp, which has no size
+    /// or angle that would avoid the cut.
+    fn ramp_refused(&self, input: &StrategyInput<'_>, pass: usize, found: Gouge) -> PathError {
+        let mid = crate::strategy::part_middle(input);
+        PathError::Strategy(
+            match crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
+                Some(end) => ramp_refusal::over_held(
+                    pass,
+                    &crate::strategy::held_names(&std::collections::BTreeSet::from([end])),
+                    found.x,
+                ),
+                None => ramp_refusal::into_part(pass, found.depth, self.tolerance),
+            },
+        )
+    }
+
     fn refuse(
         &self,
         input: &StrategyInput<'_>,

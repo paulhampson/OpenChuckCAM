@@ -62,7 +62,130 @@ impl EntrySafety<'_> {
         budget: &mut usize,
         context: &JobContext<'_>,
     ) -> Result<()> {
-        SweepSession::new(self).verify(from, to, leave, tolerance, budget, context)
+        SweepSession::new(self)
+            .verify(from, to, leave, tolerance, budget, context)
+            .map_err(|refused| match refused {
+                Refused::Blocked(blocked) => PathError::Strategy(format!(
+                    "The back-and-forth ramp cannot be used here: {}. {}",
+                    blocked.cause(),
+                    blocked.fix()
+                )),
+                Refused::Error(error) => error,
+            })
+    }
+}
+
+/// What to change in the operation when a back-and-forth ramp is refused:
+/// the field and the choices, in the inspector's words (decision 0114).
+pub(crate) const ENTRY_FIX: &str = "In the operation's Entry, links and retract settings, \
+     turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix.";
+
+/// Why a straight entry move could not be proved clear, in plain words with
+/// the place the user changes it (#291, lane RAMPERRORS). The checks behind
+/// each are those of decisions 0242 and 0248; only the wording is here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Blocked {
+    /// The swept tool reaches the whole target beyond the tolerance.
+    Target,
+    /// The swept tool's bounds reach a held region or a retaining tab.
+    Protected,
+    /// A move ends beyond the machine's linear travel.
+    Travel,
+    /// The fixed A is outside the machine's A range.
+    ALimit,
+    /// The controller cannot hold A precisely enough for the bound.
+    Precision,
+    /// The shared limit of checks for one entry is spent.
+    Budget,
+    /// The complete tool body has no supported sweep bound.
+    Shape,
+    /// The move itself cannot be bounded (non-finite, not at a fixed A, or
+    /// no progress at machine precision): a defect, not a user setting.
+    Unchecked,
+}
+
+impl Blocked {
+    /// What would happen, as a clause.
+    pub(crate) fn cause(self) -> &'static str {
+        match self {
+            Self::Target => "the tool would cut into the finished part by more than the tolerance",
+            Self::Protected => "the tool would reach a held region or a retaining tab",
+            Self::Travel => "the tool would go beyond the machine's X, Y or Z travel",
+            Self::ALimit => "the A angle of this pass is outside the machine's A range",
+            Self::Precision => {
+                "the A angle is too large for the controller to hold precisely enough for the \
+                 clearance check"
+            }
+            Self::Budget => {
+                "the clearance check reached its limit of 100000 checks for one entry before it \
+                 could prove every move clear"
+            }
+            Self::Shape => {
+                "the clearance check cannot bound this tool's shape (its outline, with the \
+                 shank, curves inwards)"
+            }
+            Self::Unchecked => "one of its moves could not be checked for clearance",
+        }
+    }
+
+    /// Where to change it, as one or two sentences.
+    pub(crate) fn fix(self) -> String {
+        match self {
+            Self::Protected => format!(
+                "In the Setup step, under Workholding and tabs, move the held region or tab \
+                 clear of the start of the pass, or change the entry: {}",
+                lower_first(ENTRY_FIX)
+            ),
+            Self::Travel => format!(
+                "In the Setup step, under Machine, check Travel (in Travel and maximum feeds) \
+                 and the stock's position, or change the entry: {}",
+                lower_first(ENTRY_FIX)
+            ),
+            Self::ALimit => format!(
+                "In the Setup step, under Machine, check A range, or change the entry: {}",
+                lower_first(ENTRY_FIX)
+            ),
+            Self::Shape => format!(
+                "Choose a tool with a plain shank no wider than its cutter, or change the \
+                 entry: {}",
+                lower_first(ENTRY_FIX)
+            ),
+            Self::Unchecked => {
+                format!("{ENTRY_FIX} Please report this as a defect, with the project if you can.")
+            }
+            Self::Target | Self::Precision | Self::Budget => ENTRY_FIX.to_owned(),
+        }
+    }
+}
+
+/// `text` with its first letter in lower case, to follow a colon.
+pub(crate) fn lower_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|c| c.to_lowercase().chain(chars).collect())
+        .unwrap_or_default()
+}
+
+/// Why [`SweepSession::verify`] gave no certificate: a refusal the user can
+/// act on, or another error (cancellation, an invalid machine) passed on.
+#[derive(Debug)]
+pub(crate) enum Refused {
+    /// The sweep could not be proved clear.
+    Blocked(Blocked),
+    /// Any other error, unchanged.
+    Error(PathError),
+}
+
+impl From<PathError> for Refused {
+    fn from(error: PathError) -> Self {
+        Self::Error(error)
+    }
+}
+
+impl From<openchuck_types::Error> for Refused {
+    fn from(error: openchuck_types::Error) -> Self {
+        Self::Error(error.into())
     }
 }
 
@@ -143,12 +266,11 @@ impl<'a> SweepSession<'a> {
         tolerance: f64,
         budget: &mut usize,
         context: &JobContext<'_>,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), Refused> {
         let _timing = context.time_stage("entry clearance sweep");
         let proof = self.safety;
         context.check_cancelled()?;
-        let refuse =
-            |reason: &str| PathError::Strategy(format!("back-and-forth ramp clearance: {reason}"));
+        let refuse = Refused::Blocked;
         if !from.tip.is_finite()
             || !to.tip.is_finite()
             || !from.a.0.is_finite()
@@ -159,23 +281,23 @@ impl<'a> SweepSession<'a> {
             || !tolerance.is_finite()
             || tolerance <= 0.0
         {
-            return Err(refuse("invalid or non-fixed-A sweep"));
+            return Err(refuse(Blocked::Unchecked));
         }
         proof.machine.validate()?;
         let frame = RotaryFrame::of_profile(proof.machine);
         let axis = tool_axis_in_model(&frame, from.a);
         if (from.axis.get() - axis.get()).length() > 1e-9
             || (to.axis.get() - axis.get()).length() > 1e-9
-            || !proof.body.is_convex()
         {
-            return Err(refuse(
-                "the complete tool body has no supported sweep bound",
-            ));
+            return Err(refuse(Blocked::Unchecked));
+        }
+        if !proof.body.is_convex() {
+            return Err(refuse(Blocked::Shape));
         }
         if let openchuck_types::machine::ARange::Limited { min, max } = proof.machine.a_range
             && (from.a.0 < min.0 || from.a.0 > max.0)
         {
-            return Err(refuse("A exceeds the machine limit"));
+            return Err(refuse(Blocked::ALimit));
         }
         // This certificate requires at least three written decimals on XYZ
         // and A. Bound linear rounding plus the displacement of the entire
@@ -191,12 +313,12 @@ impl<'a> SweepSession<'a> {
                 #[allow(clippy::cast_possible_truncation)]
                 let word = (from.a.0.abs().max(to.a.0.abs()) + 721.0) as f32;
                 if !word.is_finite() {
-                    return Err(refuse("A exceeds the controller's numeric representation"));
+                    return Err(refuse(Blocked::Precision));
                 }
                 let next = f32::from_bits(word.to_bits() + 1);
                 let ulp = f64::from(next) - f64::from(word);
                 if !ulp.is_finite() {
-                    return Err(refuse("A has no finite controller-precision bound"));
+                    return Err(refuse(Blocked::Precision));
                 }
                 ulp
             }
@@ -209,7 +331,7 @@ impl<'a> SweepSession<'a> {
         let start = machine_xyz(&frame, from.tip, from.a);
         let end = machine_xyz(&frame, to.tip, to.a);
         if !proof.machine.travel.contains(start) || !proof.machine.travel.contains(end) {
-            return Err(refuse("the sweep exceeds linear travel"));
+            return Err(refuse(Blocked::Travel));
         }
         // Bounds of the whole configured tool at every point of the segment.
         // The radial cube is conservative at any supported axis orientation.
@@ -247,12 +369,12 @@ impl<'a> SweepSession<'a> {
                 && bounds.min.z <= b.max.z
                 && bounds.max.z >= b.min.z
             {
-                return Err(refuse("the swept tool bound reaches protected geometry"));
+                return Err(refuse(Blocked::Protected));
             }
         }
         let distance = start.distance(end);
         if !distance.is_finite() || !written_margin.is_finite() {
-            return Err(refuse("the sweep has no finite enclosure"));
+            return Err(refuse(Blocked::Unchecked));
         }
         // Each attempted interval is a continuous certificate, not a point
         // sample. At its midpoint, P + B_(leave + written + length/2) encloses
@@ -265,7 +387,7 @@ impl<'a> SweepSession<'a> {
         while let Some((low, high)) = pending.pop() {
             context.check_cancelled()?;
             if *budget == 0 || attempts == MAX_ATTEMPTS {
-                return Err(refuse("the entry's clearance budget is exhausted"));
+                return Err(refuse(Blocked::Budget));
             }
             *budget -= 1;
             attempts += 1;
@@ -288,14 +410,10 @@ impl<'a> SweepSession<'a> {
             // certificate. Keep the existing fine-resolution conservative
             // refusal, and bound work even if the arithmetic cannot bisect.
             if length <= tolerance * 0.25 {
-                return Err(refuse(
-                    "the swept tool reaches the whole target beyond tolerance",
-                ));
+                return Err(refuse(Blocked::Target));
             }
             if middle == low || middle == high {
-                return Err(refuse(
-                    "the sweep cannot make representable subdivision progress",
-                ));
+                return Err(refuse(Blocked::Unchecked));
             }
             // Stack order is deterministic, independent of worker count.
             pending.push((middle, high));

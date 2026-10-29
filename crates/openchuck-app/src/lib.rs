@@ -53,6 +53,7 @@ mod pipeline;
 pub mod playback;
 mod posting;
 pub mod preset;
+mod ramp_entry;
 pub mod requirements;
 pub mod scene;
 pub mod selection;
