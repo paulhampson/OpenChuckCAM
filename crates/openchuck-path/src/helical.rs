@@ -29,6 +29,7 @@
 //! surface does not reach under it) the pass is split there and the shared
 //! services link the pieces.
 
+use openchuck_types::geometry::Point3;
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
@@ -218,8 +219,10 @@ impl Strategy for HelicalFinishing {
 /// by `sign`, with the tool across the rotary axis dropped onto the surface
 /// as helical finishing drops it (`grown` by `leave`), no more than `step`
 /// degrees between seeds, each part of the surface left its own stock where
-/// `zones` gives one: a face's turn (decision record 0297), for helical
-/// finishing and the simultaneous spiral.
+/// `zones` gives one, cut only where `wanted` (when given) takes the
+/// contact: a face's turn (decision record 0297), for helical finishing, the
+/// simultaneous spiral and rest machining.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn turn_passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
@@ -227,6 +230,7 @@ pub(crate) fn turn_passes(
     tolerance: f64,
     (x, start, sign): (f64, f64, f64),
     step: f64,
+    wanted: Option<&(dyn Fn(Point3) -> bool + Send + Sync)>,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let n = (360.0 / step).ceil().max(1.0) as usize;
@@ -247,7 +251,7 @@ pub(crate) fn turn_passes(
         spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
         thin: false,
         max_dt: 1.0 / n as f64,
-        wanted: None,
+        wanted,
     };
     fit_region(&fit, n, "a turn at a face", context)
 }
@@ -348,10 +352,11 @@ fn passes(
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut after the helix as its own pass, so the helix is
         // as before (decision record 0297).
-        let turns: Vec<f64> = faces::turns(input, &grown, (x0, x1), tolerance, context)?
-            .into_iter()
-            .map(|t| t.x)
-            .collect();
+        let turns: Vec<f64> =
+            faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?
+                .into_iter()
+                .map(|t| t.x)
+                .collect();
         for &x in &turns {
             context.check_cancelled()?;
             let at = start + sign * 360.0 * (x - x0) / pitch;
@@ -362,6 +367,7 @@ fn passes(
                 tolerance,
                 (x, at, sign),
                 step,
+                None,
                 context,
             )?);
         }

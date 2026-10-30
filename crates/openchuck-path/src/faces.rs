@@ -108,6 +108,33 @@ pub(crate) fn turns(
     tolerance: f64,
     context: &JobContext<'_>,
 ) -> Result<Vec<Turn>> {
+    find(input, profile, range, false, tolerance, context)
+}
+
+/// As [`turns`], for a finishing helix over the target's own range: the
+/// search also runs on past each end of `range` by the tool's radius, so a
+/// face whose turn lies beyond the target's end (the part's end face beside
+/// a tab shorter than the tool's radius) gets its turn too (issue 404). The
+/// samples inside `range` are those [`turns`] takes, so the faces found
+/// there are the same.
+pub(crate) fn turns_to_the_ends(
+    input: &StrategyInput<'_>,
+    profile: &RevolvedProfile,
+    range: (f64, f64),
+    tolerance: f64,
+    context: &JobContext<'_>,
+) -> Result<Vec<Turn>> {
+    find(input, profile, range, true, tolerance, context)
+}
+
+fn find(
+    input: &StrategyInput<'_>,
+    profile: &RevolvedProfile,
+    range: (f64, f64),
+    beyond: bool,
+    tolerance: f64,
+    context: &JobContext<'_>,
+) -> Result<Vec<Turn>> {
     let (x0, x1) = range;
     let radius = profile.cutting_radius();
     if !(x1 > x0 && radius > 0.0 && tolerance > 0.0) {
@@ -138,7 +165,24 @@ pub(crate) fn turns(
         let contact = input.surface.drop_tool(profile, &line)?;
         Some(input.rotary.to_axis(contact.tip, Degrees(a)).height)
     };
-    let at = |i: usize| x0 + (x1 - x0) * i as f64 / samples as f64;
+    // Past each end, whole samples of the same spacing covering the tool's
+    // radius, the clearance and one interval more, so the jump where the
+    // side leaves the end face lies inside the samples.
+    let step = (x1 - x0) / samples as f64;
+    let extra = if beyond {
+        ((radius + CLEAR * tolerance) / step).ceil() as usize + 1
+    } else {
+        0
+    };
+    let low = x0 - extra as f64 * step;
+    let samples = samples + 2 * extra;
+    let at = |i: usize| {
+        if i < extra {
+            x0 - (extra - i) as f64 * step
+        } else {
+            x0 + (x1 - x0) * (i - extra) as f64 / (samples - 2 * extra) as f64
+        }
+    };
     // The faces on one line of A, given the brackets of faces already found
     // on another: where one lies inside a jump and still holds the jump, it
     // is taken without bisecting again.
@@ -224,7 +268,8 @@ pub(crate) fn turns(
         same
     });
     turns.retain(|t| {
-        (x0..=x1).contains(&t.x) && !input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&t.x))
+        (low..=x1 + extra as f64 * step).contains(&t.x)
+            && !input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&t.x))
     });
     if turns.len() > MAX_TURNS {
         return Err(PathError::Strategy(format!(

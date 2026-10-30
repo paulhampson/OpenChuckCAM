@@ -27,8 +27,9 @@ use std::path::PathBuf;
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue,
-    RotaryMapping, RotaryRoughing, SimultaneousFinishing, Strategy, StrategyInput, generate,
+    AcceptAll, AnalyticStock, CompositeSurface, GeneratedPath, HelicalFinishing, MeshSurface,
+    ParameterValue, RestMachining, RotaryMapping, RotaryRoughing, SimultaneousFinishing, Solid,
+    Strategy, StrategyInput, SurfaceSource, generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose};
 use openchuck_testkit::parts::{Cone, RadialPart, revolve};
@@ -222,7 +223,7 @@ fn left_on(outline: &Outline, bins: &Bins, points: &[Point3], cap: f64) -> Vec<f
 }
 
 fn input_for<'a>(
-    surface: &'a MeshSurface,
+    surface: &'a dyn SurfaceSource,
     stock: &'a AnalyticStock,
     profile: &'a RevolvedProfile,
     tag: &'a openchuck_types::ir::PathTags,
@@ -247,7 +248,7 @@ fn input_for<'a>(
 }
 
 struct Job {
-    surface: MeshSurface,
+    surface: Box<dyn SurfaceSource>,
     stock: AnalyticStock,
     profile: RevolvedProfile,
 }
@@ -255,7 +256,7 @@ struct Job {
 impl Job {
     fn shaft(shape: ToolShape) -> Self {
         Self {
-            surface: MeshSurface::new(&revolve(&SHAFT, 720)).unwrap(),
+            surface: Box::new(MeshSurface::new(&revolve(&SHAFT, 720)).unwrap()),
             stock: AnalyticStock::Cylinder {
                 radius: 11.0,
                 x_start: -2.0,
@@ -267,7 +268,7 @@ impl Job {
 
     fn crankshaft() -> Self {
         Self {
-            surface: MeshSurface::new(&crankshaft()).unwrap(),
+            surface: Box::new(MeshSurface::new(&crankshaft()).unwrap()),
             stock: AnalyticStock::Cylinder {
                 radius: 18.0,
                 x_start: -2.0,
@@ -279,7 +280,7 @@ impl Job {
 
     fn path(&self, strategy: &dyn Strategy, extra: &[(&str, f64)]) -> GeneratedPath {
         let tag = tags();
-        let input = input_for(&self.surface, &self.stock, &self.profile, &tag);
+        let input = input_for(self.surface.as_ref(), &self.stock, &self.profile, &tag);
         let mut values: BTreeMap<String, ParameterValue> = [
             (names::STEPOVER, STEPOVER),
             (names::FEED, 600.0),
@@ -697,7 +698,7 @@ fn req_op_04_a_part_with_no_face_across_the_axis_gets_no_turn() {
         length: 30.0,
     };
     let job = Job {
-        surface: MeshSurface::new(&cone.mesh(61, 720)).unwrap(),
+        surface: Box::new(MeshSurface::new(&cone.mesh(61, 720)).unwrap()),
         ..Job::shaft(ToolShape::FlatEnd)
     };
     assert!(turns_in_place(&job.path(&HelicalFinishing, &[])).is_empty());
@@ -713,4 +714,130 @@ fn req_nfr_06_req_gc_07_face_turns_are_identical_at_1_2_and_n_threads() {
         .unwrap();
         assert_eq!(runs.len(), 4);
     }
+}
+
+/// A plain cylinder of radius 10 from X 0 to X 30 with a short retaining
+/// tab on the axis at each end (OP-21): radius 7.25, 0.8 mm long, so each tab
+/// stands out from the part's end by less than the tool's radius. The shape
+/// of the owner's blisk project at its far end (issue 404), where the turn
+/// at the end face lies one tool radius beyond the face, past the tab's end.
+const TAB_RADIUS: f64 = 7.25;
+const TAB_LENGTH: f64 = 0.8;
+
+fn short_tabs() -> Job {
+    let along = openchuck_types::geometry::UnitVec3::new(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+    let tab = |x: f64| Solid::cylinder(Point3::new(x, 0.0, 0.0), along, TAB_LENGTH, TAB_RADIUS);
+    let model: std::sync::Arc<dyn SurfaceSource> =
+        std::sync::Arc::new(MeshSurface::new(&revolve(&[(0.0, 10.0), (30.0, 10.0)], 720)).unwrap());
+    Job {
+        surface: Box::new(CompositeSurface::new(
+            model,
+            vec![tab(-TAB_LENGTH).unwrap(), tab(30.0).unwrap()],
+        )),
+        stock: AnalyticStock::Cylinder {
+            radius: 11.0,
+            x_start: -TAB_LENGTH,
+            x_end: 30.0 + TAB_LENGTH,
+        },
+        profile: tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap(),
+    }
+}
+
+/// Points on the part's two end faces outside the tabs, `step` mm apart:
+/// from 0.05 mm beyond the tab's radius (the corner the tool's tip stands
+/// in on top of the tab) to the part's radius.
+fn end_faces(step: f64) -> Vec<Vec<Point3>> {
+    let lo = TAB_RADIUS + 0.05;
+    [0.0, 30.0]
+        .into_iter()
+        .map(|x| {
+            let nr = ((10.0 - lo) / step).ceil() as u32;
+            let mut out = Vec::new();
+            for i in 0..=nr {
+                let r = lo + (10.0 - lo) * f64::from(i) / f64::from(nr);
+                let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+                for j in 0..na {
+                    let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                    out.push(Point3::new(x, r * t.cos(), r * t.sin()));
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// Points on each tab's round side and outer end, `step` mm apart.
+fn tab_surfaces(step: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    let na = (std::f64::consts::TAU * TAB_RADIUS / step).ceil() as u32;
+    for (x0, outer) in [(-TAB_LENGTH, -TAB_LENGTH), (30.0, 30.0 + TAB_LENGTH)] {
+        let nx = (TAB_LENGTH / step).ceil() as u32;
+        for i in 0..=nx {
+            let x = x0 + TAB_LENGTH * f64::from(i) / f64::from(nx);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(x, TAB_RADIUS * t.cos(), TAB_RADIUS * t.sin()));
+            }
+        }
+        let nr = (TAB_RADIUS / step).ceil() as u32;
+        for i in 0..nr {
+            let r = TAB_RADIUS * f64::from(i) / f64::from(nr);
+            let na = ((std::f64::consts::TAU * r / step).ceil() as u32).max(1);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(outer, r * t.cos(), r * t.sin()));
+            }
+        }
+    }
+    out
+}
+
+/// Each end face of the part beside a short tab is left at the stock to
+/// leave within the tolerance, never cut into, and the tabs are never cut
+/// (issue 404).
+fn end_faces_beside_short_tabs_cleaned(strategy: &dyn Strategy) {
+    let job = short_tabs();
+    let path = job.path(strategy, &[]);
+    let faces = end_faces(0.1);
+    for (face, left) in faces.iter().zip(job.left(&path, &faces, 3.0)) {
+        let (w, d) = (worst(&left), deepest(&left));
+        let x = face[0].x;
+        assert!(
+            w <= TOLERANCE,
+            "{} end face X {x}: {w:.4} mm left",
+            strategy.name()
+        );
+        assert!(
+            d >= -TOLERANCE,
+            "{} end face X {x}: cut to {d:.4}",
+            strategy.name()
+        );
+    }
+    let tabs = tab_surfaces(0.1);
+    let cut = deepest(&job.left(&path, &[tabs], 3.0)[0]);
+    assert!(
+        cut >= -TOLERANCE,
+        "{}: a tab is cut into by {cut:.4} mm",
+        strategy.name()
+    );
+}
+
+#[test]
+fn req_op_04_req_op_21_helical_finishing_faces_the_ends_beside_a_short_tab() {
+    // Before the fix the turn at each end face, one tool radius beyond it,
+    // lay past the tab's end, outside the range searched, and the face kept
+    // what roughing left (0.43 mm mean on the owner's blisk project).
+    end_faces_beside_short_tabs_cleaned(&HelicalFinishing);
+}
+
+#[test]
+fn req_op_05_req_op_21_the_simultaneous_spiral_faces_the_ends_beside_a_short_tab() {
+    end_faces_beside_short_tabs_cleaned(&SimultaneousFinishing);
+}
+
+#[test]
+fn req_op_09_req_op_21_rest_machining_faces_the_ends_beside_a_short_tab() {
+    // Rest machining is helical finishing where material is left, so it
+    // turns at the faces as helical finishing does (decision record 0297).
+    end_faces_beside_short_tabs_cleaned(&RestMachining);
 }

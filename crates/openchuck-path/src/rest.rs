@@ -35,6 +35,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::faces;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::stock::StockModel;
@@ -445,7 +446,29 @@ impl Strategy for RestMachining {
             max_dt: 1.0 / seeds as f64,
             wanted: Some(&wanted),
         };
-        let passes = fit_region(&fit, seeds, "rest machining", context)?;
+        let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
+        // One whole turn at each face across the axis, where the tool's side
+        // touches it, cut where material is left, as helical finishing does
+        // (decision record 0297; issue 404).
+        let turns: Vec<f64> =
+            faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?
+                .into_iter()
+                .map(|t| t.x)
+                .collect();
+        for &x in &turns {
+            context.check_cancelled()?;
+            let at = start + sign * 360.0 * (x - x0) / stepover;
+            passes.extend(crate::helical::turn_passes(
+                input,
+                None,
+                (&grown, leave, &[]),
+                tolerance,
+                (x, at, sign),
+                step,
+                Some(&wanted),
+                context,
+            )?);
+        }
         if passes.is_empty() {
             return Err(PathError::Strategy(
                 "rest machining found material left but the tool cannot reach any of it: the \
@@ -453,7 +476,7 @@ impl Strategy for RestMachining {
                     .to_owned(),
             ));
         }
-        let notes = vec![format!(
+        let mut notes = vec![format!(
             "rest machining: {} of {} points sampled on the part have more than {} mm of \
              material left; {} passes clean them",
             map.len(),
@@ -461,6 +484,7 @@ impl Strategy for RestMachining {
             min_remaining,
             passes.len()
         )];
+        notes.extend(faces::note(&turns));
         Ok(StrategyOutput {
             passes,
             notes,
