@@ -12,10 +12,12 @@
 //!
 //! [`start_stock_playback`]: crate::Application::start_stock_playback
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use openchuck_project::id::{ModelId, OperationId, SetupId};
-use openchuck_sim::{DeviationOptions, DexelStock, Simulator, stock_mesh, triangle_values};
+use openchuck_sim::{
+    Checkpoint, DeviationOptions, DexelStock, Simulator, stock_mesh, triangle_values,
+};
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::RevolvedProfile;
@@ -52,6 +54,10 @@ struct SetupPlay {
 pub struct StockPlayback {
     timeline: Arc<Timeline>,
     setups: Vec<SetupPlay>,
+    /// The stock after the whole moves of the last cursor asked for, with
+    /// the index of its setup: a checkpoint for the next request, so that
+    /// playing forward replays only the moves since the last frame.
+    kept: Mutex<Option<Arc<(usize, Checkpoint)>>>,
 }
 
 impl std::fmt::Debug for StockPlayback {
@@ -87,10 +93,14 @@ impl StockPlayback {
                 (last, path.groups.get(last).map_or(0, |g| g.segments.len()))
             }
         };
-        let setup = self
+        let index = self
             .setups
             .iter()
-            .find(|s| s.groups.contains(&group))
+            .position(|s| s.groups.contains(&group))
+            .ok_or_else(|| AppError::Playback("no simulation covers this move".to_owned()))?;
+        let setup = self
+            .setups
+            .get(index)
             .ok_or_else(|| AppError::Playback("no simulation covers this move".to_owned()))?;
         let local = setup
             .groups
@@ -103,7 +113,30 @@ impl StockPlayback {
             .iter()
             .filter_map(|g| Some((path.groups.get(*g)?, &infos.get(*g)?.tool)))
             .collect();
-        let stock = setup.simulator.stock_at(local, moves, &groups, context)?;
+        // Replaying from any checkpoint gives the same stock (decision 0025
+        // item 4), so the last request's stock is used when it is nearer.
+        let kept = self
+            .kept
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .filter(|k| k.0 == index);
+        let stock = setup.simulator.stock_at_from(
+            kept.as_deref().map(|k| &k.1),
+            local,
+            moves,
+            &groups,
+            context,
+        )?;
+        drop(kept);
+        *self.kept.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new((
+            index,
+            Checkpoint {
+                group: local,
+                moves,
+                stock: stock.clone(),
+            },
+        )));
         let Some(original) = path.groups.get(group) else {
             return Ok(stock);
         };
@@ -254,7 +287,11 @@ impl Application {
                             .map(|d| SurfaceSamples::new(&d.points, settings.cell.0)),
                     });
                 }
-                Ok(StockPlayback { timeline, setups })
+                Ok(StockPlayback {
+                    timeline,
+                    setups,
+                    kept: Mutex::new(None),
+                })
             })
     }
 

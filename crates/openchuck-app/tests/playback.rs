@@ -843,6 +843,47 @@ fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
 }
 
 #[test]
+fn req_sim_04_req_nfr_06_the_stock_at_a_move_is_the_same_whatever_was_shown_before() {
+    let (dir, app, _) = project("stock-kept");
+    let run = Arc::new(app.simulate().unwrap());
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let playing = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let reference = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let n = t.move_count();
+    let cursor = |done: usize, fraction: f64| Cursor { done, fraction };
+    // Playing forward, then stepping back, jumping and playing on: each
+    // stock equals the one replayed from the checkpoints alone (asking the
+    // reference for the start first leaves it nothing nearer to reuse).
+    let mut order: Vec<_> = (0..=n)
+        .step_by((n / 20).max(1))
+        .map(|k| cursor(k, 0.5))
+        .collect();
+    order.extend([
+        cursor(n / 2, 0.0),
+        cursor(n / 3, 0.25),
+        cursor(n / 3 + 1, 0.0),
+    ]);
+    order.extend([
+        cursor(n, 0.0),
+        cursor(n, 0.5),
+        cursor(0, 0.0),
+        cursor(n - 1, 0.9),
+    ]);
+    for c in order {
+        let shown = playing.stock_at(c, &context).unwrap();
+        reference.stock_at(cursor(0, 0.0), &context).unwrap();
+        let expected = reference.stock_at(c, &context).unwrap();
+        assert_eq!(shown.state_hash(), expected.state_hash(), "{c:?}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn req_ui_09_a_timeline_needs_a_run_made_by_the_pipeline_and_a_machine() {
     let (dir, app, _) = project("timeline-errors");
     let mut run = app.regenerate().unwrap();

@@ -11,7 +11,7 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DeviationOptions, DexelStock, Pose, SampleOn, Simulator, ToolSolid, compare,
+    Checkpoint, DeviationOptions, DexelStock, Pose, SampleOn, Simulator, ToolSolid, compare,
     compare_cancellable, compare_classified, cut_spans, stock_mesh, triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
@@ -440,6 +440,95 @@ fn req_sim_06_operation_two_sees_the_stock_left_by_operation_one() {
         .ray_entry(Point3::new(0.05, 0.05, 20.0), down, 40.0)
         .unwrap();
     assert!((20.0 - t - 10.0).abs() < 0.2 + 0.05, "{t}");
+}
+
+#[test]
+fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut sim = Simulator::new(make(), &m, Some(100));
+    sim.run_group(&g1, &profile, &ctx).unwrap();
+    sim.run_group(&g2, &profile, &ctx).unwrap();
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let direct = |group_index: usize, moves: usize| {
+        let mut direct = Simulator::new(make(), &m, None);
+        if group_index == 1 {
+            direct.run_group(&g1, &profile, &ctx).unwrap();
+        }
+        let mut partial = if group_index == 0 {
+            g1.clone()
+        } else {
+            g2.clone()
+        };
+        partial.segments.truncate(moves);
+        direct.run_group(&partial, &profile, &ctx).unwrap();
+        direct.stock().state_hash()
+    };
+    // A stock the caller kept from an earlier jump, as playback keeps the
+    // last frame's, then later points replayed from it: across the end of
+    // the first group, and within the second.
+    for (kept_at, later) in [
+        ((0, 130), (1, 37)),
+        ((1, 37), (1, 250)),
+        ((1, 120), (1, 199)),
+    ] {
+        let kept = Checkpoint {
+            group: kept_at.0,
+            moves: kept_at.1,
+            stock: sim.stock_at(kept_at.0, kept_at.1, &groups, &ctx).unwrap(),
+        };
+        let jumped = sim
+            .stock_at_from(Some(&kept), later.0, later.1, &groups, &ctx)
+            .unwrap();
+        assert_eq!(
+            jumped.state_hash(),
+            direct(later.0, later.1),
+            "{kept_at:?} to {later:?}"
+        );
+        // A kept stock after the point asked for is not used.
+        let back = sim
+            .stock_at_from(
+                Some(&kept),
+                kept_at.0,
+                kept_at.1.saturating_sub(5),
+                &groups,
+                &ctx,
+            )
+            .unwrap();
+        assert_eq!(
+            back.state_hash(),
+            direct(kept_at.0, kept_at.1.saturating_sub(5))
+        );
+    }
+    // The stock at a kept point, or at the end of a group (the checkpoint
+    // after it), is that copy: nothing is replayed, so even a cancelled job
+    // gets it.
+    cancel.cancel();
+    let kept = Checkpoint {
+        group: 1,
+        moves: 37,
+        stock: sim.stock().clone(),
+    };
+    let same = sim
+        .stock_at_from(Some(&kept), 1, 37, &groups, &ctx)
+        .unwrap();
+    assert_eq!(same.state_hash(), sim.stock().state_hash());
+    let end = sim.stock_at(0, g1.segments.len(), &groups, &ctx).unwrap();
+    let after_first = sim
+        .checkpoints()
+        .iter()
+        .find(|c| (c.group, c.moves) == (1, 0))
+        .unwrap();
+    assert_eq!(end.state_hash(), after_first.stock.state_hash());
+    let last = sim.stock_at(1, g2.segments.len(), &groups, &ctx).unwrap();
+    assert_eq!(last.state_hash(), sim.stock().state_hash());
 }
 
 #[test]

@@ -176,15 +176,46 @@ impl Simulator {
         groups: &[(&ToolpathGroup, &RevolvedProfile)],
         context: &JobContext<'_>,
     ) -> Result<DexelStock> {
-        let target = (group, moves);
+        self.stock_at_from(None, group, moves, groups, context)
+    }
+
+    /// As [`Simulator::stock_at`], also replaying from `kept`, a checkpoint
+    /// the caller holds (a stock this simulator gave for an earlier point,
+    /// such as the last one a playback showed) when it is the nearest one
+    /// before the point. Replaying from any checkpoint gives the same stock
+    /// as running up to the point. The stock at a checkpoint, or at the end
+    /// of a group (the checkpoint after it), is a copy of it.
+    pub fn stock_at_from(
+        &self,
+        kept: Option<&Checkpoint>,
+        group: usize,
+        moves: usize,
+        groups: &[(&ToolpathGroup, &RevolvedProfile)],
+        context: &JobContext<'_>,
+    ) -> Result<DexelStock> {
+        // The end of a group is the start of the next one.
+        let ended = groups
+            .get(group)
+            .is_some_and(|(path, _)| moves >= path.segments.len());
+        let target = if ended && self.groups_done > group {
+            (group + 1, 0)
+        } else {
+            (group, moves)
+        };
         let cp = self
             .checkpoints
             .iter()
             .rev()
             .find(|c| (c.group, c.moves) <= target)
+            .into_iter()
+            .chain(kept.filter(|c| (c.group, c.moves) <= target))
+            .max_by_key(|c| (c.group, c.moves))
             .ok_or_else(|| {
                 Error::invalid("checkpoint", "no checkpoint before the requested move")
             })?;
+        if (cp.group, cp.moves) == target {
+            return Ok(cp.stock.clone());
+        }
         let mut replay = Self {
             frame: self.frame,
             stock: cp.stock.clone(),
