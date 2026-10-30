@@ -212,7 +212,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "move | stock replay s | mesh s | triangles | picker s | whole surface job s | stock MB"
     );
-    for share in [0.0, 0.05, 0.3, 0.5, 0.7, 0.95, 1.0] {
+    let shares: &[f64] = if std::env::var_os("SKIP_SEEKS").is_some() {
+        &[]
+    } else {
+        &[0.0, 0.05, 0.3, 0.5, 0.7, 0.95, 1.0]
+    };
+    for &share in shares {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let done = (((n as f64) * share) as usize).min(n);
         let cursor = Cursor {
@@ -253,9 +258,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for _ in 0..8 {
             let cursor = timeline.cursor_at_time(time);
             let started = Instant::now();
+            let stock = playback.stock_at(cursor, &context)?;
+            let replay = started.elapsed().as_secs_f64();
+            drop(stock);
             drop(app.start_stock_surface(&playback, cursor).wait()?);
             let took = started.elapsed().as_secs_f64();
-            times.push(format!("{took:.2}"));
+            times.push(format!("{took:.2}({replay:.2})"));
             steps.push((cursor.done - last).to_string());
             last = cursor.done;
             time = (time + took * speed).min(timeline.total_time());
