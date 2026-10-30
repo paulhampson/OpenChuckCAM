@@ -40,8 +40,10 @@ use crate::jobs::{JobLog, JobOutcome};
 use crate::requirements::Requirement;
 use crate::{AppError, Application, JobHandle, SelectionSummary};
 
-/// The five workflow steps, in pipeline order (UI-10; specification
-/// section 4).
+/// The four workflow steps, in pipeline order (UI-10; specification
+/// section 4). Post and export is an action of its own, on Simulate and in
+/// the File menu, not a step ([`Overview::export_action`]; decision record
+/// 0282).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Step {
     /// Import, check units and mesh, place on the rotary axis.
@@ -52,21 +54,13 @@ pub enum Step {
     Operations,
     /// Play the cut and compare stock with model.
     Simulate,
-    /// Write G-code and the setup sheet.
-    Export,
 }
 
 impl Step {
     /// Every step, in order.
-    pub const ALL: [Self; 5] = [
-        Self::Model,
-        Self::Setup,
-        Self::Operations,
-        Self::Simulate,
-        Self::Export,
-    ];
+    pub const ALL: [Self; 4] = [Self::Model, Self::Setup, Self::Operations, Self::Simulate];
 
-    /// The step's number, from 1 (Alt 1 to Alt 5 open them).
+    /// The step's number, from 1 (Alt 1 to Alt 4 open them).
     pub fn number(self) -> usize {
         self as usize + 1
     }
@@ -78,7 +72,6 @@ impl Step {
             Self::Setup => "Setup",
             Self::Operations => "Operations",
             Self::Simulate => "Simulate",
-            Self::Export => "Post and export",
         }
     }
 
@@ -428,7 +421,8 @@ pub enum PrimaryKind {
     /// Generate and simulate when an operation was never generated; the
     /// operation's number in the list, from 1.
     GenerateAndSimulate(usize),
-    /// Open the export dialog.
+    /// Open the export dialog: Post and export, the action on Simulate
+    /// (decision record 0282).
     OpenExport,
 }
 
@@ -453,7 +447,7 @@ pub struct PrimaryAction {
 pub struct Overview {
     /// The project revision it was worked out at.
     pub revision: u64,
-    /// The five steps, in order.
+    /// The four steps, in order.
     pub steps: Vec<StepState>,
     /// The state of each item that has one. Tools, and models and setups
     /// with nothing to report, have none.
@@ -475,6 +469,12 @@ pub struct Overview {
     /// while they are being worked out again.
     pub checks_current: bool,
     simulated_all: bool,
+    /// G-code was last written, completely, from every enabled operation as
+    /// it is now (decision record 0282 item 5).
+    g_code_written: bool,
+    /// G-code has been written in this session, whether or not from the
+    /// project as it is now.
+    wrote_g_code: bool,
     /// The project skips the stock simulation (decision record 0168).
     skip_stock: bool,
     first_unsimulated_unmade: Option<usize>,
@@ -513,6 +513,8 @@ impl Overview {
             machine_warnings: Vec::new(),
             checks_current: true,
             simulated_all: false,
+            g_code_written: false,
+            wrote_g_code: false,
             skip_stock: false,
             first_unsimulated_unmade: None,
             any_enabled: false,
@@ -544,7 +546,7 @@ impl Overview {
             .iter()
             .find(|s| s.step == step)
             .cloned()
-            // `steps` always holds the five; this is never reached.
+            // `steps` always holds the four; this is never reached.
             .unwrap_or(StepState {
                 step,
                 unavailable: Some("Open or start a project first".to_owned()),
@@ -554,7 +556,9 @@ impl Overview {
             })
     }
 
-    /// How well the whole job stands: the worst of the five steps.
+    /// How well the whole job stands: the worst of the four steps. Every
+    /// reason Post and export is unavailable is counted by one of them
+    /// (decision record 0282 item 6).
     pub fn health(&self) -> StepHealth {
         self.steps
             .iter()
@@ -638,31 +642,109 @@ impl Overview {
     ///    or "Generate and simulate op N" when it was not generated either
     ///    (this is checked before rule 2 there, since simulating generates;
     ///    decision record 0117, OI-350);
-    /// 4. otherwise it continues to the next step.
+    /// 4. otherwise it continues to the next step; on Simulate, that is
+    ///    Post and export.
     ///
-    /// Model offers "Import model…" with no model, Setup always continues,
-    /// and Post and export opens the export dialog (section 4).
+    /// Model offers "Import model…" with no model and Setup always
+    /// continues (section 4). Simulate has two actions in fixed places,
+    /// [`Overview::simulation_action`] and [`Overview::export_action`]; this
+    /// is the one that is filled (decision record 0282 item 2).
     pub fn primary(&self, step: Step) -> PrimaryAction {
-        let action = |kind: PrimaryKind| {
-            let label = match kind {
-                PrimaryKind::ImportModel => "Import model…".to_owned(),
-                PrimaryKind::Continue(next) => match next {
-                    Step::Export => "Continue to post and export".to_owned(),
-                    other => format!("Continue to {}", other.name().to_lowercase()),
-                },
-                PrimaryKind::GenerateStale(n) => format!("Generate stale ({n})"),
-                PrimaryKind::Generate => "Generate toolpaths".to_owned(),
-                PrimaryKind::RunSimulation => "Run simulation".to_owned(),
-                PrimaryKind::GenerateAndSimulate(n) => format!("Generate and simulate op {n}"),
-                PrimaryKind::OpenExport => "Post and export…".to_owned(),
-            };
-            PrimaryAction {
-                kind,
-                label,
-                blocked: None,
-                message: None,
-            }
+        match step {
+            Step::Simulate if self.simulation_current() => self.export_action(),
+            Step::Simulate => self.simulation_action(),
+            _ => self.step_primary(step),
+        }
+    }
+
+    /// Whether the latest run is everything Simulate asks for: the
+    /// simulation (or, skipping it, the toolpaths) matches the project.
+    fn simulation_current(&self) -> bool {
+        !(self.skip_stock && !self.stale.is_empty()) && !(self.any_enabled && !self.simulated_all)
+    }
+
+    /// Simulate's simulation action, in its place whether or not it is the
+    /// filled one (decision record 0282 items 2 and 3): section 5's rules 1
+    /// to 3, and once the simulation matches the project, disabled with that
+    /// reason.
+    pub fn simulation_action(&self) -> PrimaryAction {
+        if !self.simulation_current() {
+            return self.step_primary(Step::Simulate);
+        }
+        let mut a = if self.skip_stock {
+            let mut a = self.action(PrimaryKind::Generate);
+            a.blocked = Some("The toolpaths match the project".to_owned());
+            a
+        } else {
+            let mut a = self.action(PrimaryKind::RunSimulation);
+            a.blocked = Some("The simulation matches the project".to_owned());
+            a
         };
+        if !self.any_enabled {
+            a.blocked = Some("Turn on an operation to simulate".to_owned());
+        }
+        if let Some((index, m)) = self.blocking_error(Step::Simulate) {
+            a.blocked = Some(m.text.clone());
+            a.message = Some(index);
+        }
+        a
+    }
+
+    /// Post and export: opens the export dialog (UI-10; decision record
+    /// 0282 item 3). Disabled by an enabled item's error that blocks it,
+    /// naming the problem, else by the first thing the project lacks
+    /// ([`Overview::post_blocker`]). A stale or missing simulation does not
+    /// disable it: the dialog blocks writing from a stale run (GC-15).
+    pub fn export_action(&self) -> PrimaryAction {
+        let mut a = self.action(PrimaryKind::OpenExport);
+        if let Some((index, m)) = self.blocking_error(Step::Simulate) {
+            a.blocked = Some(m.text.clone());
+            a.message = Some(index);
+        } else {
+            a.blocked = self.post_blocker.map(str::to_owned);
+        }
+        a
+    }
+
+    /// Whether G-code was last written, completely, from every enabled
+    /// operation as it is now: the step bar's "G-code written" (decision
+    /// record 0282 item 5). A past write the project has changed since, or a
+    /// write that failed part way, does not count; its result stays in
+    /// Messages.
+    pub fn g_code_written(&self) -> bool {
+        self.g_code_written
+    }
+
+    /// Whether G-code has been written, completely, in this session at all,
+    /// so the step bar can say the project changed since rather than that
+    /// none was written.
+    pub fn wrote_g_code_before(&self) -> bool {
+        self.wrote_g_code
+    }
+
+    /// An action of `kind`, enabled, with its words.
+    fn action(&self, kind: PrimaryKind) -> PrimaryAction {
+        let label = match kind {
+            PrimaryKind::ImportModel => "Import model…".to_owned(),
+            PrimaryKind::Continue(next) => format!("Continue to {}", next.name().to_lowercase()),
+            PrimaryKind::GenerateStale(n) => format!("Generate stale ({n})"),
+            PrimaryKind::Generate => "Generate toolpaths".to_owned(),
+            PrimaryKind::RunSimulation => "Run simulation".to_owned(),
+            PrimaryKind::GenerateAndSimulate(n) => format!("Generate and simulate op {n}"),
+            PrimaryKind::OpenExport => "Post and export…".to_owned(),
+        };
+        PrimaryAction {
+            kind,
+            label,
+            blocked: None,
+            message: None,
+        }
+    }
+
+    /// The step's own action by section 5, Simulate's while its simulation
+    /// is not current.
+    fn step_primary(&self, step: Step) -> PrimaryAction {
+        let action = |kind: PrimaryKind| self.action(kind);
         let continue_to = |next: Step| {
             let mut a = action(PrimaryKind::Continue(next));
             a.blocked = self.step(next).unavailable;
@@ -697,14 +779,7 @@ impl Overview {
                     None => action(PrimaryKind::RunSimulation),
                 })
             }
-            Step::Simulate => blocked(continue_to(Step::Export)),
-            Step::Export => {
-                let mut a = blocked(action(PrimaryKind::OpenExport));
-                if a.blocked.is_none() {
-                    a.blocked = self.step(Step::Export).unavailable;
-                }
-                a
-            }
+            Step::Simulate => self.export_action(),
         }
     }
 
@@ -1259,8 +1334,9 @@ impl Application {
             })
     }
 
-    /// Records that G-code was written from `run`, which completes the Post
-    /// and export step until something its operations read changes.
+    /// Records that G-code was written from `run`: the step bar says "G-code
+    /// written" until something its operations read changes (decision
+    /// record 0282 item 5).
     pub fn record_export(&self, run: &crate::Regeneration) {
         self.record.exported(&run.project);
     }
@@ -2044,7 +2120,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         .as_ref()
         .is_none_or(|made| ops.iter().any(|o| o.enabled && !made.contains(&o.id)));
     simulated_all &= !run_holds_gone && !run_lacks_one;
-    // Post and export, in the File menu and as a step, needs what the dialog
+    // Post and export, in the File menu and on Simulate, needs what the dialog
     // needs to make its files, not generated operations (decision 0148).
     // The values still missing, setups first (issues 210, 224 and 140). The
     // machine belongs to the project, so it is listed once, on the first
@@ -2220,10 +2296,6 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
-    let export_health = match post_blocker {
-        Some(why) => (StepHealth::Attention, Some(why.to_owned())),
-        None => good,
-    };
     let steps = vec![
         state(Step::Model, None, has_model && !model_error, model_health),
         state(
@@ -2244,12 +2316,6 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             any_enabled && simulated_all,
             simulate_health,
         ),
-        state(
-            Step::Export,
-            post_blocker,
-            any_enabled && exported_all,
-            export_health,
-        ),
     ];
     Overview {
         revision: app.revision,
@@ -2262,6 +2328,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         machine_warnings,
         checks_current: checks.is_some_and(|c| c.revision == app.revision),
         simulated_all: any_enabled && simulated_all,
+        // The last write holds exactly the enabled operations: one turned off
+        // or removed since makes it not the project as it is now (decision
+        // record 0282 item 5; the run's rule, issue 260).
+        g_code_written: any_enabled
+            && exported_all
+            && record.exported.len() == ops.iter().filter(|o| o.enabled).count(),
+        wrote_g_code: !record.exported.is_empty(),
         skip_stock,
         first_unsimulated_unmade,
         any_enabled,
@@ -2341,7 +2414,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_10_steps_are_numbered_in_pipeline_order() {
+    fn req_ui_10_four_steps_are_numbered_in_pipeline_order() {
         let names: Vec<_> = Step::ALL.iter().map(|s| (s.number(), s.name())).collect();
         assert_eq!(
             names,
@@ -2349,12 +2422,12 @@ mod tests {
                 (1, "Model"),
                 (2, "Setup"),
                 (3, "Operations"),
-                (4, "Simulate"),
-                (5, "Post and export")
+                (4, "Simulate")
             ]
         );
-        assert_eq!(Step::Simulate.next(), Some(Step::Export));
-        assert_eq!(Step::Export.next(), None);
+        // Post and export is an action, not a step (decision 0282 item 1).
+        assert_eq!(Step::Operations.next(), Some(Step::Simulate));
+        assert_eq!(Step::Simulate.next(), None);
     }
 
     #[test]
@@ -2407,6 +2480,13 @@ mod tests {
         }
         assert_eq!(o.primary(Step::Model).kind, PrimaryKind::ImportModel);
         assert_eq!(o.primary(Step::Model).label, "Import model…");
+        // Post and export gives the same reason as the File menu, and no
+        // G-code is written (decision 0282 items 3 and 5).
+        assert_eq!(
+            o.export_action().blocked.as_deref(),
+            Some("Open or start a project first")
+        );
+        assert!(!o.g_code_written());
     }
 
     #[test]

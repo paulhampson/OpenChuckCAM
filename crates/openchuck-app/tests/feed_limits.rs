@@ -288,9 +288,24 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     (dir, app)
 }
 
-/// The highest F word on a cutting move (`G1`) of a program.
-fn highest_feed(text: &str) -> f64 {
+/// The highest F word of a program on moves that move X, Y or Z (`linear`
+/// true), or on moves of A alone (`linear` false), whose feed is held to A's
+/// own limit (decision record 0076 item 2). A move of A alone has no X, Y or
+/// Z word; a face's turn with the tool's tip on the rotary axis is one
+/// (decision record 0297).
+fn highest_feed(text: &str, linear: bool) -> f64 {
     text.lines()
+        .filter(|l| {
+            let moves_xyz = l
+                .split_whitespace()
+                .any(|w| w.starts_with('X') || w.starts_with('Y') || w.starts_with('Z'));
+            let moves_a = l.split_whitespace().any(|w| w.starts_with('A'));
+            if linear {
+                moves_xyz || !moves_a
+            } else {
+                moves_a && !moves_xyz
+            }
+        })
         .filter_map(|l| l.split_whitespace().find_map(|w| w.strip_prefix('F')))
         .filter_map(|f| f.parse::<f64>().ok())
         .fold(0.0, f64::max)
@@ -298,7 +313,8 @@ fn highest_feed(text: &str) -> f64 {
 
 #[test]
 fn req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts() {
-    let limit = builtin("makera-z1").unwrap().unwrap().max_feeds.linear.0;
+    let feeds = builtin("makera-z1").unwrap().unwrap().max_feeds;
+    let (limit, rotary_limit) = (feeds.linear.0, feeds.rotary.0);
     let mut failures = Vec::new();
     for job in jobs() {
         let (dir, mut app) = build(&job, "gates");
@@ -319,8 +335,16 @@ fn req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_b
                 ));
             }
             for (_, text) in &result.gcode {
-                if highest_feed(text) > limit {
-                    failures.push(format!("{} / {post}: F{}", job.name, highest_feed(text)));
+                if highest_feed(text, true) > limit {
+                    failures.push(format!(
+                        "{} / {post}: F{}",
+                        job.name,
+                        highest_feed(text, true)
+                    ));
+                }
+                if highest_feed(text, false) > rotary_limit {
+                    let f = highest_feed(text, false);
+                    failures.push(format!("{} / {post}: F{f} on A alone", job.name));
                 }
             }
         }
@@ -442,7 +466,11 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
         );
     }
     for (_, text) in &result.gcode {
-        assert!(highest_feed(text) <= limit, "F{}", highest_feed(text));
+        assert!(
+            highest_feed(text, true) <= limit,
+            "F{}",
+            highest_feed(text, true)
+        );
     }
     std::fs::remove_dir_all(dir).unwrap();
 }

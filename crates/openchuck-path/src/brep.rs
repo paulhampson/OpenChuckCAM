@@ -53,10 +53,13 @@
 //! error is the tessellation's.
 
 mod bound;
+mod drop;
 mod hull;
 #[cfg(test)]
 mod tests;
 mod trim;
+
+pub use drop::DROP_TOLERANCE;
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -491,6 +494,42 @@ struct Nurbs {
     scale_v: f64,
     /// Bounds on the first and second derivatives over the whole patch.
     bounds: bound::Derivatives,
+    /// The crease knots in u and in v (see [`Nurbs::creases`]).
+    creases_u: Vec<f64>,
+    creases_v: Vec<f64>,
+}
+
+impl Nurbs {
+    /// The interior knots of `k` (degree `deg`, `n` poles) repeated at
+    /// least `deg` times: where the patch may have a crease (it is only
+    /// continuous there), so its normal jumps.
+    fn creases(k: &[f64], deg: usize, n: usize) -> Vec<f64> {
+        let (lo, hi) = (at(k, deg), at(k, n));
+        let mut out: Vec<f64> = Vec::new();
+        let mut i = deg + 1;
+        while i < n {
+            let x = at(k, i);
+            let mut m = 1;
+            while i + m < n && same(at(k, i + m), x) {
+                m += 1;
+            }
+            if m >= deg && x > lo && x < hi {
+                out.push(x);
+            }
+            i += m;
+        }
+        out
+    }
+
+    /// Whether the parameter box `[u0, u1, v0, v1]` has an edge on a crease
+    /// line of the patch.
+    fn touches_crease(&self, b: [f64; 4]) -> bool {
+        let on = |x: f64, creases: &[f64]| creases.iter().any(|c| same(*c, x));
+        on(b[0], &self.creases_u)
+            || on(b[1], &self.creases_u)
+            || on(b[2], &self.creases_v)
+            || on(b[3], &self.creases_v)
+    }
 }
 
 fn span(k: &[f64], deg: usize, n: usize, u: f64) -> usize {
@@ -593,6 +632,8 @@ impl Nurbs {
             scale_u: 1.0,
             scale_v: 1.0,
             bounds: bound::Derivatives::default(),
+            creases_u: Self::creases(&p.knots_u, pu, nu),
+            creases_v: Self::creases(&p.knots_v, pv, nv),
         };
         let hull = Self::hull(&n.poles);
         let diag = (hull.max - hull.min).length().max(1e-12);
@@ -2044,16 +2085,15 @@ impl ParametricFace for ExactFace {
             return false;
         }
         let (u, v) = self.wrapped(uv);
-        let us = match self.period_u {
-            Some(p) => vec![u, u - p, u + p],
-            None => vec![u],
+        let shifts = |x: f64, period: Option<f64>| match period {
+            Some(p) => ([x, x - p, x + p], 3),
+            None => ([x, x, x], 1),
         };
-        let vs = match self.period_v {
-            Some(p) => vec![v, v - p, v + p],
-            None => vec![v],
-        };
+        let (us, nu) = shifts(u, self.period_u);
+        let (vs, nv) = shifts(v, self.period_v);
         us.iter()
-            .any(|&x| vs.iter().any(|&y| self.inside_one(x, y)))
+            .take(nu)
+            .any(|&x| vs.iter().take(nv).any(|&y| self.inside_one(x, y)))
     }
 }
 
@@ -2076,6 +2116,8 @@ pub struct BrepSurface {
     fallback: Option<MeshSurface>,
     bounds: Aabb,
     holes: Vec<Hole>,
+    /// Whether ball drops use the exact faces (decision 0277).
+    exact_drops: bool,
 }
 
 impl BrepSurface {
@@ -2159,7 +2201,26 @@ impl BrepSurface {
             fallback,
             bounds,
             holes,
+            exact_drops: false,
         })
+    }
+
+    /// This source with ball drops onto the exact faces (`true`) or onto the
+    /// tessellation (`false`, the default): [`SurfaceSource::drop_tool`]
+    /// then answers with [`drop_ball`](Self::drop_ball) for a ball and the
+    /// tessellation for any other tool (lane STEPALL-X2, decision 0277). A
+    /// host sets it for the operations whose strategy takes exact contacts
+    /// ([`Strategy::exact_contact`](crate::strategy::Strategy::exact_contact)),
+    /// on every surface of the operation alike.
+    #[must_use]
+    pub fn with_exact_drops(mut self, exact: bool) -> Self {
+        self.exact_drops = exact;
+        self
+    }
+
+    /// Whether ball drops use the exact faces.
+    pub fn exact_drops(&self) -> bool {
+        self.exact_drops
     }
 
     /// The faces, in model order.
@@ -2233,6 +2294,55 @@ impl BrepSurface {
             .collect()
     }
 
+    /// The tool dropped along `line` onto the exact faces, when the tool's
+    /// lower envelope is a ball (a ball end, or one grown for stock to
+    /// leave): within [`DROP_TOLERANCE`] of the highest contact, or, when a
+    /// search ran out of its budget, at the bound it stopped at, which is
+    /// never below the contact (lane STEPALL-X2, OI-81). `None` for another
+    /// profile, or when a face has no exact drop; the caller then drops onto
+    /// the tessellation.
+    pub fn drop_ball(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
+        let r = ball_radius(profile)?;
+        if !line.origin.is_finite() {
+            return None;
+        }
+        let ball = drop::Ball::new(line, r);
+        let mut order: Vec<(f64, usize)> = self
+            .faces
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| f.drop_top(&ball).map(|t| (t, i)))
+            .collect();
+        order.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut search = drop::Search::new(ball);
+        for (top, i) in order {
+            if top <= search.floor() {
+                break;
+            }
+            if let Some(f) = self.faces.get(i) {
+                f.drop_ball(&mut search);
+            }
+            if search.unsupported {
+                return None;
+            }
+        }
+        let best = search.best?;
+        let offset = best.s.max(search.unresolved);
+        Some(ExactDrop {
+            contact: Contact {
+                tip: line.at(offset),
+                contact: best.point,
+                offset,
+            },
+            position: FacePosition {
+                face: best.face,
+                uv: best.uv,
+            },
+            raised: (search.unresolved - best.s).max(0.0),
+            looked: search.looked,
+        })
+    }
+
     fn nearest(
         &self,
         point: Point3,
@@ -2301,6 +2411,45 @@ impl BrepSurface {
         }
         best
     }
+}
+
+/// An exact ball drop's answer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExactDrop {
+    /// The contact, as [`SurfaceSource::drop_tool`] gives it.
+    pub contact: Contact,
+    /// Where on the faces the contact lies.
+    pub position: FacePosition,
+    /// How far the tip was raised above the best contact found to the bound
+    /// a search stopped at (0 when every search settled to the tolerance).
+    pub raised: f64,
+    /// Cells and boundary pieces looked at.
+    pub looked: usize,
+}
+
+/// The radius of the ball that is the profile's lower envelope, or `None`
+/// when its envelope is not a ball centred on the axis one radius above the
+/// tip.
+pub fn ball_radius(profile: &RevolvedProfile) -> Option<f64> {
+    let [e] = profile.envelope() else {
+        return None;
+    };
+    let ProfilePiece::Arc {
+        centre,
+        radius,
+        convex: true,
+        ..
+    } = e.piece
+    else {
+        return None;
+    };
+    let tie = 1e-9 * (1.0 + radius.abs());
+    (radius > 0.0
+        && centre.radius.0.abs() <= tie
+        && (centre.height.0 - radius).abs() <= tie
+        && e.r_start <= tie
+        && (e.r_end - radius).abs() <= tie)
+        .then_some(radius)
 }
 
 /// The largest distance of any point of the tool from its axis.
@@ -2453,6 +2602,10 @@ impl SurfaceSource for BrepSurface {
         self.nearest(point, f64::INFINITY, None).map(|c| c.point)
     }
 
+    fn within(&self, point: Point3, max_distance: f64) -> bool {
+        self.nearest(point, max_distance, None).is_some()
+    }
+
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit> {
         let d = direction.get();
         let mut order: Vec<(f64, usize)> = self
@@ -2488,7 +2641,22 @@ impl SurfaceSource for BrepSurface {
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
-        // No exact solver yet (OI-81): drop onto the tessellation.
+        // A ball drops onto the exact faces when the host asked for it
+        // (decision 0277); any other tool, or a face without an exact drop,
+        // drops onto the tessellation (OI-81).
+        if self.exact_drops
+            && let Some(d) = self.drop_ball(profile, line)
+        {
+            return Some(d.contact);
+        }
         self.fallback.as_ref()?.drop_tool(profile, line)
+    }
+
+    fn drop_accuracy(&self) -> f64 {
+        if self.exact_drops {
+            DROP_TOLERANCE
+        } else {
+            0.0
+        }
     }
 }

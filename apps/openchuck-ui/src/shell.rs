@@ -88,8 +88,11 @@ const DELETE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::Del
 const RENAME: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F2);
 const EARLIER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowUp);
 const LATER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowDown);
-/// Alt 1 to Alt 5 open the steps (specification section 4).
-const STEP_KEYS: [Key; 5] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5];
+/// Alt 1 to Alt 4 open the steps (specification section 4).
+const STEP_KEYS: [Key; 4] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4];
+/// Alt 5 opens Post and export as Ctrl E does, for users of the fifth step
+/// there was before (decision record 0282 item 4).
+const EXPORT_ALT: Key = Key::Num5;
 /// Ctrl 1, 2 and 3 collapse the project panel, the inspector and the dock.
 const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
@@ -213,6 +216,10 @@ pub struct Shell {
     run: RunPanel,
     /// Post and export (slice 19 item 4).
     export: ExportPanel,
+    /// The export dialog was opened from Simulate's "Post and export…", so
+    /// the keyboard goes back to it when the dialog closes (UI-14; decision
+    /// record 0282 item 8).
+    export_from_footer: bool,
     /// A text field had the keyboard at the end of the last frame.
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
@@ -318,6 +325,7 @@ impl Shell {
             run: RunPanel::default(),
             results: ResultsPanel::default(),
             export: ExportPanel::default(),
+            export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
             simulate_camera: None,
@@ -941,7 +949,30 @@ impl Shell {
         if self.defer(Self::primary) {
             return;
         }
-        let action = self.overview.primary(self.step);
+        self.act(self.overview.primary(self.step));
+    }
+
+    /// Simulate's simulation action, in its own place on the footer
+    /// (decision record 0282 item 2).
+    fn simulation(&mut self) {
+        if self.defer(Self::simulation) {
+            return;
+        }
+        self.act(self.overview.simulation_action());
+    }
+
+    /// Simulate's "Post and export…" (decision record 0282 items 2 and 3):
+    /// the old fifth step's button, with its rules.
+    fn post_and_export(&mut self) {
+        if self.defer(Self::post_and_export) {
+            return;
+        }
+        self.act(self.overview.export_action());
+    }
+
+    /// Does `action`, a footer action, unless it is disabled or a job runs:
+    /// then shows the message that disables it, if any.
+    fn act(&mut self, action: openchuck_app::overview::PrimaryAction) {
         if action.blocked.is_some() || self.run.is_running() {
             self.highlight = action.message;
             if action.message.is_some() {
@@ -1000,13 +1031,17 @@ impl Shell {
         if export {
             self.open_export();
         }
-        // Alt 1 to 5: the steps. Ctrl 1 to 3: collapse the panels.
+        // Alt 1 to 4: the steps; Alt 5: Post and export. Ctrl 1 to 3:
+        // collapse the panels.
         for (index, key) in STEP_KEYS.into_iter().enumerate() {
             if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, key))
                 && let Some(step) = Step::ALL.get(index)
             {
                 self.open_step(*step);
             }
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, EXPORT_ALT)) {
+            self.open_export();
         }
         for (key, region) in PANEL_KEYS.into_iter().zip(frame::Region::ALL) {
             if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, key)) {
@@ -1775,7 +1810,7 @@ impl Shell {
         let mut form_submit = false;
         let mut form_browse = false;
         let mut action: Option<Action> = None;
-        egui::Modal::new(egui::Id::new("openchuck dialog")).show(ctx, |ui| match dialog {
+        egui::Modal::new(egui::Id::unique("openchuck dialog")).show(ctx, |ui| match dialog {
             Dialog::Folder {
                 create,
                 mut folder,
@@ -2602,6 +2637,8 @@ mod tests {
 #[cfg(test)]
 mod keys_tests;
 
+#[cfg(test)]
+mod four_step_tests;
 #[cfg(test)]
 mod frame_tests;
 #[cfg(test)]

@@ -247,8 +247,10 @@ impl RegionConstraint<'_> {
         profile: &RevolvedProfile,
         line: &ToolLine,
     ) -> bool {
+        // A contact found on exact faces lies on them, but its tip only
+        // within the drop's accuracy of the highest (decision 0277, OI-833).
         let on = |surface: &dyn SurfaceSource| {
-            surface.distance(contact).is_some_and(|d| d <= ON_SURFACE)
+            surface.within(contact, ON_SURFACE + surface.drop_accuracy())
         };
         if self.region.is_some_and(|r| !on(r)) {
             return false;
@@ -261,7 +263,7 @@ impl RegionConstraint<'_> {
         }
         if let Some(check) = self.check
             && let Some(touch) = check.drop_tool(profile, line)
-            && touch.tip.distance(tip) <= ON_SURFACE
+            && touch.tip.distance(tip) <= ON_SURFACE + 2.0 * check.drop_accuracy()
         {
             return false;
         }
@@ -368,7 +370,9 @@ pub(crate) fn watched_warnings(
                     .surface
                     .drop_tool(&grown, &line)
                     .map(|c| c.offset)
-                    .filter(|offset| offset.abs() <= slack + ON_SURFACE);
+                    .filter(|offset| {
+                        offset.abs() <= slack + ON_SURFACE + input.surface.drop_accuracy()
+                    });
                 Ok((line, rest))
             })
             .collect::<Result<_>>()?;
@@ -379,9 +383,10 @@ pub(crate) fn watched_warnings(
                     .iter()
                     .map(|(line, rest)| {
                         context.check_cancelled()?;
+                        // Within the drops' accuracy, as at a cut point.
+                        let tie = ON_SURFACE + 2.0 * w.surface.drop_accuracy();
                         Ok(w.surface.drop_tool(&grown, line).is_some_and(|touch| {
-                            touch.offset >= -ON_SURFACE
-                                || rest.is_some_and(|r| touch.offset >= r - ON_SURFACE)
+                            touch.offset >= -tie || rest.is_some_and(|r| touch.offset >= r - tie)
                         }))
                     })
                     .collect::<Result<Vec<_>>>()

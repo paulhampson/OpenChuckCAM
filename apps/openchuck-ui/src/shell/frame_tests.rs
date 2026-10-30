@@ -23,8 +23,11 @@ pub(super) struct Rig {
     pub(super) shell: Shell,
     pub(super) ctx: egui::Context,
     pub(super) size: egui::Vec2,
-    shapes: Vec<egui::epaint::ClippedShape>,
+    pub(super) shapes: Vec<egui::epaint::ClippedShape>,
     pub(super) dirs: Vec<PathBuf>,
+    /// The scope id of the root `Ui` the shell draws into: egui 0.37 derives a
+    /// panel's id from its parent's scope id and its salt.
+    root: egui::Id,
 }
 
 impl Rig {
@@ -35,6 +38,7 @@ impl Rig {
             size: egui::vec2(1440.0, 900.0),
             shapes: Vec::new(),
             dirs,
+            root: egui::Id::NULL,
         };
         rig.frame(Vec::new());
         rig
@@ -83,10 +87,27 @@ impl Rig {
             events,
             ..Default::default()
         };
-        let Self { shell, ctx, .. } = self;
-        let mut output = ctx.run_ui(input, |ui| shell.draw(ui));
+        let Self {
+            shell, ctx, root, ..
+        } = self;
+        let mut output = ctx.run_ui(input, |ui| {
+            *root = ui.scope_id();
+            shell.draw(ui);
+        });
         output.textures_delta.clear();
         self.shapes = output.shapes;
+    }
+
+    /// The state egui kept for the panel salted `salt`: the side panels are shown in
+    /// the root `Ui`. The dock is shown in the central panel's `Ui`, whose id the shell records.
+    pub(super) fn panel_state(&self, salt: &str) -> Option<egui::PanelState> {
+        let parent = if salt == "dock" {
+            self.ctx
+                .data(|d| d.get_temp(egui::Id::unique("test dock parent")))?
+        } else {
+            self.root
+        };
+        egui::PanelState::load(&self.ctx, parent.with(salt))
     }
 
     /// What the last frame painted.
@@ -285,7 +306,7 @@ fn req_ui_10_req_ui_14_post_and_export_opens_once_the_project_has_what_it_needs(
     );
 
     let mut rig = Rig::cube("frame-post", None);
-    assert!(rig.shell.overview.step(Step::Export).is_available());
+    assert!(rig.shell.overview.export_action().blocked.is_none());
     assert_eq!(rig.shell.post_blocker(), None);
     let id = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
     rig.shell.tree_action(super::TreeAction::Delete(id));
@@ -350,8 +371,10 @@ fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     assert!(rig.shows("Continue to simulate"));
     rig.press(Key::Num4, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Simulate);
-    // Generating simulated the stock too (issue 214), so Simulate goes on.
-    assert!(rig.shows("Continue to post and export"));
+    // Generating simulated the stock too (issue 214), so Post and export is
+    // the next step on Simulate (decision record 0282 item 2).
+    assert!(rig.shows("Post and export…"));
+    assert!(rig.shows("Run simulation"));
     rig.press(Key::Num1, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Model);
     assert!(rig.shows("Continue to setup"));
@@ -1266,7 +1289,7 @@ fn req_ui_11_the_step_bar_says_the_overall_status_in_words_and_shape() {
                 "Setup",
                 "Operations",
                 "Simulate",
-                "Post and export",
+                "G-code not written",
             ]
             .contains(&text.as_str())
                 && (rect.center().y - badge.center().y).abs() < 6.0

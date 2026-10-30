@@ -628,13 +628,13 @@ impl ResultsPanel {
         ui.horizontal_wrapped(|ui| {
             ui.label("Show only from");
             let from = ui.add(
-                egui::TextEdit::singleline(&mut self.range_text.0)
+                crate::theme::single_line(ui, &mut self.range_text.0)
                     .id_salt("band range from")
                     .desired_width(56.0),
             );
             ui.label("to");
             let to = ui.add(
-                egui::TextEdit::singleline(&mut self.range_text.1)
+                crate::theme::single_line(ui, &mut self.range_text.1)
                     .id_salt("band range to")
                     .desired_width(56.0),
             );
@@ -719,7 +719,7 @@ impl ResultsPanel {
                 .get_or_insert_with(|| format!("{current:.3}"));
             let before = text.clone();
             let field = ui.add(
-                egui::TextEdit::singleline(&mut *text)
+                crate::theme::single_line(ui, &mut *text)
                     .id(id)
                     .desired_width(70.0),
             );

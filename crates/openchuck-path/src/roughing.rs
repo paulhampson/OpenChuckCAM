@@ -62,6 +62,7 @@ use openchuck_types::units::Degrees;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
+use crate::faces;
 use crate::field::HeightStock;
 mod scope;
 pub(crate) use scope::FacingScope;
@@ -77,7 +78,9 @@ use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, RotaryMapping};
-use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyGroup, StrategyInput};
+use crate::strategy::{
+    CutPoint, Pass, PassStock, Strategy, StrategyGroup, StrategyInput, StrategyOutput,
+};
 
 /// The registry name of [`RotaryRoughing`].
 pub const NAME: &str = "rotary_roughing";
@@ -340,7 +343,7 @@ impl Strategy for RotaryRoughing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        rough(input, None, parameters, context)
+        rough(input, None, parameters, context).map(|(p, _)| p)
     }
 
     fn passes_in_region(
@@ -350,16 +353,33 @@ impl Strategy for RotaryRoughing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        rough(input, Some(region), parameters, context)
+        rough(input, Some(region), parameters, context).map(|(p, _)| p)
+    }
+
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let (passes, turns) = rough(input, region, parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes: faces::note(&turns).into_iter().collect(),
+            warnings: Vec::new(),
+        })
     }
 }
 
+/// Rotary roughing's passes, with the X of the turns the continuous form
+/// made at faces across the axis.
 fn rough(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<(Vec<Pass>, Vec<f64>)> {
     let job = Job::new(input, region, parameters, "rotary roughing")?;
     let indexed = parameters.text(parameter::FORM)? == "indexed";
     let around = match parameters.text(parameter::DIRECTION)? {
@@ -368,12 +388,14 @@ fn rough(
         _ => !indexed,
     };
     match (indexed, around) {
-        (true, false) => job.indexed(parameters, context),
-        (true, true) => job.indexed_around(parameters, context),
-        (false, false) => job.continuous_along(context),
+        (true, false) => job.indexed(parameters, context).map(|p| (p, Vec::new())),
+        (true, true) => job
+            .indexed_around(parameters, context)
+            .map(|p| (p, Vec::new())),
+        (false, false) => job.continuous_along(context).map(|p| (p, Vec::new())),
         (false, true) => job.continuous(parameters, context),
     }
-    .and_then(|passes| {
+    .and_then(|(passes, turns)| {
         if passes.is_empty() {
             Err(PathError::Strategy(if job.region.is_some() {
                 format!(
@@ -390,7 +412,7 @@ fn rough(
                 )
             }))
         } else {
-            Ok(passes)
+            Ok((passes, turns))
         }
     })
 }
@@ -431,7 +453,7 @@ pub(crate) fn face(
     }
     job.face = Some(level);
     let passes = if round {
-        job.continuous(parameters, context)?
+        job.continuous(parameters, context)?.0
     } else {
         job.flat(parameters, level, context)?
     };
@@ -881,7 +903,13 @@ impl<'a> Job<'a> {
         (lo, hi, lo > x0, hi < x1)
     }
 
-    fn continuous(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    /// The continuous form's passes, with the X of the turns it made at faces
+    /// across the axis (decision record 0297).
+    fn continuous(
+        &self,
+        p: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<(Vec<Pass>, Vec<f64>)> {
         // Where a held region cuts the range short, the helix turns once at
         // that end without advancing, so the stock beside the keep-out is
         // cleared all round, as it is beyond the part's ends where the
@@ -899,7 +927,19 @@ impl<'a> Job<'a> {
         let turns = (length / self.stepover).ceil().max(1.0);
         let rings = f64::from(u8::from(ring_start) + u8::from(ring_end));
         let ring_before = f64::from(u8::from(ring_start));
-        let all_turns = turns + rings;
+        // A whole turn at each face across the axis inside the range, where
+        // the tool's side touches it (decision record 0297); not for Facing,
+        // whose Round form keeps its own path (decision record 0252).
+        let face_turns: Vec<faces::Turn> = if self.face.is_none() && self.face_scope.is_none() {
+            faces::turns(self.input, &self.grown, (x0, x1), self.tolerance, context)?
+                .into_iter()
+                .filter(|t| t.x > x0 && t.x < x1)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let face_turns = &face_turns;
+        let all_turns = turns + rings + face_turns.len() as f64;
         let step = p.number(parameter::MAX_ANGLE_STEP)?;
         let per_turn = (360.0 / step).ceil().max(4.0);
         let nodes = all_turns * per_turn;
@@ -915,24 +955,79 @@ impl<'a> Job<'a> {
         }
         let coarse = nodes as usize;
         let fine = coarse * SUB;
-        let site_at = move |f: f64| {
+        // Where, in turns of helix from `x0`, each face's turn starts: on a
+        // node, so the helix meets the turn at a point of the path rather
+        // than between two (where the straight move would cut the corner);
+        // the helix between turns is stretched by less than a node to suit.
+        let pitch = length / turns;
+        let mut knots: Vec<(f64, &faces::Turn)> = Vec::new();
+        for face in face_turns {
+            let lowest = knots.last().map_or(0.0, |k| k.0);
+            let at = (((face.x - x0) / pitch) * per_turn).round() / per_turn;
+            knots.push((at.clamp(lowest, turns), face));
+        }
+        let knots = &knots;
+        // The site at fine node `f`, with the face turn it lies on, if any.
+        let place = move |f: f64| -> (Site, Option<&faces::Turn>) {
             let t = f / fine as f64;
-            if rings == 0.0 {
+            if rings == 0.0 && face_turns.is_empty() {
                 // As before held regions: the same arithmetic, so the same
                 // positions to the last bit (GC-07).
-                return Site {
-                    x: x0 + length * t,
-                    a: self.start + 360.0 * turns * t,
-                    across: 0.0,
-                };
+                return (
+                    Site {
+                        x: x0 + length * t,
+                        a: self.start + 360.0 * turns * t,
+                        across: 0.0,
+                    },
+                    None,
+                );
             }
             let turn = all_turns * t;
-            Site {
-                x: x0 + length * ((turn - ring_before) / turns).clamp(0.0, 1.0),
-                a: self.start + 360.0 * turn,
-                across: 0.0,
+            if face_turns.is_empty() {
+                return (
+                    Site {
+                        x: x0 + length * ((turn - ring_before) / turns).clamp(0.0, 1.0),
+                        a: self.start + 360.0 * turn,
+                        across: 0.0,
+                    },
+                    None,
+                );
             }
+            // Turns of helix from `x0`, counting each face's turn in place:
+            // the helix runs from knot to knot, X linear in the turns.
+            let a = self.start + 360.0 * turn;
+            let mut along = turn - ring_before;
+            let (mut from, mut x_from) = (0.0, x0);
+            let mut to = (turns, x0 + length);
+            for &(at, face) in knots {
+                if along <= at {
+                    to = (at, face.x);
+                    break;
+                }
+                if along <= at + 1.0 {
+                    let site = Site {
+                        x: face.x,
+                        a,
+                        across: 0.0,
+                    };
+                    return (site, Some(face));
+                }
+                along -= 1.0;
+                (from, x_from) = (at, face.x);
+            }
+            let x = if to.0 > from {
+                x_from + (to.1 - x_from) * ((along - from) / (to.0 - from))
+            } else {
+                to.1
+            };
+            let site = Site {
+                x: x.clamp(x0, x0 + length),
+                a,
+                across: 0.0,
+            };
+            (site, None)
         };
+        let site_at = move |f: f64| place(f).0;
         let site = move |f: usize| site_at(f as f64);
 
         context.report("rotary roughing: finding the part", 0, Some(fine as u64));
@@ -977,10 +1072,29 @@ impl<'a> Job<'a> {
                     tip,
                 )
             });
+            // The stock field is too coarse to hold the thin step a helix
+            // leaves on a face across the axis, so at a face's turn the tool
+            // also cuts where the face is, wherever the layer is below its
+            // top there.
+            let at_face = |i: usize| {
+                let (site, Some(face)) = place((i * SUB) as f64) else {
+                    return false;
+                };
+                let tip = floors
+                    .get(i * SUB)
+                    .copied()
+                    .flatten()
+                    .map_or(*level, |v| v.max(*level));
+                face.top_at(site.a)
+                    .is_some_and(|top| tip < top - self.min_cut)
+            };
             let active: Vec<bool> = excess
                 .iter()
                 .enumerate()
-                .map(|(i, e)| *e > self.min_cut && allowed.get(i * SUB).copied().unwrap_or(false))
+                .map(|(i, e)| {
+                    (*e > self.min_cut || at_face(i))
+                        && allowed.get(i * SUB).copied().unwrap_or(false)
+                })
                 .collect();
             let mut layer = Vec::new();
             for (first, last) in Self::runs(&active, |i| Self::joined(&allowed, i)) {
@@ -999,7 +1113,7 @@ impl<'a> Job<'a> {
             levels.len() as u64,
             Some(levels.len() as u64),
         );
-        Ok(passes)
+        Ok((passes, face_turns.iter().map(|t| t.x).collect()))
     }
 
     /// The node spacing along a straight line of cut positions.

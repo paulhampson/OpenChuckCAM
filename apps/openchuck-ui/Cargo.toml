@@ -16,6 +16,7 @@ openchuck-app.workspace = true
 openchuck-buildinfo.workspace = true
 openchuck-viewport.workspace = true
 eframe.workspace = true
+egui.workspace = true
 rfd.workspace = true
 log.workspace = true
 

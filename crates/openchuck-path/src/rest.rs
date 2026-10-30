@@ -291,6 +291,12 @@ pub(crate) fn min_remaining_spec() -> ParameterSpec {
 pub struct RestMachining;
 
 impl Strategy for RestMachining {
+    /// Exact contacts on a STEP part: measured within the limits of OI-835
+    /// (decision 0277).
+    fn exact_contact(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }
