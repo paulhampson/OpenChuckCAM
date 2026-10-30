@@ -109,8 +109,8 @@ use openchuck_types::workholding::Workholding;
 /// - 21: a model reference gains the optional `name`, the file name it had
 ///   when it was added, written only when recorded (issue 385, decision
 ///   record 0307 item 4).
-/// - 22: lane Z1AXIS's step (the machine copy's spindle-height fields); until
-///   that lane merges, a stand-in that changes nothing but the number.
+/// - 22: the machine copy gains the optional `automatic_tool_length`,
+///   `spindle_to_axis` and `recommended_min_safe_z` (decision record 0317).
 /// - 23: helical finishing, axial finishing and rest machining gain the
 ///   per-operation `face_free_ends` switch, on for a new operation; an
 ///   older operation of those strategies is migrated to an explicit
@@ -155,10 +155,13 @@ const MIGRATIONS: &[Migration] = &[
     schema_22_to_23,
 ];
 
-/// Lane Z1AXIS's schema 22 step, which adds optional fields to the machine
-/// copy; until that lane merges this stand-in changes nothing but the number,
-/// and the merge replaces it with that lane's step.
-fn schema_21_to_22(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+/// Schema 22 adds the optional spindle-height fields to the machine copy,
+/// which an older file does not have; one that already holds one is refused
+/// (decision record 0317).
+fn schema_21_to_22(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::premature_spindle_height(table, 21, 22)?;
+    }
     Ok(())
 }
 

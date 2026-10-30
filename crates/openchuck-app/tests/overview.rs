@@ -1266,9 +1266,15 @@ fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_thread
 #[test]
 fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     let mut f = fixture("plain-machine", "cube_ascii.stl");
-    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
         .unwrap()
         .unwrap();
+    // An unconfirmed axis height, so the message names it (the Z1's is
+    // confirmed since decision 0317).
+    z1.provenance
+        .get_mut(&openchuck_app::setup::ProfileField::RotaryOrigin)
+        .unwrap()
+        .state = openchuck_app::setup::Confirmation::Unconfirmed;
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
@@ -1963,6 +1969,139 @@ fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
             .iter()
             .any(|m| m.text.contains("The grip at the"))
     );
+}
+
+/// A project whose Makera Z1 copy still has the old placeholder axis height
+/// (machine Z -55) keeps it, and the setup checks say so and how to update
+/// it; the built-in Z1, whose axis height is confirmed, gives neither that
+/// warning nor the "cannot be checked" one (SET-01, UI-13, decision 0317).
+#[test]
+fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
+    let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    let warnings = |tag: &str, z: f64, id: Option<String>| {
+        let mut f = fixture(tag, "cube_ascii.stl");
+        let mut machine = entry.profile.clone();
+        machine.rotary_origin.z = z;
+        f.app
+            .execute(Command::SetMachineFrom {
+                machine: Some(Box::new(machine)),
+                id,
+            })
+            .unwrap();
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let checks: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| c.text.clone())
+            .collect();
+        let messages: Vec<String> = o.messages.iter().map(|m| m.text.clone()).collect();
+        (checks, messages)
+    };
+    for (tag, id) in [("old-z1-id", entry.id.clone()), ("old-z1-name", None)] {
+        let (checks, messages) = warnings(tag, -55.0, id);
+        let check = checks
+            .iter()
+            .find(|t| t.contains("old placeholder axis height"))
+            .unwrap_or_else(|| panic!("{tag}: {checks:?}"));
+        for words in ["Makera Z1", "-55", "-48.6", "Choose the Makera Z1 again"] {
+            assert!(check.contains(words), "{words}: {check}");
+        }
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("old placeholder axis height")),
+            "{tag}: {messages:?}"
+        );
+    }
+    let (checks, messages) = warnings("measured-z1", -48.6, entry.id.clone());
+    for text in checks.iter().chain(&messages) {
+        assert!(!text.contains("old placeholder axis height"), "{text}");
+        assert!(
+            !text.contains("cannot be checked against the Z travel"),
+            "{text}"
+        );
+    }
+}
+
+/// On the Makera Z1 (tool lengths measured, the spindle 73.1 mm above the
+/// axis at home), a setup warns once per enabled operation's tool whose
+/// assumed stick-out takes the spindle past the top of the Z travel at the
+/// setup's safe Z; a setup clearance that fits clears it, and the same
+/// project gives the same checks (SET-06, NFR-12, GC-07, decision 0318).
+#[test]
+fn req_set_06_req_nfr_12_a_tool_too_long_for_the_safe_z_warns_on_the_z1() {
+    let mut f = fixture("spindle-height", "cube_ascii.stl");
+    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    let op = f.add_operation("Ring", "one_ring");
+    let spindle = |f: &Fixture| -> Vec<String> {
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let mut found: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed && c.text.contains("top of the Z travel at the safe Z"))
+            .map(|c| c.text.clone())
+            .collect();
+        let messages = o
+            .messages
+            .iter()
+            .filter(|m| m.text.contains("top of the Z travel at the safe Z"))
+            .count();
+        assert_eq!(messages, found.len(), "one message per check");
+        found.sort();
+        found
+    };
+    // Flute 10: sticks out 15, the tip reaches 58.1 above the axis.
+    assert!(spindle(&f).is_empty());
+
+    // Flute 42: sticks out 47, the tip reaches 26.1; at safe Z 40 the
+    // spindle is 13.9 mm past the top.
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.tool.flute_length = Millimetres(42.0);
+    tool.tool.overall_length = Millimetres(60.0);
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    let first = spindle(&f);
+    assert_eq!(first.len(), 1, "{first:?}");
+    for words in [
+        "Tool 1 (4 mm ball)",
+        "13.900 mm",
+        "26.100 mm",
+        "on your machine",
+        "recommended minimum is 30 mm",
+    ] {
+        assert!(first[0].contains(words), "{words}: {}", first[0]);
+    }
+    assert_eq!(spindle(&f), first, "the same project gives the same checks");
+
+    // The setup's own clearance is the safe Z checked: 26 fits.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = Some(openchuck_app::setup::Clearance {
+        radius: Millimetres(20.0),
+        safe_z: Millimetres(26.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(spindle(&f).is_empty());
+
+    // Back to the profile's safe Z, with the operation turned off: an
+    // operation that is not run does not warn.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut operation = f.app.project().operation(op).unwrap().clone();
+    operation.enabled = false;
+    f.app
+        .execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    assert!(spindle(&f).is_empty());
 }
 
 #[test]
