@@ -337,6 +337,8 @@ The project folder has one schema number for every file ([decision 0008](decisio
 
 | 20 | SHORTMOVE | Configurable managed reporting and selective Slow down (GC-17, accepted 0245); machine profile schema 6 | Claimed 25 Oct 2026 before persistence edits. Released integration retains GATES' implemented 19/5 fields and schema guards, the published Report compatibility API, and legacy Off behaviour; 20/6 admits the new Slow down mode, while 19/5 files holding that value are refused; true older Off/Report copies migrate unchanged. Library 0.24.0 claimed after the 26 Oct live-ref audit (main 0.23.0). |
 
+| 22 | Z1AXIS ([decision 0317](decisions/0317-z1-measured-axis-height-and-safe-z.md); SET-01, UI-13) | Machine profile fields for the spindle-height check: automatic tool length measurement, the spindle-to-axis distance (OI-1291, issue #395) and a recommended minimum safe Z, each with provenance; machine profile schema 7 | Claimed 30 Oct 2026, assigned by the coordinator, before format edits (21 is MODELCOPY's; highest claim on `main` and every pushed branch checked was 21; machine schema 6 on `main`) |
+
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind. Lane K takes none: its strategy reads the part's own feature edges and a stored choice of chains is OI-204 ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md)).
 
 ### Working in parallel
