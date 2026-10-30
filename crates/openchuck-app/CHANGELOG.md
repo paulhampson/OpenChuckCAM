@@ -9,7 +9,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
-- SIMPERF (#382, proposed decision 0322): stock colours are computed over the job's threads (the same at any thread count); `StockPlayback` keeps the last request's stock and spaces checkpoints to fill a memory budget (`start_stock_playback` takes it; `MAX_CHECKPOINT_BYTES` becomes `DEFAULT_PLAYBACK_MEMORY`); `start_playing_stock_surface` makes a cut part without a picker; `SimulateSettings::playback_memory_mb`. Not in the library family.
+- SIMPERF (#382, accepted decision 0322): stock colours are computed over the job's threads (the same at any thread count); `StockPlayback` keeps the last request's stock and spaces checkpoints to fill a memory budget (`start_stock_playback` takes it; `MAX_CHECKPOINT_BYTES` becomes `DEFAULT_PLAYBACK_MEMORY`); `start_playing_stock_surface` makes a cut part without a picker; `SimulateSettings::playback_memory_mb`. Not in the library family.
 
 - FOURSTEP (accepted decision 0282; #322; UI-10): **Changed:** `overview::Step` has four values (`Step::Export` removed, `Step::ALL` is `[Step; 4]`, Simulate has no next step); `Overview::health` is the worst of four. New `Overview::export_action` (Post and export, with the old fifth step's rules), `Overview::simulation_action`, `Overview::g_code_written` and `Overview::wrote_g_code_before`; `Overview::primary(Step::Simulate)` is the filled one of the two. `g_code_written` needs the last complete write to hold exactly the enabled operations, so an exported operation since turned off or removed reads "not written". No library-family change.
 

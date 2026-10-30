@@ -73,7 +73,7 @@ the tool ahead of the displayed material removal. With Cut part hidden, tool
 animation follows the clock directly as before.
 
 Amended 30 Oct 2026 by [decision 0322](0322-simulate-playback-frame-cost.md)
-item 8 (proposed; the owner's decision D3 on issue #382): while playback plays,
+item 8 (accepted; the owner's decision D3 on issue #382): while playback plays,
 the tool follows the clock and the cut part shown is the newest one prepared,
 behind it, with a cut-part bar saying how far; when playback is still, the tool
 and the cut part share the exact cursor as above.
