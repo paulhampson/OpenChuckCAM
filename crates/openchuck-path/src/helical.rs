@@ -177,7 +177,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, _)| p)
+        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
     }
 
     fn passes(
@@ -186,7 +186,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context).map(|(p, _)| p)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -196,7 +196,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context).map(|(p, _)| p)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_with_notes(
@@ -206,10 +206,13 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, turns) = passes(input, region, &[], parameters, context)?;
+        let (passes, turns, held) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns).into_iter().collect(),
+            notes: faces::note(&turns)
+                .into_iter()
+                .chain(faces::held_note(&held))
+                .collect(),
             warnings: Vec::new(),
         })
     }
@@ -257,14 +260,15 @@ pub(crate) fn turn_passes(
 }
 
 /// The passes of helical finishing, limited to `region` when given, with
-/// the X of the turns it made at faces across the axis.
+/// the X of the turns it made at faces across the axis and of those a held
+/// region kept it from.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<f64>)> {
+) -> Result<(Vec<Pass>, Vec<f64>, Vec<f64>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -352,11 +356,8 @@ fn passes(
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut after the helix as its own pass, so the helix is
         // as before (decision record 0297).
-        let turns: Vec<f64> =
-            faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?
-                .into_iter()
-                .map(|t| t.x)
-                .collect();
+        let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
+        let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
         for &x in &turns {
             context.check_cancelled()?;
             let at = start + sign * 360.0 * (x - x0) / pitch;
@@ -371,6 +372,6 @@ fn passes(
                 context,
             )?);
         }
-        Ok((passes, turns))
+        Ok((passes, turns, found.held))
     }
 }

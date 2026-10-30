@@ -27,9 +27,9 @@ use std::path::PathBuf;
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, CompositeSurface, GeneratedPath, HelicalFinishing, MeshSurface,
-    ParameterValue, RestMachining, RotaryMapping, RotaryRoughing, SimultaneousFinishing, Solid,
-    Strategy, StrategyInput, SurfaceSource, generate,
+    AcceptAll, AnalyticStock, AxialFinishing, CompositeSurface, GeneratedPath, HelicalFinishing,
+    IndexedFinishing, MeshSurface, ParameterValue, RestMachining, RotaryMapping, RotaryRoughing,
+    SimultaneousFinishing, Solid, Strategy, StrategyInput, SurfaceSource, generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose};
 use openchuck_testkit::parts::{Cone, RadialPart, revolve};
@@ -840,4 +840,124 @@ fn req_op_09_req_op_21_rest_machining_faces_the_ends_beside_a_short_tab() {
     // Rest machining is helical finishing where material is left, so it
     // turns at the faces as helical finishing does (decision record 0297).
     end_faces_beside_short_tabs_cleaned(&RestMachining);
+}
+
+#[test]
+fn req_op_04_req_op_21_axial_finishing_faces_the_ends_beside_a_short_tab() {
+    // Its passes run along X over the target's own length, so the tool never
+    // got down beside an end face whose tab is shorter than its radius: a
+    // whole turn at each such end face, as the helix strategies make
+    // (decision record 0343).
+    end_faces_beside_short_tabs_cleaned(&AxialFinishing);
+}
+
+#[test]
+fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
+    // Indexed finishing holds A at each position (default four, A 0, 90, 180
+    // and 270) and cuts one pass along X there, so it reaches the end faces
+    // only along those lines: points across the face from the tab to the
+    // part's radius, within 0.15 mm of each line (the round side of the tool
+    // stands back from the face by r - sqrt(r^2 - v^2) at v off the line, so
+    // within the tolerance only for v up to sqrt(2 r tol), 0.178 mm). Its
+    // passes now run on past each end of the target by the tool's radius, so
+    // the tool goes down beside the face onto the tab (decision record 0343).
+    let job = short_tabs();
+    let path = job.path(&IndexedFinishing, &[]);
+    let rotary = RotaryMapping::of_profile(&machine());
+    // Each A only once: the tool is fixed while it cuts, and no extra
+    // cutting angle is added (owner's choice for indexed finishing).
+    let mut angles: Vec<i64> = poses_along(&path, &rotary, 1)
+        .iter()
+        .map(|p| (p.axis.z.atan2(p.axis.y).to_degrees() * 1000.0).round() as i64)
+        .collect();
+    angles.sort_unstable();
+    angles.dedup();
+    assert_eq!(angles.len(), 4, "{angles:?}");
+    let across = 0.15;
+    let lo = TAB_RADIUS + 0.05;
+    let faces: Vec<Vec<Point3>> = [0.0, 30.0]
+        .into_iter()
+        .map(|x| {
+            let mut out = Vec::new();
+            for &a in &angles {
+                let t = (a as f64 / 1000.0).to_radians();
+                let (d, n) = (
+                    Vec3::new(0.0, t.cos(), t.sin()),
+                    Vec3::new(0.0, -t.sin(), t.cos()),
+                );
+                for i in 0..=20 {
+                    let r = lo + (10.0 - lo) * f64::from(i) / 20.0;
+                    for j in -4..=4 {
+                        let v = across * f64::from(j) / 4.0;
+                        out.push(Point3::new(x, 0.0, 0.0) + d * r + n * v);
+                    }
+                }
+            }
+            out
+        })
+        .collect();
+    for (face, left) in faces.iter().zip(job.left(&path, &faces, 3.0)) {
+        let (w, d) = (worst(&left), deepest(&left));
+        assert!(w <= TOLERANCE, "end face X {}: {w:.4} mm left", face[0].x);
+        assert!(d >= -TOLERANCE, "end face X {}: cut to {d:.4}", face[0].x);
+    }
+    let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
+    assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
+    // The note says the passes ran on past both ends of the part.
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("past both ends")),
+        "{:?}",
+        path.notes
+    );
+}
+
+#[test]
+fn req_nfr_06_req_gc_07_end_faces_beside_a_short_tab_are_identical_at_1_2_and_n_threads() {
+    // Axial and indexed finishing, whose end-face handling is new here; the
+    // helix strategies share the face search the test above checks.
+    let job = short_tabs();
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = job.path(strategy, &[]);
+            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4, "{}", strategy.name());
+    }
+}
+
+#[test]
+fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
+    // A held region at the far end whose keep-out (widened by the tool)
+    // covers the X where the tool would turn at the part's end face: no turn
+    // there, as before (decision record 0297 item 2), and the note now says
+    // which face is left and why (decision record 0343).
+    let job = short_tabs();
+    let tag = tags();
+    let keep_out = [(30.5, 40.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), &job.stock, &job.profile, &tag)
+    };
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    let turns = turns_in_place(&path);
+    assert!(turns.iter().all(|&x| x < 30.0), "{turns:?}");
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("X 31.589") && n.message.contains("gripped length")),
+        "{:?}",
+        path.notes
+    );
 }

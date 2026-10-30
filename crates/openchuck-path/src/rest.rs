@@ -450,11 +450,8 @@ impl Strategy for RestMachining {
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut where material is left, as helical finishing does
         // (decision record 0297; issue 404).
-        let turns: Vec<f64> =
-            faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?
-                .into_iter()
-                .map(|t| t.x)
-                .collect();
+        let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
+        let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
         for &x in &turns {
             context.check_cancelled()?;
             let at = start + sign * 360.0 * (x - x0) / stepover;
@@ -485,6 +482,7 @@ impl Strategy for RestMachining {
             passes.len()
         )];
         notes.extend(faces::note(&turns));
+        notes.extend(faces::held_note(&found.held));
         Ok(StrategyOutput {
             passes,
             notes,

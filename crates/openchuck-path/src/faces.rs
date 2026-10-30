@@ -108,7 +108,16 @@ pub(crate) fn turns(
     tolerance: f64,
     context: &JobContext<'_>,
 ) -> Result<Vec<Turn>> {
-    find(input, profile, range, false, tolerance, context)
+    find(input, profile, range, false, tolerance, context).map(|f| f.turns)
+}
+
+/// The faces a finishing search found: the turns to make, and the X of the
+/// turns not made because they lie inside a `keep_out` interval, where the
+/// tool would reach over a gripped length (SET-09).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Faces {
+    pub(crate) turns: Vec<Turn>,
+    pub(crate) held: Vec<f64>,
 }
 
 /// As [`turns`], for a finishing helix over the target's own range: the
@@ -123,7 +132,7 @@ pub(crate) fn turns_to_the_ends(
     range: (f64, f64),
     tolerance: f64,
     context: &JobContext<'_>,
-) -> Result<Vec<Turn>> {
+) -> Result<Faces> {
     find(input, profile, range, true, tolerance, context)
 }
 
@@ -134,18 +143,24 @@ fn find(
     beyond: bool,
     tolerance: f64,
     context: &JobContext<'_>,
-) -> Result<Vec<Turn>> {
+) -> Result<Faces> {
     let (x0, x1) = range;
     let radius = profile.cutting_radius();
     if !(x1 > x0 && radius > 0.0 && tolerance > 0.0) {
-        return Ok(Vec::new());
+        return Ok(Faces {
+            turns: Vec::new(),
+            held: Vec::new(),
+        });
     }
     let bounds = input.surface.bounds();
     let reach = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
         .into_iter()
         .fold(0.0_f64, |r, v| r.max(v.abs()));
     if !reach.is_finite() || reach <= 0.0 {
-        return Ok(Vec::new());
+        return Ok(Faces {
+            turns: Vec::new(),
+            held: Vec::new(),
+        });
     }
     // X samples no further apart than half the tool's radius (and 0.5 mm):
     // a thin web shows both its faces in different intervals (the tool rides
@@ -267,10 +282,10 @@ fn find(
         }
         same
     });
-    turns.retain(|t| {
-        (low..=x1 + extra as f64 * step).contains(&t.x)
-            && !input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&t.x))
-    });
+    turns.retain(|t| (low..=x1 + extra as f64 * step).contains(&t.x));
+    let held_at = |x: f64| input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&x));
+    let held: Vec<f64> = turns.iter().map(|t| t.x).filter(|&x| held_at(x)).collect();
+    turns.retain(|t| !held_at(t.x));
     if turns.len() > MAX_TURNS {
         return Err(PathError::Strategy(format!(
             "the part has {} faces across the rotary axis; the most this strategy turns at is \
@@ -278,7 +293,7 @@ fn find(
             turns.len()
         )));
     }
-    Ok(turns)
+    Ok(Faces { turns, held })
 }
 
 /// The note an operation carries when it turned at faces across the axis:
@@ -305,6 +320,32 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
         "the part has {count} across the rotary axis: the tool turns once round the axis \
          without moving along it at X {xs}, where its side touches {each}, so the face keeps \
          only the stock to leave"
+    ))
+}
+
+/// The note an operation carries when a held region kept it from turning at
+/// faces across the axis: where, and that those faces keep what earlier
+/// operations left (decision record 0343). `None` with none.
+pub(crate) fn held_note(held: &[f64]) -> Option<String> {
+    let (last, rest) = held.split_last()?;
+    let at = |x: &f64| format!("{x:.3}");
+    let xs = if rest.is_empty() {
+        at(last)
+    } else {
+        format!(
+            "{} and {}",
+            rest.iter().map(at).collect::<Vec<_>>().join(", "),
+            at(last)
+        )
+    };
+    let (faces, keeps) = if rest.is_empty() {
+        ("a face", "that face keeps")
+    } else {
+        ("faces", "those faces keep")
+    };
+    Some(format!(
+        "the tool does not turn at {faces} across the rotary axis at X {xs}: there it would \
+         reach over the gripped length of the stock, so {keeps} what earlier operations left"
     ))
 }
 
@@ -434,6 +475,23 @@ mod tests {
             "the part has 3 faces across the rotary axis: the tool turns once round the axis \
              without moving along it at X 1.000, 2.000 and 3.500, where its side touches each, \
              so the face keeps only the stock to leave"
+        );
+    }
+
+    #[test]
+    fn req_set_09_the_held_note_says_which_faces_keep_their_material() {
+        assert_eq!(held_note(&[]), None);
+        assert_eq!(
+            held_note(&[31.5886]).unwrap(),
+            "the tool does not turn at a face across the rotary axis at X 31.589: there it \
+             would reach over the gripped length of the stock, so that face keeps what earlier \
+             operations left"
+        );
+        assert_eq!(
+            held_note(&[1.0, 2.5]).unwrap(),
+            "the tool does not turn at faces across the rotary axis at X 1.000 and 2.500: there \
+             it would reach over the gripped length of the stock, so those faces keep what \
+             earlier operations left"
         );
     }
 
