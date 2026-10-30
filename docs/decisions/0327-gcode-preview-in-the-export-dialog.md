@@ -1,6 +1,6 @@
 # 0327: Read-only G-code preview in the export dialog (lane OUTPUT3)
 
-- **Status:** proposed (30 Oct 2026). Awaiting the owner's acceptance, to be relayed by the coordinator session (decision 0049).
+- **Status:** accepted (30 Oct 2026) by the project owner, who read the condensed record in the coordinator session and approved it. The acceptance was relayed to this lane by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. Proposed on 30 Oct 2026.
 - **Date:** 30 Oct 2026.
 - **Lane/issue:** OUTPUT3, [#312](https://github.com/paulhampson/OpenChuckCAM/issues/312) (follow-up of the OUTPUT-1 assessment, #306).
 - **Requirements:** GC-05, GC-07, GC-12, GC-15, GC-16, NFR-03, NFR-06, NFR-07, NFR-12, NFR-15, UI-12, UI-16; UI-10 as amended by 0282 (item 1 of that record leaves #312 to this lane).
