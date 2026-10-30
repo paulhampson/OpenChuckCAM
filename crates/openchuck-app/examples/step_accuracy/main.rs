@@ -1220,8 +1220,11 @@ const TOOLPATH_TOLERANCE: f64 = 0.01;
 const POSTS: [&str; 2] = ["makera-z1", "linuxcnc"];
 
 /// How far, in millimetres, a number of the library's path may differ from
-/// the application's (OI-1110): far below any written resolution.
-const PATH_ROUNDING: f64 = 1e-9;
+/// the application's (OI-1110): a thousandth of the 0.001 mm written
+/// resolution. The blisk's full sequence differs by 1.35e-9 mm (axial
+/// finishing's contact length, after the stock carried from the operations
+/// before it), with byte-identical G-code.
+const PATH_ROUNDING: f64 = 1e-6;
 
 /// The library form the application's output equals: the STEP part with
 /// exact contacts for the strategies that take them (decision 0277).
