@@ -9,7 +9,7 @@ max_tool_number = 1000
 [machine.rotary_origin]
 x = -180.4
 y = -108.8
-z = -55.0
+z = -48.6
 
 [machine.a_range]
 type = "continuous"
@@ -34,8 +34,8 @@ rapid_rotary = 3600.0
 rotary_in_feed = "makera"
 
 [machine.clearance]
-radius = 45.0
-safe_z = 50.0
+radius = 40.0
+safe_z = 40.0
 
 [machine.provenance.rotary_axis]
 state = "confirmed"
@@ -46,8 +46,8 @@ state = "confirmed"
 source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Checked again on the machine on 13 Oct 2026 by sending an A+ command: a camera behind the chuck, looking toward home, sees the top of the chuck turn toward the front of the machine (away from home, -Y): clockwise from that view, counter-clockwise looking at the chuck from +X. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The SP-12 air cut (14 Oct 2026, firmware 1.1.2, decision 0007) confirmed it a third time: at A +90 the top moved toward the front"
 
 [machine.provenance.rotary_origin]
-state = "unconfirmed"
-source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is the owner's measurement, the chuck centre 45 mm above the bed (13 Oct 2026), turned into machine Z -55 by taking the bed at the bottom of the Z travel (-100), which is itself unconfirmed (decision 0013, OI-60)"
+state = "confirmed"
+source = "confirmed by the owner (30 Oct 2026, decision 0317): Z -48.6 is the machine Z (G53) of the axis with the probe as the reference tool, from Makera's 4th-axis Z probing routine on the owner's Z1 (gate 4, PR 284 comment 6399134358, firmware 1.1.2). The routine touches a point on the headstock 23 mm above the chuck centre and sets G54 Z0 on the axis; it makes the probe the reference tool, so another tool's tool length offset raises or lowers the spindle by its length difference from the probe. Not recorded: G54 X, Y and Z in machine coordinates, the tool length offset state, and gate steps P8 and M4 (OI-471). Y is the firmware's probing position (anchor1 plus rotation offset), not measured separately. X is from the firmware config (anchor1 plus rotation offset); its datum, chuck face or module reference, is not stated (OI-60)"
 
 [machine.provenance.a_range]
 state = "confirmed"
@@ -63,4 +63,4 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 
 
 [machine.provenance.clearance]
 state = "unconfirmed"
-source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"
+source = "OpenChuckCAM default chosen by the owner (30 Oct 2026, decision 0317), not a machine value: a safe Z of 40 mm puts the spindle at machine Z -8.6 with the probe fitted, and a longer tool raises it. A stock wider than 80 mm in diameter is inside the safe cylinder and warns; set a clearance on each setup to suit its stock"

@@ -45,6 +45,7 @@ pub mod note_groups;
 pub mod operation;
 pub mod opflow;
 pub mod output_names;
+pub mod output_preview;
 mod output_write;
 pub mod overview;
 pub mod pathview;
@@ -1595,17 +1596,12 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let named = self.output_files(run)?;
+        let (named, sources) = self.program_sources(run)?;
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-        for program in &named.programs {
-            let text = run
-                .gcode
-                .iter()
-                .find(|(name, _)| *name == program.posted_name)
-                .map(|(_, text)| text)
-                .ok_or_else(|| {
-                    AppError::Post(format!("no G-code for '{}'", program.posted_name))
-                })?;
+        for (program, source) in named.programs.iter().zip(sources) {
+            let text = run.gcode.get(source).map(|(_, text)| text).ok_or_else(|| {
+                AppError::Post(format!("no G-code for '{}'", program.posted_name))
+            })?;
             files.push((program.name.clone(), text.as_bytes().to_vec()));
         }
         // The sheet lists the program files by these names and the hashes
@@ -1616,6 +1612,49 @@ impl Application {
         files.push((html, sheet.to_html().into_bytes()));
         files.push((pdf, sheet.to_pdf()));
         output_write::prepare(folder, std::sync::Arc::clone(run), files)
+    }
+
+    /// The final names of the program files and, for each, the index of its
+    /// text in the run: the one source of the write and the preview.
+    fn program_sources(&self, run: &Regeneration) -> Result<(OutputFiles, Vec<usize>), AppError> {
+        let named = self.output_files(run)?;
+        let sources = named
+            .programs
+            .iter()
+            .map(|program| {
+                run.gcode
+                    .iter()
+                    .position(|(name, _)| *name == program.posted_name)
+                    .ok_or_else(|| {
+                        AppError::Post(format!("no G-code for '{}'", program.posted_name))
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        Ok((named, sources))
+    }
+
+    /// The program files exactly as [`Self::prepare_output`] would write
+    /// them, for a read-only preview before anything is written (issue 312).
+    /// Refused for a run the project has left behind, like the write.
+    pub fn output_preview(
+        &self,
+        run: &std::sync::Arc<Regeneration>,
+    ) -> Result<output_preview::OutputPreview, AppError> {
+        if run.gcode.is_empty() {
+            return Err(AppError::Post(
+                "There is no G-code to preview. Generate the operations first.".to_owned(),
+            ));
+        }
+        if *run.project != self.document.project {
+            return Err(AppError::OutOfDate);
+        }
+        let (named, sources) = self.program_sources(run)?;
+        output_preview::OutputPreview::new(
+            run,
+            sources
+                .into_iter()
+                .zip(named.programs.iter().map(|p| p.name.clone())),
+        )
     }
 
     /// Revalidates the reviewed plan and writes in order, stopping at the

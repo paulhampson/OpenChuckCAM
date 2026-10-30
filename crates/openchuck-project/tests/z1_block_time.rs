@@ -84,7 +84,17 @@ fn req_gc_17_off_does_not_add_unconfirmed_machine_warnings_to_older_projects() {
 #[test]
 fn req_gc_17_req_prj_04_published_schema_5_profile_settings_keep_their_meaning() {
     use openchuck_types::machine::{ProfileField, ShortBlockMode};
-    let text = include_str!("../machines/makera-z1.toml");
+    // The published schema 5 profile had no spindle-height fields (schema 7,
+    // decision 0317).
+    let text: String = include_str!("../machines/makera-z1.toml")
+        .lines()
+        .filter(|l| {
+            !l.starts_with("automatic_tool_length")
+                && !l.starts_with("spindle_to_axis")
+                && !l.starts_with("recommended_min_safe_z")
+        })
+        .map(|l| format!("{l}\n"))
+        .collect();
     let old = text.replacen(
         &format!("schema = {}", openchuck_project::machines::MACHINE_SCHEMA),
         "schema = 5",
@@ -104,8 +114,8 @@ fn req_gc_17_req_prj_04_published_schema_5_profile_settings_keep_their_meaning()
     assert_eq!(profile.fields().len(), 10);
     assert_eq!(
         profile.unconfirmed_fields(),
+        // The axis height is confirmed since decision 0317.
         [
-            ProfileField::RotaryOrigin,
             ProfileField::Travel,
             ProfileField::Clearance,
             ProfileField::BlockWindow,
@@ -138,4 +148,31 @@ fn req_gc_17_req_prj_04_slow_down_requires_machine_schema_6_even_when_inactive()
             "{error}"
         );
     }
+}
+
+/// The spindle-height fields need machine profile schema 7; a schema 6 file
+/// that holds one is refused naming it (decision record 0317).
+#[test]
+fn req_set_01_req_prj_04_the_spindle_height_fields_need_machine_schema_7() {
+    use openchuck_project::machines::{MACHINE_SCHEMA, parse_profile, render_profile};
+    use openchuck_types::machine::MachineProfile;
+    use openchuck_types::units::Millimetres;
+    assert_eq!(MACHINE_SCHEMA, 7);
+    let mut profile = MachineProfile::example_x_rotary();
+    profile.automatic_tool_length = true;
+    profile.spindle_to_axis = Some(Millimetres(78.6));
+    profile.recommended_min_safe_z = Some(Millimetres(30.0));
+    let text = render_profile(&profile).unwrap();
+    assert_eq!(
+        parse_profile(std::path::Path::new("current.toml"), &text).unwrap(),
+        profile
+    );
+    let downgraded = text.replacen(&format!("schema = {MACHINE_SCHEMA}"), "schema = 6", 1);
+    let error = parse_profile(std::path::Path::new("old.toml"), &downgraded)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("automatic_tool_length") && error.contains("schema 7"),
+        "{error}"
+    );
 }
