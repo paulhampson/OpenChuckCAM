@@ -551,10 +551,10 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
         out.stdout
     );
     // The axis height is confirmed and the spindle-height values are listed
-    // (decision record 0317): the distance is not known yet.
+    // (decision records 0317 and 0318).
     assert!(
         out.stdout.contains(
-            "spindle height: tool lengths measured automatically; spindle to axis not known; recommended minimum safe Z 30 mm"
+            "spindle height: tool lengths measured automatically; spindle to axis 73.1 mm; recommended minimum safe Z 30 mm"
         ),
         "{}",
         out.stdout

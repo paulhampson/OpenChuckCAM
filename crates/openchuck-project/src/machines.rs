@@ -516,19 +516,19 @@ mod tests {
     }
 
     /// The Z1 measures each tool's length; the distance from the spindle at
-    /// home down to the axis is not known yet, so the spindle-height check
-    /// stays off; the owner recommends a safe Z of at least 30 mm, to be
-    /// checked (decision 0317, OI-1290, OI-1291, issue #395).
+    /// home down to the axis is 73.1 mm, from the owner's probe stick-out
+    /// (decision 0318); the owner recommends a safe Z of at least 30 mm, to
+    /// be checked (decision 0317).
     #[test]
-    fn req_set_01_req_ui_13_the_z1_measures_tool_lengths_and_its_spindle_to_axis_distance_is_needed()
-     {
+    fn req_set_01_req_ui_13_the_z1_measures_tool_lengths_and_gives_its_spindle_to_axis_distance() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
         assert!(z1.automatic_tool_length);
         assert!(z1.is_confirmed(ProfileField::ToolLengthMeasurement));
-        assert_eq!(z1.spindle_to_axis, None);
-        let needed = &z1.provenance[&ProfileField::SpindleToAxis].source;
-        for fact in ["#395", "OI-1291", "probe"] {
-            assert!(needed.contains(fact), "{fact}: {needed}");
+        assert_eq!(z1.spindle_to_axis.map(|d| d.0), Some(73.1));
+        assert!(!z1.is_confirmed(ProfileField::SpindleToAxis), "derived");
+        let derived = &z1.provenance[&ProfileField::SpindleToAxis].source;
+        for fact in ["24.5", "48.6 + 24.5", "#395", "0318"] {
+            assert!(derived.contains(fact), "{fact}: {derived}");
         }
         assert_eq!(z1.recommended_min_safe_z.map(|m| m.0), Some(30.0));
         assert!(!z1.is_confirmed(ProfileField::RecommendedMinSafeZ));

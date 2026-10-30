@@ -25,7 +25,7 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 - [ ] **No tool is fitted and no material is held.** The jaws are empty or closed on nothing.
 - [ ] Feed override is at or below 10 % for the first run of each program.
 - [ ] G54 is set with Y0 Z0 on the A axis and X0 where the program expects it (OI-40), clear of the jaws.
-- [ ] I have checked by hand, at reduced feed or by jogging, that the safe Z clears the chuck, jaws and the A axis assembly over the whole X range the program uses, and, with the longest tool the program uses fitted, that the spindle stays below the top of the Z travel at the safe Z (decision 0317).
+- [ ] I have checked by hand, at reduced feed or by jogging, that the safe Z clears the chuck, jaws and the A axis assembly over the whole X range the program uses, and, with the longest tool the program uses fitted, that the spindle stays below the top of the Z travel at the safe Z (decision 0317). The setup checks warn for a tool whose assumed stick-out (flute length + 5 mm) would not fit (decision 0318); the assumption is not a measurement, so check it anyway.
 - [ ] I watch the first 20 lines of each program with my hand near the stop.
 - [ ] The A axis moves the direction the post expects (A+ turns the top of the chuck toward the front, -Y; confirmed 13 Oct 2026).
 - [ ] At the `G92.4 A0 S0` unwind at the end of a program, A does **not** move.

@@ -30,10 +30,12 @@ max_tool_number = 1000
 max_spindle_rpm = 13000.0
 # The controller measures each tool on its tool setter, so every tip reaches
 # the programmed Z; a longer tool raises the spindle (decision 0317). The
-# distance from the spindle at home down to the axis is not known yet, so the
-# spindle-height check is off (OI-1291, issue #395). The owner's recommended
-# minimum safe Z is advice to check, not a limit.
+# spindle at home is 73.1 mm above the axis: the axis height measured with the
+# probe, 48.6, plus the probe's stick-out, 24.5 (decision 0318). A tool whose
+# stick-out (flute length + 5 mm) leaves less than the safe Z warns. The
+# owner's recommended minimum safe Z is advice to check, not a limit.
 automatic_tool_length = true
+spindle_to_axis = 73.1
 recommended_min_safe_z = 30.0
 
 # Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
@@ -77,10 +79,8 @@ rotary_in_feed = "makera"
 
 # The owner's default (decision 0317): at safe Z 40 the spindle is at machine
 # Z -8.6 with the probe fitted, inside the Z travel.
-# A tool that sticks out further than the probe raises the spindle. The Z1
-# has automatic tool length measurement, but the spindle-height warning is off
-# until the distance from the spindle at home to the axis is known (OI-1290,
-# OI-1291, issue #395).
+# A tool that sticks out further than the probe raises the spindle; the
+# setup checks warn when it would pass the top of the travel (decision 0318).
 [machine.clearance]
 radius = 40.0
 safe_z = 40.0
@@ -135,7 +135,7 @@ source = "confirmed by the owner (30 Oct 2026, decision 0317): the Z1 measures e
 
 [machine.provenance.spindle_to_axis]
 state = "unconfirmed"
-source = "not known yet: the distance from the spindle at home (machine Z 0) down to the axis, 48.6 mm plus the probe's stick-out; the owner will supply it (issue #395, OI-1291). Until then the spindle-height check is off"
+source = "derived (30 Oct 2026, decision 0318, issue #395): the owner measured the probe's stick-out from the collet as 24.5 mm, from the same reference as a tool's stick-out; D = 48.6 + 24.5 = 73.1 mm, the axis height measured with the probe plus the probe's stick-out. Not measured directly"
 
 [machine.provenance.recommended_min_safe_z]
 state = "unconfirmed"

@@ -286,17 +286,17 @@ mod tests {
                 "Recommended minimum safe Z"
             ]
         );
-        // The Z1 measures tool lengths; the spindle-to-axis distance is not
-        // known yet, and the recommended minimum is the owner's (decision
-        // 0317, OI-1291).
+        // The Z1 measures tool lengths; the spindle-to-axis distance is
+        // derived from the owner's probe stick-out (decision 0318), and the
+        // recommended minimum is the owner's (decision 0317).
         let find = |label: &str| values.iter().find(|v| v.label == label).unwrap();
         let measuring = find("Tool length measurement");
         assert_eq!(measuring.value, "Automatic (tool setter)");
         assert!(measuring.confirmed);
         let distance = find("Spindle to axis");
-        assert_eq!(distance.value, "Not known");
+        assert_eq!(distance.value, "73.100 mm");
         assert!(!distance.confirmed);
-        assert!(distance.tooltip.contains("#395"), "{}", distance.tooltip);
+        assert!(distance.tooltip.contains("24.5"), "{}", distance.tooltip);
         let minimum = find("Recommended minimum safe Z");
         assert_eq!(minimum.value, "30.000 mm");
         assert!(!minimum.confirmed);

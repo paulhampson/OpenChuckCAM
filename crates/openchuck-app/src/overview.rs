@@ -1719,6 +1719,44 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         action: Some(MessageAction::ReviewSetup(s.id)),
                     });
                 }
+                // A tool too long for the safe Z on a machine that measures
+                // tool lengths (decision record 0318): once per tool of the
+                // setup's enabled operations, in the tool list's order.
+                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                for snapshot in project.tools().iter().filter(|t| {
+                    project
+                        .operations()
+                        .iter()
+                        .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
+                }) {
+                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                        let text = crate::setup::spindle_height_text(
+                            snapshot.controller.number,
+                            &snapshot.name,
+                            &found,
+                        );
+                        raise(
+                            &mut items,
+                            at(SetupPart::Machine),
+                            ItemStatus::new(
+                                ItemState::Warning,
+                                "a tool may take the spindle above the Z travel",
+                            ),
+                        );
+                        messages.push(Message::new(
+                            Severity::Warning,
+                            text.clone(),
+                            Some((at(SetupPart::Machine), s.name.clone())),
+                            Some(MessageAction::ReviewSetup(s.id)),
+                        ));
+                        setup_checks.push(SetupCheck {
+                            setup: s.id,
+                            passed: false,
+                            text,
+                            action: Some(MessageAction::ReviewSetup(s.id)),
+                        });
+                    }
+                }
                 if crate::setup::has_old_z1_axis_height(project.machine_id(), m) {
                     // The copy is the project's own (SET-01); it is not
                     // changed, only named (decision record 0317).
