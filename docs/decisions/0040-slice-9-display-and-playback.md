@@ -72,6 +72,12 @@ so expensive stock preparation limits visual update frequency without placing
 the tool ahead of the displayed material removal. With Cut part hidden, tool
 animation follows the clock directly as before.
 
+Amended 30 Oct 2026 by [decision 0322](0322-simulate-playback-frame-cost.md)
+item 8 (proposed; the owner's decision D3 on issue #382): while playback plays,
+the tool follows the clock and the cut part shown is the newest one prepared,
+behind it, with a cut-part bar saying how far; when playback is still, the tool
+and the cut part share the exact cursor as above.
+
 Verification: the checkpoint playback test requires removal before a cutting
 move finishes; the UI regression deliberately blocks a surface job and checks
 that the tool remains at the displayed stock cursor, then advances with the
