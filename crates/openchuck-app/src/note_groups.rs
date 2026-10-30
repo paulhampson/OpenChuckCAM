@@ -237,6 +237,25 @@ pub struct FeedLimit {
     pub programmed: f64,
 }
 
+impl FeedLimit {
+    /// The line for under the feed field, in plain words. It says what
+    /// happened and that the feed set is unchanged (NFR-12).
+    pub fn describe(&self) -> String {
+        format!(
+            "Last run: the machine's feed limits slowed {} to as low as {:.0} mm/min, \
+             below the {:.0} mm/min set here. The feed set here is unchanged; the \
+             machine's limits lower it only where it cannot keep up.",
+            if self.moves == 1 {
+                "1 move".to_owned()
+            } else {
+                format!("{} moves", self.moves)
+            },
+            self.lowest,
+            self.programmed
+        )
+    }
+}
+
 /// The feed-limit notes of `operation` in `notes`, as one summary; `None`
 /// when none slowed it. The notes are read, never changed (GC-07).
 pub fn feed_limit_summary(notes: &[String], operation: &str) -> Option<FeedLimit> {
@@ -429,5 +448,11 @@ mod tests {
         assert!((s.programmed - 1000.0).abs() < 1e-9);
         assert_eq!(feed_limit_summary(&notes, "Other"), None);
         assert_eq!(feed_limit_summary(&[], "Roughing"), None);
+        let line = s.describe();
+        assert!(
+            line.contains("4 moves") && line.contains("673 mm/min"),
+            "{line}"
+        );
+        assert!(line.contains("1000 mm/min set here"), "{line}");
     }
 }

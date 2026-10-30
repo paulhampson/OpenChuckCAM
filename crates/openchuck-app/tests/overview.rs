@@ -591,6 +591,22 @@ fn req_ui_11_an_edit_to_operation_n_marks_n_and_later_operations_stale() {
 }
 
 #[test]
+fn req_ui_11_req_nfr_12_a_run_report_is_current_only_while_the_operation_is() {
+    // FIRSTRUN item 5: what a run said about an operation (such as feeds the
+    // machine's limits lowered) is shown only while its path is current.
+    let mut f = fixture("path-current", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    assert!(!f.app.operation_path_is_current(one));
+    f.app.regenerate().unwrap();
+    assert!(f.app.operation_path_is_current(one));
+    assert!(f.app.operation_path_is_current(two));
+    f.set_stepover(two, 0.5);
+    assert!(f.app.operation_path_is_current(one));
+    assert!(!f.app.operation_path_is_current(two));
+}
+
+#[test]
 fn req_ui_11_a_running_job_gives_the_operation_running() {
     let mut f = fixture("running", "cube_ascii.stl");
     let op = f.add_operation("Forever", "until_cancelled");

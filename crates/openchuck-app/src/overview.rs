@@ -1440,6 +1440,19 @@ impl Application {
         }
     }
 
+    /// Whether `operation` has a generated path that is still current: the
+    /// operation and everything before it are as they were when it was
+    /// made. What a run reported about it (such as feeds the machine's
+    /// limits lowered) is then still true of the settings on screen.
+    pub fn operation_path_is_current(&self, operation: OperationId) -> bool {
+        let keys = status_keys(self.project());
+        let record = self.record.snapshot();
+        matches!(
+            (keys.iter().find(|(id, _)| *id == operation), record.generated.get(&operation)),
+            (Some((_, key)), Some(made)) if key.chained == made.key.chained
+        )
+    }
+
     /// The settings of `operation` its current path's warnings name (the
     /// tolerance, for a swarf overcut), for the inspector to mark them and
     /// the "Show setting" link to jump to the first (decision record 0175).
