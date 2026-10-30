@@ -24,11 +24,11 @@ fn modal(
     let size = (ctx.content_rect().size() - egui::vec2(64.0, 64.0))
         .min(egui::vec2(760.0, 440.0))
         .max(egui::vec2(1.0, 1.0));
-    let shown = egui::Modal::new(egui::Id::new(key)).show(ctx, |ui| {
+    let shown = egui::Modal::new(egui::Id::unique(key)).show(ctx, |ui| {
         ui.set_width(size.x);
         ui.set_height(size.y);
         ui.heading(title);
-        let action = egui::Panel::bottom(egui::Id::new((key, "actions")))
+        let action = egui::Panel::bottom(egui::Id::unique((key, "actions")))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), footer)

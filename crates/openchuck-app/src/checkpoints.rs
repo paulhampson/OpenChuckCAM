@@ -280,9 +280,9 @@ fn model_warnings(project: &Project, folder: &Path) -> Vec<String> {
     project.models().iter().filter_map(|m| {
         match m.check(folder) {
             Ok(ModelCheck::Unchanged)=>None,
-            Ok(ModelCheck::Missing)=>Some(format!("Referenced model '{}' is missing; its geometry cannot be recovered from a project checkpoint.",m.path.as_str())),
-            Ok(_)=>Some(format!("Referenced model '{}' has changed since this checkpoint. Check selections and regenerate before using output.",m.path.as_str())),
-            Err(e)=>Some(format!("Referenced model '{}' cannot be checked: {e}",m.path.as_str())),
+            Ok(ModelCheck::Missing)=>Some(format!("Referenced model '{}' is missing; its geometry cannot be recovered from a project checkpoint.",m.label())),
+            Ok(_)=>Some(format!("Referenced model '{}' has changed since this checkpoint. Check selections and regenerate before using output.",m.label())),
+            Err(e)=>Some(format!("Referenced model '{}' cannot be checked: {e}",m.label())),
         }
     }).collect()
 }

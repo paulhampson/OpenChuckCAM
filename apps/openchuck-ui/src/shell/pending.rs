@@ -86,7 +86,7 @@ impl Shell {
             return;
         }
         if self.edit_guard.resolving {
-            egui::Modal::new(Id::new("unconfirmed changes")).show(ctx, |ui| {
+            egui::Modal::new(Id::unique("unconfirmed changes")).show(ctx, |ui| {
                 ui.spinner();
                 ui.label("Confirming changes…");
             });
@@ -95,7 +95,7 @@ impl Shell {
         }
         let entries = edits::entries(ctx);
         let mut answer = None;
-        egui::Modal::new(Id::new("unconfirmed changes")).show(ctx, |ui| {
+        egui::Modal::new(Id::unique("unconfirmed changes")).show(ctx, |ui| {
             ui.heading("Unconfirmed changes");
             ui.label("You have changed these fields but not confirmed them:");
             for entry in &entries {

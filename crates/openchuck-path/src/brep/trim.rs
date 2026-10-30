@@ -89,7 +89,13 @@ pub(super) struct TrimIndex {
     /// `starts[k]..starts[k + 1]` indexes `members` for strip `k`.
     starts: Vec<u32>,
     members: Vec<u32>,
+    /// Runs of [`CHUNK`] consecutive segments with a ball that holds all
+    /// their images: (centre, radius, first, end).
+    pub chunks: Vec<(Point3, f64, usize, usize)>,
 }
+
+/// Segments per chunk.
+const CHUNK: usize = 16;
 
 impl TrimIndex {
     /// Indexes `segments` (already given their balls).
@@ -140,7 +146,26 @@ impl TrimIndex {
             members.extend(l);
             starts.push(u32::try_from(members.len()).unwrap_or(u32::MAX));
         }
+        let chunks = segments
+            .chunks(CHUNK)
+            .enumerate()
+            .map(|(k, run)| {
+                let n = run.len() as f64;
+                let sum = run
+                    .iter()
+                    .fold(Point3::ORIGIN.to_vec(), |a, s| a + s.centre.to_vec());
+                let c = Point3::ORIGIN + sum * (1.0 / n);
+                let r = run
+                    .iter()
+                    .map(|s| c.distance(s.centre) + s.radius)
+                    .fold(0.0, f64::max);
+                // Rounding in the centre: a relative hair.
+                let r = r * (1.0 + 1e-12) + 1e-12 * (1.0 + c.to_vec().length());
+                (c, r, k * CHUNK, k * CHUNK + run.len())
+            })
+            .collect();
         Self {
+            chunks,
             segments,
             v0,
             dv,

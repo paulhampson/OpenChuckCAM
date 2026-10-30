@@ -351,7 +351,7 @@ impl Shell {
             };
             let section = field_row::section(
                 ui,
-                egui::Id::new(("setup section", key)),
+                egui::Id::unique(("setup section", key)),
                 section_title(part),
                 open,
                 focus == Some(part),
@@ -537,19 +537,14 @@ impl Shell {
             self.selected = None;
             return;
         };
-        let name = reference
-            .path
-            .as_str()
-            .rsplit('/')
-            .next()
-            .unwrap_or(reference.path.as_str())
-            .to_owned();
+        let name = reference.display_name().to_owned();
         self.header(ui, ItemRef::Model(id), &name, false);
         let Some(app) = &mut self.app else { return };
         let panel = match &mut self.model_panel {
             Some(p) if p.model() == id => p,
             _ => self.model_panel.insert(ModelPanel::new(id)),
         };
+        panel.copying = self.copy_job.is_some();
         let outcome = panel.show(ui, app, &reference, &mut self.settings);
         if outcome.settings_changed {
             self.settings_touched();
@@ -559,6 +554,9 @@ impl Shell {
         }
         if outcome.show_report {
             self.open_model_report(id);
+        }
+        if outcome.copy_into_project {
+            self.start_copying(&[id], Some(id));
         }
         let Some(app) = &mut self.app else { return };
         if let Some(prepared) = outcome.replaced
@@ -611,7 +609,7 @@ impl Shell {
         let form = &mut self.form;
         let section = field_row::section(
             ui,
-            egui::Id::new(("operation section", "tool section")),
+            egui::Id::unique(("operation section", "tool section")),
             "Tool",
             open,
             false,
@@ -1008,7 +1006,7 @@ impl Shell {
         let mut reach_action = None;
         let section = field_row::section(
             ui,
-            egui::Id::new(("operation section", "geometry")),
+            egui::Id::unique(("operation section", "geometry")),
             "Geometry",
             open,
             false,
@@ -1521,7 +1519,7 @@ fn rows(
         let field = row.field;
         let machine_copy = machine.cloned();
         let preflight = crate::pending_edits::preflight(
-            egui::Id::new(("setup fields", setup.id)),
+            egui::Id::unique(("setup fields", setup.id)),
             setup.clone(),
             move |setup, text| setup_form::apply(setup, machine_copy.as_ref(), field, text),
         );

@@ -41,7 +41,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use openchuck_geom::edges::EdgeMap;
 use openchuck_geom::select;
 use openchuck_path::{
-    LeaveZone, MeshSurface, PathWarning, Protection, RegionConstraint, WatchedSurface, Window,
+    BrepSurface, LeaveZone, MeshSurface, PathWarning, Protection, RegionConstraint, SurfaceSource,
+    WatchedSurface, Window,
 };
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_project::{
@@ -225,7 +226,7 @@ fn check_edited(
             format!(
                 "'{}' has changed since the set was made; select again on the current model \
                  (PRJ-06)",
-                reference.path.as_str()
+                reference.label()
             ),
         ));
     }
@@ -252,7 +253,7 @@ fn check_replaced(
             format!(
                 "'{}' has changed since it was added to the project; accept the change before \
                  selecting on it (PRJ-02)",
-                reference.path.as_str()
+                reference.label()
             ),
         ));
     }
@@ -365,7 +366,7 @@ impl Application {
                         format!(
                             "'{}' has changed since it was added to the project; accept the \
                              change before selecting on it (PRJ-02)",
-                            reference.path.as_str()
+                            reference.label()
                         ),
                     ));
                 }
@@ -401,7 +402,7 @@ impl Application {
                 &set.name,
                 format!(
                     "'{}' changed in the project while the selection was checked; select again",
-                    reference.path.as_str()
+                    reference.label()
                 ),
             ));
         }
@@ -558,7 +559,7 @@ impl Application {
                     &set.name,
                     format!(
                         "'{}' changed in the project while the selection was checked; select again",
-                        reference.path.as_str()
+                        reference.label()
                     ),
                 ));
             }
@@ -785,11 +786,11 @@ impl Application {
                     }
                     (_, Some(m)) if m.hash != set.model_hash => Some(format!(
                         "it was made on a different version of '{}'; select again on the current model",
-                        m.path.as_str()
+                        m.label()
                     )),
                     (_, Some(m)) => changed
                         .iter()
-                        .find(|w| w.starts_with(&format!("'{}' ", m.path.as_str())))
+                        .find(|w| w.starts_with(&format!("'{}' ", m.label())))
                         .map(|w| format!("{w}, so the selection may not match it")),
                 };
                 let count = set.target.len();
@@ -818,7 +819,7 @@ impl Application {
                     id: set.id,
                     name: set.name.clone(),
                     model: set.model,
-                    model_path: model.map(|m| m.path.as_str().to_owned()),
+                    model_path: model.map(|m| m.label()),
                     kind,
                     count,
                     uses,
@@ -941,7 +942,7 @@ pub(crate) fn mesh_edge_segments(
                 format!(
                     "it was made on a different version of '{}' (the file has changed); select \
                      again on the current model",
-                    part.path.as_str()
+                    part.label()
                 ),
             ));
         }
@@ -1118,22 +1119,22 @@ pub(crate) fn check_target(
 /// An operation's selections resolved to surfaces, ready to give a strategy
 /// as a [`RegionConstraint`] (OP-02).
 pub(crate) struct ResolvedRegion {
-    region: Option<MeshSurface>,
+    region: Option<Box<dyn SurfaceSource>>,
     boundary: Option<Window>,
-    avoid: Option<MeshSurface>,
-    check: Option<MeshSurface>,
+    avoid: Option<Box<dyn SurfaceSource>>,
+    check: Option<Box<dyn SurfaceSource>>,
     /// The avoid and check sets that only warn, each with its name (decision
     /// record 0229 item 1).
-    watched: Vec<(String, Protection, MeshSurface)>,
+    watched: Vec<(String, Protection, Box<dyn SurfaceSource>)>,
     /// A warning for each set that limits nothing (set to Ignore).
     pub(crate) warnings: Vec<PathWarning>,
     /// The selected triangles that have a stock to leave of their own,
     /// grouped by amount; where sets overlap the largest amount applies
     /// (OP-11, decision record 0034 item 4).
-    leaves: Vec<(MeshSurface, f64)>,
+    leaves: Vec<(Box<dyn SurfaceSource>, f64)>,
     /// The rest of the part, which takes the operation's stock to leave.
     /// `None` when no set has an amount of its own.
-    rest: Option<MeshSurface>,
+    rest: Option<Box<dyn SurfaceSource>>,
 }
 
 impl ResolvedRegion {
@@ -1147,13 +1148,13 @@ impl ResolvedRegion {
             .leaves
             .iter()
             .map(|(surface, leave)| LeaveZone {
-                surface,
+                surface: surface.as_ref(),
                 leave: *leave,
             })
             .collect();
         if let Some(rest) = &self.rest {
             zones.push(LeaveZone {
-                surface: rest,
+                surface: rest.as_ref(),
                 leave: operation_leave,
             });
         }
@@ -1167,7 +1168,7 @@ impl ResolvedRegion {
             .map(|(name, protection, surface)| WatchedSurface {
                 name,
                 protection: *protection,
-                surface,
+                surface: surface.as_ref(),
             })
             .collect()
     }
@@ -1180,10 +1181,10 @@ impl ResolvedRegion {
         watch: &'a [WatchedSurface<'a>],
     ) -> RegionConstraint<'a> {
         RegionConstraint {
-            region: self.region.as_ref().map(|s| s as _),
+            region: self.region.as_deref(),
             boundary: self.boundary,
-            avoid: self.avoid.as_ref().map(|s| s as _),
-            check: self.check.as_ref().map(|s| s as _),
+            avoid: self.avoid.as_deref(),
+            check: self.check.as_deref(),
             watch,
             ..RegionConstraint::default()
         }
@@ -1194,19 +1195,33 @@ impl ResolvedRegion {
 /// tessellation belongs to (`BrepModel::joined_tessellation`), so a face set
 /// resolves to the triangles of its faces (decision 0209 item 3). While the
 /// tool is dropped on the tessellation (OI-81), those triangles are exactly
-/// the surface the contacts lie on.
-pub(crate) struct FaceTriangles {
+/// the surface the contacts lie on. With exact contacts (decision 0277,
+/// OI-833) each set is its exact faces instead (`exact`), dropped on
+/// exactly as the part is.
+pub(crate) struct FaceTriangles<'a> {
     faces: BTreeSet<FaceId>,
     owner: Vec<FaceId>,
+    exact: Option<&'a BrepModel>,
 }
 
-impl FaceTriangles {
-    /// The faces and triangles of the placed B-rep `brep`.
-    pub(crate) fn of(brep: &BrepModel) -> Self {
+impl<'a> FaceTriangles<'a> {
+    /// The faces and triangles of the placed B-rep `brep`; its sets as
+    /// exact faces when `exact` is set.
+    pub(crate) fn of(brep: &'a BrepModel, exact: bool) -> Self {
         Self {
             faces: brep.faces.iter().map(|f| f.id).collect(),
             owner: brep.joined_tessellation().1,
+            exact: exact.then_some(brep),
         }
+    }
+
+    /// The faces the triangles belong to, in order.
+    fn faces_of(&self, triangles: &TriangleSet) -> Vec<FaceId> {
+        let set: BTreeSet<FaceId> = triangles
+            .iter()
+            .filter_map(|&t| self.owner.get(t as usize).copied())
+            .collect();
+        set.into_iter().collect()
     }
 
     /// The triangles of `faces`, in order.
@@ -1223,7 +1238,10 @@ impl FaceTriangles {
 /// The triangles `target` selects on the part: a triangle set's own on a
 /// mesh, or the triangles of a face set's faces on a STEP part (`faces`).
 /// `None` for a target of another kind.
-fn triangles_of(target: &SelectionTarget, faces: Option<&FaceTriangles>) -> Option<TriangleSet> {
+fn triangles_of(
+    target: &SelectionTarget,
+    faces: Option<&FaceTriangles<'_>>,
+) -> Option<TriangleSet> {
     match (target, faces) {
         (SelectionTarget::Triangles(triangles), None) => Some(triangles.clone()),
         (SelectionTarget::Faces(chosen), Some(map)) => Some(map.triangles(chosen)),
@@ -1241,7 +1259,7 @@ pub(crate) fn resolve(
     part: &ModelRef,
     hash: ContentHash,
     mesh: &TriangleMesh,
-    faces: Option<&FaceTriangles>,
+    faces: Option<&FaceTriangles<'_>>,
 ) -> Result<Option<ResolvedRegion>, AppError> {
     if operation.selection_refs().next().is_none() {
         return Ok(None);
@@ -1288,7 +1306,7 @@ pub(crate) fn resolve(
                         format!(
                             "it was made on a different version of '{}' (the file has changed); \
                          select again on the current model",
-                            part.path.as_str()
+                            part.label()
                         ),
                     ));
                 }
@@ -1318,11 +1336,20 @@ pub(crate) fn resolve(
             }
             Ok(all)
         };
-    let surface = |triangles: Option<TriangleSet>| -> Result<Option<MeshSurface>, AppError> {
-        triangles
-            .map(|t| Ok(MeshSurface::new(&select::submesh(mesh, &t)?)?))
-            .transpose()
+    // The surface of a set: its exact faces with exact contacts, otherwise
+    // its triangles.
+    let of_triangles = |t: &TriangleSet| -> Result<Box<dyn SurfaceSource>, AppError> {
+        match faces.and_then(|f| f.exact.map(|b| (f, b))) {
+            Some((map, brep)) => Ok(Box::new(
+                BrepSurface::with_faces(brep, &map.faces_of(t))?.with_exact_drops(true),
+            )),
+            None => Ok(Box::new(MeshSurface::new(&select::submesh(mesh, t)?)?)),
+        }
     };
+    let surface =
+        |triangles: Option<TriangleSet>| -> Result<Option<Box<dyn SurfaceSource>>, AppError> {
+            triangles.map(|t| of_triangles(&t)).transpose()
+        };
     let region = surface(union(&mut operation.selections.iter().copied())?)?;
     // Each avoid and check set by its choice (decision record 0229 item 1):
     // the sets that cut short are one surface per role, as before; each set
@@ -1401,12 +1428,7 @@ pub(crate) fn resolve(
     }
     let leaves = groups
         .into_values()
-        .map(|(leave, triangles)| {
-            Ok((
-                MeshSurface::new(&select::submesh(mesh, &triangles)?)?,
-                leave,
-            ))
-        })
+        .map(|(leave, triangles)| Ok((of_triangles(&triangles)?, leave)))
         .collect::<Result<Vec<_>, AppError>>()?;
     let rest = if leaves.is_empty() {
         None
@@ -1417,7 +1439,7 @@ pub(crate) fn resolve(
         if others.is_empty() {
             None
         } else {
-            Some(MeshSurface::new(&select::submesh(mesh, &others)?)?)
+            Some(of_triangles(&others)?)
         }
     };
     Ok(Some(ResolvedRegion {

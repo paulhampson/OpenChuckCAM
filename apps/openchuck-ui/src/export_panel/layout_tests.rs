@@ -69,12 +69,13 @@ fn draw(
     for pass in 0..10 {
         *clock += 0.1;
         let pointer = ctx
-            .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+            .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
             .map_or(screen.to_pos2() / 2.0, |rect| rect.center());
         let mut events = vec![egui::Event::PointerMoved(pointer)];
         if bottom && pass == 2 {
             events.push(egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(0.0, -10000.0),
                 modifiers: egui::Modifiers::NONE,
@@ -108,7 +109,7 @@ fn draw(
         }
     }
     snapshot.dialog = ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
         .expect("export window drawn");
     snapshot
 }
@@ -363,6 +364,7 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
                         if bottom && pass == 2 {
                             events.push(egui::Event::MouseWheel {
                                 unit: egui::MouseWheelUnit::Point,
+                                source: egui::MouseWheelSource::Unknown,
                                 phase: egui::TouchPhase::Move,
                                 delta: egui::vec2(0.0, -10000.0),
                                 modifiers: egui::Modifiers::NONE,
@@ -388,7 +390,7 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
                             paint(&shape.shape, shape.clip_rect, &mut snapshot);
                         }
                     }
-                    snapshot.dialog = ctx.memory(|m| m.area_rect(egui::Id::new(key))).unwrap();
+                    snapshot.dialog = ctx.memory(|m| m.area_rect(egui::Id::unique(key))).unwrap();
                     let case =
                         format!("result state {state}, {w}x{h}, scale {scale}, bottom {bottom}");
                     check_actions(&snapshot, screen, &case, actions);

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """GC-10: check the actual paused interpreter at each original-source boundary."""
 import math
+import struct
 
 
 def snapshot(stat):
@@ -12,6 +13,12 @@ def snapshot(stat):
                 direction=stat.spindle[0]['direction'],
                 g5x_offset=list(stat.g5x_offset[:4]),
                 g92_offset=list(stat.g92_offset[:4]), rotation_xy=stat.rotation_xy)
+
+
+
+def single(value):
+    """`value` rounded to the nearest 32-bit float."""
+    return struct.unpack('f', struct.pack('f', value))[0]
 
 
 def verify(expected, actual):
@@ -34,8 +41,12 @@ def verify(expected, actual):
             raise ValueError(f'unexpected {key}: {values}')
     if not math.isfinite(actual['rotation_xy']) or abs(actual['rotation_xy']) > 1e-9:
         raise ValueError('unexpected coordinate rotation')
+    # LinuxCNC may hold the feed and speed as 32-bit floats: F2755.6 reads
+    # back as 2755.60009765625, so the value also matches its single-precision
+    # rounding.
     for key in ('feed', 'rpm'):
         want = expected[key]
         value = actual[key]
-        if want is not None and (not math.isfinite(value) or abs(value - want) > 1e-6):
+        if want is not None and (not math.isfinite(value)
+                                 or min(abs(value - want), abs(value - single(want))) > 1e-6):
             raise ValueError(f'{key}: expected {want}, got {value}')

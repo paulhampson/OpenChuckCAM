@@ -687,8 +687,16 @@ fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_r
     let out = folder("together-out");
     let run = std::sync::Arc::new(run);
     let plan = app.prepare_output(&out, &run).unwrap();
+    let written_now = |app: &openchuck_app::Application| {
+        app.overview(None, &openchuck_app::JobLog::default())
+            .g_code_written()
+    };
+    assert!(!written_now(&app));
     let report = app.write_output(&plan, false);
     assert!(report.is_complete(), "{report:?}");
+    // A complete write is the current export the step bar shows (UI-10,
+    // decision 0282 item 5).
+    assert!(written_now(&app));
     let written = report.written;
     let names: Vec<_> = written
         .iter()
@@ -832,6 +840,13 @@ fn req_gc_15_req_nfr_07_destination_changes_or_stale_inputs_write_nothing() {
     let report = app.write_output(&plan, true);
     assert!(report.written.is_empty());
     assert_eq!(report.failed.as_ref().unwrap().path, appeared);
+    // A failed or refused write never reads as the current export (UI-10,
+    // decision 0282 item 5); its result stays in Messages (0240).
+    let written_now = |app: &openchuck_app::Application| {
+        app.overview(None, &openchuck_app::JobLog::default())
+            .g_code_written()
+    };
+    assert!(!written_now(&app));
     assert_eq!(std::fs::read(&appeared).unwrap(), b"appeared after review");
     assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
     let plan = app.prepare_output(&out, &run).unwrap();
@@ -851,6 +866,7 @@ fn req_gc_15_req_nfr_07_destination_changes_or_stale_inputs_write_nothing() {
             .reason
             .contains("made again")
     );
+    assert!(!written_now(&app));
     assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
     assert!(
         app.overview(None, &openchuck_app::JobLog::default())

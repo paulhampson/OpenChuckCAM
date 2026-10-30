@@ -31,7 +31,7 @@ pub(crate) fn item_name(project: &Project, id: ItemId) -> Option<String> {
             .models()
             .iter()
             .find(|x| x.id == m)
-            .map(|x| model_file_name(x.path.as_str())),
+            .map(|x| model_file_name(x.display_name())),
         ItemId::Setup(s) => project.setup(s).map(|x| x.name.clone()),
         ItemId::Tool(t) => project
             .tools()
@@ -59,7 +59,7 @@ fn item(project: &Project, id: ItemId) -> String {
 fn new_item(item: &Item) -> String {
     let id = item.id();
     let name = match item {
-        Item::Model(m) => model_file_name(m.path.as_str()),
+        Item::Model(m) => model_file_name(m.display_name()),
         Item::Setup(s) => s.name.clone(),
         Item::Tool(t) => t.name.clone(),
         Item::SelectionSet(s) => s.name.clone(),

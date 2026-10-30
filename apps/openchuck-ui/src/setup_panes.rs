@@ -1112,7 +1112,7 @@ pub fn show(
     // from this frame's, so a solid that has just gone is never reported
     // (OI-353). Each outline is kept with its pane: a zoomed pane draws past
     // its edge, clipped, and only the pane under the pointer may be hovered.
-    let key = ui.id().with("setup panes hits");
+    let key = ui.scope_id().with("setup panes hits");
     let under = |hits: &[(Pane, Hit)]| {
         response.hover_pos().and_then(|p| {
             let at = pane_at(p).map(|(pane, _)| pane);
@@ -1320,7 +1320,7 @@ mod tests {
         };
         let mut seen = Interaction::default();
         let mut output = ctx.run_ui(input, |ui| {
-            seen = show(ui, panes, marks, false, egui::Id::new("test panes"));
+            seen = show(ui, panes, marks, false, egui::Id::unique("test panes"));
         });
         output.textures_delta.clear();
         (seen, output.shapes)
@@ -1375,7 +1375,7 @@ mod tests {
                 panes,
                 Marks::default(),
                 draft,
-                egui::Id::new("test panes"),
+                egui::Id::unique("test panes"),
             );
         });
         output.textures_delta.clear();
@@ -1723,7 +1723,7 @@ mod tests {
                 &panes,
                 Marks::default(),
                 true,
-                egui::Id::new("test panes"),
+                egui::Id::unique("test panes"),
             );
         });
         output.textures_delta.clear();
@@ -1777,7 +1777,7 @@ mod tests {
         let tab = Map::fit(front, h, v).at(0.0, 0.0);
         let mut view = PaneView::default();
         view.zoom_about(MAX_ZOOM, tab - front.center(), front.size());
-        set_pane_view(&ctx, egui::Id::new("test panes"), Pane::Front, view);
+        set_pane_view(&ctx, egui::Id::unique("test panes"), Pane::Front, view);
         // The tab now covers the front pane's right edge and runs past it.
         let near_edge = pos2(front.max.x - 4.0, tab.y);
         let _ = frame(&ctx, &panes, Marks::default(), None, false);
@@ -1820,7 +1820,7 @@ mod tests {
                 ..Default::default()
             };
             let mut output = ctx.run_ui(input, |ui| {
-                show(ui, &panes, Marks::default(), false, egui::Id::new(key));
+                show(ui, &panes, Marks::default(), false, egui::Id::unique(key));
             });
             output.textures_delta.clear();
         };
@@ -1832,6 +1832,7 @@ mod tests {
                 egui::Event::PointerMoved(over_front),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     delta: vec2(0.0, 120.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: egui::Modifiers::NONE,
@@ -1842,13 +1843,13 @@ mod tests {
         for _ in 0..60 {
             run("a", Vec::new());
         }
-        let zoomed = pane_view(&ctx, egui::Id::new("a"), Pane::Front);
+        let zoomed = pane_view(&ctx, egui::Id::unique("a"), Pane::Front);
         assert!(zoomed.zoom > 1.0, "{zoomed:?}");
-        assert!(pane_view(&ctx, egui::Id::new("a"), Pane::End).is_fitted());
-        assert!(pane_view(&ctx, egui::Id::new("b"), Pane::Front).is_fitted());
+        assert!(pane_view(&ctx, egui::Id::unique("a"), Pane::End).is_fitted());
+        assert!(pane_view(&ctx, egui::Id::unique("b"), Pane::Front).is_fitted());
         // Kept across frames for the same setup.
         run("a", Vec::new());
-        assert_eq!(pane_view(&ctx, egui::Id::new("a"), Pane::Front), zoomed);
+        assert_eq!(pane_view(&ctx, egui::Id::unique("a"), Pane::Front), zoomed);
         // A double-click in the pane fits it again.
         let click = |pressed| egui::Event::PointerButton {
             pos: over_front,
@@ -1861,6 +1862,6 @@ mod tests {
             vec![click(true), click(false), click(true), click(false)],
         );
         run("a", Vec::new());
-        assert!(pane_view(&ctx, egui::Id::new("a"), Pane::Front).is_fitted());
+        assert!(pane_view(&ctx, egui::Id::unique("a"), Pane::Front).is_fitted());
     }
 }

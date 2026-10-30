@@ -103,8 +103,9 @@ fn carving(c: &mut Criterion) {
             .copied()
             .filter(|t| {
                 t.iter().all(|&i| {
-                    let x = mesh.vertices[i as usize].x;
-                    (5.0..=25.0).contains(&x)
+                    mesh.vertices
+                        .get(i as usize)
+                        .is_some_and(|p| (5.0..=25.0).contains(&p.x))
                 })
             })
             .collect(),

@@ -83,7 +83,7 @@ pub fn icon(ui: &mut egui::Ui, value: &MachineValue) -> egui::Response {
     };
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
+            egui::Role::Button,
             true,
             format!("{}: {state}", value.label),
         )

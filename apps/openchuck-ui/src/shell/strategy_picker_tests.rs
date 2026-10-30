@@ -111,6 +111,7 @@ fn req_op_16_req_ui_14_picker_lists_disabled_strategies_with_readable_reasons() 
                 egui::Event::PointerMoved(at),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     phase: egui::TouchPhase::Move,
                     delta: egui::vec2(0.0, -500.0),
                     modifiers: Modifiers::NONE,
@@ -151,7 +152,7 @@ fn req_ui_16_req_nfr_15_picker_dialog_keeps_its_controls_inside_without_overlap(
         }
         let dialog = rig
             .ctx
-            .memory(|m| m.area_rect(egui::Id::new(("dialog", "add operation"))))
+            .memory(|m| m.area_rect(egui::Id::unique(("dialog", "add operation"))))
             .expect("bounded creation dialog");
         let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, rig.size);
         assert!(
@@ -222,8 +223,9 @@ fn req_ui_14_req_ui_07_picker_can_be_opened_and_chosen_with_the_keyboard() {
         "Space opens the focused dropdown: {:?}",
         rig.texts()
     );
-    // The popup scroll area is focusable before its three first choices.
-    for _ in 0..4 {
+    // The popup's scroll area is not a Tab stop (egui 0.37 senses drag only
+    // there), so the third choice is three Tabs away; with egui 0.36 it was four.
+    for _ in 0..3 {
         rig.press(Key::Tab, Modifiers::NONE);
     }
     rig.press(Key::Enter, Modifiers::NONE);

@@ -445,7 +445,7 @@ impl State {
             }
         }
         if self.close_next.is_some() {
-            egui::Modal::new(Id::new("closing recovery")).show(ctx, |ui| {
+            egui::Modal::new(Id::unique("closing recovery")).show(ctx, |ui| {
                 ui.heading("Finishing recovery checkpoints…");
                 ui.spinner();
             });
@@ -453,7 +453,7 @@ impl State {
         let mut answer = None;
         let mut located = None;
         if let Some(review) = &mut self.review {
-            egui::Modal::new(Id::new("recover project choices")).show(ctx,|ui| {
+            egui::Modal::new(Id::unique("recover project choices")).show(ctx,|ui| {
                 ui.set_max_width(680.0);
                 ui.heading("Recover project changes");
                 ui.label(review.candidate.folder.display().to_string());
