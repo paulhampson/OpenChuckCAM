@@ -287,11 +287,8 @@ fn req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one() {
         "sphere: the tool leaves the axis by up to {middle:.4} mm within 12 mm of the equator, {worst:.4} mm overall"
     );
     // Near the poles the normal is almost along X and its in-plane part is
-    // only as good as the mesh. At the poles A turns by up to 85 degrees
-    // between the first seeds, and since decision record 0363 item 2 such a
-    // move is split until the tool's tip travels no further than its radius,
-    // which samples that in-plane part more finely: 0.097 mm (0.017 before).
-    assert!(middle < 0.005 && worst < 0.15, "{middle} {worst}");
+    // only as good as the mesh.
+    assert!(middle < 0.005 && worst < 0.05, "{middle} {worst}");
     let part = lobed();
     let f = fixture(&part, 201, 1440, &ball(6.0));
     let path = simultaneous(&f, &values(1.0, &[(parameter::MAX_TILT, num(0.0))]));

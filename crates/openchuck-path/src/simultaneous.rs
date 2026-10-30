@@ -108,6 +108,9 @@ pub const FLAT_SEED: f64 = 1e-3;
 /// How many times a move may be halved.
 pub const MAX_DEPTH: u32 = 12;
 
+/// Most poses a long move is tested at (decision record 0363 item 2).
+const MAX_TEST_POSES: usize = 256;
+
 /// The least share of a cut in along the tool axis that the move test reads
 /// as depth (decision record 0363 item 2).
 const MIN_ALONG: f64 = 0.5;
@@ -376,11 +379,11 @@ struct Plan<'a> {
     constrained: bool,
     drop_profile: &'a RevolvedProfile,
     convex: bool,
-    /// The longest a move's tip may travel over the part, mm: the tool's
-    /// cutting radius, so that the test poses of a move (its middle and
-    /// quarter points) are never more than a quarter of it apart and a thin
-    /// wall between them still meets the tool at one of them (decision
-    /// record 0363 item 2).
+    /// The tool's cutting radius, mm. A move whose tip travels further over
+    /// the part is tested at a pose every quarter of it, so that a thin wall
+    /// between the middle and quarter points still meets the tool at one of
+    /// them; the first move that jumps further after the last halving goes
+    /// through the raised tool (decision record 0363 item 2).
     reach: f64,
     /// Whether the tool has a flat bottom, whose normal is the axis over a
     /// width (a flat end or bull-nose).
@@ -937,6 +940,28 @@ impl Plan<'_> {
         (pb - pa).length().max(turn * r)
     }
 
+    /// Whether a move whose tip travels further than [`reach`](Plan::reach)
+    /// fails the move test at one of the poses a quarter of the reach apart
+    /// along it (decision record 0363 item 2). A move that travels no
+    /// further is tested at its middle and quarter points alone, as before,
+    /// and so is a long move that holds at every pose: it is kept whole.
+    fn long_move_cuts(&self, track: &Track, axis: &AxisPlan, a: &Node, b: &Node) -> bool {
+        let travel = self.travel(a, b);
+        if travel <= self.reach {
+            return false;
+        }
+        let n = ((4.0 * travel / self.reach).ceil() as usize).clamp(4, MAX_TEST_POSES);
+        (1..n).any(|k| {
+            let t = a.t + (b.t - a.t) * k as f64 / n as f64;
+            match self.node(track, axis, t) {
+                Some(at) => self
+                    .deviation(a, b, &at)
+                    .is_none_or(|e| e.abs() > self.chord),
+                None => self.constrained,
+            }
+        })
+    }
+
     /// Whether the move from `a` to `b` is a wall move (decision record 0050
     /// item 2; decision record 0363 item 2, OI-337): its tip moves across the
     /// tool axis, and A turns the tool's edge, by less than the tolerance, so
@@ -1029,7 +1054,7 @@ impl Plan<'_> {
                     let first = self.node(track, axis, 0.5 * (a.t + mid.t));
                     let second = self.node(track, axis, 0.5 * (mid.t + b.t));
                     if over.is_none_or(|e| e.abs() > self.chord)
-                        || self.travel(a, b) > self.reach
+                        || self.long_move_cuts(track, axis, a, b)
                         || quarter(&first)
                         || quarter(&second)
                     {
