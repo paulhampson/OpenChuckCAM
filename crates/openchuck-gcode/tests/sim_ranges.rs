@@ -136,3 +136,19 @@ fn req_gc_10_faults_wrong_end_state_and_empty_execution_cannot_pass() {
             .contains("no original moves")
     );
 }
+
+#[test]
+fn req_gc_10_a_feed_held_in_single_precision_matches_the_original() {
+    // LinuxCNC keeps the feed as a 32-bit float: F2755.6 reads back as
+    // 2755.60009765625. Its neighbouring 32-bit float is still a mismatch.
+    let source = SOURCE.replace("F60", "F2755.6");
+    let program = read(&source).unwrap();
+    for (feed, ok) in [(2_755.600_097_656_25, true), (2_755.600_341_796_875, false)] {
+        let mut data = evidence();
+        data["boundaries"][0]["feed"] = json!(feed);
+        data["boundaries"][1]["feed"] = json!(feed);
+        let report = parse_sim_report(&data.to_string()).unwrap();
+        let result = compare_simulator_range(&program, &report, 6..=8, 0.1);
+        assert_eq!(result.is_ok(), ok, "{feed}: {result:?}");
+    }
+}
