@@ -40,6 +40,7 @@ mod import_panel;
 mod label_layout;
 mod logging;
 mod machine_panel;
+mod memory;
 mod model_panel;
 mod pending_edits;
 mod playback_panel;

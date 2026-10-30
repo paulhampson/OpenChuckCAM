@@ -148,6 +148,9 @@ pub struct Shell {
     edit_context: Option<egui::Context>,
     edit_guard: pending::Guard,
     app: Option<Application>,
+    /// The computer's physical memory, read once, which caps the memory for
+    /// playback checkpoints at a quarter (decision record 0322 item 5).
+    physical_memory: Option<u64>,
     /// The window title last sent to the system (#218).
     sent_title: String,
     /// The setting the inspector brings into view on its next frame: a
@@ -271,6 +274,7 @@ impl Shell {
             edit_context: None,
             edit_guard: pending::Guard::default(),
             app: None,
+            physical_memory: crate::memory::physical(),
             sent_title: String::new(),
             setting_jump: None,
             viewport: Viewport::new(viewport_available),
@@ -334,8 +338,9 @@ impl Shell {
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
-        self.play
-            .set_playback_memory(memory_bytes(simulate.playback_memory_mb));
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -653,8 +658,9 @@ impl Shell {
         }
         .clamped();
         self.settings.simulate.playback_memory_mb = simulate.playback_memory_mb;
-        self.play
-            .set_playback_memory(memory_bytes(simulate.playback_memory_mb));
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
         self.settings_touched();
     }
 
@@ -1915,6 +1921,13 @@ impl Shell {
                             s.set_playback_memory_mb(memory);
                         }));
                     }
+                    let (_, cap) = crate::memory::playback_memory(
+                        self.settings.simulate.playback_memory_mb,
+                        self.physical_memory,
+                    );
+                    if let Some(cap) = cap {
+                        ui.label(format!("This computer: at most {cap} MB"));
+                    }
                 });
                 ui.label(
                     "Simulate keeps copies of the cut part along the program so that a jump in \
@@ -2564,10 +2577,3 @@ mod tooltip_tests;
 
 #[cfg(test)]
 mod import_layout_tests;
-
-/// Bytes in `mb` MB of 2^20 bytes.
-fn memory_bytes(mb: u32) -> usize {
-    usize::try_from(mb)
-        .unwrap_or(usize::MAX)
-        .saturating_mul(1024 * 1024)
-}

@@ -352,6 +352,26 @@ impl Application {
         playback: &Arc<StockPlayback>,
         cursor: Cursor,
     ) -> JobHandle<StockSurface> {
+        self.stock_surface_job(playback, cursor, true)
+    }
+
+    /// The same surface without its picker, for a frame shown while playback
+    /// plays: it is ready sooner, and pointing at it finds nothing (the
+    /// owner's decision D5 on issue #382; decision record 0322).
+    pub fn start_playing_stock_surface(
+        &self,
+        playback: &Arc<StockPlayback>,
+        cursor: Cursor,
+    ) -> JobHandle<StockSurface> {
+        self.stock_surface_job(playback, cursor, false)
+    }
+
+    fn stock_surface_job(
+        &self,
+        playback: &Arc<StockPlayback>,
+        cursor: Cursor,
+        picker: bool,
+    ) -> JobHandle<StockSurface> {
         let playback = Arc::clone(playback);
         self.jobs
             .submit("stock at move", self.events_tx.clone(), move |context| {
@@ -377,7 +397,14 @@ impl Application {
                     .ok_or_else(|| {
                         AppError::Playback("no simulation covers this move".to_owned())
                     })?;
-                StockSurface::new(mesh, setup.id, setup.model, setup.samples.as_ref(), context)
+                StockSurface::new(
+                    mesh,
+                    setup.id,
+                    setup.model,
+                    setup.samples.as_ref(),
+                    picker,
+                    context,
+                )
             })
     }
 

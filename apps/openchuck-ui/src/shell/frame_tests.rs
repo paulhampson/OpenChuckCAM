@@ -1118,6 +1118,9 @@ fn req_ui_15_req_nfr_07_settings_sets_the_memory_for_playback_checkpoints() {
     let mut rig = Rig::cube("frame-playback-memory", Some(file.clone()));
     rig.dirs.push(config);
     const MIB: usize = 1024 * 1024;
+    // A computer of 32 GB, as the owner's laptop: no cap below 8,192 MB.
+    rig.shell.physical_memory = Some(32 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(1_536);
     assert_eq!(rig.shell.play.playback_memory(), 1_536 * MIB);
     rig.shell.dialog = Some(Dialog::Settings);
     // A window is laid out on its first frame and drawn on the next.
@@ -1134,9 +1137,23 @@ fn req_ui_15_req_nfr_07_settings_sets_the_memory_for_playback_checkpoints() {
     rig.shell.set_playback_memory_mb(3_000);
     rig.shell.save_settings();
     assert_eq!(file.load().settings.simulate.playback_memory_mb, 3_072);
-    // A restart gives playback the kept value.
+    // A restart gives playback the kept value (capped at a quarter of this
+    // computer's memory, as the owner decided on OI-1315).
     let shell = Shell::with_settings(false, None, Some(file.clone()));
-    assert_eq!(shell.play.playback_memory(), 3_072 * MIB);
+    let expected = crate::memory::playback_memory(3_072, crate::memory::physical()).0;
+    assert_eq!(shell.play.playback_memory(), expected);
+    // On a computer of 4 GB the 3,072 MB asked for is capped at 1,024 MB,
+    // the setting is kept, and Settings says so.
+    rig.shell.physical_memory = Some(4 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(3_072);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 3_072);
+    assert_eq!(rig.shell.play.playback_memory(), 1_024 * MIB);
+    rig.frame(Vec::new());
+    assert!(rig.shows("This computer: at most 1024 MB"));
+    rig.shell.set_playback_memory_mb(512);
+    assert_eq!(rig.shell.play.playback_memory(), 512 * MIB);
+    rig.frame(Vec::new());
+    assert!(!rig.shows("This computer: at most"));
 }
 
 /// A project with a model and no setup, which is what File, New project and

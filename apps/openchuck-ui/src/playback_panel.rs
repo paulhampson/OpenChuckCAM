@@ -842,6 +842,7 @@ impl PlaybackPanel {
         viewport: &mut Viewport,
         pose: &PoseSample,
     ) -> bool {
+        let playing = self.playback.is_playing();
         let stock = &mut self.stock;
         let mut busy = false;
         if let Some(job) = &stock.prepare {
@@ -897,12 +898,22 @@ impl PlaybackPanel {
             return busy;
         }
         let done = pose.cursor;
+        // While playing, frames are made without their picker, so they are
+        // ready sooner; once playback is still, the frame shown is made
+        // again with one, so pointing at it works (the owner's decision D5
+        // on issue #382; decision record 0322).
+        let cannot_pick = stock.surface.as_ref().is_some_and(|s| !s.can_pick());
         if let Some(playback) = &stock.playback
             && stock.mesh.is_none()
             && stock.error.is_none()
-            && stock.shown != Some(done)
+            && (stock.shown != Some(done) || (!playing && cannot_pick))
         {
-            stock.mesh = Some((app.start_stock_surface(playback, done), done));
+            let job = if playing {
+                app.start_playing_stock_surface(playback, done)
+            } else {
+                app.start_stock_surface(playback, done)
+            };
+            stock.mesh = Some((job, done));
             busy = true;
         }
         busy
@@ -2111,6 +2122,56 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(panel.bands.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The owner's decision D5 on issue #382 (decision record 0322): frames
+    /// shown while playing have no picker; once playback is still, the frame
+    /// shown is made again with one, and picks as before.
+    #[test]
+    fn req_sim_11_req_nfr_04_the_cut_part_is_pickable_once_playback_is_still() {
+        let (app, mut panel, mut viewport, dir) = prepared("pick-when-still");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        let data = panel.data.clone().unwrap();
+        panel.stock.show = true;
+        panel.stock.prepare =
+            Some(app.start_stock_playback(Arc::clone(&data.timeline), panel.playback_memory));
+        panel.playback.seek(&data.timeline, 0.3);
+        panel.playback.set_speed(1.0);
+        panel.playback.play(&data.timeline);
+        let started = Instant::now();
+        // Play until a frame made while playing is shown (the next one is
+        // asked for at once, so a job is always running).
+        while panel.stock.surface.is_none() {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            panel.frame(&app, &mut viewport, 0.001);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(panel.playback.is_playing());
+        let playing = panel.stock.surface.clone().unwrap();
+        assert!(!playing.can_pick());
+        assert!(
+            playing
+                .pick([0.0, 0.0, 50.0], [0.0, 0.0, -1.0])
+                .unwrap()
+                .is_none()
+        );
+        // Pause: the frame at the cursor is made again with its picker.
+        panel.playback.pause();
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let cursor = panel.playback.cursor();
+        assert_eq!(panel.stock.shown, Some(cursor));
+        let still = panel.stock.surface.clone().unwrap();
+        assert!(still.can_pick());
+        let expected = app
+            .start_stock_surface(panel.stock.playback.as_ref().unwrap(), cursor)
+            .wait()
+            .unwrap();
+        assert_eq!(still.as_ref(), &expected);
+        assert_eq!(viewport.stock_surface().unwrap().as_ref(), &expected);
         let _ = std::fs::remove_dir_all(dir);
     }
 

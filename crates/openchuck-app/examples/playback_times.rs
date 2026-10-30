@@ -257,7 +257,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Playing forward as the viewport does: a new surface is asked for at
     // the clock's cursor when the last one is finished, so the tool moves
-    // once per surface. From 30% of the program time, eight surfaces at
+    // once per surface. Frames made while playing have no picker (the
+    // owner's decision D5). From 30% of the program time, eight surfaces at
     // each speed of the speed list and at "whole program in 60 s".
     println!("speed x | surfaces s (each) | moves per surface (each)");
     for speed in [10.0, 100.0, 1000.0, timeline.total_time() / 60.0] {
@@ -267,7 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for _ in 0..8 {
             let cursor = timeline.cursor_at_time(time);
             let started = Instant::now();
-            drop(app.start_stock_surface(&playback, cursor).wait()?);
+            drop(app.start_playing_stock_surface(&playback, cursor).wait()?);
             let took = started.elapsed().as_secs_f64();
             times.push(format!("{took:.2}"));
             steps.push((cursor.done - last).to_string());

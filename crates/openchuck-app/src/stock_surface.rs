@@ -36,11 +36,12 @@ impl StockSurface {
         setup: SetupId,
         model: Option<ModelId>,
         samples: Option<&SurfaceSamples>,
+        picker: bool,
         context: &JobContext<'_>,
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
         let bands = samples.map(|s| s.bands(&mesh, context)).transpose()?;
-        let picker = if mesh.triangles.is_empty() {
+        let picker = if !picker || mesh.triangles.is_empty() {
             None
         } else {
             Some(MeshPicker::new(&mesh)?)
@@ -55,8 +56,16 @@ impl StockSurface {
         })
     }
 
+    /// Whether the surface was made with its picker: a frame made while
+    /// playback plays has none, so pointing at it finds nothing (the owner's
+    /// decision D5 on issue #382; decision record 0322).
+    pub fn can_pick(&self) -> bool {
+        self.picker.is_some()
+    }
+
     /// First hit on the actual stock, in its workpiece frame. The triangle
     /// ID indexes both its drawn colour and its projected tooltip value.
+    /// None when the surface has no triangles or was made without a picker.
     pub fn pick(
         &self,
         origin: [f64; 3],
@@ -358,6 +367,7 @@ mod tests {
             SetupId::new(),
             Some(ModelId::new()),
             Some(&samples),
+            true,
             &context,
         )
         .unwrap();
@@ -384,6 +394,7 @@ mod tests {
             SetupId::new(),
             None,
             None,
+            true,
             &context,
         )
         .unwrap();
@@ -467,6 +478,43 @@ mod tests {
             let bands = pool.install(|| samples.bands(&mesh, &context)).unwrap();
             assert_eq!(bands, expected, "{threads} threads");
         }
+    }
+
+    /// The owner's decision D5 on issue #382 (decision record 0322): while
+    /// playback plays, a frame is made without its picker. It has the same
+    /// mesh and colours, and pointing at it finds nothing; made still, its
+    /// picks are those of a frame with a picker.
+    #[test]
+    fn req_sim_11_req_nfr_04_a_playing_frame_has_no_picker_and_is_otherwise_the_same() {
+        let (points, mesh) = many_samples_and_triangles();
+        let samples = SurfaceSamples::new(&points, 0.1);
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let (setup, model) = (SetupId::new(), Some(ModelId::new()));
+        let still =
+            StockSurface::new(mesh.clone(), setup, model, Some(&samples), true, &context).unwrap();
+        let playing =
+            StockSurface::new(mesh.clone(), setup, model, Some(&samples), false, &context).unwrap();
+        assert!(still.can_pick() && !playing.can_pick());
+        assert_eq!((&playing.mesh, &playing.bands), (&still.mesh, &still.bands));
+        let picker = MeshPicker::new(&mesh).unwrap();
+        let mut hits = 0;
+        for i in 0..200_u32 {
+            let x = f64::from(i % 20) * 0.3 - 0.4;
+            let y = f64::from(i / 20) * 0.6 - 0.3;
+            let (origin, down) = ([x, y, 5.0], [0.0, 0.0, -1.0]);
+            assert!(playing.pick(origin, down).unwrap().is_none());
+            let expected = picker
+                .pick(Point3::new(x, y, 5.0), Vec3::new(0.0, 0.0, -1.0))
+                .unwrap();
+            let got = still.pick(origin, down).unwrap();
+            assert_eq!(
+                got.map(|h| (h.triangle, h.distance)),
+                expected.map(|h| (h.triangle, h.distance))
+            );
+            hits += usize::from(got.is_some());
+        }
+        assert!(hits > 0);
     }
 
     #[test]
