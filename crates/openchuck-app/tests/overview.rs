@@ -1988,3 +1988,33 @@ fn req_ui_10_req_nfr_12_with_every_operation_off_the_simulation_action_says_why(
     );
     assert_eq!(o.primary(Step::Simulate), o.export_action());
 }
+
+#[test]
+fn req_ui_10_req_nfr_12_g_code_written_needs_exactly_the_enabled_operations() {
+    // Decision 0282 item 5: "G-code written" means written from every
+    // enabled operation as it is now. Output that also holds an operation
+    // since turned off or removed is not that (the same rule as the run,
+    // issue 260); turning it on again matches once more.
+    let (mut f, [_, two, three]) = three_operations("written-set");
+    let run = f.app.simulate().unwrap();
+    f.app.record_export(&run);
+    assert!(f.overview().g_code_written());
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let o = f.overview();
+    assert!(!o.g_code_written(), "an exported operation was turned off");
+    assert!(o.wrote_g_code_before());
+    f.app.undo().unwrap();
+    assert!(f.overview().g_code_written(), "turned on again, as written");
+    f.app
+        .execute(Command::Remove(ItemId::Operation(two)))
+        .unwrap();
+    assert!(
+        !f.overview().g_code_written(),
+        "an exported operation was removed"
+    );
+}

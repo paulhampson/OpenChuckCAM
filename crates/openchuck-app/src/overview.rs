@@ -2247,7 +2247,12 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         machine_warnings,
         checks_current: checks.is_some_and(|c| c.revision == app.revision),
         simulated_all: any_enabled && simulated_all,
-        g_code_written: any_enabled && exported_all,
+        // The last write holds exactly the enabled operations: one turned off
+        // or removed since makes it not the project as it is now (decision
+        // record 0282 item 5; the run's rule, issue 260).
+        g_code_written: any_enabled
+            && exported_all
+            && record.exported.len() == ops.iter().filter(|o| o.enabled).count(),
         wrote_g_code: !record.exported.is_empty(),
         skip_stock,
         first_unsimulated_unmade,
