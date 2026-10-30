@@ -399,6 +399,9 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
         "min_block_ms",
         "block_window",
         "short_block_mode",
+        "automatic_tool_length",
+        "spindle_to_axis",
+        "recommended_min_safe_z",
     ] {
         profile.remove(field);
     }
@@ -417,6 +420,9 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
             "min_block_ms",
             "block_window",
             "short_block_mode",
+            "tool_length_measurement",
+            "spindle_to_axis",
+            "recommended_min_safe_z",
         ] {
             provenance.remove(field);
         }

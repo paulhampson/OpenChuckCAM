@@ -245,7 +245,9 @@ impl MachinePanel {
         let shown = |v: Option<openchuck_app::setup::Millimetres>| {
             v.map_or_else(String::new, |v| v.0.to_string())
         };
-        for (field, label, applied, description) in [
+        // The distance matters only on a machine that measures tool
+        // lengths; the minimum shows there or once given (as `fields`).
+        let rows = [
             (
                 ProfileField::SpindleToAxis,
                 "Spindle to axis",
@@ -258,7 +260,12 @@ impl MachinePanel {
                 shown(profile.recommended_min_safe_z),
                 "The lowest safe Z recommended for this machine. Advice to check on the machine, not a limit. Blank for none.",
             ),
-        ] {
+        ];
+        let shown_fields = profile.fields();
+        for (field, label, applied, description) in rows
+            .into_iter()
+            .filter(|(field, ..)| shown_fields.contains(field))
+        {
             let validate = |text: &str| edit_spindle_height(profile, field, text).map(|_| ());
             let row = TextRow {
                 key: field.name(),
