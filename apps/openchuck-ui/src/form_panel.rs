@@ -699,7 +699,7 @@ mod tests {
             ..Marks::default()
         };
         let shown = run(&mut settings, &marks);
-        assert!(shown.iter().any(|t| *t == note), "{shown:?}");
+        assert!(shown.contains(&note), "{shown:?}");
         let shown = run(&mut settings, &Marks::default());
         assert!(!shown.iter().any(|t| t.contains("Last run")), "{shown:?}");
     }
