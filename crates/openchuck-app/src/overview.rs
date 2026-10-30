@@ -2103,9 +2103,14 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .map_or_else(|| "A setup".to_owned(), |s| format!("Setup '{}'", s.name)),
         _ => "An item".to_owned(),
     };
+    // A missing machine is a to-do, not an error: the Setup step reads it as
+    // "Choose a machine" needing attention (decision 0173, FIRSTRUN item 1).
+    let is_error_need =
+        |m: &Missing| m.requirement.field != crate::requirements::RequirementField::Machine;
     let first_missing = |operation: bool| {
         missing
             .iter()
+            .filter(|m| is_error_need(m))
             .find(|m| matches!(m.item, ItemRef::Operation(_)) == operation)
             .map(|m| {
                 format!(
@@ -2154,14 +2159,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
-    let setup_health = if let Some(text) =
-        first_missing(false).filter(|_| missing.iter().any(|m| matches!(m.item, ItemRef::Setup(_))))
-    {
+    let setup_health = if let Some(text) = first_missing(false).filter(|_| {
+        missing
+            .iter()
+            .any(|m| matches!(m.item, ItemRef::Setup(_)) && is_error_need(m))
+    }) {
         (StepHealth::Error, Some(text))
-    } else if project.machine().is_none() {
-        (StepHealth::Error, Some("Choose a machine".to_owned()))
     } else if count_state(ItemState::Error, &on_setup) > 0 {
         (StepHealth::Error, Some("A setup has an error".to_owned()))
+    } else if project.machine().is_none() {
+        // A to-do, not a fault: Messages counts no error for it either
+        // (decision 0173, the owner's answer on FIRSTRUN item 1).
+        (StepHealth::Attention, Some("Choose a machine".to_owned()))
     } else if project.setups().is_empty() {
         (StepHealth::Attention, Some("Add a setup".to_owned()))
     } else if count_state(ItemState::Warning, &on_setup) > 0 {
