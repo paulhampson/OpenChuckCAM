@@ -45,6 +45,7 @@ The owner measured the probe's stick-out from the collet as 24.5 mm, from the sa
   - the built-in Z1 profile test (`spindle_to_axis` is 73.1, no longer unknown);
   - the machine view test ("73.100 mm" instead of "Not known");
   - the command line `machine` test ("spindle to axis 73.1 mm").
+  - two older-schema tests that rebuild the built-in Z1 as an older file now also remove `spindle_to_axis` (`machines.rs` `req_gc_17_req_set_01_new_z1_uses_measured_report_settings_and_old_profiles_stay_off`, `z1_block_time.rs` `req_gc_17_req_prj_04_published_schema_5_profile_settings_keep_their_meaning`).
 
   No golden program and no other test changes. The sample projects' machine copies hold no distance, so they give no such warning.
 - Documents: OI-1290 and OI-1291 closed, OI-1292 new. The UI specification's dock text, and the safe practice checklist and air-cut procedure lines, now mention the warning.

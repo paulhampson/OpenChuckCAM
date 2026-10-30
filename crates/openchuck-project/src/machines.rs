@@ -593,6 +593,7 @@ mod tests {
             "block_window",
             "short_block_mode",
             "automatic_tool_length",
+            "spindle_to_axis",
             "recommended_min_safe_z",
         ] {
             machine.remove(key);

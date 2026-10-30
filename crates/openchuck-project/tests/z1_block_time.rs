@@ -89,7 +89,9 @@ fn req_gc_17_req_prj_04_published_schema_5_profile_settings_keep_their_meaning()
     let text: String = include_str!("../machines/makera-z1.toml")
         .lines()
         .filter(|l| {
-            !l.starts_with("automatic_tool_length") && !l.starts_with("recommended_min_safe_z")
+            !l.starts_with("automatic_tool_length")
+                && !l.starts_with("spindle_to_axis")
+                && !l.starts_with("recommended_min_safe_z")
         })
         .map(|l| format!("{l}\n"))
         .collect();
