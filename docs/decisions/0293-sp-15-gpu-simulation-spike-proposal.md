@@ -1,6 +1,6 @@
 # 0293: SP-15 proposal, GPU acceleration of the simulation stock
 
-- **Status:** accepted by the project owner on 29 Oct 2026, in this session ("accept 0293"; decision 0049). Accepting it approves running spike SP-15 as described. It amends nothing yet: no requirement, architecture rule or accepted record changes unless the spike passes and a later record says so.
+- **Status:** accepted by the project owner on 29 Oct 2026, in this session ("accept 0293"; decision 0049), and confirmed again in the Merge Manager session ("accept 0293 now"), relayed under decision 0049. Accepting it approves running spike SP-15 as described. It amends nothing yet: no requirement, architecture rule or accepted record changes unless the spike passes and a later record says so.
 - **Date:** 29 Oct 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): opens OI-1221 to OI-1223.
 - **Spike:** SP-15 in the work breakdown spike table. Its code goes on `spike/sp-15-gpu-simulation` (never merged); its write-up is `spikes/gpu-simulation/RESULT.md` on that branch. Neither exists yet.
@@ -36,6 +36,8 @@ Method: the `req_sim_03_req_nfr_04_reference_job_meets_the_budget` job (record 0
 **Two cheap CPU findings.** Replacing `x.hypot(y)` with `(x * x + y * y).sqrt()` in `span.rs` cut the 2,000-move run from 4.89 s to 3.46 s (29%). It changes the stock hash, so every golden that depends on the simulated stock needs regenerating; it is not part of this spike and was reverted. The 71% of calls that return no span suggests a tighter footprint test per pose could skip many of them; the cost of those empty calls was not measured separately.
 
 **Not profiled:** `compare` (deviation), `stock_mesh`, `stock_at` replay for playback, and the 0.025 mm cell. Record 0025 item 5 puts time at about the cube of the cell ratio and memory at the square, so the finest setting is about 64 times the time (about 27 minutes on four threads for this job) and 16 times the memory (about 430 MB with checkpoints, over the 256 MB budget).
+
+**Related, unmerged:** lane SIMPERF's proposed [decision 0322](0322-simulate-playback-frame-cost.md) (on `claude/lane-simperf` when this was written) measured the display side of the same simulator on the owner's carving project: stock replay from a checkpoint up to 18.5 s, and the pipeline's own simulation and comparison about 140 s of 250 s (its OI-1313, not split). Those figures are the case for the unprofiled parts in OI-1223, and they are not repeated here.
 
 ## Why the GPU is plausible
 
