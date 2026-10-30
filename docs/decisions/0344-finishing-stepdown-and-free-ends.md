@@ -1,9 +1,9 @@
 # 0344: One finishing Stepdown, and free ends faced in layers (OP-04, OP-09, OP-21, SET-09, TL-05, NFR-12; issues #404 and #314; lane ENDFACE)
 
-- **Status:** proposed (30 Oct 2026). The owner's answers on each choice below were relayed by the coordinator session (decision 0049): the shape, C1 = A, C2 = B, C3 = A without the width refusal, C4 = B, OI-1390 option 3 with a warning, and project schema 23 assigned to the lane. OI-1394 (unknown stock) awaits the owner; option 1 is built. The record awaits the owner's acceptance.
+- **Status:** proposed (30 Oct 2026). The owner's answers on each choice below were relayed by the coordinator session (decision 0049): the shape, C1 = A, C2 = B, C3 = A without the width refusal, C4 = B, OI-1390 option 3 with a warning, OI-1394 (the setup's own stock is known) and project schema 23 assigned to the lane. The record awaits the owner's acceptance.
 - **Date:** 30 Oct 2026.
 - **Builds on:** [0343](0343-end-faces-beside-a-short-tab.md) (end faces beside a short tab), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (one turn at each face), [0230](0230-material-preset-per-operation.md) (the preset fills cutting values), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (keep-out).
-- **Open items:** OI-1370 closed by this record. New: OI-1393 (a check that a free-end ring would cut stock free, or a limit on the turn's depth), OI-1394 (unknown stock: skip or refuse; option 1 built, awaiting the owner). Finishing layers (OI-1391 and OI-1392) are [decision 0345](0345-finishing-layers.md).
+- **Open items:** OI-1370 closed by this record. New: OI-1393 (a check that a free-end ring would cut stock free, or a limit on the turn's depth). OI-1394 raised and closed by the owner's answer. Finishing layers (OI-1391 and OI-1392) are [decision 0345](0345-finishing-layers.md).
 
 ## Context
 
@@ -31,14 +31,18 @@ Measured on the blisk STL in a synthetic setup: X 15 to 65, cylinder stock 42 mm
    - It must be the part's own end: the part alone, without the held regions and tabs, is under the tool just inside the edge (`SurfaceSource::drop_on_part`). A tab's outer end is not a free end: facing beside it to the axis would cut the tab free of the stock it holds the part to (OP-21).
    - An edge inside a keep-out interval is the held region's own end, or within its reach, and is left out (SET-09).
    - An end the stock does not carry on past (the stock's own end) has nothing to face.
-5. **The turn.** On stock an earlier operation of the setup left (SIM-06; the host marks it, `StockModel::left_by_earlier_operations`), with a Stepdown:
+5. **The turn.** With a Stepdown, on the stock an earlier operation of the setup left (SIM-06; the host marks it, `StockModel::left_by_earlier_operations`), or, for the first operation of a setup, the setup's own stock definition (OI-1394, the owner's acceptance):
    - The tool stands beside the face, its side (grown by the stock to leave) a tenth of the tolerance clear of it.
    - It cuts one whole turn of A at constant X in each layer, at whole Stepdowns above the rotary axis: the first is the highest below the top of the stock it meets (read from the stock across the ring at 72 angles), the last on the axis (owner's option 3 on OI-1390).
    - Each layer is its own pass, so the shared services make its entry and link.
    - The face keeps only the stock to leave.
-6. **When the turn is not made (C2 = B; OI-1394 option 1).** The rest of the path is made, and a warning names the face:
+6. **When the turn is not made (C2 = B).** The rest of the path is made, and a warning names the face:
    - With no Stepdown, the warning ends with the Required wording and points at the Stepdown field.
-   - On stock no earlier operation left: "no earlier operation in this setup shows what stock is past it, so the tool would cut there blind. Add the roughing first, or turn off Face free ends".
+   - As a backstop, on a stock of no known size: "the setup's stock has no known size, so the tool would cut there blind. Define the stock, or turn off Face free ends". In practice a setup with no stock is refused before this.
+   - **On the setup's own stock (OI-1394):** the turn is made, and the note adds the starting depth and that the stock past the face was read from the setup's own stock with no earlier operation in this setup, so the real blank must match it. The owner asked why the starting stock could not be used: finish-only setups will be legitimate in multi-setup jobs. It can: the definition is a full stock model, and treating it as unknown was a conservative assumption, not a technical limit.
+     - **A real blank smaller than the definition:** more layers in air, which is slow but not dangerous.
+     - **A real blank larger than the definition:** a setup error that affects every operation's entries and links already.
+     - **"Bounding box plus offset" stock much larger than the part:** the layers start from the box's top, a deep full-width cut where the blank really is that size, with the cut-free warning and the starting depth in the note so a mismatch shows before the program runs.
 7. **A face deeper than the flutes refuses the operation (C3).** The stock beside it is deeper than the tool's flute length, so the operation is refused with a message naming the face, the depth and the flute length. A wide cut is not refused (the owner's change to C3).
 8. **The cut-free warning (the owner's choice on OI-1390).**
    - When stock lies past the ring the turn cuts, and no held region past it grips that stock, a warning names the end face's X, says it is faced down to the rotary axis, gives the ring's width and X span, and says the stock past the ring is not held by anything in this setup, so it can be cut free there and thrown while the rotary axis turns. It ends: "Before running this program, check the stock and the workholding on the machine".
