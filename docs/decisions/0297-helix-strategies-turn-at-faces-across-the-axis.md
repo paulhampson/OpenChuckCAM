@@ -64,9 +64,10 @@ Options not chosen: (2) a setting, on for new operations and off for saved ones;
     - The end faces carry the tabs and are Facing's (decision 0252), but the turns beside the tabs help them too: their means go from 1.23 and 0.59 mm to 0.30 and 0.24 mm.
     - Each operation turns at 7 faces: the four webs, the part's two ends beside the tabs, and one tab face that stands proud of the part's end.
 - **Cost.** One extra turn per face per pass, and per layer for roughing; the finishing turns add a link in and out each. Finding the faces drops the tool a few thousand times per operation.
-  - On the owner's CrankShaft (7 faces, 18 roughing layers), the posted Z1 program goes from 29,893 to 40,664 moves and from 3,150.8 s to 4,221.7 s of cutting (+34 %).
+  - On the owner's CrankShaft (7 faces, 18 roughing layers), the posted Z1 program goes from 29,893 to 40,657 moves and from 3,150.8 s to 4,223.3 s of cutting (+34 %).
   - In the path's own times, roughing's cutting goes from 1,836 to 2,551 s and finishing's whole operation from 300 to 491 s.
-  - Regeneration on four threads goes from 92 s to 118 s.
+  - Regeneration on four threads goes from 92 s to 116 s.
+  - The first-cut end-to-end test (six regenerations) goes from 308 s to 413 s alone on the same four-core machine.
   - The gate 5 first-cut project (one face, at its tab) goes from 28.8 minutes to 30.8 minutes (1,849.5 s, LinuxCNC).
 - **Library.** No public API changes. `Strategy::passes_with_notes` is overridden for helical finishing and rotary roughing so the note can be given. The behaviour change is recorded in the `openchuck-path` changelog.
 - **Paths without faces.** The helix of helical finishing and the spiral of simultaneous finishing are made by the same code as before, so the moves before the turns are unchanged even on a part with faces. Only roughing's helix changes there, by the turns and the stretch between them.
