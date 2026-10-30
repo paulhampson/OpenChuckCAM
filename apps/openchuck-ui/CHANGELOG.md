@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OUTPUT3 (proposed decision 0327; #312; GC-05, GC-07, NFR-15): the export dialog has a read-only Preview of the program as it would be written, in place of the first 14 lines: a file picker for split output, line count, size and SHA-256 with Copy, Go to line (Ctrl or Cmd G), Find, monospaced rows with line numbers and a scroll bar, smooth on a million lines. It leaves with the files when an edit makes them out of date. Nothing written, no editing.
+
 - FOURSTEP (accepted decision 0282; #322; UI-10): four workflow steps (Model, Setup, Operations, Simulate). Simulate's footer has two actions in fixed places, the simulation action and "Post and export…" right-most, with exactly one filled (the next required step); Post and export opens the existing export dialog with the old fifth step's rules, through the pending-edit guard, and is disabled while a job runs. The step bar says "G-code written" or "G-code not written" after step 4 and its health is the worst of the four. Alt 1 to Alt 4 open the steps; Alt 5 opens Post and export as Ctrl E does. An enabled footer action shows what it does on keyboard focus, and closing the dialog opened from "Post and export…" gives the keyboard back to it. The export dialog, file names and output bytes are unchanged.
 
 - MODELCOPY (#385, accepted decision 0307): the import dialog's "Copy the file into the project folder" tick box (ticked by default) with the file's size and a line saying what happens; the Model inspector's Source section says where the file is and has "Copy model into project" for a linked model; the project tree names a model by its original file name and marks a linked one with a link mark and "linked"; opening a project with linked models asks whether to copy them in.

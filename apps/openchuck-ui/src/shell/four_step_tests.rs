@@ -515,7 +515,7 @@ fn write_through_dialog(
     open(rig);
     assert!(rig.shell.export.is_open());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    while !rig.shows("Start of") {
+    while !rig.shows("Go to line") {
         // The body keeps its scroll between openings: back to the top,
         // where the folder and the preview are.
         let top = rig

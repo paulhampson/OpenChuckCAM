@@ -34,17 +34,18 @@ mod feedback;
 
 #[path = "export_panel/file_names.rs"]
 mod file_names;
+mod preview;
 
 const PROBLEM: Color32 = DARK.error;
 const WARNING: Color32 = DARK.warning;
 /// The safety notice is the warning box of the tokens (14.1).
 const NOTICE_FILL: Color32 = DARK.warning_box.bg;
-/// How many lines of a file the preview shows.
-const PREVIEW_LINES: usize = 14;
 
 #[cfg(test)]
 #[path = "export_panel/layout_tests.rs"]
 mod layout_tests;
+#[cfg(test)]
+mod preview_tests;
 
 #[cfg(test)]
 #[path = "export_panel/write_feedback_tests.rs"]
@@ -141,6 +142,15 @@ pub struct ExportPanel {
     /// every frame (a post folder is read from disk).
     summary: Option<(PostSelection, Result<PostSummary, String>)>,
     preview: usize,
+    /// The position in the file shown in the preview (issue 312).
+    preview_view: preview::PreviewView,
+    /// The files as they would be written, made when the run or the
+    /// templates change.
+    output_preview: Option<(
+        Arc<Regeneration>,
+        openchuck_app::FileNameTemplates,
+        Result<openchuck_app::output_preview::OutputPreview, String>,
+    )>,
     ack: Option<Acknowledgements>,
     ack_lookup: AcknowledgementLookup,
     /// Whether this computer has the acknowledgement that the project skips
@@ -184,6 +194,8 @@ impl ExportPanel {
             files_error: None,
             summary: None,
             preview: 0,
+            preview_view: preview::PreviewView::default(),
+            output_preview: None,
             ack,
             skip_lookup: AcknowledgementLookup {
                 acknowledged: false,
@@ -986,6 +998,14 @@ impl ExportPanel {
         } else {
             None
         };
+        if let Some(run) = self
+            .files
+            .as_ref()
+            .filter(|_| current)
+            .map(|f| Arc::clone(&f.run))
+        {
+            self.ensure_preview(app, &run);
+        }
         let Some(files) = self.files.as_ref().filter(|_| current) else {
             if self.job.is_none() && self.files_error.is_none() {
                 ui.weak("The files appear here once every operation is generated and up to date.");
@@ -993,6 +1013,26 @@ impl ExportPanel {
             return;
         };
         let mut chosen = None;
+        let run = Arc::clone(&files.run);
+        let counts: Vec<Option<usize>> = files
+            .plan
+            .iter()
+            .map(|planned| {
+                let (_, _, made) = self.output_preview.as_ref()?;
+                let named = named.as_ref()?.as_ref().ok()?;
+                let name = &named
+                    .programs
+                    .iter()
+                    .find(|p| p.posted_name == planned.name)?
+                    .name;
+                made.as_ref()
+                    .ok()?
+                    .files()
+                    .iter()
+                    .find(|f| f.name() == name)
+                    .map(|f| f.line_count())
+            })
+            .collect();
         egui::Grid::new("export files")
             .num_columns(4)
             .striped(true)
@@ -1003,12 +1043,16 @@ impl ExportPanel {
                 ui.strong("Programmed time");
                 ui.end_row();
                 for (i, planned) in files.plan.iter().enumerate() {
-                    let lines = files
-                        .run
-                        .gcode
-                        .iter()
-                        .find(|(name, _)| *name == planned.name)
-                        .map_or(0, |(_, text)| text.lines().count());
+                    // The count comes from the preview's line index; it is a
+                    // scan of the whole text otherwise, once per frame.
+                    let lines = counts.get(i).copied().flatten().unwrap_or_else(|| {
+                        files
+                            .run
+                            .gcode
+                            .iter()
+                            .find(|(name, _)| *name == planned.name)
+                            .map_or(0, |(_, text)| text.lines().count())
+                    });
                     let shown = final_name(named.as_ref(), &planned.name);
                     if ui.selectable_label(self.preview == i, shown).clicked() {
                         chosen = Some(i);
@@ -1077,25 +1121,70 @@ impl ExportPanel {
         }
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
-        let shown_index = chosen.unwrap_or(self.preview);
-        if let Some(planned) = files.plan.get(shown_index) {
-            ui.strong(format!(
-                "Start of {}",
-                final_name(named.as_ref(), &planned.name)
-            ));
-            if let Some((_, text)) = files.run.gcode.iter().find(|(n, _)| *n == planned.name) {
-                let shown: Vec<&str> = text.lines().take(PREVIEW_LINES).collect();
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    for line in &shown {
-                        ui.label(RichText::new(*line).monospace());
-                    }
-                });
-            }
-        }
         if let Some(i) = chosen {
             self.preview = i;
         }
+        self.preview_section(ui, &run);
+    }
+
+    /// Makes the preview when the run or the file name templates changed.
+    fn ensure_preview(&mut self, app: &Application, run: &Arc<Regeneration>) {
+        let templates = app.file_name_templates();
+        let fresh = self
+            .output_preview
+            .as_ref()
+            .is_some_and(|(r, t, _)| Arc::ptr_eq(r, run) && t == templates);
+        if !fresh {
+            let made = app.output_preview(run).map_err(|e| e.to_string());
+            self.output_preview = Some((Arc::clone(run), templates.clone(), made));
+        }
+    }
+
+    /// The read-only preview: the files as they would be written, with their
+    /// line counts and hashes (issue 312; decision 0327).
+    fn preview_section(&mut self, ui: &mut egui::Ui, run: &Arc<Regeneration>) {
+        ui.add_space(4.0);
+        ui.heading("Preview");
+        let Some((_, _, made)) = &self.output_preview else {
+            return;
+        };
+        let preview = match made {
+            Ok(preview) => preview,
+            Err(problem) => {
+                ui.colored_label(PROBLEM, problem);
+                return;
+            }
+        };
+        let files = preview.files();
+        let index = self.preview.min(files.len().saturating_sub(1));
+        let Some(file) = files.get(index) else { return };
+        ui.weak("Read-only. These are the bytes that \"Write G-code\" puts in the file; nothing is written by looking.");
+        let mut picked = index;
+        if files.len() > 1 {
+            egui::ComboBox::from_label("File")
+                .selected_text(file.name())
+                .show_ui(ui, |ui| {
+                    for (i, f) in files.iter().enumerate() {
+                        ui.selectable_value(&mut picked, i, f.name());
+                    }
+                });
+        }
+        ui.strong(file.name());
+        ui.label(format!(
+            "{} lines, {} bytes",
+            file.line_count(),
+            file.size()
+        ));
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SHA-256");
+            ui.label(RichText::new(file.sha256()).monospace());
+            if ui.button("Copy").clicked() {
+                ui.ctx().copy_text(file.sha256().to_owned());
+            }
+        });
+        self.preview_view.follow(Arc::as_ptr(run) as usize, picked);
+        self.preview_view.show(ui, file);
+        self.preview = picked;
     }
 
     /// While the project skips the stock simulation, the warning and its tick
