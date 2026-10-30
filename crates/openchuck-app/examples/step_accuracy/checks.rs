@@ -41,32 +41,42 @@ pub fn within_rounding(
     context: &str,
 ) -> Result<f64, String> {
     use serde_json::Value;
-    fn walk(a: &Value, b: &Value, largest: &mut f64) -> bool {
+    // The largest numeric difference and where it is.
+    fn walk(a: &Value, b: &Value, at: &str, largest: &mut (f64, String)) -> bool {
         match (a, b) {
             (Value::Number(x), Value::Number(y)) => match (x.as_f64(), y.as_f64()) {
                 (Some(x), Some(y)) => {
-                    *largest = largest.max((x - y).abs());
+                    if (x - y).abs() > largest.0 {
+                        *largest = ((x - y).abs(), at.to_owned());
+                    }
                     true
                 }
                 _ => x == y,
             },
             (Value::Array(x), Value::Array(y)) => {
-                x.len() == y.len() && x.iter().zip(y).all(|(p, q)| walk(p, q, largest))
+                x.len() == y.len()
+                    && x.iter()
+                        .zip(y)
+                        .enumerate()
+                        .all(|(i, (p, q))| walk(p, q, &format!("{at}/{i}"), largest))
             }
             (Value::Object(x), Value::Object(y)) => {
                 x.len() == y.len()
-                    && x.iter()
-                        .all(|(k, p)| y.get(k).is_some_and(|q| walk(p, q, largest)))
+                    && x.iter().all(|(k, p)| {
+                        y.get(k)
+                            .is_some_and(|q| walk(p, q, &format!("{at}/{k}"), largest))
+                    })
             }
             _ => a == b,
         }
     }
-    let mut largest = 0.0_f64;
-    if walk(expected, actual, &mut largest) && largest <= tolerance {
-        Ok(largest)
+    let mut largest = (0.0_f64, String::new());
+    if walk(expected, actual, "", &mut largest) && largest.0 <= tolerance {
+        Ok(largest.0)
     } else {
         Err(format!(
-            "M4 failed: {context} differs (largest numeric difference {largest:e}, tolerance {tolerance:e})"
+            "M4 failed: {context} differs (largest numeric difference {:e} at {}, tolerance {tolerance:e})",
+            largest.0, largest.1
         ))
     }
 }

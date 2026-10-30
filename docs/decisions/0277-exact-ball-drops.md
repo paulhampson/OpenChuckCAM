@@ -94,7 +94,21 @@ The revolved spline's helical finish is the closest to the limit: its patch is r
 | | simultaneous | b | 0.0169 | 0.0174 | 0.0169 | 0.0095 | **no**, yes |
 | | | d | 0.0000 | 0.0005 | 0.0000 | 0.0002 | yes, yes |
 
-BLISK-M2-TABLE
+The blisk at full stepovers (all six successful operations, both forms; 40,100 to 782,464 stations an operation):
+
+| Operation | Form | Deepest cut | Proven at most | At the poses | Largest gap | Within 0.01 mm (cut, gap) |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Rotary roughing (0.3 left) | b, d | 0 | 0 | 0 | 0.0071 | yes, yes |
+| Rest machining | b | 0.0426 | 0.0430 | 0.0426 | 0.0102 | **no**, **no** |
+| | d | 0.0041 | 0.0045 | 0.0001 | 0.0040 | yes, yes |
+| Pencil clean-up (unchanged) | b, d | 0.0342 | 0.0347 | 0.0342 | 0.0065 | **no**, yes |
+| Helical finishing | b | 0.0426 | 0.0430 | 0.0426 | 0.0102 | **no**, **no** |
+| | d | 0.0041 | 0.0045 | 0.0001 | 0.0040 | yes, yes |
+| Axial finishing (unchanged) | b, d | 0.0428 | 0.0432 | 0.0428 | 0.0092 | **no**, yes |
+| Indexed finishing | b | 0.0318 | 0.0322 | 0.0317 | 0.0086 | **no**, yes |
+| | d | 0.0039 | 0.0044 | 0.0001 | 0.0036 | yes, yes |
+
+With exact contacts the dropped poses lie within the checker's resolution of the exact faces, at face edges as elsewhere: the trim polylines of OI-1040 did not show at any pose on the blisk or the corpus. What remains between poses is the path fitter's chord (its 0.004 mm limit, decision 0211 M2 item 3). Pencil and axial finishing keep the tessellation's cut until lane STEPALL-X3.
 
 **Determinism and equivalence** (M4): on the corpus parts and the blisk, each form's toolpath and its posted G-code for both posts (Makera Z1 and LinuxCNC) are byte-identical at 1, 2 and 4 threads; through the application, both posts' programs are identical at 1, 2 and 4 threads, pass the replay gates, and equal the library's form (d) byte for byte. The library's and the application's paths are equal on the corpus; on the blisk's full sequence they are equal to within 1.2e-12 mm in indexed finishing's entry move, a difference that exists on `main` with the tessellation drop too (OI-1110). BLISK-M4-LINE
 
