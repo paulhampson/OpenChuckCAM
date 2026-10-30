@@ -158,7 +158,7 @@ fn req_nfr_15_the_preview_scrolls_with_page_keys_and_home_and_end() {
         .output_preview
         .as_ref()
         .unwrap()
-        .2
+        .3
         .as_ref()
         .unwrap()
         .files()[0]
@@ -244,7 +244,7 @@ fn req_gc_07_the_dialogs_preview_holds_the_bytes_the_write_makes() {
     let _out = Cleanup(out.clone());
     let plan = app.prepare_output(&out, &run).unwrap();
     assert!(app.write_output(&plan, false).is_complete());
-    let shown = panel.output_preview.as_ref().unwrap().2.as_ref().unwrap();
+    let shown = panel.output_preview.as_ref().unwrap().3.as_ref().unwrap();
     assert!(!shown.files().is_empty());
     for file in shown.files() {
         assert_eq!(std::fs::read(out.join(file.name())).unwrap(), file.bytes());
@@ -377,4 +377,25 @@ fn measure_a_million_line_program_in_the_dialog() {
     panel.preview_view.scroll.top = 999_984.0;
     time("end", &mut panel, &ctx, &mut clock);
     eprintln!("first frame (preview made, 1M lines): {first:?}");
+}
+
+#[test]
+fn req_gc_15_a_preview_refused_for_a_changed_project_is_made_again_when_it_is_back() {
+    let (_clean, mut app, mut panel) = dialog("preview-skip", OutputGrouping::Setup);
+    let (ctx, mut clock) = (viewer(), 0.0);
+    frame(&ctx, &mut panel, &app, Vec::new(), &mut clock);
+    assert!(panel.output_preview.as_ref().unwrap().3.is_ok());
+    // The stock simulation switch is not part of the output's key, so the
+    // list stays current while the preview's run no longer matches.
+    app.execute(openchuck_app::Command::SetSkipStockSimulation(true))
+        .unwrap();
+    frame(&ctx, &mut panel, &app, Vec::new(), &mut clock);
+    assert!(panel.output_preview.as_ref().unwrap().3.is_err());
+    app.execute(openchuck_app::Command::SetSkipStockSimulation(false))
+        .unwrap();
+    frame(&ctx, &mut panel, &app, Vec::new(), &mut clock);
+    assert!(
+        panel.output_preview.as_ref().unwrap().3.is_ok(),
+        "the refusal is not kept once the project is as the run was"
+    );
 }

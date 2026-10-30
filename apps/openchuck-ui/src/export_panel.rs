@@ -88,6 +88,15 @@ struct Files {
     plan: Vec<PlannedFile>,
 }
 
+/// The preview made for a run: the run, the templates, whether the run's
+/// project was the project then, and the files or why there are none.
+type CachedPreview = (
+    Arc<Regeneration>,
+    openchuck_app::FileNameTemplates,
+    bool,
+    Result<openchuck_app::output_preview::OutputPreview, String>,
+);
+
 /// Something the user asked for this frame, done after drawing.
 #[derive(Debug, Clone, PartialEq)]
 enum Act {
@@ -146,11 +155,7 @@ pub struct ExportPanel {
     preview_view: preview::PreviewView,
     /// The files as they would be written, made when the run or the
     /// templates change.
-    output_preview: Option<(
-        Arc<Regeneration>,
-        openchuck_app::FileNameTemplates,
-        Result<openchuck_app::output_preview::OutputPreview, String>,
-    )>,
+    output_preview: Option<CachedPreview>,
     ack: Option<Acknowledgements>,
     ack_lookup: AcknowledgementLookup,
     /// Whether this computer has the acknowledgement that the project skips
@@ -1018,7 +1023,7 @@ impl ExportPanel {
             .plan
             .iter()
             .map(|planned| {
-                let (_, _, made) = self.output_preview.as_ref()?;
+                let (_, _, _, made) = self.output_preview.as_ref()?;
                 let named = named.as_ref()?.as_ref().ok()?;
                 let name = &named
                     .programs
@@ -1130,13 +1135,20 @@ impl ExportPanel {
     /// Makes the preview when the run or the file name templates changed.
     fn ensure_preview(&mut self, app: &Application, run: &Arc<Regeneration>) {
         let templates = app.file_name_templates();
+        // `files_current` ignores the stock simulation switch and the hidden
+        // paths, which `output_preview` does not: so the preview is also keyed
+        // on whether the run's project is the project now, and a refusal for
+        // a project that has since gone back is not kept.
+        let same = *run.project == *app.project();
         let fresh = self
             .output_preview
             .as_ref()
-            .is_some_and(|(r, t, _)| Arc::ptr_eq(r, run) && t == templates);
+            .is_some_and(|(r, t, same_then, _)| {
+                Arc::ptr_eq(r, run) && t == templates && *same_then == same
+            });
         if !fresh {
             let made = app.output_preview(run).map_err(|e| e.to_string());
-            self.output_preview = Some((Arc::clone(run), templates.clone(), made));
+            self.output_preview = Some((Arc::clone(run), templates.clone(), same, made));
         }
     }
 
@@ -1145,7 +1157,7 @@ impl ExportPanel {
     fn preview_section(&mut self, ui: &mut egui::Ui, run: &Arc<Regeneration>) {
         ui.add_space(4.0);
         ui.heading("Preview");
-        let Some((_, _, made)) = &self.output_preview else {
+        let Some((_, _, _, made)) = &self.output_preview else {
             return;
         };
         let preview = match made {

@@ -270,6 +270,10 @@ impl PreviewView {
             ui.label("Find");
             let edit = ui.add(egui::TextEdit::singleline(&mut self.needle).desired_width(140.0));
             let entered = edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            if entered {
+                // Enter ends the edit; keep the box so Enter can go on.
+                edit.request_focus();
+            }
             let back_key = entered && ui.input(|i| i.modifiers.shift);
             let previous = ui.button("Previous").clicked() || back_key;
             let next = ui.button("Next").clicked() || (entered && !back_key);
