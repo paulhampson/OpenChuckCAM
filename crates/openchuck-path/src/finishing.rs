@@ -38,7 +38,14 @@ pub mod parameter {
     /// The depth of each layer along the tool axis, mm; the name roughing
     /// uses, so the tool's cutting data fills it.
     pub use crate::roughing::parameter::STEPDOWN;
+    /// What the final pass alone takes, mm along the tool axis, with
+    /// Finishing layers on: the layers stop this far above the target.
+    pub const FINISH_ALLOWANCE: &str = "finish_allowance";
 }
+
+/// The Finish allowance when the operation sets none, mm (decision record
+/// 0345; the owner's example).
+pub const DEFAULT_FINISH_ALLOWANCE: f64 = 0.1;
 
 /// The Stepdown when it is required: a positive number with no default.
 fn required_stepdown() -> ParameterKind {
@@ -67,6 +74,21 @@ pub(crate) fn specs(free_ends: bool, layers: bool) -> Vec<ParameterSpec> {
         });
     }
     if layers {
+        out.push(ParameterSpec {
+            name: parameter::FINISH_ALLOWANCE.to_owned(),
+            label: "Finish allowance".to_owned(),
+            description: "With finishing layers on, the layers stop this far above the \
+                          finished surface and the final pass takes only this much. 0 makes \
+                          the last layer the final pass."
+                .to_owned(),
+            kind: ParameterKind::Number {
+                unit: Unit::Millimetres,
+                min: Some(0.0),
+                min_exclusive: false,
+                max: None,
+                default: Some(DEFAULT_FINISH_ALLOWANCE),
+            },
+        });
         out.push(ParameterSpec {
             name: parameter::FINISHING_LAYERS.to_owned(),
             label: "Finishing layers".to_owned(),
@@ -106,13 +128,19 @@ pub(crate) fn schema_for(
         values.get(parameter::FINISHING_LAYERS),
         Some(ParameterValue::Flag(true))
     );
-    if layers
-        && let Some(spec) = schema
+    if layers {
+        if let Some(spec) = schema
             .parameters
             .iter_mut()
             .find(|p| p.name == parameter::STEPDOWN)
-    {
-        spec.kind = required_stepdown();
+        {
+            spec.kind = required_stepdown();
+        }
+    } else {
+        // The Finish allowance shows only with layers on.
+        schema
+            .parameters
+            .retain(|p| p.name != parameter::FINISH_ALLOWANCE);
     }
     schema
 }
@@ -181,13 +209,14 @@ pub(crate) fn free_ends(
             });
             continue;
         }
-        if !stock.left_by_earlier_operations() {
+        // With no earlier operation in the setup its own stock is what is on
+        // the machine (OI-1394); only a stock of no known size is skipped.
+        if stock.max_radius().is_none() {
             out.warnings.push(PathWarning {
                 message: format!(
-                    "the end face at X {face:.3} has nothing beyond it and is not faced: no \
-                     earlier operation in this setup shows what stock is past it, so the \
-                     tool would cut there blind. Add the roughing first, or turn off Face \
-                     free ends."
+                    "the end face at X {face:.3} has nothing beyond it and is not faced: the \
+                     setup's stock has no known size, so the tool would cut there blind. \
+                     Define the stock, or turn off Face free ends."
                 ),
                 parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
             });
@@ -264,10 +293,18 @@ pub(crate) fn free_ends(
             });
         }
         let (from, to) = (end.x - radius, end.x + radius);
+        let source = if stock.left_by_earlier_operations() {
+            String::new()
+        } else {
+            format!(
+                ", from {top:.3} mm, the top of the setup's own stock with no earlier \
+                 operation in this setup: the real blank must match it"
+            )
+        };
         out.notes.push(format!(
             "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
-             axis in each"
+             axis in each{source}"
         ));
         // Stock past the ring that no held region past it grips: a cheap test
         // of whether there is any, not of whether it is joined to the rest
@@ -311,4 +348,129 @@ pub(crate) fn free_ends(
         }
     }
     Ok(out)
+}
+
+/// `passes`, the operation's final passes on the target, with the Finishing
+/// layers before them when they are on (decision record 0345; OI-1391
+/// option 1, OI-1392 option 3), and the note that says so.
+///
+/// The layers stand at the Finish allowance F plus whole Stepdowns S above
+/// the target, along the tool axis: each a copy of the final passes lifted
+/// by F + k S, top first, so the layers of neighbouring passes line up. A
+/// layer is cut only where the stock (what earlier operations left, or the
+/// setup's own stock) holds material above it there, read along the tool
+/// axis at each point, so no layer cuts air. Where F is zero the lowest
+/// layer is the final pass itself. The final passes come last, unchanged.
+pub(crate) fn layers(
+    input: &StrategyInput<'_>,
+    passes: Vec<Pass>,
+    parameters: &Parameters,
+) -> Result<(Vec<Pass>, Option<String>)> {
+    if !parameters
+        .flag(parameter::FINISHING_LAYERS)
+        .unwrap_or(false)
+    {
+        return Ok((passes, None));
+    }
+    let stepdown = parameters.number(parameter::STEPDOWN)?;
+    let allowance = parameters
+        .number(parameter::FINISH_ALLOWANCE)
+        .unwrap_or(DEFAULT_FINISH_ALLOWANCE);
+    if allowance >= stepdown {
+        return Err(PathError::parameter(
+            parameter::FINISH_ALLOWANCE,
+            format!("must be less than the Stepdown, {stepdown} mm; it is {allowance} mm"),
+        ));
+    }
+    let flutes = input.tool.top();
+    if stepdown > flutes {
+        return Err(PathError::parameter(
+            parameter::STEPDOWN,
+            format!(
+                "{stepdown} mm is more than the tool's {flutes:.3} mm of flute; a layer that \
+                 deep would cut with the shank"
+            ),
+        ));
+    }
+    let stock = input.stock;
+    let reach = 2.0 * (stock.max_radius().unwrap_or(0.0) + 1.0);
+    // How high the stock's material reaches above each point along the tool
+    // axis; zero where there is none.
+    let tops: Vec<Vec<f64>> = passes
+        .iter()
+        .map(|pass| {
+            pass.points
+                .iter()
+                .map(|p| {
+                    let axis = input.rotary.tool_axis(p.a).get();
+                    let Ok(down) = UnitVec3::new(axis * -1.0) else {
+                        return 0.0;
+                    };
+                    let length = reach + (p.tip - Point3::ORIGIN).length();
+                    stock
+                        .ray_entry(p.tip + axis * length, down, length)
+                        .map_or(0.0, |d| (length - d).max(0.0))
+                })
+                .collect()
+        })
+        .collect();
+    let highest = tops.iter().flatten().copied().fold(0.0_f64, f64::max);
+    // The layers F + k S below the highest material, top first; with F zero
+    // the k = 0 layer is the final pass.
+    let first = usize::from(allowance <= 0.0);
+    let mut heights: Vec<f64> = (first..)
+        .map(|k| allowance + k as f64 * stepdown)
+        .take_while(|h| *h < highest - LAYER_SLACK)
+        .collect();
+    heights.reverse();
+    let mut out = Vec::new();
+    for &h in &heights {
+        for (pass, top) in passes.iter().zip(&tops) {
+            let mut run: Vec<CutPoint> = Vec::new();
+            for (p, t) in pass.points.iter().zip(top) {
+                if *t > h + LAYER_SLACK {
+                    let axis = input.rotary.tool_axis(p.a).get();
+                    run.push(CutPoint {
+                        tip: p.tip + axis * h,
+                        a: p.a,
+                        contact: p.contact + axis * h,
+                    });
+                } else if !run.is_empty() {
+                    push_run(&mut out, std::mem::take(&mut run));
+                }
+            }
+            push_run(&mut out, run);
+        }
+    }
+    let note = (!heights.is_empty()).then(|| {
+        let from = if stock.left_by_earlier_operations() {
+            "the stock the earlier operations left, known to a simulation cell"
+        } else {
+            "the setup's own stock, with no earlier operation in this setup"
+        };
+        format!(
+            "finishing layers: up to {} layers of {stepdown} mm above a finish allowance of \
+             {allowance} mm, then the final pass on the surface; the layers start from {from}, \
+             so the depth of each cut is not uniform and no engagement is promised",
+            heights.len()
+        )
+    });
+    out.extend(passes);
+    Ok((out, note))
+}
+
+/// How far, mm, the material must reach past a layer for the layer to cut
+/// there.
+const LAYER_SLACK: f64 = 1e-6;
+
+/// Adds a run of a layer as a pass when it has a move in it.
+fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
+    if points.len() >= 2 {
+        out.push(Pass {
+            helical_pass_start: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+        });
+    }
 }

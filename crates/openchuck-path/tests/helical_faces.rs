@@ -1105,16 +1105,24 @@ fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
 }
 
 #[test]
-fn req_nfr_12_a_free_end_with_unknown_stock_is_left_and_said() {
-    // With no earlier operation in the setup the stock past the face is not
-    // known: the turn is not made, never a blind cut (decision record 0344).
+fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
+    // With no earlier operation in the setup (a finish-only setup) the
+    // setup's own stock is what is on the machine: the free end is faced
+    // from it, and a note says so and that the real blank must match it
+    // (decision record 0344, OI-1394).
     let job = free_end(false, 12.0);
     let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
     let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
-    assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    let turns = turns_in_place(&path)
+        .into_iter()
+        .filter(|t| (t - x).abs() < 1e-6)
+        .count();
+    assert_eq!(turns, 6);
     let text = messages(&path);
     assert!(
-        text.contains("X 0.000") && text.contains("no earlier operation"),
+        text.contains("X 0.000")
+            && text.contains("the setup's own stock")
+            && text.contains("the real blank must match it"),
         "{text}"
     );
 }

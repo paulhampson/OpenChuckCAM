@@ -112,3 +112,177 @@ fn req_tl_05_req_nfr_12_stepdown_is_required_only_with_layers_on() {
         assert!(s.resolve_parameters(&values).is_err(), "{}", s.name());
     }
 }
+
+// ---- finishing layers (decision record 0345) --------------------------------
+
+mod support;
+
+use openchuck_path::finishing::parameter::FINISH_ALLOWANCE;
+use openchuck_path::{GeneratedPath, MeshSurface, generate};
+use openchuck_testkit::parts::{Cylinder, RadialPart};
+use openchuck_types::ir::MoveKind;
+use openchuck_types::tool::ToolShape;
+use support::{Fixture, run, tool};
+
+/// A radius 10 cylinder, X 0 to 30, in cylinder stock of `stock` radius.
+fn cylinder(stock: f64) -> Fixture {
+    let mesh = Cylinder {
+        radius: 10.0,
+        length: 30.0,
+    }
+    .mesh(61, 720);
+    Fixture::new(
+        MeshSurface::new(&mesh).unwrap(),
+        stock,
+        &tool(ToolShape::FlatEnd, 3.175),
+    )
+}
+
+fn layered(
+    f: &Fixture,
+    strategy: &dyn Strategy,
+    extra: &[(&str, ParameterValue)],
+) -> Result<GeneratedPath, String> {
+    let mut values = common();
+    values.insert("tolerance".to_owned(), ParameterValue::Number(0.01));
+    if strategy.schema().get(FACE_FREE_ENDS).is_some() {
+        values.insert(FACE_FREE_ENDS.to_owned(), ParameterValue::Flag(false));
+    }
+    for (k, v) in extra {
+        values.insert((*k).to_owned(), v.clone());
+    }
+    run(|ctx| generate(strategy, &f.input(), &values, ctx)).map_err(|e| e.to_string())
+}
+
+fn layers_on(stepdown: f64, allowance: f64) -> Vec<(&'static str, ParameterValue)> {
+    vec![
+        (FINISHING_LAYERS, ParameterValue::Flag(true)),
+        (STEPDOWN, ParameterValue::Number(stepdown)),
+        (FINISH_ALLOWANCE, ParameterValue::Number(allowance)),
+    ]
+}
+
+/// The radii of the tool's tip over the part's length on cutting moves, to a
+/// micrometre: the levels the operation cuts at.
+fn levels(path: &GeneratedPath) -> Vec<i64> {
+    let mut out: Vec<i64> = path
+        .group
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting && (1.0..=29.0).contains(&s.end.tip.x))
+        .map(|s| (s.end.tip.y.hypot(s.end.tip.z) * 1000.0).round() as i64)
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+#[test]
+fn req_op_04_finishing_layers_step_down_to_a_light_final_pass() {
+    // 2 mm of stock over the target, Stepdown 0.8, Finish allowance 0.1: the
+    // layers are at 0.1 + 0.8 k above the target where stock is there to
+    // cut (0.1, 0.9 and 1.7), then the final pass on the target (decision
+    // record 0345; OI-1391 option 1, OI-1392 option 3).
+    let f = cylinder(12.0);
+    for s in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &IndexedFinishing,
+    ] {
+        let path = layered(&f, s, &layers_on(0.8, 0.1)).unwrap();
+        assert_eq!(
+            levels(&path),
+            vec![10_000, 10_100, 10_900, 11_700],
+            "{}",
+            s.name()
+        );
+        // The deepest level last: the final pass ends the operation's cuts.
+        let last = path
+            .group
+            .segments
+            .iter()
+            .rev()
+            .find(|s| s.kind == MoveKind::Cutting)
+            .unwrap();
+        assert!(
+            (last.end.tip.y.hypot(last.end.tip.z) - 10.0).abs() < 1e-3,
+            "{}",
+            s.name()
+        );
+        let notes: String = path.notes.iter().map(|n| n.message.clone()).collect();
+        assert!(
+            notes.contains("3 layers of 0.8 mm") && notes.contains("finish allowance of 0.1 mm"),
+            "{}: {notes}",
+            s.name()
+        );
+    }
+}
+
+#[test]
+fn req_op_04_no_layer_cuts_air() {
+    // Only 0.5 mm over the target: one layer at 0.1, none at 0.9.
+    let f = cylinder(10.5);
+    let path = layered(&f, &HelicalFinishing, &layers_on(0.8, 0.1)).unwrap();
+    assert_eq!(levels(&path), vec![10_000, 10_100]);
+}
+
+#[test]
+fn req_op_04_a_zero_finish_allowance_puts_the_last_layer_on_the_target() {
+    let f = cylinder(12.0);
+    let path = layered(&f, &HelicalFinishing, &layers_on(0.8, 0.0)).unwrap();
+    assert_eq!(levels(&path), vec![10_000, 10_800, 11_600]);
+}
+
+#[test]
+fn req_op_04_layers_off_is_the_path_as_before() {
+    let f = cylinder(12.0);
+    for s in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &IndexedFinishing,
+    ] {
+        let plain = layered(&f, s, &[]).unwrap();
+        let off = layered(
+            &f,
+            s,
+            &[
+                (FINISHING_LAYERS, ParameterValue::Flag(false)),
+                (STEPDOWN, ParameterValue::Number(0.8)),
+                (FINISH_ALLOWANCE, ParameterValue::Number(0.1)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", plain.group),
+            format!("{:?}", off.group),
+            "{}",
+            s.name()
+        );
+        assert_eq!(levels(&plain), vec![10_000], "{}", s.name());
+    }
+}
+
+#[test]
+fn req_nfr_07_a_finish_allowance_not_below_the_stepdown_or_a_stepdown_past_the_flutes_is_refused() {
+    let f = cylinder(12.0);
+    let err = layered(&f, &HelicalFinishing, &layers_on(0.8, 0.8)).unwrap_err();
+    assert!(err.contains(FINISH_ALLOWANCE), "{err}");
+    let err = layered(&f, &HelicalFinishing, &layers_on(0.8, -0.1)).unwrap_err();
+    assert!(err.contains(FINISH_ALLOWANCE), "{err}");
+    // The test tool has 12 mm of flute.
+    let err = layered(&f, &HelicalFinishing, &layers_on(13.0, 0.1)).unwrap_err();
+    assert!(err.contains("flute"), "{err}");
+}
+
+#[test]
+fn req_nfr_06_req_gc_07_finishing_layers_are_identical_at_1_2_and_n_threads() {
+    let f = cylinder(12.0);
+    for s in [&HelicalFinishing as &dyn Strategy, &IndexedFinishing] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = layered(&f, s, &layers_on(0.8, 0.1)).unwrap();
+            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4, "{}", s.name());
+    }
+}

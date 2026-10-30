@@ -111,6 +111,7 @@ impl Strategy for IndexedFinishing {
             axial_parameter::MAX_X_STEP,
             crate::extend::parameter::EXTEND,
             crate::extend::parameter::EXTEND_DISTANCE,
+            crate::finishing::parameter::FINISH_ALLOWANCE,
             crate::finishing::parameter::FINISHING_LAYERS,
             crate::finishing::parameter::STEPDOWN,
         ] {
@@ -144,7 +145,7 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, _)| p)
+        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
     }
 
     fn passes(
@@ -153,7 +154,7 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context).map(|(p, _)| p)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -163,7 +164,7 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context).map(|(p, _)| p)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_with_notes(
@@ -173,9 +174,12 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, (x0, x1)) = passes(input, region, &[], parameters, context)?;
+        let (passes, (x0, x1), layered) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
-            notes: beyond_note(&passes, x0, x1).into_iter().collect(),
+            notes: beyond_note(&passes, x0, x1)
+                .into_iter()
+                .chain(layered)
+                .collect(),
             passes,
             warnings: Vec::new(),
         })
@@ -226,7 +230,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, (f64, f64))> {
+) -> Result<(Vec<Pass>, (f64, f64), Option<String>)> {
     let angles = positions(parameters)?;
     let mut along = AlongX::read(input, region, zones, parameters)?;
     // Each pass runs on past the ends of the target by the tool's radius
@@ -239,8 +243,9 @@ fn passes(
     let tolerance = parameters.number(names::TOLERANCE)?;
     along.beyond = along.grown_radius() - 0.1 * tolerance;
     along.check_passes(angles.len())?;
-    Ok((
-        along.passes_at(&angles, "indexed finishing", context)?,
-        along.range(),
-    ))
+    let passes = along.passes_at(&angles, "indexed finishing", context)?;
+    // Finishing layers above them, when on; each layer keeps the pass's A
+    // (decision record 0345).
+    let (passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    Ok((passes, along.range(), layered))
 }

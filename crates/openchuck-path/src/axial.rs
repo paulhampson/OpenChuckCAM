@@ -557,6 +557,9 @@ fn passes(
             context,
         )?);
     }
+    // Finishing layers above the passes made so far, when on (decision
+    // record 0345).
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
     // The free ends, in layers down beside them (decision record 0344).
     let free = crate::finishing::free_ends(
         input,
@@ -569,6 +572,7 @@ fn passes(
     let notes = faces::note(&turns)
         .into_iter()
         .chain(faces::held_note(&held))
+        .chain(layered)
         .chain(free.notes)
         .collect();
     Ok((passes, notes, free.warnings))
