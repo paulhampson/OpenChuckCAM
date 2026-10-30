@@ -860,16 +860,10 @@ impl Plan<'_> {
     /// `at` between them: the tool is dropped along its axis at that machine
     /// pose, and the distance it moves is taken along the surface normal.
     /// Positive when the move would cut into the surface, negative when it
-    /// would leave material; zero when there is no surface under it. A is
+    /// would leave material; `None` when there is no surface under it. A is
     /// linear in the track parameter, so the straight move reaches the same
     /// fraction of every axis.
-    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> f64 {
-        self.deviation_over(a, b, at).unwrap_or(0.0)
-    }
-
-    /// [`deviation`](Self::deviation), or `None` when the tool at that pose
-    /// meets no surface along its axis.
-    fn deviation_over(&self, a: &Node, b: &Node, at: &Node) -> Option<f64> {
+    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> Option<f64> {
         let (line, _) = self.straight_pose(a, b, at);
         self.input
             .surface
@@ -1015,7 +1009,7 @@ impl Plan<'_> {
         let t = 0.5 * (a.t + b.t);
         match middle.unwrap_or_else(|| self.node(track, axis, t)) {
             Some(mid) => {
-                let over = self.deviation_over(a, b, &mid);
+                let over = self.deviation(a, b, &mid);
                 let error = over.unwrap_or(0.0);
                 if depth < MAX_DEPTH {
                     // The straight move must hold at the quarter points too.
@@ -1029,9 +1023,7 @@ impl Plan<'_> {
                     // a wall between them, so the move is split (decision
                     // record 0363 item 2).
                     let quarter = |n: &Option<Node>| match n {
-                        Some(q) => self
-                            .deviation_over(a, b, q)
-                            .is_none_or(|e| e.abs() > self.chord),
+                        Some(q) => self.deviation(a, b, q).is_none_or(|e| e.abs() > self.chord),
                         None => self.constrained,
                     };
                     let first = self.node(track, axis, 0.5 * (a.t + mid.t));
