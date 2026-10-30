@@ -919,18 +919,20 @@ fn req_nfr_07_req_sim_04_playback_never_holds_more_than_its_memory() {
             },
             &context,
         )
-        .unwrap()
-        .memory_bytes();
+        .unwrap();
+    // Checkpoints hold packed copies; a replay holds one packed (the stock
+    // kept from the last request) and one unpacked (the one being cut).
+    let (packed, working) = (start.pack().memory_bytes(), start.memory_bytes());
     // Room for the copies that must be kept (the start, after the one
-    // operation, and the replay's two) and about one more: playback keeps
+    // operation, and the replay's) and about one more: playback keeps
     // fewer checkpoints, never more memory, and shows the same stock.
-    let memory = start * 5 + start / 2;
+    let memory = 3 * packed + working + packed * 3 / 2;
     let tight = Arc::new(
         app.start_stock_playback(Arc::clone(&t), memory)
             .wait()
             .unwrap(),
     );
-    assert!(tight.checkpoint_bytes() + 2 * start <= memory);
+    assert!(tight.checkpoint_bytes() + packed + working <= memory);
     assert!(tight.checkpoints() < roomy.checkpoints());
     let n = t.move_count();
     for done in (0..=n).step_by((n / 7).max(1)) {
@@ -947,7 +949,7 @@ fn req_nfr_07_req_sim_04_playback_never_holds_more_than_its_memory() {
     // Too little for the copies that must be kept: refused with the
     // setting named, not a crash (NFR-07).
     let error = app
-        .start_stock_playback(Arc::clone(&t), start * 3)
+        .start_stock_playback(Arc::clone(&t), 3 * packed)
         .wait()
         .unwrap_err();
     assert!(

@@ -482,7 +482,10 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
         let kept = Checkpoint {
             group: kept_at.0,
             moves: kept_at.1,
-            stock: sim.stock_at(kept_at.0, kept_at.1, &groups, &ctx).unwrap(),
+            stock: sim
+                .stock_at(kept_at.0, kept_at.1, &groups, &ctx)
+                .unwrap()
+                .pack(),
         };
         let jumped = sim
             .stock_at_from(Some(&kept), later.0, later.1, &groups, &ctx)
@@ -514,7 +517,7 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
     let kept = Checkpoint {
         group: 1,
         moves: 37,
-        stock: sim.stock().clone(),
+        stock: sim.stock().pack(),
     };
     let same = sim
         .stock_at_from(Some(&kept), 1, 37, &groups, &ctx)
@@ -724,6 +727,42 @@ impl ProgressSink for Recorder {
     fn report(&self, progress: Progress) {
         self.0.lock().unwrap().push(progress);
     }
+}
+
+/// The cut-part bar's loading fill (decision record 0322) reads a jump's
+/// progress: one total, the moves to replay across every group, counted up
+/// without going back, ending at the total.
+#[test]
+fn req_ui_09_req_sim_04_a_jump_reports_its_replay_as_one_total() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let quiet = JobContext::new(&cancel, &NoProgress);
+    // Only the start is kept, so the jump replays the first group whole and
+    // 37 moves of the second.
+    let mut sim = Simulator::new(make(), &m, None).with_checkpoint_budget(0);
+    sim.run_group(&g1, &profile, &quiet).unwrap();
+    sim.run_group(&g2, &profile, &quiet).unwrap();
+    assert_eq!(sim.checkpoints().len(), 1);
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let recorder = Recorder(Mutex::new(Vec::new()));
+    let ctx = JobContext::new(&cancel, &recorder);
+    sim.stock_at(1, 37, &groups, &ctx).unwrap();
+    let reports = recorder.0.into_inner().unwrap();
+    let total = (g1.segments.len() + 37) as u64;
+    // A report at least every 256 moves, besides those after each batch.
+    assert!(reports.len() as u64 >= total / 256, "{}", reports.len());
+    assert!(
+        reports.iter().all(|p| p.total == Some(total)),
+        "{reports:?}"
+    );
+    assert!(reports.windows(2).all(|w| w[0].done <= w[1].done));
+    assert_eq!(reports.last().map(|p| p.done), Some(total));
 }
 
 #[test]

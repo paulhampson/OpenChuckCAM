@@ -7,12 +7,12 @@
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{PathTags, ToolpathGroup};
-use openchuck_types::job::JobContext;
+use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::kinematics::{AsRotaryFrame, RotaryFrame};
 use openchuck_types::tool::RevolvedProfile;
 use openchuck_types::{Error, Result};
 
-use crate::dexel::{DexelStock, Pose};
+use crate::dexel::{DexelStock, PackedStock, Pose};
 use crate::sample::{Sampling, must_not_cut, sample_move};
 use crate::span::ToolSolid;
 
@@ -60,9 +60,12 @@ pub struct Checkpoint {
     pub group: usize,
     /// Moves of that group done.
     pub moves: usize,
-    /// The stock at that point.
-    pub stock: DexelStock,
+    /// The stock at that point, packed ([`DexelStock::pack`]).
+    pub stock: PackedStock,
 }
+
+/// Moves between two progress reports within a batch of poses.
+const PROGRESS_EVERY: usize = 256;
 
 /// Runs toolpath groups against a stock.
 #[derive(Debug, Clone)]
@@ -97,7 +100,7 @@ impl Simulator {
         let checkpoints = vec![Checkpoint {
             group: 0,
             moves: 0,
-            stock: stock.clone(),
+            stock: stock.pack(),
         }];
         let checkpoint_bytes = checkpoints.iter().map(|c| c.stock.memory_bytes()).sum();
         Self {
@@ -132,7 +135,7 @@ impl Simulator {
     /// Keeps a checkpoint of the stock now, after `moves` moves of group
     /// `group`, unless it would pass the budget.
     fn keep_checkpoint(&mut self, group: usize, moves: usize) {
-        let stock = self.stock.clone();
+        let stock = self.stock.pack();
         let bytes = self.checkpoint_bytes.saturating_add(stock.memory_bytes());
         if self.checkpoint_budget.is_some_and(|budget| bytes > budget) {
             return;
@@ -250,11 +253,11 @@ impl Simulator {
                 Error::invalid("checkpoint", "no checkpoint before the requested move")
             })?;
         if (cp.group, cp.moves) == target {
-            return Ok(cp.stock.clone());
+            return Ok(cp.stock.unpack());
         }
         let mut replay = Self {
             frame: self.frame,
-            stock: cp.stock.clone(),
+            stock: cp.stock.unpack(),
             spacing: self.spacing,
             reach: self.reach,
             checkpoint_every: None,
@@ -264,9 +267,10 @@ impl Simulator {
             checkpoint_bytes: 0,
             groups_done: cp.group,
         };
-        let mut g = cp.group;
+        // The ranges to replay, first to last, so that progress is one total.
+        let mut ranges = Vec::new();
         let mut skip = cp.moves;
-        while g <= group {
+        for g in cp.group..=group {
             let (path, profile) = groups.get(g).ok_or_else(|| {
                 Error::invalid("group", format!("group {g} has not been simulated"))
             })?;
@@ -275,9 +279,23 @@ impl Simulator {
             } else {
                 path.segments.len()
             };
-            replay.run_range(path, profile, skip, end, false, context)?;
+            ranges.push((*path, *profile, skip, end));
             skip = 0;
-            g += 1;
+        }
+        let total = ranges
+            .iter()
+            .map(|(_, _, first, end)| end.saturating_sub(*first) as u64)
+            .sum();
+        let mut before = 0u64;
+        for (path, profile, first, end) in ranges {
+            let within = Within {
+                sink: context.progress,
+                before,
+                total,
+            };
+            let part = JobContext::new(context.cancel, &within);
+            replay.run_range(path, profile, first, end, false, &part)?;
+            before += end.saturating_sub(first) as u64;
         }
         Ok(replay.stock)
     }
@@ -335,6 +353,11 @@ impl Simulator {
             }
             result.moves += 1;
             prev = segment.end;
+            // Progress between batches too, for a bar that fills smoothly
+            // (decision record 0322); the stock is cut only at a flush.
+            if result.moves % PROGRESS_EVERY == 0 {
+                context.report("simulate", result.moves as u64, Some(total));
+            }
             let done = i + 1;
             let at_checkpoint =
                 keep && done < end && self.checkpoint_every.is_some_and(|n| done % n == 0);
@@ -378,5 +401,31 @@ impl Simulator {
         }
         context.report("simulate", result.moves as u64, Some(total));
         Ok(())
+    }
+}
+
+/// The progress of one range of a longer replay, reported as a share of the
+/// whole: `before` moves were replayed before it, of `total`.
+struct Within<'a> {
+    sink: &'a dyn ProgressSink,
+    before: u64,
+    total: u64,
+}
+
+impl ProgressSink for Within<'_> {
+    fn report(&self, progress: Progress) {
+        self.sink.report(Progress {
+            stage: progress.stage,
+            done: self.before.saturating_add(progress.done).min(self.total),
+            total: Some(self.total),
+        });
+    }
+
+    fn wants_timings(&self) -> bool {
+        self.sink.wants_timings()
+    }
+
+    fn timing(&self, stage: &str, elapsed: std::time::Duration) {
+        self.sink.timing(stage, elapsed);
     }
 }

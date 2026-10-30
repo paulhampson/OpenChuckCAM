@@ -18,7 +18,7 @@ use openchuck_project::id::{ModelId, OperationId, SetupId};
 use openchuck_sim::{
     Checkpoint, DeviationOptions, DexelStock, Simulator, stock_mesh, triangle_values,
 };
-use openchuck_types::job::JobContext;
+use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::RevolvedProfile;
 
@@ -36,10 +36,6 @@ pub const DEFAULT_PLAYBACK_MEMORY: usize = 1_536 * 1024 * 1024;
 
 /// The fewest moves between two checkpoints inside an operation.
 const MIN_CHECKPOINT_SPACING: usize = 1_000;
-
-/// Copies of the stock playback holds besides its checkpoints: the stock
-/// kept from the last request and the one being replayed.
-const REPLAY_COPIES: usize = 2;
 
 struct SetupPlay {
     id: SetupId,
@@ -136,7 +132,7 @@ impl StockPlayback {
             Checkpoint {
                 group: local,
                 moves,
-                stock: stock.clone(),
+                stock: stock.pack(),
             },
         )));
         let Some(original) = path.groups.get(group) else {
@@ -244,10 +240,12 @@ impl Application {
                     }
                 }
                 // Each setup's stock, and the copies that must be kept: the
-                // start and after each operation, and the replay's.
+                // start and after each operation, packed as checkpoints are,
+                // and the replay's (the stock kept from the last request,
+                // packed, and the one being replayed, unpacked).
                 let mut stocks = Vec::new();
                 let mut kept_bytes = 0usize;
-                let mut largest = 0usize;
+                let (mut packed, mut working) = (0usize, 0usize);
                 for (_, groups) in &plan {
                     let first = groups
                         .first()
@@ -266,8 +264,9 @@ impl Application {
                         Some(first.part_bounds),
                         settings.cell.0,
                     )?;
-                    let bytes = stock.memory_bytes();
-                    largest = largest.max(bytes);
+                    let bytes = stock.pack().memory_bytes();
+                    packed = packed.max(bytes);
+                    working = working.max(stock.memory_bytes());
                     kept_bytes = add_checkpoint_bytes(
                         kept_bytes,
                         groups.len() + 1,
@@ -277,24 +276,20 @@ impl Application {
                     )?;
                     stocks.push(stock);
                 }
-                let kept_bytes = add_checkpoint_bytes(
-                    kept_bytes,
-                    REPLAY_COPIES,
-                    largest,
-                    settings.cell.0,
-                    memory,
-                )?;
+                let replay = packed.saturating_add(working);
+                let kept_bytes =
+                    add_checkpoint_bytes(kept_bytes, 1, replay, settings.cell.0, memory)?;
                 let moves: usize = run.toolpath.groups.iter().map(|g| g.segments.len()).sum();
                 // The copies inside share what is left after those kept.
-                let every =
-                    checkpoint_spacing(memory.saturating_sub(kept_bytes), largest, 0, moves);
-                let total: u64 = run.groups.len() as u64;
+                let every = checkpoint_spacing(memory.saturating_sub(kept_bytes), packed, 0, moves);
+                // Progress is the moves simulated, of every group's.
+                let total = moves as u64;
                 let mut done = 0u64;
                 context.report("prepare playback", 0, Some(total));
                 let mut setups = Vec::new();
                 // Every setup's simulator is kept, so the budget is shared:
                 // each setup may use what the ones before it left.
-                let mut held = largest.saturating_mul(REPLAY_COPIES);
+                let mut held = replay;
                 for ((id, groups), stock) in plan.into_iter().zip(stocks) {
                     let mut simulator = Simulator::new(stock, machine, every)
                         .with_checkpoint_budget(memory.saturating_sub(held));
@@ -305,8 +300,17 @@ impl Application {
                         else {
                             continue;
                         };
-                        simulator.run_group(path, &info.tool, context)?;
-                        done += 1;
+                        let within = Within {
+                            sink: context.progress,
+                            before: done,
+                            total,
+                        };
+                        simulator.run_group(
+                            path,
+                            &info.tool,
+                            &JobContext::new(context.cancel, &within),
+                        )?;
+                        done += path.segments.len() as u64;
                         context.report("prepare playback", done, Some(total));
                     }
                     held = held.saturating_add(simulator.checkpoint_bytes());
@@ -463,6 +467,32 @@ impl Application {
                 Ok((model.id, deviation_bands(&values, report.settings.cell.0)))
             },
         )
+    }
+}
+
+/// The progress of one group of "prepare playback", reported as moves of
+/// every group's: `before` moves were simulated before it, of `total`.
+struct Within<'a> {
+    sink: &'a dyn ProgressSink,
+    before: u64,
+    total: u64,
+}
+
+impl ProgressSink for Within<'_> {
+    fn report(&self, progress: Progress) {
+        self.sink.report(Progress {
+            stage: "prepare playback".to_owned(),
+            done: self.before.saturating_add(progress.done).min(self.total),
+            total: Some(self.total),
+        });
+    }
+
+    fn wants_timings(&self) -> bool {
+        self.sink.wants_timings()
+    }
+
+    fn timing(&self, stage: &str, elapsed: std::time::Duration) {
+        self.sink.timing(stage, elapsed);
     }
 }
 
