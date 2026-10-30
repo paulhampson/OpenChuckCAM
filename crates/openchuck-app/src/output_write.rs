@@ -173,7 +173,7 @@ pub(crate) fn prepare(
 /// by renaming the staged file over it, never by deleting it first. Staged
 /// bytes are flushed before publishing; this is best effort, not a promise
 /// of durability after a power cut, and the batch stays non-atomic.
-fn write_one(path: &Path, bytes: &[u8], replace: bool) -> io::Result<()> {
+pub(crate) fn write_one(path: &Path, bytes: &[u8], replace: bool) -> io::Result<()> {
     write_one_with(path, bytes, replace, |from, to| {
         std::fs::hard_link(from, to)
     })

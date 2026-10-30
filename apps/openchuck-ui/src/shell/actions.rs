@@ -48,6 +48,7 @@ impl Dialog {
             Self::About => "About",
             Self::Settings => "Settings",
             Self::Error(_) => "Error message",
+            Self::CopyLinked(_) => "Copy linked models",
         }
     }
 }

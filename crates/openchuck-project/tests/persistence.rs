@@ -1920,3 +1920,42 @@ fn req_nfr_07_a_bad_operation_spindle_speed_is_refused() {
         assert!(err.contains("spindle_speed"), "{err}");
     }
 }
+
+/// Schema 21 (issue 385, decision record 0307 item 4): a model reference may
+/// record its original file name, written only when recorded; a schema 20
+/// project loads unchanged, and a schema 20 file that already holds a name is
+/// refused with what to do.
+#[test]
+fn req_prj_04_a_models_name_round_trips_and_schema_20_projects_load() {
+    let plain = sample();
+    let dir = temp_dir_saved(&plain, "model-name-plain");
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(!text.contains("name = \"part"), "{text}");
+
+    let mut p = plain.clone();
+    let mut m = p.models()[0].clone();
+    m.name = Some("Blade rev B.STL".to_owned());
+    p.replace(Item::Model(m)).unwrap();
+    let named = temp_dir_saved(&p, "model-name-set");
+    let text = std::fs::read_to_string(named.join("project.toml")).unwrap();
+    assert!(text.contains("name = \"Blade rev B.STL\"\n"), "{text}");
+    assert_eq!(file::load(&named).unwrap(), p);
+
+    // A schema 20 folder opens as the same project and saves at schema 21.
+    let at_20 = copy_tree_with(&read_tree(&dir), "model-name-20", |_, text| {
+        text.replacen(&current(), "schema = 20\n", 1)
+    });
+    let opened = file::load(&at_20).unwrap();
+    assert_eq!(opened, plain);
+    assert_eq!(
+        read_tree(&temp_dir_saved(&opened, "model-name-20-saved")),
+        read_tree(&dir)
+    );
+
+    // A schema 20 file with a name is refused, naming the field.
+    let early = copy_tree_with(&read_tree(&named), "model-name-early", |_, text| {
+        text.replacen(&current(), "schema = 20\n", 1)
+    });
+    let err = file::load(&early).unwrap_err().to_string();
+    assert!(err.contains("`name`") && err.contains("schema 21"), "{err}");
+}

@@ -1201,7 +1201,26 @@ fn req_nfr_12_turning_off_the_only_operation_says_so_without_a_button() {
     assert!(
         rig.shows("Operation 'Finish' was turned off. Turn on an operation to simulate again.")
     );
-    assert!(!rig.shows("Run simulation"));
+    // The banner has no run button (decision 0238). Simulate's footer keeps
+    // its simulation action in its place, disabled with the reason (decision
+    // 0282 items 2 and 3).
+    assert!(!rig.shows("Run simulation again"));
+    let action = rig.shell.overview.simulation_action();
+    assert_eq!(
+        action.blocked.as_deref(),
+        Some("Turn on an operation to simulate")
+    );
+    let footer = rig
+        .visible_text_rects()
+        .into_iter()
+        .filter(|(t, _)| t == "Run simulation")
+        .map(|(_, r)| r)
+        .collect::<Vec<_>>();
+    assert_eq!(footer.len(), 1, "only the footer's action");
+    assert!(
+        footer.first().unwrap().top() > rig.size.y - 48.0,
+        "in the footer"
+    );
 }
 
 #[test]

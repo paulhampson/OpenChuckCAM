@@ -63,6 +63,31 @@ struct Row<'a> {
     swatch: Option<Color32>,
     name: RichText,
     chip: Option<String>,
+    /// A linked model: the link mark is drawn after the name (decision record
+    /// 0307 item 8).
+    linked: bool,
+}
+
+/// The tooltip of a linked model's row and its link mark (decision record
+/// 0307 item 8).
+pub(super) const LINKED_TIP: &str = "Linked from outside the project folder: moving the \
+     project folder will lose this model. Model inspector, Copy model into project.";
+
+/// The chip beside a linked model's link mark, so the mark reads without
+/// its shape or colour (UI-11).
+pub(super) const LINKED_CHIP: &str = "linked";
+
+/// Two chain links, the mark of a model linked from outside the project
+/// folder.
+fn link_mark(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 12.0), egui::Sense::hover());
+    let stroke = Stroke::new(1.4, DARK.warning);
+    let c = rect.center();
+    for dx in [-3.0, 3.0] {
+        let link = egui::Rect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(9.0, 6.0));
+        ui.painter()
+            .rect_stroke(link, 3.0, stroke, egui::StrokeKind::Middle);
+    }
 }
 
 /// Draws a row and returns its response; `before` draws the operation's
@@ -100,6 +125,9 @@ fn row(ui: &mut egui::Ui, r: Row<'_>, before: impl FnOnce(&mut egui::Ui)) -> egu
         child.painter().rect_filled(sw, 2.0, colour);
     }
     child.add(egui::Label::new(r.name).truncate().selectable(false));
+    if r.linked {
+        link_mark(&mut child);
+    }
     if let Some(chip) = r.chip {
         child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             super::frame::chip(ui, &chip);
@@ -305,6 +333,7 @@ impl Shell {
                 for m in project.models() {
                     let item = ItemRef::Model(m.id);
                     let chosen = self.selected == Some(Selection::Model(m.id));
+                    let linked = m.path.is_outside_project();
                     let response = row(
                         ui,
                         Row {
@@ -312,11 +341,17 @@ impl Shell {
                             selected: chosen && self.model_section.is_none(),
                             status: status(item),
                             swatch: None,
-                            name: RichText::new(m.path.as_str()),
-                            chip: None,
+                            name: RichText::new(m.display_name()),
+                            chip: linked.then(|| LINKED_CHIP.to_owned()),
+                            linked,
                         },
                         |_| {},
                     );
+                    let response = if linked {
+                        response.on_hover_text(LINKED_TIP)
+                    } else {
+                        response.on_hover_text(m.path.as_str())
+                    };
                     if response.clicked() {
                         actions.push(TreeAction::SelectModel(m.id, None));
                     }
@@ -346,6 +381,7 @@ impl Shell {
                                 swatch: None,
                                 name: RichText::new(label).color(DARK.muted),
                                 chip,
+                                linked: false,
                             },
                             |_| {},
                         );
@@ -391,6 +427,7 @@ impl Shell {
                             swatch: None,
                             name: RichText::new(name).strong(),
                             chip: Some(s.frame.work_offset.register.to_string()),
+                            linked: false,
                         },
                         |_| {},
                     );
@@ -415,6 +452,7 @@ impl Shell {
                                 swatch: None,
                                 name: RichText::new(r.label).color(DARK.muted),
                                 chip,
+                                linked: false,
                             },
                             |_| {},
                         );
@@ -443,6 +481,7 @@ impl Shell {
                             swatch: Some(Color32::from_rgb(r, g, b)),
                             name: RichText::new(&s.name),
                             chip: Some(format!("{} {}", s.count, s.kind)),
+                            linked: false,
                         },
                         |_| {},
                     );
@@ -497,6 +536,7 @@ impl Shell {
                             swatch: None,
                             name,
                             chip: tool,
+                            linked: false,
                         },
                         |ui| {
                             let handle = ui

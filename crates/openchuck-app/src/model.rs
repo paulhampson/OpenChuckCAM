@@ -14,7 +14,7 @@ use openchuck_geom::transform::{
     brep_placement, placement, transform_brep, transform_mesh, transform_normals,
 };
 use openchuck_import::{ImportOptions, ImportedModel, import_bytes};
-use openchuck_project::{ContentHash, ModelRef};
+use openchuck_project::{ContentHash, ModelRef, RelativePath};
 use openchuck_types::brep::BrepModel;
 use openchuck_types::geometry::Vec3;
 use openchuck_types::job::JobContext;
@@ -177,6 +177,156 @@ impl PreparedModel {
     }
 }
 
+/// How a model file from outside the project folder is kept when it is
+/// added (decision record 0307 item 1). A file inside the folder is always
+/// used where it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModelStorage {
+    /// Copied into the project's `models` folder, named by its content hash
+    /// (the default), so the project folder is self-contained.
+    #[default]
+    Copy,
+    /// Left where it is and linked by its path relative to the project
+    /// folder; moving the folder without it loses the model.
+    Link,
+}
+
+/// The note for Messages and `openchuck-cli validate` about a model linked
+/// from outside the project folder (decision record 0307 item 8).
+pub(crate) fn linked_note(model: &ModelRef) -> String {
+    format!(
+        "'{}' is outside the project folder, so the folder is not self-contained. Model \
+         inspector, Copy model into project.",
+        model.display_name()
+    )
+}
+
+/// The file name to record for a model added from `path`: the original
+/// name, with any control character or folder separator (which a name may
+/// not hold; a Unix file name can contain `\`) shown as `_` (decision record
+/// 0307 item 4).
+pub(crate) fn original_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// A linked model copied into the project folder by
+/// [`crate::Application::start_copying_models`]: the model as it was and as
+/// it is to be stored, or why it was refused.
+pub type ModelCopy = Result<(ModelRef, ModelRef), String>;
+
+/// Copies the file of the linked model `model` into the project folder
+/// `root` (decision record 0307 items 5 and 10) and returns the model as it
+/// was and with its new path and name. A model already in the folder, a
+/// missing file and a file that has changed since it was added are refused
+/// with what to do, and nothing is written.
+pub(crate) fn copy_model(root: &Path, model: &ModelRef) -> Result<(ModelRef, ModelRef), AppError> {
+    if !model.path.is_outside_project() {
+        return Err(AppError::ModelCopy(format!(
+            "'{}' is already in the project folder",
+            model.display_name()
+        )));
+    }
+    let file = model.path.resolve(root);
+    let bytes = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::ModelCopy(format!(
+                "'{}' is missing, so it cannot be copied. Use Replace file\u{2026} to choose it \
+                 again.",
+                model.path.as_str()
+            )));
+        }
+        Err(source) => return Err(AppError::Io { path: file, source }),
+    };
+    if ContentHash::of_bytes(&bytes) != model.hash {
+        return Err(AppError::ModelCopy(format!(
+            "'{}' has changed since it was added, so copying it would change the model. \
+             Check it first with Replace file\u{2026}, which also copies it.",
+            model.display_name()
+        )));
+    }
+    let extension = Path::new(model.path.file_name())
+        .extension()
+        .map(|e| e.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let path = copy_into_project(root, &bytes, &model.hash, &extension)?;
+    let name = model
+        .name
+        .clone()
+        .unwrap_or_else(|| model.path.file_name().to_owned());
+    let mut copied = model.clone();
+    copied.name = (path.file_name() != name).then_some(name);
+    copied.path = path;
+    Ok((model.clone(), copied))
+}
+
+/// Copies `bytes`, whose hash is `hash`, into the project folder `root` and
+/// returns where (decision record 0307 items 2 and 3): the first of
+/// `models/<hash>.<ext>`, `models/<hash>-2.<ext>`, … that is free or already
+/// holds the same bytes. A file holding other bytes is never overwritten. The
+/// bytes are written under a staging name and published without replacing
+/// anything, then read back and checked against `hash`, so a failed copy
+/// leaves no partial file under the final name (NFR-07).
+pub(crate) fn copy_into_project(
+    root: &Path,
+    bytes: &[u8],
+    hash: &ContentHash,
+    extension: &str,
+) -> Result<RelativePath, AppError> {
+    const MOST_CANDIDATES: u32 = 100;
+    let folder = root.join(openchuck_project::MODELS_FOLDER);
+    let io = |path: &Path| {
+        let path = path.to_path_buf();
+        move |source| AppError::Io { path, source }
+    };
+    std::fs::create_dir_all(&folder).map_err(io(&folder))?;
+    for n in 1..=MOST_CANDIDATES {
+        let path = ModelRef::copy_path(hash, extension, n)?;
+        let full = path.resolve(root);
+        if full.exists() {
+            if ContentHash::of_file(&full).ok().as_ref() == Some(hash) {
+                return Ok(path);
+            }
+            continue;
+        }
+        match crate::output_write::write_one(&full, bytes, false) {
+            Ok(()) => {}
+            // Something appeared there meanwhile: look at it again.
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && full.exists() => {
+                continue;
+            }
+            Err(source) => return Err(AppError::Io { path: full, source }),
+        }
+        if ContentHash::of_file(&full)? != *hash {
+            let _ = std::fs::remove_file(&full);
+            return Err(AppError::Io {
+                path: full,
+                source: std::io::Error::other(
+                    "the copy does not match the original after writing; nothing was added",
+                ),
+            });
+        }
+        return Ok(path);
+    }
+    Err(AppError::Io {
+        path: folder,
+        source: std::io::Error::other(format!(
+            "{MOST_CANDIDATES} different files already hold this model's names"
+        )),
+    })
+}
+
 /// A model file checked before it is added: the inspection, and the scene
 /// of the placed model with the triangles and edges the checks list
 /// highlighted (OI-51; decision record 0029 item 13).
@@ -226,7 +376,7 @@ pub(crate) fn inspect_model(
     if ContentHash::of_bytes(&bytes) != model.hash {
         inspection.notes.push(format!(
             "'{}' has changed since it was added to the project (PRJ-02)",
-            model.path.as_str()
+            model.label()
         ));
     }
     Ok(inspection)
@@ -405,7 +555,7 @@ pub(crate) fn placed_mesh_hashed(
     let part = placed_part(project_root, model, context)?;
     if part.brep.is_some() {
         return Err(AppError::Selection {
-            name: model.path.as_str().to_owned(),
+            name: model.label(),
             reason: "a STEP model is selected by face and edge, not by triangle".to_owned(),
         });
     }

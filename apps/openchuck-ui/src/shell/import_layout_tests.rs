@@ -21,7 +21,7 @@ const CASES: [(f32, f32, f32); 4] = [
 ];
 
 /// What step 2 must show, each by a text on its control.
-const CONTROLS: [&str; 12] = [
+const CONTROLS: [&str; 13] = [
     "FILE",
     "Browse…",
     "Check and preview",
@@ -31,6 +31,7 @@ const CONTROLS: [&str; 12] = [
     "PLACEMENT",
     "Centre on the rotary axis",
     "MESH CHECK",
+    "Copy the file into the project folder",
     "The file is not changed. Its path and hash are stored in the project.",
     "Cancel",
     "Add to project",
@@ -108,9 +109,20 @@ fn check(rig: &mut Rig, file: &std::path::Path, label: &str) {
             let (_, r) = found.unwrap_or_else(|| panic!("{case}: {want} is not in the dialog"));
             assert!(dialog.contains_rect(*r), "{case}: {want} {r:?} is cut off");
         }
-        // Nothing is drawn over anything else.
-        for (i, (a, ra)) in inside.iter().enumerate() {
-            for (b, rb) in inside.iter().skip(i + 1) {
+        // Nothing is drawn over anything else. The body scrolls between the header and the
+        // footer (UI-16), so what it clips away under them is not drawn: only the visible part
+        // of each text counts.
+        let visible = rig.visible_text_rects();
+        let first_visible = visible
+            .iter()
+            .rposition(|(t, _)| t == "FILE")
+            .expect("the dialog's FILE label is visible");
+        let shown: Vec<_> = visible[first_visible..]
+            .iter()
+            .filter(|(t, _)| !t.ends_with(".stl") && !t.ends_with(".step"))
+            .collect();
+        for (i, (a, ra)) in shown.iter().enumerate() {
+            for (b, rb) in shown.iter().skip(i + 1) {
                 let overlap = ra.intersect(*rb);
                 assert!(
                     overlap.width() < 1.0 || overlap.height() < 1.0,

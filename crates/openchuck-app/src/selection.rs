@@ -225,7 +225,7 @@ fn check_edited(
             format!(
                 "'{}' has changed since the set was made; select again on the current model \
                  (PRJ-06)",
-                reference.path.as_str()
+                reference.label()
             ),
         ));
     }
@@ -252,7 +252,7 @@ fn check_replaced(
             format!(
                 "'{}' has changed since it was added to the project; accept the change before \
                  selecting on it (PRJ-02)",
-                reference.path.as_str()
+                reference.label()
             ),
         ));
     }
@@ -365,7 +365,7 @@ impl Application {
                         format!(
                             "'{}' has changed since it was added to the project; accept the \
                              change before selecting on it (PRJ-02)",
-                            reference.path.as_str()
+                            reference.label()
                         ),
                     ));
                 }
@@ -401,7 +401,7 @@ impl Application {
                 &set.name,
                 format!(
                     "'{}' changed in the project while the selection was checked; select again",
-                    reference.path.as_str()
+                    reference.label()
                 ),
             ));
         }
@@ -558,7 +558,7 @@ impl Application {
                     &set.name,
                     format!(
                         "'{}' changed in the project while the selection was checked; select again",
-                        reference.path.as_str()
+                        reference.label()
                     ),
                 ));
             }
@@ -785,11 +785,11 @@ impl Application {
                     }
                     (_, Some(m)) if m.hash != set.model_hash => Some(format!(
                         "it was made on a different version of '{}'; select again on the current model",
-                        m.path.as_str()
+                        m.label()
                     )),
                     (_, Some(m)) => changed
                         .iter()
-                        .find(|w| w.starts_with(&format!("'{}' ", m.path.as_str())))
+                        .find(|w| w.starts_with(&format!("'{}' ", m.label())))
                         .map(|w| format!("{w}, so the selection may not match it")),
                 };
                 let count = set.target.len();
@@ -818,7 +818,7 @@ impl Application {
                     id: set.id,
                     name: set.name.clone(),
                     model: set.model,
-                    model_path: model.map(|m| m.path.as_str().to_owned()),
+                    model_path: model.map(|m| m.label()),
                     kind,
                     count,
                     uses,
@@ -941,7 +941,7 @@ pub(crate) fn mesh_edge_segments(
                 format!(
                     "it was made on a different version of '{}' (the file has changed); select \
                      again on the current model",
-                    part.path.as_str()
+                    part.label()
                 ),
             ));
         }
@@ -1288,7 +1288,7 @@ pub(crate) fn resolve(
                         format!(
                             "it was made on a different version of '{}' (the file has changed); \
                          select again on the current model",
-                            part.path.as_str()
+                            part.label()
                         ),
                     ));
                 }

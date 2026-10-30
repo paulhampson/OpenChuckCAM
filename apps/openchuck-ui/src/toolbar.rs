@@ -61,7 +61,6 @@ mod tests {
         assert!(has_legend(Step::Setup, &view));
         assert!(!has_legend(Step::Operations, &view));
         assert!(!has_legend(Step::Simulate, &view));
-        assert!(!has_legend(Step::Export, &view));
         assert!(!has_legend(Step::Setup, &SceneView::default()));
         // It names each role, after its swatch.
         let ctx = egui::Context::default();

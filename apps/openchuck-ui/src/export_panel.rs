@@ -633,8 +633,8 @@ impl ExportPanel {
     fn finish_write(&mut self, app: &Application, plan: &OutputPlan, replace: bool) -> Outcome {
         let mut outcome = Outcome::default();
         // The sheet is written from the same run as the G-code (decision
-        // 0189), and the export recorded: the Post and export step is
-        // complete until something changes (UI-10).
+        // 0189), and the export recorded: the step bar says "G-code written"
+        // until something changes (UI-10, decision record 0282 item 5).
         let report = app.write_output(plan, replace);
         // The acknowledgement is kept once a file really was written,
         // including partial success (accepted decision 0071).

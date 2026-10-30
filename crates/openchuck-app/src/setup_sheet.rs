@@ -14,7 +14,7 @@ use std::fmt::{self, Write as _};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use openchuck_path::Registry;
-use openchuck_project::{Operation, Project, Setup, ToolSnapshot};
+use openchuck_project::{ModelRef, Operation, Project, Setup, ToolSnapshot};
 use openchuck_types::ir::Toolpath;
 use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 use openchuck_types::setup::PartExtent;
@@ -898,10 +898,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
     let part = setup
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
-        .map_or_else(
-            || "none chosen".to_string(),
-            |m| m.path.as_str().to_string(),
-        );
+        .map_or_else(|| "none chosen".to_string(), ModelRef::label);
     let stock = setup
         .stock
         .as_ref()
