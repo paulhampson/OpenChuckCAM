@@ -1,6 +1,6 @@
 # 0318: The Makera Z1's spindle-height warning is switched on: the spindle is 73.1 mm above the axis at home (lane Z1AXIS; issue #395; closes OI-1290 and OI-1291)
 
-- **Status:** proposed 30 Oct 2026 by lane Z1AXIS. The owner chose option A of D9 (switch the warning on inside pull request #396) and supplied the probe's stick-out, both relayed by the coordinator session (decision 0049) on 30 Oct 2026. The record is proposed until the owner accepts it.
+- **Status:** accepted by the project owner on 30 Oct 2026, relayed by the coordinator session (decision 0049): the owner saw the record condensed in the coordinator session, including OI-1292 and the changed test expectations, and approved it. Proposed 30 Oct 2026 by lane Z1AXIS; the owner chose option A of D9 (switch the warning on inside pull request #396) and supplied the probe's stick-out, both relayed by the coordinator.
 - **What it amends:** [decision 0317](0317-z1-measured-axis-height-and-safe-z.md) item 6 (accepted), "The spindle-height warning ships off". The warning is now on for a machine that measures tool lengths and gives its spindle-to-axis distance, and the built-in Z1 gives it.
 
   SET-06 and NFR-12 are unchanged. The G-code, the golden programs, the project and machine file formats and the library API are unchanged: the fields are decision 0317's.
