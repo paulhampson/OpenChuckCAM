@@ -54,3 +54,40 @@ fn req_op_12_m2_requires_a_finite_proven_sub_micron_sampling_bound() {
     assert!(checks::sampling_bound(Some(0.0)).is_ok());
     assert!(checks::sampling_bound(Some(0.0009)).is_ok());
 }
+
+#[test]
+fn req_op_23_m4_paths_agree_only_within_a_stated_rounding() {
+    // OI-1110 (decision 0277): the harness's and the application's indexed
+    // finishing differ by about 1e-12 mm when roughing and rest run first,
+    // with byte-identical G-code. The path check then accepts numbers within
+    // a stated rounding, reports the largest difference, and still rejects
+    // any other difference.
+    let path = serde_json::json!([{"x": 10.0, "a": 90.0, "kind": "cutting"}]);
+    assert_eq!(checks::within_rounding(&path, &path, 1e-9, "p"), Ok(0.0));
+    let rounded = serde_json::json!([{"x": 10.000_000_000_001, "a": 90.0, "kind": "cutting"}]);
+    let got = checks::within_rounding(&path, &rounded, 1e-9, "p").unwrap();
+    assert!(got > 0.0 && got < 1e-11, "{got}");
+    for other in [
+        serde_json::json!([{"x": 10.000_001, "a": 90.0, "kind": "cutting"}]),
+        serde_json::json!([{"x": 10.0, "a": 90.0, "kind": "rapid"}]),
+        serde_json::json!([{"x": 10.0, "a": 90.0}]),
+        serde_json::json!([{"x": 10.0, "a": 90.0, "kind": "cutting"}, {"x": 1.0}]),
+    ] {
+        let r = checks::within_rounding(&path, &other, 1e-9, "form d application path");
+        assert!(
+            r.is_err_and(|m| m.contains("form d application path")),
+            "{other}"
+        );
+    }
+}
+
+#[test]
+fn req_op_12_m2_says_when_a_cut_or_a_gap_is_over_the_tolerance() {
+    // Decision 0277: the import tessellation's 0.042 mm cut is a clear
+    // failure against the 0.01 mm toolpath tolerance; the exact drop's
+    // 0.0045 mm is within it.
+    assert_eq!(checks::verdict(0.0045, 0.01), "yes");
+    assert_eq!(checks::verdict(0.01, 0.01), "yes");
+    assert_eq!(checks::verdict(0.0426, 0.01), "NO");
+    assert_eq!(checks::verdict(f64::NAN, 0.01), "NO");
+}

@@ -72,6 +72,12 @@ pub mod parameter {
 }
 
 impl Strategy for HelicalFinishing {
+    /// Exact contacts on a STEP part: measured within the limits of OI-835
+    /// (decision 0277).
+    fn exact_contact(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }
