@@ -30,6 +30,8 @@
 //! services link the pieces.
 
 use openchuck_types::geometry::Point3;
+use std::collections::BTreeMap;
+
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
@@ -148,8 +150,16 @@ impl Strategy for HelicalFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
             .collect(),
         )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {

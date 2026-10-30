@@ -311,44 +311,50 @@ impl Strategy for RestMachining {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(vec![
-            min_remaining_spec(),
-            ParameterSpec {
-                name: parameter::ROTATION.to_owned(),
-                label: "Rotation".to_owned(),
-                description: "Which way A turns as X increases along the helix.".to_owned(),
-                kind: ParameterKind::Choice {
-                    options: vec!["positive".to_owned(), "negative".to_owned()],
-                    default: "positive".to_owned(),
+        ParameterSchema::with_common(
+            vec![
+                min_remaining_spec(),
+                ParameterSpec {
+                    name: parameter::ROTATION.to_owned(),
+                    label: "Rotation".to_owned(),
+                    description: "Which way A turns as X increases along the helix.".to_owned(),
+                    kind: ParameterKind::Choice {
+                        options: vec!["positive".to_owned(), "negative".to_owned()],
+                        default: "positive".to_owned(),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::START_ANGLE.to_owned(),
-                label: "Start angle".to_owned(),
-                description: "A at the lowest X of the part, where the helix starts.".to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: None,
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A at the lowest X of the part, where the helix starts."
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::MAX_ANGLE_STEP.to_owned(),
-                label: "Largest angle step".to_owned(),
-                description: "The most A may turn between two points of the path; points are \
+                ParameterSpec {
+                    name: parameter::MAX_ANGLE_STEP.to_owned(),
+                    label: "Largest angle step".to_owned(),
+                    description: "The most A may turn between two points of the path; points are \
                               added where the surface needs them."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: Some(90.0),
-                    default: Some(2.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: Some(90.0),
+                        default: Some(2.0),
+                    },
                 },
-            },
-        ])
+            ]
+            .into_iter()
+            .chain(crate::finishing::specs(true, false))
+            .collect(),
+        )
     }
 
     fn needs_earlier_operations(&self) -> bool {

@@ -111,12 +111,21 @@ impl Strategy for IndexedFinishing {
             axial_parameter::MAX_X_STEP,
             crate::extend::parameter::EXTEND,
             crate::extend::parameter::EXTEND_DISTANCE,
+            crate::finishing::parameter::FINISHING_LAYERS,
+            crate::finishing::parameter::STEPDOWN,
         ] {
             if let Some(spec) = own.get(name) {
                 schema.parameters.push(spec.clone());
             }
         }
         schema
+    }
+
+    fn schema_for(
+        &self,
+        values: &std::collections::BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {

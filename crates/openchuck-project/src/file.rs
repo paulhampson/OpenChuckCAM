@@ -109,7 +109,14 @@ use openchuck_types::workholding::Workholding;
 /// - 21: a model reference gains the optional `name`, the file name it had
 ///   when it was added, written only when recorded (issue 385, decision
 ///   record 0307 item 4).
-pub const SCHEMA: i64 = 21;
+/// - 22: lane Z1AXIS's step (the machine copy's spindle-height fields); until
+///   that lane merges, a stand-in that changes nothing but the number.
+/// - 23: helical finishing, axial finishing and rest machining gain the
+///   per-operation `face_free_ends` switch, on for a new operation; an
+///   older operation of those strategies is migrated to an explicit
+///   `face_free_ends = false`, so it machines as before (decision record
+///   0344).
+pub const SCHEMA: i64 = 23;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -144,7 +151,52 @@ const MIGRATIONS: &[Migration] = &[
     schema_18_to_19,
     schema_19_to_20,
     schema_20_to_21,
+    schema_21_to_22,
+    schema_22_to_23,
 ];
+
+/// Lane Z1AXIS's schema 22 step, which adds optional fields to the machine
+/// copy; until that lane merges this stand-in changes nothing but the number,
+/// and the merge replaces it with that lane's step.
+fn schema_21_to_22(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// The strategies whose operations gained `face_free_ends` in schema 23.
+const FREE_END_STRATEGIES: [&str; 3] = ["helical_finishing", "axial_finishing", "rest_machining"];
+
+/// Schema 23 (decision record 0344): an operation of helical finishing,
+/// axial finishing or rest machining saved before it is given an explicit
+/// `face_free_ends = false`, so it machines as it did; a new operation takes
+/// the strategy's default, on. An older file that already holds the switch
+/// was not written by any version that knew it, so it is refused rather than
+/// guessed at.
+fn schema_22_to_23(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let finishing = table
+        .get("strategy")
+        .and_then(toml::Value::as_str)
+        .is_some_and(|s| FREE_END_STRATEGIES.contains(&s));
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("face_free_ends") {
+        return Err(
+            "this schema 22 file has the parameter `face_free_ends`, which schema 23 \
+             introduced; remove it, or set `schema = 23` if the file was written for schema 23"
+                .to_owned(),
+        );
+    }
+    if finishing {
+        parameters.insert("face_free_ends".to_owned(), toml::Value::Boolean(false));
+    }
+    Ok(())
+}
 
 /// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
 fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {

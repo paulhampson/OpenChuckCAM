@@ -13,6 +13,8 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use std::collections::BTreeMap;
+
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
@@ -140,8 +142,16 @@ impl Strategy for AxialFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
             .collect(),
         )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {
