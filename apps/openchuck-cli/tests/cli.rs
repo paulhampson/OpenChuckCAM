@@ -1222,3 +1222,161 @@ fn req_gc_10_cli_checks_a_chunk_against_the_original_source_range() {
     assert!(out.stderr.contains("source boundary"), "{}", out.stderr);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// A model imported from outside the project folder is copied into it, so
+/// the folder validates after it is moved on its own; `--link` keeps the
+/// file where it is, `validate` notes it and passes, and `copy-model` makes
+/// the folder self-contained later (issue 385, decision record 0307).
+#[test]
+fn req_prj_02_cli_import_copies_and_a_moved_folder_still_validates() {
+    let root = std::env::temp_dir().join(format!("openchuck-cli-copy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+    let cube =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    std::fs::copy(&cube, root.join("elsewhere/Cube Part.STL")).unwrap();
+    std::fs::copy(&cube, root.join("elsewhere/linked.stl")).unwrap();
+    let project = root.join("project");
+    assert_eq!(run(&["new".as_ref(), project.as_os_str()]).code, Some(0));
+
+    let out = run(&[
+        "import".as_ref(),
+        project.as_os_str(),
+        root.join("elsewhere/Cube Part.STL").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("copied into the project folder as models/"),
+        "{}",
+        out.stdout
+    );
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.contains("name = \"Cube Part.STL\""), "{text}");
+    // The stored name is lower-case ASCII hex, the same on every platform.
+    let stored = text
+        .lines()
+        .find_map(|l| l.strip_prefix("path = \"models/"))
+        .unwrap()
+        .trim_end_matches('"');
+    assert!(
+        stored.len() == 36
+            && stored.ends_with(".stl")
+            && stored[..32]
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+        "{stored}"
+    );
+
+    let out = run(&[
+        "import".as_ref(),
+        project.as_os_str(),
+        root.join("elsewhere/linked.stl").as_os_str(),
+        "--link".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["validate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stderr.contains(
+            "note: 'linked.stl' is outside the project folder, so the folder is not self-contained"
+        ),
+        "{}",
+        out.stderr
+    );
+
+    // A linked file that has changed is refused, with what to do, and
+    // nothing changes (decision record 0307 item 10).
+    std::fs::write(
+        root.join("elsewhere/linked.stl"),
+        "solid edited\nendsolid edited\n",
+    )
+    .unwrap();
+    let before = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    let out = run(&["copy-model".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(1), "{}", out.stdout);
+    assert!(
+        out.stderr.contains(
+            "'linked.stl' has changed since it was added, so copying it would change the model"
+        ),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("1 model(s) not copied"),
+        "{}",
+        out.stderr
+    );
+    assert_eq!(
+        std::fs::read_to_string(project.join("project.toml")).unwrap(),
+        before
+    );
+    std::fs::copy(&cube, root.join("elsewhere/linked.stl")).unwrap();
+
+    // One model named by its path.
+    let out = run(&[
+        "copy-model".as_ref(),
+        project.as_os_str(),
+        "../elsewhere/linked.stl".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("linked.stl: copied into the project folder as models/"),
+        "{}",
+        out.stdout
+    );
+    let again = run(&["copy-model".as_ref(), project.as_os_str()]);
+    assert_eq!(again.code, Some(0), "{}", again.stderr);
+    assert!(
+        again.stdout.contains("no models are outside"),
+        "{}",
+        again.stdout
+    );
+
+    // Moved and copied ("zipped and unpacked") on its own, it still validates.
+    let moved = root.join("somewhere/else");
+    std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    std::fs::rename(&project, &moved).unwrap();
+    std::fs::remove_dir_all(root.join("elsewhere")).unwrap();
+    let out = run(&["validate".as_ref(), moved.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!out.stderr.contains("note:"), "{}", out.stderr);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+/// A file linked through a link of another name records that name, and is
+/// still reported as linked, not copied (CodeRabbit review of pull request
+/// 388).
+#[cfg(unix)]
+#[test]
+fn req_prj_02_cli_a_file_linked_through_a_renamed_link_is_reported_as_linked() {
+    let root = std::env::temp_dir().join(format!("openchuck-cli-symlink-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+    let cube =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    std::fs::copy(&cube, root.join("elsewhere/target.stl")).unwrap();
+    std::os::unix::fs::symlink(
+        root.join("elsewhere/target.stl"),
+        root.join("elsewhere/shown.stl"),
+    )
+    .unwrap();
+    let project = root.join("project");
+    assert_eq!(run(&["new".as_ref(), project.as_os_str()]).code, Some(0));
+    let out = run(&[
+        "import".as_ref(),
+        project.as_os_str(),
+        root.join("elsewhere/shown.stl").as_os_str(),
+        "--link".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("linked from outside the project folder"),
+        "{}",
+        out.stdout
+    );
+    assert!(!out.stdout.contains("copied into"), "{}", out.stdout);
+    std::fs::remove_dir_all(root).unwrap();
+}
