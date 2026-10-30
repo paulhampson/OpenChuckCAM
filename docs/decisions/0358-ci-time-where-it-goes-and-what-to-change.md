@@ -1,6 +1,6 @@
 # 0358: Where the CI time goes now, and what to change within 20 workers and free runners (lane CISPEED)
 
-- **Status:** proposed (record). **Owner's choices on the options, 30 Oct 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7, decision 0049):** Options 1, 2 and 3 approved to implement; Option 4 approved with the owner's refinement (see *Option 4, detection design*); Option 5 not chosen yet. The record itself stays proposed until the owner accepts it. Each approved option is built as its own small draft pull request from lane CISPEED (OI-1410 to OI-1413), merge order (b) and (a) first.
+- **Status:** accepted by the project owner on 30 Oct 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7) after the owner saw the condensed record, decision 0049. The owner decided options 1 to 4 (Option 4 with the refinement in *Option 4, detection design*) and the 04:23 UTC nightly run; Option 5 is not chosen (OI-1414). Each option is built as its own small draft pull request from lane CISPEED (OI-1410 to OI-1413), merge order #407 (nextest), #408 (caches), #409 (shards), #410 (conditional run on `main`).
 - **Date:** 30 Oct 2026.
 - **Lane:** CISPEED (the devops manager role). Record branch `docs/decision-0358-ci-time`, docs only.
 - **Requirements:** none change. GC-07 and NFR-06 (deterministic output) are untouched: no option changes a test, a golden file or a build flag of the product.
