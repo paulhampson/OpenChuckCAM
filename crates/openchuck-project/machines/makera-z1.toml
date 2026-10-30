@@ -70,6 +70,10 @@ rotary_in_feed = "makera"
 
 # The owner's default (decision 0317): at safe Z 40 the spindle is at machine
 # Z -8.6 with the probe fitted, inside the Z travel.
+# A tool that sticks out further than the probe raises the spindle. The Z1
+# has automatic tool length measurement, but the spindle-height warning is off
+# until the distance from the spindle at home to the axis is known (OI-1290,
+# OI-1291, issue #395).
 [machine.clearance]
 radius = 40.0
 safe_z = 40.0

@@ -7,7 +7,7 @@
 
   SET-01, SET-06, UI-13 and NFR-12 are unchanged. The post, the path generation and the project and machine file formats are unchanged: no schema number is taken and no public API changes.
 - **Date:** 30 Oct 2026.
-- **Open items** ([docs/open-items.md](../open-items.md)): narrows OI-60 to the X datum of the rotary reference point; updates OI-917 and OI-471; opens OI-1290 (the spindle-height warning for a tool longer than the probe, waiting on the probe's stick-out and on where it is stored).
+- **Open items** ([docs/open-items.md](../open-items.md)): narrows OI-60 to the X datum of the rotary reference point; updates OI-917 and OI-471; opens OI-1290 (the spindle-height warning for a tool longer than the probe, shipped off) and OI-1291 (the spindle-to-axis distance it needs, issue [#395](https://github.com/paulhampson/OpenChuckCAM/issues/395)).
 
 Numbering: the coordinator gave lane Z1AXIS records 0317 to 0321 and OI-1290 to OI-1309. On 30 Oct 2026 none of them was used on `main` (f100c14) or on any pushed branch.
 
@@ -61,9 +61,15 @@ So −48.6 is the machine Z of the axis **for the probe as the reference tool**.
      - the retracts to the safe cylinder between passes, Z45 to Z40;
      - two connection heights in `first_cut`, 0.001 and 0.265 mm lower.
    - No cutting move, feed or A word changes.
-6. **Not built here: the spindle-height warning (OI-1290).** The owner asked for a warning when a tool's assumed stick-out (flute length + 5 mm) would take the spindle past the top of the Z travel at the safe Z. The formula is: spindle Z = axis height + safe Z + (tool stick-out − probe stick-out). The owner accepted it. The owner also asked for the text "The recommended minimum is 30 mm. This must be checked before machining.", shown on the Z1 when the safe Z that fits is under 30 mm. Two things are still open:
-   - The probe's own stick-out is not known; the owner's first answer gave the probe's offset, which is 0 by definition.
-   - Whether it and the 30 mm minimum become profile fields (a library API and schema change) or constants is not decided.
+6. **The spindle-height warning ships off (OI-1290, OI-1291, issue [#395](https://github.com/paulhampson/OpenChuckCAM/issues/395)).** The owner asked for a warning when a tool's assumed stick-out S (flute length + 5 mm) would take the spindle past the top of the Z travel at the safe Z. Machine Z on the Z1 is the spindle's position, so the highest tip height above the axis is D − S. D is the distance from the spindle at home down to the axis: D = 48.6 + the probe's stick-out, because −48.6 is the spindle's height with the probe's tip on the axis. The owner accepted the model. On the Z1 the warning would add "The recommended minimum is 30 mm. This must be checked before machining." when the safe Z that fits is under 30 mm.
+
+   It applies only to a machine with automatic tool length measurement. That is a capability the profile would state: the Z1 has it, and a machine without it gets no such warning.
+
+   The warning is not built yet, for two reasons:
+   - D is not known. The controller keeps only tool lengths relative to the probe, and the owner will supply D or the probe's stick-out (OI-1291).
+   - Whether D, the capability and the 30 mm become profile fields (a library API and schema change) or constants is the owner's choice still to come (D8).
+
+   Until then the built-in profile's comments say the value is needed.
 
 ## Consequences
 
