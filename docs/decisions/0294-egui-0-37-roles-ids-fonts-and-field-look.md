@@ -20,7 +20,7 @@
 6. **Fields.** egui 0.37 pads a text field like a button (8 by 4 here) and always sets its text at the top of a box as tall as a button. `theme::single_line` and `theme::multi_line` make every field of the interface with the padding it had (4 and 2) and the text placed as the layout of its row places it (centred in a row that centres its widgets, at the top otherwise). The box is now as tall as a button (28), as egui 0.37 intends, so a field that was 18 high is 28 high; rows are 28 to 34 high (`theme::target::ROW_MIN`) and the layout tests pass unchanged. A `DragValue` and a `ComboBox` draw their own edits and are not touched.
 7. **Colour swatches.** egui 0.37 raises a button to the style's minimum size and pads it, so the 18 by 18 colour swatches of the selection-set inspector came out 22 by 20; the swatch scopes its spacing to keep 18 by 18.
 8. **Tab order in a drop-down.** The popup's scroll area is no longer a Tab stop in egui 0.37 (it senses drag only); the keyboard test (UI-14) presses Tab three times to reach the third choice where it pressed it four times. Every choice remains reachable by Tab, Space and Enter.
-9. **The import window** is 24 points taller (544, not 520): egui 0.37 sets its content about 12 points taller (measured on `main` against 0.37: the mesh-check rows are 23 points apart, not 21, and the unit buttons, the placement check box and the headings sit lower), and the import test (UI-16, #222) wants every mesh finding in view without scrolling. 544 is within the 600 points a 1366 by 768 screen leaves at 120 % scale (`req_ui_16_the_window_fits_a_small_screen_at_120_percent`).
+9. **The import window** is 24 points taller (544, not 520): egui 0.37 sets its content about 12 points taller (measured on `main` against 0.37: the mesh-check rows are 23 points apart, not 21, and the unit buttons, the placement check box and the headings sit lower), and the import test (UI-16, #222) wants every mesh finding in view without scrolling. 544 is within the 600 points a 1366 by 768 screen leaves at 120 % scale (`req_ui_16_the_window_fits_a_small_screen_at_120_percent`). The owner accepted the 544-point height on 30 Oct 2026 (relayed by the coordinator).
 10. **Deprecations** are all fixed; none is allowed.
 11. **No project, library or file format change.** The library family is untouched, so no `cargo-semver-checks` bump or crate changelog entry is needed.
 
@@ -52,4 +52,4 @@ No requirement threshold of a test was changed.
 
 - The binary carries the two emoji fonts again, as it did on 0.36.
 - `egui` appears in `docs/dependencies.md` as a direct entry, and is upgraded with `eframe`.
-- OI-1224 (native check) opens with this record.
+- OI-1224 (native check) opens with this record; the owner waived the native check on 30 Oct 2026 (relayed), so it stays open only as a record of what was not tested.
