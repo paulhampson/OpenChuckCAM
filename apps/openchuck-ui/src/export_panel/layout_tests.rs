@@ -74,7 +74,11 @@ fn draw(
         *clock += 0.1;
         let pointer = ctx
             .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
-            .map_or(screen.to_pos2() / 2.0, |rect| rect.center());
+            // Over the left column: over the preview the wheel scrolls the
+            // preview and not the dialog (decision 0327).
+            .map_or(screen.to_pos2() / 2.0, |rect| {
+                egui::pos2(rect.left() + 40.0, rect.center().y)
+            });
         let mut events = vec![egui::Event::PointerMoved(pointer)];
         if bottom && pass == 2 {
             events.push(egui::Event::MouseWheel {
