@@ -537,7 +537,7 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("5 of 10 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("6 of 13 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
@@ -550,9 +550,18 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
         "{}",
         out.stdout
     );
+    // The axis height is confirmed and the spindle-height values are listed
+    // (decision records 0317 and 0318).
+    assert!(
+        out.stdout.contains(
+            "spindle height: tool lengths measured automatically; spindle to axis 73.1 mm; recommended minimum safe Z 30 mm"
+        ),
+        "{}",
+        out.stdout
+    );
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        5,
+        6,
         "{}",
         out.stdout
     );
@@ -588,7 +597,7 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
     // (decision record 0201).
     assert!(
         out.stdout
-            .contains("set G55 to machine X -182.400 Y -108.800 Z -55.000"),
+            .contains("set G55 to machine X -182.400 Y -108.800 Z -48.600"),
         "{}",
         out.stdout
     );

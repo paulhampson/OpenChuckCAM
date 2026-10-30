@@ -890,6 +890,45 @@ mod tests {
         }));
     }
 
+    /// The safe Z is checked against the top of the Z travel at its boundary,
+    /// with the Makera Z1's figures: the axis at machine Z -48.6 and the
+    /// travel top at 0 (SET-06, decision record 0317). A safe Z exactly at
+    /// the top or below it passes; 1.4 mm above it (safe Z 50, the old
+    /// default) warns with the value and the travel.
+    #[test]
+    fn req_set_06_the_safe_z_is_checked_against_the_top_of_the_z_travel() {
+        let mut profile = MachineProfile::example_x_rotary();
+        profile.rotary_origin.z = -48.6;
+        profile.travel.min.z = -100.0;
+        profile.travel.max.z = 0.0;
+        let outside = |safe_z: f64| {
+            let mut p = profile.clone();
+            p.clearance = Clearance {
+                radius: Millimetres(20.0),
+                safe_z: Millimetres(safe_z),
+            };
+            check_setup(&SetupCheck {
+                profile: &p,
+                frame: &SetupFrame::default(),
+                stock: Some(&cylinder(30.0)),
+                clearance: None,
+                part: None,
+            })
+            .iter()
+            .map(ToString::to_string)
+            .find(|t| t.starts_with("the safe Z"))
+        };
+        assert_eq!(outside(40.0), None);
+        assert_eq!(outside(48.6), None, "exactly at the top of the travel");
+        let above = outside(50.0).unwrap();
+        assert!(
+            above.starts_with(
+                "the safe Z is at machine Z 1.400, outside the travel -100.000 to 0.000"
+            ),
+            "{above}"
+        );
+    }
+
     /// The part offset moves the part along the axis and nothing else
     /// (SET-05; decision record 0201): the part leaves stock that stays put,
     /// and a zero offset leaves every coordinate bit for bit.
