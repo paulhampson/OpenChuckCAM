@@ -143,3 +143,67 @@ pub(super) fn over_held(pass: usize, held: &str, x: f64) -> String {
         lower_first(ENTRY_FIX)
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The refusals that a test through a strategy cannot reach on purpose
+    /// (the checks before them prove the same moves, or the planner's inputs
+    /// rule them out) still say what is wrong and where to change it (#291;
+    /// NFR-07; specification section 15).
+    #[test]
+    fn req_op_11_req_nfr_07_every_ramp_refusal_names_where_to_change_it() {
+        let fix = "In the operation's Entry, links and retract settings, turn off \
+                   Back-and-forth ramp or set Entry to Plunge, Lead or Helix.";
+        assert_eq!(
+            no_direction(2, 5),
+            format!(
+                "Pass 3 only turns the part about the rotary axis, without moving the tool \
+                 along a straight line, so the back-and-forth ramp, which keeps the A angle \
+                 fixed while it descends, has no straight line to ramp along. {fix}"
+            )
+        );
+        assert_eq!(
+            no_stock_size(),
+            "The back-and-forth ramp starts above the whole stock, and this stock has no size \
+             to start above. In the Setup step, under Stock, set the stock's shape and size, or \
+             change the entry: in the operation's Entry, links and retract settings, turn off \
+             Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
+        );
+        assert_eq!(
+            plan(0, Refusal::NoProgress, 6.0, 3.175, 0.05),
+            "Pass 1: at 0.05 degrees, each run of 3.175 mm of the back-and-forth ramp descends \
+             too little to be written in the G-code. In the operation's Entry, links and retract \
+             settings, raise Ramp angle, or turn off Back-and-forth ramp or set Entry to \
+             Plunge, Lead or Helix."
+        );
+        assert_eq!(
+            plan(0, Refusal::TooShort, 6.0, 3.175, 3.0),
+            format!(
+                "Pass 1: the back-and-forth ramp has less than one tool diameter (3.175 mm) to \
+                 run along. {fix}"
+            )
+        );
+        assert!(
+            plan(0, Refusal::Invalid, 6.0, 3.175, 3.0)
+                .contains("check Ramp angle, or turn off Back-and-forth ramp")
+        );
+        assert_eq!(
+            into_part(0, 0.25, 0.01),
+            format!(
+                "Pass 1: the back-and-forth ramp cannot be used here: the tool would cut 0.250 \
+                 mm into the finished part (the tolerance is 0.010 mm). {fix}"
+            )
+        );
+        assert_eq!(
+            over_held(0, "the held region at the start of the stock", 14.0),
+            "Pass 1: the back-and-forth ramp cannot be used here: the tool would run over the \
+             held region at the start of the stock at X 14.000 mm, where the workholding grips \
+             the stock. In the Setup step, under Workholding and tabs, move the held region \
+             clear of the start of the pass, or change the entry: in the operation's Entry, \
+             links and retract settings, turn off Back-and-forth ramp or set Entry to Plunge, \
+             Lead or Helix."
+        );
+    }
+}

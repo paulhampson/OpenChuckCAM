@@ -1474,3 +1474,33 @@ fn req_op_11_req_nfr_07_ramp_on_a_pass_above_the_stock_says_what_to_change() {
          Back-and-forth ramp or set Entry to Plunge."
     );
 }
+
+/// After the first pass the tool is at the height its links retract to:
+/// the Safe radius with the default Retract, so that is the field named.
+#[test]
+fn req_op_11_req_nfr_07_ramp_above_the_link_height_names_safe_radius() {
+    let fixture = small_cylinder();
+    let safety = safety_of(&fixture, &fixture.machine, &[]);
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+            number(names::APPROACH_DISTANCE, 6.0),
+        ],
+    );
+    let error = run(|ctx| generate(&RepeatedLine, &input, &v, ctx))
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        error,
+        "Pass 2: the back-and-forth ramp starts 26.000 mm from the rotary axis (the stock's \
+         largest radius plus the approach distance), above the 25.000 mm the tool is at before \
+         this pass. In the Setup step, under Work offset and clearance, set Safe radius to at \
+         least 26.000 mm; or, in the operation's Entry, links and retract settings, lower \
+         Approach distance, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix."
+    );
+}
