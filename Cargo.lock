@@ -2311,6 +2311,7 @@ dependencies = [
  "criterion",
  "openchuck-geom",
  "openchuck-import",
+ "openchuck-path",
  "openchuck-testkit",
  "openchuck-types",
 ]

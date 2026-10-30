@@ -413,6 +413,12 @@ impl Solid {
     /// tool would not touch it anywhere on the line.
     pub fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         if let Some(b) = self.cuboid {
+            // A box out of the tool's reach gives nothing: every candidate of
+            // the triangle tests lies within the cutting radius of the line.
+            // Saying so at once gives the same answer (issue #382).
+            if box_line_gap(b, line) > profile.cutting_radius() + BOX_REACH_SLACK {
+                return None;
+            }
             let mesh = box_mesh(b);
             let triangles: Vec<[Point3; 3]> = mesh
                 .triangles
@@ -476,6 +482,33 @@ impl Solid {
         })
     }
 
+    /// The furthest any point of the solid lies along `line`'s axis, as a
+    /// position from its origin: a box's highest corner, or the highest point
+    /// of a cylinder's or frustum's two rims (a linear function peaks on the
+    /// rim of a disc, and a frustum is the hull of its two discs). The
+    /// profile never dips below its tip (`h(r) >= 0`), so no tip
+    /// [`drop_tool`](Self::drop_tool) gives lies further along the line than
+    /// this, up to rounding.
+    pub(crate) fn highest_along(&self, line: &ToolLine) -> f64 {
+        let u = line.axis.get();
+        let along = |p: Point3| (p - line.origin).dot(u);
+        if let Some(b) = self.cuboid {
+            return (0..8u8)
+                .map(|i| {
+                    along(Point3::new(
+                        if i & 1 == 0 { b.min.x } else { b.max.x },
+                        if i & 2 == 0 { b.min.y } else { b.max.y },
+                        if i & 4 == 0 { b.min.z } else { b.max.z },
+                    ))
+                })
+                .fold(f64::NEG_INFINITY, f64::max);
+        }
+        let tilt = self.axis.get().dot(u);
+        let across = (1.0 - tilt * tilt).max(0.0).sqrt();
+        (along(self.base) + self.base_radius * across)
+            .max(along(self.top()) + self.top_radius * across)
+    }
+
     fn split(&self, p: Point3) -> (f64, Vec3) {
         let v = p - self.base;
         let a = self.axis.get();
@@ -491,6 +524,43 @@ impl Solid {
     fn direction(&self, theta: f64) -> Vec3 {
         self.e1 * theta.cos() + self.e2 * theta.sin()
     }
+}
+
+/// Rounding allowed for in the reach test of a box, mm: far above the
+/// rounding of the distances involved.
+const BOX_REACH_SLACK: f64 = 1e-7;
+
+/// A distance no greater than the box `b`'s from `line`. The distance from a
+/// point to the line is at least its offset along any unit direction across
+/// the line, and over a box that offset is linear, so its least size is
+/// known exactly; the directions taken are each model axis with its part
+/// along the line removed.
+fn box_line_gap(b: Aabb, line: &ToolLine) -> f64 {
+    let u = line.axis.get();
+    let centre = Point3::new(
+        0.5 * (b.min.x + b.max.x),
+        0.5 * (b.min.y + b.max.y),
+        0.5 * (b.min.z + b.max.z),
+    );
+    let half = Vec3::new(
+        0.5 * (b.max.x - b.min.x),
+        0.5 * (b.max.y - b.min.y),
+        0.5 * (b.max.z - b.min.z),
+    );
+    let w = centre - line.origin;
+    [
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+    ]
+    .into_iter()
+    .filter_map(|e| UnitVec3::new(e - u * e.dot(u)).ok())
+    .map(|across| {
+        let a = across.get();
+        let spread = half.x * a.x.abs() + half.y * a.y.abs() + half.z * a.z.abs();
+        w.dot(a).abs() - spread
+    })
+    .fold(0.0, f64::max)
 }
 
 /// The eight corners of `b`, indexed by bit 0 = high X, bit 1 = high Y and
@@ -884,4 +954,157 @@ fn sampled(f: &impl Fn(f64) -> f64, a: f64, b: f64, n: u32, tol: f64) -> f64 {
     let lo = a + step * f64::from(best_i.saturating_sub(1));
     let hi = (a + step * f64::from(best_i + 1)).min(b);
     golden(f, lo, hi, tol)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use openchuck_types::tool::{Tool, ToolShape};
+    use openchuck_types::units::{Degrees, Millimetres};
+
+    /// A deterministic stream in `[0, 1)`.
+    struct Lcg(u64);
+
+    impl Lcg {
+        fn next(&mut self) -> f64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (self.0 >> 11) as f64 / (1_u64 << 53) as f64
+        }
+    }
+
+    fn v_bit() -> RevolvedProfile {
+        Tool {
+            shape: ToolShape::VBit {
+                included_angle: Degrees(60.0),
+                tip_diameter: Millimetres(0.1),
+            },
+            diameter: Millimetres(3.175),
+            flute_length: Millimetres(12.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(3.175),
+            flute_count: 1,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap()
+    }
+
+    fn random_line(rng: &mut Lcg) -> ToolLine {
+        let origin = Point3::new(
+            (rng.next() - 0.5) * 40.0,
+            (rng.next() - 0.5) * 40.0,
+            (rng.next() - 0.5) * 40.0,
+        );
+        // Mostly across X, as a rotary machine's tool is, sometimes not.
+        let x = if rng.next() < 0.5 {
+            0.0
+        } else {
+            rng.next() - 0.5
+        };
+        let axis = UnitVec3::new(Vec3::new(x, rng.next() - 0.5, rng.next() - 0.5)).unwrap();
+        ToolLine { origin, axis }
+    }
+
+    fn distance_to_line(p: Point3, line: &ToolLine) -> f64 {
+        let w = p - line.origin;
+        let u = line.axis.get();
+        (w - u * w.dot(u)).length()
+    }
+
+    /// The reach test of a box is never more than the box's real distance
+    /// from the line, so a box it rules out gives no contact, exactly as
+    /// dropping onto its faces would say (issue #382; GC-07).
+    #[test]
+    fn req_gc_07_a_box_out_of_reach_gives_the_same_answer_as_its_faces() {
+        let b = Aabb {
+            min: Point3::new(-10.0, -12.0, -8.0),
+            max: Point3::new(-4.0, 12.0, 8.0),
+        };
+        let mesh = box_mesh(b);
+        let triangles: Vec<[Point3; 3]> = mesh
+            .triangles
+            .iter()
+            .map(|t| t.map(|i| mesh.vertices[i as usize]))
+            .collect();
+        let solid = Solid::cuboid(b).unwrap();
+        let profile = v_bit();
+        let mut rng = Lcg(5);
+        let mut ruled_out = 0;
+        for _ in 0..3000 {
+            let line = random_line(&mut rng);
+            let gap = box_line_gap(b, &line);
+            for i in 0..=8 {
+                for j in 0..=8 {
+                    for k in 0..=8 {
+                        let f = |lo: f64, hi: f64, n: u32| lo + (hi - lo) * f64::from(n) / 8.0;
+                        let p = Point3::new(
+                            f(b.min.x, b.max.x, i),
+                            f(b.min.y, b.max.y, j),
+                            f(b.min.z, b.max.z, k),
+                        );
+                        assert!(gap <= distance_to_line(p, &line) + 1e-9, "{line:?}");
+                    }
+                }
+            }
+            let every = crate::cutter::drop_on_triangles(&triangles, &profile, &line);
+            let quick = solid.drop_tool(&profile, &line);
+            assert_eq!(
+                quick.map(|c| c.offset.to_bits()),
+                every.map(|c| c.offset.to_bits()),
+                "{line:?}"
+            );
+            ruled_out += usize::from(gap > profile.cutting_radius() + BOX_REACH_SLACK);
+        }
+        assert!(ruled_out > 500, "too few lines out of reach: {ruled_out}");
+    }
+
+    /// No drop onto a solid lies further along the line than the solid's
+    /// highest point along it, and no point of the solid does either.
+    #[test]
+    fn req_gc_07_no_contact_with_a_solid_is_above_its_highest_point() {
+        let solids = [
+            Solid::cylinder(Point3::new(-4.0, 0.0, 0.0), UnitVec3::X, 4.0, 5.0).unwrap(),
+            Solid::frustum(
+                Point3::new(1.0, 2.0, -1.0),
+                UnitVec3::new(Vec3::new(0.3, 1.0, 0.2)).unwrap(),
+                6.0,
+                3.0,
+                1.0,
+            )
+            .unwrap(),
+            Solid::cuboid(Aabb {
+                min: Point3::new(-10.0, -12.0, -8.0),
+                max: Point3::new(-4.0, 12.0, 8.0),
+            })
+            .unwrap(),
+        ];
+        let profile = v_bit();
+        let mut rng = Lcg(9);
+        let mut touched = 0;
+        for solid in solids {
+            let points = solid.mesh(64).vertices;
+            for _ in 0..1500 {
+                let mut line = random_line(&mut rng);
+                line.origin = Point3::new(
+                    0.3 * line.origin.x,
+                    0.3 * line.origin.y,
+                    0.3 * line.origin.z,
+                );
+                let highest = solid.highest_along(&line);
+                for p in &points {
+                    assert!((*p - line.origin).dot(line.axis.get()) <= highest + 1e-9);
+                }
+                if let Some(c) = solid.drop_tool(&profile, &line) {
+                    assert!(c.offset <= highest + 1e-9, "{line:?}");
+                    touched += 1;
+                }
+            }
+        }
+        assert!(touched > 500, "too few drops touched: {touched}");
+    }
 }
