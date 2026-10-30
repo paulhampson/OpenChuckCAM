@@ -1,6 +1,6 @@
 # 0338: Exact drops for the tapered ball and the flat end, built but not adopted (lane STEPALL-X3; issue #350)
 
-- **Status:** proposed, 30 Oct 2026. The owner chose the outcome (option A on OI-1351, relayed by the coordinator session session_01CFw3bzew7zizFQ91L5tvT7, decision 0049): the outline drop is merged as a tested library capability and no strategy adopts it. This record awaits the owner's acceptance.
+- **Status:** accepted by the project owner on 30 Oct 2026 (Europe/London). The owner read the condensed record in the coordinator session and approved it there; the acceptance was relayed to this lane session by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows (relayed acceptance, decision 0049). The owner chose the outcome before it (option A on OI-1351, also relayed): the outline drop is merged as a tested library capability and no strategy adopts it. Proposed 30 Oct 2026.
 - **Date:** 30 Oct 2026 (Europe/London).
 - **Lane:** STEPALL-X3, branch `claude/lane-stepall-x3`, from `main` at `4dbccee` (library family 0.27.0). Issue #350 (STEPALL-0211 step 5 of 6), parent #257.
 - **Requirements:** IMP-02, OP-04, OP-09, OP-11, OP-12, OP-21, OP-23, SET-09, GC-07, NFR-04, NFR-05, NFR-06, NFR-07, NFR-12. Verification plan 4.1 and the *Exact surfaces* note of section 5.
