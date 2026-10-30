@@ -5,7 +5,7 @@
 - **Lane:** CISPEED (the devops manager role). Record branch `docs/decision-0358-ci-time`, docs only.
 - **Requirements:** none change. GC-07 and NFR-06 (deterministic output) are untouched: no option changes a test, a golden file or a build flag of the product.
 - **Builds on:** [0052](0052-ci-speed-up.md) (the first speed-up round, accepted 16 Oct 2026), [0055](0055-push-discipline-and-draft-pull-requests.md) (one push per pull request, draft gate), [0039](0039-occt-install-cache.md), [0102](0102-coverage-off-pull-requests.md), [0249](0249-ci-skip-heavy-jobs-for-markdown.md), [0250](0250-ui-smoke-linux-leg-pinned-to-ubuntu-24-04.md), [0251](0251-step-kernel-linux-leg-pinned-and-occt-cache-key.md).
-- **Open items:** OI-1410 to OI-1415 (new). OI-224 and OI-225 (0052) stay open: OI-225 (the cache list is not readable through a session's proxy) still blocks the first check below.
+- **Open items:** OI-1410 to OI-1416 (new). OI-224 and OI-225 (0052) stay open: OI-225 (the cache list is not readable through a session's proxy) still blocks the first check below.
 
 ## The owner's rules for this record
 
@@ -89,3 +89,4 @@ Do 1 first, after checking the cache list (it is also the largest unknown), then
 | OI-1413 | Option 4 (approved with the owner's refinement, see the detection design): light push-to-main run only when the pushed tree equals the tree a full green pull request run tested, otherwise full; full matrix nightly. |
 | OI-1414 | Option 5: measure the build and listing share of `Check the test partition`, then decide whether clippy or the partition check leaves the Windows leg. |
 | OI-1415 | After each change: re-measure with the same method (per job time, last job, peak concurrent jobs, queue, cache hit) over at least 10 runs and record the result here; also count `e2e.yml` in the 20-job budget. |
+| OI-1416 | A failed scheduled full run on `main` shows only in the Actions tab; decide whether it opens an issue (`nightly-issue`). |
