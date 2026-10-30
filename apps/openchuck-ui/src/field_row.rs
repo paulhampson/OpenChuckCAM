@@ -235,7 +235,7 @@ fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) ->
         )
         .on_hover_text("Reset: the default or the tool's cutting data applies");
     button.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
+        egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Reset {label}"))
     });
     button.clicked()
 }
@@ -297,6 +297,9 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                     ),
             );
             let ui = &mut inner;
+            // The row draws the box; the edit inside it is only its text. egui
+            // 0.37 raises an edit to the height of a button.
+            ui.spacing_mut().interact_size.y = 0.0;
             let unit = (!row.unit.is_empty()).then(|| {
                 ui.painter().layout_no_wrap(
                     row.unit.to_owned(),
@@ -307,7 +310,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             let unit_width = unit
                 .as_ref()
                 .map_or(0.0, |g| g.size().x + ui.spacing().item_spacing.x);
-            let mut edit = egui::TextEdit::singleline(&mut typed)
+            let mut edit = crate::theme::single_line(ui, &mut typed)
                 .id(id)
                 .frame(egui::Frame::NONE)
                 .font(egui::TextStyle::Monospace)
@@ -456,7 +459,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
 /// Remembers for the step bar that `key` holds an entry that cannot be read
 /// (or that it no longer does), as of this frame.
 fn note_unreadable(ctx: &egui::Context, key: &str, label: Option<&String>) {
-    let id = egui::Id::new("unreadable-entries");
+    let id = egui::Id::unique("unreadable-entries");
     let frame = ctx.cumulative_pass_nr();
     ctx.data_mut(|d| {
         let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
@@ -474,7 +477,7 @@ fn note_unreadable(ctx: &egui::Context, key: &str, label: Option<&String>) {
 /// The labels of the number boxes drawn in the last frame or two that hold
 /// an entry that cannot be read, for the step bar (UI-26).
 pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
-    let id = egui::Id::new("unreadable-entries");
+    let id = egui::Id::unique("unreadable-entries");
     let frame = ctx.cumulative_pass_nr();
     ctx.data_mut(|d| {
         let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
@@ -507,7 +510,7 @@ pub fn name_field(ui: &mut egui::Ui, state: &mut FieldState, key: &str, applied:
         .typed(key)
         .map_or_else(|| applied.to_owned(), str::to_owned);
     let response = ui.add(
-        egui::TextEdit::singleline(&mut typed)
+        crate::theme::single_line(ui, &mut typed)
             .id(crate::pending_edits::field_id(ui, "name field", key))
             .font(egui::TextStyle::Heading)
             .desired_width(ui.available_width() - 90.0),
@@ -610,7 +613,7 @@ pub fn flag_row(
             label_cell(ui, label, description, false);
             let response = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on));
             response.widget_info(|| {
-                egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, on, label)
+                egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, label)
             });
             crate::pending_edits::track(ui, &response, label, None);
             response.changed()

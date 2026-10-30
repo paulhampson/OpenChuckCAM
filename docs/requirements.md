@@ -89,7 +89,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-07 | Parameter panels with units, validation and sensible defaults. | P1 |
 | UI-08 | Undo and redo for all edits to the project. | P1 |
 | UI-09 | Run toolpath generation and simulation off the UI thread, with progress reporting and cancellation. | P1 |
-| UI-10 | Organise the work as ordered steps (model, setup, operations, simulate, post and export) that the user can move between at any time. A step whose inputs do not exist yet is unavailable and says why. | P1 |
+| UI-10 | Organise the work as ordered steps (model, setup, operations, simulate) that the user can move between at any time, with post and export as an action of its own, on the simulate step and in the menu. A step or action whose inputs do not exist yet is unavailable and says why. | P1 |
 | UI-11 | Show the state of each model, setup, selection set and operation (up to date, stale, running, error, warning, off) in the project tree, by shape as well as colour, with a legend that stays visible. An item in error says why and how to fix it. | P1 |
 | UI-12 | Collect errors, warnings and information from import, setup checks, file checks, generation and jobs in one messages panel, by severity, each naming its source and offering the action that fixes it. After an export attempt, keep a dismissible result listing every full path actually written, the failed file and reason, and files not attempted; offer copying of written paths. Retain the result in Messages for the open project session, with an action to show it again after dismissal. | P1 |
 | UI-13 | Show, for each machine profile value, whether it is confirmed on the machine or not, with where the value came from and how to confirm it. | P1 |

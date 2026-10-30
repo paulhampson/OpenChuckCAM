@@ -360,7 +360,7 @@ impl Shell {
                 // not scroll; the rest scrolls under it, with a bar in a strip
                 // of its own so it never lies over a control (issue 262). In a
                 // dock too short for the strip, the strip scrolls too.
-                let strip_id = egui::Id::new("playback strip height");
+                let strip_id = egui::Id::unique("playback strip height");
                 let strip_height = ui
                     .data(|d| d.get_temp::<f32>(strip_id))
                     .unwrap_or(f32::INFINITY);

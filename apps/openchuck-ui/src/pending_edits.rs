@@ -111,7 +111,7 @@ struct State {
 }
 
 fn state_id() -> Id {
-    Id::new("unconfirmed form edits")
+    Id::unique("unconfirmed form edits")
 }
 
 fn read<T>(ctx: &egui::Context, f: impl FnOnce(&mut State) -> T) -> T {
@@ -453,7 +453,7 @@ fn checked_text_edit(
     // draft even when its field is shown again. These dialog labels are
     // unique within their form, independent of the current layout.
     let id = field_id(ui, "draft field", label);
-    let response = ui.add(egui::TextEdit::singleline(text).id(id));
+    let response = ui.add(crate::theme::single_line(ui, text).id(id));
     draft_text(ui, &response, label, &before, text, validate);
     if let Some(reason) = take_refusal(ui.ctx(), response.id) {
         read(ui.ctx(), |s| {
