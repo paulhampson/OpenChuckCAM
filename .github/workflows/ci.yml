@@ -38,6 +38,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Cache policy (decision 0358, Option 1, OI-1410): every `rust-cache` step below saves only on `main`
+# (`save-if`); a pull request run restores the entries `main` wrote (a cache written on a pull request
+# branch is visible to that pull request only, and a push to each of several pull requests filled the
+# 10 GB repository limit and evicted the OpenCASCADE installs).
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -185,6 +189,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Get the LinuxCNC image
         env:
           IMAGE_CHANGED: ${{ needs.changes.outputs.linuxcnc_image }}
@@ -231,6 +237,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: shard-${{ matrix.shard }}
       - uses: taiki-e/install-action@v2
         with:
@@ -310,6 +317,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Software Vulkan and a virtual display (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -378,6 +387,7 @@ jobs:
       - uses: ./.github/actions/occt
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: step-kernel
           cache-on-failure: true
       - name: Tool versions
@@ -438,6 +448,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-hack
@@ -487,6 +499,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: fast-checks
       - uses: taiki-e/install-action@v2
         if: needs.changes.outputs.rust == 'true'
@@ -643,6 +656,7 @@ jobs:
           tool: cargo-fuzz
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: fuzz
           key: fuzz-smoke
       - name: Seed the STL corpus from testdata
