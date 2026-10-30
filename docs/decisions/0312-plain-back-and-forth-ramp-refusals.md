@@ -1,6 +1,6 @@
 # 0312: Plain refusals for the back-and-forth ramp, said before Generate where they can be (lane RAMPERRORS; issue #291)
 
-- **Status:** proposed 29 Oct 2026 by lane RAMPERRORS. The owner's choices it records (D1 = C, D2 = A, D3 = A, and D4 = C for follow-up work) were relayed by the coordinator session on 29 Oct 2026 (decision 0049); the record itself stays proposed until the owner accepts it.
+- **Status:** accepted by the project owner on 30 Oct 2026, relayed by the coordinator session (decision 0049): the owner read the condensed record (items 1 to 4, the evidence on their project, OI-1270 and OI-1271) in the coordinator session and answered "Approve". Proposed 29 Oct 2026 by lane RAMPERRORS. The owner's choices it records (D1 = C, D2 = A, D3 = A, and D4 = C for follow-up work) were relayed by the coordinator session on 29 Oct 2026.
 - **What it amends:** [decision 0242](0242-optional-back-and-forth-ramp.md) item 3 (accepted): the second sentence of the approved refusal ("Choose another entry or change the entry geometry.") is replaced by the cause and the fix (item 2 below). The first sentence, the one-diameter minimum, the checks and the motion are unchanged. [Decision 0248](0248-ramp-clearance-budget.md) is unchanged.
 - **Date:** 29 Oct 2026.
 - **Requirements:** OP-11, NFR-07, NFR-12; specification section 15 (decision 0114: plain words, no internal names).
