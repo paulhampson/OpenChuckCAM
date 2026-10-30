@@ -157,7 +157,7 @@ fn args() -> Result<Args, Error> {
         deflections: DEFLECTIONS.to_vec(),
         fine: None,
         angular: TessellationSettings::default().angular,
-        forms: vec!['a', 'b', 'c'],
+        forms: vec!['a', 'b', 'c', 'd'],
         threads: vec![Threads::Exactly(1), Threads::All],
         sim_tilt: 10.0,
         sim_step: 2.0,
@@ -289,6 +289,14 @@ fn main() -> Result<(), Error> {
 
     if !(wants("m2") || wants("m3") || wants("m4")) {
         return Ok(());
+    }
+    // M4 checks the application against the library's form (d): without it
+    // the equivalence checks would be skipped unnoticed.
+    if wants("m4") && !args.forms.contains(&APP_FORM) {
+        return Err(format!(
+            "M4 compares the application with form ({APP_FORM}); add it to --forms"
+        )
+        .into());
     }
     let machine = builtin("makera-z1").ok_or("no Z1")??;
     let rotary = RotaryMapping::of_profile(&machine);
@@ -573,7 +581,7 @@ fn main() -> Result<(), Error> {
                         )
                     );
                 }
-                if let Form::Brep(surface, _, _) = form
+                if let Form::Brep(surface, None, _) = form
                     && !args.skip_probe
                 {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");

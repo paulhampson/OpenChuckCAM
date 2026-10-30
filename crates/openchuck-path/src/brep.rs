@@ -494,6 +494,9 @@ struct Nurbs {
     scale_v: f64,
     /// Bounds on the first and second derivatives over the whole patch.
     bounds: bound::Derivatives,
+    /// The crease knots in u and in v (see [`Nurbs::creases`]).
+    creases_u: Vec<f64>,
+    creases_v: Vec<f64>,
 }
 
 impl Nurbs {
@@ -521,13 +524,11 @@ impl Nurbs {
     /// Whether the parameter box `[u0, u1, v0, v1]` has an edge on a crease
     /// line of the patch.
     fn touches_crease(&self, b: [f64; 4]) -> bool {
-        let on = |x: f64, k: &[f64], deg: usize, n: usize| {
-            Self::creases(k, deg, n).iter().any(|c| same(*c, x))
-        };
-        on(b[0], &self.uk, self.pu, self.nu)
-            || on(b[1], &self.uk, self.pu, self.nu)
-            || on(b[2], &self.vk, self.pv, self.nv)
-            || on(b[3], &self.vk, self.pv, self.nv)
+        let on = |x: f64, creases: &[f64]| creases.iter().any(|c| same(*c, x));
+        on(b[0], &self.creases_u)
+            || on(b[1], &self.creases_u)
+            || on(b[2], &self.creases_v)
+            || on(b[3], &self.creases_v)
     }
 }
 
@@ -631,6 +632,8 @@ impl Nurbs {
             scale_u: 1.0,
             scale_v: 1.0,
             bounds: bound::Derivatives::default(),
+            creases_u: Self::creases(&p.knots_u, pu, nu),
+            creases_v: Self::creases(&p.knots_v, pv, nv),
         };
         let hull = Self::hull(&n.poles);
         let diag = (hull.max - hull.min).length().max(1e-12);

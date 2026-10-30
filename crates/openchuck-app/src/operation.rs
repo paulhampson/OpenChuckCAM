@@ -417,8 +417,13 @@ pub(crate) fn generate_with_part(
         _ => None,
     };
     // A strategy that takes exact contacts drops its ball onto the exact
-    // faces of a STEP part (decision 0277); the others onto its tessellation.
-    let exact = placed.brep.is_some() && strategy.exact_contact();
+    // faces of a STEP part (decision 0277); any other tool, and the other
+    // strategies, onto its tessellation, with face sets of its triangles to
+    // match.
+    let profile = snapshot.tool.profile()?;
+    let exact = placed.brep.is_some()
+        && strategy.exact_contact()
+        && openchuck_path::ball_radius(&profile).is_some();
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
             Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
@@ -431,7 +436,6 @@ pub(crate) fn generate_with_part(
     let part_bounds = openchuck_geom::summary(mesh)
         .bounds
         .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
-    let profile = snapshot.tool.profile()?;
     // The held regions and tabs join the model's surface as the target the
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
@@ -2522,6 +2526,11 @@ mod tests {
     const BALL: f64 = 3.0;
 
     fn bar_fixture(strategy: &str, file: &str) -> Fixture {
+        bar_fixture_with(strategy, file, ToolShape::BallEnd)
+    }
+
+    /// [`bar_fixture`] with a tool of `shape`, `BALL` across.
+    fn bar_fixture_with(strategy: &str, file: &str, shape: ToolShape) -> Fixture {
         // Roughing has no cutting data without a stock material.
         let stepdown = [(STEPDOWN, Value::Number(1.0))];
         let parameters: &[(&str, Value)] = if strategy == roughing::NAME {
@@ -2531,7 +2540,7 @@ mod tests {
         };
         let brep = openchuck_testkit::brep::banded_cylinder(BAR, LENGTH, &[20.0, 40.0]);
         let ball = Tool {
-            shape: ToolShape::BallEnd,
+            shape,
             diameter: Millimetres(BALL),
             flute_length: Millimetres(15.0),
             overall_length: Millimetres(60.0),
@@ -2734,6 +2743,45 @@ mod tests {
     #[test]
     fn req_op_23_req_op_02_req_op_11_face_sets_limit_rotary_roughing_on_a_step_part_as_on_a_mesh() {
         face_sets_limit_the_cut_as_on_a_mesh(roughing::NAME);
+    }
+
+    #[test]
+    fn req_op_23_req_op_02_a_face_set_limits_a_bull_nose_on_a_step_part_as_on_a_mesh() {
+        // Decision 0277 (OI-833): a strategy that takes exact contacts drops
+        // only a ball on the exact faces; a bull-nose tool drops on the
+        // tessellation, where its corner rests inside the facets, up to the
+        // deflection off the exact faces. Its face sets must stay the faces'
+        // triangles, or those contacts would not count as on them and the
+        // cut on the chosen face would be lost.
+        for strategy in [openchuck_path::helical::NAME, openchuck_path::indexed::NAME] {
+            let bull = || ToolShape::BullNose {
+                corner_radius: Millimetres(0.5),
+            };
+            let whole = bar_fixture_with(strategy, "bar.step", bull())
+                .run()
+                .unwrap();
+            let mut f = bar_fixture_with(strategy, "bar.step", bull());
+            f.select_as(
+                SelectionTarget::Faces([FaceId(1)].into()),
+                f.hash,
+                f.model,
+                Role::Machine,
+            );
+            let path = f
+                .run()
+                .unwrap_or_else(|e| panic!("{strategy} bull nose, cut on face 1: {e}"));
+            if let Err(why) = keeps_to_faces(&path, "cut on", &whole) {
+                panic!("{strategy} bull nose: {why}");
+            }
+            // And it says the tool was dropped on the tessellation.
+            assert!(
+                path.notes
+                    .iter()
+                    .any(|n| n.contains("tessellation") && n.contains("ball-end tools only")),
+                "{strategy}: {:?}",
+                path.notes
+            );
+        }
     }
 
     #[test]

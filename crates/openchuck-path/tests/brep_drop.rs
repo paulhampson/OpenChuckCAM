@@ -584,3 +584,47 @@ fn req_op_12_a_ball_rests_on_the_point_of_a_cone() {
         );
     }
 }
+
+#[test]
+fn req_op_02_a_tessellation_contact_is_not_on_the_exact_face_set() {
+    // Why a host gives exact face sets only with exact contacts (decision
+    // 0277): a tool without an exact drop (anything but a ball) rests on the
+    // tessellation, and a contact inside a facet lies off the exact face by
+    // up to the facet's sagitta (0.005 mm on a 96-facet cylinder of radius
+    // 10). Judged against the exact faces it would not be on its own face;
+    // against the triangles it is.
+    use openchuck_path::{MeshSurface, RegionConstraint};
+    use openchuck_types::brep::FaceId;
+    let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
+    let middle = BrepSurface::with_faces(&model, &[FaceId(1)])
+        .unwrap()
+        .with_exact_drops(true);
+    let triangles = MeshSurface::new(middle.tessellation()).unwrap();
+    let exact = RegionConstraint {
+        region: Some(&middle),
+        ..RegionConstraint::default()
+    };
+    let mesh = RegionConstraint {
+        region: Some(&triangles),
+        ..RegionConstraint::default()
+    };
+    let tool = ball(1.0);
+    let line = radial_line(15.0, 0.0);
+    let t = middle.tessellation();
+    let mut checked = 0;
+    for tri in t.triangles.iter().step_by(7) {
+        let [a, b, c] = tri.map(|i| t.vertices[i as usize]);
+        let centroid = p3(
+            (a.x + b.x + c.x) / 3.0,
+            (a.y + b.y + c.y) / 3.0,
+            (a.z + b.z + c.z) / 3.0,
+        );
+        // A contact in the facet's middle is on the triangles...
+        assert!(mesh.allows(centroid, centroid, &tool, &line));
+        // ...and well inside the exact cylinder, so not on the exact face.
+        assert!(centroid.y.hypot(centroid.z) < 10.0 - 1e-3);
+        assert!(!exact.allows(centroid, centroid, &tool, &line));
+        checked += 1;
+    }
+    assert!(checked > 20);
+}
