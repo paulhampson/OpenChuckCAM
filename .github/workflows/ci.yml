@@ -387,6 +387,11 @@ jobs:
         run: cargo build --locked -p openchuck-import --features kernel --bins
       - name: clippy on the wrapper (deny warnings)
         run: cargo clippy --locked -p openchuck-import --features kernel --all-targets -- -D warnings
+      # The examples and tests behind `kernel-tests` are skipped by the workspace clippy job, which
+      # builds without the kernel (OI-1340). Clippy only checks, so this is one leg: the Linux one.
+      - name: clippy on the kernel-tests examples and tests (deny warnings)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo clippy --locked --workspace --all-targets --features openchuck-app/kernel-tests -- -D warnings
       # Import, numbering, units, tessellation, the corpus, the crash and malformed files, and the
       # worker exiting cleanly (the link order contract of decision 0003).
       - name: Import tests
