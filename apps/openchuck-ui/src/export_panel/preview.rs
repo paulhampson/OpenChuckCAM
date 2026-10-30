@@ -116,7 +116,7 @@ impl PreviewView {
         });
         response.widget_info(|| {
             egui::WidgetInfo::labeled(
-                egui::WidgetType::Other,
+                egui::Role::Group,
                 true,
                 format!("G-code preview, {total} lines"),
             )
@@ -303,7 +303,7 @@ impl PreviewView {
     fn track(&mut self, ui: &mut egui::Ui, track: egui::Rect, total: usize) {
         let response = ui.interact(
             track,
-            ui.id().with("preview track"),
+            ui.scope_id().with("preview track"),
             Sense::click_and_drag(),
         );
         let travel = Scroll::last_top(total);
