@@ -3,11 +3,17 @@
 //! GC-07): the carving test piece (`openchuck_testkit::parts::CarvedRelief`)
 //! finished by axial finishing over the whole part, in a selected region and
 //! next to a held region and a tab, and by helical finishing in a region.
-//! Each path must be the same at 1, 2 and N threads, and the same, bit for
-//! bit, as the path before the speed-ups of issue #382, kept as a hash in
-//! `testdata/golden/carving/` (written with `OPENCHUCK_BLESS=1`
-//! from the code before them). Native floating point differs between
-//! platforms (OI-319), so the golden hashes are compared on Linux only.
+//! Each path must be the same at 1, 2 and N threads (NFR-06). It was also
+//! the same, bit for bit, as the path before the speed-ups of issue #382,
+//! kept as a hash in `testdata/golden/carving/` (written with
+//! `OPENCHUCK_BLESS=1` from the code before them). Native floating point
+//! differs between machines (OI-319): glibc chooses its `asin`, `atan2` and
+//! `hypot` by the processor, and a CI runner gave another region path than
+//! the machine the hashes were written on, from the same code. So the hashes
+//! are compared only when `OPENCHUCK_CARVING_GOLDEN=1` asks, on the machine
+//! they were written on; the speed-ups are checked against the code before
+//! them on every machine by the tests in `cutter.rs`, `solid.rs`,
+//! `candidates.rs` and `tests/solids.rs`, which run both in one process.
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
 mod support;
@@ -124,7 +130,8 @@ impl<S: SurfaceSource> Job<S> {
 }
 
 /// Runs `job` at 1, 2 and N threads and checks the path is the same at each
-/// (NFR-06) and the same as its golden hash `name` (GC-07).
+/// (NFR-06), and, when `OPENCHUCK_CARVING_GOLDEN=1` asks, the same as its
+/// golden hash `name` (GC-07).
 fn check(name: &str, job: impl Fn() -> GeneratedPath + Sync) {
     let runs = openchuck_testkit::determinism::check(|| format!("{:?}", job().group).into_bytes())
         .unwrap();
@@ -137,7 +144,7 @@ fn check(name: &str, job: impl Fn() -> GeneratedPath + Sync) {
         std::fs::write(&golden, format!("{hash}\n")).unwrap();
         return;
     }
-    if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    if std::env::var_os("OPENCHUCK_CARVING_GOLDEN").is_some_and(|v| v == "1") {
         let want = std::fs::read_to_string(&golden).unwrap();
         assert_eq!(
             hash,
