@@ -23,9 +23,12 @@ use crate::roles;
 use crate::theme::DARK;
 
 /// The dialog's window key, and its fixed size in points (UI-16, OI-431):
-/// short enough for 1366 × 768 at 120 % with the task bar showing.
+/// short enough for 1366 × 768 at 120 % with the task bar showing (600 points).
+/// 24 points taller than before egui 0.37, which sets the dialog's content
+/// about 12 points taller (its rows, unit buttons and check box pad more), so
+/// that every mesh finding still shows without scrolling (decision record 0294).
 const WINDOW_KEY: &str = "import model";
-const WINDOW_SIZE: [f32; 2] = [460.0, 520.0];
+const WINDOW_SIZE: [f32; 2] = [460.0, 544.0];
 
 /// The label of the button that starts the check (the owner's decision on
 /// issue 144, option B).
@@ -402,7 +405,7 @@ impl ImportSession {
                     ui.horizontal(|ui| {
                         let before = self.path_text.clone();
                         let field = ui.add(
-                            egui::TextEdit::singleline(&mut self.path_text)
+                            crate::theme::single_line(ui, &mut self.path_text)
                                 .desired_width(ui.available_width() - 240.0)
                                 .hint_text("Path of a model file (STL or STEP)"),
                         );
@@ -663,7 +666,7 @@ impl ImportSession {
         };
         // Under the dialog, which is a window in the same frame, so a small view never has the
         // card drawn over the dialog's controls (issue 222).
-        egui::Area::new(egui::Id::new("import legend"))
+        egui::Area::new(egui::Id::unique("import legend"))
             .order(egui::Order::Background)
             .fixed_pos(area.left_bottom() + egui::vec2(12.0, -12.0))
             .pivot(egui::Align2::LEFT_BOTTOM)
@@ -677,7 +680,7 @@ impl ImportSession {
                 });
             });
         let lines = readout_lines(i);
-        egui::Area::new(egui::Id::new("import readout"))
+        egui::Area::new(egui::Id::unique("import readout"))
             .order(egui::Order::Background)
             .fixed_pos(area.right_bottom() + egui::vec2(-12.0, -12.0))
             .pivot(egui::Align2::RIGHT_BOTTOM)

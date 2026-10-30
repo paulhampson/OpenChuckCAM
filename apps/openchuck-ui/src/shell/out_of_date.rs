@@ -117,7 +117,7 @@ impl Shell {
         if !rect.is_positive() {
             return;
         }
-        let again = egui::Area::new(egui::Id::new("out of date banner"))
+        let again = egui::Area::new(egui::Id::unique("out of date banner"))
             .order(egui::Order::Middle)
             .pivot(egui::Align2::CENTER_TOP)
             .fixed_pos(rect.center_top() + egui::vec2(0.0, 12.0))

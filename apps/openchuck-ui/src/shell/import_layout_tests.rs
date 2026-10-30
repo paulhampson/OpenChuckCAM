@@ -45,7 +45,7 @@ fn model(name: &str) -> std::path::PathBuf {
 
 fn dialog_rect(rig: &Rig) -> egui::Rect {
     rig.ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "import model"))))
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "import model"))))
         .expect("the dialog is open")
 }
 
@@ -176,7 +176,7 @@ fn check_dialog(rig: &mut Rig, key: &str, title: &str, buttons: &[&str], open: f
         }
         let dialog = rig
             .ctx
-            .memory(|m| m.area_rect(egui::Id::new(("dialog", key))))
+            .memory(|m| m.area_rect(egui::Id::unique(("dialog", key))))
             .expect("the dialog is open");
         let case = format!("{title} {w}x{h} at {scale}: dialog {dialog:?}");
         let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, rig.size);

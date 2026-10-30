@@ -336,7 +336,7 @@ impl Shell {
                                 panes,
                                 marks,
                                 self.viewport.shows_unapplied(),
-                                egui::Id::new(("setup panes view", self.setup)),
+                                egui::Id::unique(("setup panes view", self.setup)),
                             );
                             if let Some(item) = seen.clicked {
                                 self.viewport.click_solid(item);
@@ -433,7 +433,7 @@ impl Shell {
                             let ctx = ui.ctx().clone();
                             crate::pending_edits::form(
                                 &ctx,
-                                egui::Id::new("inspector form"),
+                                egui::Id::unique("inspector form"),
                                 || self.properties(ui),
                             );
                         });
@@ -539,6 +539,12 @@ impl Shell {
         } else if self.dock_stale {
             builder = builder.exact_size(requested);
         }
+        // egui 0.37 keys a panel's state by its parent's scope id and its salt;
+        // the dock's parent is the central panel's `Ui`, whose id the tests
+        // cannot compute.
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::unique("test dock parent"), ui.scope_id()));
         let response = builder.show(ui, |ui| self.dock(ui));
         let rect = response.response.rect;
         let top = rect.top();
@@ -1020,11 +1026,7 @@ impl Shell {
             DARK.text,
         );
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(
-                egui::WidgetType::Button,
-                true,
-                format!("Overall status: {label}"),
-            )
+            egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Overall status: {label}"))
         });
         let lines: Vec<_> = steps
             .iter()
@@ -1282,7 +1284,7 @@ impl Shell {
             galley,
             text,
         );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, label));
         response.on_hover_text(format!(
             "{label}: {tip}.\nPast write results are in Messages."
         ));
@@ -1455,7 +1457,7 @@ fn step_tab(
     let health = state.health.name();
     response.widget_info(|| {
         egui::WidgetInfo::selected(
-            egui::WidgetType::Button,
+            egui::Role::Button,
             available,
             active,
             format!("{name}, {health}"),

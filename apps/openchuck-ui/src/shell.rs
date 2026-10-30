@@ -1810,7 +1810,7 @@ impl Shell {
         let mut form_submit = false;
         let mut form_browse = false;
         let mut action: Option<Action> = None;
-        egui::Modal::new(egui::Id::new("openchuck dialog")).show(ctx, |ui| match dialog {
+        egui::Modal::new(egui::Id::unique("openchuck dialog")).show(ctx, |ui| match dialog {
             Dialog::Folder {
                 create,
                 mut folder,
