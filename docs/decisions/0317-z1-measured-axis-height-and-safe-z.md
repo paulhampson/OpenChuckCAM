@@ -1,6 +1,6 @@
 # 0317: The Makera Z1's axis height is the owner's probing result for the probe as the reference tool; the built-in safe Z and safe cylinder become 40 mm (lane Z1AXIS; OI-60)
 
-- **Status:** proposed 30 Oct 2026 by lane Z1AXIS. The owner's answers to each choice below were relayed by the coordinator session (decision 0049) on 30 Oct 2026; the record itself is proposed until the owner accepts it.
+- **Status:** accepted by the project owner on 30 Oct 2026, relayed by the coordinator session (decision 0049): the owner saw the record condensed in the coordinator session, including the gate-evidence and block-rate flags, and approved it. Proposed 30 Oct 2026 by lane Z1AXIS; the owner's answers to each choice below (D1 to D8) were relayed by the coordinator on 30 Oct 2026.
 - **What it amends:**
   - **[Decision 0013](0013-z1-profile-consensus.md) item 2** (accepted): "The machine Z of the axis is unknown (OI-60)". It is now the owner's measurement, −48.6 mm, confirmed (items 1 and 3). Item 1's default clearance is replaced (item 2).
   - **[Decision 0020](0020-slice-6-post-and-round-trip.md) item 11** (accepted): the Z1 profile's axis at machine Z −55 with the safe Z 50 mm above it. Both are replaced (items 1 and 2).
