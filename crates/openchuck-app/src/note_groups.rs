@@ -225,6 +225,47 @@ impl Run {
     }
 }
 
+/// What the machine's feed limits did to an operation's feed in its last
+/// run, read from the run's notes (FIRSTRUN item 5; NFR-12).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FeedLimit {
+    /// How many moves were slowed.
+    pub moves: usize,
+    /// The lowest feed any of them was cut to, in mm/min.
+    pub lowest: f64,
+    /// The feed the operation asked for, in mm/min.
+    pub programmed: f64,
+}
+
+/// The feed-limit notes of `operation` in `notes`, as one summary; `None`
+/// when none slowed it. The notes are read, never changed (GC-07).
+pub fn feed_limit_summary(notes: &[String], operation: &str) -> Option<FeedLimit> {
+    let start = format!("operation '{operation}': move ");
+    let mut found: Option<FeedLimit> = None;
+    for note in notes {
+        if !note.starts_with(&start) || !note.contains("the machine's feed limits slow") {
+            continue;
+        }
+        let Some(parsed) = parse(note) else { continue };
+        let [(effective, _), (programmed, _)] = parsed.values.as_slice() else {
+            continue;
+        };
+        found = Some(match found {
+            None => FeedLimit {
+                moves: 1,
+                lowest: *effective,
+                programmed: *programmed,
+            },
+            Some(f) => FeedLimit {
+                moves: f.moves + 1,
+                lowest: f.lowest.min(*effective),
+                programmed: f.programmed,
+            },
+        });
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -365,5 +406,28 @@ mod tests {
         let groups = group_notes(&notes);
         assert_eq!(groups.len(), 3);
         assert!(groups.iter().zip(&notes).all(|(g, n)| g.text == *n));
+    }
+
+    #[test]
+    fn req_nfr_12_req_op_11_the_feed_summary_names_the_lowest_effective_feed() {
+        // FIRSTRUN item 5: the inspector says what the machine's limits did
+        // to the feed the user typed, from the notes of the last run.
+        let mut notes = feed(2..=4, 972.9);
+        notes.push(
+            "operation 'Roughing': move 9: the machine's feed limits slow this move: the \
+             contact feed is 673.4 mm/min, not 1000.0"
+                .to_owned(),
+        );
+        notes.push(
+            "operation 'Finishing': move 1: the machine's feed limits slow this move: the \
+             contact feed is 100.0 mm/min, not 500.0"
+                .to_owned(),
+        );
+        let s = feed_limit_summary(&notes, "Roughing").unwrap();
+        assert_eq!(s.moves, 4);
+        assert!((s.lowest - 673.4).abs() < 1e-9);
+        assert!((s.programmed - 1000.0).abs() < 1e-9);
+        assert_eq!(feed_limit_summary(&notes, "Other"), None);
+        assert_eq!(feed_limit_summary(&[], "Roughing"), None);
     }
 }
