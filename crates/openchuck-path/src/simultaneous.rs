@@ -57,6 +57,7 @@ use openchuck_types::units::Degrees;
 
 use crate::cutter::{self, Contact, ToolLine};
 use crate::error::{PathError, Result};
+use crate::faces;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
@@ -432,6 +433,8 @@ fn run(
         axial_seed = axial_seed.min(CONSTRAINED_SPACING);
     }
 
+    // Each face's turn: X, A at its start and the way A turns.
+    let mut face_turns: Vec<(f64, f64, f64)> = Vec::new();
     let tracks: Vec<Track> = match pattern {
         "axial" => {
             if lead != 0.0 {
@@ -478,14 +481,29 @@ fn run(
             let seeds = (total / step).ceil().max(1.0) as usize;
             // A turns `rotation` ways as X increases; the drive angle the other
             // way by the sense (A = sense (90 - phi)).
-            vec![Track {
+            let spiral = Track {
                 x0,
                 x1,
                 th0: th_start,
                 th1: th_start - sense * rotation * total,
                 seeds,
                 samples: samples as usize,
-            }]
+            };
+            // A whole turn at each face across the axis, where the tool's
+            // side touches it (decision record 0297), cut after the spiral
+            // as its own pass, so the spiral and its smoothed A are as
+            // before.
+            let grown = cutter::grow_profile(input.tool, leave)?;
+            let turns = faces::turns(input, &grown, (x0, x1), tolerance, context)?;
+            let span = spiral.th1 - spiral.th0;
+            face_turns = turns
+                .iter()
+                .map(|t| {
+                    let th = spiral.th0 + span * (t.x - x0) / length;
+                    (t.x, sense * (90.0 - th), rotation)
+                })
+                .collect();
+            vec![spiral]
         }
     };
 
@@ -516,6 +534,22 @@ fn run(
         let axis = plan.axis_plan(track, lead, max_tilt, &mut findings);
         context.check_cancelled()?;
         passes.extend(plan.track_passes(track, &axis, lead, &mut findings, context)?);
+    }
+    // The faces' turns keep the tool across the rotary axis: the face's
+    // normal lies along the axis, which no A can follow, and the tool's side
+    // meets the face whatever the tilt would be.
+    let turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
+    for turn in face_turns {
+        context.check_cancelled()?;
+        passes.extend(crate::helical::turn_passes(
+            input,
+            region,
+            (&grown, leave, &[]),
+            tolerance,
+            turn,
+            step,
+            context,
+        )?);
     }
     context.report(
         "simultaneous finishing: following the surface",
@@ -558,6 +592,7 @@ fn run(
                 .to_owned(),
         );
     }
+    notes.extend(faces::note(&turned));
     Ok(StrategyOutput {
         passes,
         notes,

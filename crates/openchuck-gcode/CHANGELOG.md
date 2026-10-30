@@ -23,6 +23,8 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- GC-10: `compare_simulator_range` accepts a boundary feed or speed that matches the original's single-precision rounding to 1e-6, as LinuxCNC holds them (F2755.6 reads back as 2755.60009765625; lane HELICALFACES). No API change.
+
 - `compare_with_moves` exposes each actual replayed move with its source group/segment, controller counter shift and programmed fed duration. Observations are provisional until the complete comparison succeeds. Existing `compare` delegates with a no-op observer and preserves its result/structural checks; no motion is silently accepted because a callback ran.
 
 - **Breaking family release (0.25.0, FACING, decision 0252):** `StrategyInput::facing` adds the optional whole-setup context. Host struct literals supply the new field; use `None` for other strategies and legacy whole-stock Facing. All family crates advance together under 0048. No project-schema migration.
