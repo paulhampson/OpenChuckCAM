@@ -186,6 +186,10 @@ impl Strategy for IndexedFinishing {
     }
 }
 
+/// The passes of indexed finishing, the target's extent along X and the
+/// note on its finishing layers.
+type Made = (Vec<Pass>, (f64, f64), Option<String>);
+
 /// The note an indexed operation carries when its passes cut past the ends
 /// of the part (`x0` to `x1`), where the tool's side faces an end face the
 /// target stops short of (decision record 0343). `None` when they did not.
@@ -230,7 +234,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, (f64, f64), Option<String>)> {
+) -> Result<Made> {
     let angles = positions(parameters)?;
     let mut along = AlongX::read(input, region, zones, parameters)?;
     // Each pass runs on past the ends of the target by the tool's radius
