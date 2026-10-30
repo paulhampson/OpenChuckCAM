@@ -264,7 +264,14 @@ impl MachinePanel {
         let shown_fields = profile.fields();
         for (field, label, applied, description) in rows
             .into_iter()
-            .filter(|(field, ..)| shown_fields.contains(field))
+            // The minimum stays editable on a measuring machine even when
+            // blank, so it can be set and cleared; without measurement it
+            // shows once given (switching measurement on shows it too).
+            .filter(|(field, ..)| {
+                shown_fields.contains(field)
+                    || (*field == ProfileField::RecommendedMinSafeZ
+                        && profile.automatic_tool_length)
+            })
         {
             let validate = |text: &str| edit_spindle_height(profile, field, text).map(|_| ());
             let row = TextRow {

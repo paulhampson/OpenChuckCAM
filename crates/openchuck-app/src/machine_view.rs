@@ -66,7 +66,7 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Check in the controller's documents whether it measures each tool on a tool setter and offsets it."
         }
         ProfileField::SpindleToAxis => {
-            "With the spindle at home, measure from the collet nose down to the chuck centre; or add the probe's stick-out to the axis height measured with the probe."
+            "With the spindle at home, measure from the collet nose down to the chuck centre; or add the probe's stick-out to the distance from home down to the axis measured with the probe (48.6 mm for an axis height of -48.6)."
         }
         ProfileField::RecommendedMinSafeZ => {
             "Check that the safe Z clears the chuck, the jaws and the part on your machine."
