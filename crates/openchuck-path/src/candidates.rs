@@ -590,7 +590,15 @@ mod tests {
         }
         let radius = part.radius + part.depth + 0.3;
         let mut lines = 0;
-        for (mesh, reach) in [(&region, 1.7), (&scattered, 1.7), (&scattered, 0.2)] {
+        // The whole piece with its end caps: the caps' triangles reach the
+        // rotary axis, so every pass may meet them (strips).
+        let whole = part.mesh(16, 40);
+        for (mesh, reach) in [
+            (&region, 1.7),
+            (&scattered, 1.7),
+            (&scattered, 0.2),
+            (&whole, 1.7),
+        ] {
             let index = DevIndex::build(mesh, &rotary, radius, reach).unwrap();
             let period = index.period;
             let mut check = |line: DevLine| {
@@ -631,7 +639,7 @@ mod tests {
                 });
             }
         }
-        assert_eq!(lines, 3 * (180 + 80));
+        assert_eq!(lines, 4 * (180 + 80));
     }
 
     /// Intervals joined as they come give the groups of one sort and sweep,

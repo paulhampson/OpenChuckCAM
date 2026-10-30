@@ -16,7 +16,7 @@ The lane timed two jobs:
 - **The owner's carving project**, handed to the lane session by the owner and kept out of the repository at the owner's request (only counts, settings and timings are recorded here). It has a 500,738-triangle STL model and two operations: rotary roughing, then axial finishing with a 60 degree V-bit with a 0.1 mm tip at a 0.03 mm stepover over a selected region of 496,172 triangles. It is on box stock with a held region and a 10 mm tab, and the finishing makes 276,766 moves.
 - **The lane's own test piece**, `openchuck_testkit::parts::CarvedRelief::STANDARD`: a 24 mm by 30 mm cylinder with raised strokes 0.8 mm high (diagonals, rings and crosses on 5 mm cells, chosen by a fixed hash) with chamfered walls and sharp edges, over a gentle wave. At 0.1 mm vertex spacing it has 453,908 triangles. `benches/examples/carving_model.rs` writes it as STL (22 MB, not committed) for a project, and `crates/openchuck-path/examples/carving_profile.rs` times a strategy on it through the public API.
 
-Machine: a 4-vCPU cloud container (Intel Xeon at 2.80 GHz, 16 GB), release build, nothing else running. The method: five uninstrumented runs, medians, at 1, 2 and 4 threads. On the owner's project `main` was run five times at 4 threads and once each at 2 and 1 (one run at 1 thread takes about 45 minutes).
+Machine: a 4-vCPU cloud container (Intel Xeon at 2.80 GHz, 16 GB), release build, nothing else running. The method: five uninstrumented runs, medians, at 1, 2 and 4 threads. On the owner's project `main` was run five times at 4 threads and once each at 2 and 1 (one run at 1 thread takes about 40 minutes).
 
 ### Where the time goes
 
@@ -39,21 +39,59 @@ Simulation of the operations and assembly are small (assembly under 1 s), and th
 
 Four speed-ups in `openchuck-path`, none of which changes an answer:
 
-1. **The drop-cutter skips an edge that cannot win** (`cutter.rs`, `edge_can_win`). No point of an edge lies above its higher end, and the profile is never lower than at the edge's nearest approach to the tool axis, since `h(r)` never decreases. So no tip from the edge is above the higher end less `h` there. `better` takes no tip at or below the best less `TIP_TIE`, so an edge whose bound, with 1e-7 mm for rounding, is that low leaves the best as it was and is not searched. The edge test reuses one buffer per drop, and the candidates are sorted unstably (their keys are distinct, so the order is the same).
+1. **The drop-cutter skips an edge that cannot win** (`cutter.rs`, `edge_can_win`). No point of an edge lies above its higher end, and the profile is never lower than at the edge's nearest approach to the tool axis, since `h(r)` never decreases. So no tip from the edge is above the higher end less `h` there. `better` takes no tip at or below the best less `TIP_TIE`, so an edge whose bound, with 1e-7 mm for rounding, is that low leaves the best as it was and is not searched. Lane STLPENCIL's change (pull request 383, merged first) already reuses each thread's drop lists and sorts the candidates unstably; this skip sits on top of it.
 2. **A solid below the part's contact is not dropped onto** (`composite.rs`, `Solid::highest_along`). No tip on a solid lies further along the tool line than the solid's highest point along it: a box's highest corner, or the higher of a cylinder's or frustum's two rims. When that, with 1e-7 mm for rounding, is at or below the model's contact plus `TIP_TIE`, the solid could not replace the contact under the existing tie rule, so it is skipped. A box out of the tool's reach (a lower bound on its distance from the line, taken across the line along each model axis) answers "no contact" at once, which is what its triangle tests give.
 3. **A region's intervals look only near the pass, and skip what is already found** (`candidates.rs`). The period in `u` is cut into cells about one triangle's span wide. A triangle is listed in every cell its span, widened by its reach, meets, and in one cell either side. A pass covering less than half the period looks only in its cells, and a strip or a wide triangle is always looked at. The intervals are joined as they are found (`Union`). That gives the same groups, bit for bit, as one sort and sweep, because a group is fixed by the joining rule whatever the order. A triangle whose whole range along the pass already lies in one group is skipped: it adds no point and closes no gap. The triangles nearest the pass are tried first, so the union fills early. The order changes the work, never the answer.
 4. **Measurement and checks are kept** (NFR-04, NFR-06, GC-07): the test piece, the `carving_profile` example, the `carving` benchmarks in `benches/`, and golden hashes of four carving toolpaths written from `main` before these changes.
 
 ## Results
 
-To be filled with the medians of the five-run measurement.
+All runs are uninstrumented release builds on the machine above, with nothing else running. "main" is `e403239`, which includes pull request 383; "branch" is this lane's code merged on it. Every run, at every thread count and on both builds, gave the same toolpath hash (on the owner's project `c4f87ac1d878372b`, 276,766 moves; on the test piece `2c092fcc12f8a995`, 528,303 moves). The golden hashes written from `2440a14`, before pull request 383, still match.
+
+**Owner's project, axial finishing** (the time of that operation alone, from `operation_times`; five runs on the branch at every thread count and on `main` at 4 threads; one run on `main` at 1 and 2 threads, as each takes 20 to 40 minutes):
+
+| Threads | main | branch | Faster |
+| --- | --- | --- | --- |
+| 1 | 2,330 s (one run) | 372 s (369 to 380) | 6.3 times |
+| 2 | 1,270 s (one run) | 203 s (197 to 209) | 6.3 times |
+| 4 | 633 s (596 to 668) | 101 s (99 to 106) | 6.2 times |
+
+CPU time (user and system) per run: about 2,360 s on `main` and 390 s on the branch. The scaling from 1 to 4 threads is 3.7 times on both. Peak memory of the whole run (roughing included): 474 MB on both.
+
+**Test piece, axial finishing** (`carving_profile`, five runs each, medians, range in brackets):
+
+| Threads | main | branch | Faster |
+| --- | --- | --- | --- |
+| 1 | 67.5 s (67.1 to 68.9) | 52.3 s (51.5 to 52.6) | 1.29 times |
+| 2 | 35.1 s (34.5 to 35.3) | 27.7 s (27.3 to 28.2) | 1.27 times |
+| 4 | 18.7 s (18.4 to 19.1) | 14.6 s (14.4 to 14.7) | 1.29 times |
+
+2,093,176 drops each run; peak memory 440 to 470 MB on both. Pull request 383 alone took this piece from 22.4 s to 19.9 s at 4 threads (one run each, before and after it).
+
+**Benchmarks** (`cargo bench -p openchuck-benches --bench carving`, criterion medians):
+
+| Benchmark | main | branch |
+| --- | --- | --- |
+| 4,000 V-bit drops along a pass on the test piece | 107.5 ms | 86.1 ms |
+| The same with a held box and a tab | 610.5 ms | 129.7 ms |
+| Axial finishing of a 300k-triangle region, 21 passes | 1.463 s | 0.415 s |
+
+**Other strategies** (test piece, 0.1 mm stepover, 4 threads, one run each, the same hash): helical finishing 7.3 s to 3.8 s (on `2440a14`); pencil clean-up 217 s to 175 s.
+
+What is left on the owner's project: 95% of the drops (15.4 million of 16.3 million) are a region's seeds every 0.01 mm (OI-1182).
 
 ## Not done: changes that would alter the output
 
 These are for the owner, and none is built:
 
-- **A region's passes are seeded at the tolerance** (OI-1182). With a selected region, `fit_region` drops the tool every `tolerance` (0.01 mm by default) along the intervals that reach the region, then thins the points. On the owner's project that is most of the drops left after this change. Seeding more coarsely and refining as the whole-part path does would cut the drops by several times, but it changes the points of the path, so it is the owner's choice. The lane does not recommend it without a measurement of what it would change on the owner's part.
-- **Pencil clean-up on an STL part runs on one thread** (OI-1181). On the test piece at a 0.1 mm stepover it spent 249 s in drops in a 252 s run at 4 threads. These changes take it from 252 s to 192 s with the same path. Spreading its work over the threads belongs to lane STLPENCIL, which is editing that code.
+- **A region's passes are seeded at the tolerance** (OI-1182). With a selected region, `fit_region` drops the tool every `tolerance` (0.01 mm by default) along the intervals that reach the region, then thins the points (decision 0034 item 5; the fine seeding finds features narrower than the old 0.1 mm spacing, OI-138). On the owner's project that is 15.4 million of the 16.3 million drops. A prototype that seeds at 0.1 mm (not kept) took the operation from 101 s to 50 s at 4 threads (2.8 million drops), but the path changed: 384,389 moves instead of 276,766, because the thinning that fine seeds allow no longer happens and the bisection adds points instead. It is the owner's choice; the lane does not recommend it as prototyped.
+- **Pencil clean-up on an STL part runs on one thread on this piece** (OI-1181). On `main` with pull request 383, at a 0.1 mm stepover, it takes 176 s at 1 thread and 175 s at 4 (branch; 217 s on `main` at 4). The places along each crease are found with `parallel::map_in_order`, whose fixed chunks are 64 points, and the creases one after another: the test piece's creases are short, so each is one chunk on one thread. The blisk stand-in of pull request 383 has long creases and scales. This is the per-crease placement of OI-1160 (lane STEPALL-Q), not this lane's.
+
+## Simulation display (scope added 29 Oct 2026)
+
+The owner added the display of the simulation to the lane: with these toolpaths the tool seems not to move, and the cut part takes long to load. The lane measured it on the owner's project (`crates/openchuck-app/examples/playback_times.rs`) and reported the profile and options to the coordinator separately. None of it is built in this record. In short, at 4 threads:
+- Preparing the stock playback simulates the whole toolpath again (131 s) and keeps 10 checkpoints of 7 MB each.
+- Each cut-part frame then replays up to about 36,000 moves from the nearest checkpoint, maps the comparison's colours onto 1.3 million triangles on one thread and builds a picker. That takes 2 to 23 s, and the tool waits at the cut part's cursor meanwhile (issue 333).
 
 ## Alternatives considered
 
@@ -63,7 +101,7 @@ These are for the owner, and none is built:
 
 ## Consequences
 
-- `openchuck-path` (internal only, so no public API change and no version bump): `cutter.rs`, `surface.rs` (`triangles_for_drop` returns the hierarchy's order; the drop sorts its candidates), `composite.rs`, `solid.rs` and `candidates.rs`; the new example `carving_profile`; a changelog line. `openchuck-testkit`: `parts::CarvedRelief`. `benches`: the example `carving_model` and the `carving` benchmarks. No B-rep code (`brep.rs`, `brep/`) and no pencil code is touched. The composite skip also applies to a STEP part with workholding, unchanged in output.
+- `openchuck-path` (internal only, so no public API change and no version bump): `cutter.rs` (the edge skip, on top of pull request 383), `composite.rs`, `solid.rs` and `candidates.rs`; the new example `carving_profile`; a changelog line. `openchuck-testkit`: `parts::CarvedRelief`. `benches`: the example `carving_model` and the `carving` benchmarks. No B-rep code (`brep.rs`, `brep/`) and no pencil code is touched. The composite skip also applies to a STEP part with workholding, unchanged in output.
 - `testdata/golden/carving/` holds the four golden hashes (Linux x86-64; OI-319).
 
 ## Tests
