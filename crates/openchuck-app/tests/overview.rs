@@ -1230,9 +1230,15 @@ fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_thread
 #[test]
 fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     let mut f = fixture("plain-machine", "cube_ascii.stl");
-    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
         .unwrap()
         .unwrap();
+    // An unconfirmed axis height, so the message names it (the Z1's is
+    // confirmed since decision 0317).
+    z1.provenance
+        .get_mut(&openchuck_app::setup::ProfileField::RotaryOrigin)
+        .unwrap()
+        .state = openchuck_app::setup::Confirmation::Unconfirmed;
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
