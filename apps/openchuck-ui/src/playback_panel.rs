@@ -241,7 +241,10 @@ impl CutPartBar {
             return Some(format!("Preparing the cut part{}", percent(fraction)));
         }
         if let Some(seconds) = self.behind {
-            return Some(format!("Cut part {} s behind", seconds.round().max(1.0) as u64));
+            return Some(format!(
+                "Cut part {} s behind",
+                seconds.round().max(1.0) as u64
+            ));
         }
         self.loading
             .map(|(_, fraction)| format!("Updating cut part{}", percent(fraction)))
@@ -478,7 +481,10 @@ impl PlaybackPanel {
         let stock = crate::roles::to_color32(crate::roles::STOCK);
         let x = |done: usize| left + made * (done as f32 / moves.max(1) as f32).clamp(0.0, 1.0);
         let strip = |a: f32, b: f32| {
-            egui::Rect::from_min_max(egui::pos2(a.min(b), rect.top() + 3.0), egui::pos2(a.max(b), rect.bottom() - 3.0))
+            egui::Rect::from_min_max(
+                egui::pos2(a.min(b), rect.top() + 3.0),
+                egui::pos2(a.max(b), rect.bottom() - 3.0),
+            )
         };
         painter.rect_stroke(
             strip(left, left + made),
@@ -508,14 +514,22 @@ impl PlaybackPanel {
             let to = x(target);
             match fraction {
                 Some(f) => {
-                    painter.rect_filled(strip(from, from + (to - from) * f), 1.0, stock.gamma_multiply(0.45));
+                    painter.rect_filled(
+                        strip(from, from + (to - from) * f),
+                        1.0,
+                        stock.gamma_multiply(0.45),
+                    );
                 }
                 None => {
                     // No total yet: a stripe moving over the stretch.
                     let t = ui.input(|i| i.time) as f32;
                     let span = (to - from).abs().max(8.0);
                     let at = from.min(to) + (t * 60.0) % span;
-                    painter.rect_filled(strip(at, (at + 6.0).min(from.max(to))), 1.0, stock.gamma_multiply(0.45));
+                    painter.rect_filled(
+                        strip(at, (at + 6.0).min(from.max(to))),
+                        1.0,
+                        stock.gamma_multiply(0.45),
+                    );
                     ui.ctx().request_repaint();
                 }
             }
@@ -1397,11 +1411,13 @@ impl PlaybackPanel {
             self.playback
                 .jump_to_move(timeline, (f * moves as f32) as usize);
         }
-        if let Some(bar) = bar {
-            Self::cut_part_strip(ui, bar, rect.left(), made_width, moves);
-        }
+        // The pipeline's progress, directly under the position bar, takes the
+        // cut-part bar's place while it is shown: the cut part on screen is
+        // then from the run being replaced (decision record 0322 item 8).
         if let Some(progress) = progress {
             progress.show(ui);
+        } else if let Some(bar) = bar {
+            Self::cut_part_strip(ui, bar, rect.left(), made_width, moves);
         }
         self.window_strip(ui, timeline, rect.left(), made_width);
         ui.horizontal(|ui| {
@@ -2169,7 +2185,7 @@ mod tests {
                                 events,
                                 ..Default::default()
                             },
-                            |ui| panel.timeline_bar(ui, &app, &data, None),
+                            |ui| panel.timeline_bar(ui, &app, &data, None, None),
                         );
                         output.textures_delta.clear();
                     };
@@ -2363,7 +2379,9 @@ mod tests {
             }),
             shown,
         ));
-        panel.playback.set_speed(Playback::speed_to_finish_in(&data.timeline, 10.0));
+        panel
+            .playback
+            .set_speed(Playback::speed_to_finish_in(&data.timeline, 10.0));
         panel.playback.play(&data.timeline);
         for _ in 0..5 {
             panel.frame(&app, &mut viewport, 0.2);
@@ -2376,21 +2394,31 @@ mod tests {
             head.done + 1,
             "the tool is at the play head, not held at the cut part"
         );
-        let bar = panel.cut_part_bar(&openchuck_app::JobLog::default()).unwrap();
+        let bar = panel
+            .cut_part_bar(&openchuck_app::JobLog::default())
+            .unwrap();
         assert_eq!((bar.shown, bar.head), (Some(shown.done), head.done));
-        assert!(bar.text().unwrap().starts_with("Cut part ") && bar.text().unwrap().ends_with(" s behind"));
+        assert!(
+            bar.text().unwrap().starts_with("Cut part ")
+                && bar.text().unwrap().ends_with(" s behind")
+        );
         // Pause: the tool stays at the play head, and the cut part catches up.
         panel.playback.pause();
         let paused = panel.playback.cursor();
         release.send(()).unwrap();
         while panel.frame(&app, &mut viewport, 0.0) {
             assert!(started.elapsed() < Duration::from_secs(120));
-            assert_eq!(viewport.tool_readout.as_ref().unwrap().move_number, paused.done + 1);
+            assert_eq!(
+                viewport.tool_readout.as_ref().unwrap().move_number,
+                paused.done + 1
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(panel.stock.shown, Some(paused));
         assert!(panel.stock.surface.as_ref().unwrap().can_pick());
-        let bar = panel.cut_part_bar(&openchuck_app::JobLog::default()).unwrap();
+        let bar = panel
+            .cut_part_bar(&openchuck_app::JobLog::default())
+            .unwrap();
         assert_eq!(bar.text(), None, "current: no words");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -2405,12 +2433,30 @@ mod tests {
             preparing,
         };
         assert_eq!(bar(None, None, None).text(), None);
-        assert_eq!(bar(Some(12.4), Some((15, Some(0.4))), None).text().unwrap(), "Cut part 12 s behind");
-        assert_eq!(bar(Some(0.2), None, None).text().unwrap(), "Cut part 1 s behind");
-        assert_eq!(bar(None, Some((20, Some(0.409))), None).text().unwrap(), "Updating cut part 40%");
-        assert_eq!(bar(None, Some((20, None)), None).text().unwrap(), "Updating cut part");
-        assert_eq!(bar(None, None, Some(Some(0.42))).text().unwrap(), "Preparing the cut part 42%");
-        assert_eq!(bar(None, None, Some(None)).text().unwrap(), "Preparing the cut part");
+        assert_eq!(
+            bar(Some(12.4), Some((15, Some(0.4))), None).text().unwrap(),
+            "Cut part 12 s behind"
+        );
+        assert_eq!(
+            bar(Some(0.2), None, None).text().unwrap(),
+            "Cut part 1 s behind"
+        );
+        assert_eq!(
+            bar(None, Some((20, Some(0.409))), None).text().unwrap(),
+            "Updating cut part 40%"
+        );
+        assert_eq!(
+            bar(None, Some((20, None)), None).text().unwrap(),
+            "Updating cut part"
+        );
+        assert_eq!(
+            bar(None, None, Some(Some(0.42))).text().unwrap(),
+            "Preparing the cut part 42%"
+        );
+        assert_eq!(
+            bar(None, None, Some(None)).text().unwrap(),
+            "Preparing the cut part"
+        );
     }
 
     #[test]
@@ -2509,11 +2555,13 @@ mod tests {
             ));
         }
         panel.frame(&app, &mut viewport, 0.0);
-        assert!(
-            panel
-                .preparation_progress(&openchuck_app::JobLog::default(), None, false)
-                .is_some()
-        );
+        // The cut part being prepared is shown in the cut-part bar
+        // (decision record 0322 item 8).
+        let bar = panel
+            .cut_part_bar(&openchuck_app::JobLog::default())
+            .unwrap();
+        assert!(bar.preparing.is_some() || bar.loading.is_some());
+        assert!(bar.text().unwrap().contains("cut part"));
         release.send(()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(120);
         while panel.stock.error.is_none() {

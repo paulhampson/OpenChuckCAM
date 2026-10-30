@@ -355,7 +355,7 @@ impl Simulator {
             prev = segment.end;
             // Progress between batches too, for a bar that fills smoothly
             // (decision record 0322); the stock is cut only at a flush.
-            if result.moves % PROGRESS_EVERY == 0 {
+            if result.moves.is_multiple_of(PROGRESS_EVERY) {
                 context.report("simulate", result.moves as u64, Some(total));
             }
             let done = i + 1;

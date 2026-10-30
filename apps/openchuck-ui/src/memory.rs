@@ -114,7 +114,11 @@ mod tests {
         assert_eq!(playback_memory(4_096, None), (4_096 * 1024 * 1024, None));
         // An odd size is rounded down, never up.
         let (bytes, cap) = playback_memory(8_192, Some(6 * GIB + 3));
-        assert_eq!(bytes as u64, (6 * GIB + 3) / 4);
+        assert_eq!(
+            bytes as u64,
+            6 * GIB / 4,
+            "3 bytes over a multiple of 4 are dropped"
+        );
         assert_eq!(cap, Some(1_536));
     }
 

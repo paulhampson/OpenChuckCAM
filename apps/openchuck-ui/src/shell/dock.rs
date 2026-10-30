@@ -407,7 +407,10 @@ impl Shell {
             Some(app) => {
                 crate::theme::solid_scroll_bar(ui);
                 rest()
-                    .show(ui, |ui| self.play.show_strip(ui, app, progress.as_ref(), bar.as_ref()))
+                    .show(ui, |ui| {
+                        self.play
+                            .show_strip(ui, app, progress.as_ref(), bar.as_ref())
+                    })
                     .inner
             }
             None => {
