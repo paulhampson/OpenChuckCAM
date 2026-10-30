@@ -399,3 +399,96 @@ fn req_gc_15_a_preview_refused_for_a_changed_project_is_made_again_when_it_is_ba
         "the refusal is not kept once the project is as the run was"
     );
 }
+
+/// Where the painted text `label` starts.
+fn text_at(
+    ctx: &egui::Context,
+    panel: &mut ExportPanel,
+    app: &Application,
+    clock: &mut f64,
+    label: &str,
+) -> egui::Pos2 {
+    *clock += 0.1;
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 1000.0),
+            )),
+            time: Some(*clock),
+            ..Default::default()
+        },
+        |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                let current = panel.files_current(app).is_some();
+                panel.right(ui, app, current);
+            });
+        },
+    );
+    output.textures_delta.clear();
+    fn find(shape: &egui::Shape, label: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, label)),
+            egui::Shape::Text(t) if t.galley.text() == label => Some(t.pos),
+            _ => None,
+        }
+    }
+    output
+        .shapes
+        .iter()
+        .find_map(|c| find(&c.shape, label))
+        .unwrap_or_else(|| panic!("{label} is painted"))
+}
+
+#[test]
+fn req_nfr_15_enter_in_find_goes_on_to_the_next_line_without_clicking_the_box_again() {
+    let (_clean, app, mut panel) = dialog("preview-enter", OutputGrouping::Setup);
+    let (ctx, mut clock) = (viewer(), 0.0);
+    settle(&ctx, &mut panel, &app, &mut clock);
+    let label = text_at(&ctx, &mut panel, &app, &mut clock, "Find");
+    let at = label + egui::vec2(60.0, 6.0);
+    for pressed in [true, false] {
+        frame(
+            &ctx,
+            &mut panel,
+            &app,
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton {
+                    pos: at,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            &mut clock,
+        );
+    }
+    frame(
+        &ctx,
+        &mut panel,
+        &app,
+        vec![egui::Event::Text("X0".into())],
+        &mut clock,
+    );
+    assert_eq!(
+        panel.preview_view.needle, "X0",
+        "the Find box has the keyboard"
+    );
+    // Enter keeps the Find box, so each further Enter finds the next line.
+    let mut hits = Vec::new();
+    for _ in 0..4 {
+        frame(
+            &ctx,
+            &mut panel,
+            &app,
+            vec![key(egui::Key::Enter, egui::Modifiers::NONE)],
+            &mut clock,
+        );
+        hits.push(panel.preview_view.hit.expect("Enter finds a line"));
+    }
+    assert!(
+        hits.windows(2).all(|w| w[1] > w[0]),
+        "every Enter goes on to a later line: {hits:?}"
+    );
+}
