@@ -39,17 +39,12 @@ impl StockSurface {
         context: &JobContext<'_>,
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
-        // The picker is built on one thread while the others colour the
-        // triangles; neither reads what the other makes.
-        let (bands, picker) = rayon::join(
-            || samples.map(|s| s.bands(&mesh, context)).transpose(),
-            || {
-                (!mesh.triangles.is_empty())
-                    .then(|| MeshPicker::new(&mesh))
-                    .transpose()
-            },
-        );
-        let (bands, picker) = (bands?, picker?);
+        let bands = samples.map(|s| s.bands(&mesh, context)).transpose()?;
+        let picker = if mesh.triangles.is_empty() {
+            None
+        } else {
+            Some(MeshPicker::new(&mesh)?)
+        };
         context.check_cancelled()?;
         Ok(Self {
             mesh,

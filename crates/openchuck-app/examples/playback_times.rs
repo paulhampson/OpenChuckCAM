@@ -209,9 +209,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (cancel, progress) = (CancelToken::new(), NoProgress);
     let context = JobContext::new(&cancel, &progress);
     let n = timeline.move_count();
-    println!(
-        "move | stock replay s | mesh s | triangles | picker s | whole surface job s | stock MB"
-    );
+    // Jumps along the run, as "go to move" asks for them: the whole surface
+    // job first (from the nearest checkpoint, or the last frame's stock when
+    // that is nearer), then, on the stock it shows, the mesh and the picker
+    // again alone, for the split.
+    println!("move | surface job s | stock mesh s | triangles | picker alone s | stock MB");
     let shares: &[f64] = if std::env::var_os("SKIP_SEEKS").is_some() {
         &[]
     } else {
@@ -225,8 +227,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fraction: 0.5,
         };
         let started = Instant::now();
+        let surface = app.start_stock_surface(&playback, cursor).wait()?;
+        let whole = started.elapsed().as_secs_f64();
+        drop(surface);
         let stock = playback.stock_at(cursor, &context)?;
-        let replay = started.elapsed().as_secs_f64();
         let started = Instant::now();
         let mesh = openchuck_sim::stock_mesh(&stock);
         let meshing = started.elapsed().as_secs_f64();
@@ -236,15 +240,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .transpose()?;
         let picking = started.elapsed().as_secs_f64();
         drop(picker);
-        let started = Instant::now();
-        let surface = app.start_stock_surface(&playback, cursor).wait()?;
-        let whole = started.elapsed().as_secs_f64();
         println!(
-            "{done} | {replay:.2} | {meshing:.2} | {} | {picking:.2} | {whole:.2} | {:.1}",
+            "{done} | {whole:.2} | {meshing:.2} | {} | {picking:.2} | {:.1}",
             mesh.triangles.len(),
             stock.memory_bytes() as f64 / 1e6,
         );
-        drop(surface);
     }
     // Playing forward as the viewport does: a new surface is asked for at
     // the clock's cursor when the last one is finished, so the tool moves
@@ -258,12 +258,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for _ in 0..8 {
             let cursor = timeline.cursor_at_time(time);
             let started = Instant::now();
-            let stock = playback.stock_at(cursor, &context)?;
-            let replay = started.elapsed().as_secs_f64();
-            drop(stock);
             drop(app.start_stock_surface(&playback, cursor).wait()?);
             let took = started.elapsed().as_secs_f64();
-            times.push(format!("{took:.2}({replay:.2})"));
+            times.push(format!("{took:.2}"));
             steps.push((cursor.done - last).to_string());
             last = cursor.done;
             time = (time + took * speed).min(timeline.total_time());
