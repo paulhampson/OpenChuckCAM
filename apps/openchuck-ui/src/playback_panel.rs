@@ -202,9 +202,50 @@ struct StockState {
     playback: Option<Arc<StockPlayback>>,
     mesh: Option<(JobHandle<StockSurface>, Cursor)>,
     surface: Option<Arc<StockSurface>>,
-    /// The exact cursor shared by the stock and tool on screen.
+    /// The cursor of the cut part on screen. While playing the tool follows
+    /// the clock and this may be behind it; when still they match.
     shown: Option<Cursor>,
+    /// The tool follows the clock: set while playing, and kept after a pause
+    /// until the cut part has caught up with the tool, so pausing never
+    /// moves the tool back (the owner's decision D3 on issue #382).
+    trailing: bool,
     error: Option<String>,
+}
+
+/// What the cut-part bar under the position bar shows (decision record
+/// 0322; the owner's decision D3 on issue #382): where the cut part on screen
+/// is, how far it is behind the play head while playing, and the progress of
+/// the cut part being made or of preparing playback.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CutPartBar {
+    /// Moves done at the cut part on screen.
+    shown: Option<usize>,
+    /// Moves done at the play head.
+    head: usize,
+    /// Program seconds the cut part is behind the play head, while playing.
+    behind: Option<f64>,
+    /// A cut part being made: its moves done, and the share of its replay
+    /// done when the job has reported one.
+    loading: Option<(usize, Option<f32>)>,
+    /// Playback being prepared, and the share done.
+    preparing: Option<Option<f32>>,
+}
+
+impl CutPartBar {
+    /// The words at the bar's right end, if any.
+    fn text(&self) -> Option<String> {
+        let percent = |f: Option<f32>| {
+            f.map_or_else(String::new, |f| format!(" {}%", (f * 100.0).floor() as u32))
+        };
+        if let Some(fraction) = self.preparing {
+            return Some(format!("Preparing the cut part{}", percent(fraction)));
+        }
+        if let Some(seconds) = self.behind {
+            return Some(format!("Cut part {} s behind", seconds.round().max(1.0) as u64));
+        }
+        self.loading
+            .map(|(_, fraction)| format!("Updating cut part{}", percent(fraction)))
+    }
 }
 
 /// Actual job progress shown immediately below the playback position bar.
@@ -385,12 +426,10 @@ impl PlaybackPanel {
                 percent: monotonic.and_then(openchuck_app::JobEntry::percent),
             });
         }
+        // The cut part's own preparation is in the cut-part bar (decision
+        // record 0322).
         let label = if self.data_job.is_some() {
             "Preparing toolpath display"
-        } else if self.stock.prepare.is_some()
-            || (self.stock.shown.is_none() && self.stock.mesh.is_some())
-        {
-            "Preparing cut part"
         } else {
             return None;
         };
@@ -399,6 +438,101 @@ impl PlaybackPanel {
             fraction: None,
             percent: None,
         })
+    }
+
+    /// What the cut-part bar shows, with the progress the jobs reported;
+    /// `None` when the cut part is not shown (decision record 0322).
+    pub fn cut_part_bar(&self, jobs: &openchuck_app::JobLog) -> Option<CutPartBar> {
+        let data = self.data.as_ref()?;
+        if !self.stock.show || self.stock.error.is_some() {
+            return None;
+        }
+        let fraction = |id| jobs.get(id).and_then(openchuck_app::JobEntry::fraction);
+        let head = self.playback.cursor();
+        let shown = self.stock.shown;
+        let behind = shown
+            .filter(|s| self.stock.trailing && s.done < head.done)
+            .map(|s| data.timeline.time_at(head) - data.timeline.time_at(s));
+        Some(CutPartBar {
+            shown: shown.map(|c| c.done),
+            head: head.done,
+            behind,
+            loading: self
+                .stock
+                .mesh
+                .as_ref()
+                .map(|(job, cursor)| (cursor.done, fraction(job.id()))),
+            preparing: self.stock.prepare.as_ref().map(|job| fraction(job.id())),
+        })
+    }
+
+    /// Draws the cut-part bar under the position bar, on its scale: a solid
+    /// fill to the cut part on screen with a tick there, an outline up to the
+    /// play head while it is behind, and a lighter fill growing with the
+    /// progress of the cut part being made or of preparing playback.
+    fn cut_part_strip(ui: &mut egui::Ui, bar: &CutPartBar, left: f32, made: f32, moves: usize) {
+        let width = ui.available_width().max(160.0);
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(width, 14.0), egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        let stock = crate::roles::to_color32(crate::roles::STOCK);
+        let x = |done: usize| left + made * (done as f32 / moves.max(1) as f32).clamp(0.0, 1.0);
+        let strip = |a: f32, b: f32| {
+            egui::Rect::from_min_max(egui::pos2(a.min(b), rect.top() + 3.0), egui::pos2(a.max(b), rect.bottom() - 3.0))
+        };
+        painter.rect_stroke(
+            strip(left, left + made),
+            1.0,
+            egui::Stroke::new(1.0, DARK.selected),
+            egui::StrokeKind::Inside,
+        );
+        let shown = bar.shown.map(x);
+        if let Some(fraction) = bar.preparing {
+            let end = left + made * fraction.unwrap_or(0.0);
+            painter.rect_filled(strip(left, end), 1.0, stock.gamma_multiply(0.45));
+        }
+        if let Some(end) = shown {
+            painter.rect_filled(strip(left, end), 1.0, stock);
+            painter.vline(end, rect.y_range(), egui::Stroke::new(2.0, stock));
+            if bar.behind.is_some() {
+                painter.rect_stroke(
+                    strip(end, x(bar.head)),
+                    1.0,
+                    egui::Stroke::new(1.0, stock),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+        if let Some((target, fraction)) = bar.loading {
+            let from = shown.unwrap_or(left);
+            let to = x(target);
+            match fraction {
+                Some(f) => {
+                    painter.rect_filled(strip(from, from + (to - from) * f), 1.0, stock.gamma_multiply(0.45));
+                }
+                None => {
+                    // No total yet: a stripe moving over the stretch.
+                    let t = ui.input(|i| i.time) as f32;
+                    let span = (to - from).abs().max(8.0);
+                    let at = from.min(to) + (t * 60.0) % span;
+                    painter.rect_filled(strip(at, (at + 6.0).min(from.max(to))), 1.0, stock.gamma_multiply(0.45));
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+        if let Some(text) = bar.text() {
+            painter.text(
+                rect.right_center() - egui::vec2(4.0, 0.0),
+                egui::Align2::RIGHT_CENTER,
+                text,
+                egui::FontId::proportional(11.0),
+                DARK.text,
+            );
+        }
+        response.on_hover_text(
+            "Where the cut part shown is in the program. While playing, it may follow behind \
+             the tool; when you pause, it catches up.",
+        );
     }
 
     fn simulation_choices(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
@@ -621,7 +755,16 @@ impl PlaybackPanel {
             busy |= self.update_stock(app, viewport, &requested);
             // Publish the tool transform and cut surface for the same cursor.
             // Keep the last complete pair while the next surface is prepared.
-            let cursor = if self.stock.show {
+            // While playing, the tool follows the clock and the cut part shows
+            // the newest one made, behind it; when still, the tool waits for
+            // the cut part at its cursor, as issue #333 asked (the owner's
+            // decision D3 on issue #382; decision record 0322).
+            if self.playback.is_playing() {
+                self.stock.trailing = true;
+            } else if self.stock.shown == Some(requested.cursor) || !self.stock.show {
+                self.stock.trailing = false;
+            }
+            let cursor = if self.stock.show && !self.stock.trailing {
                 self.stock.shown.unwrap_or(requested.cursor)
             } else {
                 requested.cursor
@@ -1156,6 +1299,7 @@ impl PlaybackPanel {
         app: &Application,
         data: &PlaybackData,
         progress: Option<&PreparationProgress>,
+        bar: Option<&CutPartBar>,
     ) {
         let timeline = &data.timeline;
         let groups = timeline.group_count();
@@ -1252,6 +1396,9 @@ impl PlaybackPanel {
             let f = ((pos.x - rect.left()) / made_width.max(1.0)).clamp(0.0, 1.0);
             self.playback
                 .jump_to_move(timeline, (f * moves as f32) as usize);
+        }
+        if let Some(bar) = bar {
+            Self::cut_part_strip(ui, bar, rect.left(), made_width, moves);
         }
         if let Some(progress) = progress {
             progress.show(ui);
@@ -1391,7 +1538,8 @@ impl PlaybackPanel {
     /// choice when the user changed it.
     #[cfg(test)]
     pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
-        let skip = self.show_strip(ui, app, None);
+        let bar = self.cut_part_bar(&openchuck_app::JobLog::default());
+        let skip = self.show_strip(ui, app, None, bar.as_ref());
         self.show_rest(ui, app);
         skip
     }
@@ -1405,6 +1553,7 @@ impl PlaybackPanel {
         ui: &mut egui::Ui,
         app: &Application,
         progress: Option<&PreparationProgress>,
+        bar: Option<&CutPartBar>,
     ) -> Option<bool> {
         let mut skip = None;
         let Some(data) = self.data.clone() else {
@@ -1474,7 +1623,7 @@ impl PlaybackPanel {
             ui.separator();
             skip = self.simulation_choices(ui, app);
         });
-        self.timeline_bar(ui, app, &data, progress);
+        self.timeline_bar(ui, app, &data, progress, bar);
         skip
     }
 
@@ -2173,6 +2322,95 @@ mod tests {
         assert_eq!(still.as_ref(), &expected);
         assert_eq!(viewport.stock_surface().unwrap().as_ref(), &expected);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The owner's decision D3 on issue #382 (decision record 0322): while
+    /// playing, the tool follows the clock and the cut part shows the newest
+    /// one made, behind it; the bar says how far. After a pause the tool
+    /// stays where it is and the cut part catches up with it.
+    #[test]
+    fn req_sim_02_req_sim_04_while_playing_the_tool_follows_the_clock() {
+        let (app, mut panel, mut viewport, dir) = prepared("tool-follows-clock");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        let data = panel.data.clone().unwrap();
+        panel.stock.show = true;
+        panel.stock.playback = Some(Arc::new(
+            app.start_stock_playback(Arc::clone(&data.timeline), panel.playback_memory)
+                .wait()
+                .unwrap(),
+        ));
+        panel.playback.seek(&data.timeline, 0.2);
+        let started = Instant::now();
+        while panel.stock.shown.is_none() {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            panel.frame(&app, &mut viewport, 0.0);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // Block the next cut part, then play: the tool moves on with the
+        // clock while the cut part on screen stays where it was.
+        let shown = panel.stock.shown.unwrap();
+        let pool = openchuck_app::JobManager::new(openchuck_app::Threads::Exactly(1)).unwrap();
+        let (events, _) = std::sync::mpsc::channel();
+        let (release, blocked) = std::sync::mpsc::channel::<()>();
+        let surface = app
+            .start_playing_stock_surface(panel.stock.playback.as_ref().unwrap(), shown)
+            .wait()
+            .unwrap();
+        panel.stock.mesh = Some((
+            pool.submit("delayed surface", events, move |_| {
+                blocked.recv().unwrap();
+                Ok(surface)
+            }),
+            shown,
+        ));
+        panel.playback.set_speed(Playback::speed_to_finish_in(&data.timeline, 10.0));
+        panel.playback.play(&data.timeline);
+        for _ in 0..5 {
+            panel.frame(&app, &mut viewport, 0.2);
+        }
+        let head = panel.playback.cursor();
+        assert!(panel.playback.is_playing() && head.done > shown.done);
+        assert_eq!(panel.stock.shown, Some(shown));
+        assert_eq!(
+            viewport.tool_readout.as_ref().unwrap().move_number,
+            head.done + 1,
+            "the tool is at the play head, not held at the cut part"
+        );
+        let bar = panel.cut_part_bar(&openchuck_app::JobLog::default()).unwrap();
+        assert_eq!((bar.shown, bar.head), (Some(shown.done), head.done));
+        assert!(bar.text().unwrap().starts_with("Cut part ") && bar.text().unwrap().ends_with(" s behind"));
+        // Pause: the tool stays at the play head, and the cut part catches up.
+        panel.playback.pause();
+        let paused = panel.playback.cursor();
+        release.send(()).unwrap();
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            assert_eq!(viewport.tool_readout.as_ref().unwrap().move_number, paused.done + 1);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(panel.stock.shown, Some(paused));
+        assert!(panel.stock.surface.as_ref().unwrap().can_pick());
+        let bar = panel.cut_part_bar(&openchuck_app::JobLog::default()).unwrap();
+        assert_eq!(bar.text(), None, "current: no words");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_sim_04_the_cut_part_bar_says_what_it_shows() {
+        let bar = |behind, loading, preparing| CutPartBar {
+            shown: Some(10),
+            head: 20,
+            behind,
+            loading,
+            preparing,
+        };
+        assert_eq!(bar(None, None, None).text(), None);
+        assert_eq!(bar(Some(12.4), Some((15, Some(0.4))), None).text().unwrap(), "Cut part 12 s behind");
+        assert_eq!(bar(Some(0.2), None, None).text().unwrap(), "Cut part 1 s behind");
+        assert_eq!(bar(None, Some((20, Some(0.409))), None).text().unwrap(), "Updating cut part 40%");
+        assert_eq!(bar(None, Some((20, None)), None).text().unwrap(), "Updating cut part");
+        assert_eq!(bar(None, None, Some(Some(0.42))).text().unwrap(), "Preparing the cut part 42%");
+        assert_eq!(bar(None, None, Some(None)).text().unwrap(), "Preparing the cut part");
     }
 
     #[test]
