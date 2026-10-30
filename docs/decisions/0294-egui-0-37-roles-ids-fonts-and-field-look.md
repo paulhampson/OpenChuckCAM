@@ -12,7 +12,7 @@
 
 ## Decision
 
-1. **Widget roles.** `WidgetType` is replaced by `egui::Role` (accesskit's), and `WidgetInfo.typ` by `.role`. The mapping: `Button`, `Link`, `Label` keep their names; `Checkbox` becomes `CheckBox`; `TextEdit` becomes `TextInput`; `DragValue` becomes `SpinButton`; `Other` becomes `Unknown`. `SelectableLabel` no longer exists: a choice among values is a `Button` that carries a selected state. The click log (`shell/actions.rs`, NFR-18) therefore ignores a `Button` with `selected` set, so it still logs a button, a menu item, a link or a check box by label and never a chosen value.
+1. **Widget roles.** `WidgetType` is replaced by `egui::Role` (accesskit's), and `WidgetInfo.typ` by `.role`. The mapping: `Button`, `Link`, `Label` keep their names; `Checkbox` becomes `CheckBox`; `TextEdit` becomes `TextInput`; `DragValue` becomes `SpinButton`; `Other` becomes `Unknown`. `SelectableLabel` is dropped: egui 0.36 already gave `Button::selectable` the role `Button` with a selected state (nothing produced `SelectableLabel` any more), so the click log (`shell/actions.rs`, NFR-18) is unchanged: it logs a button, a menu item, a selectable button, a link or a check box by label and never typed text, a drag value, a slider, a radio button or a combo box value.
 2. **Ids.** All 61 `Id::new` calls are `Id::unique`, which hashes exactly as `Id::new` did, so no id changes. Every one is a root id (`Area`, `Modal`, `Window::id`, memory and temp-data keys). The rule: a call that takes an `Id` is given `Id::unique(<literal or (literal, stable model id)>)`; a call that takes a salt (`push_id`, `id_salt`, `Panel::left/right/top/bottom`) is given the same plain literal or tuple, never an `Id`, a formatted string, an address or an index that reorders; both hash with fixed seeds, so ids are stable from frame to frame and from run to run. `IdSalt::new` is not used directly. `Ui::id` is `Ui::scope_id`.
 3. **Panel state ids (tests only).** egui 0.37 keys a panel's saved state by its parent's scope id and the panel's salt. The tests that read it (`PanelState::load`) go through `Rig::panel_state`, which uses the root `Ui`'s scope id and, for the dock (shown inside the central panel), the scope id the shell records in test builds. The product does not read panel state back.
 4. **Mouse wheel.** The tests' `Event::MouseWheel` carries `MouseWheelSource::Unknown`, which is what Wayland, X11 and Windows report.
@@ -28,7 +28,7 @@
 
 | Change | Before the fix | After |
 | --- | --- | --- |
-| Selectable choice as `Button` | NFR-18 test: a chosen value was logged | not logged, chosen or not (test updated to build the case with `WidgetInfo::selected(Role::Button, ..)`) |
+| `SelectableLabel` in the NFR-18 test | the variant no longer exists | dropped from the list of never-logged roles; a new test fixes that a selectable button is logged by its label, as on 0.36 |
 | Panel ids | 5 simulate tests found no dock or inspector state | pass through `Rig::panel_state` |
 | Symbol glyphs | glyph test: 8 characters without a glyph | passes with `monochrome_emoji_fonts` |
 | Swatches | 22 by 20, the swatch test found none of 18 by 18 | 18 by 18 |

@@ -55,15 +55,14 @@ impl Dialog {
 
 /// The log text for an egui output event: a button or a menu item (or a
 /// link, or a check box) clicked, by its label. `None` for anything else:
-/// typed text, a choice among values (a button with a selected state), a drag value or a slider would show a
+/// typed text, a choice among values, a drag value or a slider would show a
 /// value (NFR-18).
 pub(super) fn click_text(event: &OutputEvent) -> Option<String> {
     use egui::Role::{Button, CheckBox, Link};
     let OutputEvent::Clicked(info) = event else {
         return None;
     };
-    let is_choice = info.role == Button && info.selected.is_some();
-    if !matches!(info.role, Button | CheckBox | Link) || is_choice {
+    if !matches!(info.role, Button | CheckBox | Link) {
         return None;
     }
     let label = info
@@ -219,6 +218,19 @@ mod tests {
     }
 
     #[test]
+    fn req_nfr_18_a_selectable_button_is_logged_by_its_label_as_before() {
+        // egui 0.36 and 0.37 both give `Button::selectable` the role `Button`
+        // with a selected state (`SelectableLabel` was no longer produced).
+        for chosen in [false, true] {
+            let step = WidgetInfo::selected(Role::Button, true, chosen, "Top");
+            assert_eq!(
+                click_text(&OutputEvent::Clicked(step)).as_deref(),
+                Some("click: 'Top'")
+            );
+        }
+    }
+
+    #[test]
     fn req_nfr_18_values_and_typed_text_are_never_logged() {
         for role in [
             Role::TextInput,
@@ -228,13 +240,6 @@ mod tests {
             Role::ComboBox,
         ] {
             assert_eq!(click_text(&clicked(role, "1234.5")), None, "{role:?}");
-        }
-        // A choice among values (egui's selectable button, `SelectableLabel`
-        // before egui 0.37) is a button with a selected state: not logged,
-        // chosen or not.
-        for chosen in [false, true] {
-            let choice = WidgetInfo::selected(Role::Button, true, chosen, "1234.5");
-            assert_eq!(click_text(&OutputEvent::Clicked(choice)), None);
         }
         let mut typed = WidgetInfo::text_edit(true, "old", "secret text", "");
         typed.label = Some("secret text".into());
