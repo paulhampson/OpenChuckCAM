@@ -174,6 +174,42 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 **OP-22 notes (P2, not scheduled; [decision 0188](decisions/0188-requirement-op-22-user-defined-bounding-volumes.md), issue 236).** OP-02's containment boundary is today the bounding window of a set's triangles (decision 0032, OI-137), so a user-defined volume is a new kind of set. It relates to the selection model (decisions 0032 and 0066), swarf boundary sets (decision 0176), selection sets in the inspector, the held region (SET-09; decisions 0160 and 0161) and the part-position question (the frame depends on which control positions the part). Results are deterministic (GC-07, NFR-06) and invalid input gives a clear error (NFR-07).
 **Open points for the owner (OI-700):** the frame the volume is defined in (the part, the stock or the machine, and how it follows a part move); how it is defined (numbers, handles in the viewport, or from the stock or from selected faces); whether a cylinder is always about the rotary axis or may be placed freely, and whether a box is axis-aligned only; and how volumes combine with face sets and with each other.
 
+**Adaptive pass spacing (FINSTEP #303; OP-03/04/05/11/12/14/15/21/24,
+SET-09, GC-07, NFR-04/05/06/07/12).** The owner approved the requirement/verification
+policy on26Oct2026, separately from proposed0239. Helical finishing and every
+axial-pass operation provide per-operation adaptive spacing. Stepover is a maximum,
+locally reduced to address excess above the operation's intended stock-offset or
+intentional-layer target. Preserve fixed A, protections, legacy Facing defaults
+and equal-depth layers. Circular cleanup/partial arcs are optional where rotary
+cutting and all entry/link/direction/travel/protection checks permit them.
+
+New applicable operations default adaptive ON; existing operations migrate to
+explicit OFF, preserving explicit settings. One visible height is Scallop OFF
+(default0mm, exact legacy behavior), Allowed excess ON (default0.01mm). Defaults
+apply only when absent. Explicit legacy zero needs explained deliberate height
+confirmation before enabling; Cancel preserves both values, confirm is atomic,
+and switching back retains the chosen shared height. Use existing validated tool
+models; ideal scallop formulas are estimates, not proof.
+
+Minimum further-refinement spacing defaults0.01mm, never enlarging a smaller
+configured maximum. Per operation across all layers:1M adaptive queries,1M canonical
+emitted points including entries/links,10k added passes,20 subdivision levels,
+65536 pending intervals. Mandatory final safety/replay checks run fully under
+their existing contracts with separately reported costs. These bound work, not
+elapsed time. Refine detected excess; observations without a justified bound
+remain unverified. Retain valid partial paths with prominent warnings and CURRENT
+result acknowledgement before export; consent never waives existing hard errors
+or calls an incomplete result complete. Report refinement count, smallest spacing,
+limits/uncertainty, progress and generation-stage costs.
+
+For #314 the owner separately selected tool-axis geometric stepdown and inclusion
+of indexed finishing at existing A orientations. Layers are OFF by default with
+exact OFF output; completed final motion reaches the stock-offset target, invalid
+depth/flute overrun refuses and protections remain intact. Depth-default/material,
+first-layer/stock and distribution semantics still need their individual choices
+and complete approved layer wording before dependent implementation. Geometric
+layer spacing does not establish material engagement; OI-1341 tracks off-axis work.
+
 ### 3.6 Visualisation and material removal simulation
 
 | ID | Requirement | Priority |

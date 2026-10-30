@@ -482,6 +482,25 @@ Boards 3 and 3b.
 
 **Facing controls (0252, accepted).** Preserve legacy Flat/Round and add End opposite held end and Box sides. Box sides offers individual standard faces and All four, plus arbitrary-angle rows with per-face model-derived offsets or explicit overrides and Reset to part plus allowance. Show opposite-plane separation. Standard selections run in fixed model order; arbitrary rows follow their listed order with keyboard-accessible Move up/down and an explicit stable Sort by A angle action. Sorting/reordering keeps offsets attached and is one undoable confirmed edit. New box sides offers Full stepdown, shorter final pass by default or Equal stepdowns; legacy layers are unchanged. End mode labels its maximum depth Axial stepdown and shows inferred end, target X and Length to opposite model end. Extents offer Whole stock, Part and Part plus tabs; planar margin expands four edges, Round Axial margin expands both X ends around the full circumference, all defaulting to zero. Tabs are always protected. Unsupported/unreachable requests explain the reason and produce no usable partial path.
 
+**FINSTEP controls and partial results (owner-approved individual policies;
+proposed0239).** Show one height control: Scallop with adaptive off, Allowed excess
+with it on. Defaults0mm/0.01mm apply only to absent values. Before enabling from
+explicitly saved Scallop0, explain that legacy zero disabled the control while
+adaptive zero requests strict zero excess and may remain unverified/limited.
+Require deliberate editable confirmation, suggesting0.01mm and allowing zero.
+Cancel changes nothing; confirm applies mode and height atomically/one undo.
+Explain that switching back retains the chosen height as Scallop and does not
+automatically restore old zero. Preserve inactive stored edits.
+
+Show adaptive partial/unverified results prominently with refinement count,
+smallest spacing, reasons/affected areas where known and uncertainty. Require
+explicit acknowledgement for the current generated result before export, distinct
+from the general G-code verification notice. Regeneration/result changes invalidate
+that consent. Never label acknowledged coverage complete or allow consent to
+waive hard safety/replay or FACING completion failures. Optional layers remain off
+by default; remaining default/first-layer semantics are not yet selected.
+These are required behaviors to reconstruct, not implemented UI in this checkpoint.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.

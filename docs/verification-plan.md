@@ -57,6 +57,36 @@ The dashed lines pair each design level with its test level. Only the acceptance
 
 **Methods.** Each requirement uses one primary method: test (T), analysis (A), inspection (I) or demonstration (D). Analysis covers licence and kinematic reasoning, inspection covers design and code review, and demonstration covers UI behaviour and the machine trial.
 
+### FINSTEP adaptive spacing and finishing-layer verification
+
+Owner-approved #303 verification policy (26Oct2026); OP-03/04/05/11/12/14/15/21/24,
+SET-09, GC-07, NFR-04/05/06/07/12. Write requirement tests and observe failure
+before implementation. Independently assess actual emitted and posted motion on
+analytic flat/cylindrical/conical/steep/vertical cases for excess relative to the
+intended stock-offset/layer target and for allowance intrusion. Include supported
+tool profiles, selection allowances, held regions/tabs, unreachable regions,
+start/end/depth-change geometry and entry/link/extension motion. Samples are not
+continuous coverage or whole-tool clearance certificates; keep tessellation,
+contact, fitting and posting uncertainty separate.
+
+Verify each finite ceiling before its work/allocation, shared budgets across
+layers, local stopping without abandoning unrelated intervals, deterministic
+partial retention, progress and cancellation. Mandatory final checks still run
+when adaptive queries exhaust. Check invalid settings, typed diagnostic propagation
+through ordinary/zoned routes, immutable current-result export acknowledgement
+and stale-consent rejection. Validate explained legacy-zero confirmation,
+Cancel/no-op, deliberate zero, atomic undo and preservation of absent/explicit/
+inactive edits. Compare canonical paths and posted bytes at1/2/N threads; OFF
+must preserve same-version bytes.
+
+Record uninstrumented baselines and five equivalent successful runs for adaptive,
+layers and their combination, with stage times and provenance. Apply required
+long-test classification/ten-minute stop, own-crate coverage and cleanup, strict
+lint and repository checks. Historical unavailable artifacts do not verify
+reconstructed source. Remaining #314 layer semantics require their own approved
+wording before dependent code; eventual tests cover order/spacing/final target,
+flute reach and complete motion, without claiming unproved engagement.
+
 ## 4. Requirements coverage
 
 Every requirement ID in the requirements document is covered below, grouped where several IDs share a method. Methods: **T** test, **A** analysis, **I** inspection, **D** demonstration. Priority is P1 (gates first release), P2 (verified when built) or P3 (approved; verified when built). When the requirements document changes, this table changes with it, and CI reports any ID with no test.

@@ -127,6 +127,23 @@ Operation groups end with safe retract at accumulated A, without a canonical phy
 
 Optional back-and-forth ramping (decision 0242) uses the common `ramp_back_and_forth` flag, false when absent. Shared assembly retains the single-line branch when false. When true for ramp entry, it establishes a one-cutting-diameter corridor at fixed A, descends on bounded reversing legs at no more than the configured angle, then feeds to the first cut point. The new `StrategyInput::entry_safety` supplies the whole mesh target, protected solids, complete convex tool body and machine constraints, separately from selected/warn-only surfaces. Continuous clearance uses a Minkowski envelope enclosing each subinterval, with conservative protected-solid bounds; endpoint or warn-only samples do not establish it. Original target/refusal checks additionally cover approach, all legs and the final connection. Cancellation and one shared clearance budget apply throughout. Optional reversing ramps use clearance-height links instead of roughing's local low links, ensuring the stock-clear start is reachable. Unsupported exact-target/body certificates refuse; the current application supplies certificates for STL and shanks no wider than the cutting profile. No display mesh is substituted for an exact STEP certificate. Ramp planning reserves XYZ rounding so the written legs respect the angle ceiling. Clearance includes coordinate rounding and a host-supplied `RotaryPrecision` bound; the application chooses Float32 to support both shipped posts from one canonical path. Optional-ramp output requires at least three XYZ/A decimals, and float-controller WCS/MCS coordinates must fit the certified linear precision budget. The Float32 certificate reserves the canonical A magnitude plus 721 degrees; posting checks that connection and counter resets leave the effective offset within 720 degrees, including the firmware non-reset at exactly ±360. A custom post that exceeds that bound refuses the enabled entry. Unsupported precision refuses rather than changing the work zero or inserting in-cut resets.
 
+**FINSTEP adaptive ownership (owner-selected policy; proposed0239).** Adaptive
+scheduling and cutter/target assessment belong in openchuck-path. Use FACING's
+merged mode-aware parameter hooks instead of parallel host wiring. Retain whole
+protective targets separately from coverage; consume canonical group, pass-start
+stock and rotary-reset contracts. Deterministic per-operation resource accounting
+spans layers, candidate fitting/clipping/extensions and canonical entry/link
+output. Mandatory final protection/clearance/replay checks retain their separate
+contracts and cost reporting.
+
+Typed adaptive coverage diagnostics must survive ordinary and leave-zone paths.
+Current-result export consent is enforced in openchuck-app's immutable output
+planning/write boundary, with desktop and invocation-local CLI acknowledgement;
+an advisory warning or stale checkbox cannot authorize a changed partial result.
+FACING's strict completion refusal and all existing hard safety errors remain
+independent. The reconstruction checkpoint contains documents only; producer,
+persistence and host implementation must be rebuilt and tested before release.
+
 ### 5.3 Post-processing library (`openchuck-post`)
 
 - **Two stages.** The IR is first converted to a neutral machine program (motion, spindle, coolant, tool change, work offset, comments), then rendered to text by a post definition. This keeps templates simple and lets a host use post-processing alone (INT-03).
