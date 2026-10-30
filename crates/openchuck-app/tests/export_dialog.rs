@@ -73,6 +73,10 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
     parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(step));
     // A wide pitch keeps the programs short.
     parameters.insert("stepover".to_owned(), ParameterValue::Number(5.0));
+    // The part's free end is deeper than the tool's flutes: a new operation
+    // faces free ends and would be refused (decision record 0344, OI-1396).
+    // These tests are about writing programs, not facing.
+    parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     Operation {
         id: OperationId::new(),
         order: OrderKey::default(),

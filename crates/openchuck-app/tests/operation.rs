@@ -436,6 +436,10 @@ fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_st
     assert!(app.strategies().get("helical_finishing").is_ok());
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "helical_finishing".into();
+    // Not about free ends (decision record 0344, OI-1396).
+    operation
+        .parameters
+        .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let first = app.regenerate().unwrap();
@@ -957,6 +961,10 @@ fn req_op_09_rest_machining_says_when_no_earlier_operation_has_cut() {
     assert!(app.strategies().get("pencil_finishing").is_ok());
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "rest_machining".into();
+    // Not about free ends (decision record 0344, OI-1396).
+    operation
+        .parameters
+        .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let result = app.regenerate().unwrap();
@@ -979,6 +987,9 @@ fn req_op_09_req_sim_06_rest_machining_after_an_operation_is_generated_on_its_st
     rest.id = OperationId::new();
     rest.name = "Rest".into();
     rest.strategy = "rest_machining".into();
+    // Not about free ends (decision record 0344, OI-1396).
+    rest.parameters
+        .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Add {
         item: Item::Operation(rest),
         placement: Placement::End,
@@ -1039,6 +1050,9 @@ fn ring_then_rest(name: &str) -> (PathBuf, Application, Vec<OperationId>) {
     rest.id = OperationId::new();
     rest.name = "Rest".into();
     rest.strategy = "rest_machining".into();
+    // Not about free ends (decision record 0344, OI-1396).
+    rest.parameters
+        .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Add {
         item: Item::Operation(rest),
         placement: Placement::End,
@@ -1399,6 +1413,10 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     let (dir, mut app, op) = project("step-set-refused");
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "helical_finishing".into();
+    // Not about free ends (decision record 0344, OI-1396).
+    operation
+        .parameters
+        .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let mut model = app.project().models()[0].clone();

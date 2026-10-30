@@ -118,7 +118,11 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: BTreeMap::new(),
+            // Not about free ends (decision record 0344, OI-1396).
+            parameters: BTreeMap::from([(
+                "face_free_ends".to_owned(),
+                openchuck_app::project::ParameterValue::Flag(false),
+            )]),
         }),
     ] {
         app.execute(Command::Add {
@@ -994,6 +998,14 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     assert_eq!(added.name, "Second pass");
     assert!(added.enabled && added.parameters.is_empty());
     assert_eq!(app.project().operations().last().unwrap().id, second);
+    // The cube's ends are free and deeper than the ball's flutes; this test
+    // is not about free ends (decision record 0344, OI-1396).
+    app.set_parameter(
+        second,
+        "face_free_ends",
+        Some(openchuck_app::project::ParameterValue::Flag(false)),
+    )
+    .unwrap();
     // Edit and generate: both operations make a toolpath; the first is
     // reused when only the second changed (chain invalidation, decision 0030).
     let first = app.regenerate().unwrap();

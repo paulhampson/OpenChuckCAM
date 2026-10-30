@@ -1,9 +1,9 @@
 # 0344: One finishing Stepdown, and free ends faced in layers (OP-04, OP-09, OP-21, SET-09, TL-05, NFR-12; issues #404 and #314; lane ENDFACE)
 
-- **Status:** proposed (30 Oct 2026). The owner's answers on each choice below were relayed by the coordinator session (decision 0049): the shape, C1 = A, C2 = B, C3 = A without the width refusal, C4 = B, OI-1390 option 3 with a warning, OI-1394 (the setup's own stock is known) and project schema 23 assigned to the lane. The record awaits the owner's acceptance.
+- **Status:** proposed (30 Oct 2026). The owner's answers on each choice below were relayed by the coordinator session (decision 0049): the shape, C1 = A, C2 = B, C3 = A without the width refusal, C4 = B, OI-1390 option 3 with a warning, OI-1394 (the setup's own stock is known), OI-1396 (the flute refusal kept) and project schema 23 assigned to the lane. The record awaits the owner's acceptance.
 - **Date:** 30 Oct 2026.
 - **Builds on:** [0343](0343-end-faces-beside-a-short-tab.md) (end faces beside a short tab), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (one turn at each face), [0230](0230-material-preset-per-operation.md) (the preset fills cutting values), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (keep-out).
-- **Open items:** OI-1370 closed by this record. New: OI-1393 (a check that a free-end ring would cut stock free, or a limit on the turn's depth). OI-1394 raised and closed by the owner's answer. Finishing layers (OI-1391 and OI-1392) are [decision 0345](0345-finishing-layers.md).
+- **Open items:** OI-1370 closed by this record. New: OI-1393 (a check that a free-end ring would cut stock free, or a limit on the turn's depth). OI-1394 and OI-1396 raised and closed by the owner's answers. Finishing layers (OI-1391 and OI-1392) are [decision 0345](0345-finishing-layers.md).
 
 ## Context
 
@@ -43,7 +43,11 @@ Measured on the blisk STL in a synthetic setup: X 15 to 65, cylinder stock 42 mm
      - **A real blank smaller than the definition:** more layers in air, which is slow but not dangerous.
      - **A real blank larger than the definition:** a setup error that affects every operation's entries and links already.
      - **"Bounding box plus offset" stock much larger than the part:** the layers start from the box's top, a deep full-width cut where the blank really is that size, with the cut-free warning and the starting depth in the note so a mismatch shows before the program runs.
-7. **A face deeper than the flutes refuses the operation (C3).** The stock beside it is deeper than the tool's flute length, so the operation is refused with a message naming the face, the depth and the flute length. A wide cut is not refused (the owner's change to C3).
+7. **A face deeper than the flutes refuses the operation (C3; the owner's option 2 on OI-1396).**
+   - When the stock beside a free end is deeper than the tool's flute length, the operation is refused at the Face free ends switch, where the user acts. The message names the face's X, the depth, the flute length and each remedy: "the end face at X 0.000 has nothing beyond it and stock 10.300 mm deep beside it, more than the tool's 8.000 mm of flute, so the tool cannot face it. Use a tool with longer flutes, or turn off Face free ends for this operation, or face it with Facing".
+   - With Face free ends on for a new operation, a new finishing operation on a part thicker than its tool's flutes fails until the user does one of these. The owner chose this knowing it. The alternatives put to the owner were skipping that end with a warning (recommended by the lane) and making Face free ends opt-in.
+   - The app's own test projects, which build new operations on such parts, set Face free ends off where they are not about free ends. That is a fixture change, not a product one, and no golden program changes.
+   - A wide cut is not refused (the owner's change to C3).
 8. **The cut-free warning (the owner's choice on OI-1390).**
    - When stock lies past the ring the turn cuts, and no held region past it grips that stock, a warning names the end face's X, says it is faced down to the rotary axis, gives the ring's width and X span, and says the stock past the ring is not held by anything in this setup, so it can be cut free there and thrown while the rotary axis turns. It ends: "Before running this program, check the stock and the workholding on the machine".
    - It is raised from a presence test of the stock past the ring (5 positions along X, 16 angles, 3 radii), not a test of whether that stock is joined to anything else (OI-1393). It shows in Messages and on the operation's notes.

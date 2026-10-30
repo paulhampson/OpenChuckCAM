@@ -1146,7 +1146,18 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
     let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("flute") && err.contains("X 0.000"), "{err}");
+    // Named at the switch the user acts on, with the face, the depth, the
+    // flutes and each remedy (the owner's choice on OI-1396).
+    assert!(
+        err.contains("face_free_ends")
+            && err.contains("X 0.000")
+            && err.contains("10.300 mm deep")
+            && err.contains("8.000 mm of flute")
+            && err.contains("longer flutes")
+            && err.contains("turn off Face free ends for this operation")
+            && err.contains("Facing"),
+        "{err}"
+    );
 }
 
 #[test]
