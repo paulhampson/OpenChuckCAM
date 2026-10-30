@@ -472,6 +472,15 @@ impl Strategy for RestMachining {
                 context,
             )?);
         }
+        // The free ends, in layers down beside them (decision record 0344).
+        let free = crate::finishing::free_ends(
+            input,
+            &grown,
+            &found.free,
+            parameters,
+            (start, sign, step),
+        )?;
+        passes.extend(free.passes);
         if passes.is_empty() {
             return Err(PathError::Strategy(
                 "rest machining found material left but the tool cannot reach any of it: the \
@@ -489,10 +498,11 @@ impl Strategy for RestMachining {
         )];
         notes.extend(faces::note(&turns));
         notes.extend(faces::held_note(&found.held));
+        notes.extend(free.notes);
         Ok(StrategyOutput {
             passes,
             notes,
-            warnings: Vec::new(),
+            warnings: free.warnings,
         })
     }
 }

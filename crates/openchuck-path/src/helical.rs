@@ -35,6 +35,7 @@ use std::collections::BTreeMap;
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
+use crate::assemble::PathWarning;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
@@ -216,14 +217,11 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, turns, held) = passes(input, region, &[], parameters, context)?;
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns)
-                .into_iter()
-                .chain(faces::held_note(&held))
-                .collect(),
-            warnings: Vec::new(),
+            notes,
+            warnings,
         })
     }
 }
@@ -270,15 +268,15 @@ pub(crate) fn turn_passes(
 }
 
 /// The passes of helical finishing, limited to `region` when given, with
-/// the X of the turns it made at faces across the axis and of those a held
-/// region kept it from.
+/// its notes and warnings: the faces across the axis it turned at, those a
+/// held region kept it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<f64>, Vec<f64>)> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -382,6 +380,20 @@ fn passes(
                 context,
             )?);
         }
-        Ok((passes, turns, found.held))
+        // The free ends, in layers down beside them (decision record 0344).
+        let free = crate::finishing::free_ends(
+            input,
+            &grown,
+            &found.free,
+            parameters,
+            (start, sign, step),
+        )?;
+        passes.extend(free.passes);
+        let notes = faces::note(&turns)
+            .into_iter()
+            .chain(faces::held_note(&found.held))
+            .chain(free.notes)
+            .collect();
+        Ok((passes, notes, free.warnings))
     }
 }

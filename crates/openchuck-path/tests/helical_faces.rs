@@ -26,6 +26,7 @@ use std::path::PathBuf;
 
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
+use openchuck_path::stock::StockModel;
 use openchuck_path::{
     AcceptAll, AnalyticStock, AxialFinishing, CompositeSurface, GeneratedPath, HelicalFinishing,
     IndexedFinishing, MeshSurface, ParameterValue, RestMachining, RotaryMapping, RotaryRoughing,
@@ -224,7 +225,7 @@ fn left_on(outline: &Outline, bins: &Bins, points: &[Point3], cap: f64) -> Vec<f
 
 fn input_for<'a>(
     surface: &'a dyn SurfaceSource,
-    stock: &'a AnalyticStock,
+    stock: &'a dyn StockModel,
     profile: &'a RevolvedProfile,
     tag: &'a openchuck_types::ir::PathTags,
 ) -> StrategyInput<'a> {
@@ -249,7 +250,7 @@ fn input_for<'a>(
 
 struct Job {
     surface: Box<dyn SurfaceSource>,
-    stock: AnalyticStock,
+    stock: Box<dyn StockModel>,
     profile: RevolvedProfile,
 }
 
@@ -257,11 +258,11 @@ impl Job {
     fn shaft(shape: ToolShape) -> Self {
         Self {
             surface: Box::new(MeshSurface::new(&revolve(&SHAFT, 720)).unwrap()),
-            stock: AnalyticStock::Cylinder {
+            stock: Box::new(AnalyticStock::Cylinder {
                 radius: 11.0,
                 x_start: -2.0,
                 x_end: 42.0,
-            },
+            }),
             profile: tool(shape, DIAMETER).profile().unwrap(),
         }
     }
@@ -269,18 +270,23 @@ impl Job {
     fn crankshaft() -> Self {
         Self {
             surface: Box::new(MeshSurface::new(&crankshaft()).unwrap()),
-            stock: AnalyticStock::Cylinder {
+            stock: Box::new(AnalyticStock::Cylinder {
                 radius: 18.0,
                 x_start: -2.0,
                 x_end: 42.0,
-            },
+            }),
             profile: tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap(),
         }
     }
 
     fn path(&self, strategy: &dyn Strategy, extra: &[(&str, f64)]) -> GeneratedPath {
         let tag = tags();
-        let input = input_for(self.surface.as_ref(), &self.stock, &self.profile, &tag);
+        let input = input_for(
+            self.surface.as_ref(),
+            self.stock.as_ref(),
+            &self.profile,
+            &tag,
+        );
         let mut values: BTreeMap<String, ParameterValue> = [
             (names::STEPOVER, STEPOVER),
             (names::FEED, 600.0),
@@ -734,11 +740,11 @@ fn short_tabs() -> Job {
             model,
             vec![tab(-TAB_LENGTH).unwrap(), tab(30.0).unwrap()],
         )),
-        stock: AnalyticStock::Cylinder {
+        stock: Box::new(AnalyticStock::Cylinder {
             radius: 11.0,
             x_start: -TAB_LENGTH,
             x_end: 30.0 + TAB_LENGTH,
-        },
+        }),
         profile: tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap(),
     }
 }
@@ -939,7 +945,7 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
     let keep_out = [(30.5, 40.0)];
     let input = StrategyInput {
         keep_out: &keep_out,
-        ..input_for(job.surface.as_ref(), &job.stock, &job.profile, &tag)
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
     };
     let values: BTreeMap<String, ParameterValue> = [
         (names::STEPOVER, STEPOVER),
@@ -960,4 +966,246 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
         "{:?}",
         path.notes
     );
+}
+
+// ---- free ends (decision record 0344) -------------------------------------
+
+/// Stock that earlier operations left: a cylinder of radius 10.3 from X -5
+/// to X 30, standing for what roughing to 0.3 mm leaves on a radius 10
+/// part whose start end has 5 mm of bar past it and nothing holding it.
+#[derive(Debug)]
+struct Carried(AnalyticStock);
+
+impl StockModel for Carried {
+    fn contains(&self, point: Point3) -> bool {
+        self.0.contains(point)
+    }
+    fn ray_entry(
+        &self,
+        origin: Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<f64> {
+        self.0.ray_entry(origin, direction, max_distance)
+    }
+    fn max_radius(&self) -> Option<f64> {
+        self.0.max_radius()
+    }
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        self.0.x_extent()
+    }
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
+}
+
+/// A radius 10 cylinder from X 0 to X 30. Its start end is free: nothing of
+/// the target lies past it, while the stock carries on to X -5. Its far end
+/// is the stock's end.
+fn free_end(carried: bool, flute: f64) -> Job {
+    let bar = AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 30.0,
+    };
+    let mut cutter = tool(ToolShape::FlatEnd, DIAMETER);
+    cutter.flute_length = Millimetres(flute);
+    Job {
+        surface: Box::new(MeshSurface::new(&revolve(&[(0.0, 10.0), (30.0, 10.0)], 720)).unwrap()),
+        stock: if carried {
+            Box::new(Carried(bar))
+        } else {
+            Box::new(bar)
+        },
+        profile: cutter.profile().unwrap(),
+    }
+}
+
+/// Points on the free end face (X 0, outward normal -X), `step` mm apart,
+/// from the axis to the part's radius.
+fn free_face(step: f64) -> Vec<Point3> {
+    let mut out = vec![Point3::new(0.0, 0.0, 0.0)];
+    let nr = (10.0 / step).ceil() as u32;
+    for i in 1..=nr {
+        let r = 10.0 * f64::from(i) / f64::from(nr);
+        let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+        for j in 0..na {
+            let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+            out.push(Point3::new(0.0, r * t.cos(), r * t.sin()));
+        }
+    }
+    out
+}
+
+fn messages(path: &GeneratedPath) -> String {
+    path.notes
+        .iter()
+        .map(|n| n.message.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
+    // Decision record 0344: with Face free ends on (the default), a Stepdown
+    // and stock left by earlier operations, the tool goes down beside the
+    // free end face in layers of the Stepdown to the axis, a whole turn each,
+    // so the face keeps only the stock to leave; the part is never cut into.
+    let job = free_end(true, 12.0);
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = job.path(strategy, &[("stepdown", 2.0)]);
+        let left = &job.left(&path, &[free_face(0.1)], 3.0)[0];
+        let (w, d) = (worst(left), deepest(left));
+        assert!(w <= TOLERANCE, "{}: {w:.4} mm left", strategy.name());
+        assert!(d >= -TOLERANCE, "{}: cut to {d:.4}", strategy.name());
+        // Layers at whole Stepdowns above the axis, from the first below the
+        // stock's top (10.3): 10, 8, 6, 4, 2 and 0, at X -1.5885.
+        let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+        let turns: Vec<f64> = turns_in_place(&path)
+            .into_iter()
+            .filter(|t| (t - x).abs() < 1e-6)
+            .collect();
+        assert_eq!(turns.len(), 6, "{}: {turns:?}", strategy.name());
+        // The warning names the face and the depth, and says what can happen
+        // to the stock past the ring (owner's choice, OI-1390).
+        let text = messages(&path);
+        assert!(
+            text.contains("X 0.000")
+                && text.contains("down to the rotary axis")
+                && text.contains("cut free")
+                && text.contains("check the stock and the workholding"),
+            "{}: {text}",
+            strategy.name()
+        );
+    }
+}
+
+#[test]
+fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
+    // No Stepdown on the operation and none from the tool's cutting data: the
+    // free end is not faced, the rest is made, and the operation says why in
+    // the Required wording (decision record 0344, C1 and C2).
+    let job = free_end(true, 12.0);
+    let path = job.path(&HelicalFinishing, &[]);
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    let text = messages(&path);
+    assert!(
+        text.contains("X 0.000")
+            && text.contains(
+                "Required. Enter the depth of each layer, or add cutting data \
+                              for this tool and material in the tool library."
+            ),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_nfr_12_a_free_end_with_unknown_stock_is_left_and_said() {
+    // With no earlier operation in the setup the stock past the face is not
+    // known: the turn is not made, never a blind cut (decision record 0344).
+    let job = free_end(false, 12.0);
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    let text = messages(&path);
+    assert!(
+        text.contains("X 0.000") && text.contains("no earlier operation"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
+    // The face is 10 mm deep; a tool with 8 mm of flute cannot face it.
+    let job = free_end(true, 8.0);
+    let tag = tags();
+    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("flute") && err.contains("X 0.000"), "{err}");
+}
+
+#[test]
+fn req_op_04_face_free_ends_off_leaves_the_path_as_before() {
+    let job = free_end(true, 12.0);
+    let on = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let tag = tags();
+    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
+    let mut values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    values.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    let off = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    assert!(on.group.segments.len() > off.group.segments.len());
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&off).iter().all(|t| (t - x).abs() > 1e-6));
+}
+
+#[test]
+fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_warning() {
+    // A held region past the free end grips the stock beyond the ring, so it
+    // cannot be cut free there: the end is faced, with its note, and the
+    // cut-free warning is not given.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    let text = messages(&path);
+    assert!(text.contains("in 6 layers of 2 mm"), "{text}");
+    assert!(!text.contains("cut free"), "{text}");
+}
+
+#[test]
+fn req_op_21_the_outer_end_of_a_tab_is_not_a_free_end() {
+    // A tab joins the part to the stock past it; facing beside the tab's
+    // outer end down to the axis would cut it free of that stock. Only the
+    // part's own ends are free ends (decision record 0344).
+    let mut job = short_tabs();
+    job.stock = Box::new(Carried(AnalyticStock::Cylinder {
+        radius: 11.0,
+        x_start: -5.0,
+        x_end: 35.0,
+    }));
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let text = messages(&path);
+    assert!(!text.contains("nothing beyond it"), "{text}");
+    let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
+    assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
 }

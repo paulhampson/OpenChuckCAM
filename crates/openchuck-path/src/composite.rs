@@ -130,6 +130,10 @@ impl SurfaceSource for CompositeSurface {
         self.model.drop_accuracy()
     }
 
+    fn drop_on_part(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
+        self.model.drop_tool(profile, line)
+    }
+
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         let mut best = self.model.drop_tool(profile, line);
         for solid in &self.solids {

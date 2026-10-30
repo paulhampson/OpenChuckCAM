@@ -19,6 +19,7 @@ use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::assemble::PathWarning;
 use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
@@ -208,14 +209,11 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, turns, held) = passes(input, region, &[], parameters, context)?;
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns)
-                .into_iter()
-                .chain(faces::held_note(&held))
-                .collect(),
-            warnings: Vec::new(),
+            notes,
+            warnings,
         })
     }
 }
@@ -498,16 +496,16 @@ fn join(out: &mut Vec<Pass>, pass: Pass) {
 /// The largest A step, degrees, between the seeds of a turn at an end face.
 const TURN_STEP: f64 = 5.0;
 
-/// The passes of axial finishing, with the X of the turns it made at end
-/// faces past the ends of the target and of those a held region kept it
-/// from.
+/// The passes of axial finishing, with its notes and warnings: the end
+/// faces past the ends of the target it turned at, those a held region kept
+/// it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<f64>, Vec<f64>)> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
@@ -545,7 +543,7 @@ fn passes(
         .map(|t| t.x)
         .filter(|&x| beyond(x))
         .collect();
-    let held: Vec<f64> = found.held.into_iter().filter(|&x| beyond(x)).collect();
+    let held: Vec<f64> = found.held.iter().copied().filter(|&x| beyond(x)).collect();
     for &x in &turns {
         context.check_cancelled()?;
         passes.extend(crate::helical::turn_passes(
@@ -559,5 +557,19 @@ fn passes(
             context,
         )?);
     }
-    Ok((passes, turns, held))
+    // The free ends, in layers down beside them (decision record 0344).
+    let free = crate::finishing::free_ends(
+        input,
+        &along.grown,
+        &found.free,
+        parameters,
+        (start, 1.0, TURN_STEP),
+    )?;
+    passes.extend(free.passes);
+    let notes = faces::note(&turns)
+        .into_iter()
+        .chain(faces::held_note(&held))
+        .chain(free.notes)
+        .collect();
+    Ok((passes, notes, free.warnings))
 }

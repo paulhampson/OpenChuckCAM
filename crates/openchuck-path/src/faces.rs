@@ -118,6 +118,27 @@ pub(crate) fn turns(
 pub(crate) struct Faces {
     pub(crate) turns: Vec<Turn>,
     pub(crate) held: Vec<f64>,
+    /// The part's free ends: end faces with nothing of the target past them
+    /// within the tool's reach, outside the keep-out (decision record 0344).
+    pub(crate) free: Vec<FreeEnd>,
+}
+
+/// Where along a line of A the drop finds nothing to stand on: the sample
+/// interval, and whether the target starts there (with rising X) or ends.
+type Gap = (usize, bool);
+
+/// A free end of the part: an end face with nothing of the target past it,
+/// so a drop there finds nothing to stand on (decision record 0344).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct FreeEnd {
+    /// The X of the tool's axis for a turn beside the face: where the side
+    /// of the tool (grown by the stock to leave) is a tenth of the tolerance
+    /// clear of it.
+    pub(crate) x: f64,
+    /// The X of the face itself.
+    pub(crate) face: f64,
+    /// Whether the face looks along +X (the part's far end) rather than -X.
+    pub(crate) far: bool,
 }
 
 /// As [`turns`], for a finishing helix over the target's own range: the
@@ -150,6 +171,7 @@ fn find(
         return Ok(Faces {
             turns: Vec::new(),
             held: Vec::new(),
+            free: Vec::new(),
         });
     }
     let bounds = input.surface.bounds();
@@ -160,6 +182,7 @@ fn find(
         return Ok(Faces {
             turns: Vec::new(),
             held: Vec::new(),
+            free: Vec::new(),
         });
     }
     // X samples no further apart than half the tool's radius (and 0.5 mm):
@@ -201,9 +224,21 @@ fn find(
     // The faces on one line of A, given the brackets of faces already found
     // on another: where one lies inside a jump and still holds the jump, it
     // is taken without bisecting again.
-    let line = |k: usize, known: &[Found]| -> Vec<Found> {
+    // The faces on one line of A, and where along it the drop finds nothing
+    // to stand on: each interval whose one end has a height and the other
+    // none, with whether the target starts there (rising X) or ends.
+    let line = |k: usize, known: &[Found]| -> (Vec<Found>, Vec<Gap>) {
         let a = 360.0 * k as f64 / angles as f64;
         let heights: Vec<Option<f64>> = (0..=samples).map(|i| height(at(i), a)).collect();
+        let gaps: Vec<Gap> = heights
+            .windows(2)
+            .enumerate()
+            .filter_map(|(i, w)| match w {
+                [Some(_), None] => Some((i, false)),
+                [None, Some(_)] => Some((i, true)),
+                _ => None,
+            })
+            .collect();
         // The change of height over each interval, where both ends have one.
         let change = |i: usize| match (heights.get(i), heights.get(i + 1)) {
             (Some(Some(lo)), Some(Some(hi))) => Some(hi - lo),
@@ -246,14 +281,15 @@ fn find(
                 out.push(face);
             }
         }
-        out
+        (out, gaps)
     };
     context.report("finding faces across the axis", 0, Some(angles as u64));
-    let first = line(0, &[]);
+    let (first, first_gaps) = line(0, &[]);
     let rest: Vec<usize> = (1..angles).collect();
-    let found: Vec<Vec<Found>> = std::iter::once(first.clone())
-        .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
-        .collect();
+    let (found, gaps): (Vec<Vec<Found>>, Vec<Vec<Gap>>) =
+        std::iter::once((first.clone(), first_gaps))
+            .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
+            .unzip();
     context.check_cancelled()?;
     let mut ups: Vec<(Found, usize)> = Vec::new();
     let mut downs: Vec<(Found, usize)> = Vec::new();
@@ -293,7 +329,76 @@ fn find(
             turns.len()
         )));
     }
-    Ok(Faces { turns, held })
+    // The free ends, for a finishing search only: where on every line of A
+    // the drop finds the target on one side of an X and nothing on the
+    // other, the end of a body with nothing past it within the tool's reach.
+    // The edge is narrowed on each line by bisection to `WIDTH`; the face is
+    // one grown tool radius inside the outermost edge over the lines. One
+    // inside a keep-out interval is the held region's own end, or within its
+    // reach: it is left out.
+    let mut free = Vec::new();
+    if extra > 0 {
+        let clear = CLEAR * tolerance;
+        let first_line = gaps.first().cloned().unwrap_or_default();
+        for &(i, starts) in &first_line {
+            // The same change on every line, within one sample.
+            let on_lines: Option<Vec<(usize, usize)>> = gaps
+                .iter()
+                .enumerate()
+                .map(|(k, g)| {
+                    g.iter()
+                        .find(|&&(j, s)| s == starts && j.abs_diff(i) <= 1)
+                        .map(|&(j, _)| (k, j))
+                })
+                .collect();
+            let Some(on_lines) = on_lines else { continue };
+            // The part's own end, not a tab's or a held region's: the part
+            // is under the tool just inside the edge.
+            let on_part = |x: f64, a: f64| {
+                let line = input
+                    .rotary
+                    .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+                input.surface.drop_on_part(profile, &line).is_some()
+            };
+            let edges: Vec<f64> = parallel::map_in_order(&on_lines, |&(k, j)| {
+                let a = 360.0 * k as f64 / angles as f64;
+                let (mut inside, mut outside) = if starts {
+                    (at(j + 1), at(j))
+                } else {
+                    (at(j), at(j + 1))
+                };
+                while (outside - inside).abs() > WIDTH {
+                    let m = 0.5 * (inside + outside);
+                    if height(m, a).is_some() {
+                        inside = m;
+                    } else {
+                        outside = m;
+                    }
+                }
+                inside
+            });
+            // Checked on the first line, just inside its own edge.
+            let Some(&own) = edges.first() else { continue };
+            if !on_part(if starts { own + WIDTH } else { own - WIDTH }, 0.0) {
+                continue;
+            }
+            let pick = if starts { f64::min } else { f64::max };
+            let Some(outer) = edges.into_iter().reduce(pick) else {
+                continue;
+            };
+            let far = !starts;
+            let (x, face) = if far {
+                (outer + clear, outer - radius)
+            } else {
+                (outer - clear, outer + radius)
+            };
+            if !held_at(x) {
+                free.push(FreeEnd { x, face, far });
+            }
+        }
+        context.check_cancelled()?;
+    }
+    Ok(Faces { turns, held, free })
 }
 
 /// The note an operation carries when it turned at faces across the axis:
