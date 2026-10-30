@@ -52,4 +52,4 @@ No requirement threshold of a test was changed.
 
 - The binary carries the two emoji fonts again, as it did on 0.36.
 - `egui` appears in `docs/dependencies.md` as a direct entry, and is upgraded with `eframe`.
-- OI-1224 (native check) opens with this record; the owner waived the native check on 30 Oct 2026 (relayed), so it stays open only as a record of what was not tested.
+- OI-1224 (native check) opens with this record; the owner will check the five items on a nightly build after the merge (issue #398) and report, so it stays open until they do; merging does not wait for the check (relayed 30 Oct 2026).
