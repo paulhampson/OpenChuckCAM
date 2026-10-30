@@ -440,7 +440,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-hack
+          tool: cargo-hack,cargo-nextest
       # The library family builds and tests on its own, without the C++
       # toolchain, GPU libraries or application crates (architecture section 12).
       - name: Build each library crate on its own
@@ -449,11 +449,15 @@ jobs:
           --package openchuck-types --package openchuck-path
           --package openchuck-post --package openchuck-gcode
           --package openchuck-geom --package openchuck-sim --package openchuck-project
+      # nextest runs a crate's test binaries side by side (cargo test runs them one after another:
+      # 21 to 24 min a leg, mostly openchuck-path), and the crate is still built and tested alone, one
+      # `-p` at a time. nextest does not run doctests, so they follow (decision 0358, Option 2, OI-1411).
       - name: Test each library-family crate on its own
         shell: bash
         run: |
           for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
-            cargo test --locked -p "$crate"
+            cargo nextest run --locked --no-fail-fast --no-tests=fail -p "$crate"
+            cargo test --locked --doc -p "$crate"
           done
       # The library family packages and builds from its packages alone, as `cargo publish` would
       # (OI-302, decision 0138). Once is enough: packaging does not depend on the platform.
