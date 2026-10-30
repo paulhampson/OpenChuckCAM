@@ -205,9 +205,8 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
-  # Every OS splits the test run over two jobs (decision 0052, Option 4):
-  # `--partition hash:I/N` gives each test to one share by a hash of its name, so a
-  # new test never moves the others. Shard 1 also runs clippy, the doctests and
+  # Every OS splits the test run over two jobs (decision 0052, Option 4; dealt by binary and measured
+  # time since decision 0358, Option 3, see SHARD1_BINARIES below). Shard 1 also runs clippy, the doctests and
   # the examples, which the other shards would only repeat. The partition check below fails a job whose
   # shares are empty or do not add up to the full list, so no test goes unrun.
   build-test:
@@ -225,6 +224,10 @@ jobs:
           - { os: macos-latest, shard: 1, shards: 2 }
           - { os: macos-latest, shard: 2, shards: 2 }
     runs-on: ${{ matrix.os }}
+    env:
+      SHARD1_BINARIES: >-
+        openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
+        openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
     steps:
       - uses: actions/checkout@v7
         with:
@@ -238,29 +241,46 @@ jobs:
       - name: clippy (deny warnings, unwrap and unchecked indexing)
         if: matrix.shard == 1
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The two shares are dealt by test binary, by measured time (decision 0358, Option 3, OI-1412):
+      # share 1 runs the binaries listed in SHARD1_BINARIES, share 2 runs every other test (the exact
+      # complement), so a new test or binary always runs, in share 2 unless it is listed. The list was
+      # chosen from the per-test times of run 41096871005 on all three systems so that both shares hold
+      # about half of the test time on each (Ubuntu 18.4 and 18.7 min of 4-thread time, Windows 23.5
+      # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
+      # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
+      # removed), if either share is empty or if the shares do not add up to the full list.
       - name: Check the test partition
         shell: bash
-        env:
-          SHARDS: ${{ matrix.shards }}
         run: |
-          total=$(cargo nextest list --workspace --locked --message-format oneline | wc -l)
-          sum=0
-          for i in $(seq 1 "$SHARDS"); do
-            n=$(cargo nextest list --workspace --locked --message-format oneline --partition "hash:$i/$SHARDS" | wc -l)
-            echo "share $i of $SHARDS: $n tests"
+          list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          total=$(list | wc -l)
+          n1=$(list -E "$shard1" | wc -l)
+          n2=$(list -E "not ($shard1)" | wc -l)
+          echo "full list: $total tests; share 1: $n1; share 2: $n2"
+          for b in $SHARD1_BINARIES; do
+            n=$(list -E "binary_id(=$b)" | wc -l)
             if [ "$n" -eq 0 ]; then
-              echo "::error title=Empty test share::share $i of $SHARDS has no tests"
+              echo "::error title=Listed test binary has no tests::$b in SHARD1_BINARIES matches no test; rename or remove it"
               exit 1
             fi
-            sum=$((sum + n))
           done
-          echo "full list: $total tests, shares add up to $sum"
-          if [ "$sum" -ne "$total" ]; then
-            echo "::error title=Test shares do not add up::the $SHARDS shares hold $sum tests, the full list $total"
+          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ]; then
+            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2"
+            exit 1
+          fi
+          if [ $((n1 + n2)) -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::$n1 + $n2 is not the full list of $total"
             exit 1
           fi
       - name: Tests
-        run: cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail --partition "hash:${{ matrix.shard }}/${{ matrix.shards }}"
+        shell: bash
+        run: |
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          if [ "${{ matrix.shard }}" = 1 ]; then filter="$shard1"; else filter="not ($shard1)"; fi
+          cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
       - name: Doctests
         if: matrix.shard == 1
         run: cargo test --workspace --doc --locked
