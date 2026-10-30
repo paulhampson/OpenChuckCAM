@@ -74,7 +74,9 @@ fn req_ui_06_req_ui_10_req_sim_04_simulate_row_opens_its_inspector_and_preserves
         if keyboard {
             let row = rig
                 .ctx
-                .data(|d| d.get_temp::<egui::Id>(egui::Id::new(("operation row focus", operation))))
+                .data(|d| {
+                    d.get_temp::<egui::Id>(egui::Id::unique(("operation row focus", operation)))
+                })
                 .unwrap();
             rig.ctx.memory_mut(|m| m.request_focus(row));
             rig.press(Key::Enter, Modifiers::NONE);
@@ -86,9 +88,7 @@ fn req_ui_06_req_ui_10_req_sim_04_simulate_row_opens_its_inspector_and_preserves
         assert_eq!(rig.shell.selected, Some(Selection::Operation(operation)));
         assert!(!rig.shell.settings.inspector.collapsed);
         assert!(!rig.shell.collapsed(super::frame::Region::Inspector));
-        let inspector = egui::PanelState::load(&rig.ctx, egui::Id::new("properties"))
-            .unwrap()
-            .outer_rect;
+        let inspector = rig.panel_state("properties").unwrap().outer_rect;
         assert!(rig.painted().iter().any(|(text, whole, seen)| {
             text.as_deref() == Some("Finish")
                 && inspector.contains_rect(*whole)
@@ -205,7 +205,7 @@ fn req_ui_06_req_sim_01_row_controls_do_not_navigate_and_toolpath_visibility_com
     let click_control = |rig: &mut Rig, kind: &str| {
         let rect = rig
             .ctx
-            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new((kind, operation))))
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::unique((kind, operation))))
             .unwrap();
         rig.click(rect.center());
         rig.settle();
@@ -309,7 +309,7 @@ fn req_ui_06_req_sim_01_row_controls_do_not_navigate_and_toolpath_visibility_com
     );
     let handle = |id| {
         rig.ctx
-            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("operation reorder", id))))
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::unique(("operation reorder", id))))
             .unwrap()
     };
     let from = handle(order[1]).center();
@@ -630,6 +630,7 @@ fn scroll_dock_to(rig: &mut Rig, text: &str) {
         }
         rig.frame(vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
+            source: egui::MouseWheelSource::Unknown,
             phase: egui::TouchPhase::Move,
             delta: egui::vec2(0.0, -60.0),
             modifiers: Modifiers::NONE,
@@ -762,6 +763,7 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
         }
         rig.frame(vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
+            source: egui::MouseWheelSource::Unknown,
             phase: egui::TouchPhase::Move,
             delta: egui::vec2(0.0, -60.0),
             modifiers: Modifiers::NONE,
@@ -946,7 +948,8 @@ fn req_sim_01_req_ui_11_the_tree_hides_paths_in_every_step_and_all_at_once() {
 /// The dock's drawn height and the height asked for: equal while the dock's
 /// contents fill it, whatever the tab holds (issues 259 and 215).
 fn dock_heights(rig: &Rig) -> (f32, f32) {
-    let drawn = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+    let drawn = rig
+        .panel_state("dock")
         .expect("the dock was drawn")
         .outer_rect
         .height();
@@ -1273,9 +1276,7 @@ fn req_ui_15_req_ui_16_simulation_choices_are_adjacent_without_a_labelled_group(
         turn.left() > skip.right(),
         "turn choice follows the skip choice"
     );
-    let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
-        .unwrap()
-        .outer_rect;
+    let dock = rig.panel_state("dock").unwrap().outer_rect;
     assert!(dock.contains_rect(turn));
 
     // The regrouped controls must remain independently usable, including
@@ -1394,9 +1395,7 @@ fn req_nfr_04_req_ui_16_req_sim_04_real_preparation_progress_initial_and_regener
                     );
                     saw_numeric = true;
                 }
-                let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
-                    .unwrap()
-                    .outer_rect;
+                let dock = rig.panel_state("dock").unwrap().outer_rect;
                 let progress = rig
                     .text_rects()
                     .into_iter()
@@ -1456,7 +1455,8 @@ fn req_nfr_04_req_ui_16_req_sim_04_real_preparation_progress_initial_and_regener
 /// timeline; and the dock keeps the height it was given. `what` names the
 /// case in a failure.
 fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
-    let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+    let dock = rig
+        .panel_state("dock")
         .expect("the dock was drawn")
         .outer_rect;
     let (drawn, asked) = dock_heights(rig);

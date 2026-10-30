@@ -416,11 +416,19 @@ pub(crate) fn generate_with_part(
         }
         _ => None,
     };
+    // A strategy that takes exact contacts drops its ball onto the exact
+    // faces of a STEP part (decision 0277); any other tool, and the other
+    // strategies, onto its tessellation, with face sets of its triangles to
+    // match.
+    let profile = snapshot.tool.profile()?;
+    let exact = placed.brep.is_some()
+        && strategy.exact_contact()
+        && openchuck_path::ball_radius(&profile).is_some();
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
-            Arc::new(BrepSurface::with_faces(brep, &choice.faces)?)
+            Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
         }
-        (Some(brep), _) => Arc::new(BrepSurface::new(brep)?),
+        (Some(brep), _) => Arc::new(BrepSurface::new(brep)?.with_exact_drops(exact)),
         (None, _) => Arc::new(MeshSurface::new(mesh)?),
     };
     // The whole placed part, not the selected faces: bounding-box stock and
@@ -428,7 +436,6 @@ pub(crate) fn generate_with_part(
     let part_bounds = openchuck_geom::summary(mesh)
         .bounds
         .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
-    let profile = snapshot.tool.profile()?;
     // The held regions and tabs join the model's surface as the target the
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
@@ -481,7 +488,7 @@ pub(crate) fn generate_with_part(
             model,
             file_hash,
             mesh,
-            Some(&crate::selection::FaceTriangles::of(brep)),
+            Some(&crate::selection::FaceTriangles::of(brep, exact)),
         )?,
         _ => None,
     };
@@ -735,7 +742,7 @@ pub(crate) fn generate_with_part(
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
     if placed.brep.is_some()
-        && let Some(note) = tessellation_note(registry_strategy, &operation.strategy)
+        && let Some(note) = contact_note(registry_strategy, &operation.strategy, &profile)
     {
         notes.push(note);
     }
@@ -785,28 +792,51 @@ pub(crate) fn generate_with_part(
 }
 
 /// The note on an operation of `strategy` (registered as `name`) on a STEP
-/// part that drops the tool on the part's tessellation, not on its exact
-/// faces, until the exact drop is built (OI-81; decision 0209 item 4.4,
-/// OI-830). `None` for the strategies that read the exact faces or edges
-/// themselves: radial drilling, swarf and edge following.
-fn tessellation_note(strategy: &dyn Strategy, name: &str) -> Option<String> {
+/// part that says which surface the tool was dropped on (decision 0209 item
+/// 4.4, OI-830; decision 0277): the exact faces, for a ball-end tool in a
+/// strategy that takes exact contacts, or the part's tessellation, made at
+/// the import's deflection, otherwise. `None` for the strategies that read
+/// the exact faces or edges themselves: radial drilling, swarf and edge
+/// following.
+fn contact_note(
+    strategy: &dyn Strategy,
+    name: &str,
+    profile: &openchuck_types::tool::RevolvedProfile,
+) -> Option<String> {
     if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
         return None;
     }
+    let deflection = openchuck_types::brep::TessellationSettings::default().linear;
     if name == pencil::NAME {
         return Some(format!(
             "{} follows the STEP part's inside corners on its exact edges, and drops the tool \
-             on the part's tessellation, made at a deflection of {} mm, not on its exact faces: \
-             dropping on the exact faces is not built yet",
+             on the part's tessellation, made at a deflection of {deflection} mm, not on its \
+             exact faces: dropping on the exact faces is not built yet for this strategy",
             strategy.label(),
-            openchuck_types::brep::TessellationSettings::default().linear
         ));
     }
+    if strategy.exact_contact() {
+        return Some(if openchuck_path::ball_radius(profile).is_some() {
+            format!(
+                "{} drops the ball-end tool on the STEP part's exact faces, to within {} mm, \
+                 not on its tessellation; selected faces limit the cut as exact faces too",
+                strategy.label(),
+                openchuck_path::DROP_TOLERANCE
+            )
+        } else {
+            format!(
+                "{} drops this tool on the STEP part's tessellation, made at a deflection of \
+                 {deflection} mm, not on its exact faces: dropping on the exact faces is built \
+                 for ball-end tools only",
+                strategy.label(),
+            )
+        });
+    }
     Some(format!(
-        "{} drops the tool on the STEP part's tessellation, made at a deflection of {} mm, not \
-         on its exact faces: dropping on the exact faces is not built yet",
+        "{} drops the tool on the STEP part's tessellation, made at a deflection of \
+         {deflection} mm, not on its exact faces: dropping on the exact faces is not built yet \
+         for this strategy",
         strategy.label(),
-        openchuck_types::brep::TessellationSettings::default().linear
     ))
 }
 
@@ -2496,6 +2526,11 @@ mod tests {
     const BALL: f64 = 3.0;
 
     fn bar_fixture(strategy: &str, file: &str) -> Fixture {
+        bar_fixture_with(strategy, file, ToolShape::BallEnd)
+    }
+
+    /// [`bar_fixture`] with a tool of `shape`, `BALL` across.
+    fn bar_fixture_with(strategy: &str, file: &str, shape: ToolShape) -> Fixture {
         // Roughing has no cutting data without a stock material.
         let stepdown = [(STEPDOWN, Value::Number(1.0))];
         let parameters: &[(&str, Value)] = if strategy == roughing::NAME {
@@ -2505,7 +2540,7 @@ mod tests {
         };
         let brep = openchuck_testkit::brep::banded_cylinder(BAR, LENGTH, &[20.0, 40.0]);
         let ball = Tool {
-            shape: ToolShape::BallEnd,
+            shape,
             diameter: Millimetres(BALL),
             flute_length: Millimetres(15.0),
             overall_length: Millimetres(60.0),
@@ -2711,6 +2746,45 @@ mod tests {
     }
 
     #[test]
+    fn req_op_23_req_op_02_a_face_set_limits_a_bull_nose_on_a_step_part_as_on_a_mesh() {
+        // Decision 0277 (OI-833): a strategy that takes exact contacts drops
+        // only a ball on the exact faces; a bull-nose tool drops on the
+        // tessellation, where its corner rests inside the facets, up to the
+        // deflection off the exact faces. Its face sets must stay the faces'
+        // triangles, or those contacts would not count as on them and the
+        // cut on the chosen face would be lost.
+        for strategy in [openchuck_path::helical::NAME, openchuck_path::indexed::NAME] {
+            let bull = || ToolShape::BullNose {
+                corner_radius: Millimetres(0.5),
+            };
+            let whole = bar_fixture_with(strategy, "bar.step", bull())
+                .run()
+                .unwrap();
+            let mut f = bar_fixture_with(strategy, "bar.step", bull());
+            f.select_as(
+                SelectionTarget::Faces([FaceId(1)].into()),
+                f.hash,
+                f.model,
+                Role::Machine,
+            );
+            let path = f
+                .run()
+                .unwrap_or_else(|e| panic!("{strategy} bull nose, cut on face 1: {e}"));
+            if let Err(why) = keeps_to_faces(&path, "cut on", &whole) {
+                panic!("{strategy} bull nose: {why}");
+            }
+            // And it says the tool was dropped on the tessellation.
+            assert!(
+                path.notes
+                    .iter()
+                    .any(|n| n.contains("tessellation") && n.contains("ball-end tools only")),
+                "{strategy}: {:?}",
+                path.notes
+            );
+        }
+    }
+
+    #[test]
     fn req_op_23_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part() {
         // Decision 0209 item 3: simultaneous finishing reads its drive
         // points from the exact faces (decision 0036), so its cut is not the
@@ -2750,14 +2824,32 @@ mod tests {
                 .cloned()
         };
         let helical = bar_fixture(openchuck_path::helical::NAME, "bar.step");
-        let said = note(&helical.run().unwrap()).unwrap();
+        let exact = |path: &OperationPath| {
+            path.notes
+                .iter()
+                .find(|n| n.contains("exact faces"))
+                .cloned()
+        };
+        // Helical finishing takes exact contacts (decision 0277): a ball end
+        // drops on the exact faces, and the note says so.
+        let said = exact(&helical.run().unwrap()).unwrap();
         assert!(
-            said.starts_with("Helical finishing drops the tool on the STEP part's tessellation")
+            said.starts_with(
+                "Helical finishing drops the ball-end tool on the STEP part's exact faces"
+            ) && said.contains("0.0001 mm"),
+            "{said}"
+        );
+        assert_eq!(note(&helical.run_on(true).unwrap()), None);
+        assert_eq!(exact(&helical.run_on(true).unwrap()), None);
+        // Axial finishing does not yet: its note names the tessellation.
+        let axial = bar_fixture(openchuck_path::axial::NAME, "bar.step");
+        let said = note(&axial.run().unwrap()).unwrap();
+        assert!(
+            said.starts_with("Axial finishing drops the tool on the STEP part's tessellation")
                 && said.contains("0.01 mm")
                 && said.contains("not built yet"),
             "{said}"
         );
-        assert_eq!(note(&helical.run_on(true).unwrap()), None);
         assert_eq!(note(&fixture(drill::NAME, &[]).run().unwrap()), None);
     }
 

@@ -131,7 +131,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
     // scrolls the preview and not the dialog (decision 0327).
     let dialog = rig
         .ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
         .unwrap();
     let at = egui::pos2(dialog.left() + 40.0, dialog.center().y);
     for _ in 0..12 {
@@ -146,6 +146,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
             Event::PointerMoved(at),
             Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(0.0, -160.0),
                 modifiers: Modifiers::NONE,

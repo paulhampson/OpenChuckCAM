@@ -83,6 +83,7 @@ pub mod edge_following;
 pub mod entry_safety;
 mod error;
 pub mod extend;
+mod faces;
 pub mod facing;
 pub mod field;
 pub mod helical;
@@ -108,7 +109,7 @@ mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote, PathWarning};
 pub use axial::AxialFinishing;
-pub use brep::{BrepSurface, ExactFace};
+pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius};
 pub use brep_edges::BrepEdges;
 pub use composite::CompositeSurface;
 pub use curves::{ChosenSegments, CurveSource, EdgeChain, MeshFeatureEdges};

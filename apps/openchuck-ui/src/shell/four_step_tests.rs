@@ -520,13 +520,14 @@ fn write_through_dialog(
         // where the folder and the preview are.
         let top = rig
             .ctx
-            .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+            .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
             .map(|r| r.center());
         let events = top.map_or_else(Vec::new, |at| {
             vec![
                 egui::Event::PointerMoved(at),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     phase: egui::TouchPhase::Move,
                     delta: egui::vec2(0.0, 400.0),
                     modifiers: Modifiers::NONE,
@@ -547,7 +548,7 @@ fn write_through_dialog(
     rig.frame(Vec::new());
     let centre = rig
         .ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
         .unwrap()
         .center();
     for _ in 0..12 {
@@ -561,6 +562,7 @@ fn write_through_dialog(
             egui::Event::PointerMoved(centre),
             egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(0.0, -160.0),
                 modifiers: Modifiers::NONE,

@@ -33,7 +33,7 @@ Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on t
 | A axis | The rotary axis. It turns the part about the machine's X axis. A+ turns the top of the chuck toward the front of the machine (-Y), confirmed on the machine (OI-03). A is continuous: it can turn many times. |
 | Work zero, G54 | The point the program's coordinates are measured from. For the Z1 post it must be **Y0 Z0 on the A axis centreline** and X0 at the part's model origin (decision 0007, OI-40). |
 | Machine coordinates, G53 | Coordinates measured from the machine's own home, not from the work zero. The program's last moves use them (`G53 G0 Z-3`). |
-| Axis height | Where the A axis centreline is in machine Z. The profile holds an unconfirmed value (machine Z -55); it must be measured (OI-60). A wrong value moves every Z the software checks. |
+| Axis height | Where the A axis centreline is in machine Z. The profile holds -48.6, measured on the owner's Z1 with Makera's probing routine for the probe as the reference tool (decision 0317; until 30 Oct 2026 an unconfirmed -55, OI-60); measure your own. A wrong value moves every Z the software checks. |
 | Safe Z | The height above the axis that rapid moves travel at. The Z1 profile's default is 50 mm above the axis. |
 | Rapid (`G0`) | A move at the machine's fastest rate, not cutting. |
 | Fed move (`G1`) | A cutting move at the feed in its `F` word. |
@@ -74,9 +74,9 @@ Do these at the computer and at the machine before anything moves. Each step has
 | P5 Firmware | On the Z1 controller, find the firmware version. | Noted. If it is not 1.1.2, the SP-12 conventions (decision 0007) must be rechecked first: step 1 of section 4.4. | Firmware version |
 | P6 Tool and stock | Take any tool out of the spindle. Empty the chuck, or close the jaws on nothing. Clear the bed. | **No tool, no material.** Nothing loose on the bed or in the enclosure. | Photo of the empty spindle and chuck |
 | P7 Spindle and tool change | Every generated program has `M5`, `T1 M6` and `S... M3` near its start. Run them **as generated**: the spindle runs with no tool fitted (OI-911, the owner confirms the Z1 spins an empty collet safely) and `T1 M6` runs with no tool, watched, with a hand on the stop (OI-912). Do not edit the program. | The controller accepts `T1 M6` and `S... M3`; what it does on `M6` matches what the owner expects. | What the controller did on `M6`; the spindle ran: yes / no |
-| P8 Axis height | Measure the machine Z of the A axis centreline (OI-60). Use **Makera's own work-zero routine** for Y and Z on the axis (OI-917), done before P6 if it needs a tool or probe fitted; the machine (G53) Z of the resulting G54 Z0 is the axis height. If it differs from machine Z -55, correct the project's machine profile and regenerate (P2). | A measured value is in the profile. | Measured axis height (mm), how it was measured |
+| P8 Axis height | Measure the machine Z of the A axis centreline (OI-60). Use **Makera's own work-zero routine** for Y and Z on the axis (OI-917), done before P6 if it needs a tool or probe fitted; the machine (G53) Z of the resulting G54 Z0 is the axis height. If it differs from the profile's value (-48.6 since decision 0317; -55 before), correct the project's machine profile and regenerate (P2). | A measured value is in the profile. | Measured axis height (mm), how it was measured |
 | P9 Work zero | Set G54 with **Makera's own routine** (OI-917): Y0 Z0 on the A axis centreline, X0 at the part's model origin, at least 10 mm clear of the jaws (OI-40), and A0. This document does not copy the routine's steps: follow Makera's documentation for the installed firmware. | The DRO in G54 reads Y0 Z0 at the axis centre and X0 where the setup sheet's "Work offset" line says. | G54 X, Y, Z in machine coordinates; which face X0 was taken from; how A0 was set |
-| P10 Clearances | With nothing fitted, jog Z to the program's safe Z (Z50 in G54 for the reference jobs) and jog X over the program's whole X range (read it from the program: the smallest and largest X words). Turn A by hand or by jog a full turn. | The spindle nose clears the chuck, jaws and rotary module everywhere along that X range, and safe Z is below the top of Z travel (with the profile's figures, safe Z 50 is machine Z -5, 5 mm below the top). | Lowest clearance seen |
+| P10 Clearances | With nothing fitted, jog Z to the program's safe Z (Z40 in G54 for the reference jobs since decision 0317; Z50 before) and jog X over the program's whole X range (read it from the program: the smallest and largest X words). Turn A by hand or by jog a full turn. | The spindle nose clears the chuck, jaws and rotary module everywhere along that X range, and safe Z is below the top of Z travel (with the profile's figures, safe Z 40 is machine Z -8.6 with the probe fitted; a longer tool raises the spindle by the difference, decision 0317). | Lowest clearance seen |
 
 ### 4.2 Read the program before you run it
 
@@ -92,12 +92,12 @@ G54                                     use work zero G54 (P9)
 M5                                      spindle stop (before the tool change)
 T1 M6                                   tool change to tool 1 (P7, OI-912)
 S12000 M3                               spindle on, clockwise, 12000 rpm (P7, OI-911)
-G0 X-10.000 Y0.000 Z50.000 A0.000       rapid to the start, at safe Z 50 above the axis
+G0 X-10.000 Y0.000 Z40.000 A0.000       rapid to the start, at safe Z 40 above the axis
 Z12.000                                 rapid down to 12 mm above the axis (still G0)
 G1 Z4.177 F150.0                        fed plunge at 150 mm/min (the plunge feed)
 X-9.972 Z4.227 A5.000 F565.6            fed moves: X, Z and A together, new F each time
 ...
-G0 Z50.000                              rapid back up to safe Z
+G0 Z40.000                              rapid back up to safe Z
 G92.4 A0 S0                             the unwind: A reading reset, no motion
 M5                                      spindle stop
 G53 G0 Z-3                              rapid to machine Z -3 (near the top of travel)
@@ -117,7 +117,7 @@ Check each item and tick it on the form (section 8.1):
 | R4 | Each `(operation ...)` comment | The operations you expect, in order, each with its tool and "about N s" | An operation you did not expect, or one missing |
 | R5 | Tool changes `M5` then `T<n> M6` | One before each change of tool; the number matches the setup sheet's Tools table (GC-14) | A tool number you did not confirm, or `M6` without `M5` before it |
 | R6 | Spindle `S<rpm> M3` | After each tool change; the speed matches the setup sheet's **Spindle rpm**, and its **Speed from** column says where it came from: "operation" (set on the operation) or "tool data: <material>" (the tool's cutting data for the stock material) (decision 0196, OI-755). Within the Z1's spindle range (the manufacturer's figure) | A speed of 0 or none, a speed outside the spindle's range, or a source you did not expect |
-| R7 | The first rapid `G0 X.. Y.. Z.. A..` | At safe Z (Z50 for the reference jobs), Y0 | A first rapid below safe Z |
+| R7 | The first rapid `G0 X.. Y.. Z.. A..` | At safe Z (Z40 for the reference jobs since decision 0317), Y0 | A first rapid below safe Z |
 | R8 | Every other `G0` | Either at safe Z, or the rapid down from safe Z to just above the stock (for the sphere, Z12: the stock radius is 11 mm) | A rapid at a Z inside the stock radius (setup sheet's Stock line, diameter / 2) |
 | R9 | The first `G1` after each rapid down | A plunge with the plunge feed (150 for the reference jobs) | A plunge with a large F |
 | R10 | `F` words | Present on the first `G1` and whenever the feed changes. On the Z1 the F of a move that turns A is **not** the cutting feed: the post chooses it so the Z1's feed rule gives the right speed at the contact (decision 0007), so it varies line to line (565.6, 568.6, ...). The reference jobs' largest F is 1190.6 | An F above 1200 (the X and Y limit) on a move with X, Y or Z: see OI-267 for A-only moves |

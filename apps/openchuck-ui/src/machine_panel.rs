@@ -83,7 +83,7 @@ pub fn icon(ui: &mut egui::Ui, value: &MachineValue) -> egui::Response {
     };
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
+            egui::Role::Button,
             true,
             format!("{}: {state}", value.label),
         )
@@ -218,6 +218,90 @@ impl MachinePanel {
         edited
     }
 
+    /// The spindle-height values (decision record 0317): whether the machine
+    /// measures tool lengths, the spindle-to-axis distance and the recommended
+    /// minimum safe Z, edited on the project copy.
+    fn spindle_height(
+        &mut self,
+        ui: &mut egui::Ui,
+        profile: &MachineProfile,
+    ) -> Option<MachineProfile> {
+        ui.strong("Spindle height");
+        ui.weak("A tool longer than the one the axis height was measured with raises the spindle at the same Z. Leave a value blank when it is not known.");
+        let mut edited = None;
+        let choices = ["Automatic (tool setter)", "None"];
+        let current = if profile.automatic_tool_length { 0 } else { 1 };
+        if let Some(index) = field_row::list_row(
+            ui,
+            "tool_length_measurement",
+            "Tool length measurement",
+            "Whether the controller measures each tool on a tool setter and offsets it.",
+            (&choices, Some(current)),
+            choices.get(current).copied().unwrap_or(""),
+        ) && index != current
+        {
+            edited = Some(set_tool_length_measurement(profile, index == 0));
+        }
+        let shown = |v: Option<openchuck_app::setup::Millimetres>| {
+            v.map_or_else(String::new, |v| v.0.to_string())
+        };
+        // The distance matters only on a machine that measures tool
+        // lengths; the minimum shows there or once given (as `fields`).
+        let rows = [
+            (
+                ProfileField::SpindleToAxis,
+                "Spindle to axis",
+                shown(profile.spindle_to_axis),
+                "From the spindle at the top of the Z travel down to the rotary axis. Blank when not known.",
+            ),
+            (
+                ProfileField::RecommendedMinSafeZ,
+                "Recommended minimum safe Z",
+                shown(profile.recommended_min_safe_z),
+                "The lowest safe Z recommended for this machine. Advice to check on the machine, not a limit. Blank for none.",
+            ),
+        ];
+        let shown_fields = profile.fields();
+        for (field, label, applied, description) in rows
+            .into_iter()
+            // The minimum stays editable on a measuring machine even when
+            // blank, so it can be set and cleared; without measurement it
+            // shows once given (switching measurement on shows it too).
+            .filter(|(field, ..)| {
+                shown_fields.contains(field)
+                    || (*field == ProfileField::RecommendedMinSafeZ
+                        && profile.automatic_tool_length)
+            })
+        {
+            let validate = |text: &str| edit_spindle_height(profile, field, text).map(|_| ());
+            let row = TextRow {
+                key: field.name(),
+                label,
+                unit: "mm",
+                range: Some("above 0, or blank"),
+                applied,
+                enabled: true,
+                number: true,
+                description,
+                validate: Some(&validate),
+                ..TextRow::default()
+            };
+            if let Outcome::Commit(text) = field_row::text_row(ui, &mut self.fields, &row) {
+                match edit_spindle_height(edited.as_ref().unwrap_or(profile), field, &text) {
+                    Ok(value) => edited = Some(value),
+                    Err(reason) => self.fields.refuse(field.name(), &text, reason),
+                }
+            }
+            if let Some(value) = machine_values(profile)
+                .into_iter()
+                .find(|v| v.field == field)
+            {
+                icon(ui, &value);
+            }
+        }
+        edited
+    }
+
     /// Draws the panel for the project's machine `copy`. Returns a command
     /// to execute, if the user chose or updated the machine.
     pub fn show(
@@ -247,6 +331,9 @@ impl MachinePanel {
                             ProfileField::MinBlockMs
                                 | ProfileField::BlockWindow
                                 | ProfileField::ShortBlockMode
+                                | ProfileField::ToolLengthMeasurement
+                                | ProfileField::SpindleToAxis
+                                | ProfileField::RecommendedMinSafeZ
                         )
                 }) {
                     value_row(ui, value);
@@ -264,7 +351,9 @@ impl MachinePanel {
             }
         }
         if let Some(profile) = copy
-            && let Some(edited) = self.short_blocks(ui, profile)
+            && let Some(edited) = self
+                .short_blocks(ui, profile)
+                .or_else(|| self.spindle_height(ui, profile))
         {
             command = Some(Command::SetMachineFrom {
                 machine: Some(Box::new(edited)),
@@ -443,6 +532,51 @@ fn user_source(profile: &mut MachineProfile, field: ProfileField) {
     profile.provenance.insert(field, Provenance { state: Confirmation::Unconfirmed, source: "User configured for this project; validate on the machine with its firmware and program delivery method".into() });
 }
 
+/// Records a spindle-height value as the user's own for this project copy.
+fn spindle_height_source(profile: &mut MachineProfile, field: ProfileField) {
+    profile.provenance.insert(
+        field,
+        Provenance {
+            state: Confirmation::Unconfirmed,
+            source: "Set by the user for this project; check it on the machine".into(),
+        },
+    );
+}
+
+/// `profile` with tool length measurement on or off.
+fn set_tool_length_measurement(profile: &MachineProfile, on: bool) -> MachineProfile {
+    let mut next = profile.clone();
+    next.automatic_tool_length = on;
+    spindle_height_source(&mut next, ProfileField::ToolLengthMeasurement);
+    next
+}
+
+/// `profile` with the spindle-to-axis distance or the recommended minimum
+/// safe Z set from `text`: blank for none, else millimetres above zero.
+fn edit_spindle_height(
+    profile: &MachineProfile,
+    field: ProfileField,
+    text: &str,
+) -> Result<MachineProfile, String> {
+    let value = match text.trim() {
+        "" => None,
+        t => Some(openchuck_app::setup::Millimetres(
+            t.parse::<f64>()
+                .map_err(|_| "Enter millimetres above 0, or leave it blank.".to_owned())?,
+        )),
+    };
+    let mut next = profile.clone();
+    match field {
+        ProfileField::SpindleToAxis => next.spindle_to_axis = value,
+        ProfileField::RecommendedMinSafeZ => next.recommended_min_safe_z = value,
+        _ => return Err("Choose a spindle-height value.".into()),
+    }
+    next.validate()
+        .map_err(|_| "Enter millimetres above 0, or leave it blank.".to_owned())?;
+    spindle_height_source(&mut next, field);
+    Ok(next)
+}
+
 fn edit_short_block(
     profile: &MachineProfile,
     field: ProfileField,
@@ -540,6 +674,42 @@ mod tests {
         );
         assert_eq!(edited.block_window, machine.block_window);
         assert!(!edited.is_confirmed(ProfileField::ShortBlockMode));
+    }
+
+    /// The spindle-height values are edited on the project copy: a blank
+    /// distance or minimum means not known or none, a number must be above
+    /// zero, and an edited value is the user's, not confirmed (SET-01, UI-13,
+    /// decision 0317).
+    #[test]
+    fn req_set_01_req_ui_13_spindle_height_controls_validate_and_keep_other_values() {
+        let original = MachineProfile::example_x_rotary();
+        let measured = set_tool_length_measurement(&original, true);
+        assert!(measured.automatic_tool_length);
+        assert!(!measured.is_confirmed(ProfileField::ToolLengthMeasurement));
+        assert_eq!(measured.max_feeds, original.max_feeds);
+        let distance =
+            edit_spindle_height(&measured, ProfileField::SpindleToAxis, " 78.6 ").unwrap();
+        assert_eq!(distance.spindle_to_axis.map(|d| d.0), Some(78.6));
+        assert!(distance.automatic_tool_length);
+        let minimum =
+            edit_spindle_height(&distance, ProfileField::RecommendedMinSafeZ, "30").unwrap();
+        assert_eq!(minimum.recommended_min_safe_z.map(|d| d.0), Some(30.0));
+        assert_eq!(minimum.spindle_to_axis, distance.spindle_to_axis);
+        let cleared = edit_spindle_height(&minimum, ProfileField::SpindleToAxis, "").unwrap();
+        assert_eq!(cleared.spindle_to_axis, None);
+        assert!(!cleared.is_confirmed(ProfileField::SpindleToAxis));
+        for field in [
+            ProfileField::SpindleToAxis,
+            ProfileField::RecommendedMinSafeZ,
+        ] {
+            for text in ["0", "-1", "NaN", "inf", "abc"] {
+                assert!(
+                    edit_spindle_height(&original, field, text).is_err(),
+                    "{text}"
+                );
+            }
+        }
+        assert!(edit_spindle_height(&original, ProfileField::Travel, "1").is_err());
     }
 
     #[test]

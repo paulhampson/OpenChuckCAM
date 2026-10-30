@@ -58,11 +58,11 @@ impl Dialog {
 /// typed text, a choice among values, a drag value or a slider would show a
 /// value (NFR-18).
 pub(super) fn click_text(event: &OutputEvent) -> Option<String> {
-    use egui::WidgetType::{Button, Checkbox, Link};
+    use egui::Role::{Button, CheckBox, Link};
     let OutputEvent::Clicked(info) = event else {
         return None;
     };
-    if !matches!(info.typ, Button | Checkbox | Link) {
+    if !matches!(info.role, Button | CheckBox | Link) {
         return None;
     }
     let label = info
@@ -193,51 +193,63 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use eframe::egui::{WidgetInfo, WidgetType};
+    use eframe::egui::{Role, WidgetInfo};
 
     use super::*;
 
-    fn clicked(typ: WidgetType, label: &str) -> OutputEvent {
-        OutputEvent::Clicked(WidgetInfo::labeled(typ, true, label))
+    fn clicked(role: Role, label: &str) -> OutputEvent {
+        OutputEvent::Clicked(WidgetInfo::labeled(role, true, label))
     }
 
     #[test]
     fn req_nfr_18_a_clicked_button_is_logged_by_its_label() {
         assert_eq!(
-            click_text(&clicked(WidgetType::Button, "Undo")).as_deref(),
+            click_text(&clicked(Role::Button, "Undo")).as_deref(),
             Some("click: 'Undo'")
         );
         assert_eq!(
-            click_text(&clicked(WidgetType::Button, "  Open\n project… ")).as_deref(),
+            click_text(&clicked(Role::Button, "  Open\n project… ")).as_deref(),
             Some("click: 'Open project…'")
         );
         let long = "x".repeat(100);
-        let text = click_text(&clicked(WidgetType::Link, &long)).unwrap();
+        let text = click_text(&clicked(Role::Link, &long)).unwrap();
         assert_eq!(text.chars().filter(|c| *c == 'x').count(), LABEL_LIMIT);
         assert!(text.ends_with("…'"));
     }
 
     #[test]
+    fn req_nfr_18_a_selectable_button_is_logged_by_its_label_as_before() {
+        // egui 0.36 and 0.37 both give `Button::selectable` the role `Button`
+        // with a selected state (`SelectableLabel` was no longer produced).
+        for chosen in [false, true] {
+            let step = WidgetInfo::selected(Role::Button, true, chosen, "Top");
+            assert_eq!(
+                click_text(&OutputEvent::Clicked(step)).as_deref(),
+                Some("click: 'Top'")
+            );
+        }
+    }
+
+    #[test]
     fn req_nfr_18_values_and_typed_text_are_never_logged() {
-        for typ in [
-            WidgetType::TextEdit,
-            WidgetType::DragValue,
-            WidgetType::Slider,
-            WidgetType::RadioButton,
-            WidgetType::SelectableLabel,
-            WidgetType::ComboBox,
+        for role in [
+            Role::TextInput,
+            Role::SpinButton,
+            Role::Slider,
+            Role::RadioButton,
+            Role::ComboBox,
         ] {
-            assert_eq!(click_text(&clicked(typ, "1234.5")), None, "{typ:?}");
+            assert_eq!(click_text(&clicked(role, "1234.5")), None, "{role:?}");
         }
         let mut typed = WidgetInfo::text_edit(true, "old", "secret text", "");
         typed.label = Some("secret text".into());
         assert_eq!(click_text(&OutputEvent::ValueChanged(typed)), None);
         // A button with no text, and a click that is not a click.
-        let mut icon = WidgetInfo::new(WidgetType::Button);
+        let mut icon = WidgetInfo::new(Role::Button);
         icon.label = None;
         assert_eq!(click_text(&OutputEvent::Clicked(icon)), None);
-        assert_eq!(click_text(&clicked(WidgetType::Button, "  ")), None);
-        let focus = OutputEvent::FocusGained(WidgetInfo::labeled(WidgetType::Button, true, "Save"));
+        assert_eq!(click_text(&clicked(Role::Button, "  ")), None);
+        let focus = OutputEvent::FocusGained(WidgetInfo::labeled(Role::Button, true, "Save"));
         assert_eq!(click_text(&focus), None);
     }
 

@@ -180,3 +180,167 @@ fn req_imp_02_hull_cells_tile_the_box_and_hold_the_surface() {
         }
     }
 }
+
+/// The patch of [`patch`] with every weight 1: a polynomial patch.
+fn polynomial(seed: &mut u64) -> BSplinePatch {
+    let p = patch(seed);
+    BSplinePatch {
+        weights: vec![1.0; p.weights.len()],
+        ..p
+    }
+}
+
+#[test]
+fn req_imp_02_normal_cone_holds_the_normals_of_every_cell() {
+    // Lane STEPALL-X2, decision 0277: the exact drop passes over a cell
+    // whose normal cone keeps the ball off it, so the cone must hold every
+    // normal `S_u x S_v` of the cell, split cells included.
+    let mut seed = 29;
+    let mut cones = 0;
+    for _ in 0..30 {
+        let p = polynomial(&mut seed);
+        let n = Nurbs::new(0, &p).unwrap();
+        let tree = hull::HullTree::new(
+            (n.pu, n.pv),
+            (n.nu, n.nv),
+            (&n.uk, &n.vk),
+            &n.poles,
+            &n.w,
+            [0.0, 1.0, 0.0, 1.0],
+            5.0,
+            6,
+        )
+        .unwrap();
+        let mut nets: Vec<hull::Net> = tree.nets.clone();
+        // And the halves a search splits off.
+        for net in tree.nets.iter().take(4) {
+            let (a, b) = net.split(net.longer_in_u());
+            let (c, d) = a.split(!a.longer_in_u());
+            nets.extend([b, c, d]);
+        }
+        for net in &nets {
+            let Some((axis, sin_half)) = net.normal_cone() else {
+                continue;
+            };
+            cones += 1;
+            assert!((axis.length() - 1.0).abs() < 1e-12);
+            let cos = 1.0 - 2.0 * sin_half * sin_half;
+            let [u0, u1, v0, v1] = net.uv;
+            for i in 0..=8 {
+                for j in 0..=8 {
+                    // Inside the cell: on a knot the derivatives are one
+                    // piece's or the next's.
+                    let t = |k: usize| (k as f64 + 0.5) / 9.0;
+                    let (u, v) = (u0 + (u1 - u0) * t(i), v0 + (v1 - v0) * t(j));
+                    let (_, du, dv) = n.d1(u, v).unwrap();
+                    let c = du.cross(dv);
+                    if c.length() <= 1e-9 * du.length() * dv.length() {
+                        continue;
+                    }
+                    let got = c.dot(axis) / c.length();
+                    assert!(
+                        got >= cos - 1e-9,
+                        "a normal at {got} leaves a cone of {cos}"
+                    );
+                }
+            }
+        }
+    }
+    assert!(cones > 100, "only {cones} cells had a cone");
+}
+
+#[test]
+fn req_imp_02_a_rational_cell_has_no_normal_cone() {
+    // Weights that differ make S_u no positive combination of the net's
+    // differences, so no cone is claimed (decision 0277).
+    let mut seed = 31;
+    let p = patch(&mut seed);
+    let n = Nurbs::new(0, &p).unwrap();
+    let tree = hull::HullTree::new(
+        (n.pu, n.pv),
+        (n.nu, n.nv),
+        (&n.uk, &n.vk),
+        &n.poles,
+        &n.w,
+        [0.0, 1.0, 0.0, 1.0],
+        5.0,
+        6,
+    )
+    .unwrap();
+    let varied = tree.nets.iter().filter(|net| {
+        let w: Vec<f64> = net.pts.iter().map(|h| h[3]).collect();
+        w.iter().any(|x| (x - w[0]).abs() > 1e-6)
+    });
+    let mut seen = 0;
+    for net in varied {
+        seen += 1;
+        assert!(net.normal_cone().is_none());
+    }
+    assert!(seen > 0);
+}
+
+#[test]
+fn req_imp_02_cell_distance_gradient_is_a_lower_bound_with_its_slope() {
+    // The exact drop bounds a cell by Newton steps on this distance, so it
+    // must never exceed the distance to the cell, and its gradient must be
+    // its slope (decision 0277).
+    let mut seed = 37;
+    for _ in 0..10 {
+        let p = patch(&mut seed);
+        let n = Nurbs::new(0, &p).unwrap();
+        let tree = hull::HullTree::new(
+            (n.pu, n.pv),
+            (n.nu, n.nv),
+            (&n.uk, &n.vk),
+            &n.poles,
+            &n.w,
+            [0.0, 1.0, 0.0, 1.0],
+            5.0,
+            6,
+        )
+        .unwrap();
+        for net in tree.nets.iter().take(8) {
+            let bound = net.bound();
+            let [u0, u1, v0, v1] = net.uv;
+            for _ in 0..20 {
+                let q = Point3::new(
+                    60.0 * lcg(&mut seed) - 10.0,
+                    60.0 * lcg(&mut seed) - 10.0,
+                    30.0 * lcg(&mut seed) - 10.0,
+                );
+                let (d, g) = bound.distance_gradient(q);
+                let mut nearest = f64::INFINITY;
+                for i in 0..=10 {
+                    for j in 0..=10 {
+                        let (s, _, _) = n
+                            .d1(
+                                u0 + (u1 - u0) * i as f64 / 10.0,
+                                v0 + (v1 - v0) * j as f64 / 10.0,
+                            )
+                            .unwrap();
+                        nearest = nearest.min(s.distance(q));
+                    }
+                }
+                assert!(d <= nearest + 1e-9, "{d} above a cell point at {nearest}");
+                assert!(d >= bound.lower(q) - 1e-9);
+                if d > 1e-3 {
+                    let h = 1e-6;
+                    for e in [
+                        openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0),
+                        openchuck_types::geometry::Vec3::new(0.0, 1.0, 0.0),
+                        openchuck_types::geometry::Vec3::new(0.0, 0.0, 1.0),
+                    ] {
+                        let slope = (bound.distance_gradient(q + e * h).0
+                            - bound.distance_gradient(q + e * -h).0)
+                            / (2.0 * h);
+                        assert!(
+                            (slope - g.dot(e)).abs() < 1e-4,
+                            "slope {slope} gradient {}",
+                            g.dot(e)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
