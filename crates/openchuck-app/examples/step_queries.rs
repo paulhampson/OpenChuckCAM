@@ -36,6 +36,12 @@
 //!   (`BrepSurface::drop_ball`, decision 0277): its time, and how far its tip
 //!   lies from the tessellation's (exact less mesh). It exists only from that
 //!   lane on, so a run on earlier code has no `exact` rows.
+//! - `flat-mesh`, `flat-exact`, `taper-mesh` and `taper-exact`: on the same
+//!   lines, the outline drops of lane STEPALL-X3 (`BrepSurface::drop_exact`,
+//!   decision 0338) for the owner's pencil tool (a flat end of radius
+//!   `--offset`) and axial finishing tool (a 3.175 mm tapered ball, 0.25 mm
+//!   tip, 5 degrees): the tessellation's drop and the exact one, its time and
+//!   how far its tip lies from the tessellation's (exact less mesh).
 //!
 //! Every answer is written to `DIR/<part>.tsv` (set, face, kind, vertex
 //! index, the point, the distance, nanoseconds), so two runs compare
@@ -89,6 +95,42 @@ fn ball(r: f64) -> RevolvedProfile {
             },
             ProfileSegment::Line {
                 to: ProfilePoint::new(r, 4.0 * r),
+            },
+        ],
+    }
+    .validate()
+    .unwrap()
+}
+
+/// The owner's pencil tool, a flat end (decision 0211): radius `r`.
+fn flat(r: f64) -> RevolvedProfile {
+    ToolProfile {
+        segments: vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(r, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(r, 4.0 * r),
+            },
+        ],
+    }
+    .validate()
+    .unwrap()
+}
+
+/// The owner's axial finishing tool (decision 0211): a 3.175 mm tapered
+/// ball, 0.25 mm tip, 5 degrees, as the tool library builds it.
+fn tapered() -> RevolvedProfile {
+    let (rt, a, r) = (0.25_f64, 5.0_f64.to_radians(), 1.5875);
+    let (tr, tz) = (rt * a.cos(), rt * (1.0 - a.sin()));
+    ToolProfile {
+        segments: vec![
+            ProfileSegment::Arc {
+                to: ProfilePoint::new(tr, tz),
+                centre: ProfilePoint::new(0.0, rt),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(r, tz + (r - tr) / a.tan()),
             },
         ],
     }
@@ -205,6 +247,7 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
         }
     }
     let profile = ball(offset);
+    let (flat_tool, taper_tool) = (flat(offset), tapered());
     for (k, (face, kind, index, q)) in offs.iter().cloned().enumerate() {
         if k % DROP_STRIDE != 0 {
             continue;
@@ -247,11 +290,34 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
         let exact = surface.drop_ball(&profile, &line);
         let exact_nanos = t.elapsed().as_nanos();
         let exact_offset = exact.map_or(f64::NAN, |e| e.contact.offset - contact.offset);
-        for (set, distance, nanos) in [
+        let mut sets = vec![
             ("mesh", contact.offset, mesh_nanos),
             ("drop", hi - contact.offset, probe_nanos),
             ("exact", exact_offset, exact_nanos),
+        ];
+        // The outline drops of lane STEPALL-X3 (decision 0338) on the same
+        // lines: the flat end and the tapered ball, on the tessellation and
+        // exact (exact less mesh). They exist only from that lane on.
+        for (mesh_set, exact_set, tool) in [
+            ("flat-mesh", "flat-exact", &flat_tool),
+            ("taper-mesh", "taper-exact", &taper_tool),
         ] {
+            let t = Instant::now();
+            let on_mesh = surface.drop_tool(tool, &line);
+            let mesh_nanos = t.elapsed().as_nanos();
+            let t = Instant::now();
+            let exact = surface.drop_exact(tool, &line);
+            let exact_nanos = t.elapsed().as_nanos();
+            if let Some(m) = on_mesh {
+                sets.push((mesh_set, m.offset, mesh_nanos));
+                sets.push((
+                    exact_set,
+                    exact.map_or(f64::NAN, |e| e.contact.offset - m.offset),
+                    exact_nanos,
+                ));
+            }
+        }
+        for (set, distance, nanos) in sets {
             rows.push(Row {
                 set,
                 face,

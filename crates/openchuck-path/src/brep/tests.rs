@@ -344,3 +344,122 @@ fn req_imp_02_cell_distance_gradient_is_a_lower_bound_with_its_slope() {
         }
     }
 }
+
+/// The outlines of decision 0338 as profiles: a tapered ball, a flat end,
+/// and a V-bit with a flat at its tip.
+fn outlines() -> Vec<openchuck_types::tool::profile::RevolvedProfile> {
+    use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, ToolProfile};
+    let p = |segments| ToolProfile { segments }.validate().unwrap();
+    let a = 5.0_f64.to_radians();
+    let (tr, tz) = (0.25 * a.cos(), 0.25 * (1.0 - a.sin()));
+    vec![
+        p(vec![
+            ProfileSegment::Arc {
+                to: ProfilePoint::new(tr, tz),
+                centre: ProfilePoint::new(0.0, 0.25),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.5875, tz + (1.5875 - tr) / a.tan()),
+            },
+        ]),
+        p(vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 4.0),
+            },
+        ]),
+        p(vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(0.4, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(2.0, 1.9),
+            },
+        ]),
+    ]
+}
+
+#[test]
+fn req_op_12_the_outline_bound_is_never_below_a_lift_in_its_box() {
+    // Decision 0338: the outline drop passes over a box only on a proven
+    // bound, so the bound must hold every point of the box the tool can
+    // reach; and it should be close for a small box (it is exact for the
+    // box), which is what lets the search settle.
+    use super::hull::Para;
+    use super::outline::{Outline, Search};
+    use crate::cutter::ToolLine;
+    use openchuck_types::geometry::{UnitVec3, Vec3};
+    let mut seed = 5;
+    for profile in outlines() {
+        let tool = Outline::new(&profile).unwrap();
+        let mut close = 0;
+        for _ in 0..400 {
+            let axis = UnitVec3::new(Vec3::new(
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+            ))
+            .unwrap();
+            let line = ToolLine {
+                origin: Point3::new(lcg(&mut seed), lcg(&mut seed), lcg(&mut seed)),
+                axis,
+            };
+            let search = Search::new(&tool, &line);
+            // A box of random size and turn near the line.
+            let size = 10f64.powf(-3.0 + 3.5 * lcg(&mut seed));
+            let x = UnitVec3::new(Vec3::new(
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+            ))
+            .unwrap()
+            .get();
+            let s = Vec3::new(0.3, 0.9, -0.2);
+            let y = UnitVec3::new(s - x * s.dot(x)).unwrap().get();
+            let b = Para {
+                centre: Point3::new(
+                    2.0 * lcg(&mut seed) - 0.5,
+                    2.0 * lcg(&mut seed) - 0.5,
+                    2.0 * lcg(&mut seed) - 0.5,
+                ),
+                axes: [x, y, x.cross(y)],
+                half: [
+                    size * lcg(&mut seed),
+                    size * lcg(&mut seed),
+                    size * lcg(&mut seed) * 0.2,
+                ],
+            };
+            let top = search.top_for_test(&b);
+            let n = 14;
+            for i in 0..=n {
+                for j in 0..=n {
+                    for k in 0..=n {
+                        let t = |m: usize| 2.0 * m as f64 / n as f64 - 1.0;
+                        let p = b.centre
+                            + b.axes[0] * (t(i) * b.half[0])
+                            + b.axes[1] * (t(j) * b.half[1])
+                            + b.axes[2] * (t(k) * b.half[2]);
+                        if let Some(l) = search.lift_for_test(p) {
+                            let top = top.unwrap_or_else(|| panic!("no bound, lift {l}"));
+                            assert!(top >= l - 1e-12, "bound {top} below lift {l}");
+                        }
+                    }
+                }
+            }
+            // The bound is exact for the box (the minimax theorem): a box
+            // shrunk to its middle has the middle's lift for its bound.
+            let point = Para {
+                half: [0.0; 3],
+                ..b
+            };
+            if let Some(l) = search.lift_for_test(b.centre) {
+                let t = search.top_for_test(&point).unwrap();
+                assert!(t >= l - 1e-12 && t - l <= 1e-9, "point bound {t}, lift {l}");
+                close += 1;
+            }
+        }
+        assert!(close > 40, "{close}");
+    }
+}

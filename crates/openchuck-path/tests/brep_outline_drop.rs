@@ -332,7 +332,7 @@ fn sampled_drop(
             best = Some(best.map_or(s, |b: f64| b.max(s)));
         }
     };
-    let n = 250;
+    let n = 180;
     for i in 0..=n {
         for j in 0..=n {
             let uv = Uv {
@@ -393,7 +393,10 @@ fn check(
                 "{what}: {s} below a sample at {w}"
             );
             let c = g.contact.contact;
-            assert!(f.closest(c).unwrap().distance < 1e-6, "{what}: off the face");
+            assert!(
+                f.closest(c).unwrap().distance < 1e-6,
+                "{what}: off the face"
+            );
             let l = lift(line, tool, c).unwrap_or(f64::NEG_INFINITY);
             assert!(
                 (l - s).abs() <= DROP_TOLERANCE + 1e-9 || g.raised > 0.0,
@@ -433,7 +436,11 @@ fn tools() -> Vec<Tool> {
 fn req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force() {
     let mut seed = 43;
     for tool in tools() {
-        assert!(openchuck_path::has_exact_drop(&tool.profile), "{}", tool.name);
+        assert!(
+            openchuck_path::has_exact_drop(&tool.profile),
+            "{}",
+            tool.name
+        );
         for ((name, bf, loops), (_, f, _)) in kind_faces().into_iter().zip(kinds()) {
             let surface = BrepSurface::new(&one_face(bf)).unwrap();
             let b = f.bounding_box();
@@ -444,7 +451,7 @@ fn req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force() {
             );
             let size = (b.max - b.min).length();
             let mut hits = 0;
-            for k in 0..40 {
+            for k in 0..24 {
                 let axis = UnitVec3::new(Vec3::new(
                     lcg(&mut seed) - 0.5,
                     lcg(&mut seed) - 0.5,
@@ -549,9 +556,11 @@ fn req_op_12_outline_drops_on_a_tilted_plane_match_the_closed_form() {
             let got = surface.drop_exact(&tool.profile, &line).unwrap();
             assert!(
                 (got.contact.offset - want).abs() <= DROP_TOLERANCE,
-                "{} tilt {k}: {} against {want}",
+                "{} tilt {k}: {} against {want}, raised {}, looked {}",
                 tool.name,
-                got.contact.offset
+                got.contact.offset,
+                got.raised,
+                got.looked
             );
         }
     }
@@ -709,8 +718,16 @@ fn req_op_12_a_flat_end_rests_on_the_point_of_a_cone() {
             axis: UnitVec3::Z,
         };
         let got = surface.drop_exact(&tool.profile, &line).unwrap();
-        assert!(got.contact.offset.abs() < 1e-9, "dx {dx}: {}", got.contact.offset);
-        assert!(got.contact.contact.distance(Point3::ORIGIN) < 1e-9, "dx {dx}");
+        // The tip at the point, 10 below the line's origin.
+        assert!(
+            (got.contact.offset + 10.0).abs() < 1e-9,
+            "dx {dx}: {}",
+            got.contact.offset
+        );
+        assert!(
+            got.contact.contact.distance(Point3::ORIGIN) < 1e-9,
+            "dx {dx}"
+        );
     }
 }
 

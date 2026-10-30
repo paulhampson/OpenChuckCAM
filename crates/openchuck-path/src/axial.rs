@@ -69,6 +69,13 @@ pub mod parameter {
 const MAX_SEEDS: f64 = 5.0e6;
 
 impl Strategy for AxialFinishing {
+    /// Exact contacts on a STEP part, for a ball (decision 0277) and for the
+    /// outlines of decision 0338 (a flat end, a tapered ball): measured
+    /// within the limits of OI-835 (decision 0338).
+    fn exact_contact(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }

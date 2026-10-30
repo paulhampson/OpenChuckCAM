@@ -192,10 +192,12 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     }
 
     /// Whether a host machines a STEP part with this strategy on exact
-    /// contacts: the ball dropped onto the exact faces, and the region,
-    /// avoid, check and stock-to-leave sets as exact faces too
+    /// contacts: a tool with an exact drop
+    /// ([`has_exact_drop`](crate::has_exact_drop)) dropped onto the exact
+    /// faces, and the region, avoid, check and stock-to-leave sets as exact
+    /// faces too
     /// ([`BrepSurface::with_exact_drops`](crate::BrepSurface::with_exact_drops);
-    /// decision 0277). False, the default, keeps the drop on the import's
+    /// decisions 0277 and 0338). False, the default, keeps the drop on the import's
     /// tessellation. A strategy turns it on only once it is measured within
     /// the generation-time limits of OI-835.
     fn exact_contact(&self) -> bool {

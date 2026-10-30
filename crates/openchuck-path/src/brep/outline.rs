@@ -55,7 +55,9 @@ use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 use super::drop::{DROP_TOLERANCE, Hit};
 use super::hull::{HullTree, Net, Para};
 use super::trim::Segment;
-use super::{Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH};
+use super::{
+    Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH,
+};
 use crate::cutter::{TIP_TIE, ToolLine};
 use crate::surface::{ParametricFace, Uv};
 
@@ -149,7 +151,10 @@ impl Outline {
                     if centre.radius.0.abs() > tie || !(e.r_end < q * (1.0 - 1e-9)) {
                         return None;
                     }
-                    Piece::Ball { c: centre.height.0, q }
+                    Piece::Ball {
+                        c: centre.height.0,
+                        q,
+                    }
                 }
                 ProfilePiece::Arc { .. } => return None,
             };
@@ -252,6 +257,8 @@ struct Cone {
 pub(super) struct Search<'t> {
     tool: &'t Outline,
     line: Line,
+    /// Two unit vectors across the axis.
+    across: (Vec3, Vec3),
     pub best: Option<Hit>,
     /// The highest bound left unresolved by a search that ran out of its
     /// budget or reached its smallest piece.
@@ -264,17 +271,35 @@ pub(super) struct Search<'t> {
 
 impl<'t> Search<'t> {
     pub fn new(tool: &'t Outline, line: &ToolLine) -> Self {
+        let a = line.axis.get();
+        let seed = if a.x.abs() < 0.9 {
+            Vec3::new(1.0, 0.0, 0.0)
+        } else {
+            Vec3::new(0.0, 1.0, 0.0)
+        };
+        let e1 = seed - a * seed.dot(a);
+        let e1 = e1 * (1.0 / e1.length());
         Self {
             tool,
-            line: Line {
-                o: line.origin,
-                a: line.axis.get(),
-            },
+            line: Line { o: line.origin, a },
+            across: (e1, a.cross(e1)),
             best: None,
             unresolved: f64::NEG_INFINITY,
             looked: 0,
             unsupported: false,
         }
+    }
+
+    /// [`Self::top`], for the unit tests.
+    #[cfg(test)]
+    pub fn top_for_test(&self, b: &Para) -> Option<f64> {
+        self.top(b)
+    }
+
+    /// The lift of a point, for the unit tests.
+    #[cfg(test)]
+    pub fn lift_for_test(&self, p: Point3) -> Option<f64> {
+        self.lift(p)
     }
 
     /// What a part must beat to matter.
@@ -283,9 +308,15 @@ impl<'t> Search<'t> {
             .map_or(f64::NEG_INFINITY, |b| b.s + DROP_TOLERANCE)
     }
 
+    /// The lift of a point the tool really holds: within the radius
+    /// itself, not its rounding (the bounds take the rounding).
     fn lift(&self, p: Point3) -> Option<f64> {
         let (z, perp) = self.line.split(p);
-        self.tool.h(perp.length()).map(|h| z - h)
+        let rho = perp.length();
+        if !(rho <= self.tool.radius) {
+            return None;
+        }
+        self.tool.h(rho).map(|h| z - h)
     }
 
     fn offer(&mut self, p: Point3, face: u32, uv: Uv) {
@@ -329,7 +360,7 @@ impl<'t> Search<'t> {
     fn top(&self, b: &Para) -> Option<f64> {
         let tool = self.tool;
         let a = self.line.a;
-        let (rho_c, _, reach) = self.spread(b);
+        let (rho_c, perp, reach) = self.spread(b);
         let rho_min = (rho_c - reach).max(0.0);
         if !(rho_min <= tool.reach()) {
             return None;
@@ -342,78 +373,162 @@ impl<'t> Search<'t> {
                 .map(|(e, h)| h * e.dot(a).abs())
                 .sum::<f64>();
         // First order: the highest point at the nearest radius.
-        let mut top = z_max - tool.h(rho_min.min(tool.radius))?;
-        // Second order: the tangent planes at the middle and at one step
-        // towards the corner they favour.
-        let (bound, corner) = self.tangent_bound(b.centre, b);
-        top = top.min(bound);
-        if let Some(v) = corner {
-            let q = b.centre + (v - b.centre) * 0.5;
-            top = top.min(self.tangent_bound(q, b).0);
-        }
+        let first = z_max - tool.h(rho_min.min(tool.radius))?;
         let size = b.half.iter().sum::<f64>();
-        Some(top + 1e-12 * (1.0 + zc.abs() + rho_c + size))
+        let dual = self.dual_bound(b, rho_c, perp);
+        Some(first.min(dual) + 1e-12 * (1.0 + zc.abs() + rho_c + size + tool.radius))
     }
 
-    /// The bound from the tangent plane at `q` (moved inside the rim), with
-    /// the best multiplier for the rim, and the box's corner furthest along
-    /// the bound's slope.
-    fn tangent_bound(&self, q: Point3, b: &Para) -> (f64, Option<Point3>) {
+    /// `h*(kappa)`: the largest `kappa rho - h(rho)` over the outline,
+    /// `rho` from 0 to the radius (the conjugate of the envelope).
+    fn conjugate(&self, kappa: f64) -> f64 {
+        self.tool
+            .spans
+            .iter()
+            .map(|s| {
+                let rho = match s.piece {
+                    Piece::Line { k, .. } => {
+                        if kappa >= k {
+                            s.r1
+                        } else {
+                            s.r0
+                        }
+                    }
+                    Piece::Ball { q, .. } => {
+                        (kappa * q / (1.0 + kappa * kappa).sqrt()).clamp(s.r0, s.r1)
+                    }
+                };
+                kappa * rho - s.h(rho)
+            })
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    /// The dual bound at `v`, a vector across the axis: for every point `p`
+    /// of the box within the radius, `lift(p) <= h*(|v|) + (a - v) . (p - o)`
+    /// (as `rho |v| >= -v . (p - o)` across the axis, and
+    /// `h(rho) >= |v| rho - h*(|v|)`), so the largest value of the right side
+    /// over the box bounds the lift there. It is a convex function of `v`,
+    /// and its least value is the largest lift over the box (the minimax
+    /// theorem): the bound is exact for the box.
+    fn dual_at(&self, b: &Para, v: Vec3) -> f64 {
+        let d = self.line.a - v;
+        self.conjugate(v.length())
+            + d.dot(b.centre - self.line.o)
+            + b.axes
+                .iter()
+                .zip(b.half)
+                .map(|(x, h)| h * d.dot(*x).abs())
+                .sum::<f64>()
+    }
+
+    /// The least dual bound found by a short pattern search over `v`, from
+    /// the tangent plane at the box's middle: every value it takes is a
+    /// bound, so the search only tightens it.
+    fn dual_bound(&self, b: &Para, rho_c: f64, perp: Vec3) -> f64 {
         let tool = self.tool;
         let a = self.line.a;
-        let (z, mut perp) = self.line.split(q);
-        let mut rho = perp.length();
-        if !rho.is_finite() {
-            return (f64::INFINITY, None);
-        }
-        if rho > tool.radius {
-            perp = perp * (tool.radius / rho);
-            rho = tool.radius;
-        }
-        let q = self.line.o + a * z + perp;
-        let Some(hq) = tool.h(rho) else {
-            return (f64::INFINITY, None);
-        };
-        let f = z - hq;
-        let (e, g) = if rho > 1e-300 {
-            let e = perp * (1.0 / rho);
-            (e, a - e * tool.slope_in(rho))
+        let rho = rho_c.min(tool.radius);
+        let e = if rho_c > 1e-300 {
+            perp * (1.0 / rho_c)
         } else {
-            (Vec3::ZERO, a)
+            Vec3::ZERO
         };
-        let dc = b.centre - q;
-        let at = |lambda: f64| {
-            let d = g - e * lambda;
-            f + lambda * (tool.radius - rho)
-                + d.dot(dc)
-                + b.axes
-                    .iter()
-                    .zip(b.half)
-                    .map(|(x, h)| h * d.dot(*x).abs())
-                    .sum::<f64>()
-        };
-        let mut best = (at(0.0), 0.0);
+        // From the tangent plane at the middle (moved inside the rim), with
+        // the multipliers that cancel the slope along each axis of the box.
+        let k = tool.slope_in(rho);
+        let mut best = (self.dual_at(b, e * k), e * k);
         for x in &b.axes {
             let ex = e.dot(*x);
             if ex.abs() > 1e-15 {
-                let lambda = g.dot(*x) / ex;
+                let lambda = (a - e * k).dot(*x) / ex;
                 if lambda > 0.0 && lambda.is_finite() {
-                    let v = at(lambda);
-                    if v < best.0 {
-                        best = (v, lambda);
+                    let v = e * (k + lambda);
+                    let f = self.dual_at(b, v);
+                    if f < best.0 {
+                        best = (f, v);
                     }
                 }
             }
         }
-        let d = g - e * best.1;
-        let corner = b.centre
-            + b.axes
-                .iter()
-                .zip(b.half)
-                .fold(Vec3::ZERO, |acc, (x, h)| {
-                    acc + *x * (h * d.dot(*x).signum())
-                });
-        (best.0, Some(corner))
+        // The bound is the conjugate of |v| plus a piecewise linear function
+        // of v, whose creases are the lines where `(a - v) . x` changes sign
+        // for an axis `x` of the box. Its least value is where it is
+        // stationary inside a piece (the slope of the conjugate's radius
+        // along the piece's gradient), on a crease, or where two creases
+        // cross; each is tried.
+        let (p1, p2) = self.across;
+        let to = |x: f64, y: f64| p1 * x + p2 * y;
+        let w0 = b.centre - self.line.o;
+        let cc = (w0.dot(p1), w0.dot(p2));
+        let creases: Vec<((f64, f64), f64, f64)> = b
+            .axes
+            .iter()
+            .zip(b.half)
+            .map(|(x, h)| ((x.dot(p1), x.dot(p2)), a.dot(*x), h))
+            .filter(|((dx, dy), _, h)| dx * dx + dy * dy > 1e-24 && *h > 0.0)
+            .collect();
+        let take = |v: Vec3, best: &mut (f64, Vec3)| {
+            let f = self.dual_at(b, v);
+            if f < best.0 {
+                *best = (f, v);
+            }
+        };
+        take(Vec3::ZERO, &mut best);
+        let n = creases.len();
+        for signs in 0..(1u32 << n) {
+            let (mut wx, mut wy) = cc;
+            for (j, ((dx, dy), _, h)) in creases.iter().enumerate() {
+                let sg = if signs & (1 << j) == 0 { 1.0 } else { -1.0 };
+                wx += sg * h * dx;
+                wy += sg * h * dy;
+            }
+            let lw = wx.hypot(wy);
+            if lw > 1e-300 {
+                let r = lw.min(tool.radius);
+                for k in [tool.slope_in(r), tool.slope_out(r)] {
+                    take(to(wx * (k / lw), wy * (k / lw)), &mut best);
+                }
+            }
+        }
+        for (i, ((ax, ay), aa, _)) in creases.iter().enumerate() {
+            for ((bx, by), ba, _) in creases.iter().skip(i + 1) {
+                let det = ax * by - ay * bx;
+                if det.abs() > 1e-12 {
+                    let x = (aa * by - ay * ba) / det;
+                    let y = (ax * ba - aa * bx) / det;
+                    take(to(x, y), &mut best);
+                }
+            }
+        }
+        let k_rim = tool.slope_out(tool.radius);
+        for ((dx, dy), al, _) in &creases {
+            let l2 = dx * dx + dy * dy;
+            let (x0, y0) = (al * dx / l2, al * dy / l2);
+            let l = l2.sqrt();
+            let (tx, ty) = (-dy / l, dx / l);
+            let span = 4.0 * (k_rim + 1.0) + 4.0 * x0.hypot(y0);
+            let along = |t: f64| self.dual_at(b, to(x0 + t * tx, y0 + t * ty));
+            let (mut lo, mut hi) = (-span, span);
+            let g = 0.381_966_011_250_105_1;
+            let (mut m1, mut m2) = (lo + g * (hi - lo), hi - g * (hi - lo));
+            let (mut f1, mut f2) = (along(m1), along(m2));
+            for _ in 0..48 {
+                if f1 <= f2 {
+                    hi = m2;
+                    (m2, f2) = (m1, f1);
+                    m1 = lo + g * (hi - lo);
+                    f1 = along(m1);
+                } else {
+                    lo = m1;
+                    (m1, f1) = (m2, f2);
+                    m2 = hi - g * (hi - lo);
+                    f2 = along(m2);
+                }
+            }
+            let t = if f1 <= f2 { m1 } else { m2 };
+            take(to(x0 + t * tx, y0 + t * ty), &mut best);
+        }
+        best.0
     }
 
     /// Whether the box can hold a point where the face's highest contact
@@ -740,7 +855,8 @@ impl ExactFace {
         };
         let cone = a.normal(uc, vc).and_then(|m| {
             let angle = ku * hu + kv * hv;
-            (angle < std::f64::consts::FRAC_PI_2 && m.is_finite()).then_some(Cone { axis: m, angle })
+            (angle < std::f64::consts::FRAC_PI_2 && m.is_finite())
+                .then_some(Cone { axis: m, angle })
         });
         (para, cone)
     }
@@ -990,6 +1106,9 @@ impl ExactFace {
     fn onto_edge(&self, search: &mut Search<'_>, (mut u, mut v): (f64, f64), r: f64, b: [f64; 4]) {
         let [u0, u1, v0, v1] = b;
         let (wu, wv) = (u1 - u0, v1 - v0);
+        // A hair inside the circle, so that rounding keeps the point within
+        // the rim (far below the tolerance).
+        let r = r - 1e-12 * (1.0 + r);
         for _ in 0..8 {
             let Some((p, su, sv)) = self.d1(u, v) else {
                 return;
@@ -1051,7 +1170,8 @@ impl ExactFace {
             };
             Some((p, g.dot(su), g.dot(sv)))
         };
-        let span = (self.bounds[1] - self.bounds[0]).abs() + (self.bounds[3] - self.bounds[2]).abs();
+        let span =
+            (self.bounds[1] - self.bounds[0]).abs() + (self.bounds[3] - self.bounds[2]).abs();
         let h = 1e-7 * (1.0 + span);
         for _ in 0..6 {
             let Some((p, gu, gv)) = grad(u, v) else { break };
@@ -1062,7 +1182,12 @@ impl ExactFace {
             else {
                 break;
             };
-            let (a11, a12, a21, a22) = ((guu - gu) / h, (guv - gu) / h, (gvu - gv) / h, (gvv - gv) / h);
+            let (a11, a12, a21, a22) = (
+                (guu - gu) / h,
+                (guv - gu) / h,
+                (gvu - gv) / h,
+                (gvv - gv) / h,
+            );
             let off = 0.5 * (a12 + a21);
             let det = a11 * a22 - off * off;
             // A maximum needs the second derivatives negative definite.
