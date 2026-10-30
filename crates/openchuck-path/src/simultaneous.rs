@@ -494,7 +494,7 @@ fn run(
             // as its own pass, so the spiral and its smoothed A are as
             // before.
             let grown = cutter::grow_profile(input.tool, leave)?;
-            let turns = faces::turns(input, &grown, (x0, x1), stepover, tolerance, context)?;
+            let turns = faces::turns(input, &grown, (x0, x1), tolerance, context)?;
             let span = spiral.th1 - spiral.th0;
             face_turns = turns
                 .iter()

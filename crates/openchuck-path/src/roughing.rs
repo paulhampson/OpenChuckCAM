@@ -931,17 +931,10 @@ impl<'a> Job<'a> {
         // the tool's side touches it (decision record 0297); not for Facing,
         // whose Round form keeps its own path (decision record 0252).
         let face_turns: Vec<faces::Turn> = if self.face.is_none() && self.face_scope.is_none() {
-            faces::turns(
-                self.input,
-                &self.grown,
-                (x0, x1),
-                length / turns,
-                self.tolerance,
-                context,
-            )?
-            .into_iter()
-            .filter(|t| t.x > x0 && t.x < x1)
-            .collect()
+            faces::turns(self.input, &self.grown, (x0, x1), self.tolerance, context)?
+                .into_iter()
+                .filter(|t| t.x > x0 && t.x < x1)
+                .collect()
         } else {
             Vec::new()
         };

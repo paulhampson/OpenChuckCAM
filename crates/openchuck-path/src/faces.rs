@@ -12,14 +12,21 @@
 //! region (decision record 0161 item 6).
 //!
 //! **Finding the faces.** The tool the strategy drops (grown by its stock to
-//! leave) is dropped along lines of X at angles all round the axis. Where the
+//! leave) is dropped along lines of X at angles all round the axis, no
+//! further apart than its diameter at the part's largest radius, with X
+//! samples no further apart than half its radius (and 0.5 mm). Where the
 //! side of the tool meets a face across the axis, the drop's height jumps:
 //! one side of the jump the tool rides the lower surface with its side on
 //! the face, the other it rides the top of the face. A jump between two
 //! neighbouring samples is narrowed by bisection to [`WIDTH`]; one still
 //! larger than the toolpath tolerance there is a face, and the turn goes on
 //! the low side of it, a tenth of the tolerance clear ([`CLEAR`]), so the
-//! tool's side meets the face. The height on top of the face is kept for
+//! tool's side meets the face. A slope or a gentle curve is passed over
+//! without bisecting: its change over an interval is nearly that of both
+//! intervals either side. The line at A 0 is searched first; on the other
+//! lines, a face found there whose jump still holds is taken with two drops
+//! instead of a bisection (a face square to the axis is at the same X all
+//! round), and anything else is bisected afresh. The height on top of the face is kept for
 //! each line of A, so a strategy can tell where round the axis the face is. A slope, however
 //! steep, rises by less than the tolerance over [`WIDTH`] and is left to the
 //! helix; a tool whose side is not straight up (a tapered tool) meets no
@@ -91,20 +98,19 @@ impl Turn {
 }
 
 /// The turns a helix from `range.0` to `range.1` adds at the faces across the
-/// axis that `profile` meets, in increasing X. `pitch` is the helix's advance
-/// per turn; `tolerance` the toolpath tolerance. X inside a `keep_out`
+/// axis that `profile` meets, in increasing X. `tolerance` is the toolpath
+/// tolerance. X inside a `keep_out`
 /// interval (a held region widened by the tool) gets no turn.
 pub(crate) fn turns(
     input: &StrategyInput<'_>,
     profile: &RevolvedProfile,
     range: (f64, f64),
-    pitch: f64,
     tolerance: f64,
     context: &JobContext<'_>,
 ) -> Result<Vec<Turn>> {
     let (x0, x1) = range;
     let radius = profile.cutting_radius();
-    if !(x1 > x0 && radius > 0.0 && pitch > 0.0 && tolerance > 0.0) {
+    if !(x1 > x0 && radius > 0.0 && tolerance > 0.0) {
         return Ok(Vec::new());
     }
     let bounds = input.surface.bounds();
@@ -114,14 +120,15 @@ pub(crate) fn turns(
     if !reach.is_finite() || reach <= 0.0 {
         return Ok(Vec::new());
     }
-    // X samples no further apart than half the tool's radius, so a web
-    // narrower than the spacing still shows both its faces (the tool rides
-    // its top for its width plus a diameter).
-    let spacing = (0.5 * radius).min(0.5 * pitch).min(0.5);
+    // X samples no further apart than half the tool's radius (and 0.5 mm):
+    // a thin web shows both its faces in different intervals (the tool rides
+    // its top for its width plus a diameter), and a ball's jump at a face is
+    // not lost beside its roll over the face's edge.
+    let spacing = (0.5 * radius).min(0.5);
     let samples = ((x1 - x0) / spacing).ceil().clamp(1.0, MAX_SAMPLES) as usize;
-    // Angles no further apart than the tool's radius at the part's largest
-    // radius.
-    let angles = (std::f64::consts::TAU * reach / radius)
+    // Angles no further apart than the tool's diameter at the part's largest
+    // radius: a face narrower round the axis than that may be missed.
+    let angles = (std::f64::consts::TAU * reach / (2.0 * radius))
         .ceil()
         .clamp(MIN_ANGLES, MAX_ANGLES) as usize;
     let height = |x: f64, a: f64| -> Option<f64> {
@@ -132,26 +139,62 @@ pub(crate) fn turns(
         Some(input.rotary.to_axis(contact.tip, Degrees(a)).height)
     };
     let at = |i: usize| x0 + (x1 - x0) * i as f64 / samples as f64;
-    let lines: Vec<usize> = (0..angles).collect();
-    context.report("finding faces across the axis", 0, Some(angles as u64));
-    let found: Vec<Vec<Found>> = parallel::map_in_order(&lines, |k| {
-        let a = 360.0 * *k as f64 / angles as f64;
+    // The faces on one line of A, given the brackets of faces already found
+    // on another: where one lies inside a jump and still holds the jump, it
+    // is taken without bisecting again.
+    let line = |k: usize, known: &[Found]| -> Vec<Found> {
+        let a = 360.0 * k as f64 / angles as f64;
         let heights: Vec<Option<f64>> = (0..=samples).map(|i| height(at(i), a)).collect();
+        // The change of height over each interval, where both ends have one.
+        let change = |i: usize| match (heights.get(i), heights.get(i + 1)) {
+            (Some(Some(lo)), Some(Some(hi))) => Some(hi - lo),
+            _ => None,
+        };
         let mut out = Vec::new();
         for (i, pair) in heights.windows(2).enumerate() {
             let (Some(Some(lo)), Some(Some(hi))) = (pair.first(), pair.get(1)) else {
                 continue;
             };
-            if (hi - lo).abs() <= tolerance {
+            let d = hi - lo;
+            if d.abs() <= tolerance {
                 continue;
             }
-            if let Some(face) = narrow((at(i), *lo), (at(i + 1), *hi), tolerance, |x| height(x, a))
+            // On a slope or a gentle curve the change is nearly that of the
+            // intervals either side; a face makes it stand out from at least
+            // one (a ball's roll over the face's edge may match the other).
+            let smooth = |j: Option<usize>| {
+                j.and_then(change)
+                    .is_some_and(|e| (d - e).abs() <= tolerance)
+            };
+            if smooth(i.checked_sub(1)) && smooth(Some(i + 1)) {
+                continue;
+            }
+            let (xa, xb) = (at(i), at(i + 1));
+            let reused = known
+                .iter()
+                .filter(|f| f.up == (d > 0.0) && xa <= f.bracket.0 && f.bracket.1 <= xb)
+                .find_map(|f| {
+                    let (l, h) = (height(f.bracket.0, a)?, height(f.bracket.1, a)?);
+                    let holds = (h - l).abs() > tolerance && (h > l) == f.up;
+                    holds.then_some(Found {
+                        top: l.max(h),
+                        ..*f
+                    })
+                });
+            if let Some(face) =
+                reused.or_else(|| narrow((xa, *lo), (xb, *hi), tolerance, |x| height(x, a)))
             {
                 out.push(face);
             }
         }
         out
-    });
+    };
+    context.report("finding faces across the axis", 0, Some(angles as u64));
+    let first = line(0, &[]);
+    let rest: Vec<usize> = (1..angles).collect();
+    let found: Vec<Vec<Found>> = std::iter::once(first.clone())
+        .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
+        .collect();
     context.check_cancelled()?;
     let mut ups: Vec<(Found, usize)> = Vec::new();
     let mut downs: Vec<(Found, usize)> = Vec::new();
@@ -221,18 +264,22 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
 }
 
 /// A face found on one line of A: the X of its low side, where the side of
-/// the tool touches it, the height on top of it, and whether the height rises
-/// with X.
+/// the tool touches it, the height on top of it, whether the height rises
+/// with X, and the X either side of its jump.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Found {
     x: f64,
     top: f64,
     up: bool,
+    /// The X either side of the jump after bisection.
+    bracket: (f64, f64),
 }
 
 /// The face in a jump of the drop height from `a` to `b` (X, height),
-/// narrowed by bisection to [`WIDTH`]. `None` where the jump is a slope or
-/// the tool leaves the part inside it.
+/// narrowed by bisection to [`WIDTH`]. `None` where the jump is a slope or a
+/// curve (its middle is within the tolerance of the straight line between
+/// its ends, or its change falls within the tolerance) or the tool leaves the
+/// part inside it.
 fn narrow(
     a: (f64, f64),
     b: (f64, f64),
@@ -248,6 +295,12 @@ fn narrow(
         }
         let m = 0.5 * (a.0 + b.0);
         let h = height(m)?;
+        // A face puts the middle on one side of its jump, about half the
+        // jump from the straight line between the ends; a slope or a gentle
+        // curve keeps it on the line, within the tolerance.
+        if (h - 0.5 * (a.1 + b.1)).abs() <= tolerance {
+            return None;
+        }
         // Keep the half with the larger change: the jump is in it.
         if (h - a.1).abs() >= (b.1 - h).abs() {
             b = (m, h);
@@ -262,7 +315,12 @@ fn narrow(
     // either way and lift the tool onto the top of the face.
     let clear = CLEAR * tolerance;
     let x = if up { a.0 - clear } else { b.0 + clear };
-    ((b.1 - a.1).abs() > tolerance).then_some(Found { x, top, up })
+    ((b.1 - a.1).abs() > tolerance).then_some(Found {
+        x,
+        top,
+        up,
+        bracket: (a.0, b.0),
+    })
 }
 
 /// `found` (each with the line of A it was found on) sorted by X and gathered
@@ -339,6 +397,12 @@ mod tests {
         // 89 degrees from the axis: 57 mm of height per mm of X.
         let slope = |x: f64| Some(57.0 * x);
         assert_eq!(narrow((0.0, 0.0), (0.1, 5.7), 0.01, slope), None);
+        // A curve that rises straight up at one end, as a ball rolling over
+        // an edge does: a quarter of a circle of 2 mm. It is continuous, so
+        // it is no face.
+        let curve = |x: f64| Some((4.0 - (2.0 - x) * (2.0 - x)).max(0.0).sqrt());
+        let end = curve(0.5).unwrap();
+        assert_eq!(narrow((0.0, 0.0), (0.5, end), 0.01, curve), None);
         // Leaving the part inside the jump gives no face.
         let off = |x: f64| (x < 0.05).then_some(0.0);
         assert_eq!(narrow((0.0, 0.0), (0.1, 3.0), 0.01, off), None);
@@ -346,7 +410,17 @@ mod tests {
 
     #[test]
     fn req_op_04_samples_of_one_face_make_one_turn() {
-        let at = |x: f64, top: f64, k: usize| (Found { x, top, up: true }, k);
+        let at = |x: f64, top: f64, k: usize| {
+            (
+                Found {
+                    x,
+                    top,
+                    up: true,
+                    bracket: (x, x),
+                },
+                k,
+            )
+        };
         let found = vec![
             at(3.0, 1.0, 0),
             at(1.0, 2.0, 1),

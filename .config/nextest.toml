@@ -242,6 +242,10 @@ priority = 79
 # Retain default execution and select both in the nightly long profile.
 # Existing app workholding both-direction roughing regression: 92.703 s
 # in the same full uninstrumented app run; retain default/nightly execution.
+# HELICALFACES (decision 0297, 30 Oct 2026, four cores): with the turns at the
+# blisk's faces across the axis, the CLI blisk_helical_5 end-to-end took 67.078 s
+# in a full uninstrumented `cargo nextest run --workspace` (blisk_helical_2
+# 67.448 s in the same run). Retain default execution and select nightly long.
 
 # TOOLLIB2 validation (24 Oct 2026): existing machining regressions exceeded
 # a minute uninstrumented in the contended four-test run. Default still runs
@@ -292,6 +296,7 @@ default-filter = '''not (
   | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
   | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_5::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
@@ -338,6 +343,7 @@ default-filter = '''not (
 # SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
 # Existing app both-direction roughing regression: 92.703 s, also above.
 # Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
+# CLI blisk_helical_5 end-to-end: 67.078 s (HELICALFACES, see coverage above).
 # 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
@@ -361,6 +367,7 @@ default-filter = '''
   | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
   | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_5::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)

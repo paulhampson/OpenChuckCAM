@@ -388,8 +388,7 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
     // schema 13 such a Z1 copy had no `rotary_in_feed`, and the migration
     // knew the Z1 only by its ID, so the box's corners wrote `F1432.7` on the
     // Z1 again (OI-253; decision records 0076 item 3 and 0109).
-    let feeds = builtin("makera-z1").unwrap().unwrap().max_feeds;
-    let (limit, rotary_limit) = (feeds.linear.0, feeds.rotary.0);
+    let limit = builtin("makera-z1").unwrap().unwrap().max_feeds.linear.0;
     let job = jobs()
         .into_iter()
         .find(|j| j.name == "box_helical")

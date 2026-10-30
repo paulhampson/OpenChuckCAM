@@ -342,7 +342,7 @@ fn passes(
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut after the helix as its own pass, so the helix is
         // as before (decision record 0297).
-        let turns: Vec<f64> = faces::turns(input, &grown, (x0, x1), pitch, tolerance, context)?
+        let turns: Vec<f64> = faces::turns(input, &grown, (x0, x1), tolerance, context)?
             .into_iter()
             .map(|t| t.x)
             .collect();
