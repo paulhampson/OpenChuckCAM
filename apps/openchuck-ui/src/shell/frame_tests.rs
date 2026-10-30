@@ -1108,6 +1108,37 @@ fn req_nfr_18_the_settings_dialog_switches_the_recording_and_keeps_the_choice() 
     assert!(rig.shell.recorder_windows().is_empty());
 }
 
+/// Issue #382, the owner's decision D1 (decision record 0322): the memory
+/// for playback checkpoints is set in Settings, kept in the user's settings,
+/// given to playback, and brought into its range.
+#[test]
+fn req_ui_15_req_nfr_07_settings_sets_the_memory_for_playback_checkpoints() {
+    let config = temp("frame-playback-memory");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-playback-memory", Some(file.clone()));
+    rig.dirs.push(config);
+    const MIB: usize = 1024 * 1024;
+    assert_eq!(rig.shell.play.playback_memory(), 1_536 * MIB);
+    rig.shell.dialog = Some(Dialog::Settings);
+    // A window is laid out on its first frame and drawn on the next.
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Recovery checkpoint interval"));
+    assert!(rig.shows("Memory for playback checkpoints (MB)"));
+    rig.shell.set_playback_memory_mb(4_096);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 4_096);
+    assert_eq!(rig.shell.play.playback_memory(), 4_096 * MIB);
+    rig.shell.set_playback_memory_mb(50);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 256);
+    assert_eq!(rig.shell.play.playback_memory(), 256 * MIB);
+    rig.shell.set_playback_memory_mb(3_000);
+    rig.shell.save_settings();
+    assert_eq!(file.load().settings.simulate.playback_memory_mb, 3_072);
+    // A restart gives playback the kept value.
+    let shell = Shell::with_settings(false, None, Some(file.clone()));
+    assert_eq!(shell.play.playback_memory(), 3_072 * MIB);
+}
+
 /// A project with a model and no setup, which is what File, New project and
 /// an import give (decision record 0144).
 fn no_setup_rig(name: &str, with_model: bool) -> Rig {

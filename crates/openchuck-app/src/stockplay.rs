@@ -28,16 +28,18 @@ pub use crate::stock_surface::StockSurface;
 use crate::stock_surface::SurfaceSamples;
 use crate::{AppError, Application, JobHandle, Regeneration};
 
-/// The most memory the checkpoints of one setup may hold, in bytes. Each is a
-/// copy of the stock; a project that would need more is refused with a hint
-/// to coarsen the simulation cell.
-pub const MAX_CHECKPOINT_BYTES: usize = 1_536 * 1024 * 1024;
-
-/// Checkpoints kept within an operation besides the one after it.
-const CHECKPOINTS_WITHIN: usize = 8;
+/// The memory playback's checkpoints may hold by default, in bytes: the
+/// user's setting "Memory for playback checkpoints" changes it (decision
+/// record 0322). A project whose setups could not keep the checkpoints they
+/// must is refused with a hint to raise it or to coarsen the simulation cell.
+pub const DEFAULT_PLAYBACK_MEMORY: usize = 1_536 * 1024 * 1024;
 
 /// The fewest moves between two checkpoints inside an operation.
 const MIN_CHECKPOINT_SPACING: usize = 1_000;
+
+/// Copies of the stock playback holds besides its checkpoints: the stock
+/// kept from the last request and the one being replayed.
+const REPLAY_COPIES: usize = 2;
 
 struct SetupPlay {
     id: SetupId,
@@ -191,6 +193,14 @@ impl StockPlayback {
         self.setups.iter().map(|s| s.id).collect()
     }
 
+    /// The memory the checkpoints hold in all, in bytes.
+    pub fn checkpoint_bytes(&self) -> usize {
+        self.setups
+            .iter()
+            .map(|s| s.simulator.checkpoint_bytes())
+            .sum()
+    }
+
     /// How many checkpoints are kept in all.
     pub fn checkpoints(&self) -> usize {
         self.setups
@@ -203,10 +213,18 @@ impl StockPlayback {
 impl Application {
     /// Simulates `timeline`'s toolpath again with checkpoints, as a job, so
     /// that the stock at any move can be shown (SIM-04). The pipeline's own
-    /// simulation keeps none (decision 0025 item 7). Fails, naming the cell
-    /// to coarsen, when the checkpoints would need more than
-    /// [`MAX_CHECKPOINT_BYTES`] for a setup.
-    pub fn start_stock_playback(&self, timeline: Arc<Timeline>) -> JobHandle<StockPlayback> {
+    /// simulation keeps none (decision 0025 item 7). The checkpoints and the
+    /// copies a replay holds never pass `memory` bytes (the user's setting;
+    /// [`DEFAULT_PLAYBACK_MEMORY`] by default): they are spaced evenly to
+    /// fill it, never closer than 1,000 moves, and one that would pass it is
+    /// not kept (decision record 0322). Fails, naming the setting and the
+    /// cell, when the copies at the start and after each operation would not
+    /// fit.
+    pub fn start_stock_playback(
+        &self,
+        timeline: Arc<Timeline>,
+        memory: usize,
+    ) -> JobHandle<StockPlayback> {
         self.jobs
             .submit("prepare playback", self.events_tx.clone(), move |context| {
                 let run = Arc::clone(timeline.run());
@@ -225,13 +243,12 @@ impl Application {
                         None => plan.push((info.setup, vec![g])),
                     }
                 }
-                let total: u64 = run.groups.len() as u64;
-                let mut done = 0u64;
-                context.report("prepare playback", 0, Some(total));
-                let mut setups = Vec::new();
-                // Every setup's simulator is kept, so the limit is on the total.
+                // Each setup's stock, and the copies that must be kept: the
+                // start and after each operation, and the replay's.
+                let mut stocks = Vec::new();
                 let mut kept_bytes = 0usize;
-                for (id, groups) in plan {
+                let mut largest = 0usize;
+                for (_, groups) in &plan {
                     let first = groups
                         .first()
                         .and_then(|g| run.groups.get(*g))
@@ -249,20 +266,38 @@ impl Application {
                         Some(first.part_bounds),
                         settings.cell.0,
                     )?;
-                    let moves: usize = groups
-                        .iter()
-                        .filter_map(|g| run.toolpath.groups.get(*g))
-                        .map(|g| g.segments.len())
-                        .sum();
-                    let every = (moves / CHECKPOINTS_WITHIN).max(MIN_CHECKPOINT_SPACING);
-                    let copies = groups.len() + 2 + moves / every;
+                    let bytes = stock.memory_bytes();
+                    largest = largest.max(bytes);
                     kept_bytes = add_checkpoint_bytes(
                         kept_bytes,
-                        copies,
-                        stock.memory_bytes(),
+                        groups.len() + 1,
+                        bytes,
                         settings.cell.0,
+                        memory,
                     )?;
-                    let mut simulator = Simulator::new(stock, machine, Some(every));
+                    stocks.push(stock);
+                }
+                let kept_bytes = add_checkpoint_bytes(
+                    kept_bytes,
+                    REPLAY_COPIES,
+                    largest,
+                    settings.cell.0,
+                    memory,
+                )?;
+                let moves: usize = run.toolpath.groups.iter().map(|g| g.segments.len()).sum();
+                // The copies inside share what is left after those kept.
+                let every =
+                    checkpoint_spacing(memory.saturating_sub(kept_bytes), largest, 0, moves);
+                let total: u64 = run.groups.len() as u64;
+                let mut done = 0u64;
+                context.report("prepare playback", 0, Some(total));
+                let mut setups = Vec::new();
+                // Every setup's simulator is kept, so the budget is shared:
+                // each setup may use what the ones before it left.
+                let mut held = largest.saturating_mul(REPLAY_COPIES);
+                for ((id, groups), stock) in plan.into_iter().zip(stocks) {
+                    let mut simulator = Simulator::new(stock, machine, every)
+                        .with_checkpoint_budget(memory.saturating_sub(held));
                     for g in &groups {
                         context.check_cancelled()?;
                         let (Some(path), Some(info)) =
@@ -274,6 +309,7 @@ impl Application {
                         done += 1;
                         context.report("prepare playback", done, Some(total));
                     }
+                    held = held.saturating_add(simulator.checkpoint_bytes());
                     setups.push(SetupPlay {
                         id,
                         simulator,
@@ -403,29 +439,50 @@ impl Application {
     }
 }
 
-/// Adds the checkpoints of one more setup (`copies` copies of a stock of
-/// `stock_bytes`) to the `kept` bytes of the setups before it, and refuses
-/// when the total passes [`MAX_CHECKPOINT_BYTES`]: all the setups' simulators
-/// stay in memory together.
+/// Adds `copies` copies of a stock of `stock_bytes` (the checkpoints a setup
+/// must keep, or the replay's) to the `kept` bytes counted before, and
+/// refuses when the total passes `memory`: all the setups' simulators stay
+/// in memory together.
 fn add_checkpoint_bytes(
     kept: usize,
     copies: usize,
     stock_bytes: usize,
     cell: f64,
+    memory: usize,
 ) -> Result<usize, AppError> {
     let total = kept.saturating_add(copies.saturating_mul(stock_bytes));
-    if total > MAX_CHECKPOINT_BYTES {
+    if total > memory {
         return Err(AppError::Playback(format!(
-            "stock playback would keep at least {:.0} MB of checkpoints across the setups \
-             ({copies} copies of a stock of {:.0} MB in the setup being added), over the {:.0} MB \
-             allowed; make the simulation cell coarser (now {cell} mm) or play the toolpath \
-             without the stock",
+            "stock playback would keep at least {:.0} MB of copies of the stock across the \
+             setups (a stock of {:.0} MB), over the {:.0} MB of \"Memory for playback \
+             checkpoints\" in Settings; raise that, make the simulation cell coarser (now \
+             {cell} mm) or play the toolpath without the stock",
             total as f64 / 1e6,
             stock_bytes as f64 / 1e6,
-            MAX_CHECKPOINT_BYTES as f64 / 1e6,
+            memory as f64 / 1e6,
         )));
     }
     Ok(total)
+}
+
+/// The moves between two checkpoints inside the operations, so that copies
+/// of a stock of `stock_bytes` fill `memory` less the `kept` copies that must
+/// be held anyway, over `moves` moves in all; never closer than
+/// [`MIN_CHECKPOINT_SPACING`]. `None` when no copy fits.
+fn checkpoint_spacing(
+    memory: usize,
+    stock_bytes: usize,
+    kept: usize,
+    moves: usize,
+) -> Option<usize> {
+    if stock_bytes == 0 {
+        return Some(MIN_CHECKPOINT_SPACING);
+    }
+    let copies = memory.checked_sub(kept.saturating_mul(stock_bytes))? / stock_bytes;
+    if copies == 0 {
+        return None;
+    }
+    Some(moves.div_ceil(copies + 1).max(MIN_CHECKPOINT_SPACING))
 }
 
 /// The operation a group came from, for a legend; kept here so a front end
@@ -440,17 +497,58 @@ mod tests {
 
     use super::*;
 
+    const MIB: usize = 1024 * 1024;
+
     #[test]
     fn req_nfr_04_the_checkpoint_limit_counts_every_setup_together() {
-        let half = MAX_CHECKPOINT_BYTES / 2 + 1;
+        let budget = 1_536 * MIB;
+        let half = budget / 2 + 1;
         // Each setup alone is within the limit ...
-        let first = add_checkpoint_bytes(0, 1, half, 0.1).unwrap();
+        let first = add_checkpoint_bytes(0, 1, half, 0.1, budget).unwrap();
         assert_eq!(first, half);
-        // ... but the second one takes the total over it.
-        let error = add_checkpoint_bytes(first, 1, half, 0.1).unwrap_err();
-        assert!(error.to_string().contains("across the setups"), "{error}");
+        // ... but the second one takes the total over it, and the refusal
+        // names the setting and the cell.
+        let error = add_checkpoint_bytes(first, 1, half, 0.1, budget).unwrap_err();
+        let text = error.to_string();
+        assert!(text.contains("across the setups"), "{text}");
+        assert!(text.contains("Memory for playback checkpoints"), "{text}");
+        assert!(text.contains("0.1 mm"), "{text}");
         // A total exactly at the limit is allowed, and huge counts do not wrap.
-        assert!(add_checkpoint_bytes(0, 1, MAX_CHECKPOINT_BYTES, 0.1).is_ok());
-        assert!(add_checkpoint_bytes(0, usize::MAX, 2, 0.1).is_err());
+        assert!(add_checkpoint_bytes(0, 1, budget, 0.1, budget).is_ok());
+        assert!(add_checkpoint_bytes(0, usize::MAX, 2, 0.1, budget).is_err());
+    }
+
+    #[test]
+    fn req_sim_04_req_nfr_07_checkpoints_are_spaced_to_fill_the_memory_budget() {
+        // The owner's carving (CARVEPERF's measurement): 290,548 moves, a
+        // stock of 7 MB, 3 copies a setup must keep and 2 for the replay.
+        let (moves, stock, kept) = (290_548, 7_000_000, 5);
+        let at = |mb: usize| checkpoint_spacing(mb * MIB, stock, kept, moves).unwrap();
+        // About 225 copies in 1,536 MB, so about 1,300 moves apart; about 70
+        // in 512 MB, about 4,000 apart; the floor of 1,000 moves in 8 GB.
+        assert!((1_200..=1_400).contains(&at(1_536)), "{}", at(1_536));
+        assert!((3_700..=4_300).contains(&at(512)), "{}", at(512));
+        assert_eq!(at(8_192), MIN_CHECKPOINT_SPACING);
+        // More memory never spaces them further apart.
+        let mut last = usize::MAX;
+        for mb in (256..=8_192).step_by(256) {
+            assert!(at(mb) <= last, "{mb} MB");
+            last = at(mb);
+        }
+        // The copies inside fit what is left after those that must be kept.
+        let every = at(1_536);
+        assert!((moves / every + kept) * stock <= 1_536 * MIB);
+        // A short job keeps one every 1,000 moves, as before.
+        assert_eq!(
+            checkpoint_spacing(1_536 * MIB, stock, kept, 2_000),
+            Some(MIN_CHECKPOINT_SPACING)
+        );
+        // No room for any inside: only those that must be kept.
+        assert_eq!(checkpoint_spacing(kept * stock, stock, kept, moves), None);
+        assert_eq!(checkpoint_spacing(0, stock, kept, moves), None);
+        assert_eq!(
+            checkpoint_spacing(1_536 * MIB, 0, kept, moves),
+            Some(MIN_CHECKPOINT_SPACING)
+        );
     }
 }

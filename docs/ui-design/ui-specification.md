@@ -791,6 +791,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - display units;
   - recent projects;
   - recovery checkpoint interval, three minutes by default and configurable from one to fifteen whole minutes (PRJ-08; owner's CHECKPOINT policy). Settings explains that three periodic checkpoints are retained independently of a single interim checkpoint updated after fifteen seconds without a confirmed project change;
+  - memory for playback checkpoints, 1,536 MB by default and configurable from 256 to 8,192 MB in steps of 256 ([decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 5, the owner's decision D1 on issue #382). Settings explains that Simulate keeps copies of the cut part along the program so a jump in playback replays only a short stretch, that more memory gives shorter waits and less longer ones, that the cut part shown is the same either way, that the copies never use more than this, and that a change applies the next time the cut part is prepared;
   - remembered sections;
   - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;

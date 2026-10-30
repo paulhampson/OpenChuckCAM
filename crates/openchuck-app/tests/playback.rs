@@ -27,6 +27,7 @@ use openchuck_app::playback::{Cursor, Playback, Timeline, ViewFrame, tool_meshes
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+use openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY;
 use openchuck_app::{Application, Command, PostSelection, Regeneration, Threads};
 use openchuck_types::geometry::Point3;
 use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
@@ -777,7 +778,11 @@ fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
     let (dir, app, _) = project("stock-at");
     let run = Arc::new(app.simulate().unwrap());
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
-    let playback = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let playback = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     assert_eq!(playback.setups().len(), 1);
     assert!(playback.checkpoints() >= 2);
     let report = &run.simulation.as_ref().unwrap().setups[0];
@@ -847,8 +852,16 @@ fn req_sim_04_req_nfr_06_the_stock_at_a_move_is_the_same_whatever_was_shown_befo
     let (dir, app, _) = project("stock-kept");
     let run = Arc::new(app.simulate().unwrap());
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
-    let playing = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
-    let reference = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let playing = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let reference = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     let (cancel, progress) = (
         openchuck_types::job::CancelToken::new(),
         openchuck_types::job::NoProgress,
@@ -880,6 +893,69 @@ fn req_sim_04_req_nfr_06_the_stock_at_a_move_is_the_same_whatever_was_shown_befo
         let expected = reference.stock_at(c, &context).unwrap();
         assert_eq!(shown.state_hash(), expected.state_hash(), "{c:?}");
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_07_req_sim_04_playback_never_holds_more_than_its_memory() {
+    let (dir, app, _) = project("stock-memory");
+    let run = Arc::new(app.simulate().unwrap());
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let roomy = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let start = roomy
+        .stock_at(
+            Cursor {
+                done: 0,
+                fraction: 0.0,
+            },
+            &context,
+        )
+        .unwrap()
+        .memory_bytes();
+    // Room for the copies that must be kept (the start, after the one
+    // operation, and the replay's two) and about one more: playback keeps
+    // fewer checkpoints, never more memory, and shows the same stock.
+    let memory = start * 5 + start / 2;
+    let tight = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), memory)
+            .wait()
+            .unwrap(),
+    );
+    assert!(tight.checkpoint_bytes() + 2 * start <= memory);
+    assert!(tight.checkpoints() < roomy.checkpoints());
+    let n = t.move_count();
+    for done in (0..=n).step_by((n / 7).max(1)) {
+        let c = Cursor {
+            done,
+            fraction: 0.5,
+        };
+        assert_eq!(
+            tight.stock_at(c, &context).unwrap().state_hash(),
+            roomy.stock_at(c, &context).unwrap().state_hash(),
+            "move {done}"
+        );
+    }
+    // Too little for the copies that must be kept: refused with the
+    // setting named, not a crash (NFR-07).
+    let error = app
+        .start_stock_playback(Arc::clone(&t), start * 3)
+        .wait()
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("Memory for playback checkpoints"),
+        "{error}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1187,7 +1263,11 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
     let (dir, mut app, _) = project("stock-edited");
     let run = Arc::new(app.simulate().unwrap());
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
-    let before = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let before = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     let first = app
         .start_stock_at(&before, Cursor::default())
         .wait()
@@ -1211,7 +1291,11 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
     settings.cell = Millimetres(0.2);
     app.execute(Command::SetSimulation(settings)).unwrap();
 
-    let after = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let after = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     let second = app
         .start_stock_at(&after, Cursor::default())
         .wait()

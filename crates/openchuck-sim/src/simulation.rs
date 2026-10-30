@@ -74,6 +74,10 @@ pub struct Simulator {
     checkpoint_every: Option<usize>,
     keep_checkpoints: bool,
     checkpoints: Vec<Checkpoint>,
+    /// The most memory the checkpoints may hold, if limited.
+    checkpoint_budget: Option<usize>,
+    /// The memory the checkpoints hold.
+    checkpoint_bytes: usize,
     groups_done: usize,
 }
 
@@ -95,6 +99,7 @@ impl Simulator {
             moves: 0,
             stock: stock.clone(),
         }];
+        let checkpoint_bytes = checkpoints.iter().map(|c| c.stock.memory_bytes()).sum();
         Self {
             frame: frame.rotary_frame(),
             stock,
@@ -103,8 +108,41 @@ impl Simulator {
             checkpoint_every: checkpoint_every.filter(|&n| n > 0),
             keep_checkpoints: true,
             checkpoints,
+            checkpoint_budget: None,
+            checkpoint_bytes,
             groups_done: 0,
         }
+    }
+
+    /// Limits the memory the checkpoints hold to `bytes`, each copy counted
+    /// at its own size (a stock grows as it is cut). A checkpoint that would
+    /// pass the limit is not kept; the one at the start always is. Fewer
+    /// checkpoints never change a stock, only how far a jump replays.
+    #[must_use]
+    pub fn with_checkpoint_budget(mut self, bytes: usize) -> Self {
+        self.checkpoint_budget = Some(bytes);
+        self
+    }
+
+    /// The memory the checkpoints hold.
+    pub fn checkpoint_bytes(&self) -> usize {
+        self.checkpoint_bytes
+    }
+
+    /// Keeps a checkpoint of the stock now, after `moves` moves of group
+    /// `group`, unless it would pass the budget.
+    fn keep_checkpoint(&mut self, group: usize, moves: usize) {
+        let stock = self.stock.clone();
+        let bytes = self.checkpoint_bytes.saturating_add(stock.memory_bytes());
+        if self.checkpoint_budget.is_some_and(|budget| bytes > budget) {
+            return;
+        }
+        self.checkpoint_bytes = bytes;
+        self.checkpoints.push(Checkpoint {
+            group,
+            moves,
+            stock,
+        });
     }
 
     /// A simulator that keeps no checkpoints, for a host that only needs the
@@ -121,6 +159,8 @@ impl Simulator {
             checkpoint_every: None,
             keep_checkpoints: false,
             checkpoints: Vec::new(),
+            checkpoint_budget: None,
+            checkpoint_bytes: 0,
             groups_done: 0,
         }
     }
@@ -157,11 +197,7 @@ impl Simulator {
         let result = self.run_range(group, profile, 0, group.segments.len(), keep, context)?;
         self.groups_done += 1;
         if keep {
-            self.checkpoints.push(Checkpoint {
-                group: index + 1,
-                moves: 0,
-                stock: self.stock.clone(),
-            });
+            self.keep_checkpoint(index + 1, 0);
         }
         Ok(result)
     }
@@ -224,6 +260,8 @@ impl Simulator {
             checkpoint_every: None,
             keep_checkpoints: false,
             checkpoints: Vec::new(),
+            checkpoint_budget: None,
+            checkpoint_bytes: 0,
             groups_done: cp.group,
         };
         let mut g = cp.group;
@@ -304,11 +342,7 @@ impl Simulator {
                 self.flush(&tool, &mut batch, &mut result, context, total)?;
             }
             if at_checkpoint {
-                self.checkpoints.push(Checkpoint {
-                    group: self.groups_done,
-                    moves: done,
-                    stock: self.stock.clone(),
-                });
+                self.keep_checkpoint(self.groups_done, done);
             }
         }
         self.flush(&tool, &mut batch, &mut result, context, total)?;

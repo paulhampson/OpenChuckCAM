@@ -532,6 +532,59 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
 }
 
 #[test]
+fn req_nfr_07_req_sim_04_checkpoints_never_pass_their_memory_budget() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let held = |sim: &Simulator| -> usize {
+        sim.checkpoints()
+            .iter()
+            .map(|c| c.stock.memory_bytes())
+            .sum()
+    };
+    let mut free = Simulator::new(make(), &m, Some(20));
+    free.run_group(&g1, &profile, &ctx).unwrap();
+    free.run_group(&g2, &profile, &ctx).unwrap();
+    let all = free.checkpoints().len();
+    assert!(all > 6, "{all}");
+    // A budget for about a third of them: never passed, at the copies' real
+    // sizes, the start always kept, and the stock at every point the same.
+    let budget = held(&free) / 3;
+    let mut tight = Simulator::new(make(), &m, Some(20)).with_checkpoint_budget(budget);
+    tight.run_group(&g1, &profile, &ctx).unwrap();
+    tight.run_group(&g2, &profile, &ctx).unwrap();
+    assert!(held(&tight) <= budget, "{} > {budget}", held(&tight));
+    assert!(tight.checkpoints().len() < all && tight.checkpoints().len() > 1);
+    assert_eq!(
+        (tight.checkpoints()[0].group, tight.checkpoints()[0].moves),
+        (0, 0)
+    );
+    assert_eq!(tight.stock().state_hash(), free.stock().state_hash());
+    for (g, moves) in [(0, 0), (0, 57), (1, 0), (1, 101), (1, g2.segments.len())] {
+        assert_eq!(
+            tight
+                .stock_at(g, moves, &groups, &ctx)
+                .unwrap()
+                .state_hash(),
+            free.stock_at(g, moves, &groups, &ctx).unwrap().state_hash(),
+            "group {g}, move {moves}"
+        );
+    }
+    // A budget that holds them all keeps them all.
+    let mut roomy = Simulator::new(make(), &m, Some(20)).with_checkpoint_budget(usize::MAX);
+    roomy.run_group(&g1, &profile, &ctx).unwrap();
+    roomy.run_group(&g2, &profile, &ctx).unwrap();
+    assert_eq!(roomy.checkpoints(), free.checkpoints());
+}
+
+#[test]
 fn req_sim_06_jumping_to_a_move_matches_running_up_to_it() {
     let m = machine();
     let profile = ball(4.0);

@@ -263,6 +263,9 @@ pub struct PlaybackPanel {
     show_tool: bool,
     /// "Hide path outside window" (issue 205).
     hide_outside: bool,
+    /// The user's "Memory for playback checkpoints", bytes (decision record
+    /// 0322).
+    playback_memory: usize,
     /// The window as drawn last, to tell when the path must be made again.
     drawn_window: Option<MoveWindow>,
     /// The faint trace of the whole path, made once per path and visible
@@ -324,6 +327,7 @@ impl Default for PlaybackPanel {
             view: ViewFrame::Machine,
             show_tool: true,
             hide_outside: false,
+            playback_memory: openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY,
             drawn_window: None,
             trace_job: None,
             trace: None,
@@ -440,6 +444,7 @@ impl PlaybackPanel {
             open: self.open,
             view: self.view,
             hide_outside: self.hide_outside,
+            playback_memory: self.playback_memory,
             colour_by: self.colour_by,
             band_filter: self.band_filter.clone(),
             reset_layers: true,
@@ -455,6 +460,7 @@ impl PlaybackPanel {
             view: self.view,
             show_tool: self.show_tool,
             hide_outside: self.hide_outside,
+            playback_memory: self.playback_memory,
             budget: self.budget,
             colour_by: self.colour_by,
             band_filter: self.band_filter.clone(),
@@ -524,6 +530,18 @@ impl PlaybackPanel {
     /// Sets "Hide path outside window".
     pub fn set_hide_outside_window(&mut self, hide: bool) {
         self.hide_outside = hide;
+    }
+
+    /// The memory playback's checkpoints may hold, in bytes.
+    pub fn playback_memory(&self) -> usize {
+        self.playback_memory
+    }
+
+    /// Sets the memory playback's checkpoints may hold, in bytes (the user's
+    /// setting; decision record 0322). It applies the next time the cut part
+    /// is prepared.
+    pub fn set_playback_memory(&mut self, bytes: usize) {
+        self.playback_memory = bytes;
     }
 
     /// The playback window, if one is set (issue 205).
@@ -679,7 +697,8 @@ impl PlaybackPanel {
             && self.stock.prepare.is_none()
             && self.stock.error.is_none()
         {
-            self.stock.prepare = Some(app.start_stock_playback(Arc::clone(&data.timeline)));
+            self.stock.prepare =
+                Some(app.start_stock_playback(Arc::clone(&data.timeline), self.playback_memory));
         }
     }
 
@@ -2058,7 +2077,8 @@ mod tests {
         // Ask for the stock: the job prepares the checkpoints, then the
         // mesh at the cursor is made for the moves done.
         panel.stock.show = true;
-        panel.stock.prepare = Some(app.start_stock_playback(Arc::clone(&data.timeline)));
+        panel.stock.prepare =
+            Some(app.start_stock_playback(Arc::clone(&data.timeline), panel.playback_memory));
         panel.playback.seek(&data.timeline, 0.6);
         let started = Instant::now();
         while panel.frame(&app, &mut viewport, 0.0) {
@@ -2176,7 +2196,7 @@ mod tests {
             }));
         } else {
             panel.stock.playback = Some(Arc::new(
-                app.start_stock_playback(Arc::clone(&data.timeline))
+                app.start_stock_playback(Arc::clone(&data.timeline), panel.playback_memory)
                     .wait()
                     .unwrap(),
             ));

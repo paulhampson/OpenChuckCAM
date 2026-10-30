@@ -10,8 +10,8 @@
 //! surface is how long the tool stands still.
 //!
 //! ```text
-//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS]
-//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS]
+//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS [MEMORY_MB]]
+//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS [MEMORY_MB]]
 //! ```
 //!
 //! Given an STL file (such as the carving test piece of issue #382), it
@@ -158,11 +158,16 @@ fn carving_project(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: playback_times PROJECT|PART.stl [THREADS]";
+    let usage = "usage: playback_times PROJECT|PART.stl [THREADS [MEMORY_MB]]";
     let input = PathBuf::from(args.next().ok_or(usage)?);
     let threads = match args.next() {
         Some(n) => Threads::Exactly(n.parse()?),
         None => Threads::All,
+    };
+    // The memory for playback checkpoints, MB (the user's setting).
+    let memory = match args.next() {
+        Some(mb) => mb.parse::<usize>()? * 1024 * 1024,
+        None => openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY,
     };
     let temporary = std::env::temp_dir().join(format!("playback-times-{}", std::process::id()));
     let app = if input
@@ -198,11 +203,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let started = Instant::now();
-    let playback = Arc::new(app.start_stock_playback(Arc::clone(&timeline)).wait()?);
+    let playback = Arc::new(
+        app.start_stock_playback(Arc::clone(&timeline), memory)
+            .wait()?,
+    );
     println!(
-        "prepare playback: {:.1} s, {} checkpoints, peak {:.0} MB",
+        "prepare playback: {:.1} s, {} checkpoints holding {:.0} MB, peak {:.0} MB",
         started.elapsed().as_secs_f64(),
         playback.checkpoints(),
+        playback.checkpoint_bytes() as f64 / 1e6,
         peak_mb()
     );
 
