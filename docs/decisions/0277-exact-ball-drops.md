@@ -1,6 +1,6 @@
 # 0277: Exact ball drops on STEP parts for helical, indexed, rest and simultaneous finishing (lane STEPALL-X2; issue #349)
 
-- **Status:** proposed, 29 Oct 2026 (Europe/London). Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 30 Oct 2026 (Europe/London). The owner read the condensed record in the coordinator session and approved it there; the acceptance was relayed to this lane session by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. Proposed 29 Oct 2026.
 - **Date:** 29 Oct 2026 (Europe/London).
 - **Lane:** STEPALL-X2, branch `claude/lane-stepall-x2-ball-drops`, from `main` at `d5d0a74` (library family 0.26.0), with `main` at `f100c14` (0.27.0) merged once before the pull request. Issue #349 (STEPALL-0211 step 4 of 6), parent #257.
 - **Requirements:** IMP-02, OP-02, OP-04, OP-05, OP-11, OP-12, OP-21, OP-23, SET-09, GC-07, NFR-04, NFR-05, NFR-06, NFR-07, NFR-12. Verification plan 4.1 (the 0.005 mm tessellation share of the 0.01 mm toolpath tolerance) and the *Exact surfaces* note of section 5.
