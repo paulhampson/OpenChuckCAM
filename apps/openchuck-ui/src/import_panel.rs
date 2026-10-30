@@ -23,9 +23,12 @@ use crate::roles;
 use crate::theme::DARK;
 
 /// The dialog's window key, and its fixed size in points (UI-16, OI-431):
-/// short enough for 1366 × 768 at 120 % with the task bar showing.
+/// short enough for 1366 × 768 at 120 % with the task bar showing (600 points).
+/// 24 points taller than before egui 0.37, which sets the dialog's content
+/// about 12 points taller (its rows, unit buttons and check box pad more), so
+/// that every mesh finding still shows without scrolling (decision record 0294).
 const WINDOW_KEY: &str = "import model";
-const WINDOW_SIZE: [f32; 2] = [460.0, 520.0];
+const WINDOW_SIZE: [f32; 2] = [460.0, 544.0];
 
 /// The label of the button that starts the check (the owner's decision on
 /// issue 144, option B).

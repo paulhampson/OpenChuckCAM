@@ -1284,7 +1284,7 @@ impl Shell {
             galley,
             text,
         );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, label));
         response.on_hover_text(format!(
             "{label}: {tip}.\nPast write results are in Messages."
         ));
