@@ -486,7 +486,14 @@ fn main() -> Result<(), Error> {
                     for k in 0..args.runs {
                         let run = job.run(form, threads)?;
                         for ((op, t), result) in ops.iter().zip(&run.timings).zip(&run.groups) {
-                            println!(
+                            {
+                            let st: Vec<u64> = openchuck_path::brep::outline::STATS
+                                .iter()
+                                .map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed))
+                                .collect();
+                            eprintln!("OUTLINE STATS {st:?}");
+                        }
+                        println!(
                                 "run {} | {} | {} | {:.6} | {} | {:.6} | {} | {:.6} | {:.6} | {:.6} | {}",
                                 k + 1,
                                 op.label,

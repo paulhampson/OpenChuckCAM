@@ -298,6 +298,10 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
         // The outline drops of lane STEPALL-X3 (decision 0338) on the same
         // lines: the flat end and the tapered ball, on the tessellation and
         // exact (exact less mesh). They exist only from that lane on.
+        let _ = openchuck_path::brep::outline::STATS
+            .iter()
+            .map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed))
+            .count();
         for (mesh_set, exact_set, tool) in [
             ("flat-mesh", "flat-exact", &flat_tool),
             ("taper-mesh", "taper-exact", &taper_tool),
@@ -305,9 +309,34 @@ fn measure(name: &str, stride: usize, offset: f64, out: &Path) {
             let t = Instant::now();
             let on_mesh = surface.drop_tool(tool, &line);
             let mesh_nanos = t.elapsed().as_nanos();
+            let trace = std::env::var("PROBE_K").ok().and_then(|v| v.parse::<usize>().ok()) == Some(k) && exact_set == "flat-exact";
+            if trace {
+                eprintln!("LINE {:?} {:?} kind {kind}", line.origin, line.axis.get());
+                openchuck_path::brep::outline::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
             let t = Instant::now();
             let exact = surface.drop_exact(tool, &line);
+            if std::env::var("PROBE").is_ok() {
+                let st: Vec<u64> = openchuck_path::brep::outline::STATS
+                    .iter()
+                    .map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed))
+                    .collect();
+                eprintln!("STATS {exact_set} {st:?}");
+            }
+            if trace {
+                openchuck_path::brep::outline::TRACE.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
             let exact_nanos = t.elapsed().as_nanos();
+            if std::env::var("PROBE").is_ok()
+                && let Some(e) = exact
+            {
+                eprintln!(
+                    "PROBE {k} {exact_set} {kind} looked {} raised {:.6} us {}",
+                    e.looked,
+                    e.raised,
+                    exact_nanos / 1000
+                );
+            }
             if let Some(m) = on_mesh {
                 sets.push((mesh_set, m.offset, mesh_nanos));
                 sets.push((
@@ -448,6 +477,10 @@ fn compare(a: &Path, b: &Path) {
 }
 
 fn main() {
+    if let Some(path) = std::env::var_os("REPLAY") {
+        replay(Path::new(&path));
+        return;
+    }
     let mut args = std::env::args().skip(1);
     let mut out = None;
     let mut parts: Vec<String> = PARTS.iter().map(|s| (*s).to_owned()).collect();
@@ -474,4 +507,79 @@ fn main() {
     for p in &parts {
         measure(p, stride.max(1), offset, &out);
     }
+}
+
+/// Temporary (lane STEPALL-X3 development): drops the flat end and the
+/// tapered ball on dumped lines over the blisk, exact and on the mesh.
+fn replay(path: &Path) {
+    let text = std::fs::read_to_string(path).unwrap();
+    let lines: Vec<ToolLine> = text
+        .lines()
+        .filter_map(|l| {
+            let v: Vec<f64> = l.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect();
+            (v.len() == 6).then(|| ToolLine {
+                origin: Point3::new(v[0], v[1], v[2]),
+                axis: UnitVec3::new(Vec3::new(v[3], v[4], v[5])).unwrap(),
+            })
+        })
+        .collect();
+    let model = import("blisk");
+    // The placement of decision 0211's harness (`step_accuracy`).
+    use openchuck_app::model::{Axis, Degrees, TransformStep};
+    use openchuck_geom::transform::{brep_placement, transform_brep};
+    let bounds = |m: &BrepModel| {
+        let mut lo = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut hi = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for f in &m.faces {
+            for v in &f.tessellation.vertices {
+                lo = Point3::new(lo.x.min(v.x), lo.y.min(v.y), lo.z.min(v.z));
+                hi = Point3::new(hi.x.max(v.x), hi.y.max(v.y), hi.z.max(v.z));
+            }
+        }
+        (lo, hi)
+    };
+    let (lo, hi) = bounds(&model);
+    let spans = [hi.x - lo.x, hi.y - lo.y, hi.z - lo.z];
+    let mut steps = Vec::new();
+    if spans[2] > spans[0] && spans[2] > spans[1] {
+        steps.push(TransformStep::Rotate { axis: Axis::Y, angle: Degrees(90.0) });
+    } else if spans[1] > spans[0] && spans[1] > spans[2] {
+        steps.push(TransformStep::Rotate { axis: Axis::Z, angle: Degrees(-90.0) });
+    }
+    steps.push(TransformStep::CentreOnRotaryAxis);
+    let place = |m: &BrepModel, st: &[TransformStep]| transform_brep(m, &brep_placement(m, st).unwrap()).unwrap();
+    let rotated = place(&model, &steps);
+    let x0 = bounds(&rotated).0.x;
+    steps.push(TransformStep::Translate { x: 10.0 - x0, y: 0.0, z: 0.0 });
+    let model = place(&model, &steps);
+    let surface = BrepSurface::new(&model).unwrap();
+    let tool = if std::env::var("REPLAY_TOOL").as_deref() == Ok("taper") { tapered() } else { flat(1.0) };
+    let t = Instant::now();
+    let mut n = 0;
+    for l in &lines {
+        if surface.drop_exact(&tool, l).is_some() {
+            n += 1;
+        }
+    }
+    let e = t.elapsed().as_secs_f64();
+    if let Some(k) = std::env::var("REPLAY_K").ok().and_then(|v| v.parse::<usize>().ok()) {
+        openchuck_path::brep::outline::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
+        let a = surface.drop_exact(&tool, &lines[k]);
+        openchuck_path::brep::outline::TRACE.store(false, std::sync::atomic::Ordering::Relaxed);
+        println!("K {k}: {:?}", a.map(|a| (a.contact.offset, a.looked, a.position.face)));
+    }
+    let answers: Vec<_> = lines.iter().map(|l| surface.drop_exact(&tool, l)).collect();
+    let t = Instant::now();
+    for (l, a) in lines.iter().zip(&answers) {
+        if let Some(a) = a {
+            let _ = surface.drop_exact_floored(&tool, l, a.contact.offset - 0.04);
+        }
+    }
+    println!("floored at -0.04: {:.1} us", t.elapsed().as_secs_f64() / lines.len() as f64 * 1e6);
+    let t = Instant::now();
+    for l in &lines {
+        let _ = surface.drop_tool(&tool, l);
+    }
+    let m = t.elapsed().as_secs_f64();
+    println!("{} lines, {n} exact: exact {:.1} us, mesh {:.1} us", lines.len(), e / lines.len() as f64 * 1e6, m / lines.len() as f64 * 1e6);
 }

@@ -49,14 +49,27 @@
 
 use std::collections::BinaryHeap;
 
+/// Temporary profiling counters (lane STEPALL-X3 development).
+/// Temporary trace switch.
+pub static TRACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static STATS: [std::sync::atomic::AtomicU64; 8] = [const { std::sync::atomic::AtomicU64::new(0) }; 8];
+fn stat(i: usize) {
+    if i >= 6 {
+        return;
+    }
+    if let Some(c) = STATS.get(i) {
+        c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 
 use super::drop::{DROP_TOLERANCE, Hit};
-use super::hull::{HullTree, Net, Para};
+use super::hull::{Bound, HullTree, Net, Para};
 use super::trim::Segment;
 use super::{
-    Analytic, Cell, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH,
+    Analytic, ExactFace, Geometry, Nurbs, Pending, Quad, SEARCH_CELLS, SEARCH_DEPTH,
 };
 use crate::cutter::{TIP_TIE, ToolLine};
 use crate::surface::{ParametricFace, Uv};
@@ -106,6 +119,18 @@ pub(super) struct Outline {
     /// jumps, and the rim.
     edges: Vec<f64>,
 }
+
+/// How far inside the rim a part must come to hold the tool, mm: a part
+/// that reaches the tool only in the last 0.0001 mm of its radius may be
+/// passed over (a face grazing the rim from far up the line could otherwise
+/// keep the search to its budget). The answer is then never below the drop
+/// of the tool made this much narrower, and the tool cuts at most this
+/// much into such a part, across the axis.
+pub(super) const RIM_SLACK: f64 = DROP_TOLERANCE;
+
+/// How far above the floor a box's tangent-plane bound may be for the
+/// search for its least bound to go on, mm.
+const EXACT_BAND: f64 = 4.0 * DROP_TOLERANCE;
 
 /// Radii and heights closer than this, relative to the tool's size, are the
 /// same.
@@ -216,6 +241,19 @@ impl Outline {
     fn slope_in(&self, rho: f64) -> f64 {
         let rho = rho.clamp(0.0, self.radius);
         self.span(rho).map_or(0.0, |s| s.slope(rho))
+    }
+
+    /// How sharply the tool's surface curves at `rho`: the slope over the
+    /// radius (its turn about the axis) and the change of slope along it.
+    fn bend(&self, rho: f64) -> f64 {
+        let rho = rho.clamp(0.0, self.radius);
+        let k = self.slope_in(rho);
+        let about = if rho > 1e-9 { k / rho } else { 0.0 };
+        let along = match self.span(rho).map(|s| s.piece) {
+            Some(Piece::Ball { q, .. }) => 1.0 / q,
+            _ => 0.0,
+        };
+        about.max(along)
     }
 
     /// The slope at `rho` from the side of the rim.
@@ -333,6 +371,14 @@ impl<'t> Search<'t> {
         }
     }
 
+    /// Whether `p` would beat the best so far.
+    fn beats(&self, p: Point3) -> bool {
+        p.is_finite()
+            && self
+                .lift(p)
+                .is_some_and(|s| self.best.is_none_or(|b| s > b.s + TIP_TIE))
+    }
+
     fn leave(&mut self, top: f64) {
         if top > self.floor() {
             self.unresolved = self.unresolved.max(top);
@@ -355,16 +401,137 @@ impl<'t> Search<'t> {
         (perp.length(), perp, reach)
     }
 
+    /// The least and largest distance from the axis over the box: the box
+    /// seen along the axis is the hull of its eight corners, and the
+    /// nearest point of a hull is on a segment between two of them (zero
+    /// when the axis passes through it).
+    fn rho_range(&self, b: &Para) -> (f64, f64) {
+        let (p1, p2) = self.across;
+        let w = b.centre - self.line.o;
+        let c = (w.dot(p1), w.dot(p2));
+        let e = b.axes.map(|x| (x.dot(p1), x.dot(p2)));
+        let mut pts = [(0.0, 0.0); 8];
+        for (k, q) in pts.iter_mut().enumerate() {
+            let mut x = c;
+            for (j, (ex, ey)) in e.iter().enumerate() {
+                let h = b.half.get(j).copied().unwrap_or(0.0);
+                let sg = if k & (1 << j) == 0 { h } else { -h };
+                x = (x.0 + sg * ex, x.1 + sg * ey);
+            }
+            *q = x;
+        }
+        let far = pts
+            .iter()
+            .map(|q| q.0 * q.0 + q.1 * q.1)
+            .fold(0.0, f64::max)
+            .sqrt();
+        // The outline of the box seen along the axis is made of images of
+        // its edges (corners that differ in one sign), and the image is the
+        // union of the images of its faces: the axis is inside when it is
+        // inside the parallelogram of one.
+        let mut near = f64::INFINITY;
+        for k in 0..8usize {
+            for j in 0..3 {
+                let m = k | (1 << j);
+                if m != k
+                    && let (Some(a), Some(q)) = (pts.get(k), pts.get(m))
+                {
+                    near = near.min(origin_to_segment(*a, *q));
+                }
+            }
+        }
+        let inside = (0..3).any(|j| {
+            let (i1, i2) = ((j + 1) % 3, (j + 2) % 3);
+            let (Some(&a), Some(&bb)) = (e.get(i1), e.get(i2)) else {
+                return false;
+            };
+            let (ha, hb) = (
+                b.half.get(i1).copied().unwrap_or(0.0),
+                b.half.get(i2).copied().unwrap_or(0.0),
+            );
+            let hc = b.half.get(j).copied().unwrap_or(0.0);
+            let ec = e.get(j).copied().unwrap_or((0.0, 0.0));
+            // Solve -c = s a + t b + w ec with |s| <= ha, |t| <= hb,
+            // |w| <= hc: the image of the box is this zonotope; it holds
+            // the origin when some w gives a solution in the parallelogram.
+            let det = a.0 * bb.1 - a.1 * bb.0;
+            if det.abs() <= 1e-300 {
+                return false;
+            }
+            let solve = |w: f64| {
+                let (rx, ry) = (-c.0 - w * ec.0, -c.1 - w * ec.1);
+                ((rx * bb.1 - ry * bb.0) / det, (a.0 * ry - a.1 * rx) / det)
+            };
+            // s and t are linear in w: their ranges over |w| <= hc meet the
+            // box when the w intervals for each overlap.
+            let (s0, t0) = solve(0.0);
+            let (s1, t1) = solve(1.0);
+            let (ds, dt) = (s1 - s0, t1 - t0);
+            let range = |v0: f64, dv: f64, h: f64| -> (f64, f64) {
+                if dv.abs() <= 1e-300 {
+                    if v0.abs() <= h {
+                        (f64::NEG_INFINITY, f64::INFINITY)
+                    } else {
+                        (1.0, -1.0)
+                    }
+                } else {
+                    let (x, y) = ((-h - v0) / dv, (h - v0) / dv);
+                    (x.min(y), x.max(y))
+                }
+            };
+            let (l1, u1) = range(s0, ds, ha);
+            let (l2, u2) = range(t0, dt, hb);
+            l1.max(l2).max(-hc) <= u1.min(u2).min(hc)
+        });
+        (if inside { 0.0 } else { near }, far)
+    }
+
     /// An upper bound on the tip offset at which the tool can reach a point
-    /// of the box, or `None` when it cannot (see the module).
+    /// of the box, or `None` when it cannot (see the module). The search
+    /// for the least bound stops as soon as one is no higher than `floor`
+    /// (the box is then passed over, whatever its exact bound); with
+    /// `quick`, only the first-order and tangent-plane bounds are taken (to
+    /// order faces and loop segments, not to pass over them).
     fn top(&self, b: &Para) -> Option<f64> {
+        self.top_below(b, self.floor(), false)
+    }
+
+    /// A first-order bound for the ball of radius `q` about `c`: its highest
+    /// point at its nearest radius (to order faces and loop segments, and
+    /// pass over those out of reach).
+    fn ball_top(&self, c: Point3, q: f64) -> Option<f64> {
+        let (z, perp) = self.line.split(c);
+        let rho = (perp.length() - q).max(0.0);
+        if !(rho <= self.tool.radius - RIM_SLACK) {
+            return None;
+        }
+        Some(z + q - self.tool.h(rho)? + 1e-12 * (1.0 + z.abs() + q))
+    }
+
+    /// The quick bound (see [`Self::top`]).
+    fn quick_top(&self, b: &Para) -> Option<f64> {
+        self.top_below(b, f64::NEG_INFINITY, true)
+    }
+
+    fn top_below(&self, b: &Para, floor: f64, quick: bool) -> Option<f64> {
+        stat(0);
         let tool = self.tool;
         let a = self.line.a;
         let (rho_c, perp, reach) = self.spread(b);
-        let rho_min = (rho_c - reach).max(0.0);
-        if !(rho_min <= tool.reach()) {
+        if !((rho_c - reach).max(0.0) <= tool.reach()) {
             return None;
         }
+        // The exact least distance only where it can pass the box over: a
+        // box whose middle is within reach reaches.
+        let rho_min = if rho_c <= tool.radius - RIM_SLACK {
+            (rho_c - reach).max(0.0)
+        } else {
+            let (lo, _) = self.rho_range(b);
+            if !(lo <= tool.radius - RIM_SLACK) {
+                return None;
+            }
+            lo.max((rho_c - reach).max(0.0))
+        };
         let (zc, _) = self.line.split(b.centre);
         let z_max = zc
             + b.axes
@@ -375,8 +542,12 @@ impl<'t> Search<'t> {
         // First order: the highest point at the nearest radius.
         let first = z_max - tool.h(rho_min.min(tool.radius))?;
         let size = b.half.iter().sum::<f64>();
-        let dual = self.dual_bound(b, rho_c, perp);
-        Some(first.min(dual) + 1e-12 * (1.0 + zc.abs() + rho_c + size + tool.radius))
+        let margin = 1e-12 * (1.0 + zc.abs() + rho_c + size + tool.radius);
+        if first + margin <= floor {
+            return Some(first + margin);
+        }
+        let dual = self.dual_bound(b, rho_c, perp, floor - margin, quick);
+        Some(first.min(dual) + margin)
     }
 
     /// `h*(kappa)`: the largest `kappa rho - h(rho)` over the outline,
@@ -411,6 +582,7 @@ impl<'t> Search<'t> {
     /// and its least value is the largest lift over the box (the minimax
     /// theorem): the bound is exact for the box.
     fn dual_at(&self, b: &Para, v: Vec3) -> f64 {
+        stat(2);
         let d = self.line.a - v;
         self.conjugate(v.length())
             + d.dot(b.centre - self.line.o)
@@ -424,7 +596,7 @@ impl<'t> Search<'t> {
     /// The least dual bound found by a short pattern search over `v`, from
     /// the tangent plane at the box's middle: every value it takes is a
     /// bound, so the search only tightens it.
-    fn dual_bound(&self, b: &Para, rho_c: f64, perp: Vec3) -> f64 {
+    fn dual_bound(&self, b: &Para, rho_c: f64, perp: Vec3, floor: f64, quick: bool) -> f64 {
         let tool = self.tool;
         let a = self.line.a;
         let rho = rho_c.min(tool.radius);
@@ -473,6 +645,13 @@ impl<'t> Search<'t> {
                 *best = (f, v);
             }
         };
+        // The tangent planes are tight to the second order in the box's
+        // size; the rest of the search only matters where the bound is
+        // near the floor (a part it may then pass over), so it is spent
+        // there.
+        if quick || best.0 <= floor || best.0 > floor + EXACT_BAND {
+            return best.0;
+        }
         take(Vec3::ZERO, &mut best);
         let n = creases.len();
         for signs in 0..(1u32 << n) {
@@ -490,6 +669,9 @@ impl<'t> Search<'t> {
                 }
             }
         }
+        if best.0 <= floor {
+            return best.0;
+        }
         for (i, ((ax, ay), aa, _)) in creases.iter().enumerate() {
             for ((bx, by), ba, _) in creases.iter().skip(i + 1) {
                 let det = ax * by - ay * bx;
@@ -500,6 +682,10 @@ impl<'t> Search<'t> {
                 }
             }
         }
+        if best.0 <= floor {
+            return best.0;
+        }
+        stat(1);
         let k_rim = tool.slope_out(tool.radius);
         for ((dx, dy), al, _) in &creases {
             let l2 = dx * dx + dy * dy;
@@ -512,7 +698,7 @@ impl<'t> Search<'t> {
             let g = 0.381_966_011_250_105_1;
             let (mut m1, mut m2) = (lo + g * (hi - lo), hi - g * (hi - lo));
             let (mut f1, mut f2) = (along(m1), along(m2));
-            for _ in 0..48 {
+            for _ in 0..20 {
                 if f1 <= f2 {
                     hi = m2;
                     (m2, f2) = (m1, f1);
@@ -527,6 +713,9 @@ impl<'t> Search<'t> {
             }
             let t = if f1 <= f2 { m1 } else { m2 };
             take(to(x0 + t * tx, y0 + t * ty), &mut best);
+            if best.0 <= floor {
+                return best.0;
+            }
         }
         best.0
     }
@@ -544,10 +733,12 @@ impl<'t> Search<'t> {
         }
         let tool = self.tool;
         let a = self.line.a;
+        // The range across the axis from the middle (wider than the box's
+        // own, which only keeps more boxes).
         let (rho_c, perp, reach) = self.spread(b);
-        let rho_lo = (rho_c - reach).max(0.0);
-        let rho_hi = (rho_c + reach).min(tool.radius);
-        if rho_lo > tool.reach() {
+        let (rho_lo, rho_far) = ((rho_c - reach).max(0.0), rho_c + reach);
+        let rho_hi = rho_far.min(tool.radius);
+        if !(rho_lo <= tool.radius - RIM_SLACK) {
             return false;
         }
         // Around the axis: how far the box turns about it from its middle.
@@ -589,10 +780,23 @@ impl<'t> Search<'t> {
         let tie = TIE * (1.0 + tool.radius);
         tool.edges
             .iter()
-            .any(|&r| r >= rho_lo - tie && r <= (rho_c + reach) + tie)
+            .any(|&r| r >= rho_lo - tie && r <= rho_far + tie)
             && (turn >= std::f64::consts::FRAC_PI_2 - theta
                 || cone.axis.dot(et).abs().min(1.0).asin() <= theta + turn)
     }
+}
+
+/// The distance from the origin to the segment from `a` to `b`, in a plane.
+fn origin_to_segment(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let l2 = dx * dx + dy * dy;
+    let t = if l2 > 0.0 {
+        (-(a.0 * dx + a.1 * dy) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let (x, y) = (a.0 + t * dx, a.1 + t * dy);
+    (x * x + y * y).sqrt()
 }
 
 /// The box that holds every point within `q` of the chord from `a` to `b`.
@@ -621,18 +825,49 @@ fn capsule(a: Point3, b: Point3, q: f64) -> Para {
     }
 }
 
+/// Bounds on the second derivatives of an analytic face over `v0..v1`
+/// (`S_uu`, `S_uv`, `S_vv`), and how fast its normal turns per unit of
+/// each parameter.
+fn quad_bends(a: &Analytic, v0: f64, v1: f64) -> (f64, f64, f64, f64, f64) {
+    match a.quad {
+        Quad::Plane => (0.0, 0.0, 0.0, 0.0, 0.0),
+        Quad::Cylinder { r } => (r.abs(), 0.0, 0.0, 1.0, 0.0),
+        Quad::Cone { r, a: angle } => {
+            let s = angle.sin();
+            let w = (r + v0 * s).abs().max((r + v1 * s).abs());
+            (w, s.abs(), 0.0, 1.0, 0.0)
+        }
+        Quad::Sphere { r } => (r.abs(), r.abs(), r.abs(), 1.0, 1.0),
+        Quad::Torus { major, minor } => (
+            major.abs() + minor.abs(),
+            minor.abs(),
+            minor.abs(),
+            1.0,
+            1.0,
+        ),
+    }
+}
+
 /// A piece of a loop segment: its parameter range, the images of its ends
 /// and middle.
 type Piece3 = (f64, f64, Point3, Point3, Point3);
 
-/// An analytic cell: its parameter box and the splits left.
-type QuadCell = ([f64; 4], usize);
+/// A B-spline cell of the outline search: a stored cell, or a piece split
+/// off one with the splits left and its boxes.
+enum NurbsCell {
+    Stored(u32),
+    Split(Net, usize, Bound),
+}
+
+/// An analytic cell: its parameter box, the splits left, and its box and
+/// normal cone.
+type QuadCell = ([f64; 4], usize, Para, Option<Cone>);
 
 impl ExactFace {
     /// An upper bound on the tip offset at which the tool can reach the
     /// face (from its box), or `None` when it cannot.
     pub(super) fn outline_top(&self, search: &Search<'_>) -> Option<f64> {
-        search.top(&Para::of_aabb(&self.bounding_box()))
+        search.quick_top(&Para::of_aabb(&self.bounding_box()))
     }
 
     /// Drops the outline onto this face, improving `search`.
@@ -649,12 +884,12 @@ impl ExactFace {
         let floor = search.floor();
         let mut order: Vec<(f64, usize)> = Vec::new();
         for &(c, r, first, end) in &self.trim.chunks {
-            if search.top(&Para::cube(c, r)).is_none_or(|t| t <= floor) {
+            if search.ball_top(c, r).is_none_or(|t| t <= floor) {
                 continue;
             }
             for i in first..end {
                 if let Some(seg) = self.trim.segments.get(i)
-                    && let Some(t) = search.top(&Para::cube(seg.centre, seg.radius))
+                    && let Some(t) = search.ball_top(seg.centre, seg.radius)
                     && t > floor
                 {
                     order.push((t, i));
@@ -674,6 +909,7 @@ impl ExactFace {
 
     /// The branch and bound over one segment's parameter.
     fn outline_segment(&self, seg: &Segment, search: &mut Search<'_>) {
+        stat(3);
         let ((px, py), (x, y)) = (seg.a, seg.b);
         let speed = 2.0 * seg.radius;
         let uv_at = |t: f64| self.clamp_search_if_nurbs(px + t * (x - px), py + t * (y - py));
@@ -748,6 +984,13 @@ impl ExactFace {
             }
             looked += 1;
             search.looked += 1;
+            if TRACE.load(std::sync::atomic::Ordering::Relaxed) && (looked < 6 || looked % 500 == 0) {
+                let r = |p: Point3| search.line.split(p).1.length();
+                eprintln!(
+                    "  PIECE {looked} top {:.4} t {lo:.6}..{hi:.6} rho {:.6} {:.6} {:.6} seg radius {:.4} bend {:.4e} uv {:?}->{:?}",
+                    -lower, r(plo), r(pm), r(phi), seg.radius, seg.bend, seg.a, seg.b
+                );
+            }
             let m = 0.5 * (lo + hi);
             fresh.extend([(lo, m, plo, pm), (m, hi, pm, phi)]);
         }
@@ -818,23 +1061,7 @@ impl ExactFace {
         let (p, su, sv) = a.d1(uc, vc);
         // Bounds on the second derivatives over the box, and how fast the
         // normal turns per unit of each parameter.
-        let (muu, muv, mvv, ku, kv) = match a.quad {
-            Quad::Plane => (0.0, 0.0, 0.0, 0.0, 0.0),
-            Quad::Cylinder { r } => (r.abs(), 0.0, 0.0, 1.0, 0.0),
-            Quad::Cone { r, a: angle } => {
-                let s = angle.sin();
-                let w = (r + v0 * s).abs().max((r + v1 * s).abs());
-                (w, s.abs(), 0.0, 1.0, 0.0)
-            }
-            Quad::Sphere { r } => (r.abs(), r.abs(), r.abs(), 1.0, 1.0),
-            Quad::Torus { major, minor } => (
-                major.abs() + minor.abs(),
-                minor.abs(),
-                minor.abs(),
-                1.0,
-                1.0,
-            ),
-        };
+        let (muu, muv, mvv, ku, kv) = quad_bends(a, v0, v1);
         let dev = 0.5 * (muu * hu * hu + 2.0 * muv * hu * hv + mvv * hv * hv);
         let w = 1e-12 * (1.0 + p.to_vec().length() + su.length() * hu + sv.length() * hv);
         let n = su.cross(sv);
@@ -880,19 +1107,19 @@ impl ExactFace {
         let mut heap: BinaryHeap<Pending<QuadCell>> = BinaryHeap::new();
         let mut order = 0u64;
         let root = self.bounds;
-        let (para, _) = self.quad_cell(a, root);
+        let (para, cone) = self.quad_cell(a, root);
         if let Some(top) = search.top(&para) {
             heap.push(Pending {
                 lower: -top,
                 order,
-                item: (root, SEARCH_DEPTH),
+                item: (root, SEARCH_DEPTH, para, cone),
             });
         }
         let mut looked = 0;
         let mut settled: Vec<(f64, f64)> = Vec::new();
         while let Some(Pending {
             lower,
-            item: (uv, depth),
+            item: (uv, depth, para, cone),
             ..
         }) = heap.pop()
         {
@@ -909,7 +1136,17 @@ impl ExactFace {
             if trimmed && self.trim.box_side(uv) == Some(false) {
                 continue;
             }
-            let (para, cone) = self.quad_cell(a, uv);
+            if TRACE.load(std::sync::atomic::Ordering::Relaxed) && (looked < 8 || looked % 300 == 0) {
+                let (lo, hi) = search.rho_range(&para);
+                let mid = self.eval(0.5 * (uv[0] + uv[1]), 0.5 * (uv[2] + uv[3]));
+                let mrho = mid.map(|m| search.line.split(m).1.length());
+                eprintln!(
+                    "  QUAD {looked} {:?} top {top:.4} depth {depth} uv {uv:?} half {:?} rho {lo:.6}..{hi:.6} mid-rho {mrho:?} side {:?} hold {}",
+                    a.quad, para.half,
+                    self.trim.box_side(uv),
+                    search.may_hold(&para, cone)
+                );
+            }
             if !search.may_hold(&para, cone) {
                 continue;
             }
@@ -921,7 +1158,29 @@ impl ExactFace {
             }
             let [u0, u1, v0, v1] = uv;
             let (_, su, sv) = a.d1(0.5 * (u0 + u1), 0.5 * (v0 + v1));
-            let halves = if su.length() * (u1 - u0) >= sv.length() * (v1 - v0) {
+            // Split the side that keeps the bound furthest from the cell's
+            // best: the face's bend across it (the box's thickness), and the
+            // tool's own curvature along it at this radius (what the tangent
+            // planes miss). A flat end along a cylinder rests on a whole
+            // line of it, so its cells are split across the line only.
+            // Until a cell is no longer than the tool is wide, the longer
+            // side: its middle may be out of the tool's reach.
+            let (muu, muv, mvv, _, _) = quad_bends(a, v0, v1);
+            let (hu, hv) = (u1 - u0, v1 - v0);
+            let (lu, lv) = (su.length() * hu, sv.length() * hv);
+            let (rho_c, _, _) = search.spread(&para);
+            let bend = search.tool.bend(rho_c);
+            let score_u = muu * hu * hu + muv * hu * hv + bend * lu * lu;
+            let score_v = mvv * hv * hv + muv * hu * hv + bend * lv * lv;
+            let wide = 2.0 * search.tool.radius;
+            // Nor may a cell grow much longer than wide: a trim may cross it
+            // anywhere along its length.
+            let along_u = if lu > wide || lv > wide || score_u == score_v || lu > 4.0 * lv || lv > 4.0 * lu {
+                lu >= lv
+            } else {
+                score_u > score_v
+            };
+            let halves = if along_u {
                 let m = 0.5 * (u0 + u1);
                 [[u0, m, v0, v1], [m, u1, v0, v1]]
             } else {
@@ -929,7 +1188,7 @@ impl ExactFace {
                 [[u0, u1, v0, m], [u0, u1, m, v1]]
             };
             for half in halves {
-                let (p, _) = self.quad_cell(a, half);
+                let (p, c) = self.quad_cell(a, half);
                 let floor = search.floor();
                 if let Some(t) = search.top(&p)
                     && t > floor
@@ -938,7 +1197,7 @@ impl ExactFace {
                     heap.push(Pending {
                         lower: -t,
                         order,
-                        item: (half, depth - 1),
+                        item: (half, depth - 1, p, c),
                     });
                 }
             }
@@ -950,14 +1209,11 @@ impl ExactFace {
         let trimmed = !self.loops.is_empty();
         let mut heap = BinaryHeap::new();
         let mut order = 0u64;
-        let bound_top = |s: &Search<'_>, b: &super::hull::Bound| {
+        // The box along the cell's frame is the thinner one; the
+        // axis-aligned box is the bound only where there is no frame.
+        let bound_top = |s: &Search<'_>, b: &Bound| {
             let (x, y) = b.paras();
-            let t = s.top(&x)?;
-            Some(match y.map(|y| s.top(&y)) {
-                Some(None) => return None,
-                Some(Some(u)) => t.min(u),
-                None => t,
-            })
+            s.top(&y.unwrap_or(x))
         };
         if let Some(root) = tree.nodes.get(tree.root as usize)
             && let Some(top) = bound_top(search, &root.bound)
@@ -965,7 +1221,7 @@ impl ExactFace {
             heap.push(Pending {
                 lower: -top,
                 order,
-                item: Cell::Stored(tree.root),
+                item: NurbsCell::Stored(tree.root),
             });
         }
         let mut looked = 0;
@@ -984,13 +1240,17 @@ impl ExactFace {
             }
             looked += 1;
             search.looked += 1;
-            let (net, depth, size): (std::borrow::Cow<'_, Net>, usize, f64) = match cell {
-                Cell::Stored(i) => {
+            let (net, depth, bound): (std::borrow::Cow<'_, Net>, usize, Bound) = match cell {
+                NurbsCell::Stored(i) => {
                     let Some(node) = tree.nodes.get(i as usize) else {
                         continue;
                     };
                     if trimmed && self.trim.box_side(node.uv) == Some(false) {
+                        stat(6);
                         continue;
+                    }
+                    if node.children.is_some() {
+                        stat(7);
                     }
                     if let Some((a, b)) = node.children {
                         for c in [a, b] {
@@ -1002,7 +1262,7 @@ impl ExactFace {
                                 heap.push(Pending {
                                     lower: -t,
                                     order,
-                                    item: Cell::Stored(c),
+                                    item: NurbsCell::Stored(c),
                                 });
                             }
                         }
@@ -1014,18 +1274,31 @@ impl ExactFace {
                     (
                         std::borrow::Cow::Borrowed(net),
                         SEARCH_DEPTH,
-                        node.bound.size(),
+                        node.bound,
                     )
                 }
-                Cell::Split(net, depth, size) => {
+                NurbsCell::Split(net, depth, bound) => {
                     if trimmed && self.trim.box_side(net.uv) == Some(false) {
                         continue;
                     }
-                    (std::borrow::Cow::Owned(net), depth, size)
+                    (std::borrow::Cow::Owned(net), depth, bound)
                 }
             };
-            let (aligned, along) = net.bound().paras();
+            let size = bound.size();
+            let (aligned, along) = bound.paras();
             let para = along.unwrap_or(aligned);
+            if TRACE.load(std::sync::atomic::Ordering::Relaxed) && (looked % 97 == 0) {
+                let (lo, hi) = search.rho_range(&para);
+                let (lo2, _) = search.rho_range(&aligned);
+                let mid = self.eval(0.5 * (net.uv[0] + net.uv[1]), 0.5 * (net.uv[2] + net.uv[3]));
+                let mrho = mid.map(|m| search.line.split(m).1.length());
+                eprintln!(
+                    "  CELL {looked} top {top:.4} depth {depth} size {size:.3e} uv {:?} rho {lo:.4}..{hi:.4} aabb-lo {lo2:.4} mid-rho {mrho:?} side {:?} inside {}",
+                    net.uv,
+                    self.trim.box_side(net.uv),
+                    self.contains(Uv { u: 0.5 * (net.uv[0] + net.uv[1]), v: 0.5 * (net.uv[2] + net.uv[3]) })
+                );
+            }
             if !n.touches_crease(net.uv) {
                 let cone = net.normal_cone().map(|(axis, sin_half)| Cone {
                     axis,
@@ -1051,7 +1324,7 @@ impl ExactFace {
                     heap.push(Pending {
                         lower: -t,
                         order,
-                        item: Cell::Split(half, depth - 1, hb.size()),
+                        item: NurbsCell::Split(half, depth - 1, hb),
                     });
                 }
             }
@@ -1071,25 +1344,26 @@ impl ExactFace {
         settled: &mut Vec<(f64, f64)>,
     ) {
         let (cu, cv) = (0.5 * (u0 + u1), 0.5 * (v0 + v1));
-        let Some(middle) = self.eval(cu, cv) else {
+        let Some(d) = self.d1(cu, cv) else {
             return;
         };
-        if !middle.is_finite() {
+        if !d.0.is_finite() {
             return;
         }
-        let inside = self.contains(Uv { u: cu, v: cv });
-        let gain = inside
-            && search
-                .lift(middle)
-                .is_some_and(|s| search.best.is_none_or(|b| s > b.s));
-        if inside {
-            search.offer(middle, self.number, Uv { u: cu, v: cv });
+        // The trim test is the costly part of a contact: it is made only for
+        // a point that would beat the best.
+        let gain = search.beats(d.0) && self.contains(Uv { u: cu, v: cv });
+        if gain {
+            search.offer(d.0, self.number, Uv { u: cu, v: cv });
         }
         let (rho_c, _, reach) = search.spread(para);
-        let edges = search.tool.edges.clone();
-        for r in edges {
+        for k in 0..search.tool.edges.len() {
+            let Some(&r) = search.tool.edges.get(k) else {
+                break;
+            };
             if r >= rho_c - reach && r <= rho_c + reach {
-                self.onto_edge(search, (cu, cv), r, [u0, u1, v0, v1]);
+                stat(5);
+                self.onto_edge(search, (cu, cv), d, r, [u0, u1, v0, v1]);
             }
         }
         let tried = settled
@@ -1101,18 +1375,24 @@ impl ExactFace {
     }
 
     /// Moves (u, v) onto the circle of radius `r` about the axis by Newton
-    /// steps on the distance from the axis, and offers the point when it
-    /// stays near the cell and inside the face.
-    fn onto_edge(&self, search: &mut Search<'_>, (mut u, mut v): (f64, f64), r: f64, b: [f64; 4]) {
+    /// steps on the distance from the axis, from the surface and its
+    /// derivatives there, and offers the point when it stays near the cell
+    /// and inside the face.
+    fn onto_edge(
+        &self,
+        search: &mut Search<'_>,
+        (mut u, mut v): (f64, f64),
+        mut d: (Point3, Vec3, Vec3),
+        r: f64,
+        b: [f64; 4],
+    ) {
         let [u0, u1, v0, v1] = b;
         let (wu, wv) = (u1 - u0, v1 - v0);
         // A hair inside the circle, so that rounding keeps the point within
         // the rim (far below the tolerance).
         let r = r - 1e-12 * (1.0 + r);
-        for _ in 0..8 {
-            let Some((p, su, sv)) = self.d1(u, v) else {
-                return;
-            };
+        for _ in 0..3 {
+            let (p, su, sv) = d;
             let (_, perp) = search.line.split(p);
             let rho = perp.length();
             if !(rho > 1e-300) {
@@ -1136,17 +1416,17 @@ impl ExactFace {
                 return;
             }
             (u, v) = (nu, nv);
-            if (rho - r).abs() <= 1e-13 * (1.0 + r) {
-                break;
+            let Some(next) = self.d1(u, v) else {
+                return;
+            };
+            d = next;
+            if search.beats(d.0) && self.contains(Uv { u, v }) {
+                search.offer(d.0, self.number, Uv { u, v });
+                return;
             }
-        }
-        if let Some(p) = self.eval(u, v)
-            && p.is_finite()
-            && self.contains(Uv { u, v })
-        {
-            // Only points within the rim are contacts; a last bit outside
-            // is within its rounding.
-            search.offer(p, self.number, Uv { u, v });
+            if (rho - r).abs() <= 1e-13 * (1.0 + r) {
+                return;
+            }
         }
     }
 
@@ -1154,6 +1434,7 @@ impl ExactFace {
     /// derivatives taken by differences; offers each point inside the face
     /// and returns where it ended.
     fn climb(&self, search: &mut Search<'_>, mut u: f64, mut v: f64) -> (f64, f64) {
+        stat(4);
         let tool = search.tool;
         let line = search.line;
         let grad = |u: f64, v: f64| -> Option<(Point3, f64, f64)> {
@@ -1175,7 +1456,7 @@ impl ExactFace {
         let h = 1e-7 * (1.0 + span);
         for _ in 0..6 {
             let Some((p, gu, gv)) = grad(u, v) else { break };
-            if self.contains(Uv { u, v }) {
+            if search.beats(p) && self.contains(Uv { u, v }) {
                 search.offer(p, self.number, Uv { u, v });
             }
             let (Some((_, guu, gvu)), Some((_, guv, gvv))) = (grad(u + h, v), grad(u, v + h))
@@ -1207,6 +1488,7 @@ impl ExactFace {
             }
         }
         if let Some(p) = self.eval(u, v)
+            && search.beats(p)
             && self.contains(Uv { u, v })
         {
             search.offer(p, self.number, Uv { u, v });
