@@ -1,6 +1,6 @@
 # 0345: Finishing layers with a light final pass (OP-04, TL-05, NFR-12; issue #314; lanes FINSTEP and ENDFACE)
 
-- **Status:** proposed (30 Oct 2026). The owner's answers on OI-1391 (option 1), OI-1392 (option 3) and OI-1395 (option 1) were relayed by the coordinator session (decision 0049). The record awaits the owner's acceptance.
+- **Status:** accepted (30 Oct 2026) by the project owner, relayed acceptance (decision 0049) by the coordinator session; proposed the same day by lane ENDFACE. The owner's answers on OI-1391 (option 1), OI-1392 (option 3) and OI-1395 (option 1) were relayed by the coordinator session (decision 0049). The record awaits the owner's acceptance.
 - **Date:** 30 Oct 2026.
 - **Builds on:** [0344](0344-finishing-stepdown-and-free-ends.md) (the finishing Stepdown and the Finishing layers switch), the FINSTEP handoff's owner decisions for #314 (`docs/handoffs/finstep-handoff.md` on branch `codex/lane-finstep-adaptive-spacing-and-layers`): off by default with exact previous output; helical, axial and indexed finishing; Stepdown along the tool axis; the final pass on the target; invalid depths and depths past the flutes refused; protections kept; no engagement promise (OI-1373).
 - **Open items:** OI-1391, OI-1392 and OI-1395 closed by this record. OI-1373 (engagement off the rotary centreline, formerly FINSTEP's OI-1341) stays open.

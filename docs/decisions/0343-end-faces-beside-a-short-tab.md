@@ -1,6 +1,6 @@
 # 0343: Finishing faces the part's ends beside a short tab (OP-04, OP-05, OP-09, OP-21, SET-09; issue #404; lane ENDFACE)
 
-- **Status:** proposed (30 Oct 2026). The owner chose option 2 for axial and indexed finishing (OI-1371), relayed by the coordinator session (decision 0049). The owner approved the re-blessed `cone_indexed` golden programs on 30 Oct 2026, relayed the same way. The rest of the record awaits the owner's acceptance.
+- **Status:** accepted (30 Oct 2026) by the project owner, relayed acceptance (decision 0049) by the coordinator session; proposed the same day by lane ENDFACE. The owner chose option 2 for axial and indexed finishing (OI-1371), relayed by the coordinator session (decision 0049). The owner approved the re-blessed `cone_indexed` golden programs on 30 Oct 2026, relayed the same way. The rest of the record awaits the owner's acceptance.
 - **Date:** 30 Oct 2026.
 - **Issue:** #404, "Helical finishing (and rest machining) leave about 0.5 mm of material on the far end face of the blisk".
 - **Builds on:** [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (one turn at each face across the axis), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (the keep-out beside a held region), [0252](0252-facing-ends-sides-and-extents.md) (Facing).
