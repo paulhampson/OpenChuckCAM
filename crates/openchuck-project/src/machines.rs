@@ -174,6 +174,26 @@ pub(crate) fn fill_rotary_in_feed(table: &mut toml::Table) {
     }
 }
 
+/// The axis height the built-in Z1 profile held before the owner's
+/// measurement (decision record 0317): machine Z -55, from the chuck centre
+/// 45 mm above a bed taken at the bottom of the Z travel.
+const OLD_Z1_AXIS_HEIGHT: f64 = -55.0;
+
+/// Whether `profile`, stored with library ID `id`, is a copy of the built-in
+/// Makera Z1 that still has the old placeholder axis height (decision record
+/// 0317). It is the Z1 by its ID, or, with no ID, by its name (decision
+/// record 0109). The copy is not changed: the project's copy is the source of
+/// truth (SET-01), so the caller warns and the user chooses the Z1 again.
+pub fn has_old_z1_axis_height(id: Option<&str>, profile: &MachineProfile) -> bool {
+    let z1 = match id {
+        Some(id) => id == MAKERA_Z1_ID,
+        None => profile.name == MAKERA_Z1_NAME,
+    };
+    #[allow(clippy::float_cmp)] // The exact value the old built-in profile wrote.
+    let old = profile.rotary_origin.z == OLD_Z1_AXIS_HEIGHT;
+    z1 && old
+}
+
 /// A new machine ID, for a profile entering a library without one.
 pub fn new_machine_id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -386,13 +406,13 @@ mod tests {
             assert!(z1.provenance.contains_key(&field), "{field} is not marked");
         }
         // The owner confirmed the axis, direction, range and feed limits from
-        // use of the machine. The reference point (OI-60), the travel frame
-        // and the default clearance are not machine-checked values, and the
-        // spindle range is Makera's published figure (decision 0231).
+        // use of the machine, and the axis height by Makera's probing routine
+        // (decision 0317). The travel frame and the default clearance are not
+        // machine-checked values, and the spindle range is Makera's published
+        // figure (decision 0231).
         assert_eq!(
             z1.unconfirmed_fields(),
             vec![
-                ProfileField::RotaryOrigin,
                 ProfileField::Travel,
                 ProfileField::Clearance,
                 ProfileField::BlockWindow,
@@ -402,6 +422,7 @@ mod tests {
         for field in [
             ProfileField::RotaryAxis,
             ProfileField::ASense,
+            ProfileField::RotaryOrigin,
             ProfileField::ARange,
             ProfileField::MaxFeeds,
         ] {
@@ -409,6 +430,60 @@ mod tests {
         }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
+    }
+
+    /// The axis height is the owner's probing result, for the probe as the
+    /// reference tool; the default safe Z and safe cylinder are 40 mm, so the
+    /// safe Z is inside the Z travel (decision 0317, OI-60).
+    #[test]
+    fn req_set_01_req_set_06_the_z1_axis_height_is_measured_and_its_safe_z_is_in_the_travel() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(z1.rotary_origin.z, -48.6);
+        assert_eq!((z1.rotary_origin.x, z1.rotary_origin.y), (-180.4, -108.8));
+        assert!(z1.is_confirmed(ProfileField::RotaryOrigin));
+        let source = &z1.provenance[&ProfileField::RotaryOrigin].source;
+        // It says what was measured, with what, and what was not recorded.
+        for fact in [
+            "-48.6",
+            "probe",
+            "reference tool",
+            "G54",
+            "tool length offset",
+            "datum",
+            "0317",
+        ] {
+            assert!(source.contains(fact), "{fact}: {source}");
+        }
+        assert_eq!(z1.clearance.radius.0, 40.0);
+        assert_eq!(z1.clearance.safe_z.0, 40.0);
+        let safe = z1.rotary_origin.z + z1.clearance.safe_z.0;
+        assert!((safe - -8.6).abs() < 1e-9, "{safe}");
+        assert!(safe <= z1.travel.max.z && safe >= z1.travel.min.z);
+        assert!(!z1.is_confirmed(ProfileField::Clearance));
+    }
+
+    /// A project copy of the Z1 that still has the old placeholder axis
+    /// height (machine Z -55) is recognised by its ID, or by its name when it
+    /// has none (decision records 0109 and 0317).
+    #[test]
+    fn req_set_01_req_prj_04_a_z1_copy_with_the_old_axis_height_is_recognised() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let mut old = z1.clone();
+        old.rotary_origin.z = -55.0;
+        assert!(has_old_z1_axis_height(Some(MAKERA_Z1_ID), &old));
+        assert!(has_old_z1_axis_height(None, &old));
+        assert!(!has_old_z1_axis_height(Some(MAKERA_Z1_ID), &z1));
+        assert!(!has_old_z1_axis_height(None, &z1));
+        // Another machine's profile, or a renamed copy with no ID, is the
+        // user's own: its axis height is theirs.
+        assert!(!has_old_z1_axis_height(Some("another-id"), &old));
+        let mut renamed = old.clone();
+        renamed.name = "My Z1".to_owned();
+        assert!(!has_old_z1_axis_height(None, &renamed));
+        // A user's own measured value on the Z1 copy is not flagged.
+        let mut measured = old;
+        measured.rotary_origin.z = -50.2;
+        assert!(!has_old_z1_axis_height(Some(MAKERA_Z1_ID), &measured));
     }
 
     #[test]
@@ -479,7 +554,7 @@ mod tests {
                 &z1.replace("linear = 1200.0", "linear = -1.0"),
                 "max_feeds.linear",
             ),
-            (&z1.replace("safe_z = 50.0", "safe_z = 10.0"), "safe Z"),
+            (&z1.replace("safe_z = 40.0", "safe_z = 10.0"), "safe Z"),
             (
                 &z1.replace("a_sense = \"positive\"", "a_sense = \"up\""),
                 "a_sense",

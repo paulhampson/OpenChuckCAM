@@ -1930,3 +1930,59 @@ fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
             .any(|m| m.text.contains("The grip at the"))
     );
 }
+
+/// A project whose Makera Z1 copy still has the old placeholder axis height
+/// (machine Z -55) keeps it, and the setup checks say so and how to update
+/// it; the built-in Z1, whose axis height is confirmed, gives neither that
+/// warning nor the "cannot be checked" one (SET-01, UI-13, decision 0317).
+#[test]
+fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
+    let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    let warnings = |tag: &str, z: f64, id: Option<String>| {
+        let mut f = fixture(tag, "cube_ascii.stl");
+        let mut machine = entry.profile.clone();
+        machine.rotary_origin.z = z;
+        f.app
+            .execute(Command::SetMachineFrom {
+                machine: Some(Box::new(machine)),
+                id,
+            })
+            .unwrap();
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let checks: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| c.text.clone())
+            .collect();
+        let messages: Vec<String> = o.messages.iter().map(|m| m.text.clone()).collect();
+        (checks, messages)
+    };
+    for (tag, id) in [("old-z1-id", entry.id.clone()), ("old-z1-name", None)] {
+        let (checks, messages) = warnings(tag, -55.0, id);
+        let check = checks
+            .iter()
+            .find(|t| t.contains("old placeholder axis height"))
+            .unwrap_or_else(|| panic!("{tag}: {checks:?}"));
+        for words in ["Makera Z1", "-55", "-48.6", "Choose the Makera Z1 again"] {
+            assert!(check.contains(words), "{words}: {check}");
+        }
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("old placeholder axis height")),
+            "{tag}: {messages:?}"
+        );
+    }
+    let (checks, messages) = warnings("measured-z1", -48.6, entry.id.clone());
+    for text in checks.iter().chain(&messages) {
+        assert!(!text.contains("old placeholder axis height"), "{text}");
+        assert!(
+            !text.contains("cannot be checked against the Z travel"),
+            "{text}"
+        );
+    }
+}

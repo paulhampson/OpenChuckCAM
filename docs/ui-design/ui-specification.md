@@ -446,7 +446,7 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
-**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60).
+**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60). When the project's Makera Z1 copy still holds the old placeholder axis height (machine Z -55), a check and a message say so and ask the user to choose the Makera Z1 again (decision 0317).
 
 **Footer** primary: "Continue to operations".
 

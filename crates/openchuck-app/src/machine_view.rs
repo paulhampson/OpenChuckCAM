@@ -41,7 +41,7 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Send a small A+ move with a mark on the chuck and see which way its top turns."
         }
         ProfileField::RotaryOrigin => {
-            "Measure it by touching the tool tip to the chuck centre and reading G53 Z."
+            "Run the controller's 4th-axis Z probing routine and read G54 Z in machine coordinates (G53). The value holds for the tool fitted then, the reference tool: a longer tool raises the spindle by the difference."
         }
         ProfileField::ARange => {
             "Turn A past a full turn each way and see whether the controller stops it."
@@ -246,14 +246,25 @@ mod tests {
             !spindle.confirmed,
             "from Makera's documents, not the machine"
         );
-        // The Z1's axis height is a placeholder: the amber triangle, with
-        // where it came from and how to confirm it.
+        // The Z1's axis height is the owner's probing result: the tick, and
+        // the source says it holds for the probe as the reference tool
+        // (decision 0317).
         let height = values.iter().find(|v| v.label == "Axis height").unwrap();
-        assert!(!height.confirmed);
-        assert!(height.value.ends_with("mm (machine Z)"), "{}", height.value);
-        assert!(height.tooltip.starts_with("Not confirmed on the machine."));
-        assert!(height.tooltip.contains("Source: "));
-        assert!(height.tooltip.contains("G53 Z"));
+        assert!(height.confirmed);
+        assert_eq!(height.value, "-48.600 mm (machine Z)");
+        assert!(height.tooltip.starts_with("Confirmed on the machine."));
+        assert!(
+            height.tooltip.contains("reference tool"),
+            "{}",
+            height.tooltip
+        );
+        // The travel is not confirmed: the amber triangle, with where it came
+        // from and how to confirm it.
+        let travel = values.iter().find(|v| v.label == "Travel").unwrap();
+        assert!(!travel.confirmed);
+        assert!(travel.tooltip.starts_with("Not confirmed on the machine."));
+        assert!(travel.tooltip.contains("Source: "));
+        assert!(travel.tooltip.contains("G53"));
         // A+ is confirmed: the tick, with no instructions.
         let sense = values.iter().find(|v| v.label == "A+ direction").unwrap();
         assert!(sense.confirmed);
@@ -272,6 +283,25 @@ mod tests {
         assert!(mode.tooltip.starts_with("Posting policy."));
         assert!(!mode.tooltip.contains("confirmed on the machine"));
         assert!(values.iter().filter(|v| v.collapsed).count() == 3);
+    }
+
+    /// An unconfirmed axis height says how the Z1 measures it: the
+    /// controller's 4th-axis Z probe, read in machine coordinates, for the
+    /// tool fitted when it ran (decision 0317).
+    #[test]
+    fn req_ui_13_an_unconfirmed_axis_height_says_how_to_measure_it() {
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        z1.provenance.remove(&ProfileField::RotaryOrigin);
+        let tip = tooltip(&z1, ProfileField::RotaryOrigin);
+        assert!(tip.starts_with("Not confirmed on the machine."), "{tip}");
+        for words in [
+            "probing routine",
+            "G54 Z",
+            "machine coordinates",
+            "reference tool",
+        ] {
+            assert!(tip.contains(words), "{words}: {tip}");
+        }
     }
 
     #[test]

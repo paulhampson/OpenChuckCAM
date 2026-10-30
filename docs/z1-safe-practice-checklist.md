@@ -13,7 +13,7 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 - [ ] I know which program I am about to run, which application version made it and which post (Makera Z1, not the LinuxCNC verification post).
 - [ ] I have read the program from the first line to the last, or at least every line up to the first cut and the end of the program, and nothing in it surprises me.
 - [ ] The header comment, units (mm), tool number and safe Z match what I expect.
-- [ ] The machine profile in the project matches the machine (travel, axis height, A direction). The axis height is a measured value, not the assumed one (OI-60).
+- [ ] The machine profile in the project matches the machine (travel, axis height, A direction). The axis height is the value measured on this machine with Makera's 4th-axis Z probing routine (decision 0317). It holds for the tool fitted when it was measured (the reference tool): a longer tool raises the spindle at the same work Z.
 - [ ] Firmware version noted. If it differs from 1.1.2, the SP-12 conventions are rechecked before anything else.
 - [ ] I am attended, and will stay beside the machine for the whole run.
 - [ ] The emergency stop is within reach of my hand while the program runs.
@@ -25,7 +25,7 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 - [ ] **No tool is fitted and no material is held.** The jaws are empty or closed on nothing.
 - [ ] Feed override is at or below 10 % for the first run of each program.
 - [ ] G54 is set with Y0 Z0 on the A axis and X0 where the program expects it (OI-40), clear of the jaws.
-- [ ] I have checked by hand, at reduced feed or by jogging, that the safe Z clears the chuck, jaws and the A axis assembly over the whole X range the program uses.
+- [ ] I have checked by hand, at reduced feed or by jogging, that the safe Z clears the chuck, jaws and the A axis assembly over the whole X range the program uses, and, with the longest tool the program uses fitted, that the spindle stays below the top of the Z travel at the safe Z (decision 0317).
 - [ ] I watch the first 20 lines of each program with my hand near the stop.
 - [ ] The A axis moves the direction the post expects (A+ turns the top of the chuck toward the front, -Y; confirmed 13 Oct 2026).
 - [ ] At the `G92.4 A0 S0` unwind at the end of a program, A does **not** move.

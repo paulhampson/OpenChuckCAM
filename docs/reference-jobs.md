@@ -37,7 +37,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 
 ## Assumptions to settle before gates 4 and 5
 
-- **Axis height.** The owner gave the chuck centre as 45 mm above the bed (13 Oct 2026). The Z1 profile takes the bed at the bottom of the Z travel (-100), so the axis is at machine Z -55, and the safe Z is 50 mm above the axis (5 mm below the top of the travel). That reading of "the bed" is an assumption (OI-60). **Measure the axis height on the machine and rerun the jobs before any trial.** A wrong value moves every Z.
+- **Axis height.** The Z1 profile holds -48.6, the owner's result from Makera's 4th-axis Z probing routine (decision 0317), for the probe as the reference tool. The safe Z and the safe cylinder are 40 mm above the axis, so with the probe fitted the spindle is at machine Z -8.6 at the safe Z; a longer tool raises it by the difference. (Until 30 Oct 2026 it was a placeholder of -55 with safe Z 50.) **Measure the axis height on your machine and rerun the jobs before any trial.**
 - **Work zero.** Programs run in G54 with Y0 Z0 on the A axis and X0 at the part's model origin (OI-40). The operator sets X0 by hand.
 - **A direction** was checked on the machine (13 Oct 2026): A+ turns the top of the chuck toward the front (-Y), as the profile says (OI-03). **Wrap, feed rule and unwind** (`G92.4 A0 S0`) are the derived SP-12 conventions, unconfirmed until the air cut (OI-37).
 - **No tool changer test.** One tool, `T1 M6` at the start; the tool change is exercised in a separate attended test (OI-41).
