@@ -533,7 +533,8 @@ impl PlaybackPanel {
     }
 
     /// The memory playback's checkpoints may hold, in bytes.
-    pub fn playback_memory(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn playback_memory(&self) -> usize {
         self.playback_memory
     }
 
