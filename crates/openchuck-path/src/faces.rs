@@ -19,7 +19,8 @@
 //! neighbouring samples is narrowed by bisection to [`WIDTH`]; one still
 //! larger than the toolpath tolerance there is a face, and the turn goes on
 //! the low side of it, a tenth of the tolerance clear ([`CLEAR`]), so the
-//! tool's side meets the face. A slope, however
+//! tool's side meets the face. The height on top of the face is kept for
+//! each line of A, so a strategy can tell where round the axis the face is. A slope, however
 //! steep, rises by less than the tolerance over [`WIDTH`] and is left to the
 //! helix; a tool whose side is not straight up (a tapered tool) meets no
 //! jump and gets no turns. Only the X of the turns is found: the turn itself
@@ -59,14 +60,34 @@ const MIN_ANGLES: f64 = 36.0;
 const MAX_TURNS: usize = 10_000;
 
 /// A turn at a face across the axis.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Turn {
     /// The X of the turn: the low side of the face, where the side of the
     /// tool touches it.
     pub(crate) x: f64,
-    /// The highest the tool's tip stands on top of the face at any angle,
-    /// along the tool axis: the face reaches no higher than this.
-    pub(crate) top: f64,
+    /// How high the tool's tip stands on top of the face, along the tool
+    /// axis, on each line of A the faces were found on (`360 k / n` degrees
+    /// for `n` lines); negative infinity on a line where the face is not.
+    tops: Vec<f64>,
+}
+
+impl Turn {
+    /// How high the face reaches at A `a` (degrees): the higher of the two
+    /// lines either side of it, or `None` where neither meets the face.
+    pub(crate) fn top_at(&self, a: f64) -> Option<f64> {
+        let n = self.tops.len();
+        if n == 0 {
+            return None;
+        }
+        let k = ((a.rem_euclid(360.0) / 360.0) * n as f64).floor() as usize % n;
+        let top = self.tops.get(k).copied().unwrap_or(f64::NEG_INFINITY).max(
+            self.tops
+                .get((k + 1) % n)
+                .copied()
+                .unwrap_or(f64::NEG_INFINITY),
+        );
+        top.is_finite().then_some(top)
+    }
 }
 
 /// The turns a helix from `range.0` to `range.1` adds at the faces across the
@@ -113,7 +134,7 @@ pub(crate) fn turns(
     let at = |i: usize| x0 + (x1 - x0) * i as f64 / samples as f64;
     let lines: Vec<usize> = (0..angles).collect();
     context.report("finding faces across the axis", 0, Some(angles as u64));
-    let found: Vec<Vec<(Turn, bool)>> = parallel::map_in_order(&lines, |k| {
+    let found: Vec<Vec<Found>> = parallel::map_in_order(&lines, |k| {
         let a = 360.0 * *k as f64 / angles as f64;
         let heights: Vec<Option<f64>> = (0..=samples).map(|i| height(at(i), a)).collect();
         let mut out = Vec::new();
@@ -132,26 +153,30 @@ pub(crate) fn turns(
         out
     });
     context.check_cancelled()?;
-    let mut ups: Vec<Turn> = Vec::new();
-    let mut downs: Vec<Turn> = Vec::new();
-    for (turn, up) in found.into_iter().flatten() {
-        if up {
-            ups.push(turn);
-        } else {
-            downs.push(turn);
+    let mut ups: Vec<(Found, usize)> = Vec::new();
+    let mut downs: Vec<(Found, usize)> = Vec::new();
+    for (k, line) in found.into_iter().enumerate() {
+        for f in line {
+            if f.up {
+                ups.push((f, k));
+            } else {
+                downs.push((f, k));
+            }
         }
     }
     // One turn per face: the samples of a face at different angles agree to
     // within the bisection, so those within the tolerance are one face. The
     // turn takes the one furthest onto the low side, so the tool's side is on
     // the face, not on its top, at every angle.
-    let mut turns = cluster(ups, tolerance, f64::min);
-    turns.extend(cluster(downs, tolerance, f64::max));
+    let mut turns = cluster(ups, tolerance, f64::min, angles);
+    turns.extend(cluster(downs, tolerance, f64::max, angles));
     turns.sort_by(|a, b| a.x.total_cmp(&b.x));
     turns.dedup_by(|b, a| {
         let same = b.x - a.x <= tolerance;
         if same {
-            a.top = a.top.max(b.top);
+            for (t, u) in a.tops.iter_mut().zip(&b.tops) {
+                *t = t.max(*u);
+            }
         }
         same
     });
@@ -195,16 +220,25 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
     ))
 }
 
+/// A face found on one line of A: the X of its low side, where the side of
+/// the tool touches it, the height on top of it, and whether the height rises
+/// with X.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Found {
+    x: f64,
+    top: f64,
+    up: bool,
+}
+
 /// The face in a jump of the drop height from `a` to `b` (X, height),
-/// narrowed by bisection to [`WIDTH`]: its turn (the X of its low side and
-/// the height on top of it) and whether the height rises with X. `None`
-/// where the jump is a slope or the tool leaves the part inside it.
+/// narrowed by bisection to [`WIDTH`]. `None` where the jump is a slope or
+/// the tool leaves the part inside it.
 fn narrow(
     a: (f64, f64),
     b: (f64, f64),
     tolerance: f64,
     height: impl Fn(f64) -> Option<f64>,
-) -> Option<(Turn, bool)> {
+) -> Option<Found> {
     let (mut a, mut b) = (a, b);
     while b.0 - a.0 > WIDTH {
         // A slope's change halves with the interval and soon falls within
@@ -227,41 +261,37 @@ fn narrow(
     // is clear of the face rather than tangent to it, which a drop may read
     // either way and lift the tool onto the top of the face.
     let clear = CLEAR * tolerance;
-    ((b.1 - a.1).abs() > tolerance).then_some(if up {
-        (
-            Turn {
-                x: a.0 - clear,
-                top,
-            },
-            true,
-        )
-    } else {
-        (
-            Turn {
-                x: b.0 + clear,
-                top,
-            },
-            false,
-        )
-    })
+    let x = if up { a.0 - clear } else { b.0 + clear };
+    ((b.1 - a.1).abs() > tolerance).then_some(Found { x, top, up })
 }
 
-/// `turns` sorted by X and gathered into runs no more than `gap` apart
-/// between neighbours, each run given the X `pick` chooses of its members and
-/// the highest top.
-fn cluster(mut turns: Vec<Turn>, gap: f64, pick: fn(f64, f64) -> f64) -> Vec<Turn> {
-    turns.sort_by(|a, b| a.x.total_cmp(&b.x));
+/// `found` (each with the line of A it was found on) sorted by X and gathered
+/// into runs no more than `gap` apart between neighbours: a turn each, at the
+/// X `pick` chooses of its members, with the highest top on each of the
+/// `lines`.
+fn cluster(
+    mut found: Vec<(Found, usize)>,
+    gap: f64,
+    pick: fn(f64, f64) -> f64,
+    lines: usize,
+) -> Vec<Turn> {
+    found.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
     let mut out: Vec<Turn> = Vec::new();
     let mut last = f64::NEG_INFINITY;
-    for t in turns {
-        match out.last_mut() {
-            Some(v) if t.x - last <= gap => {
-                v.x = pick(v.x, t.x);
-                v.top = v.top.max(t.top);
-            }
-            _ => out.push(t),
+    for (f, k) in found {
+        if out.last().is_none() || f.x - last > gap {
+            out.push(Turn {
+                x: f.x,
+                tops: vec![f64::NEG_INFINITY; lines],
+            });
         }
-        last = t.x;
+        if let Some(turn) = out.last_mut() {
+            turn.x = pick(turn.x, f.x);
+            if let Some(t) = turn.tops.get_mut(k) {
+                *t = t.max(f.top);
+            }
+        }
+        last = f.x;
     }
     out
 }
@@ -272,24 +302,19 @@ mod tests {
 
     #[test]
     fn req_op_04_a_step_is_narrowed_to_its_low_side() {
-        // A step up at X 2 of 3 mm: the low side is just below 2.
-        let step = |x: f64| Some(if x < 2.0 { 1.0 } else { 4.0 });
-        let (turn, up) = narrow((1.5, 1.0), (2.5, 4.0), 0.01, step).unwrap();
-        assert!(up);
+        // A step up at X 2 of 3 mm: the low side is just below 2, a tenth of
+        // the tolerance clear of it.
         let clear = 0.1 * 0.01;
-        assert!(
-            turn.x < 2.0 - clear && 2.0 - clear - turn.x <= WIDTH,
-            "{turn:?}"
-        );
-        assert!((turn.top - 4.0).abs() < 1e-12, "{turn:?}");
+        let step = |x: f64| Some(if x < 2.0 { 1.0 } else { 4.0 });
+        let f = narrow((1.5, 1.0), (2.5, 4.0), 0.01, step).unwrap();
+        assert!(f.up);
+        assert!(f.x < 2.0 - clear && 2.0 - clear - f.x <= WIDTH, "{f:?}");
+        assert!((f.top - 4.0).abs() < 1e-12, "{f:?}");
         // A step down: the low side is just above it.
         let down = |x: f64| Some(if x < 2.0 { 4.0 } else { 1.0 });
-        let (turn, up) = narrow((1.5, 4.0), (2.5, 1.0), 0.01, down).unwrap();
-        assert!(!up);
-        assert!(
-            turn.x >= 2.0 + clear && turn.x - 2.0 - clear <= WIDTH,
-            "{turn:?}"
-        );
+        let f = narrow((1.5, 4.0), (2.5, 1.0), 0.01, down).unwrap();
+        assert!(!f.up);
+        assert!(f.x >= 2.0 + clear && f.x - 2.0 - clear <= WIDTH, "{f:?}");
     }
 
     #[test]
@@ -321,21 +346,28 @@ mod tests {
 
     #[test]
     fn req_op_04_samples_of_one_face_make_one_turn() {
-        let turn = |x: f64, top: f64| Turn { x, top };
-        let turns = vec![
-            turn(3.0, 1.0),
-            turn(1.0, 2.0),
-            turn(1.000_001, 5.0),
-            turn(1.000_002, 3.0),
-            turn(3.000_000_5, 4.0),
+        let at = |x: f64, top: f64, k: usize| (Found { x, top, up: true }, k);
+        let found = vec![
+            at(3.0, 1.0, 0),
+            at(1.0, 2.0, 1),
+            at(1.000_001, 5.0, 2),
+            at(1.000_002, 3.0, 2),
+            at(3.000_000_5, 4.0, 3),
         ];
+        let low = cluster(found.clone(), 0.01, f64::min, 4);
+        assert_eq!(low.iter().map(|t| t.x).collect::<Vec<_>>(), vec![1.0, 3.0]);
+        let high = cluster(found, 0.01, f64::max, 4);
         assert_eq!(
-            cluster(turns.clone(), 0.01, f64::min),
-            vec![turn(1.0, 5.0), turn(3.0, 4.0)]
+            high.iter().map(|t| t.x).collect::<Vec<_>>(),
+            vec![1.000_002, 3.000_000_5]
         );
-        assert_eq!(
-            cluster(turns, 0.01, f64::max),
-            vec![turn(1.000_002, 5.0), turn(3.000_000_5, 4.0)]
-        );
+        // The first face is on lines 1 and 2 (A 90 and 180), the highest top
+        // on each; the second on lines 0 and 3.
+        let face = &low[0];
+        assert_eq!(face.top_at(90.0), Some(5.0));
+        assert_eq!(face.top_at(45.0), Some(2.0));
+        assert_eq!(face.top_at(200.0), Some(5.0));
+        assert_eq!(face.top_at(300.0), None);
+        assert_eq!(low[1].top_at(300.0), Some(4.0));
     }
 }

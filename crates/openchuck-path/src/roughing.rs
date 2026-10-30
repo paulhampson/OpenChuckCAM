@@ -1081,9 +1081,10 @@ impl<'a> Job<'a> {
             });
             // The stock field is too coarse to hold the thin step a helix
             // leaves on a face across the axis, so at a face's turn the tool
-            // also cuts wherever the layer is below the top of the face.
+            // also cuts where the face is, wherever the layer is below its
+            // top there.
             let at_face = |i: usize| {
-                let Some(face) = place((i * SUB) as f64).1 else {
+                let (site, Some(face)) = place((i * SUB) as f64) else {
                     return false;
                 };
                 let tip = floors
@@ -1091,7 +1092,8 @@ impl<'a> Job<'a> {
                     .copied()
                     .flatten()
                     .map_or(*level, |v| v.max(*level));
-                tip < face.top - self.min_cut
+                face.top_at(site.a)
+                    .is_some_and(|top| tip < top - self.min_cut)
             };
             let active: Vec<bool> = excess
                 .iter()
