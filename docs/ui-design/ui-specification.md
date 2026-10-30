@@ -569,7 +569,7 @@ Board 5. Opened from "Post and export…" on Simulate, from File > Post and expo
 **Right column:**
 
 - the files to write, each with the name it is written as (decision 0028 item 1, decision 0267), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189), which says the sheet lists each program file with its SHA-256; the names shown include any number added to tell clashing names apart, with the warning; while a template cannot name the files each shows a dash and the problem is shown;
-- a preview of the first lines.
+- **Preview** (decision 0327, issue 312): the program as it would be written, read-only. A "File" box picks the file when the output is split; under it the name, line count, size and SHA-256 with a Copy button; a Go to line box (Ctrl or Cmd G) and a Find box (Enter next, Shift Enter previous, wrapping); then 16 monospaced rows with a line-number gutter and a scroll bar. The wheel scrolls the preview while the pointer is over it; Up, Down, Page Up, Page Down, Home, End, Left and Right work with the keyboard on it. The bytes are those "Write G-code" writes; it leaves with the files when an edit makes them out of date. It does not say the program is checked or safe (NFR-12).
 
 The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
 
