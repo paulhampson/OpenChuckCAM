@@ -1,6 +1,6 @@
 # 0302: First-run rough edges (lane FIRSTRUN)
 
-- **Status:** proposed. Items 1 to 4 were decided by the project owner (decisions 1, 2 and 3 of the lane's questions, relayed by the coordinator session); the record is not accepted until the owner accepts it.
+- **Status:** accepted (30 Oct 2026) by the project owner, relayed by the coordinator session (decision 0049); the owner's answers on items 1 to 4 were relayed the same way.
 - **Date:** 30 Oct 2026.
 - **Lane/issue:** FIRSTRUN. It refers to the five findings lane DOCSUSER made while capturing the tutorial's screenshots; no GitHub issues exist for them.
 - **Requirements:** UI-11, UI-12, SET-09, OP-21, UI-25, OP-03, TL-05, PRJ-08, GC-07, NFR-12.
