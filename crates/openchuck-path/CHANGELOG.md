@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0
+
+- **Breaking family release (0.28.0, Z1AXIS, decision 0317):** `openchuck_types::machine::MachineProfile` gains the spindle-height fields and `ProfileField` three variants. No change in this crate; all family crates advance together under 0048. Project schema 22 and machine profile schema 7 in `openchuck-project`.
+
 ## 0.27.0
 
 - **Breaking (0.27.0, BUG-SWARF4, decision 0272; issue #296):** swarf's gate samples the motion and the face finely enough that its own error is at most `swarf::GATE_RESOLUTION` (0.0005 mm) whatever the tolerance, so the overcut it reports is the written path's (it under-reported by up to 27 times on the blisk, with a false all-clear). `FacePath::overcut_warning` takes a `Clearing`: the tolerance it advises is checked by making the face again at it (`clearing_tolerance`, up to `CLEARING_TRIES` times). The path, the pose spacing and the G-code are unchanged; generation takes about 3.5 times as long on the blisk's blades.
