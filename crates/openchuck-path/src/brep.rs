@@ -55,7 +55,7 @@
 mod bound;
 mod drop;
 mod hull;
-pub mod outline;
+mod outline;
 #[cfg(test)]
 mod tests;
 mod trim;
@@ -2348,10 +2348,13 @@ impl BrepSurface {
     /// an exact drop ([`has_exact_drop`]): a ball by
     /// [`drop_ball`](Self::drop_ball), any other outline of the family by the
     /// outline drop (lane STEPALL-X3, decision 0338), within
-    /// [`DROP_TOLERANCE`] of the highest contact, or, when a search ran out
-    /// of its budget, at the bound it stopped at, which is never below the
-    /// contact. `None` for a tool without an exact drop, or when a face has
-    /// none; the caller then drops onto the tessellation.
+    /// [`DROP_TOLERANCE`] of the highest contact along the line, and passing
+    /// over only parts that reach the tool within [`DROP_TOLERANCE`] of its
+    /// rim; or, when a search ran out of its budget, at the bound it stopped
+    /// at, which is never below the contact. `None` for a tool without an
+    /// exact drop, or when a face has none; the caller then drops onto the
+    /// tessellation. The outline drop is several times slower than a drop on
+    /// the tessellation, so no strategy uses it yet (OI-1351).
     pub fn drop_exact(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
         if ball_radius(profile).is_some() {
             return self.drop_ball(profile, line);
@@ -2360,24 +2363,11 @@ impl BrepSurface {
         self.drop_outline(&tool, line)
     }
 
-    /// Temporary experiment: the outline drop with a floor to start from.
-    pub fn drop_exact_floored(&self, profile: &RevolvedProfile, line: &ToolLine, floor: f64) -> Option<ExactDrop> {
-        let tool = outline::Outline::new(profile)?;
-        self.drop_outline_from(&tool, line, Some(floor))
-    }
-
     fn drop_outline(&self, tool: &outline::Outline, line: &ToolLine) -> Option<ExactDrop> {
-        self.drop_outline_from(tool, line, None)
-    }
-
-    fn drop_outline_from(&self, tool: &outline::Outline, line: &ToolLine, start: Option<f64>) -> Option<ExactDrop> {
         if !line.origin.is_finite() || !line.axis.get().is_finite() {
             return None;
         }
         let mut search = outline::Search::new(tool, line);
-        if let Some(f) = start {
-            search.best = Some(drop::Hit { s: f, point: line.at(f), face: u32::MAX, uv: crate::surface::Uv { u: 0.0, v: 0.0 } });
-        }
         let mut order: Vec<(f64, usize)> = self
             .faces
             .iter()
@@ -2390,30 +2380,11 @@ impl BrepSurface {
                 break;
             }
             if let Some(f) = self.faces.get(i) {
-                let before = search.looked;
                 f.drop_outline(&mut search);
-                if outline::TRACE.load(std::sync::atomic::Ordering::Relaxed) {
-                    let st: Vec<u64> = outline::STATS.iter().map(|c| c.swap(0, std::sync::atomic::Ordering::Relaxed)).collect();
-                    eprintln!(
-                        "TRACE face {} stats {st:?} top {top:.6} looked {} best {:?} unresolved {:.6}",
-                        f.number(),
-                        search.looked - before,
-                        search.best.map(|b| (b.s, b.face)),
-                        search.unresolved
-                    );
-                }
             }
             if search.unsupported {
                 return None;
             }
-        }
-        outline::STATS[6].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        outline::STATS[7].fetch_add(search.looked as u64, std::sync::atomic::Ordering::Relaxed);
-        if outline::STATS[6].load(std::sync::atomic::Ordering::Relaxed) % 97 == 0 && std::env::var("DUMP_LINES").is_ok() {
-            eprintln!("DUMPLINE {} {} {} {} {} {}", line.origin.x, line.origin.y, line.origin.z, line.axis.get().x, line.axis.get().y, line.axis.get().z);
-        }
-        if search.looked > 1500 {
-            eprintln!("BIG looked {} line {:?} {:?} best {:?}", search.looked, line.origin, line.axis.get(), search.best.map(|b| (b.s, b.face)));
         }
         let best = search.best?;
         let offset = best.s.max(search.unresolved);
@@ -2523,7 +2494,9 @@ pub struct ExactDrop {
 /// axis: the flat end, the tapered ball (also grown for stock to leave), and
 /// a V-bit or chamfer with a flat at the tip (decision 0338). A bull nose, a
 /// flat end grown for stock to leave, a sharp V-bit and a concave profile
-/// have none, and drop onto the tessellation.
+/// have none (OI-1350). [`SurfaceSource::drop_tool`] still drops only a ball
+/// on the exact faces: the outline drop is not adopted by any strategy yet
+/// (OI-1351).
 pub fn has_exact_drop(profile: &RevolvedProfile) -> bool {
     ball_radius(profile).is_some() || outline::Outline::new(profile).is_some()
 }
@@ -2742,11 +2715,13 @@ impl SurfaceSource for BrepSurface {
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
-        // A tool with an exact drop drops onto the exact faces when the host
-        // asked for it (decisions 0277 and 0338); any other tool, or a face
-        // without an exact drop, drops onto the tessellation (OI-81).
+        // A ball drops onto the exact faces when the host asked for it
+        // (decision 0277); any other tool, or a face without an exact drop,
+        // drops onto the tessellation (OI-81). The outline drop of decision
+        // 0338 is not adopted here: it is asked for by `drop_exact` only
+        // (OI-1351).
         if self.exact_drops
-            && let Some(d) = self.drop_exact(profile, line)
+            && let Some(d) = self.drop_ball(profile, line)
         {
             return Some(d.contact);
         }

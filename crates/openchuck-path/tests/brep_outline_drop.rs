@@ -769,7 +769,7 @@ fn req_nfr_06_exact_outline_drop_is_the_same_on_every_thread_and_run() {
 }
 
 #[test]
-fn req_nfr_07_outlines_without_an_exact_drop_fall_back_to_the_tessellation() {
+fn req_nfr_07_outlines_without_an_exact_drop_and_surface_drops_stay_on_the_tessellation() {
     let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
     let surface = BrepSurface::new(&model).unwrap().with_exact_drops(true);
     let mesh_only = BrepSurface::new(&model).unwrap();
@@ -819,14 +819,24 @@ fn req_nfr_07_outlines_without_an_exact_drop_fall_back_to_the_tessellation() {
     };
     for tool in tools() {
         assert!(surface.drop_exact(&tool.profile, &bad).is_none());
+        // The outline drop is not adopted (OI-1351): a surface asked for
+        // exact drops still drops these tools on the tessellation.
+        assert_eq!(
+            surface.drop_tool(&tool.profile, &line),
+            mesh_only.drop_tool(&tool.profile, &line),
+            "{}",
+            tool.name
+        );
     }
 }
 
 #[test]
 fn req_op_02_req_op_23_exact_outline_contacts_are_judged_on_exact_face_sets() {
     // OI-833 for the outline (decisions 0277 and 0338): flat-end and
-    // tapered-ball contacts lie on the exact faces, off the triangles, and
-    // the region, avoid and check sets judge them as exact faces.
+    // tapered-ball exact contacts lie on the exact faces, off the triangles,
+    // and the region and avoid sets judge them as exact faces, ready for a
+    // strategy that adopts them (OI-1351). A check set drops the tool on
+    // itself (`drop_tool`), which is the outline drop only once adopted.
     use openchuck_path::RegionConstraint;
     let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);
     let part = BrepSurface::new(&model).unwrap().with_exact_drops(true);
@@ -835,7 +845,7 @@ fn req_op_02_req_op_23_exact_outline_contacts_are_judged_on_exact_face_sets() {
             .unwrap()
             .with_exact_drops(true)
     };
-    let (first, middle, last) = (band(0), band(1), band(2));
+    let (first, middle) = (band(0), band(1));
     for tool in [flat(1.0), tapered(0.25, 5.0, 1.5875)] {
         let region = RegionConstraint {
             region: Some(&middle),
@@ -845,14 +855,10 @@ fn req_op_02_req_op_23_exact_outline_contacts_are_judged_on_exact_face_sets() {
             avoid: Some(&first),
             ..RegionConstraint::default()
         };
-        let check = RegionConstraint {
-            check: Some(&last),
-            ..RegionConstraint::default()
-        };
         for a in (0..36).map(|k| 10.0 * f64::from(k) + 1.3) {
             for (x, in_middle) in [(5.0, false), (15.0, true), (25.0, false)] {
                 let line = radial(x, a);
-                let c = part.drop_tool(&tool.profile, &line).unwrap();
+                let c = part.drop_exact(&tool.profile, &line).unwrap().contact;
                 // The contact is exact: on the cylinder of radius 10.
                 assert!(
                     (c.contact.y.hypot(c.contact.z) - 10.0).abs() < 1e-6,
@@ -862,7 +868,6 @@ fn req_op_02_req_op_23_exact_outline_contacts_are_judged_on_exact_face_sets() {
                 let p = &tool.profile;
                 assert_eq!(region.allows(c.contact, c.tip, p, &line), in_middle);
                 assert_eq!(avoid.allows(c.contact, c.tip, p, &line), x > 10.0);
-                assert_eq!(check.allows(c.contact, c.tip, p, &line), x < 20.0);
             }
         }
     }
