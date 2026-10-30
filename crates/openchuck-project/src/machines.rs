@@ -39,7 +39,10 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   `max_spindle_rpm` (decision record 0231).
 /// - 5: optional minimum block time, window and mode (decision record 0222).
 /// - 6: Slow down integration; schema 5 Report settings retain their meaning.
-pub const MACHINE_SCHEMA: i64 = 6;
+/// - 7: optional `automatic_tool_length`, `spindle_to_axis` and
+///   `recommended_min_safe_z` for the spindle-height check (decision record
+///   0317).
+pub const MACHINE_SCHEMA: i64 = 7;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
 const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
@@ -48,7 +51,39 @@ const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
     machine_3_to_4,
     machine_4_to_5,
     machine_5_to_6,
+    machine_6_to_7,
 ];
+
+/// Schema 7 adds the optional spindle-height fields, which a schema 6 file
+/// does not have, so it needs no change but its number.
+fn machine_6_to_7(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_spindle_height(table, 6, 7)
+}
+
+/// Refuses a machine file of schema `schema` that already holds a
+/// spindle-height field, which schema `introduced` added (decision record
+/// 0317).
+pub(crate) fn premature_spindle_height(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    let machine = table.get("machine").and_then(toml::Value::as_table);
+    match [
+        "automatic_tool_length",
+        "spindle_to_axis",
+        "recommended_min_safe_z",
+    ]
+    .into_iter()
+    .find(|f| machine.is_some_and(|m| m.contains_key(*f)))
+    {
+        Some(field) => Err(format!(
+            "this schema {schema} file has `{field}`, a field schema {introduced} introduced; \
+             remove it, or set `schema = {introduced}` if the file was written for it"
+        )),
+        None => Ok(()),
+    }
+}
 
 /// Existing Off/Report settings keep their meaning. Slow down did not exist in schema 5.
 fn machine_5_to_6(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
@@ -395,6 +430,21 @@ mod tests {
     use super::*;
     use openchuck_types::machine::{ASense, ProfileField, RotaryAxis};
 
+    /// `profile` without the spindle-height fields schema 7 added, as an
+    /// older file holds it (decision record 0317).
+    fn before_spindle_height(profile: &mut MachineProfile) {
+        profile.automatic_tool_length = false;
+        profile.spindle_to_axis = None;
+        profile.recommended_min_safe_z = None;
+        for field in [
+            ProfileField::ToolLengthMeasurement,
+            ProfileField::SpindleToAxis,
+            ProfileField::RecommendedMinSafeZ,
+        ] {
+            profile.provenance.remove(&field);
+        }
+    }
+
     #[test]
     fn req_set_01_builtin_z1_reads_and_marks_every_value() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
@@ -417,6 +467,8 @@ mod tests {
                 ProfileField::Clearance,
                 ProfileField::BlockWindow,
                 ProfileField::SpindleRange,
+                ProfileField::SpindleToAxis,
+                ProfileField::RecommendedMinSafeZ,
             ]
         );
         for field in [
@@ -425,6 +477,7 @@ mod tests {
             ProfileField::RotaryOrigin,
             ProfileField::ARange,
             ProfileField::MaxFeeds,
+            ProfileField::ToolLengthMeasurement,
         ] {
             assert!(z1.is_confirmed(field), "{field}");
         }
@@ -460,6 +513,32 @@ mod tests {
         assert!((safe - -8.6).abs() < 1e-9, "{safe}");
         assert!(safe <= z1.travel.max.z && safe >= z1.travel.min.z);
         assert!(!z1.is_confirmed(ProfileField::Clearance));
+    }
+
+    /// The Z1 measures each tool's length; the distance from the spindle at
+    /// home down to the axis is not known yet, so the spindle-height check
+    /// stays off; the owner recommends a safe Z of at least 30 mm, to be
+    /// checked (decision 0317, OI-1290, OI-1291, issue #395).
+    #[test]
+    fn req_set_01_req_ui_13_the_z1_measures_tool_lengths_and_its_spindle_to_axis_distance_is_needed()
+     {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert!(z1.automatic_tool_length);
+        assert!(z1.is_confirmed(ProfileField::ToolLengthMeasurement));
+        assert_eq!(z1.spindle_to_axis, None);
+        let needed = &z1.provenance[&ProfileField::SpindleToAxis].source;
+        for fact in ["#395", "OI-1291", "probe"] {
+            assert!(needed.contains(fact), "{fact}: {needed}");
+        }
+        assert_eq!(z1.recommended_min_safe_z.map(|m| m.0), Some(30.0));
+        assert!(!z1.is_confirmed(ProfileField::RecommendedMinSafeZ));
+        let advice = &z1.provenance[&ProfileField::RecommendedMinSafeZ].source;
+        assert!(
+            advice.contains(
+                "The recommended minimum is 30 mm. This must be checked before machining."
+            ),
+            "{advice}"
+        );
     }
 
     /// A project copy of the Z1 that still has the old placeholder axis
@@ -509,7 +588,13 @@ mod tests {
         );
         let mut table: toml::Table = old.parse().unwrap();
         let machine = table.get_mut("machine").unwrap().as_table_mut().unwrap();
-        for key in ["min_block_ms", "block_window", "short_block_mode"] {
+        for key in [
+            "min_block_ms",
+            "block_window",
+            "short_block_mode",
+            "automatic_tool_length",
+            "recommended_min_safe_z",
+        ] {
             machine.remove(key);
         }
         let old = toml::to_string(&table).unwrap();
@@ -601,6 +686,7 @@ mod tests {
         ] {
             z1.provenance.remove(&field);
         }
+        before_spindle_height(&mut z1);
         let text = render_profile(&z1).unwrap();
         let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 3");
         let err = parse_profile(Path::new("z1.toml"), &old)
@@ -639,6 +725,7 @@ mod tests {
         ] {
             profile.provenance.remove(&field);
         }
+        before_spindle_height(&mut profile);
         let z1 = render_profile(&profile).unwrap();
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")

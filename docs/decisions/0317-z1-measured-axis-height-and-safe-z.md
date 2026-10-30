@@ -5,7 +5,9 @@
   - **[Decision 0013](0013-z1-profile-consensus.md) item 2** (accepted): "The machine Z of the axis is unknown (OI-60)". It is now the owner's measurement, −48.6 mm, confirmed (items 1 and 3). Item 1's default clearance is replaced (item 2).
   - **[Decision 0020](0020-slice-6-post-and-round-trip.md) item 11** (accepted): the Z1 profile's axis at machine Z −55 with the safe Z 50 mm above it. Both are replaced (items 1 and 2).
 
-  SET-01, SET-06, UI-13 and NFR-12 are unchanged. The post, the path generation and the project and machine file formats are unchanged: no schema number is taken and no public API changes.
+  SET-01, SET-06, UI-13 and NFR-12 are unchanged. The post and the path generation are unchanged. The machine profile gains three optional fields (item 7):
+  - project schema 22 (21 is lane MODELCOPY's) and machine profile schema 7, both assigned by the coordinator;
+  - a breaking public change in `openchuck-types`, so the library family moves to 0.28.0 (decision 0048).
 - **Date:** 30 Oct 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): narrows OI-60 to the X datum of the rotary reference point; updates OI-917 and OI-471; opens OI-1290 (the spindle-height warning for a tool longer than the probe, shipped off) and OI-1291 (the spindle-to-axis distance it needs, issue [#395](https://github.com/paulhampson/OpenChuckCAM/issues/395)).
 
@@ -70,12 +72,21 @@ So −48.6 is the machine Z of the axis **for the probe as the reference tool**.
    - Whether D, the capability and the 30 mm become profile fields (a library API and schema change) or constants is the owner's choice still to come (D8).
 
    Until then the built-in profile's comments say the value is needed.
+7. **The profile fields (owner, D8, option A).** The profile states the three values as real fields, each with provenance. They are shown and editable in the machine inspector (UI-13) and printed by the command line's `machine`.
+   - `automatic_tool_length` (bool). The built-in Z1 has it, confirmed.
+   - `spindle_to_axis` (mm, optional). The built-in Z1 does not give it yet; its provenance says it is needed (OI-1291, issue #395).
+   - `recommended_min_safe_z` (mm, optional). The built-in Z1 gives 30, unconfirmed, with the owner's text.
+
+   An older copy reads with none of them, and nothing reads them to warn yet (item 6):
+   - project schema 22 and machine schema 7 refuse an older file that already holds one;
+   - schema 21 is a no-op placeholder for lane MODELCOPY's migration.
 
 ## Consequences
 
 - `crates/openchuck-project/machines/makera-z1.toml`: the axis height, the clearance and their provenance.
 - `openchuck-project` `machines.rs`: `has_old_z1_axis_height`.
-- `openchuck-app`: the overview's setup check and message; the machine view's measuring text.
+- `openchuck-app`: the overview's setup check and message; the machine view's measuring text and the three new rows; the profile comparison names them.
+- `openchuck-types`: the three fields and `ProfileField` variants (0.28.0). `openchuck-project`: `SCHEMA` 22, `MACHINE_SCHEMA` 7, the built-in Z1's values. `openchuck-ui`: the machine panel's "Spindle height" section. `openchuck-cli`: the `machine` printout.
 - The Z1 documents (air-cut procedure, safe practice checklist, gate 4 and 5 instructions, reference jobs) quote −48.6, the safe Z 40 and the reference tool.
 - **Gate evidence.** The programs run at gates 4 and 5 (build dc610e26) no longer equal the committed golden files. The new programs have not been air-cut.
 - **Block-rate program.** The pinned block-rate program of decision 0232 (69d532f) is unchanged and still moves at work Z50 and Z55. With the probe as the reference, that is machine Z +1.4 and +6.4 plus the fitted tool's offset; the gate 4 run of it raised no alarm. It is not regenerated here, and a later trial should check it (OI-1290).
@@ -93,4 +104,11 @@ Each new test was written before the code it tests and failed first, except wher
   - `req_ui_13_each_value_says_whether_it_is_confirmed_its_source_and_how_to_confirm` is updated.
   - `req_ui_13_an_unconfirmed_axis_height_says_how_to_measure_it` is new.
 - `openchuck-app/tests/overview.rs` `req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not`. It was written before the overview change but first run after it.
+- `openchuck-types/tests/data.rs`: `req_set_01_req_ui_13_a_profile_can_state_tool_length_measurement_and_the_spindle_to_axis_distance` and `req_nfr_07_bad_spindle_height_values_are_refused`.
+- `openchuck-project`:
+  - `machines.rs` `req_set_01_req_ui_13_the_z1_measures_tool_lengths_and_its_spindle_to_axis_distance_is_needed`;
+  - `tests/setup.rs` `req_set_01_req_prj_04_the_spindle_height_fields_need_project_schema_22`;
+  - `tests/z1_block_time.rs` `req_set_01_req_prj_04_the_spindle_height_fields_need_machine_schema_7`.
+- `openchuck-ui` `machine_panel.rs` `req_set_01_req_ui_13_spindle_height_controls_validate_and_keep_other_values`.
+- `openchuck-cli/tests/cli.rs`: the `machine` printout and its counts.
 - The golden suites (reference jobs, first cut, blisk, the golden audit, the command-line end-to-end tests) compare against the blessed files at 1, 2 and N threads (GC-07, NFR-06).

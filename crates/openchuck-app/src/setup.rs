@@ -229,6 +229,9 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::MinBlockMs => "minimum block time",
         ProfileField::BlockWindow => "block window",
         ProfileField::ShortBlockMode => "short-block mode",
+        ProfileField::ToolLengthMeasurement => "tool length measurement",
+        ProfileField::SpindleToAxis => "spindle-to-axis distance",
+        ProfileField::RecommendedMinSafeZ => "recommended minimum safe Z",
     }
 }
 
@@ -251,6 +254,9 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         min_block_ms,
         block_window,
         short_block_mode,
+        automatic_tool_length,
+        spindle_to_axis,
+        recommended_min_safe_z,
         provenance,
     } = a;
     let checks = [
@@ -273,6 +279,18 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         ),
         ("block window", *block_window == b.block_window),
         ("short-block mode", *short_block_mode == b.short_block_mode),
+        (
+            "tool length measurement",
+            *automatic_tool_length == b.automatic_tool_length,
+        ),
+        (
+            "spindle-to-axis distance",
+            *spindle_to_axis == b.spindle_to_axis,
+        ),
+        (
+            "recommended minimum safe Z",
+            *recommended_min_safe_z == b.recommended_min_safe_z,
+        ),
         ("which values are confirmed", *provenance == b.provenance),
     ];
     checks

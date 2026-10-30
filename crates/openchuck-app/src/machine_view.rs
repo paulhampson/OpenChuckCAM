@@ -62,6 +62,15 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
         ProfileField::ShortBlockMode => {
             "Choose Report to inspect demand or Slow down to preserve geometry at a lower feed."
         }
+        ProfileField::ToolLengthMeasurement => {
+            "Check in the controller's documents whether it measures each tool on a tool setter and offsets it."
+        }
+        ProfileField::SpindleToAxis => {
+            "With the spindle at home, measure from the collet nose down to the chuck centre; or add the probe's stick-out to the axis height measured with the probe."
+        }
+        ProfileField::RecommendedMinSafeZ => {
+            "Check that the safe Z clears the chuck, the jaws and the part on your machine."
+        }
         ProfileField::SpindleRange => {
             "Check the spindle's lowest and highest speed in the machine's documents or controller settings."
         }
@@ -210,6 +219,40 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
             value.field == ProfileField::ShortBlockMode || hardware_fields.contains(&value.field)
         }),
     );
+    // The spindle-height check's values (decision record 0317), shown when
+    // the profile gives them.
+    let millimetres = |v: Option<crate::setup::Millimetres>| {
+        v.map_or_else(|| "Not known".to_owned(), |v| format!("{:.3} mm", v.0))
+    };
+    values.extend(
+        [
+            value(
+                ProfileField::ToolLengthMeasurement,
+                "Tool length measurement",
+                if profile.automatic_tool_length {
+                    "Automatic (tool setter)"
+                } else {
+                    "None"
+                }
+                .to_owned(),
+                false,
+            ),
+            value(
+                ProfileField::SpindleToAxis,
+                "Spindle to axis",
+                millimetres(profile.spindle_to_axis),
+                false,
+            ),
+            value(
+                ProfileField::RecommendedMinSafeZ,
+                "Recommended minimum safe Z",
+                millimetres(profile.recommended_min_safe_z),
+                false,
+            ),
+        ]
+        .into_iter()
+        .filter(|value| hardware_fields.contains(&value.field)),
+    );
     values
 }
 
@@ -237,8 +280,30 @@ mod tests {
                 "Spindle speed",
                 "Minimum block time",
                 "Block window",
-                "Short-block mode"
+                "Short-block mode",
+                "Tool length measurement",
+                "Spindle to axis",
+                "Recommended minimum safe Z"
             ]
+        );
+        // The Z1 measures tool lengths; the spindle-to-axis distance is not
+        // known yet, and the recommended minimum is the owner's (decision
+        // 0317, OI-1291).
+        let find = |label: &str| values.iter().find(|v| v.label == label).unwrap();
+        let measuring = find("Tool length measurement");
+        assert_eq!(measuring.value, "Automatic (tool setter)");
+        assert!(measuring.confirmed);
+        let distance = find("Spindle to axis");
+        assert_eq!(distance.value, "Not known");
+        assert!(!distance.confirmed);
+        assert!(distance.tooltip.contains("#395"), "{}", distance.tooltip);
+        let minimum = find("Recommended minimum safe Z");
+        assert_eq!(minimum.value, "30.000 mm");
+        assert!(!minimum.confirmed);
+        assert!(
+            minimum.tooltip.contains("must be checked before machining"),
+            "{}",
+            minimum.tooltip
         );
         let spindle = values.iter().find(|v| v.label == "Spindle speed").unwrap();
         assert_eq!(spindle.value, "Up to 13000 rpm");

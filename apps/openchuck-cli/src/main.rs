@@ -1669,6 +1669,17 @@ fn print_machine(profile: &MachineProfile) {
         (Some(min), None) => println!("spindle:    from {} rpm", min.0),
         (None, None) => {}
     }
+    if p.automatic_tool_length {
+        let distance = p
+            .spindle_to_axis
+            .map_or_else(|| "not known".to_owned(), |d| format!("{} mm", d.0));
+        let minimum = p.recommended_min_safe_z.map_or_else(String::new, |m| {
+            format!("; recommended minimum safe Z {} mm", m.0)
+        });
+        println!(
+            "spindle height: tool lengths measured automatically; spindle to axis {distance}{minimum}"
+        );
+    }
     println!(
         "short blocks: {} ms averaged over {} {}; {}",
         p.min_block_ms,

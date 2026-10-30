@@ -106,7 +106,10 @@ use openchuck_types::workholding::Workholding;
 /// - 19: optional minimum block time, window and mode in machine copies
 ///   (decision record 0222); absent fields retain Off.
 /// - 20: Slow down integration; schema 19 Report settings retain their meaning.
-pub const SCHEMA: i64 = 20;
+/// - 21: claimed by lane MODELCOPY (issue #385); no change in this build.
+/// - 22: the machine copy gains the optional `automatic_tool_length`,
+///   `spindle_to_axis` and `recommended_min_safe_z` (decision record 0317).
+pub const SCHEMA: i64 = 22;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -140,7 +143,25 @@ const MIGRATIONS: &[Migration] = &[
     schema_17_to_18,
     schema_18_to_19,
     schema_19_to_20,
+    schema_20_to_21,
+    schema_21_to_22,
 ];
+
+/// Schema 21 is lane MODELCOPY's (issue #385); its migration replaces this
+/// placeholder when either lane merges after the other.
+fn schema_20_to_21(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 22 adds the optional spindle-height fields to the machine copy,
+/// which an older file does not have; one that already holds one is refused
+/// (decision record 0317).
+fn schema_21_to_22(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::premature_spindle_height(table, 21, 22)?;
+    }
+    Ok(())
+}
 
 /// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
 fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
