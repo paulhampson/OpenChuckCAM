@@ -364,7 +364,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - machine warnings in amber, linking to Setup;
   - a separator;
   - the step's actions, with the primary right-most (section 5; Simulate keeps its two actions in fixed places).
-- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited". Amber is kept for warnings.
+- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited, not saved", with the tooltip "Changes are kept in memory only. File > Save (Ctrl S) writes them to the project." Nothing saves the project by itself (FIRSTRUN item 4; owner's answer relayed by the coordinator). Amber is kept for warnings.
 
 ## 11. The steps in detail
 

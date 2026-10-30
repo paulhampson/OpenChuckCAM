@@ -582,13 +582,15 @@ impl Shell {
             if self.app.is_some() {
                 // A neutral dot and "Edited", or "· saved"; amber is kept
                 // for warnings (specification section 10).
+                let (text, tip) = crate::window_title::save_state(modified);
                 if modified {
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
                     ui.painter().circle_filled(rect.center(), 3.5, DARK.muted);
-                    ui.label(RichText::new("Edited").color(DARK.muted));
-                } else {
-                    ui.label(RichText::new("· saved").color(DARK.muted));
+                }
+                let label = ui.label(RichText::new(text).color(DARK.muted));
+                if let Some(tip) = tip {
+                    label.on_hover_text(tip);
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
