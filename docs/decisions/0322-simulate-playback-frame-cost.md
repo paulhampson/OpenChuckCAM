@@ -36,7 +36,7 @@ A frame with nothing to replay took 3.5 s. The last frame of the run replayed fr
 2. **The stock of the last request is kept as a checkpoint** (`StockPlayback`; `Simulator::stock_at_from` in `openchuck-sim`). After each request the stock after its whole moves (before the swept part of the current move) is kept, one copy for the whole playback. The next request replays from it when it is nearer than every checkpoint before the point asked for; otherwise it is ignored. Replaying from any checkpoint gives the same stock as running up to the point (decision 0025 item 4), so forward play replays only the moves since the last frame and shows the same stock. The copy is counted: the checkpoint limit already counts one copy more than a setup keeps (`groups + 2 + moves / every`), and the kept stock is one copy of one setup's stock.
 3. **The end of an operation is its checkpoint.** A request for the stock after the last move of a group uses the checkpoint after the group, and a request that lands on a checkpoint (or on the kept stock) is a copy of it, with nothing replayed.
 4. **Checkpoints are held packed** (`DexelStock::pack`, `PackedStock` in `openchuck-sim`). A working stock keeps one allocation per column (about 95,000 on the test piece), and with hundreds of checkpoints (item 5) those allocations made the memory used about twice the bytes counted: preparing playback peaked at 3.4 GB for a budget of 1.5 GB. A checkpoint is now held as two flat arrays (the span ends per column and the spans), unpacked into a working stock when a replay starts from it. Unpacking gives the same stock bit for bit, with the same state hash (decision 0025 item 4), and the bytes counted are the bytes held.
-5. **Checkpoints are spaced by a memory budget the user sets (the owner's decision D1).** "Memory for playback checkpoints (MB)" in Settings, an application preference kept in the user's settings (`SimulateSettings::playback_memory_mb`), never in the project (no schema change): 1,536 MB by default (the old limit), 256 to 8,192 MB in steps of 256; a value out of range or between steps is brought to the nearest step, and a settings file written before it existed reads the default. "Prepare playback" counts the copies that must be held: the start and after each operation in every setup, and two for the replay (the stock kept from the last request and the one being replayed). If they do not fit, it is refused with a message naming the setting and the simulation cell, as before (NFR-07). The rest is shared by checkpoints inside the operations, spaced evenly over all the moves to fill it (`checkpoint_spacing`) and never closer than 1,000 moves. The simulator counts each copy at its packed size (item 4), which changes as the part is cut, and does not keep one that would pass the budget (`Simulator::with_checkpoint_budget`): fewer checkpoints, the same stock. A change applies the next time the cut part is prepared. On the owner's project (CARVEPERF's numbers: 290,548 moves, a copy of 7 MB) the default gives about 225 copies, about 1,300 moves apart, instead of 10; a jump then replays at most about 0.7 s there.
+5. **Checkpoints are spaced by a memory budget the user sets (the owner's decision D1).** "Memory for playback checkpoints (MB)" in Settings, an application preference kept in the user's settings (`SimulateSettings::playback_memory_mb`), never in the project (no schema change): 1,536 MB by default (the old limit), 256 to 8,192 MB in steps of 256; a value out of range or between steps is brought to the nearest step, and a settings file written before it existed reads the default. "Prepare playback" counts the copies that must be held: the start and after each operation in every setup, and two for the replay (the stock kept from the last request and the one being replayed). If they do not fit, it is refused with a message naming the setting and the simulation cell, as before (NFR-07). The rest is shared by checkpoints inside the operations, spaced evenly over all the moves to fill it (`checkpoint_spacing`) and never closer than 1,000 moves. The simulator counts each copy at its packed size (item 4), which changes as the part is cut, and does not keep one that would pass the budget (`Simulator::with_checkpoint_budget`): fewer checkpoints, the same stock. A change applies the next time the cut part is prepared. On the owner's project (CARVEPERF's numbers: 290,548 moves, a copy of 7 MB) the default gives about 225 copies, about 1,300 moves apart, instead of 10 (measured on the owner's project: 292, since a packed copy is smaller while less is cut); a jump then replays at most about 0.7 s there.
    The budget used is also capped at a quarter of the computer's physical memory (the owner's decision on OI-1315), read once at start (`apps/openchuck-ui/src/memory.rs`: Linux `/proc/meminfo`, macOS `sysctl -n hw.memsize`, Windows `GlobalMemoryStatusEx` through `windows-sys`, already a dependency, with its `Win32_System_SystemInformation` feature; no new dependency). The setting is kept as the user set it; when the cap is below it, Settings shows "This computer: at most N MB". On the owner's laptop and desktop (32 GB) the cap is 8,192 MB, so no value in the range is capped there. When the memory cannot be read, the setting applies alone.
 6. **Frames made while playback plays have no picker (the owner's decision D5, option B).** `Application::start_playing_stock_surface` makes the same mesh and colours as `start_stock_surface` without the picker (`StockSurface::can_pick` is false and `pick` finds nothing), and the playback panel asks for it while playing. When playback is still (paused, stopped at the end, stepped or jumped) and the frame shown has no picker, the frame at the cursor is made again with one, so the probe and pins work as before. While playing, nothing is read under the pointer and a kept value is not drawn.
 7. **Not done: the picker built beside the colours.** Running the picker and the colours at once (`rayon::join`) was tried and made frames slower (about 5 s instead of 2 s: each waited on work the other's thread held), so they run one after the other as before.
@@ -45,20 +45,39 @@ A frame with nothing to replay took 3.5 s. The last frame of the run replayed fr
 
 ## Results
 
-Two runs of each build; `main` against this branch:
+`main` against this branch with every item above, at 4 threads, release build, same container. Frame times are the surface job (replay, mesh, colours and, when still, the picker); the upload and drawing are not measured.
+
+Test piece (two runs of `main`, one of this branch):
 
 | | `main` | This branch |
 | --- | --- | --- |
-| Frame with nothing to replay | 3.5 to 3.6 s | 1.6 to 2.0 s |
-| Forward play at 10x (after the first frame) | 2.9 to 8.2 s | 2.0 to 2.5 s |
-| Forward play at 100x | 2.6 to 8.7 s | 2.2 to 3.2 s |
-| Forward play at 1000x, at the end of the run | 8.0 to 8.5 s | 1.9 to 2.3 s |
-| "Whole program in 60 s" (about 300x; 50,000 to 80,000 moves a frame) | 2.9 to 8.8 s | 2.2 to 8.1 s |
-| Jumps along the run | 3.5 to 9.2 s | 1.6 to 7.8 s |
-| Last frame of the run | 7.9 to 9.2 s | 2.8 to 3.0 s |
-| Peak memory | 1.47 GB | 1.56 GB (run-to-run variation of the same order; the kept copy is 3.8 MB) |
+| Generate and simulate (not changed by this lane) | 71 to 75 s | 76 s |
+| Prepare playback | 52 to 56 s, 10 checkpoints | 72.8 s, 541 checkpoints holding 1,162 MB |
+| Jumps along the run (7 points) | 3.5 to 9.2 s | 2.7 to 3.9 s |
+| Forward play at 10x, per frame | 2.9 to 8.2 s | 0.85 to 1.39 s |
+| at 100x | 2.6 to 8.7 s | 0.93 to 1.19 s |
+| at 1000x | 8.0 to 8.5 s | 0.92 to 1.17 s |
+| "Whole program in 60 s" (299x) | 2.9 to 8.8 s | 0.85 to 1.10 s |
+| Peak memory of the whole run | 1.47 GB | 2.61 GB |
 
-The first frame of forward play and a jump still replay from the fixed checkpoints (D1). At the highest speeds a frame replays as many moves as the clock passed during the last one, about 13,000 moves a second here and, from CARVEPERF's numbers, several times slower on the owner's project (D3).
+The owner's project (one run of each; kept outside the repository, counts and times only): 290,548 moves in 2 operations, 24,632 s of machining, a stock copy of about 7 MB, cut-part meshes of 0.72 to 1.37 million triangles.
+
+| | `main` | This branch |
+| --- | --- | --- |
+| Generate and simulate (not changed by this lane) | 657 s | 581 s |
+| Prepare playback | 96.0 s, 10 checkpoints | 90.8 s, 292 checkpoints holding 1,174 MB |
+| Jumps along the run (7 points) | 1.6 to 16.4 s | 1.6 to 3.3 s |
+| Forward play at 10x, per frame | 7.6 to 9.1 s | 1.06 to 1.30 s |
+| at 100x | 5.8 to 17.5 s | 1.02 to 1.32 s |
+| at 1000x | 5.7 to 14.0 s | 1.22 to 1.82 s |
+| "Whole program in 60 s" (411x) | 5.2 to 13.4 s | 1.12 to 1.68 s |
+| Peak memory of the whole run | 2.35 GB | 3.37 GB |
+
+- At 1x a frame replays about a dozen moves and costs what a 10x frame does: the mesh and the colours.
+- At 1000x on `main` the cut part fell so far behind that the clock reached the end of the run before frames were made; on this branch every frame keeps up, at 11,000 to 22,000 moves a frame.
+- A jump is now mostly the picker (0.9 to 2.0 s), which a still frame needs (item 6).
+- The extra memory is the checkpoints held, within the 1,536 MB default (item 5). Before they were packed (item 4) the test piece peaked at 3.4 GB.
+- Preparing playback is slower on the test piece (52 to 56 s to 72.8 s): about 30 times as many checkpoints, each packed, with shorter batches between them. On the owner's project it is not (96.0 s to 90.8 s). The 1,000-move floor is kept. Removing the preparation altogether is D2.
 
 ## For the owner (not built)
 
@@ -66,7 +85,7 @@ The first frame of forward play and a jump still replay from the fixed checkpoin
 - **The budget on a computer with less memory (OI-1315, closed).** A budget above the computer's free memory makes the operating system page to disk or stop the program, which the program cannot turn into a clear error. The owner chose the lane's proposal: cap it at a quarter of the physical memory, with Settings saying so (item 5).
 - **D5, when the picker is built (OI-1311, closed).** Building it only on the first hover would put 1 to 2 s on the interface thread, over the 17 ms limit of decision 0040 item 8. Put to the owner with A (as now), B (no picker while playing, made as now when still) and C (always built in the background after the frame is shown). The owner chose B: item 6.
 - **D3, playback sync at high speed (OI-1312, closed).** Issue #333 holds the tool at the cut part shown, so at the speeds where a frame replays tens of thousands of moves the tool moved in jumps of several seconds. Put to the owner on 30 Oct 2026: A, keep #333 and check again on the owner's project (the lane's recommendation); B, let the tool follow the clock at those speeds with the newest cut part behind it and a note; C, limit the fastest speeds while the cut part is shown. The owner chose B at every speed while playing, an exact match when still, and a cut-part bar under the position bar: item 8.
-- **D2, checkpoints kept by the pipeline's own simulation (OI-174).** Would remove "prepare playback" (52 to 56 s here, 131 s on the owner's project) at the cost of the memory of the checkpoints for every simulated run (decision 0025 item 7, decision 0040's alternative "checkpoints in the pipeline's simulation").
+- **D2, checkpoints kept by the pipeline's own simulation (OI-174).** Would remove "prepare playback" (72.8 s on the test piece, 90.8 s on the owner's project with this branch) at the cost of the checkpoints' memory for every simulated run, needed or not (decision 0025 item 7, decision 0040's alternative "checkpoints in the pipeline's simulation"). Put to the owner on 30 Oct 2026: A, keep two simulations; B, the pipeline keeps the checkpoints under the same setting; C, keep A and decide it with D4, which changes the same code (the lane's recommendation).
 - **D4, the pipeline's simulation and comparison (OI-1313).** About 140 s of the 250 s on the owner's project; a separate measurement.
 - **The owner's project and laptop (OI-1314).** The numbers above are from a container without a graphics adapter; the frame's upload and drawing, and the times on the owner's laptop, are not measured.
 
