@@ -544,6 +544,7 @@ impl Shell {
             Some(p) if p.model() == id => p,
             _ => self.model_panel.insert(ModelPanel::new(id)),
         };
+        panel.copying = self.copy_job.is_some();
         let outcome = panel.show(ui, app, &reference, &mut self.settings);
         if outcome.settings_changed {
             self.settings_touched();
@@ -554,15 +555,8 @@ impl Shell {
         if outcome.show_report {
             self.open_model_report(id);
         }
-        let Some(app) = &mut self.app else { return };
         if outcome.copy_into_project {
-            let refused = app.copy_model_into_project(id).err().map(|e| e.to_string());
-            if refused.is_none() {
-                self.status = "Copied the model into the project folder".to_owned();
-            }
-            if let Some(panel) = &mut self.model_panel {
-                panel.copy_error = refused;
-            }
+            self.start_copying(&[id], Some(id));
         }
         let Some(app) = &mut self.app else { return };
         if let Some(prepared) = outcome.replaced

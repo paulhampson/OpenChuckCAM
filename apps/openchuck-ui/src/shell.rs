@@ -171,6 +171,13 @@ pub struct Shell {
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
+    /// Linked models being copied into the project folder, off the UI thread
+    /// (decision record 0307 item 5), and the model whose inspector asked,
+    /// or `None` for the question on opening.
+    copy_job: Option<(
+        JobHandle<Vec<openchuck_app::model::ModelCopy>>,
+        Option<ModelId>,
+    )>,
     setup: Option<SetupId>,
     status: String,
     quitting: bool,
@@ -291,6 +298,7 @@ impl Shell {
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
+            copy_job: None,
             setup: None,
             status: String::new(),
             quitting: false,
@@ -426,20 +434,54 @@ impl Shell {
         }
     }
 
-    /// Copies every linked model into the project folder (the opening
-    /// question's Copy), reporting any refused with what to do.
-    fn copy_linked_models(&mut self) {
+    /// Starts copying the linked models `ids` into the project folder as a
+    /// job: every linked model for the question on opening (`from` `None`),
+    /// or the one whose inspector asked.
+    fn start_copying(&mut self, ids: &[ModelId], from: Option<ModelId>) {
+        let Some(app) = &self.app else { return };
+        if self.copy_job.is_some() || ids.is_empty() {
+            return;
+        }
+        self.copy_job = Some((app.start_copying_models(ids), from));
+    }
+
+    /// Stores the copies once the job ends, and says what happened: in the
+    /// status bar, and for refusals in the inspector that asked or, for the
+    /// question on opening, an error message with what to do.
+    fn poll_copying(&mut self, ctx: &egui::Context) {
+        let Some((job, _)) = &self.copy_job else {
+            return;
+        };
+        let Some(result) = job.try_result() else {
+            ctx.request_repaint();
+            return;
+        };
+        let Some((_, from)) = self.copy_job.take() else {
+            return;
+        };
         let Some(app) = &mut self.app else { return };
-        let (copied, refused) = app.copy_linked_models();
+        let (copied, refused) = match result {
+            Ok(copies) => app.finish_copying_models(copies),
+            Err(e) => (Vec::new(), vec![e.to_string()]),
+        };
         self.status = match copied.len() {
             0 => String::new(),
             1 => "Copied 1 model into the project folder".to_owned(),
             n => format!("Copied {n} models into the project folder"),
         };
-        if !refused.is_empty() {
-            self.dialog = Some(Dialog::Error(refused.join("\n")));
+        match from {
+            Some(id) => {
+                if let Some(panel) = self.model_panel.as_mut().filter(|p| p.model() == id) {
+                    panel.copy_error = refused.into_iter().next();
+                }
+            }
+            None if !refused.is_empty() => {
+                self.dialog = Some(Dialog::Error(refused.join("\n")));
+            }
+            None => {}
         }
         self.overview_dirty = true;
+        self.rebuild_scene(false);
     }
 
     fn create(&mut self, folder: PathBuf, name: &str) {
@@ -1697,7 +1739,7 @@ impl Shell {
         }
         match session.poll_adding() {
             None => {}
-            Some(Ok(prepared)) => match app.add_prepared_model_as(prepared, session.storage()) {
+            Some(Ok(prepared)) => match app.add_prepared_model(prepared) {
                 Ok(_) => {
                     self.status = format!("Added {}", session.path.display());
                     self.import = None;
@@ -1839,7 +1881,14 @@ impl Shell {
                 ui.horizontal(|ui| {
                     if ui.button("Copy").clicked() {
                         close = true;
-                        action = Some(Box::new(|s: &mut Self| s.copy_linked_models()));
+                        action = Some(Box::new(|s: &mut Self| {
+                            let ids = s
+                                .app
+                                .as_ref()
+                                .map(Application::linked_models)
+                                .unwrap_or_default();
+                            s.start_copying(&ids, None);
+                        }));
                     }
                     if ui.button("Not now").clicked() {
                         close = true;
@@ -2321,6 +2370,7 @@ impl Shell {
         self.guard_close(&ctx);
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
+        self.poll_copying(&ctx);
         self.finish_pick(&ctx);
         self.overview_frame(&ctx);
         // Before anything is drawn, so a result is never drawn as current

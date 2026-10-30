@@ -101,6 +101,8 @@ pub struct ModelPanel {
     folder_error: Option<String>,
     /// Why "Copy model into project" was refused.
     pub(crate) copy_error: Option<String>,
+    /// A copy into the project folder is running (the shell's job).
+    pub(crate) copying: bool,
     /// A section to open and scroll to on the next frame, chosen by its row
     /// in the project tree (issue #181).
     focus: Option<&'static str>,
@@ -215,6 +217,7 @@ impl ModelPanel {
             report_open: false,
             folder_error: None,
             copy_error: None,
+            copying: false,
             focus: None,
             shown: Vec::new(),
         }
@@ -799,12 +802,18 @@ impl ModelPanel {
         });
         line.on_hover_text(reference.path.as_str());
         let mut copy = false;
-        if linked
+        if linked && self.copying {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new("Copying the file\u{2026}").color(DARK.muted));
+            });
+        } else if linked
             && ui
                 .button(COPY_MODEL_LABEL)
                 .on_hover_text(COPY_MODEL_TOOLTIP)
                 .clicked()
         {
+            self.copy_error = None;
             copy = true;
         }
         if let Some(e) = &self.copy_error {

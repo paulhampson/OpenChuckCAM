@@ -8,7 +8,6 @@
 //! it needs no engine crate of its own (architecture section 5.8).
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 
 use openchuck_geom::check::check_mesh;
 use openchuck_geom::transform::{
@@ -169,24 +168,6 @@ fn check_brep_tessellation(placed: &TriangleMesh) -> Result<MeshReport, AppError
 pub struct PreparedModel {
     pub(crate) reference: ModelRef,
     pub(crate) inspection: ModelInspection,
-    pub(crate) source: Source,
-}
-
-/// Where a prepared model file is, relative to the project folder.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Source {
-    /// Inside the project folder: used where it is.
-    Inside,
-    /// Outside it (decision record 0307 item 1): the bytes read and hashed,
-    /// written as they are when the model is copied in, the file's name and
-    /// extension, and the path that links it, if one can (`None` on another
-    /// drive).
-    Outside {
-        bytes: Arc<Vec<u8>>,
-        name: String,
-        extension: String,
-        link: Option<RelativePath>,
-    },
 }
 
 impl PreparedModel {
@@ -221,15 +202,73 @@ pub(crate) fn linked_note(model: &ModelRef) -> String {
 }
 
 /// The file name to record for a model added from `path`: the original
-/// name, with any control character (which a name may not hold) shown as
-/// `_` (decision record 0307 item 4).
+/// name, with any control character or folder separator (which a name may
+/// not hold; a Unix file name can contain `\`) shown as `_` (decision record
+/// 0307 item 4).
 pub(crate) fn original_name(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy())
         .unwrap_or_default()
         .chars()
-        .map(|c| if c.is_control() { '_' } else { c })
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\') {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect()
+}
+
+/// A linked model copied into the project folder by
+/// [`crate::Application::start_copying_models`]: the model as it was and as
+/// it is to be stored, or why it was refused.
+pub type ModelCopy = Result<(ModelRef, ModelRef), String>;
+
+/// Copies the file of the linked model `model` into the project folder
+/// `root` (decision record 0307 items 5 and 10) and returns the model as it
+/// was and with its new path and name. A model already in the folder, a
+/// missing file and a file that has changed since it was added are refused
+/// with what to do, and nothing is written.
+pub(crate) fn copy_model(root: &Path, model: &ModelRef) -> Result<(ModelRef, ModelRef), AppError> {
+    if !model.path.is_outside_project() {
+        return Err(AppError::ModelCopy(format!(
+            "'{}' is already in the project folder",
+            model.display_name()
+        )));
+    }
+    let file = model.path.resolve(root);
+    let bytes = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::ModelCopy(format!(
+                "'{}' is missing, so it cannot be copied. Use Replace file\u{2026} to choose it \
+                 again.",
+                model.path.as_str()
+            )));
+        }
+        Err(source) => return Err(AppError::Io { path: file, source }),
+    };
+    if ContentHash::of_bytes(&bytes) != model.hash {
+        return Err(AppError::ModelCopy(format!(
+            "'{}' has changed since it was added, so copying it would change the model. \
+             Check it first with Replace file\u{2026}, which also copies it.",
+            model.display_name()
+        )));
+    }
+    let extension = Path::new(model.path.file_name())
+        .extension()
+        .map(|e| e.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let path = copy_into_project(root, &bytes, &model.hash, &extension)?;
+    let name = model
+        .name
+        .clone()
+        .unwrap_or_else(|| model.path.file_name().to_owned());
+    let mut copied = model.clone();
+    copied.name = (path.file_name() != name).then_some(name);
+    copied.path = path;
+    Ok((model.clone(), copied))
 }
 
 /// Copies `bytes`, whose hash is `hash`, into the project folder `root` and

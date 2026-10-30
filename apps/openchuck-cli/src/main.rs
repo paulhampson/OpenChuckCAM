@@ -832,7 +832,10 @@ fn run(cli: Cli) -> Result<()> {
             let (id, mut inspection) = app.add_model_as(&file, units, storage)?;
             println!("{}: added model {id}", project.display());
             let model = app.find_model(&id.to_string())?;
-            if model.name.is_some() {
+            // Where it is stored decides what is said, not whether a name was
+            // recorded: a linked file reached through a link of another name
+            // has one too.
+            if !model.path.is_outside_project() && model.name.is_some() {
                 println!(
                     "{}: copied into the project folder as {}; the original file is not changed",
                     model.display_name(),

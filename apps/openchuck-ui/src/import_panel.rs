@@ -323,9 +323,11 @@ impl ImportSession {
     }
 
     /// Starts reading and checking the model for adding, as a background
-    /// job, so the window stays responsive on a large file.
+    /// job, so the window stays responsive on a large file; a file from
+    /// outside the project folder is copied into it by the same job when the
+    /// tick box asks for it (decision record 0307 item 1).
     pub fn start_adding(&mut self, app: &Application) {
-        match app.start_prepare_model(&self.path, self.units, &self.steps()) {
+        match app.start_prepare_model_as(&self.path, self.units, &self.steps(), self.storage()) {
             Ok(job) => self.adding = Some(job),
             Err(e) => self.error = Some(e.to_string()),
         }

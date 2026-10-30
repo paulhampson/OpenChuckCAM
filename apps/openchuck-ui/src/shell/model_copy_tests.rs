@@ -59,6 +59,17 @@ fn click(rig: &mut Rig, label: &str) {
     rig.frame(Vec::new());
 }
 
+/// Draws until the copy job has ended and its result is stored.
+fn copied(rig: &mut Rig) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while rig.shell.copy_job.is_some() {
+        rig.frame(Vec::new());
+        assert!(std::time::Instant::now() < deadline, "the copy timed out");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    rig.settle();
+}
+
 fn model(rig: &Rig, id: ModelId) -> ModelRef {
     rig.shell
         .app
@@ -80,6 +91,7 @@ fn req_prj_02_opening_a_project_with_a_linked_model_asks_to_copy_it() {
         "This project has 2 models outside its folder. Copy them into the project now?"
     );
     click(&mut rig, "Copy");
+    copied(&mut rig);
     assert_eq!(rig.shell.dialog, None);
     let copied = model(&rig, id);
     assert!(
@@ -106,7 +118,7 @@ fn req_prj_02_not_now_keeps_the_link_marked_with_a_way_to_copy_it() {
     rig.settle();
     assert!(rig.shows("cube.stl, linked from outside the project folder (../elsewhere/cube.stl)"));
     click(&mut rig, crate::model_panel::COPY_MODEL_LABEL);
-    rig.settle();
+    copied(&mut rig);
     let copied = model(&rig, id);
     assert!(
         !copied.path.is_outside_project(),
@@ -177,6 +189,7 @@ fn req_prj_02_req_nfr_07_a_changed_linked_file_is_refused_with_what_to_do() {
     )
     .unwrap();
     click(&mut rig, "Copy");
+    copied(&mut rig);
     let refusal =
         "'cube.stl' has changed since it was added, so copying it would change the model.";
     match &rig.shell.dialog {
@@ -188,7 +201,7 @@ fn req_prj_02_req_nfr_07_a_changed_linked_file_is_refused_with_what_to_do() {
     rig.shell.selected = Some(Selection::Model(id));
     rig.settle();
     click(&mut rig, crate::model_panel::COPY_MODEL_LABEL);
-    rig.frame(Vec::new());
+    copied(&mut rig);
     assert!(rig.shows(refusal));
     assert!(model(&rig, id).path.is_outside_project());
     let _ = std::fs::remove_dir_all(root);

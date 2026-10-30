@@ -475,3 +475,79 @@ fn req_prj_02_the_import_dialog_knows_whether_a_file_is_in_the_project_folder() 
     assert!(!app.is_in_project_folder(&s.outside("cube_ascii.stl")));
     assert!(!app.is_in_project_folder(&s.outside("none.stl")));
 }
+
+/// A name two models share does not pick one of them: the ID or the path
+/// is asked for (CodeRabbit review of pull request 388).
+#[test]
+fn req_nfr_07_a_name_two_models_share_is_refused_as_ambiguous() {
+    let s = Scratch::new("ambiguous", &["cube_ascii.stl", "cube_binary.stl"]);
+    std::fs::create_dir_all(s.root.join("other")).unwrap();
+    std::fs::copy(
+        corpus("cube_binary.stl"),
+        s.root.join("other/cube_ascii.stl"),
+    )
+    .unwrap();
+    let mut app = s.create();
+    let (a, _) = app.add_model(&s.outside("cube_ascii.stl"), None).unwrap();
+    let (b, _) = app
+        .add_model(&s.root.join("other/cube_ascii.stl"), None)
+        .unwrap();
+    let err = app.find_model("cube_ascii.stl").unwrap_err();
+    assert!(matches!(err, AppError::AmbiguousModel(_)), "{err}");
+    assert!(err.to_string().contains("give its ID or its path"), "{err}");
+    let path = app.find_model(&b.to_string()).unwrap().path.clone();
+    assert_eq!(app.find_model(path.as_str()).unwrap().id, b);
+    assert_eq!(app.find_model(&a.to_string()).unwrap().id, a);
+}
+
+/// A Unix file name may hold `\`, which a recorded name may not: it is
+/// shown as `_` and the copy is added (CodeRabbit review of pull request
+/// 388; NFR-07).
+#[cfg(unix)]
+#[test]
+fn req_nfr_07_a_file_name_with_a_backslash_is_copied_and_named() {
+    let s = Scratch::new("backslash", &["cube_ascii.stl"]);
+    let odd = s.root.join("elsewhere").join("part\\v2.stl");
+    std::fs::copy(corpus("cube_ascii.stl"), &odd).unwrap();
+    let mut app = s.create();
+    let (id, _) = app.add_model(&odd, None).unwrap();
+    let model = app.find_model(&id.to_string()).unwrap();
+    assert_eq!(model.name.as_deref(), Some("part_v2.stl"));
+    assert!(!model.path.is_outside_project());
+}
+
+/// The copy runs as a job; storing it afterwards leaves a model that
+/// changed in the project meanwhile untouched (UI-09; CodeRabbit review of
+/// pull request 388).
+#[test]
+fn req_ui_09_a_copy_runs_as_a_job_and_never_overwrites_a_later_change() {
+    let s = Scratch::new("job", &["cube_ascii.stl"]);
+    let mut app = s.create();
+    let (id, _) = app
+        .add_model_as(&s.outside("cube_ascii.stl"), None, ModelStorage::Link)
+        .unwrap();
+    let copies = app.start_copying_models(&[id]).wait().unwrap();
+    app.execute(Command::SetModelTransform {
+        model: id,
+        transform: vec![TransformStep::CentreOnRotaryAxis],
+    })
+    .unwrap();
+    let before = app.find_model(&id.to_string()).unwrap().clone();
+    let (copied, refused) = app.finish_copying_models(copies);
+    assert!(copied.is_empty());
+    assert_eq!(
+        refused,
+        ["'cube_ascii.stl' changed in the project while it was being copied; nothing was changed"]
+    );
+    assert_eq!(app.find_model(&id.to_string()).unwrap(), &before);
+    // Asked again, it copies.
+    let copies = app.start_copying_models(&[id]).wait().unwrap();
+    let (copied, refused) = app.finish_copying_models(copies);
+    assert_eq!(copied.len(), 1, "{refused:?}");
+    assert!(
+        !app.find_model(&id.to_string())
+            .unwrap()
+            .path
+            .is_outside_project()
+    );
+}

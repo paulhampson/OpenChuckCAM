@@ -1344,3 +1344,39 @@ fn req_prj_02_cli_import_copies_and_a_moved_folder_still_validates() {
     assert!(!out.stderr.contains("note:"), "{}", out.stderr);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+/// A file linked through a link of another name records that name, and is
+/// still reported as linked, not copied (CodeRabbit review of pull request
+/// 388).
+#[cfg(unix)]
+#[test]
+fn req_prj_02_cli_a_file_linked_through_a_renamed_link_is_reported_as_linked() {
+    let root = std::env::temp_dir().join(format!("openchuck-cli-symlink-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+    let cube =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    std::fs::copy(&cube, root.join("elsewhere/target.stl")).unwrap();
+    std::os::unix::fs::symlink(
+        root.join("elsewhere/target.stl"),
+        root.join("elsewhere/shown.stl"),
+    )
+    .unwrap();
+    let project = root.join("project");
+    assert_eq!(run(&["new".as_ref(), project.as_os_str()]).code, Some(0));
+    let out = run(&[
+        "import".as_ref(),
+        project.as_os_str(),
+        root.join("elsewhere/shown.stl").as_os_str(),
+        "--link".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("linked from outside the project folder"),
+        "{}",
+        out.stdout
+    );
+    assert!(!out.stdout.contains("copied into"), "{}", out.stdout);
+    std::fs::remove_dir_all(root).unwrap();
+}
