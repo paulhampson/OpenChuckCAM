@@ -9,6 +9,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- MODELCOPY (#385, accepted decision 0307): project schema 21. `ModelRef` has a new public field, `name`, the file name a model had when it was added, written only when it differs from the stored path's file name; `display_name`, `label` and `copy_path` (`models/<hash>.<ext>`), `RelativePath::is_outside_project` and `file_name`, and `MODELS_FOLDER`. The 20 to 21 migration changes only the number and refuses a schema 20 file that already holds a `name`.
+
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
 
 - Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.

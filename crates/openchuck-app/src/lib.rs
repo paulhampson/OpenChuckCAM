@@ -100,6 +100,7 @@ pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
     RUN_PROGRESS_TOTAL, Threads, job_label,
 };
+pub use model::ModelStorage;
 /// The G-code reader and replay, re-exported so front ends need no engine
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
@@ -354,7 +355,7 @@ impl Application {
             .models()
             .iter()
             .filter_map(|m| {
-                let path = m.path.as_str();
+                let path = m.label();
                 match m.check(&self.document.location) {
                     Ok(ModelCheck::Unchanged) => None,
                     Ok(ModelCheck::Missing) => Some(format!("'{path}' is missing")),
@@ -523,9 +524,11 @@ impl Application {
     /// the front end asks it and stores the answer with
     /// [`Command::SetModelUnits`]. The file is imported and
     /// checked first, so a file that cannot be read is refused; mesh
-    /// problems are reported in the returned inspection, not refused. The
-    /// file is referenced by its path relative to the project folder with its
-    /// content hash (PRJ-02). Undoable like any command.
+    /// problems are reported in the returned inspection, not refused. A file
+    /// outside the project folder is copied into its `models` folder first
+    /// (decision record 0307); the file is referenced by its path relative to
+    /// the project folder with its content hash (PRJ-02). Undoable like any
+    /// command.
     pub fn add_model(
         &mut self,
         file: &Path,
@@ -552,21 +555,37 @@ impl Application {
 
     /// Starts reading, hashing, placing and checking a model file as a
     /// background job, ready to add with [`Application::add_prepared_model`]
-    /// (UI-09, NFR-04). Fails at once if the file cannot be referenced from
-    /// the project folder.
+    /// (UI-09, NFR-04). A file outside the project folder is copied into it
+    /// by the same job (decision record 0307 item 1), so the front end starts
+    /// it when the user adds the model. Fails at once if the file cannot be
+    /// found.
     pub fn start_prepare_model(
         &self,
         file: &Path,
         units: Option<LengthUnit>,
         transform: &[model::TransformStep],
     ) -> Result<JobHandle<model::PreparedModel>, AppError> {
-        let relative = model::relative_to(&self.document.location, file)?.ok_or_else(|| {
-            AppError::ModelPath {
-                path: file.to_path_buf(),
-                reason: "it is on another drive".to_owned(),
-            }
-        })?;
-        let relative = RelativePath::from_path(&relative)?;
+        self.start_prepare_model_as(file, units, transform, model::ModelStorage::Copy)
+    }
+
+    /// [`Application::start_prepare_model`], keeping a file from outside the
+    /// project folder as `storage` says: copied into `models/` before the
+    /// job ends, from the bytes it read and hashed (so the copy has the
+    /// recorded hash), or linked by its relative path. A failed copy fails
+    /// the job and nothing is added.
+    pub fn start_prepare_model_as(
+        &self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+        storage: model::ModelStorage,
+    ) -> Result<JobHandle<model::PreparedModel>, AppError> {
+        // `None` when the file cannot be named from the project folder: on
+        // another drive, or with a character a project path cannot hold
+        // (such as `\` in a Unix file name). It can still be copied.
+        let relative = model::relative_to(&self.document.location, file)?
+            .and_then(|r| RelativePath::from_path(&r).ok());
+        let root = self.document.location.clone();
         let path = file.to_path_buf();
         let steps = transform.to_vec();
         Ok(self
@@ -582,7 +601,29 @@ impl Application {
                 let hash = ContentHash::of_bytes(&bytes);
                 let inspection = model::inspect_bytes(&path, &bytes, units, &steps, &within)?;
                 share.finish();
-                let mut reference = ModelRef::new(ModelId::new(), relative, hash);
+                let name = model::original_name(&path);
+                let stored = match (relative, storage) {
+                    (Some(inside), _) if !inside.is_outside_project() => inside,
+                    (_, model::ModelStorage::Copy) => {
+                        context.check_cancelled()?;
+                        let extension = path
+                            .extension()
+                            .map(|e| e.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        model::copy_into_project(&root, &bytes, &hash, &extension)?
+                    }
+                    (Some(link), model::ModelStorage::Link) => link,
+                    (None, model::ModelStorage::Link) => {
+                        return Err(AppError::ModelPath {
+                            path: path.clone(),
+                            reason: "it is on another drive, or its path has a character a \
+                                     project path cannot hold; copy it into the project instead"
+                                .to_owned(),
+                        });
+                    }
+                };
+                let mut reference = ModelRef::new(ModelId::new(), stored, hash);
+                reference.name = (reference.path.file_name() != name).then_some(name);
                 reference.units = units;
                 reference.transform = steps;
                 Ok(model::PreparedModel {
@@ -593,7 +634,8 @@ impl Application {
     }
 
     /// Adds a model prepared by [`Application::start_prepare_model`] as one
-    /// undoable step.
+    /// undoable step. Undo removes the model but leaves a copied file, which
+    /// adding the same file again reuses.
     pub fn add_prepared_model(
         &mut self,
         prepared: model::PreparedModel,
@@ -604,6 +646,155 @@ impl Application {
             placement: Placement::End,
         })?;
         Ok((id, prepared.inspection))
+    }
+
+    /// [`Application::add_model`] with the file from outside the project
+    /// folder kept as `storage` says (the command line's `--link`).
+    pub fn add_model_as(
+        &mut self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        storage: model::ModelStorage,
+    ) -> Result<(ModelId, ModelInspection), AppError> {
+        let prepared = self
+            .start_prepare_model_as(file, units, &[], storage)?
+            .wait()?;
+        self.add_prepared_model(prepared)
+    }
+
+    /// Whether `file` is inside the project folder, so adding it uses it
+    /// where it is; `false` for a file outside it, on another drive or not
+    /// found (the import dialog's copy choice, decision record 0307 item 1).
+    pub fn is_in_project_folder(&self, file: &Path) -> bool {
+        model::relative_to(&self.document.location, file)
+            .ok()
+            .flatten()
+            .and_then(|r| RelativePath::from_path(&r).ok())
+            .is_some_and(|r| !r.is_outside_project())
+    }
+
+    /// The models whose files are outside the project folder (linked), in
+    /// list order (decision record 0307 item 5).
+    pub fn linked_models(&self) -> Vec<ModelId> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .filter(|m| m.path.is_outside_project())
+            .map(|m| m.id)
+            .collect()
+    }
+
+    /// One note for Messages per linked model, saying the folder is not
+    /// self-contained and how to make it so (decision record 0307 item 8).
+    pub fn linked_model_notes(&self) -> Vec<String> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .filter(|m| m.path.is_outside_project())
+            .map(model::linked_note)
+            .collect()
+    }
+
+    /// Starts copying the files of the linked models `ids` into the
+    /// project's `models` folder as a background job ("Copy model into
+    /// project", decision record 0307 items 5 and 10), so a large file does
+    /// not hold up the window (UI-09). The job reads, checks and writes the
+    /// files only; [`Application::finish_copying_models`] stores the new paths.
+    /// A model that is not linked, is missing or has changed since it was
+    /// added is refused with what to do.
+    pub fn start_copying_models(&self, ids: &[ModelId]) -> JobHandle<Vec<model::ModelCopy>> {
+        let models: Vec<Result<ModelRef, String>> = ids
+            .iter()
+            .map(|id| {
+                self.document
+                    .project
+                    .models()
+                    .iter()
+                    .find(|m| m.id == *id)
+                    .cloned()
+                    .ok_or_else(|| AppError::UnknownModel(id.to_string()).to_string())
+            })
+            .collect();
+        let root = self.document.location.clone();
+        self.jobs
+            .submit("copy model", self.events_tx.clone(), move |context| {
+                let mut done = Vec::new();
+                for model in models {
+                    context.check_cancelled()?;
+                    done.push(
+                        model.and_then(|m| model::copy_model(&root, &m).map_err(|e| e.to_string())),
+                    );
+                }
+                Ok(done)
+            })
+    }
+
+    /// Stores the paths copied by [`Application::start_copying_models`], one
+    /// undoable step for each model. Only the stored path and name change:
+    /// the ID, hash, unit, placement and the selection sets made on it stay,
+    /// so nothing needs generating again. A model changed in the project
+    /// while it was being copied is not touched. Returns the models copied
+    /// with their new paths, and a message for each one refused.
+    pub fn finish_copying_models(
+        &mut self,
+        copies: Vec<model::ModelCopy>,
+    ) -> (Vec<(ModelId, RelativePath)>, Vec<String>) {
+        let mut copied = Vec::new();
+        let mut refused = Vec::new();
+        for copy in copies {
+            let (before, after) = match copy {
+                Ok(pair) => pair,
+                Err(e) => {
+                    refused.push(e);
+                    continue;
+                }
+            };
+            let now = self
+                .document
+                .project
+                .models()
+                .iter()
+                .find(|m| m.id == before.id);
+            if now != Some(&before) {
+                refused.push(format!(
+                    "'{}' changed in the project while it was being copied; nothing was changed",
+                    before.display_name()
+                ));
+                continue;
+            }
+            let (id, path) = (after.id, after.path.clone());
+            match self.execute(Command::Replace(Item::Model(after))) {
+                Ok(()) => copied.push((id, path)),
+                Err(e) => refused.push(e.to_string()),
+            }
+        }
+        (copied, refused)
+    }
+
+    /// Copies the linked model `id` into the project folder and waits
+    /// ([`Application::start_copying_models`] then
+    /// [`Application::finish_copying_models`]), for the command line.
+    pub fn copy_model_into_project(&mut self, id: ModelId) -> Result<RelativePath, AppError> {
+        let copies = self.start_copying_models(&[id]).wait()?;
+        let (copied, refused) = self.finish_copying_models(copies);
+        match (copied.into_iter().next(), refused.into_iter().next()) {
+            (Some((_, path)), _) => Ok(path),
+            (None, Some(reason)) => Err(AppError::ModelCopy(reason)),
+            (None, None) => Err(AppError::UnknownModel(id.to_string())),
+        }
+    }
+
+    /// [`Application::copy_model_into_project`] for every linked model, and
+    /// waits: the models copied with their new paths, and a message for each
+    /// one refused.
+    pub fn copy_linked_models(&mut self) -> (Vec<(ModelId, RelativePath)>, Vec<String>) {
+        let ids = self.linked_models();
+        match self.start_copying_models(&ids).wait() {
+            Ok(copies) => self.finish_copying_models(copies),
+            Err(e) => (Vec::new(), vec![e.to_string()]),
+        }
     }
 
     /// Starts reading, hashing, placing and checking `file` to replace the
@@ -675,7 +866,24 @@ impl Application {
             .models()
             .iter()
             .find(|m| m.id.to_string() == text || m.path.as_str() == text)
-            .ok_or_else(|| AppError::UnknownModel(text.to_owned()))
+            .map_or_else(|| self.find_model_by_name(text), Ok)
+    }
+
+    /// The one model whose recorded original name is `text`; two models with
+    /// that name are refused, since it does not say which (decision record
+    /// 0307 item 4).
+    fn find_model_by_name(&self, text: &str) -> Result<&ModelRef, AppError> {
+        let mut named = self
+            .document
+            .project
+            .models()
+            .iter()
+            .filter(|m| m.name.as_deref() == Some(text));
+        match (named.next(), named.next()) {
+            (Some(m), None) => Ok(m),
+            (Some(_), Some(_)) => Err(AppError::AmbiguousModel(text.to_owned())),
+            _ => Err(AppError::UnknownModel(text.to_owned())),
+        }
     }
 
     /// Starts importing, placing and checking a model of the project as a
