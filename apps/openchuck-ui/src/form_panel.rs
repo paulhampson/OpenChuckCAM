@@ -207,7 +207,7 @@ pub fn show(
                     let need = needs
                         .iter()
                         .find(|r| r.field == field_key)
-                        .map(|r| r.text.as_str());
+                        .map(|r| r.detail.as_deref().unwrap_or(r.text.as_str()));
                     let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
                     let scroll = jump == Some(&field_key)
                         || marks.jump.as_deref() == Some(field.name.as_str());
