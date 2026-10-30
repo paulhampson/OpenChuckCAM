@@ -17,7 +17,7 @@ use openchuck_app::model::{
     UnitQuestion, orient_to_rotary_axis,
 };
 use openchuck_app::project::id::SetupId;
-use openchuck_app::project::{Item, ModelCheck, Placement, Setup};
+use openchuck_app::project::{Item, ModelCheck, ModelRef, Placement, Setup};
 use openchuck_app::setup::{
     ARange, Aabb, Clearance, Confirmation, HeldRegion, MachineProfile, Millimetres, Point3,
     ProfileEntry, SetupReport, Stock, Tab, TabLayout, TabShape, WorkOffsetRegister, Workholding,
@@ -31,8 +31,8 @@ use openchuck_app::tools::{
     with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, OutputGrouping, PostSelection, Query, QueryResult,
-    SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
+    AppError, Application, Command, ModelStorage, OutputGrouping, PostSelection, Query,
+    QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
 /// The workholding options of `setup` (SET-09, OP-21).
@@ -197,18 +197,34 @@ enum Action {
         #[arg(long)]
         units: Option<String>,
     },
-    /// Add a model file to a project (IMP-01).
+    /// Add a model file to a project (IMP-01). A file outside the project
+    /// folder is copied into its models folder, so the folder can be moved,
+    /// zipped or shared; the original file is not changed.
     Import {
         /// The project folder.
         project: PathBuf,
-        /// The model file. It is referenced by its path relative to the
-        /// project folder, so keep it inside or beside the project.
+        /// The model file.
         file: PathBuf,
+        /// Leave a file from outside the project folder where it is and link
+        /// it by its path. If the project folder is moved without it, the
+        /// model will be missing.
+        #[arg(long)]
+        link: bool,
         /// The unit the file is in (um, mm, cm, m or in). Without it the file
         /// is read in mm, and a terminal is asked if the file names another
         /// unit or the part's size is implausible in mm.
         #[arg(long)]
         units: Option<String>,
+    },
+    /// Copy models that are outside the project folder into its models
+    /// folder, so the folder is self-contained. The originals are not
+    /// changed, and selections and toolpaths stay as they are.
+    CopyModel {
+        /// The project folder.
+        project: PathBuf,
+        /// The model (its ID, path or name); every linked model if not
+        /// given.
+        model: Option<String>,
     },
     /// List the built-in machine profiles and those in a library folder
     /// (SET-01).
@@ -476,7 +492,7 @@ fn run(cli: Cli) -> Result<()> {
             let mut problems = 0;
             for (id, check) in app.check_models()? {
                 let model = app.project().models().iter().find(|m| m.id == id);
-                let path = model.map(|m| m.path.as_str()).unwrap_or_default();
+                let path = model.map(ModelRef::label).unwrap_or_default();
                 match check {
                     ModelCheck::Unchanged => match app.inspect_model(id) {
                         // Mesh problems are the user's to judge: warn only.
@@ -502,6 +518,11 @@ fn run(cli: Cli) -> Result<()> {
                         eprintln!("model '{path}' is missing");
                     }
                 }
+            }
+            // A linked model is supported: a note, not a problem (decision
+            // record 0307 item 5).
+            for note in app.linked_model_notes() {
+                eprintln!("note: {note}");
             }
             let long = app.project().long_order_keys();
             if !long.is_empty() {
@@ -798,12 +819,36 @@ fn run(cli: Cli) -> Result<()> {
         Action::Import {
             project,
             file,
+            link,
             units,
         } => {
             let units = units.as_deref().map(parse_unit).transpose()?;
             let mut app = open_project(&project, threads, create)?;
-            let (id, mut inspection) = app.add_model(&file, units)?;
+            let storage = if link {
+                ModelStorage::Link
+            } else {
+                ModelStorage::Copy
+            };
+            let (id, mut inspection) = app.add_model_as(&file, units, storage)?;
             println!("{}: added model {id}", project.display());
+            let model = app.find_model(&id.to_string())?;
+            // Where it is stored decides what is said, not whether a name was
+            // recorded: a linked file reached through a link of another name
+            // has one too.
+            if !model.path.is_outside_project() && model.name.is_some() {
+                println!(
+                    "{}: copied into the project folder as {}; the original file is not changed",
+                    model.display_name(),
+                    model.path.as_str()
+                );
+            } else if model.path.is_outside_project() {
+                println!(
+                    "{}: linked from outside the project folder ({}). If the project folder is \
+                     moved without it, the model will be missing.",
+                    model.display_name(),
+                    model.path.as_str()
+                );
+            }
             // The file names another unit, or its size is implausible in mm:
             // ask on a terminal; otherwise leave it unanswered and say how.
             if let Some(question) = &inspection.unit_question {
@@ -824,6 +869,42 @@ fn run(cli: Cli) -> Result<()> {
             }
             app.save()?;
             print_inspection(&inspection);
+        }
+        Action::CopyModel { project, model } => {
+            let mut app = open_project(&project, threads, create)?;
+            let ids = match model {
+                Some(text) => vec![app.find_model(&text)?.id],
+                None => app.linked_models(),
+            };
+            if ids.is_empty() {
+                println!(
+                    "{}: no models are outside the project folder",
+                    project.display()
+                );
+            }
+            // Every model that can be copied is; each refusal is reported.
+            let mut refused = 0;
+            for id in ids {
+                match app.copy_model_into_project(id) {
+                    Ok(path) => {
+                        let model = app.find_model(&id.to_string())?;
+                        println!(
+                            "{}: copied into the project folder as {}; the original file is not \
+                             changed",
+                            model.display_name(),
+                            path.as_str()
+                        );
+                    }
+                    Err(e) => {
+                        refused += 1;
+                        eprintln!("error: {e}");
+                    }
+                }
+            }
+            app.save()?;
+            if refused > 0 {
+                anyhow::bail!("{}: {refused} model(s) not copied", project.display());
+            }
         }
         Action::Machines { library } => {
             for key in builtin_keys() {

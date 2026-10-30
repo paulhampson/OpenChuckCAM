@@ -83,6 +83,7 @@ pub mod edge_following;
 pub mod entry_safety;
 mod error;
 pub mod extend;
+mod faces;
 pub mod facing;
 pub mod field;
 pub mod helical;

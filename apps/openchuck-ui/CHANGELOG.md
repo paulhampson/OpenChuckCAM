@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- FOURSTEP (accepted decision 0282; #322; UI-10): four workflow steps (Model, Setup, Operations, Simulate). Simulate's footer has two actions in fixed places, the simulation action and "Post and export…" right-most, with exactly one filled (the next required step); Post and export opens the existing export dialog with the old fifth step's rules, through the pending-edit guard, and is disabled while a job runs. The step bar says "G-code written" or "G-code not written" after step 4 and its health is the worst of the four. Alt 1 to Alt 4 open the steps; Alt 5 opens Post and export as Ctrl E does. An enabled footer action shows what it does on keyboard focus, and closing the dialog opened from "Post and export…" gives the keyboard back to it. The export dialog, file names and output bytes are unchanged.
+
+- MODELCOPY (#385, accepted decision 0307): the import dialog's "Copy the file into the project folder" tick box (ticked by default) with the file's size and a line saying what happens; the Model inspector's Source section says where the file is and has "Copy model into project" for a linked model; the project tree names a model by its original file name and marks a linked one with a link mark and "linked"; opening a project with linked models asks whether to copy them in.
+
 - OUTPUT2 (accepted decision 0267; #308, #310): the export dialog has File names fields for the program files and the setup sheet, with Reset, a list of the fields, and the problem in red when a template cannot name the files; the files list and the sheet line preview the names written, with the numbered names and an amber warning when names clash; Write G-code is blocked only while a template cannot name a file. The templates are the user's setting, kept by the shell once a change is confirmed (a draft is not kept, decision 0233).
 
 - FACING review fix (UI-02/03): replacing a scene job preserves an unconsumed camera-fit request; ordinary rebuilds after the fit is consumed leave the camera unchanged.

@@ -1270,7 +1270,7 @@ fn brep_selection(
             return Err(bad(format!(
                 "it was made on a different version of '{}' (the file has changed); select \
                  again on the current model",
-                part.path.as_str()
+                part.label()
             )));
         }
         match &set.target {
@@ -1388,7 +1388,7 @@ fn limit_faces(
             return Err(bad(format!(
                 "it was made on a different version of '{}' (the file has changed); select \
                  again on the current model",
-                part.path.as_str()
+                part.label()
             )));
         }
         let SelectionTarget::Faces(faces) = &set.target else {
