@@ -1209,3 +1209,16 @@ fn req_op_21_the_outer_end_of_a_tab_is_not_a_free_end() {
     let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
     assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
 }
+
+#[test]
+fn req_nfr_06_req_gc_07_free_end_turns_are_identical_at_1_2_and_n_threads() {
+    let job = free_end(true, 12.0);
+    for strategy in [&HelicalFinishing as &dyn Strategy, &AxialFinishing] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = job.path(strategy, &[("stepdown", 2.0)]);
+            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4, "{}", strategy.name());
+    }
+}
