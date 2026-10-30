@@ -3,17 +3,16 @@
 //! GC-07): the carving test piece (`openchuck_testkit::parts::CarvedRelief`)
 //! finished by axial finishing over the whole part, in a selected region and
 //! next to a held region and a tab, and by helical finishing in a region.
-//! Each path must be the same at 1, 2 and N threads (NFR-06). It was also
-//! the same, bit for bit, as the path before the speed-ups of issue #382,
-//! kept as a hash in `testdata/golden/carving/` (written with
-//! `OPENCHUCK_BLESS=1` from the code before them). Native floating point
-//! differs between machines (OI-319): glibc chooses its `asin`, `atan2` and
-//! `hypot` by the processor, and a CI runner gave another region path than
-//! the machine the hashes were written on, from the same code. So the hashes
-//! are compared only when `OPENCHUCK_CARVING_GOLDEN=1` asks, on the machine
-//! they were written on; the speed-ups are checked against the code before
-//! them on every machine by the tests in `cutter.rs`, `solid.rs`,
-//! `candidates.rs` and `tests/solids.rs`, which run both in one process.
+//! Each path must be the same, bit for bit, at 1, 2 and N threads (NFR-06),
+//! and its moves at six decimals the same as its golden file in
+//! `testdata/golden/carving/`, written with `OPENCHUCK_BLESS=1` from `main`
+//! before the speed-ups of issue #382 (GC-07). Native floating point differs
+//! between machines in the last bit (OI-319: glibc chooses `asin`, `atan2`
+//! and `hypot` by the processor, and a CI runner gave another full-precision
+//! region path from the same code), and some values lie on a rounding tie at
+//! six decimals (8.6328125 is exact in binary), so the files are compared
+//! value by value within [`LAST_PLACE`]: a change of a micrometre fails, a
+//! last-bit difference that turns a tie the other way does not.
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
 mod support;
@@ -129,27 +128,68 @@ impl<S: SurfaceSource> Job<S> {
     }
 }
 
-/// Runs `job` at 1, 2 and N threads and checks the path is the same at each
-/// (NFR-06), and, when `OPENCHUCK_CARVING_GOLDEN=1` asks, the same as its
-/// golden hash `name` (GC-07).
+/// How far apart a value and its golden may be: one unit in the sixth
+/// decimal place, and half again for a tie written the other way.
+const LAST_PLACE: f64 = 1.5e-6;
+
+/// `x` at six decimals with no negative zero.
+fn six(x: f64) -> String {
+    let r = (x * 1e6).round() / 1e6;
+    format!("{:.6}", if r == 0.0 { 0.0 } else { r })
+}
+
+/// The moves of `path` at six decimals, one a line.
+fn moves(path: &GeneratedPath) -> String {
+    let mut text = String::from("# kind tip_x tip_y tip_z a feed seconds\n");
+    for s in &path.group.segments {
+        text.push_str(&format!(
+            "{:?} {} {} {} {} {} {}\n",
+            s.kind,
+            six(s.end.tip.x),
+            six(s.end.tip.y),
+            six(s.end.tip.z),
+            six(s.end.a.0),
+            s.contact_feed.map_or_else(|| "-".to_owned(), |f| six(f.0)),
+            six(s.duration.0),
+        ));
+    }
+    text
+}
+
+/// Whether two lines of [`moves`] agree: the same words, and each number
+/// within [`LAST_PLACE`] of the other.
+fn same_move(want: &str, got: &str) -> bool {
+    let (want, got): (Vec<&str>, Vec<&str>) = (want.split(' ').collect(), got.split(' ').collect());
+    want.len() == got.len()
+        && want.iter().zip(&got).all(|(w, g)| {
+            w == g
+                || matches!((w.parse::<f64>(), g.parse::<f64>()),
+                    (Ok(w), Ok(g)) if (w - g).abs() <= LAST_PLACE)
+        })
+}
+
+/// Runs `job` at 1, 2 and N threads and checks the path is the same at each,
+/// bit for bit (NFR-06), and its moves at six decimals the same as the golden
+/// file `name`, value by value within [`LAST_PLACE`] (GC-07).
 fn check(name: &str, job: impl Fn() -> GeneratedPath + Sync) {
-    let runs = openchuck_testkit::determinism::check(|| format!("{:?}", job().group).into_bytes())
-        .unwrap();
-    let hash = &runs[0].hash;
+    openchuck_testkit::determinism::check(|| format!("{:?}", job().group).into_bytes()).unwrap();
     let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata/golden/carving")
         .join(format!("{name}.txt"));
+    let got = moves(&job());
     if openchuck_testkit::golden::blessing() {
-        std::fs::create_dir_all(golden.parent().unwrap()).unwrap();
-        std::fs::write(&golden, format!("{hash}\n")).unwrap();
+        openchuck_testkit::golden::check(&golden, &got).unwrap();
         return;
     }
-    if std::env::var_os("OPENCHUCK_CARVING_GOLDEN").is_some_and(|v| v == "1") {
-        let want = std::fs::read_to_string(&golden).unwrap();
-        assert_eq!(
-            hash,
-            want.trim(),
-            "{name}: the path differs from the golden one"
+    let want = std::fs::read_to_string(&golden)
+        .unwrap_or_else(|e| panic!("{}: {e} (bless with OPENCHUCK_BLESS=1)", golden.display()));
+    let (want, got): (Vec<&str>, Vec<&str>) = (want.lines().collect(), got.lines().collect());
+    assert_eq!(want.len(), got.len(), "{name}: the number of moves differs");
+    for (i, (w, g)) in want.iter().zip(&got).enumerate() {
+        assert!(
+            same_move(w, g),
+            "{name}, line {}: want `{w}`, got `{g}`",
+            i + 1
         );
     }
 }
@@ -158,7 +198,7 @@ fn check(name: &str, job: impl Fn() -> GeneratedPath + Sync) {
 fn req_gc_07_req_nfr_06_axial_finishing_of_a_carving_is_unchanged_at_any_thread_count() {
     let f = Job::new(MeshSurface::new(&relief(0.25)).unwrap());
     check("axial_whole", || {
-        run(|ctx| generate(&AxialFinishing, &f.input(), &values(0.4), ctx)).unwrap()
+        run(|ctx| generate(&AxialFinishing, &f.input(), &values(2.0), ctx)).unwrap()
     });
 }
 
@@ -207,6 +247,6 @@ fn req_gc_07_req_nfr_06_axial_finishing_next_to_a_held_region_and_a_tab_is_uncha
     let surface = CompositeSurface::new(model, vec![held, tab]);
     let f = Job::new(surface);
     check("axial_held", || {
-        run(|ctx| generate(&AxialFinishing, &f.input(), &values(1.5), ctx)).unwrap()
+        run(|ctx| generate(&AxialFinishing, &f.input(), &values(2.5), ctx)).unwrap()
     });
 }
