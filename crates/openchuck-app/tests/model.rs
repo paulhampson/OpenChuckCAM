@@ -19,7 +19,7 @@ use openchuck_app::model::{
     orient_to_rotary_axis,
 };
 use openchuck_app::project::file;
-use openchuck_app::{AppError, Application, Command, Threads, inspect_file};
+use openchuck_app::{AppError, Application, Command, ModelStorage, Threads, inspect_file};
 use openchuck_testkit::determinism;
 
 fn corpus(name: &str) -> PathBuf {
@@ -67,7 +67,8 @@ fn req_imp_01_add_model_references_the_file_and_can_be_undone() {
     assert!(app.redo().unwrap());
     assert_eq!(app.project().models().len(), 1);
 
-    // A file beside the project folder is referenced with "..". It is copied
+    // A file beside the project folder, linked rather than copied (decision
+    // record 0307 item 1), is referenced with "..". It is copied
     // next to the project, because the corpus can be on another drive than
     // the temporary folder (as on the Windows CI runner), which cannot be
     // referenced relatively.
@@ -77,7 +78,9 @@ fn req_imp_01_add_model_references_the_file_and_can_be_undone() {
     ));
     std::fs::create_dir_all(&shared).unwrap();
     std::fs::copy(corpus("cube_ascii.stl"), shared.join("cube.stl")).unwrap();
-    let (id, _) = app.add_model(&shared.join("cube.stl"), None).unwrap();
+    let (id, _) = app
+        .add_model_as(&shared.join("cube.stl"), None, ModelStorage::Link)
+        .unwrap();
     let outside = app.find_model(&id.to_string()).unwrap();
     let expected = format!(
         "../{}/cube.stl",

@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use openchuck_project::id::{ModelId, OperationId};
-use openchuck_project::{ContentHash, ModelRef, Operation, OrderKey, Project};
+use openchuck_project::{ContentHash, ModelRef, Operation, OrderKey, Project, RelativePath};
 
 use crate::AppError;
 use crate::operation::OperationPath;
@@ -353,7 +353,21 @@ pub(crate) fn operation_key(
     });
     feed(&mut bytes, "tool", &tool)?;
     let model = ModelFiles::part(project, operation);
-    feed(&mut bytes, "model", &model)?;
+    // Where the file is stored and the name it is shown by are not inputs:
+    // the contents (below) and the format are. So copying a model into the
+    // project folder, or moving the folder, keeps every result (decision
+    // record 0307 item 7). The format stays, through the extension.
+    let model_inputs = model.map(|m| {
+        let mut m = m.clone();
+        let extension = Path::new(m.path.file_name())
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        m.path = RelativePath::new(format!("model.{extension}")).unwrap_or_else(|_| m.path.clone());
+        m.name = None;
+        m
+    });
+    feed(&mut bytes, "model", &model_inputs)?;
     // The file itself, not only the hash the project recorded: a changed file
     // must not reuse an old result.
     let file = model

@@ -65,9 +65,9 @@ pub mod tools;
 pub use error::ProjectError;
 pub use hash::ContentHash;
 pub use model::{
-    BoundaryOptions, Descriptor, Item, ItemId, ListKind, MeshEdge, ModelCheck, ModelRef, OldKeys,
-    OldPlace, OnBreak, Operation, ParameterValue, Placement, Project, RelativePath,
-    RestrictionOptions, SelectionSet, SelectionTarget, SetOptions, Setup, ToolSnapshot,
-    is_set_colour,
+    BoundaryOptions, Descriptor, Item, ItemId, ListKind, MODELS_FOLDER, MeshEdge, ModelCheck,
+    ModelRef, OldKeys, OldPlace, OnBreak, Operation, ParameterValue, Placement, Project,
+    RelativePath, RestrictionOptions, SelectionSet, SelectionTarget, SetOptions, Setup,
+    ToolSnapshot, is_set_colour,
 };
 pub use order::OrderKey;

@@ -49,6 +49,12 @@ pub struct ModelRef {
     pub path: RelativePath,
     /// Hash of the file's contents when it was added or last accepted.
     pub hash: ContentHash,
+    /// The file name the model had when it was added, shown to the user in
+    /// place of the stored path (schema 21; issue 385, decision record 0307
+    /// item 4). A file name only, never its folder. `None` in older
+    /// projects, which show the path's file name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// The unit the file is in, set by the user; `None` reads the unit from
     /// the file, or assumes millimetres (IMP-03).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,6 +64,10 @@ pub struct ModelRef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transform: Vec<TransformStep>,
 }
+
+/// The folder in the project folder that models are copied into (decision
+/// record 0307 item 2). Saving never removes anything from it.
+pub const MODELS_FOLDER: &str = "models";
 
 /// A path relative to the project folder, written with `/` separators on every
 /// platform so the project file is the same everywhere.
@@ -122,6 +132,17 @@ impl RelativePath {
         &self.0
     }
 
+    /// Whether the path leaves the project folder (a linked model, decision
+    /// record 0307 item 5): moving the folder without the file loses it.
+    pub fn is_outside_project(&self) -> bool {
+        self.0.split('/').any(|part| part == "..")
+    }
+
+    /// The last component, the file name.
+    pub fn file_name(&self) -> &str {
+        self.0.rsplit('/').next().unwrap_or(&self.0)
+    }
+
     /// The file's location on this platform, under `project_root`.
     pub fn resolve(&self, project_root: &Path) -> PathBuf {
         self.0
@@ -168,9 +189,65 @@ impl ModelRef {
             id,
             path,
             hash,
+            name: None,
             units: None,
             transform: Vec::new(),
         }
+    }
+
+    /// The name shown to the user: the recorded original file name, or the
+    /// stored path's file name.
+    pub fn display_name(&self) -> &str {
+        self.name
+            .as_deref()
+            .unwrap_or_else(|| self.path.file_name())
+    }
+
+    /// The model named for messages and the setup sheet: its stored path, or
+    /// with a recorded name, the name and the stored path after it,
+    /// `part.stl (models/….stl)` (decision record 0307 item 6).
+    pub fn label(&self) -> String {
+        match &self.name {
+            Some(name) => format!("{name} ({})", self.path.as_str()),
+            None => self.path.as_str().to_owned(),
+        }
+    }
+
+    /// Where a model file with contents `hash` is copied in the project
+    /// folder (decision record 0307 items 2 and 3):
+    /// `models/<first 32 hex digits of the hash>.<extension>`, the extension
+    /// in lower case, and `-<n>` before it for the `n`th candidate from 2 on,
+    /// used only when a different file already holds an earlier name. The
+    /// same bytes always give the same name, and the name is ASCII, so it is
+    /// valid and distinct on every platform.
+    pub fn copy_path(
+        hash: &ContentHash,
+        extension: &str,
+        n: u32,
+    ) -> Result<RelativePath, ProjectError> {
+        let invalid = |reason| ProjectError::InvalidPath {
+            path: extension.to_owned(),
+            reason,
+        };
+        if extension.is_empty() || !extension.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(invalid("the extension must be letters and digits"));
+        }
+        if n == 0 {
+            return Err(invalid("copies are numbered from 1"));
+        }
+        let hex: String = hash.as_bytes()[..16]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let suffix = if n == 1 {
+            String::new()
+        } else {
+            format!("-{n}")
+        };
+        RelativePath::new(format!(
+            "{MODELS_FOLDER}/{hex}{suffix}.{}",
+            extension.to_ascii_lowercase()
+        ))
     }
 
     /// The model's format, from its file name's extension.
@@ -901,6 +978,26 @@ fn not_found(id: ItemId) -> ProjectError {
     }
 }
 
+/// A model's recorded name is a file name: not blank, without a folder
+/// separator or control character (decision record 0307 item 4).
+fn check_model_name(name: &str, id: ModelId) -> Result<(), ProjectError> {
+    let reason = if name.trim().is_empty() {
+        Some("the name is empty; leave it unset instead")
+    } else if name.contains(['/', '\\']) {
+        Some("the name is a file name and cannot name a folder")
+    } else if name.chars().any(char::is_control) {
+        Some("the name has a control character")
+    } else {
+        None
+    };
+    match reason {
+        Some(reason) => {
+            Err(openchuck_types::Error::invalid(format!("model {id}.name"), reason).into())
+        }
+        None => Ok(()),
+    }
+}
+
 fn id_text(id: ItemId) -> String {
     match id {
         ItemId::Model(id) => id.to_string(),
@@ -1536,6 +1633,9 @@ impl Project {
         };
         match item {
             Item::Model(m) => {
+                if let Some(name) = &m.name {
+                    check_model_name(name, m.id)?;
+                }
                 TransformStep::validate_all(&m.transform, &format!("model {}.transform", m.id))?;
                 // A changed path must not change the kind its selections need.
                 self.selection_sets

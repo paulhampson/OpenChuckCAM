@@ -1405,7 +1405,7 @@ impl SelectionPanel {
     /// (specification section 7.2): one button for each way a click selects,
     /// with its key.
     pub fn tools(&mut self, ctx: &egui::Context, corner: egui::Pos2) {
-        egui::Area::new(egui::Id::new("selection tools"))
+        egui::Area::new(egui::Id::unique("selection tools"))
             .order(egui::Order::Foreground)
             .fixed_pos(corner)
             .show(ctx, |ui| {
@@ -1511,7 +1511,7 @@ impl SelectionPanel {
         ui.horizontal_wrapped(|ui| {
             let before = self.name.clone();
             let response = ui.add(
-                egui::TextEdit::singleline(&mut self.name)
+                crate::theme::single_line(ui, &mut self.name)
                     .hint_text(format!("Selection {}", count + 1))
                     .desired_width(140.0),
             );
@@ -1977,8 +1977,17 @@ impl SelectionPanel {
                 let button = egui::Button::new(if current { "✓" } else { "  " })
                     .fill(Color32::from_rgb(r, g, b))
                     .min_size(egui::vec2(18.0, 18.0));
-                if ui
-                    .add(button)
+                // egui 0.37 raises a button to the style's minimum size and
+                // pads it; zero both so the swatch stays 18 by 18.
+                let clicked = ui
+                    .scope(|ui| {
+                        let spacing = ui.spacing_mut();
+                        spacing.interact_size = egui::vec2(18.0, 18.0);
+                        spacing.button_padding = egui::Vec2::ZERO;
+                        ui.add(button)
+                    })
+                    .inner;
+                if clicked
                     .on_hover_text(format!("Show this set in {}", hex(rgb)))
                     .clicked()
                 {

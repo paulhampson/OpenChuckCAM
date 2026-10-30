@@ -77,8 +77,7 @@ pub fn mark(ui: &mut egui::Ui, state: ItemState, cause: &str) -> egui::Response 
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(SIZE + 4.0, SIZE + 4.0), egui::Sense::hover());
     paint(ui.painter(), rect.center(), state, SIZE);
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, cause.to_owned()));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, cause.to_owned()));
     response.on_hover_text(cause)
 }
 

@@ -57,17 +57,22 @@ fn req_ui_01_req_ui_10_req_ui_16_every_step_opens_and_draws_at_1366_by_768() {
             step.name()
         );
     }
-    // The keys reach every step too (Alt 1 to Alt 5).
+    // The keys reach every step too (Alt 1 to Alt 4); Alt 5 opens Post and
+    // export as Ctrl E does and leaves the step as it is (decision record
+    // 0282 item 4).
     for (key, step) in [
         (Key::Num1, Step::Model),
         (Key::Num2, Step::Setup),
         (Key::Num3, Step::Operations),
         (Key::Num4, Step::Simulate),
-        (Key::Num5, Step::Export),
     ] {
         rig.press(key, Modifiers::ALT);
         assert_eq!(rig.shell.step, step);
     }
+    assert_eq!(Step::ALL.len(), 4);
+    rig.press(Key::Num5, Modifiers::ALT);
+    assert_eq!(rig.shell.step, Step::Simulate);
+    assert!(rig.shell.export.is_open());
 }
 
 #[test]
