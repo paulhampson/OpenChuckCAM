@@ -25,13 +25,24 @@ class BoundaryChecks(unittest.TestCase):
         self.expected['feed'] = None
         verify(self.expected, self.actual)
 
+    def test_req_gc_10_a_feed_held_in_single_precision_matches(self):
+        # LinuxCNC keeps the feed as a 32-bit float: F2755.6 reads back as
+        # 2755.60009765625.
+        self.expected['feed'] = 2755.6
+        self.actual['feed'] = 2755.60009765625
+        verify(self.expected, self.actual)
+        # Its neighbouring 32-bit float is still a mismatch.
+        self.actual['feed'] = 2755.6003417968750
+        with self.assertRaises(ValueError):
+            verify(self.expected, self.actual)
+
     def test_req_gc_10_req_nfr_07_a_position_or_modal_discontinuity_fails(self):
         for key, value in [
             ('position', [1.01, 2, 3, 450]),
             ('actual_position', [1, 2, 3, 450.01]),
             ('gcodes', [10, 170, 210, 540, 610, 910, 940]),
             ('gcodes', [0, 170, 210, 540, 610, 900, 940]),
-            ('feed', 61), ('tool', 1), ('spindle_on', False), ('rpm', 9001),
+            ('feed', 61), ('feed', 60.001), ('feed', 60.00001), ('tool', 1), ('spindle_on', False), ('rpm', 9001),
             ('direction', -1), ('g5x_offset', [1, 0, 0, 0]),
             ('g92_offset', [0, 0, 0, 360]), ('rotation_xy', 1),
             ('position', [math.nan, 2, 3, 450]), ('feed', math.inf),
