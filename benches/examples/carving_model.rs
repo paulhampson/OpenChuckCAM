@@ -19,11 +19,12 @@ fn main() -> std::process::ExitCode {
         eprintln!("usage: carving_model OUT.stl [SPACING]");
         return std::process::ExitCode::FAILURE;
     };
-    let spacing: f64 = match args.next().map(|s| s.to_string_lossy().parse()) {
+    let spacing: f64 = match args.next().map(|s| s.to_string_lossy().parse::<f64>()) {
         None => 0.1,
-        Some(Ok(s)) if s > 0.0 => s,
+        // Finer than 0.01 mm the mesh would hold tens of millions of triangles.
+        Some(Ok(s)) if s.is_finite() && s >= 0.01 => s,
         Some(_) => {
-            eprintln!("SPACING must be a number above zero");
+            eprintln!("SPACING must be a number of 0.01 mm or more");
             return std::process::ExitCode::FAILURE;
         }
     };

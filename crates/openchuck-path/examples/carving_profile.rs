@@ -101,7 +101,7 @@ fn seconds(nanos: &AtomicU64) -> f64 {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut strategy = "axial_finishing".to_owned();
-    let (mut stepover, mut spacing, mut tip) = (0.03, 0.1, 0.1);
+    let (mut stepover, mut spacing, mut tip): (f64, f64, f64) = (0.03, 0.1, 0.1);
     let (mut threads, mut runs) = (0_usize, 1_usize);
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -115,6 +115,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--runs" => runs = value.parse()?,
             _ => return Err(format!("unknown flag {flag}").into()),
         }
+    }
+    // Finer than 0.01 mm the mesh would hold tens of millions of triangles.
+    if !(spacing.is_finite() && spacing >= 0.01) {
+        return Err(format!("--spacing must be 0.01 mm or more, not {spacing}").into());
     }
     let part = CarvedRelief::STANDARD;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
