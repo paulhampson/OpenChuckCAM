@@ -40,6 +40,13 @@ pub enum AppError {
         /// Why not.
         reason: String,
     },
+    /// A linked model cannot be copied into the project folder (decision
+    /// record 0307 item 5); the message says why and what to do.
+    #[error("{0}")]
+    ModelCopy(String),
+    /// More than one model has this recorded name.
+    #[error("more than one model is called '{0}'; give its ID or its path as the project lists it")]
+    AmbiguousModel(String),
     /// No model has this ID or path.
     #[error("the project has no model '{0}' (give its ID or its path as the project lists it)")]
     UnknownModel(String),

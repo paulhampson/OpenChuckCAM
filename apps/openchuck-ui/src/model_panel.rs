@@ -78,6 +78,9 @@ pub struct ModelOutcome {
     pub show_report: bool,
     /// A replacement file has been read and checked: store it.
     pub replaced: Option<PreparedModel>,
+    /// The user asked to copy the linked model's file into the project
+    /// folder ("Copy model into project", decision record 0307 item 5).
+    pub copy_into_project: bool,
 }
 
 /// The model panel's state between frames.
@@ -96,6 +99,10 @@ pub struct ModelPanel {
     report_open: bool,
     /// Why "Show in folder" failed.
     folder_error: Option<String>,
+    /// Why "Copy model into project" was refused.
+    pub(crate) copy_error: Option<String>,
+    /// A copy into the project folder is running (the shell's job).
+    pub(crate) copying: bool,
     /// A section to open and scroll to on the next frame, chosen by its row
     /// in the project tree (issue #181).
     focus: Option<&'static str>,
@@ -209,6 +216,8 @@ impl ModelPanel {
             fields: FieldState::default(),
             report_open: false,
             folder_error: None,
+            copy_error: None,
+            copying: false,
             focus: None,
             shown: Vec::new(),
         }
@@ -285,7 +294,11 @@ impl ModelPanel {
 
         let focus = self.focus.take();
         for (key, title) in SECTIONS {
-            let open = settings.section_open("model", key, DEFAULT_OPEN.contains(&key));
+            // A linked model's Source section opens by default, so its
+            // "Copy model into project" is in view (decision record 0307).
+            let by_default = DEFAULT_OPEN.contains(&key)
+                || (key == "source" && reference.path.is_outside_project());
+            let open = settings.section_open("model", key, by_default);
             let focused = focus == Some(key);
             let section = field_row::section(
                 ui,
@@ -303,9 +316,9 @@ impl ModelPanel {
                         None
                     }
                     _ => {
-                        if self.source_section(ui, app, reference) {
-                            outcome.choose_replacement = true;
-                        }
+                        let (choose, copy) = self.source_section(ui, app, reference);
+                        outcome.choose_replacement = choose;
+                        outcome.copy_into_project = copy;
                         None
                     }
                 },
@@ -771,14 +784,41 @@ impl ModelPanel {
             });
     }
 
-    /// The content hash, "Replace file…" and "Show in folder" (PRJ-02;
-    /// 11.2). Returns true when the user asked to choose a replacement.
+    /// Where the file is stored, the content hash, "Copy model into project"
+    /// for a linked model, "Replace file…" and "Show in folder" (PRJ-02;
+    /// 11.2; decision record 0307 item 8). Returns whether the user asked to
+    /// choose a replacement, and to copy the model into the project.
     fn source_section(
         &mut self,
         ui: &mut egui::Ui,
         app: &openchuck_app::Application,
         reference: &ModelRef,
-    ) -> bool {
+    ) -> (bool, bool) {
+        let linked = reference.path.is_outside_project();
+        let line = ui.label(if linked {
+            RichText::new(source_line(reference)).color(DARK.warning)
+        } else {
+            RichText::new(source_line(reference))
+        });
+        line.on_hover_text(reference.path.as_str());
+        let mut copy = false;
+        if linked && self.copying {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new("Copying the file\u{2026}").color(DARK.muted));
+            });
+        } else if linked
+            && ui
+                .button(COPY_MODEL_LABEL)
+                .on_hover_text(COPY_MODEL_TOOLTIP)
+                .clicked()
+        {
+            self.copy_error = None;
+            copy = true;
+        }
+        if let Some(e) = &self.copy_error {
+            ui.label(RichText::new(e).color(DARK.error));
+        }
         let hash = reference.hash.to_string();
         let short: String = hash.chars().take(20).collect();
         field_row::read_only_row(
@@ -816,13 +856,89 @@ impl ModelPanel {
         {
             ui.label(RichText::new(e).color(DARK.error));
         }
-        choose
+        (choose, copy)
+    }
+}
+
+/// The button that copies a linked model's file into the project folder,
+/// and its tooltip (decision record 0307 item 8).
+pub(crate) const COPY_MODEL_LABEL: &str = "Copy model into project";
+pub(crate) const COPY_MODEL_TOOLTIP: &str = "Copies the file into the project's models folder. \
+     The original is not changed, and selections and toolpaths stay as they are.";
+
+/// The stored path as the Source row shows it: a copied file's hash name
+/// cut to its first 8 digits (`models/d2a8b35f….stl`), any other path whole.
+/// The whole path is in the row's tooltip.
+fn shown_path(reference: &ModelRef) -> String {
+    let path = reference.path.as_str();
+    match (&reference.name, path.rsplit_once('/')) {
+        (Some(_), Some((folder, file))) if file.is_ascii() && file.len() > 8 => {
+            let extension = file.rsplit_once('.').map_or("", |(_, e)| e);
+            let start = file.get(..8).unwrap_or(file);
+            format!("{folder}/{start}\u{2026}.{extension}")
+        }
+        _ => path.to_owned(),
+    }
+}
+
+/// Where the model's file is, in plain words (decision record 0307 item 8):
+/// in the project folder, or linked from outside it, which moving the
+/// folder loses.
+pub(crate) fn source_line(reference: &ModelRef) -> String {
+    let name = reference.display_name();
+    if reference.path.is_outside_project() {
+        format!(
+            "{name}, linked from outside the project folder ({}). Moving the project folder \
+             will lose this model.",
+            reference.path.as_str()
+        )
+    } else {
+        format!(
+            "{name}, stored in the project folder ({})",
+            shown_path(reference)
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Source row says where the file is in plain words (issue 385,
+    /// decision record 0307 item 8).
+    #[test]
+    fn req_prj_02_the_source_row_says_whether_the_model_is_in_the_project_folder() {
+        use openchuck_app::project::{ContentHash, RelativePath};
+        let hash = ContentHash::of_bytes(b"solid part");
+        let mut m = ModelRef::new(
+            ModelId::new(),
+            ModelRef::copy_path(&hash, "stl", 1).unwrap(),
+            hash,
+        );
+        m.name = Some("part.stl".into());
+        let hex = &hash.to_string()["blake3:".len()..];
+        assert_eq!(
+            source_line(&m),
+            format!(
+                "part.stl, stored in the project folder (models/{}\u{2026}.stl)",
+                &hex[..8]
+            )
+        );
+        m.name = None;
+        m.path = RelativePath::new("models/part.stl").unwrap();
+        assert_eq!(
+            source_line(&m),
+            "part.stl, stored in the project folder (models/part.stl)"
+        );
+        m.path = RelativePath::new("../../elsewhere/part.stl").unwrap();
+        assert_eq!(
+            source_line(&m),
+            "part.stl, linked from outside the project folder (../../elsewhere/part.stl). \
+             Moving the project folder will lose this model."
+        );
+        assert_eq!(COPY_MODEL_LABEL, "Copy model into project");
+        assert!(COPY_MODEL_TOOLTIP.contains("The original is not changed"));
+    }
 
     #[test]
     fn req_imp_05_new_steps_become_placement_steps() {

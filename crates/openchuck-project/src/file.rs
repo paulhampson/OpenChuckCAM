@@ -106,7 +106,9 @@ use openchuck_types::workholding::Workholding;
 /// - 19: optional minimum block time, window and mode in machine copies
 ///   (decision record 0222); absent fields retain Off.
 /// - 20: Slow down integration; schema 19 Report settings retain their meaning.
-/// - 21: claimed by lane MODELCOPY (issue #385); no change in this build.
+/// - 21: a model reference gains the optional `name`, the file name it had
+///   when it was added, written only when recorded (issue 385, decision
+///   record 0307 item 4).
 /// - 22: the machine copy gains the optional `automatic_tool_length`,
 ///   `spindle_to_axis` and `recommended_min_safe_z` (decision record 0317).
 pub const SCHEMA: i64 = 22;
@@ -147,12 +149,6 @@ const MIGRATIONS: &[Migration] = &[
     schema_21_to_22,
 ];
 
-/// Schema 21 is lane MODELCOPY's (issue #385); its migration replaces this
-/// placeholder when either lane merges after the other.
-fn schema_20_to_21(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
-    Ok(())
-}
-
 /// Schema 22 adds the optional spindle-height fields to the machine copy,
 /// which an older file does not have; one that already holds one is refused
 /// (decision record 0317).
@@ -175,6 +171,31 @@ fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String
 fn schema_19_to_20(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Machine {
         crate::machines::premature_slow_down(table, 19, 20)?;
+    }
+    Ok(())
+}
+
+/// Schema 21 adds the optional `name` of a model reference, which a schema 20
+/// file does not have, so it needs no change but its number: the model shows
+/// its path's file name. A schema 20 file that already holds one was not
+/// written by any version that knew it, so it is refused rather than guessed
+/// at.
+fn schema_20_to_21(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let named = kind == FileKind::Project
+        && table
+            .get("models")
+            .and_then(toml::Value::as_array)
+            .is_some_and(|models| {
+                models
+                    .iter()
+                    .any(|m| m.as_table().is_some_and(|m| m.contains_key("name")))
+            });
+    if named {
+        return Err(
+            "this schema 20 file has a model `name`, a field schema 21 introduced; remove it, \
+             or set `schema = 21` if the file was written for schema 21"
+                .to_owned(),
+        );
     }
     Ok(())
 }

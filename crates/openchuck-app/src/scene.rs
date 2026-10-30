@@ -266,7 +266,7 @@ pub(crate) fn part_mesh(
         Some(Err(e)) => {
             notes.push(format!(
                 "the faces and edges of '{}' cannot be shown or selected: {e}",
-                model.path.as_str()
+                model.label()
             ));
             None
         }
@@ -355,7 +355,7 @@ pub(crate) fn build_scene(
             }
             Err(e) => view
                 .notes
-                .push(format!("'{}' cannot be shown: {e}", model.path.as_str())),
+                .push(format!("'{}' cannot be shown: {e}", model.label())),
         }
     }
 

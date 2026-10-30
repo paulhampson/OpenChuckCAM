@@ -6,7 +6,7 @@
   - **[Decision 0020](0020-slice-6-post-and-round-trip.md) item 11** (accepted): the Z1 profile's axis at machine Z −55 with the safe Z 50 mm above it. Both are replaced (items 1 and 2).
 
   SET-01, SET-06, UI-13 and NFR-12 are unchanged. The post and the path generation are unchanged. The machine profile gains three optional fields (item 7):
-  - project schema 22 (21 is lane MODELCOPY's) and machine profile schema 7, both assigned by the coordinator;
+  - project schema 22 (21 is lane MODELCOPY's, merged in #388) and machine profile schema 7, both assigned by the coordinator;
   - a breaking public change in `openchuck-types`, so the library family moves to 0.28.0 (decision 0048).
 - **Date:** 30 Oct 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): narrows OI-60 to the X datum of the rotary reference point; updates OI-917 and OI-471; opens OI-1290 (the spindle-height warning for a tool longer than the probe, shipped off) and OI-1291 (the spindle-to-axis distance it needs, issue [#395](https://github.com/paulhampson/OpenChuckCAM/issues/395)).
@@ -78,8 +78,7 @@ So −48.6 is the machine Z of the axis **for the probe as the reference tool**.
    - `recommended_min_safe_z` (mm, optional). The built-in Z1 gives 30, unconfirmed, with the owner's text.
 
    An older copy reads with none of them, and nothing reads them to warn yet (item 6):
-   - project schema 22 and machine schema 7 refuse an older file that already holds one;
-   - schema 21 is a no-op placeholder for lane MODELCOPY's migration.
+   - project schema 22 (after MODELCOPY's 21, merged in #388) and machine schema 7 refuse an older file that already holds one.
 
 ## Consequences
 

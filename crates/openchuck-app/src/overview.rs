@@ -1845,7 +1845,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let mut model_error = false;
     for m in project.models() {
         let item = ItemRef::Model(m.id);
-        let name = m.path.as_str().to_owned();
+        let name = m.label();
+        if m.path.is_outside_project() {
+            messages.push(Message::new(
+                Severity::Info,
+                crate::model::linked_note(m),
+                Some((item, name.clone())),
+                Some(MessageAction::Show(item)),
+            ));
+        }
         let Some(found) = checks.and_then(|c| c.models.get(&m.id)) else {
             continue;
         };
@@ -2250,7 +2258,7 @@ fn file_warnings(project: &Project, checks: Option<&Checks>) -> Vec<String> {
         .models()
         .iter()
         .filter_map(|m| {
-            let path = m.path.as_str();
+            let path = m.label();
             match &checks.models.get(&m.id)?.file {
                 FileState::Unchanged => None,
                 FileState::Missing => Some(format!("'{path}' is missing")),
