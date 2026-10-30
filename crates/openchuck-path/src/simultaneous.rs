@@ -62,6 +62,7 @@ use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, TURN};
+use crate::section;
 use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
 
 pub use crate::helical::{CHORD_FACTOR, CONSTRAINED_SPACING};
@@ -101,9 +102,11 @@ pub const AXIAL_SEED: f64 = 1.0;
 /// that gives the smoothed normal of a mesh (OI-67).
 pub const NORMAL_SPAN: f64 = 0.5;
 
-/// How close to the normal, as the sine of the angle, a flat-bottomed
-/// tool's axis counts as on it when the tool is seeded (OI-337).
-pub const FLAT_SEED: f64 = 1e-3;
+/// The lean of a flat-bottomed tool's axis from the normal, as the sine of
+/// the angle (about 5.7 degrees), at and beyond which the tool is seeded
+/// with its corner on the drive point; nearer the normal the seed moves
+/// towards the tool's centre in step with the lean (OI-337).
+pub const FLAT_BLEND: f64 = 0.1;
 
 /// How many times a move may be halved.
 pub const MAX_DEPTH: u32 = 12;
@@ -297,6 +300,9 @@ struct Track {
     seeds: usize,
     /// Drive samples for the A smoothing.
     samples: usize,
+    /// The zone of [`Plan::zones`] the track lies in, whose centre its drive
+    /// rays aim at (OP-26).
+    zone: usize,
 }
 
 impl Track {
@@ -371,6 +377,9 @@ struct Node {
     /// The normal's in-plane angle and the tool axis angle, degrees.
     phi_n: f64,
     phi: f64,
+    /// A tool raised at the middle of a straight move (decision record 0363
+    /// item 2), whose axis is the move's, not one chosen for a normal.
+    raised: bool,
 }
 
 struct Plan<'a> {
@@ -386,13 +395,15 @@ struct Plan<'a> {
     /// through the raised tool (decision record 0363 item 2).
     reach: f64,
     /// Whether the tool has a flat bottom, whose normal is the axis over a
-    /// width (a flat end or bull-nose).
+    /// width (a flat end or bull-nose), seeded by [`FLAT_BLEND`].
     flat_bottom: bool,
     leave: f64,
     tolerance: f64,
     chord: f64,
     /// Radius from which drive rays start.
     outside: f64,
+    /// The X zones and the centres their drive rays aim at (OP-26).
+    zones: &'a [section::Zone],
     sense: f64,
 }
 
@@ -495,6 +506,7 @@ fn run(
                         th1: th,
                         seeds,
                         samples,
+                        zone: 0,
                     }
                 })
                 .collect()
@@ -518,6 +530,7 @@ fn run(
                 th1: th_start - sense * rotation * total,
                 seeds,
                 samples: samples as usize,
+                zone: 0,
             };
             // A whole turn at each face across the axis, where the tool's
             // side touches it (decision record 0297), cut after the spiral
@@ -535,6 +548,16 @@ fn run(
                 .collect();
             vec![spiral]
         }
+    };
+
+    // Where the section does not surround the axis, the drive rays aim at
+    // its own centre (OP-26; decision record 0363 item 3). A part whose
+    // every section surrounds the axis has one zone and is driven as before.
+    let zones = section::zones(input.surface, x0, x1, radius, tolerance);
+    let tracks: Vec<Track> = if zones.len() > 1 || zones.iter().any(|z| z.centres.is_some()) {
+        tracks.iter().flat_map(|t| split(t, &zones)).collect()
+    } else {
+        tracks
     };
 
     let grown = cutter::grow_profile(input.tool, leave)?;
@@ -555,6 +578,7 @@ fn run(
         chord: CHORD_FACTOR * tolerance,
         outside: radius + 1.0,
         sense,
+        zones: &zones,
     };
 
     let mut findings = Findings::default();
@@ -628,12 +652,60 @@ fn run(
                 .to_owned(),
         );
     }
+    let off: Vec<String> = zones
+        .iter()
+        .filter(|z| z.centres.is_some())
+        .map(|z| format!("X {:.3} to {:.3}", z.x0, z.x1))
+        .collect();
+    if !off.is_empty() {
+        notes.push(format!(
+            "the part's section does not surround the rotary axis at {}, so the path there goes \
+             round the section's own centre: the tool moves across the axis as A turns, to stay \
+             on the surface normal",
+            off.join(", ")
+        ));
+    }
     notes.extend(faces::note(&turned));
     Ok(StrategyOutput {
         passes,
         notes,
         warnings: Vec::new(),
     })
+}
+
+/// `track` cut at the zones' boundaries, in the track's own order, each
+/// piece with its zone and its share of the seeds and samples (OP-26).
+fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
+    let dx = track.x1 - track.x0;
+    if dx.abs() < 1e-12 {
+        return vec![*track];
+    }
+    let mut pieces: Vec<(f64, f64, usize)> = zones
+        .iter()
+        .enumerate()
+        .filter_map(|(k, z)| {
+            let (ta, tb) = ((z.x0 - track.x0) / dx, (z.x1 - track.x0) / dx);
+            let (lo, hi) = (ta.min(tb).max(0.0), ta.max(tb).min(1.0));
+            (hi > lo).then_some((lo, hi, k))
+        })
+        .collect();
+    pieces.sort_by(|a, b| a.0.total_cmp(&b.0));
+    pieces
+        .into_iter()
+        .map(|(lo, hi, zone)| {
+            let ((x0, th0), (x1, th1)) = (track.at(lo), track.at(hi));
+            let share = |n: usize| ((n as f64 * (hi - lo)).ceil() as usize).max(1);
+            Track {
+                x0,
+                x1,
+                th0,
+                th1,
+                seeds: share(track.seeds),
+                samples: share(track.samples),
+                zone,
+            }
+        })
+        .collect()
 }
 
 /// The part's X range `x0` to `x1` less the held keep-out bands that cover
@@ -681,13 +753,13 @@ fn near(angle: f64, previous: f64) -> f64 {
 impl Plan<'_> {
     /// The drive point at (`x`, polar angle `th`): the first surface point on
     /// the ray from outside the part towards the axis.
-    fn drive(&self, x: f64, th: f64) -> Option<Drive> {
-        let hit = self.ray(x, th)?;
+    fn drive(&self, track: &Track, x: f64, th: f64) -> Option<Drive> {
+        let hit = self.ray(track.zone, x, th)?;
         let exact = hit.position.is_some();
         let normal = if exact {
             hit.normal
         } else {
-            self.smoothed_normal(x, th, hit.point, hit.normal)
+            self.smoothed_normal(track.zone, x, th, hit.point, hit.normal)
         };
         let phi = polar(normal.get())?;
         Some(Drive {
@@ -698,7 +770,16 @@ impl Plan<'_> {
         })
     }
 
-    fn ray(&self, x: f64, th: f64) -> Option<crate::surface::RayHit> {
+    /// The ray of the drive at (`x`, `th`) in `zone`: towards the axis, or
+    /// towards the section's own centre where the zone has one (OP-26).
+    fn ray(&self, zone: usize, x: f64, th: f64) -> Option<crate::surface::RayHit> {
+        if let Some(z) = self.zones.get(zone)
+            && z.centres.is_some()
+        {
+            let centre = z.centre_at(x);
+            let outside = self.outside + centre.0.hypot(centre.1);
+            return section::hit_towards(self.input.surface, x, centre, th, outside);
+        }
         let (s, c) = th.to_radians().sin_cos();
         let origin = Point3::new(x, self.outside * c, self.outside * s);
         let direction = UnitVec3::new(Vec3::new(0.0, -c, -s)).ok()?;
@@ -708,13 +789,29 @@ impl Plan<'_> {
     /// The normal of the surface through four neighbouring drive points
     /// [`NORMAL_SPAN`] away, which averages out the facet normals of a mesh
     /// (OI-67). The facet normal where a neighbour is missing.
-    fn smoothed_normal(&self, x: f64, th: f64, p: Point3, facet: UnitVec3) -> UnitVec3 {
-        let r = p.y.hypot(p.z);
+    fn smoothed_normal(
+        &self,
+        zone: usize,
+        x: f64,
+        th: f64,
+        p: Point3,
+        facet: UnitVec3,
+    ) -> UnitVec3 {
+        // A neighbour in another zone is on the far side of a face across
+        // the axis, and its rays aim at another centre: as missing.
+        if self.zones.len() > 1
+            && let Some(z) = self.zones.get(zone)
+            && (x - NORMAL_SPAN < z.x0 || x + NORMAL_SPAN > z.x1)
+        {
+            return facet;
+        }
+        let (cy, cz) = self.zones.get(zone).map_or((0.0, 0.0), |z| z.centre_at(x));
+        let r = (p.y - cy).hypot(p.z - cz);
         if r <= NORMAL_SPAN {
             return facet;
         }
         let dth = (NORMAL_SPAN / r).to_degrees();
-        let pt = |x: f64, th: f64| self.ray(x, th).map(|h| h.point);
+        let pt = |x: f64, th: f64| self.ray(zone, x, th).map(|h| h.point);
         let (Some(xp), Some(xm), Some(tp), Some(tm)) = (
             pt(x + NORMAL_SPAN, th),
             pt(x - NORMAL_SPAN, th),
@@ -745,7 +842,7 @@ impl Plan<'_> {
         let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
         let drives: Vec<Option<Drive>> = parallel::map_in_order(&ts, |t| {
             let (x, th) = track.at(*t);
-            self.drive(x, th)
+            self.drive(track, x, th)
         });
         let offset = lead * track.travel();
         let mut plan = AxisPlan::default();
@@ -777,7 +874,7 @@ impl Plan<'_> {
     /// the region forbids a cut.
     fn node(&self, track: &Track, axis: &AxisPlan, t: f64) -> Option<Node> {
         let (x, th) = track.at(t);
-        let drive = self.drive(x, th)?;
+        let drive = self.drive(track, x, th)?;
         // The plan's angle is continuous along the track; keep it so, and
         // take the normal's angle as its equivalent nearest it.
         let phi = axis.phi_at(t)?;
@@ -800,6 +897,7 @@ impl Plan<'_> {
             normal: drive.normal,
             phi_n: near(drive.phi, phi),
             phi,
+            raised: false,
         })
     }
 
@@ -814,18 +912,6 @@ impl Plan<'_> {
         let along = d.dot(t);
         let radial = d - t * along;
         let b = radial.length();
-        // A flat bottom's contact is not unique when the axis is on the
-        // normal. The planned axis, interpolated between drive samples, is
-        // a few 1e-6 rad off it, and that rounding alone would put the corner
-        // on the drive point on one side or the other, a jump of the tool's
-        // diameter between neighbouring points (decision record 0363 item 2,
-        // OI-337). Within `FLAT_SEED` of the normal such a tool is centred on
-        // the drive point.
-        let b = if self.flat_bottom && b < FLAT_SEED {
-            0.0
-        } else {
-            b
-        };
         let angle = along.atan2(b).min(0.0);
         let Some(q) = self.drop_profile.point_for_normal(angle) else {
             return p;
@@ -835,7 +921,19 @@ impl Plan<'_> {
         } else {
             Vec3::ZERO
         };
-        p + (-(t * q.height.0 + e * q.radius.0))
+        // A flat bottom's contact is not unique near the normal: the corner
+        // on the drive point flips sides as the axis crosses the normal, and
+        // the planned axis is only within a few 1e-6 rad of it, so neighbouring
+        // points jumped by the tool's diameter (decision record 0363 item 2,
+        // OI-337). Such a tool's seed moves from its centre to its corner in
+        // step with the lean, reaching the corner at `FLAT_BLEND`; the drop
+        // then lowers it onto the surface. A round bottom is seeded as before.
+        let radius = if self.flat_bottom {
+            q.radius.0 * (b / FLAT_BLEND).min(1.0)
+        } else {
+            q.radius.0
+        };
+        p + (-(t * q.height.0 + e * radius))
     }
 
     /// The original tool's tip for a grown-tool drop.
@@ -924,6 +1022,7 @@ impl Plan<'_> {
             a: a_lin,
             contact,
             phi: 90.0 - self.sense * a_lin.0,
+            raised: true,
             ..*at
         })
     }
@@ -1222,7 +1321,9 @@ impl Plan<'_> {
             findings.slope = slope;
             findings.slope_at = Some(n.contact.contact);
         }
-        findings.tilt = findings.tilt.max((n.phi - n.phi_n - offset).abs());
+        if !n.raised {
+            findings.tilt = findings.tilt.max((n.phi - n.phi_n - offset).abs());
+        }
     }
 }
 
