@@ -176,6 +176,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-16 | P1 | T, I | Unit, integration, system | Unit tests of the build text from a fixed fixture, the dirty-flag logic, the full-hash check and the fallback without Git; a CLI test that `--version` has every field; UI tests that the About window shows the build text and the licence box, that Copy puts exactly the build text on the clipboard, and that Tab reaches the box, Copy and Close; a test that every program carries exactly `(OpenChuckCAM <workspace version>)` after the title and no other build fact; golden files hold the masked version. Inspection: a nightly archive reports its commit and a clean tree |
 | NFR-17 | P1 | A, D | System | Unit tests of the log folder order and per-platform paths, the rotation, the fall-backs and the panic hook (`req_nfr_17_*`, Linux); on a Windows nightly build, inspection that no console window opens from a double click, that `--bench` output and exit code reach the terminal, and that the log file exists after a run and after a forced panic (open item OI-455) |
 | NFR-18 | P2 | A, D | System | Unit tests (`req_nfr_18_*`): a command, undo and redo leave a line that names the item kind and name and the parameter name and no value; a clicked button is logged by its label and a typed text, drag value or choice is not; dialogs and windows opening and closing, and the listed jobs, are logged once; the switch is on by default, turned off in Settings it stops every line and the choice is kept in `settings.toml`. Inspection that a log from a session of ordinary use shows the steps taken and holds no parameter value or file contents (decision 0157). P2: no mandatory CI test (AGENTS.md) |
+| NFR-19 | P2 | T, I | System, Release | Tests of the documentation tools (`test_req_nfr_19_*` and `test_req_nfr_12_*` in `user-docs/tools/tests`) and the docs check of `.github/workflows/docs-site.yml` on every change to `user-docs/`: no request to another site, the program's G-code notice in every page's footer, alt text and captions on every image, links and anchors (lychee), valid HTML (the Nu HTML Checker); the release workflow adds the release checks of decision 0400 section R. Contrast, keyboard use and print inspected at release |
 
 ### 4.1 Acceptance limits
 
@@ -345,6 +346,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 - Fuzzing ran for a set period on each parser with no unresolved crash (NFR-07).
 - Licence and advisory reports are clean or have recorded decisions (NFR-10, NFR-14), and each spike in section 7 has a written result.
 - The warning that G-code must be verified before use is present and checked (NFR-12).
+- The user documentation for the release is current: the release workflow's documentation check passes and the documentation items of the application release checklist (`docs/releasing.md`) are ticked in the verification report ([decision 0400](decisions/0400-user-documentation-site.md), section R).
 - A verification report is issued (below) and the plan has been reviewed against what actually happened.
 
 **Defect severity.**

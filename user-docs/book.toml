@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The OpenChuckCAM user guide (decision 0400). Built with mdBook (pinned in
+# .github/workflows/docs-site.yml) through user-docs/tools/build.py, which finishes the pages.
+# The theme in theme/ replaces mdBook's own completely; no preprocessor or plugin is used.
+[book]
+title = "OpenChuckCAM user guide"
+language = "en"
+description = "How to use OpenChuckCAM to make G-code for 4-axis rotary machining."
+
+[output.html]
+theme = "theme"
+default-theme = "light"
+preferred-dark-theme = "light"
+smart-punctuation = true
+definition-lists = true
+admonitions = true
+no-section-label = true
+mathjax-support = false
+
+[output.html.playground]
+runnable = false
+copyable = false
+
+[output.html.fold]
+enable = false
+
+[output.html.print]
+enable = true
+
+[output.html.search]
+enable = true
+limit-results = 20
+use-boolean-and = true
+copy-js = true

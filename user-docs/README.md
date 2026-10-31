@@ -1,0 +1,33 @@
+# The OpenChuckCAM user guide
+
+The source of the guide for people who use OpenChuckCAM, published at <https://paulhampson.github.io/OpenChuckCAM/>. It is not the project's engineering documentation: that is [`docs/`](../docs/README.md), which stays the source of truth. [Decision 0400](../docs/decisions/0400-user-documentation-site.md) sets out how the guide is built, versioned and published.
+
+| Path | Contents |
+| --- | --- |
+| `src/` | The pages, in Markdown; `src/SUMMARY.md` is the contents and their order. |
+| `theme/` | The page template, the stylesheet and the version script. They replace mdBook's own theme. |
+| `tools/build.py` | Builds the guide with mdBook and finishes the pages (version stamp, the G-code notice, fonts). |
+| `tools/assemble.py` | Puts the published site together: `latest/` beside every released version. |
+| `tools/check.py` | The style, privacy and safety checks. |
+| `tools/manifest.py` | The SHA-256 manifest of a released version. |
+| `tools/tests/` | Tests of the tools. |
+| `STYLE.md` | How to write the pages, and the review checklist. |
+
+## Build and check it locally
+
+You need Python 3.11 or later, Git, and the tools pinned in `.github/workflows/docs-site.yml`: mdBook and lychee (`cargo install mdbook --version 0.5.4 --locked`, `cargo install lychee --version 0.24.2 --locked`), and the Nu HTML Checker with Java. From the repository root:
+
+```text
+python3 -m unittest discover -s user-docs/tools/tests
+python3 user-docs/tools/build.py --out /tmp/guide/latest-build
+python3 user-docs/tools/assemble.py site --latest /tmp/guide/latest-build --out /tmp/guide/root/OpenChuckCAM --base /OpenChuckCAM/
+python3 user-docs/tools/check.py --site /tmp/guide/root/OpenChuckCAM
+lychee --offline --include-fragments --root-dir /tmp/guide/root /tmp/guide/root/OpenChuckCAM
+java -jar vnu.jar --skip-non-html --errors-only /tmp/guide/root/OpenChuckCAM/latest
+```
+
+To read it, serve the folder (`python3 -m http.server -d /tmp/guide/root`) and open <http://localhost:8000/OpenChuckCAM/>. The version list needs a server; the pages themselves also open from disk.
+
+## How it is published
+
+Pull requests that change `user-docs/` run the checks above. A push to `main` also deploys the site to GitHub Pages: `latest/` from `main`, and every released version from the `docs-releases` branch, which only the release workflow writes. See [`docs/releasing.md`](../docs/releasing.md) for the release steps and the one-time setup.

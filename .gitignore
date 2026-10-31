@@ -7,3 +7,8 @@
 /fuzz/coverage
 *.pending-snap
 *.snap.new
+
+# The user guide when built with plain `mdbook build user-docs` (user-docs/tools/build.py writes elsewhere).
+/user-docs/book/
+# Python bytecode of the user guide tools.
+__pycache__/
