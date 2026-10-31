@@ -1003,6 +1003,53 @@ mod tests {
     }
 
     #[test]
+    fn req_set_01_the_form_shows_every_choice_and_sets_it_back_unchanged() {
+        let mut p = z1();
+        p.a_sense = ASense::Negative;
+        p.a_range = ARange::Limited {
+            min: Degrees(-720.0),
+            max: Degrees(720.0),
+        };
+        p.max_feeds.rotary_in_feed = RotaryInFeed::Separate;
+        for mode in [ShortBlockMode::Off, ShortBlockMode::SlowDown] {
+            p.short_block_mode = mode;
+            let form = machine_form(&p);
+            let get = |n: &str| form.iter().find(|f| f.name == n).expect(n).value.clone();
+            assert_eq!(get(A_SENSE), Some(text("negative")));
+            assert_eq!(get(A_RANGE), Some(text("limited")));
+            assert_eq!(get(A_MIN), Some(num(-720.0)));
+            assert_eq!(get(A_MAX), Some(num(720.0)));
+            assert_eq!(get(ROTARY_IN_FEED), Some(text("separate")));
+            assert!(form.iter().all(|f| f.applies));
+            for f in &form {
+                let again = set_machine_field(&p, f.name, f.value.as_ref())
+                    .unwrap_or_else(|e| panic!("{}: {e}", f.name));
+                assert_eq!(again, p, "{} changed the profile", f.name);
+            }
+        }
+        // The group headings, in the order the editor shows them.
+        let mut headings: Vec<&str> = Vec::new();
+        for f in machine_form(&p) {
+            if headings.last() != Some(&f.group.label()) {
+                headings.push(f.group.label());
+            }
+        }
+        assert_eq!(
+            headings,
+            [
+                "Profile",
+                "Rotary axis",
+                "Travel",
+                "Maximum feeds",
+                "Clearance",
+                "Tools and spindle",
+                "Short moves",
+                "Spindle height"
+            ]
+        );
+    }
+
+    #[test]
     fn req_ui_13_an_edited_value_is_marked_not_confirmed_and_others_keep_theirs() {
         let p = z1();
         assert!(p.is_confirmed(ProfileField::MaxFeeds));

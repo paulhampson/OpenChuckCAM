@@ -439,6 +439,7 @@ mod tests {
         let dir = scratch("save");
         let mut draft = MachineDraft::unsaved(renamed("Shop Z1"), None);
         assert_eq!(draft.status(), DraftStatus::New);
+        assert_eq!(draft.status().text(), "New: not saved yet");
         assert!(draft.is_dirty());
         assert!(!dir.exists());
         let path = save_draft(&dir, &mut draft).expect("saves");
@@ -453,6 +454,7 @@ mod tests {
             .set(fields::SAFE_Z, Some(&ParameterValue::Number(50.0)))
             .expect("valid");
         assert_eq!(draft.status(), DraftStatus::Changed);
+        assert_eq!(draft.status().text(), "Changed: not saved yet");
         assert_eq!(
             MachineDraft::open(&path)
                 .expect("reads")
@@ -579,6 +581,13 @@ mod tests {
         let added = MachineDraft::open(&both).expect("reads");
         assert_eq!(added.profile.name, "Makera Z1 (imported)");
         assert_ne!(added.id.as_deref(), Some(Z1_ID));
+        // Keeping both again gives the next free name and another ID.
+        let again = apply_import(&dir, &plan, ImportChoice::KeepBoth)
+            .expect("imports")
+            .expect("a file");
+        let second = MachineDraft::open(&again).expect("reads");
+        assert_eq!(second.profile.name, "Makera Z1 (imported 2)");
+        assert_ne!(second.id, added.id);
 
         // A library profile: Replace writes over its own file.
         let mut mine = MachineDraft::unsaved(renamed("Shop"), None);
