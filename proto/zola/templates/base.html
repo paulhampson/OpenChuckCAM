@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+{#- SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- OpenChuckCAM user documentation: the Zola base template (lane DOCSITE prototype, throwaway). -#}
+{%- import "macros/nav.html" as nav -%}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}{{ config.title }}{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ config.description }}">
+  <meta name="docs-version" content="latest">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
+  <script>
+    try { var t = localStorage.getItem('oc-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip" href="#content">Skip to the content</a>
+  <div class="banner" role="note">This is the documentation for the development version (main). It may describe features that are not in a release yet. <a href="{{ get_url(path='versions.html') }}">Other versions</a></div>
+  <header class="site-header">
+    <a class="site-title" href="{{ get_url(path='@/_index.md') }}">OpenChuckCAM <span>User guide</span></a>
+    <div class="tools">
+      <a href="{{ get_url(path='versions.html') }}">Version: latest</a>
+      <button class="theme-toggle" type="button" hidden>Dark theme</button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Contents">
+      <details open>
+        <summary>Contents</summary>
+        <div class="search">
+          <label for="search">Search the guide</label>
+          <input type="search" id="search" autocomplete="off" aria-controls="search-results">
+          <ul id="search-results" class="hidden" aria-live="polite"></ul>
+        </div>
+        {{ nav::contents(current=current_path | default(value="/")) }}
+      </details>
+    </nav>
+    <div class="content">
+      <main id="content">
+        {% block content %}{% endblock %}
+        {% block pager %}{% endblock %}
+      </main>
+      <footer class="site-footer">
+        <p>Generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup.</p>
+        <p>Describes the development version, commit PROTO000, built 2026-10-31. Licensed AGPL-3.0-or-later.</p>
+      </footer>
+    </div>
+  </div>
+  <script>
+    if (matchMedia('(max-width: 900px)').matches) document.querySelector('.sidebar details').open = false;
+    (function () {
+      var b = document.querySelector('.theme-toggle'), root = document.documentElement;
+      function dark() { return root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; }
+      function label() { b.textContent = dark() ? 'Light theme' : 'Dark theme'; }
+      b.hidden = false; label();
+      b.addEventListener('click', function () {
+        root.dataset.theme = dark() ? 'light' : 'dark';
+        try { localStorage.setItem('oc-theme', root.dataset.theme); } catch (e) {}
+        label();
+      });
+    })();
+  </script>
+  <script src="{{ get_url(path='elasticlunr.min.js') }}"></script>
+  <script src="{{ get_url(path='search_index.en.js') }}"></script>
+  <script src="{{ get_url(path='search.js') }}"></script>
+</body>
+</html>

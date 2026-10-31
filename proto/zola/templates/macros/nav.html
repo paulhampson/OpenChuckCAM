@@ -1,0 +1,31 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- The contents list. Zola has no single contents file: the order comes from each page's `weight`,
+    the part headings from `[extra] part` in the front matter. -#}
+{% macro link(url, title, current) -%}
+<a href="{{ url }}"{% if url == current or url == config.base_url ~ current | trim_start_matches(pat="/") %} aria-current="page"{% endif %}>{{ title }}</a>
+{%- endmacro link %}
+{% macro contents(current) %}
+{%- set root = get_section(path="_index.md") -%}
+<ol>
+  <li>{{ self::link(url=root.permalink, title=root.title, current=current) }}</li>
+  {%- set_global part = "" -%}
+  {%- set items = [] -%}
+  {%- for s in root.subsections -%}{%- set_global items = items | concat(with=get_section(path=s)) -%}{%- endfor -%}
+  {%- for p in root.pages -%}{%- set_global items = items | concat(with=p) -%}{%- endfor -%}
+  {%- for item in items | sort(attribute="weight") -%}
+    {%- if item.extra.part and item.extra.part != part -%}
+      {%- set_global part = item.extra.part -%}
+  <li class="nav-part">{{ part }}</li>
+    {%- endif %}
+  <li>{{ self::link(url=item.permalink, title=item.title, current=current) }}
+    {%- if item.pages %}
+    <ol>
+      {%- for p in item.pages %}
+      <li>{{ self::link(url=p.permalink, title=p.title, current=current) }}</li>
+      {%- endfor %}
+    </ol>
+    {%- endif %}
+  </li>
+  {%- endfor %}
+</ol>
+{% endmacro contents %}

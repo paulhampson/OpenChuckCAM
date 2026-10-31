@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versions of the OpenChuckCAM user guide</title><link rel="stylesheet" href="style.css"></head>
+<body><div class="content"><main id="content">
+<h1>Versions of this guide</h1>
+<p>Each release of OpenChuckCAM has its own copy of this guide. Use the copy that matches the program you run.</p>
+<table><thead><tr><th>Version</th><th>Describes</th></tr></thead><tbody>
+<tr><td><a href="index.html">latest</a></td><td>The development version, built from the main branch. It may describe features that are not in a release yet.</td></tr>
+</tbody></table>
+<p>There is no release yet. When there is, it will be listed here.</p>
+</main></div></body></html>

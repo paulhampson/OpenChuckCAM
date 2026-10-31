@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# OpenChuckCAM user guide, Zola prototype (lane DOCSITE, throwaway branch).
+base_url = "/"
+title = "OpenChuckCAM user guide"
+description = "How to use OpenChuckCAM to make G-code for 4-axis rotary machining."
+default_language = "en"
+compile_sass = false
+build_search_index = true
+generate_feeds = false
+
+[markdown]
+highlight_code = false
+smart_punctuation = true
+
+[search]
+index_format = "elasticlunr_javascript"
+include_title = true
+include_content = true
+
+[link_checker]
+internal_level = "error"
