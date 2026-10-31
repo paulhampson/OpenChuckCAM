@@ -16,9 +16,10 @@ use openchuck_path::adaptive::parameter::{ADAPTIVE_SPACING, MIN_SPACING};
 use openchuck_path::finishing::parameter::FACE_FREE_ENDS;
 use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::rotary::AxisPosition;
+use openchuck_path::simultaneous::parameter::PATTERN;
 use openchuck_path::{
     AxialFinishing, GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, RotaryMapping,
-    Strategy, generate,
+    SimultaneousFinishing, Strategy, generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose, coverage, min_clearance};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
@@ -101,7 +102,10 @@ fn cone() -> Part<Cone> {
     }
 }
 
-fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> {
+fn values(
+    strategy: &dyn Strategy,
+    extra: &[(&str, ParameterValue)],
+) -> BTreeMap<String, ParameterValue> {
     let mut v = BTreeMap::new();
     for (k, x) in [
         (names::STEPOVER, 3.0),
@@ -112,7 +116,9 @@ fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> 
     ] {
         v.insert(k.to_owned(), ParameterValue::Number(x));
     }
-    v.insert(FACE_FREE_ENDS.to_owned(), ParameterValue::Flag(false));
+    if strategy.schema().get(FACE_FREE_ENDS).is_some() {
+        v.insert(FACE_FREE_ENDS.to_owned(), ParameterValue::Flag(false));
+    }
     for (k, x) in extra {
         v.insert((*k).to_owned(), x.clone());
     }
@@ -124,7 +130,7 @@ fn generated<P>(
     strategy: &dyn Strategy,
     extra: &[(&str, ParameterValue)],
 ) -> GeneratedPath {
-    run(|ctx| generate(strategy, &p.fixture.input(), &values(extra), ctx)).unwrap()
+    run(|ctx| generate(strategy, &p.fixture.input(), &values(strategy, extra), ctx)).unwrap()
 }
 
 /// The tool's poses along the cutting moves, each move cut into `k` straight
@@ -310,6 +316,51 @@ fn req_op_04_req_op_05_clean_up_arcs_are_added_between_the_wraps_of_a_helix() {
     let (before, after) = (left(&p, &off, (4.0, 8.0)), left(&p, &on, (4.0, 8.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+}
+
+fn axial_pattern() -> (&'static str, ParameterValue) {
+    (PATTERN, ParameterValue::Text("axial".to_owned()))
+}
+
+#[test]
+fn req_op_04_simultaneous_finishing_spaces_its_axial_pattern_only() {
+    let s = SimultaneousFinishing;
+    let spiral = s.schema_for(&BTreeMap::new());
+    assert!(spiral.get(ADAPTIVE_SPACING).is_none());
+    assert!(spiral.get("scallop").is_none());
+    let axial = BTreeMap::from([(PATTERN.to_owned(), axial_pattern().1)]);
+    let (label, default, spacing) = label_and_default(&s, &axial);
+    assert_eq!(label, "Allowed excess");
+    assert_eq!(default, Some(0.01));
+    assert!(spacing);
+    assert_eq!(
+        s.schema_for(&axial).get(ADAPTIVE_SPACING).unwrap().kind,
+        ParameterKind::Flag { default: true }
+    );
+    let mut off = axial.clone();
+    off.insert(ADAPTIVE_SPACING.to_owned(), ParameterValue::Flag(false));
+    let schema = s.schema_for(&off);
+    assert!(schema.get("scallop").is_none());
+    assert!(schema.get(MIN_SPACING).is_none());
+}
+
+#[test]
+fn req_op_05_req_op_04_simultaneous_axial_passes_are_added_until_the_allowed_excess_is_met() {
+    let p = cylinder();
+    let off = generated(
+        &p,
+        &SimultaneousFinishing,
+        &[
+            axial_pattern(),
+            (ADAPTIVE_SPACING, ParameterValue::Flag(false)),
+        ],
+    );
+    let on = generated(&p, &SimultaneousFinishing, &[axial_pattern()]);
+    let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
+    assert!(before > 0.3, "off left {before}");
+    assert!(after <= 0.012, "on left {after}: {:?}", on.notes);
     assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
     assert!(on.warnings.is_empty(), "{:?}", on.warnings);
 }

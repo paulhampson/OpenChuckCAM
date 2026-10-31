@@ -720,6 +720,10 @@ impl Family for Axial<'_> {
     fn queries(&self) -> u64 {
         self.counters.iter().map(Counting::count).sum()
     }
+
+    fn probe_cost(&self) -> u64 {
+        self.counters.len() as u64
+    }
 }
 
 /// The passes at `angles` with passes added between them where more than

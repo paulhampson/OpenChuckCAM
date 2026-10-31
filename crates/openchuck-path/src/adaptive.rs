@@ -196,7 +196,8 @@ impl Settings {
 /// layers (decision record 0239 item 8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Limits {
-    /// Geometry queries: drops of the tool, for measuring and fitting.
+    /// Geometry queries: drops of the tool and rays, for measuring and
+    /// fitting.
     pub(crate) queries: u64,
     /// Points of the operation's passes, its own and the added ones, with
     /// [`LINK_POINTS`] for each pass's entry and link.
@@ -269,8 +270,8 @@ impl Reason {
     }
 }
 
-/// A [`SurfaceSource`] that counts its drops, the geometry queries adaptive
-/// spacing is limited by. The count is the same at any thread count, since
+/// A [`SurfaceSource`] that counts its drops and rays, the geometry queries
+/// adaptive spacing is limited by. The count is the same at any thread count, since
 /// the same drops are made.
 #[derive(Debug)]
 pub(crate) struct Counting<'a> {
@@ -286,7 +287,7 @@ impl<'a> Counting<'a> {
         }
     }
 
-    /// Drops made so far.
+    /// Drops and rays made so far.
     pub(crate) fn count(&self) -> u64 {
         self.count.load(Ordering::Relaxed)
     }
@@ -310,6 +311,7 @@ impl SurfaceSource for Counting<'_> {
     }
 
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit> {
+        self.count.fetch_add(1, Ordering::Relaxed);
         self.inner.cast_ray(origin, direction, max_distance)
     }
 
@@ -467,6 +469,11 @@ pub(crate) trait Family: Sync {
 
     /// Geometry queries made so far.
     fn queries(&self) -> u64;
+
+    /// The most geometry queries one [`probe`](Self::probe) makes.
+    fn probe_cost(&self) -> u64 {
+        1
+    }
 }
 
 /// One measuring interval: the stretch between two tracks, by index, where
@@ -524,9 +531,11 @@ impl Outcome {
             ),
             (n, Some(w)) => format!(
                 "adaptive spacing: {n} pass{} added where more than the allowed excess of \
-                 {:.3} mm was left, the closest {w:.3} mm from its neighbour",
+                 {:.3} mm was left, the closest {w:.3} mm from its neighbour; measuring and \
+                 fitting them made {} geometry queries",
                 if n == 1 { "" } else { "es" },
-                settings.height
+                settings.height,
+                self.queries
             ),
         }
     }
@@ -695,7 +704,9 @@ impl Work<'_> {
         // The most queries the stations can make is charged before they are
         // measured, so where the limit is met does not depend on the order
         // the threads measure them in (decision record 0239 item 8).
-        let most = (at.len() as u64).saturating_mul((MOST_SAMPLES - 1) as u64);
+        let most = (at.len() as u64)
+            .saturating_mul((MOST_SAMPLES - 1) as u64)
+            .saturating_mul(self.family.probe_cost());
         if self.family.queries().saturating_add(most) > self.limits.queries {
             self.stopped = Some(Reason::Queries);
             self.give_up(interval, Reason::Queries);
@@ -724,10 +735,17 @@ impl Work<'_> {
         let spans_of = |at: &[f64]| merge(at, reach, &interval.spans);
         let c_mid = 0.5 * (lo.c + hi.c);
         let half = self.family.width((hi.c - lo.c) / 2.0);
+        let high = spans_of(&high);
+        // A place that cannot be confirmed within a stretch that gets a pass
+        // is measured again in the halves.
+        let inside = |s: f64| {
+            high.iter()
+                .any(|&(a, b)| s >= a.min(b) - EPS && s <= a.max(b) + EPS)
+        };
+        unsure.retain(|&s| !inside(s));
         for (from, to) in spans_of(&unsure) {
             self.place(c_mid, 0.5 * (from + to), Reason::Unverified);
         }
-        let high = spans_of(&high);
         if high.is_empty() {
             return Ok(Vec::new());
         }

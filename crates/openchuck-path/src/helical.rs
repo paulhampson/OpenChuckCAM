@@ -552,6 +552,10 @@ impl Family for Wraps<'_> {
     fn queries(&self) -> u64 {
         self.counters.iter().map(Counting::count).sum()
     }
+
+    fn probe_cost(&self) -> u64 {
+        self.counters.len() as u64
+    }
 }
 
 /// The passes adaptive spacing adds between the wraps of the helix `passes`
