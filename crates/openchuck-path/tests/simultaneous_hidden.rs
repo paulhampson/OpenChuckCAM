@@ -644,7 +644,7 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
     // not, so the walls deeper than the flutes are left and reported, and on
     // every pass, the main ones included, the shank never meets the part:
     // a pass breaks where it would, and the breaks are said (decision record
-    // 0368, the owner's answer on OI-1452).
+    // 0368, the owner's answer on OI-1456).
     let (mesh, section) = keyway(3.0);
     let (small, body) = small_ball();
     let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &small);

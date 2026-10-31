@@ -9,6 +9,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use openchuck_path::params::names;
 use openchuck_path::{
     AcceptAll, AnalyticStock, CompositeSurface, HelicalFinishing, MeshSurface, ParameterValue,
-    RotaryMapping, Solid, StrategyInput, SurfaceSource, ToolLine, generate,
+    RotaryMapping, Solid, StrategyInput, SurfaceSource, ToolLine,
 };
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};

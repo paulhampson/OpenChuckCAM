@@ -34,7 +34,9 @@ use std::collections::BTreeMap;
 
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
+use openchuck_types::units::Degrees;
 
+use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
 use crate::assemble::PathWarning;
 use crate::cutter;
 use crate::error::{PathError, Result};
@@ -42,6 +44,7 @@ use crate::extend::Extension;
 use crate::faces;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
+use crate::rotary::RotaryMapping;
 use crate::scallop;
 use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput, StrategyOutput};
 use crate::wrap_fit::{Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits};
@@ -152,6 +155,7 @@ impl Strategy for HelicalFinishing {
             .into_iter()
             .chain(crate::extend::specs(false))
             .chain(crate::finishing::specs(true, true))
+            .chain(adaptive::specs())
             .collect(),
         )
     }
@@ -160,7 +164,11 @@ impl Strategy for HelicalFinishing {
         &self,
         values: &BTreeMap<String, crate::params::ParameterValue>,
     ) -> ParameterSchema {
-        crate::finishing::schema_for(self.schema(), values)
+        adaptive::schema_for(
+            crate::finishing::schema_for(self.schema(), values),
+            values,
+            parameter::SCALLOP,
+        )
     }
 
     fn honours_region(&self) -> bool {
@@ -168,6 +176,14 @@ impl Strategy for HelicalFinishing {
     }
 
     fn parameter_warnings(&self, tool: &RevolvedProfile, parameters: &Parameters) -> Vec<String> {
+        // With adaptive spacing on the height is measured with the tool
+        // itself, so no closed form is needed (decision record 0239).
+        if parameters
+            .flag(adaptive::parameter::ADAPTIVE_SPACING)
+            .unwrap_or(false)
+        {
+            return Vec::new();
+        }
         parameters
             .number(parameter::SCALLOP)
             .ok()
@@ -187,8 +203,15 @@ impl Strategy for HelicalFinishing {
         zones: &[LeaveZone<'_>],
         parameters: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, zones, parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
+        })
     }
 
     fn passes(
@@ -265,6 +288,7 @@ pub(crate) fn turn_passes(
         thin: false,
         max_dt: 1.0 / n as f64,
         wanted,
+        across: 0.0,
     };
     fit_region(&fit, n, "a turn at a face", context)
 }
@@ -282,9 +306,13 @@ fn passes(
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
+        let adaptive = adaptive::Settings::read(parameters, parameter::SCALLOP)?;
         // A tool with no closed form for a cusp is warned about
         // ([`Strategy::parameter_warnings`]) and the stepover alone is used.
+        // With adaptive spacing on, the height is the Allowed excess and the
+        // stepover is the widest pitch (decision record 0239).
         if height > 0.0
+            && adaptive.is_none()
             && let Some(rho) = scallop::cusp_radius(input.tool)
         {
             pitch = pitch.min(scallop::straight_step(rho, height));
@@ -356,13 +384,44 @@ fn passes(
             thin: false,
             max_dt: 1.0 / seeds as f64,
             wanted: None,
+            across: 0.0,
         };
 
         let passes = fit_region(&fit, seeds, "helical finishing", context)?;
+        // Passes added between the wraps where more than the Allowed excess
+        // is left (decision record 0239), cut after the helix.
+        let spaced = match adaptive {
+            Some(settings) => Some(adaptive_passes(
+                input,
+                (region, zones, candidates.as_ref()),
+                &passes,
+                Helix {
+                    x0,
+                    pitch,
+                    total: total_angle,
+                    start,
+                    sign,
+                    step,
+                    tolerance,
+                    leave,
+                },
+                settings,
+                context,
+            )?),
+            None => None,
+        };
         let mut passes = match extension {
             Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
             None => passes,
         };
+        let mut spaced_note = None;
+        let mut spaced_warning = None;
+        if let Some((added, outcome, settings)) = spaced {
+            passes.extend(added);
+            spaced_note = Some(outcome.note(&settings));
+            spaced_warning =
+                outcome.warning(&settings, &adaptive::Limits::OWNER, parameter::SCALLOP);
+        }
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut after the helix as its own pass, so the helix is
         // as before (decision record 0297).
@@ -397,9 +456,236 @@ fn passes(
         let notes = faces::note(&turns)
             .into_iter()
             .chain(faces::held_note(&found.held))
+            .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
             .collect();
-        Ok((passes, notes, free.warnings))
+        let mut warnings = free.warnings;
+        warnings.extend(spaced_warning);
+        Ok((passes, notes, warnings))
     }
+}
+
+/// The helix of helical finishing, as adaptive spacing needs it.
+#[derive(Debug, Clone, Copy)]
+struct Helix {
+    /// X where the helix starts, mm.
+    x0: f64,
+    /// X per turn, mm.
+    pitch: f64,
+    /// Degrees turned over the whole helix.
+    total: f64,
+    /// A at the start, degrees.
+    start: f64,
+    /// Which way A turns as X increases.
+    sign: f64,
+    /// The largest A step between seeds, degrees.
+    step: f64,
+    tolerance: f64,
+    leave: f64,
+}
+
+/// Helical finishing's passes as a family for adaptive spacing: across it,
+/// the offset along X from the helix, mm (the next wrap is one pitch on);
+/// along it, the degrees turned from the helix's start.
+struct Wraps<'a> {
+    fit: Fit<'a>,
+    helix: Helix,
+    counters: &'a [Counting<'a>],
+    rotary: RotaryMapping,
+    pose_step: f64,
+    window: f64,
+    station: f64,
+    margin: f64,
+}
+
+impl Family for Wraps<'_> {
+    fn pose(&self, c: f64, s: f64) -> (f64, Degrees) {
+        let h = &self.helix;
+        (
+            h.x0 + c + h.pitch * s / 360.0,
+            Degrees(h.start + h.sign * s),
+        )
+    }
+
+    fn poses(&self, c: f64, pass: &Pass) -> Vec<Pose> {
+        let h = self.helix;
+        // The helix itself, seen one pitch on, is the next wrap.
+        let shift = if c >= h.pitch - 1e-9 { 360.0 } else { 0.0 };
+        adaptive::machine_poses(&self.rotary, pass, self.pose_step, |_, a| {
+            h.sign * (a.0 - h.start) - shift
+        })
+    }
+
+    fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        let fit = Fit {
+            x0: x,
+            length: 0.0,
+            start: a.0,
+            total_angle: 0.0,
+            max_dt: 1.0,
+            ..self.fit
+        };
+        fit.node(0.0).map(|n| (n.contact.contact, n.leave))
+    }
+
+    fn fit(&self, c: f64, (from, to): (f64, f64), context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let h = &self.helix;
+        let turned = (to - from).abs();
+        let seeds = ((turned / h.step).ceil() as usize).max(1);
+        let fit = Fit {
+            x0: h.x0 + c + h.pitch * from / 360.0,
+            length: h.pitch * (to - from) / 360.0,
+            start: h.start + h.sign * from,
+            total_angle: to - from,
+            max_dt: 1.0 / seeds as f64,
+            ..self.fit
+        };
+        fit_region(&fit, seeds, "helical finishing", context)
+    }
+
+    fn width(&self, dc: f64) -> f64 {
+        dc.abs()
+    }
+
+    fn window(&self) -> f64 {
+        self.window
+    }
+
+    fn station_step(&self) -> f64 {
+        self.station
+    }
+
+    fn margin(&self) -> f64 {
+        self.margin
+    }
+
+    fn queries(&self) -> u64 {
+        self.counters.iter().map(Counting::count).sum()
+    }
+
+    fn probe_cost(&self) -> u64 {
+        self.counters.len() as u64
+    }
+}
+
+/// The passes adaptive spacing adds between the wraps of the helix `passes`
+/// (decision record 0239), in order along X, with what it did. Below the
+/// first wrap and above the last only one wrap passes, so nothing is
+/// measured there; those stretches are as before.
+fn adaptive_passes(
+    input: &StrategyInput<'_>,
+    (region, zones, candidates): (
+        Option<&RegionConstraint<'_>>,
+        &[LeaveZone<'_>],
+        Option<&crate::candidates::DevIndex>,
+    ),
+    passes: &[Pass],
+    helix: Helix,
+    settings: adaptive::Settings,
+    context: &JobContext<'_>,
+) -> Result<(Vec<Pass>, adaptive::Outcome, adaptive::Settings)> {
+    // The measure and the added passes drop through counters, so their
+    // geometry queries are limited (decision record 0239 item 8).
+    let counters: Vec<Counting<'_>> = std::iter::once(input.surface)
+        .chain(zones.iter().map(|z| z.surface))
+        .map(Counting::new)
+        .collect();
+    let Some((first, rest)) = counters.split_first() else {
+        return Err(PathError::Strategy("no surface to finish".to_owned()));
+    };
+    let counted = StrategyInput {
+        surface: first,
+        ..*input
+    };
+    let counted_zones: Vec<LeaveZone<'_>> = zones
+        .iter()
+        .zip(rest)
+        .map(|(z, c)| LeaveZone {
+            surface: c,
+            leave: z.leave,
+        })
+        .collect();
+    let grown = cutter::grow_profile(input.tool, helix.leave)?;
+    let zone_fits = zone_fits(&counted_zones, input.tool)?;
+    let fit = Fit {
+        input: &counted,
+        drop_profile: &grown,
+        leave: helix.leave,
+        zones: &zone_fits,
+        x0: helix.x0,
+        length: 0.0,
+        start: helix.start,
+        sign: helix.sign,
+        total_angle: 0.0,
+        chord: CHORD_FACTOR * helix.tolerance,
+        region,
+        constrained: region.is_some_and(|r| !r.is_empty()),
+        candidates,
+        spacing: region_spacing(helix.tolerance, CONSTRAINED_SPACING),
+        thin: false,
+        max_dt: 1.0,
+        wanted: None,
+        across: 0.0,
+    };
+    let r = input.tool.cutting_radius();
+    let reach = grown.cutting_radius();
+    // The angles below are in degrees turned: a millimetre of arc is the
+    // fewest degrees at the part's largest radius, and the most near the
+    // axis, at the tool's tips' smallest radius.
+    let radii = passes
+        .iter()
+        .flat_map(|p| &p.points)
+        .map(|c| c.tip.y.hypot(c.tip.z));
+    let (least, most) = radii.fold((f64::INFINITY, 0.0_f64), |(l, m), v| (l.min(v), m.max(v)));
+    let near = (least - reach).max(reach).max(1e-3);
+    let far = most.max(near);
+    let station_mm = (0.5 * r).min(1.0);
+    let family = Wraps {
+        fit,
+        helix,
+        counters: &counters,
+        rotary: input.rotary,
+        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        window: ((2.0 * reach + station_mm) / near).to_degrees().min(180.0),
+        station: (station_mm / far).to_degrees().min(helix.step),
+        margin: ((reach + station_mm) / near).to_degrees().min(180.0),
+    };
+    let tracks = vec![
+        Track::new(&family, 0.0, passes.to_vec()),
+        Track::new(&family, helix.pitch, passes.to_vec()),
+    ];
+    let points: u64 = passes
+        .iter()
+        .map(|p| p.points.len() as u64 + adaptive::LINK_POINTS)
+        .sum();
+    let intervals = if helix.total > 360.0 {
+        vec![Interval {
+            lo: 0,
+            hi: 1,
+            spans: vec![(0.0, helix.total - 360.0)],
+            level: 0,
+        }]
+    } else {
+        Vec::new()
+    };
+    let outcome = adaptive::refine(
+        &family,
+        tracks,
+        intervals,
+        input.tool,
+        &settings,
+        &adaptive::Limits::OWNER,
+        points,
+        context,
+    )?;
+    let mut added: Vec<Pass> = outcome
+        .tracks
+        .iter()
+        .skip(outcome.own)
+        .flat_map(|t| t.passes.iter().cloned())
+        .collect();
+    let first_x = |p: &Pass| p.points.first().map_or(f64::INFINITY, |c| c.tip.x);
+    added.sort_by(|p, q| first_x(p).total_cmp(&first_x(q)));
+    Ok((added, outcome, settings))
 }

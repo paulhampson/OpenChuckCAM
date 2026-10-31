@@ -69,6 +69,7 @@
 
 #![warn(missing_docs)]
 
+pub mod adaptive;
 pub mod assemble;
 pub mod axial;
 pub mod brep;
@@ -111,7 +112,7 @@ mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, UnreachedReason};
 pub use axial::AxialFinishing;
-pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius};
+pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius, has_exact_drop};
 pub use brep_edges::BrepEdges;
 pub use composite::CompositeSurface;
 pub use curves::{ChosenSegments, CurveSource, EdgeChain, MeshFeatureEdges};

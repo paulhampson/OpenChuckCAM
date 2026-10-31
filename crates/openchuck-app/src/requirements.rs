@@ -46,6 +46,9 @@ pub struct Requirement {
     pub label: String,
     /// A short plain sentence for under the field ("Choose a tool").
     pub text: String,
+    /// A longer line for under the field itself, when the short text is not
+    /// enough to act on; `None` when `text` will do.
+    pub detail: Option<String>,
 }
 
 impl Requirement {
@@ -54,6 +57,7 @@ impl Requirement {
             field,
             label: label.to_owned(),
             text: text.to_owned(),
+            detail: None,
         }
     }
 }
@@ -277,8 +281,17 @@ pub(crate) fn operation_requirements(
             if no_tool && FROM_CUTTING_DATA.contains(&name.as_str()) {
                 continue;
             }
+            // No guessed stepdown (the owner's answer, FIRSTRUN item 2): the
+            // line under the empty field says what to enter and where it can
+            // come from; the short text stays for the lists.
+            let detail = (name == openchuck_path::roughing::parameter::STEPDOWN).then(|| {
+                "Required. Enter the depth of each layer, or add cutting data for this tool \
+                 and material in the tool library."
+                    .to_owned()
+            });
             out.push(Requirement {
                 text: format!("Enter {}", label.to_lowercase()),
+                detail,
                 field: RequirementField::Parameter(name),
                 label,
             });
@@ -331,5 +344,47 @@ mod tests {
         op.parameters
             .insert("passes".into(), ParameterValue::Integer(3));
         assert!(names(&op).is_empty());
+    }
+
+    /// FIRSTRUN item 2 (owner's answer): no guessed stepdown. An empty one
+    /// says what to do, in plain words; the other missing values keep the
+    /// short "Enter ..." line.
+    #[test]
+    fn req_tl_05_req_op_03_a_missing_stepdown_says_where_it_can_come_from() {
+        let mut t = TestProject::new("req-stepdown");
+        let first = t.add_operation("Rough", "rotary_roughing");
+        // A material the tool has no cutting data for: nothing gives the
+        // stepdown.
+        let mut op = t.app.project().operation(first).unwrap().clone();
+        op.id = openchuck_project::id::OperationId::new();
+        op.material = Some("no such material".into());
+        let id = op.id;
+        t.app
+            .execute(crate::Command::Add {
+                item: openchuck_project::Item::Operation(op),
+                placement: openchuck_project::Placement::End,
+            })
+            .unwrap();
+        let project = t.app.project().clone();
+        let needs = operation_requirements(&project, &t.app.strategies, id);
+        let stepdown = needs
+            .iter()
+            .find(|r| {
+                r.field
+                    == RequirementField::Parameter(
+                        openchuck_path::roughing::parameter::STEPDOWN.into(),
+                    )
+            })
+            .expect("the stepdown is missing");
+        assert_eq!(
+            stepdown.text, "Enter stepdown",
+            "the short text stays for the lists"
+        );
+        assert_eq!(
+            stepdown.detail.as_deref(),
+            Some(
+                "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library."
+            )
+        );
     }
 }

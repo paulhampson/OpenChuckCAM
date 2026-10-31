@@ -349,9 +349,10 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         false
     }
 
-    /// As [`passes_in_region`](Self::passes_in_region), or as
-    /// [`passes`](Self::passes) without a region, leaving each of `zones` its
-    /// own stock to leave. The default refuses.
+    /// As [`passes_with_notes`](Self::passes_with_notes), leaving each of
+    /// `zones` its own stock to leave, with the notes and warnings the
+    /// strategy gives, so a warning that must be acknowledged reaches the
+    /// host on this route too (decision record 0239). The default refuses.
     fn passes_in_zones(
         &self,
         _input: &StrategyInput<'_>,
@@ -359,7 +360,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         _zones: &[LeaveZone<'_>],
         _parameters: &Parameters,
         _context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
+    ) -> Result<StrategyOutput> {
         Err(PathError::Strategy(format!(
             "the strategy '{}' cannot leave different stock on different selections",
             self.name()
@@ -473,23 +474,22 @@ fn generate_with(
         .map_or(&[][..], |r| r.watch);
     let operation_leave = common.stock_to_leave.0;
     context.check_cancelled()?;
-    let mut warnings = Vec::new();
-    let mut unreached = Vec::new();
-    let mut shank_breaks = Vec::new();
-    let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
-        let output = strategy.passes_with_notes(input, region, &parameters, context)?;
-        warnings = output.warnings;
-        unreached = output.unreached;
-        shank_breaks = output.shank_breaks;
-        (output.passes, output.notes)
+    let output = if zones.is_empty() {
+        strategy.passes_with_notes(input, region, &parameters, context)?
     } else {
         let most = zones
             .iter()
             .fold(common.stock_to_leave.0, |m, z| m.max(z.leave));
         common.stock_to_leave = openchuck_types::units::Millimetres(most);
-        let passes = strategy.passes_in_zones(input, region, zones, &parameters, context)?;
-        (passes, Vec::new())
+        strategy.passes_in_zones(input, region, zones, &parameters, context)?
     };
+    let StrategyOutput {
+        passes,
+        notes,
+        mut warnings,
+        unreached,
+        shank_breaks,
+    } = output;
     context.check_cancelled()?;
     warnings.extend(crate::region::watched_warnings(
         &passes,

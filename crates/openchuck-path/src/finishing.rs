@@ -208,6 +208,7 @@ pub(crate) fn free_ends(
                      tool library."
                 ),
                 parameter: Some(parameter::STEPDOWN.to_owned()),
+                requires_acknowledgement: false,
             });
             continue;
         }
@@ -221,6 +222,7 @@ pub(crate) fn free_ends(
                      Define the stock, or turn off Face free ends."
                 ),
                 parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                requires_acknowledgement: false,
             });
             continue;
         }
@@ -351,6 +353,7 @@ pub(crate) fn free_ends(
                         from.max(to)
                     ),
                     parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                    requires_acknowledgement: false,
                 });
             }
         }

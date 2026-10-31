@@ -262,3 +262,67 @@ pub fn blisk() -> openchuck_types::mesh::TriangleMesh {
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/blisk.stl"),
     )
 }
+
+/// `values` with adaptive spacing off where `strategy` has it and the test
+/// sets none, for tests that are not about it: a new operation has it on
+/// (decision record 0239), which changes the passes these tests pin.
+fn spacing_off(
+    strategy: &dyn Strategy,
+    values: &BTreeMap<String, ParameterValue>,
+) -> BTreeMap<String, ParameterValue> {
+    let mut values = values.clone();
+    if strategy.schema().get("adaptive_spacing").is_some() {
+        values
+            .entry("adaptive_spacing".to_owned())
+            .or_insert(ParameterValue::Flag(false));
+    }
+    values
+}
+
+/// [`openchuck_path::generate`] with adaptive spacing off unless asked for.
+pub fn generate(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<openchuck_path::GeneratedPath> {
+    openchuck_path::generate(strategy, input, &spacing_off(strategy, values), context)
+}
+
+/// [`openchuck_path::generate_in_region`] with adaptive spacing off unless
+/// asked for.
+pub fn generate_in_region(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    region: &openchuck_path::RegionConstraint<'_>,
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<openchuck_path::GeneratedPath> {
+    openchuck_path::generate_in_region(
+        strategy,
+        input,
+        region,
+        &spacing_off(strategy, values),
+        context,
+    )
+}
+
+/// [`openchuck_path::generate_in_zones`] with adaptive spacing off unless
+/// asked for.
+pub fn generate_in_zones(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    region: Option<&openchuck_path::RegionConstraint<'_>>,
+    zones: &[openchuck_path::LeaveZone<'_>],
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<openchuck_path::GeneratedPath> {
+    openchuck_path::generate_in_zones(
+        strategy,
+        input,
+        region,
+        zones,
+        &spacing_off(strategy, values),
+        context,
+    )
+}

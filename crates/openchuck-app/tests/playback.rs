@@ -120,10 +120,16 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             spindle_speed: None,
             material: None,
             // Not about free ends (decision record 0344, OI-1396).
-            parameters: BTreeMap::from([(
-                "face_free_ends".to_owned(),
-                openchuck_app::project::ParameterValue::Flag(false),
-            )]),
+            parameters: BTreeMap::from([
+                (
+                    "face_free_ends".to_owned(),
+                    openchuck_app::project::ParameterValue::Flag(false),
+                ),
+                (
+                    "adaptive_spacing".to_owned(),
+                    openchuck_app::project::ParameterValue::Flag(false),
+                ),
+            ]),
         }),
     ] {
         app.execute(Command::Add {

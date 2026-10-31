@@ -357,6 +357,11 @@ pub(crate) fn generate_with_part(
     {
         return Err(missing(operation, &refusal.text));
     }
+    // A back-and-forth ramp that cannot be used on this part or with this
+    // tool: the same check the inspector and the overview read (#291).
+    if let Some(reason) = crate::ramp_entry::refusal(project, operation) {
+        return Err(missing(operation, &reason));
+    }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
     // and the edges below (decision 0056); a mesh part's are triangles, or
@@ -589,20 +594,12 @@ pub(crate) fn generate_with_part(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
-    let reversing = matches!(
-        operation.parameters.get(names::RAMP_BACK_AND_FORTH),
-        Some(openchuck_project::ParameterValue::Flag(true))
-    ) && matches!(operation.parameters.get(names::ENTRY), Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
-    let entry_geometry = if reversing && placed.brep.is_none() {
+    // A STEP part, or a shank wider than the cutter, was refused above
+    // (`ramp_entry::refusal`).
+    let entry_geometry = if crate::ramp_entry::wanted(operation) && placed.brep.is_none() {
         use openchuck_types::tool::profile::{
             ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
         };
-        if snapshot.tool.shank_diameter.0 > 2.0 * profile.cutting_radius() {
-            return Err(missing(
-                operation,
-                "back-and-forth ramp cannot certify this larger shank with a convex complete-tool envelope",
-            ));
-        }
         let mut segments = profile
             .pieces()
             .iter()
@@ -1204,6 +1201,7 @@ pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
              inspector's Geometry section, or take the set out of the operation."
         ),
         parameter: None,
+        requires_acknowledgement: false,
     }
 }
 
@@ -1689,6 +1687,11 @@ mod tests {
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v))
         .collect();
+        // Adaptive spacing off unless a test asks: these are not about it,
+        // and a new operation has it on (decision record 0239).
+        if openchuck_path::adaptive::STRATEGIES.contains(&strategy) {
+            values.insert("adaptive_spacing".to_owned(), Value::Flag(false));
+        }
         for (k, v) in parameters {
             values.insert((*k).to_owned(), v.clone());
         }

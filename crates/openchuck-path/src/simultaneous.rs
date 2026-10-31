@@ -55,6 +55,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::adaptive::{self, Counting, Family, Interval, Pose};
 use crate::cutter::{self, Contact, ToolLine};
 use crate::error::{PathError, Result};
 use crate::faces;
@@ -90,6 +91,9 @@ pub mod parameter {
     /// The most the tool axis may lean from the surface normal on surfaces
     /// hidden from the drive (OP-20; decision record 0368), degrees.
     pub const MAX_HIDDEN_LEAN: &str = "max_hidden_lean";
+    /// The Allowed excess with adaptive spacing on, mm (decision record
+    /// 0239); the axial pattern only.
+    pub const SCALLOP: &str = "scallop";
 }
 
 /// How far apart the drive samples are round the axis, in degrees, where
@@ -212,7 +216,8 @@ impl Strategy for SimultaneousFinishing {
         if let ParameterKind::Number { min_exclusive, .. } = &mut step.kind {
             *min_exclusive = true;
         }
-        ParameterSchema::with_common(vec![
+        ParameterSchema::with_common(
+            vec![
             choice(
                 parameter::PATTERN,
                 "Pattern",
@@ -272,7 +277,45 @@ impl Strategy for SimultaneousFinishing {
                 Some(MAX_HIDDEN_LEAN),
                 90.0,
             ),
-        ])
+            ParameterSpec {
+                name: parameter::SCALLOP.to_owned(),
+                label: "Allowed excess".to_owned(),
+                description: String::new(),
+                kind: ParameterKind::Number {
+                    unit: Unit::Millimetres,
+                    min: Some(0.0),
+                    min_exclusive: false,
+                    max: None,
+                    default: Some(adaptive::DEFAULT_ALLOWED_EXCESS),
+                },
+            },
+        ]
+        .into_iter()
+        .chain(adaptive::specs())
+        .collect())
+    }
+
+    fn schema_for(
+        &self,
+        values: &std::collections::BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        // Adaptive spacing applies to the axial pattern only, and the
+        // height is used only with it on (decision record 0239 item 2).
+        let axial = matches!(
+            values.get(parameter::PATTERN),
+            Some(crate::params::ParameterValue::Text(p)) if p == "axial"
+        );
+        let mut schema = adaptive::schema_for(self.schema(), values, parameter::SCALLOP);
+        if !axial || !adaptive::is_on(values) {
+            schema.parameters.retain(|p| p.name != parameter::SCALLOP);
+        }
+        if !axial {
+            schema.parameters.retain(|p| {
+                p.name != adaptive::parameter::ADAPTIVE_SPACING
+                    && p.name != adaptive::parameter::MIN_SPACING
+            });
+        }
+        schema
     }
 
     fn honours_region(&self) -> bool {
@@ -483,6 +526,12 @@ fn run(
     let lead = parameters.number(parameter::LEAD_ANGLE)?;
     let max_tilt = parameters.number(parameter::MAX_TILT)?;
     let max_lean = parameters.number(parameter::MAX_HIDDEN_LEAN)?;
+    // Adaptive spacing of the axial pattern (decision record 0239).
+    let adaptive = if pattern == "axial" {
+        adaptive::Settings::read(parameters, parameter::SCALLOP)?
+    } else {
+        None
+    };
 
     let bounds = input.surface.bounds();
     let (x0, x1) = outside_held(bounds.min.x, bounds.max.x, input.keep_out);
@@ -538,7 +587,13 @@ fn run(
             (0..stations as usize)
                 .map(|k| {
                     let th = th_start - TURN * k as f64 / stations;
-                    let (a, b) = if k % 2 == 0 { (x0, x1) } else { (x1, x0) };
+                    // With adaptive spacing every pass is fitted forwards
+                    // and the order is set once the passes are added.
+                    let (a, b) = if k % 2 == 0 || adaptive.is_some() {
+                        (x0, x1)
+                    } else {
+                        (x1, x0)
+                    };
                     Track {
                         x0: a,
                         x1: b,
@@ -639,7 +694,7 @@ fn run(
     };
 
     let mut findings = Findings::default();
-    let mut passes = Vec::new();
+    let mut by_track = Vec::new();
     let count = tracks.len() as u64;
     for (k, track) in tracks.iter().enumerate() {
         context.check_cancelled()?;
@@ -650,8 +705,24 @@ fn run(
         );
         let axis = plan.axis_plan(track, lead, max_tilt, &mut findings);
         context.check_cancelled()?;
-        passes.extend(plan.track_passes(track, &axis, lead, &mut findings, context)?);
+        by_track.push(plan.track_passes(track, &axis, lead, &mut findings, context)?);
     }
+    let mut spaced = None;
+    let mut passes: Vec<Pass> = match adaptive {
+        Some(settings) => {
+            let (passes, outcome) = adaptive_passes(
+                &plan,
+                &tracks,
+                by_track,
+                (settings, max_tilt, axial_seed, radius),
+                &mut findings,
+                context,
+            )?;
+            spaced = Some((settings, outcome));
+            passes
+        }
+        None => by_track.into_iter().flatten().collect(),
+    };
     // The faces' turns keep the tool across the rotary axis: the face's
     // normal lies along the axis, which no A can follow, and the tool's side
     // meets the face whatever the tilt would be.
@@ -784,7 +855,7 @@ fn run(
         ));
     }
     let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
-    let warnings = unreached_warning(
+    let mut warnings: Vec<crate::assemble::PathWarning> = unreached_warning(
         &found.unreached,
         2.0 * input.tool.cutting_radius(),
         max_lean,
@@ -792,6 +863,10 @@ fn run(
     .into_iter()
     .chain(shank_warning(&shank_breaks))
     .collect();
+    if let Some((settings, outcome)) = &spaced {
+        notes.push(outcome.note(settings));
+        warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
+    }
     Ok(StrategyOutput {
         passes,
         notes,
@@ -831,7 +906,7 @@ fn places(mut breaks: Vec<crate::assemble::ShankBreak>) -> Vec<crate::assemble::
 const BREAK_NEAR: f64 = 1.0;
 
 /// The warning for the places a pass broke because the tool's shank would
-/// meet the part (decision record 0368, the owner's answer on OI-1452).
+/// meet the part (decision record 0368, the owner's answer on OI-1456).
 fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemble::PathWarning> {
     const LISTED: usize = 5;
     if breaks.is_empty() {
@@ -859,6 +934,7 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemb
             listed.join("; ")
         ),
         parameter: None,
+        requires_acknowledgement: false,
     })
 }
 
@@ -922,6 +998,7 @@ fn unreached_warning(
             listed.join("; ")
         ),
         parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+        requires_acknowledgement: false,
     })
 }
 
@@ -958,6 +1035,283 @@ fn contour_axis_plan(c: &hidden::Contour) -> AxisPlan {
     }
     flush(&mut run, &mut lo, &mut hi, &mut plan);
     plan
+}
+
+impl Findings {
+    /// Takes in what another run of the plan found.
+    fn merge(&mut self, other: &Self) {
+        if other.slope > self.slope {
+            self.slope = other.slope;
+            self.slope_at = other.slope_at;
+        }
+        self.tilt = self.tilt.max(other.tilt);
+        self.under = self.under.max(other.under);
+        self.mesh |= other.mesh;
+        if other.lean_at.is_some() && (self.lean_at.is_none() || other.lean > self.lean) {
+            self.lean = other.lean;
+            self.lean_at = other.lean_at;
+        }
+        self.shank_breaks.extend_from_slice(&other.shank_breaks);
+    }
+}
+
+/// The axial pattern's passes as a family for adaptive spacing: across it,
+/// the polar angle of the drive point in degrees; along it, model X.
+struct Stations<'a> {
+    plan: Plan<'a>,
+    counters: &'a [Counting<'a>],
+    max_tilt: f64,
+    seed: f64,
+    radius: f64,
+    findings: std::sync::Mutex<Findings>,
+    pose_step: f64,
+    window: f64,
+    station: f64,
+    margin: f64,
+}
+
+impl Stations<'_> {
+    /// Whether the part is driven in zones (OP-26).
+    fn zoned(&self) -> bool {
+        self.plan.zones.len() > 1 || self.plan.zones.iter().any(|z| z.centres.is_some())
+    }
+
+    /// The zone that holds `x`, for its drive rays.
+    fn zone_of(&self, x: f64) -> usize {
+        self.plan
+            .zones
+            .iter()
+            .position(|z| x >= z.x0 && x <= z.x1)
+            .unwrap_or(0)
+    }
+}
+
+impl Family for Stations<'_> {
+    fn pose(&self, c: f64, s: f64) -> (f64, Degrees) {
+        (s, Degrees(self.plan.sense * (90.0 - c)))
+    }
+
+    fn poses(&self, _c: f64, pass: &Pass) -> Vec<Pose> {
+        adaptive::machine_poses(&self.plan.input.rotary, pass, self.pose_step, |tip, _| {
+            tip.x
+        })
+    }
+
+    fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        // The drive point and the tool along its facet's normal, dropped as
+        // the pattern drops it: one ray and one drop.
+        let th = 90.0 - a.0 / self.plan.sense;
+        let hit = self.plan.ray(self.zone_of(x), x, th)?;
+        let phi = polar(hit.normal.get())?;
+        let a = Degrees(self.plan.sense * (90.0 - phi));
+        let axis = self.plan.input.rotary.tool_axis(a);
+        let line = ToolLine {
+            origin: self.plan.seed_tip(hit.point, hit.normal, axis),
+            axis,
+        };
+        let contact = self
+            .plan
+            .input
+            .surface
+            .drop_tool(self.plan.drop_profile, &line)?;
+        if let Some(region) = self.plan.region
+            && !region.allows(contact.contact, contact.tip, self.plan.drop_profile, &line)
+        {
+            return None;
+        }
+        Some((contact.contact, self.plan.leave))
+    }
+
+    fn probe_cost(&self) -> u64 {
+        2
+    }
+
+    fn fit(&self, c: f64, (from, to): (f64, f64), context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let length = (to - from).abs();
+        let whole = Track {
+            x0: from,
+            x1: to,
+            th0: c,
+            th1: c,
+            seeds: (length / self.seed).ceil().max(1.0) as usize,
+            samples: (length / SAMPLE_LENGTH).ceil().max(1.0) as usize,
+            zone: 0,
+            contour: None,
+        };
+        // Cut at the zones as the pattern's own tracks are (OP-26).
+        let pieces = if self.zoned() {
+            split(&whole, self.plan.zones)
+        } else {
+            vec![whole]
+        };
+        let mut findings = Findings::default();
+        let mut passes = Vec::new();
+        for track in &pieces {
+            let axis = self
+                .plan
+                .axis_plan(track, 0.0, self.max_tilt, &mut findings);
+            passes.extend(
+                self.plan
+                    .track_passes(track, &axis, 0.0, &mut findings, context)?,
+            );
+        }
+        if let Ok(mut all) = self.findings.lock() {
+            all.merge(&findings);
+        }
+        Ok(passes)
+    }
+
+    fn width(&self, dc: f64) -> f64 {
+        self.radius * dc.to_radians().abs()
+    }
+
+    fn window(&self) -> f64 {
+        self.window
+    }
+
+    fn station_step(&self) -> f64 {
+        self.station
+    }
+
+    fn margin(&self) -> f64 {
+        self.margin
+    }
+
+    fn queries(&self) -> u64 {
+        self.counters.iter().map(Counting::count).sum()
+    }
+}
+
+/// The axial pattern's passes, `by_track` along `tracks`, with passes added
+/// between them where more than the Allowed excess is left (decision record
+/// 0239), in order round the axis, every other one backwards. `plan` is the
+/// operation's own.
+fn adaptive_passes(
+    plan: &Plan<'_>,
+    tracks: &[Track],
+    by_track: Vec<Vec<Pass>>,
+    (settings, max_tilt, seed, radius): (adaptive::Settings, f64, f64, f64),
+    findings: &mut Findings,
+    context: &JobContext<'_>,
+) -> Result<(Vec<Pass>, adaptive::Outcome)> {
+    let input = plan.input;
+    // The measure and the added passes look through a counter, so their
+    // geometry queries are limited (decision record 0239 item 8).
+    let counters = vec![Counting::new(input.surface)];
+    let Some(first) = counters.first() else {
+        return Err(PathError::Strategy("no surface to finish".to_owned()));
+    };
+    let counted = StrategyInput {
+        surface: first,
+        ..*input
+    };
+    let r = input.tool.cutting_radius();
+    let reach = plan.drop_profile.cutting_radius();
+    let station = AXIAL_SEED.min(0.5 * r).max(1e-3);
+    let family = Stations {
+        plan: Plan {
+            input: &counted,
+            region: plan.region,
+            constrained: plan.constrained,
+            drop_profile: plan.drop_profile,
+            convex: plan.convex,
+            reach: plan.reach,
+            flat_bottom: plan.flat_bottom,
+            leave: plan.leave,
+            tolerance: plan.tolerance,
+            chord: plan.chord,
+            outside: plan.outside,
+            zones: plan.zones,
+            sense: plan.sense,
+            body: plan.body,
+            contours: Vec::new(),
+        },
+        counters: &counters,
+        max_tilt,
+        seed,
+        radius,
+        findings: std::sync::Mutex::new(Findings::default()),
+        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        window: 2.0 * reach + station,
+        station,
+        margin: reach,
+    };
+    // One track a station: a station's pieces in each zone (OP-26) are
+    // one pass of the family.
+    let mut stations: Vec<(f64, Vec<Pass>)> = Vec::new();
+    for (t, passes) in tracks.iter().zip(by_track) {
+        match stations.last_mut() {
+            Some((th, all)) if (*th - t.th0).abs() < 1e-12 => all.extend(passes),
+            _ => stations.push((t.th0, passes)),
+        }
+    }
+    let n = stations.len();
+    let mut own: Vec<adaptive::Track> = stations
+        .into_iter()
+        .map(|(th, passes)| adaptive::Track::new(&family, th, passes))
+        .collect();
+    // The last station's neighbour is the first, a turn on (the stations
+    // turn the drive angle downwards).
+    if let Some(first) = own.first() {
+        let (th, passes) = (first.c, first.passes.clone());
+        own.push(adaptive::Track::new(&family, th - TURN, passes));
+    }
+    let points: u64 = own
+        .iter()
+        .take(n)
+        .flat_map(|t| &t.passes)
+        .map(|p| p.points.len() as u64 + adaptive::LINK_POINTS)
+        .sum();
+    let (lo, hi) = tracks
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), t| {
+            (lo.min(t.x0).min(t.x1), hi.max(t.x0).max(t.x1))
+        });
+    let span = if lo <= hi { (lo, hi) } else { (0.0, 0.0) };
+    let intervals: Vec<Interval> = (0..n)
+        .map(|i| Interval {
+            lo: i,
+            hi: i + 1,
+            spans: vec![span],
+            level: 0,
+        })
+        .collect();
+    let outcome = adaptive::refine(
+        &family,
+        own,
+        intervals,
+        input.tool,
+        &settings,
+        &adaptive::Limits::OWNER,
+        points,
+        context,
+    )?;
+    if let Ok(added) = family.findings.lock() {
+        findings.merge(&added);
+    }
+    // In order of the drive angle, downwards, as the stations are cut.
+    let mut order: Vec<&adaptive::Track> = outcome
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != n)
+        .map(|(_, t)| t)
+        .collect();
+    order.sort_by(|p, q| q.c.total_cmp(&p.c));
+    let mut out = Vec::new();
+    for (i, track) in order.into_iter().enumerate() {
+        if i % 2 == 1 {
+            out.extend(track.passes.iter().rev().cloned().map(|mut pass| {
+                if pass.rapids.is_empty() {
+                    pass.points.reverse();
+                }
+                pass
+            }));
+        } else {
+            out.extend(track.passes.iter().cloned());
+        }
+    }
+    Ok((out, outcome))
 }
 
 /// `track` cut at the zones' boundaries, in the track's own order, each
@@ -1203,7 +1557,7 @@ impl Plan<'_> {
         }
         // The shank, where wider than the cutting part, must not meet the
         // part: the pass breaks there (decision record 0368, the owner's
-        // answer on OI-1452).
+        // answer on OI-1456).
         if track.contour.is_none() && self.body.is_some() && self.shank_clashes(&line, None) {
             return None;
         }

@@ -289,6 +289,51 @@ pub(super) struct Oriented {
     range: [(f64, f64); 3],
 }
 
+/// A box as its middle, three orthonormal axes and its half widths along
+/// them (the outline drop's bounds, the `outline` module).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Para {
+    pub centre: Point3,
+    pub axes: [Vec3; 3],
+    pub half: [f64; 3],
+}
+
+impl Para {
+    /// The axis-aligned box.
+    pub fn of_aabb(b: &Aabb) -> Self {
+        Self {
+            centre: Point3::new(
+                0.5 * (b.min.x + b.max.x),
+                0.5 * (b.min.y + b.max.y),
+                0.5 * (b.min.z + b.max.z),
+            ),
+            axes: [
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ],
+            half: [
+                0.5 * (b.max.x - b.min.x),
+                0.5 * (b.max.y - b.min.y),
+                0.5 * (b.max.z - b.min.z),
+            ],
+        }
+    }
+
+    /// The axis-aligned cube of half width `h` about `c`.
+    pub fn cube(c: Point3, h: f64) -> Self {
+        Self {
+            centre: c,
+            axes: [
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ],
+            half: [h; 3],
+        }
+    }
+}
+
 /// The boxes that hold a cell of the surface.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Bound {
@@ -366,6 +411,26 @@ impl Bound {
         } else {
             (0.0, Vec3::ZERO)
         }
+    }
+
+    /// The two boxes as [`Para`]s: the axis-aligned one, and the one along
+    /// the cell's frame when there is one.
+    pub fn paras(&self) -> (Para, Option<Para>) {
+        let along = self.oriented.map(|o| {
+            let mut centre = o.origin;
+            let mut half = [0.0; 3];
+            for ((a, r), h) in o.axes.iter().zip(o.range).zip(half.iter_mut()) {
+                centre = centre + *a * (0.5 * (r.0 + r.1));
+                // The axes are orthonormal only to rounding (as `lower`).
+                *h = 0.5 * (r.1 - r.0) * (1.0 + 1e-12) + 1e-12 * (r.0.abs() + r.1.abs());
+            }
+            Para {
+                centre,
+                axes: o.axes,
+                half,
+            }
+        });
+        (Para::of_aabb(&self.aabb), along)
     }
 
     /// The diagonal of the axis-aligned box: no two points of the cell are

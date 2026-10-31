@@ -223,7 +223,7 @@ priority = 79
 [profile.coverage]
 # OP20 (decision 0368, 31 Oct 2026, 4 vCPU), alone on one test thread,
 # uninstrumented: blades without a hub 79.3 s, the keyway's walls 69.3 s, a
-# shank wider than the cutter (every pass checked, OI-1452) 105.4 s.
+# shank wider than the cutter (every pass checked, OI-1456) 105.4 s.
 # Kept in the default Tests run and selected by the nightly long run.
 # RAMPBUDGET released integration, 27 Oct 2026: existing region/avoid
 # combination test took 62.367 s uninstrumented under concurrent validation.

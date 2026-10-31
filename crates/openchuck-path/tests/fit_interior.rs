@@ -20,15 +20,14 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 
 use openchuck_path::helical::parameter;
 use openchuck_path::params::names;
-use openchuck_path::{
-    GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, SurfaceSource, generate,
-};
+use openchuck_path::{GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, SurfaceSource};
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge};
 use openchuck_testkit::parts::RadialPart;
 use openchuck_types::geometry::{Point3, Vec3};

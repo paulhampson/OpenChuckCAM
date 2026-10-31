@@ -27,6 +27,23 @@ pub fn title(project: Option<(&str, bool, &str)>) -> String {
     }
 }
 
+/// The save-state marker of the in-app title bar and its tooltip. Nothing
+/// saves the project by itself, so unsaved changes say the file on disk is
+/// unchanged (FIRSTRUN item 4, the owner's answer).
+pub fn save_state(modified: bool) -> (&'static str, Option<&'static str>) {
+    if modified {
+        (
+            "Edited, not saved",
+            Some(
+                "Changes are kept in memory only. File > Save (Ctrl S) writes them to the \
+                 project.",
+            ),
+        )
+    } else {
+        ("\u{b7} saved", None)
+    }
+}
+
 /// `path` as it is if it fits in `max` characters; otherwise its first part
 /// (the drive or the root), "…" and as many of its last parts as fit, so the
 /// project's own folder always shows.
@@ -63,6 +80,15 @@ pub fn shorten_middle(path: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_prj_08_req_ui_03_unsaved_changes_say_they_are_not_saved() {
+        let (text, tip) = save_state(true);
+        assert_eq!(text, "Edited, not saved");
+        let tip = tip.unwrap();
+        assert!(tip.contains("memory only") && tip.contains("File > Save (Ctrl S)"));
+        assert_eq!(save_state(false), ("\u{b7} saved", None));
+    }
 
     #[test]
     fn req_ui_01_no_project_shows_the_application_name_only() {
