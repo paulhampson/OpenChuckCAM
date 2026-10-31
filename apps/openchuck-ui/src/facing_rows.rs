@@ -253,6 +253,7 @@ mod tests {
                     value: Some(ParameterValue::Text(data.into())),
                     source: Source::Operation,
                     section: FormSection::PatternAndTolerance,
+                    problem: None,
                 },
             };
             rig.frame(vec![]);

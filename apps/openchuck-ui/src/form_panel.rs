@@ -219,6 +219,10 @@ pub fn show(
                     } else {
                         row(ui, field, true, state, need, warned, scroll, None)
                     };
+                    // Known before Generate: what to change (#291).
+                    if let Some(problem) = &field.problem {
+                        field_row::warning_line(ui, problem);
+                    }
                     if let Some(e) = edit {
                         edits.push(e);
                     }
@@ -501,6 +505,7 @@ mod tests {
             value: Some(ParameterValue::Number(1200.0)),
             source: Source::CuttingData,
             section: FormSection::ToolAndFeeds,
+            problem: None,
         };
         assert_eq!(
             hint(&field).unwrap(),
@@ -545,6 +550,7 @@ mod tests {
             value: Some(ParameterValue::Text(data.into())),
             source: Source::Operation,
             section: FormSection::PatternAndTolerance,
+            problem: None,
         };
         let mut state = FormState::default();
         let mut output = ctx.run_ui(
@@ -600,6 +606,7 @@ mod tests {
                 value: Some(ParameterValue::Number(0.01)),
                 source: Source::Default,
                 section: FormSection::PatternAndTolerance,
+                problem: None,
             }],
             notes: Vec::new(),
         };
@@ -652,6 +659,71 @@ mod tests {
     }
 
     #[test]
+    fn req_op_11_req_nfr_07_a_back_and_forth_ramp_problem_shows_under_its_field() {
+        // Issue #291: what the application knows before Generate about the
+        // back-and-forth ramp is a warning line under the field, in the
+        // Entry, links and retract section; none when there is no problem.
+        let problem = "The back-and-forth ramp is not available on a STEP part yet.";
+        let field = |problem: Option<&str>| Field {
+            name: "ramp_back_and_forth".into(),
+            label: "Back-and-forth ramp (ramp entry only)".into(),
+            description: String::new(),
+            kind: FieldKind::Flag,
+            set: Some(ParameterValue::Flag(true)),
+            value: Some(ParameterValue::Flag(true)),
+            source: Source::Operation,
+            section: FormSection::EntryLinksAndRetract,
+            problem: problem.map(str::to_owned),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "links", true, &DEFAULT_OPEN);
+        let mut run = |field: Field| {
+            let form = ParameterForm {
+                operation: openchuck_app::project::id::OperationId::new(),
+                strategy: "rotary_roughing".into(),
+                fields: vec![field],
+                notes: Vec::new(),
+            };
+            let mut state = FormState::default();
+            let mut shown = Vec::new();
+            for _ in 0..30 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 400.0),
+                    )),
+                    ..Default::default()
+                };
+                let mut output = ctx.run_ui(input, |ui| {
+                    show(
+                        ui,
+                        &form,
+                        &mut state,
+                        &mut settings,
+                        &[],
+                        None,
+                        &Marks::default(),
+                    );
+                });
+                output.textures_delta.clear();
+                shown = texts(&output.shapes);
+            }
+            shown
+        };
+        let shown = run(field(Some(problem)));
+        assert!(shown.iter().any(|t| t == problem), "{shown:?}");
+        let shown = run(field(None));
+        assert!(!shown.iter().any(|t| t == problem), "{shown:?}");
+        assert!(
+            shown
+                .iter()
+                .any(|t| t == "Back-and-forth ramp (ramp entry only)"),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
     fn req_nfr_12_req_op_11_the_feed_field_says_what_the_machine_limits_did() {
         // FIRSTRUN item 5: the feed the user typed stays as it is; a plain
         // line under it gives the feed the machine's limits left.
@@ -672,6 +744,7 @@ mod tests {
                 value: Some(ParameterValue::Number(1000.0)),
                 source: Source::Operation,
                 section: FormSection::PatternAndTolerance,
+                problem: None,
             }],
             notes: Vec::new(),
         };
