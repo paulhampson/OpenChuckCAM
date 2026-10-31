@@ -1056,8 +1056,11 @@ impl Shell {
                 .last()
                 .filter(|_| app.operation_path_is_current(id))
                 .and_then(|run| {
-                    let name = &app.project().operation(id)?.name;
-                    openchuck_app::note_groups::feed_limit_summary(&run.notes, name)
+                    openchuck_app::note_groups::feed_limit_for_operation(
+                        &run.notes,
+                        &run.project,
+                        id,
+                    )
                 })
                 .map(|limit| limit.describe()),
         };

@@ -285,6 +285,24 @@ pub fn feed_limit_summary(notes: &[String], operation: &str) -> Option<FeedLimit
     found
 }
 
+/// [`feed_limit_summary`] for operation `id` as `project` (the project the
+/// run was made from) names it. The notes carry the operation's name, not
+/// its ID, so two operations with one name cannot be told apart: none is
+/// summarised for them rather than a figure mixed from both.
+pub fn feed_limit_for_operation(
+    notes: &[String],
+    project: &openchuck_project::Project,
+    id: openchuck_project::id::OperationId,
+) -> Option<FeedLimit> {
+    let name = &project.operation(id)?.name;
+    let same = project
+        .operations()
+        .iter()
+        .filter(|o| &o.name == name)
+        .count();
+    (same == 1).then(|| feed_limit_summary(notes, name))?
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -454,5 +472,38 @@ mod tests {
             "{line}"
         );
         assert!(line.contains("1000 mm/min set here"), "{line}");
+    }
+
+    #[test]
+    fn req_nfr_12_the_feed_summary_follows_the_operation_not_a_name_that_may_repeat() {
+        // CodeRabbit on #399: notes name the operation as it was called when
+        // the run was made; two operations with one name cannot be told
+        // apart, so none is shown for them rather than a mixed figure.
+        let mut t = crate::test_project::TestProject::new("feed-by-id");
+        let one = t.add_operation("Roughing", "one_ring");
+        let two = t.add_operation("Finishing", "one_ring");
+        let notes = feed(2..=4, 972.9);
+        let project = t.app.project().clone();
+        let s = feed_limit_for_operation(&notes, &project, one).unwrap();
+        assert_eq!(s.moves, 3);
+        assert_eq!(feed_limit_for_operation(&notes, &project, two), None);
+        // The run's own project is read, so a rename since the run changes
+        // nothing: the name in the notes is the name the run's project holds.
+        let mut op = project.operation(two).unwrap().clone();
+        op.name = "Roughing".into();
+        t.app
+            .execute(crate::Command::Replace(openchuck_project::Item::Operation(
+                op,
+            )))
+            .unwrap();
+        let renamed = t.app.project().clone();
+        assert_eq!(feed_limit_for_operation(&notes, &renamed, one), None);
+        assert_eq!(feed_limit_for_operation(&notes, &renamed, two), None);
+        assert_eq!(
+            feed_limit_for_operation(&notes, &project, one)
+                .unwrap()
+                .moves,
+            3
+        );
     }
 }
