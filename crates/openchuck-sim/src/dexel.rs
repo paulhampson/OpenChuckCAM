@@ -150,6 +150,75 @@ pub struct DexelStock {
     z_range: ZRange,
 }
 
+/// A [`DexelStock`] packed into two arrays: each column's spans one after
+/// another, and where each column's spans end. A checkpoint holds its copy
+/// this way (decision record 0322).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackedStock {
+    x0: f64,
+    y0: f64,
+    cx: f64,
+    cy: f64,
+    nx: usize,
+    ny: usize,
+    reach: f64,
+    ends: Vec<usize>,
+    spans: Vec<[f64; 2]>,
+}
+
+impl PackedStock {
+    /// The stock again, column by column, to be cut or shown.
+    pub fn unpack(&self) -> DexelStock {
+        let mut start = 0;
+        let cols = self
+            .ends
+            .iter()
+            .map(|&end| {
+                let col = self.spans.get(start..end).unwrap_or_default().to_vec();
+                start = end;
+                col
+            })
+            .collect();
+        DexelStock {
+            x0: self.x0,
+            y0: self.y0,
+            cx: self.cx,
+            cy: self.cy,
+            nx: self.nx,
+            ny: self.ny,
+            cols,
+            reach: self.reach,
+            z_range: ZRange::default(),
+        }
+    }
+
+    /// Bytes held, from the arrays' capacities.
+    pub fn memory_bytes(&self) -> usize {
+        self.ends.capacity() * std::mem::size_of::<usize>()
+            + self.spans.capacity() * std::mem::size_of::<[f64; 2]>()
+            + std::mem::size_of::<Self>()
+    }
+
+    /// The [`DexelStock::state_hash`] of the stock it holds.
+    pub fn state_hash(&self) -> u64 {
+        let mut h = FNV_START;
+        for x in [self.x0, self.y0, self.cx, self.cy] {
+            fnv(&mut h, &x.to_bits().to_le_bytes());
+        }
+        let mut start = 0;
+        for &end in &self.ends {
+            let col = self.spans.get(start..end).unwrap_or_default();
+            fnv(&mut h, &(col.len() as u64).to_le_bytes());
+            for iv in col {
+                fnv(&mut h, &iv[0].to_bits().to_le_bytes());
+                fnv(&mut h, &iv[1].to_bits().to_le_bytes());
+            }
+            start = end;
+        }
+        h
+    }
+}
+
 /// The material's lowest and highest Z, kept once worked out until the stock
 /// is cut again (issue #252): [`DexelStock::bounds`] reads every column, and
 /// a toolpath's entry moves cast thousands of rays, each of which asked for
@@ -377,6 +446,29 @@ impl DexelStock {
             .sum::<usize>()
             + self.cols.capacity() * std::mem::size_of::<Vec<[f64; 2]>>()
             + std::mem::size_of::<Self>()
+    }
+
+    /// The stock packed into two arrays, for a checkpoint: copying it is two
+    /// allocations instead of one per column, and its size is what it holds
+    /// (decision record 0322).
+    pub fn pack(&self) -> PackedStock {
+        let mut ends = Vec::with_capacity(self.cols.len());
+        let mut spans = Vec::with_capacity(self.cols.iter().map(Vec::len).sum());
+        for c in &self.cols {
+            spans.extend_from_slice(c);
+            ends.push(spans.len());
+        }
+        PackedStock {
+            x0: self.x0,
+            y0: self.y0,
+            cx: self.cx,
+            cy: self.cy,
+            nx: self.nx,
+            ny: self.ny,
+            reach: self.reach,
+            ends,
+            spans,
+        }
     }
 
     /// A 64-bit FNV-1a hash of the stored state, for determinism checks
@@ -762,6 +854,55 @@ impl StockModel for DexelStock {
 mod tests {
     use super::*;
     use openchuck_types::units::Millimetres;
+
+    /// A checkpoint holds its copy packed (decision record 0322): the same
+    /// stock back, bit for bit, in two allocations, counted at its size.
+    #[test]
+    fn req_sim_04_req_nfr_07_a_packed_stock_unpacks_to_the_same_stock() {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(30.0),
+            x_start: Millimetres(0.0),
+        };
+        let mut d = DexelStock::from_stock(&stock, None, 0.2).unwrap();
+        // Cut a groove so columns hold none, one and two spans.
+        let tool = openchuck_types::tool::Tool {
+            shape: openchuck_types::tool::ToolShape::BallEnd,
+            diameter: Millimetres(6.0),
+            flute_length: Millimetres(20.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(6.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let tool = ToolSolid::new(&tool.profile().unwrap());
+        let poses: Vec<Pose> = (0..40)
+            .map(|i| Pose {
+                tip: Point3::new(f64::from(i) * 0.5, 0.0, 6.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+            })
+            .collect();
+        d.cut(&tool, &poses);
+        let spans = |s: &DexelStock| s.cols.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(spans(&d) >= 1);
+        let packed = d.pack();
+        assert_eq!(packed.state_hash(), d.state_hash());
+        let back = packed.unpack();
+        assert_eq!(back, d);
+        assert_eq!(back.state_hash(), d.state_hash());
+        assert_eq!(back.volume().to_bits(), d.volume().to_bits());
+        // Smaller than the column-by-column copy it replaces.
+        assert!(
+            packed.memory_bytes() < d.memory_bytes(),
+            "{} {}",
+            packed.memory_bytes(),
+            d.memory_bytes()
+        );
+        // An empty stock packs and unpacks too.
+        let empty = DexelStock::from_stock(&stock, None, 0.2).unwrap();
+        assert_eq!(empty.pack().unpack(), empty);
+    }
 
     #[test]
     fn req_op_24_the_stock_ends_are_where_its_material_is() {

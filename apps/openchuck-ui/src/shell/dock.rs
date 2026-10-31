@@ -345,6 +345,7 @@ impl Shell {
             self.run.job_id(),
             self.run.running_simulates(),
         );
+        let bar = self.play.cut_part_bar(&self.jobs);
         let rest = || {
             egui::ScrollArea::vertical()
                 .id_salt("playback")
@@ -372,7 +373,7 @@ impl Shell {
                             if stale {
                                 ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
                             }
-                            play.show_strip(ui, app, progress.as_ref())
+                            play.show_strip(ui, app, progress.as_ref(), bar.as_ref())
                         })
                         .inner;
                     let height = ui.cursor().top() - top;
@@ -406,7 +407,10 @@ impl Shell {
             Some(app) => {
                 crate::theme::solid_scroll_bar(ui);
                 rest()
-                    .show(ui, |ui| self.play.show_strip(ui, app, progress.as_ref()))
+                    .show(ui, |ui| {
+                        self.play
+                            .show_strip(ui, app, progress.as_ref(), bar.as_ref())
+                    })
                     .inner
             }
             None => {

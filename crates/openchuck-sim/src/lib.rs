@@ -37,7 +37,7 @@ pub use deviation::{
     Classify, Deviation, DeviationOptions, DeviationPoint, Leftover, MAX_DEVIATION_SAMPLES,
     SampleOn, compare, compare_cancellable, compare_classified, triangle_values,
 };
-pub use dexel::{DexelStock, MAX_COLUMNS, Pose};
+pub use dexel::{DexelStock, MAX_COLUMNS, PackedStock, Pose};
 pub use display::stock_mesh;
 pub use sample::{MAX_SAMPLES_PER_MOVE, Sampling, sample_move};
 pub use simulation::{BATCH_POSES, Checkpoint, GroupResult, RapidCut, Simulator};

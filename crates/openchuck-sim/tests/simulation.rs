@@ -11,7 +11,7 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DeviationOptions, DexelStock, Pose, SampleOn, Simulator, ToolSolid, compare,
+    Checkpoint, DeviationOptions, DexelStock, Pose, SampleOn, Simulator, ToolSolid, compare,
     compare_cancellable, compare_classified, cut_spans, stock_mesh, triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
@@ -443,6 +443,151 @@ fn req_sim_06_operation_two_sees_the_stock_left_by_operation_one() {
 }
 
 #[test]
+fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut sim = Simulator::new(make(), &m, Some(100));
+    sim.run_group(&g1, &profile, &ctx).unwrap();
+    sim.run_group(&g2, &profile, &ctx).unwrap();
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let direct = |group_index: usize, moves: usize| {
+        let mut direct = Simulator::new(make(), &m, None);
+        if group_index == 1 {
+            direct.run_group(&g1, &profile, &ctx).unwrap();
+        }
+        let mut partial = if group_index == 0 {
+            g1.clone()
+        } else {
+            g2.clone()
+        };
+        partial.segments.truncate(moves);
+        direct.run_group(&partial, &profile, &ctx).unwrap();
+        direct.stock().state_hash()
+    };
+    // A stock the caller kept from an earlier jump, as playback keeps the
+    // last frame's, then later points replayed from it: across the end of
+    // the first group, and within the second.
+    for (kept_at, later) in [
+        ((0, 130), (1, 37)),
+        ((1, 37), (1, 250)),
+        ((1, 120), (1, 199)),
+    ] {
+        let kept = Checkpoint {
+            group: kept_at.0,
+            moves: kept_at.1,
+            stock: sim
+                .stock_at(kept_at.0, kept_at.1, &groups, &ctx)
+                .unwrap()
+                .pack(),
+        };
+        let jumped = sim
+            .stock_at_from(Some(&kept), later.0, later.1, &groups, &ctx)
+            .unwrap();
+        assert_eq!(
+            jumped.state_hash(),
+            direct(later.0, later.1),
+            "{kept_at:?} to {later:?}"
+        );
+        // A kept stock after the point asked for is not used.
+        let back = sim
+            .stock_at_from(
+                Some(&kept),
+                kept_at.0,
+                kept_at.1.saturating_sub(5),
+                &groups,
+                &ctx,
+            )
+            .unwrap();
+        assert_eq!(
+            back.state_hash(),
+            direct(kept_at.0, kept_at.1.saturating_sub(5))
+        );
+    }
+    // The stock at a kept point, or at the end of a group (the checkpoint
+    // after it), is that copy: nothing is replayed, so even a cancelled job
+    // gets it.
+    cancel.cancel();
+    let kept = Checkpoint {
+        group: 1,
+        moves: 37,
+        stock: sim.stock().pack(),
+    };
+    let same = sim
+        .stock_at_from(Some(&kept), 1, 37, &groups, &ctx)
+        .unwrap();
+    assert_eq!(same.state_hash(), sim.stock().state_hash());
+    let end = sim.stock_at(0, g1.segments.len(), &groups, &ctx).unwrap();
+    let after_first = sim
+        .checkpoints()
+        .iter()
+        .find(|c| (c.group, c.moves) == (1, 0))
+        .unwrap();
+    assert_eq!(end.state_hash(), after_first.stock.state_hash());
+    let last = sim.stock_at(1, g2.segments.len(), &groups, &ctx).unwrap();
+    assert_eq!(last.state_hash(), sim.stock().state_hash());
+}
+
+#[test]
+fn req_nfr_07_req_sim_04_checkpoints_never_pass_their_memory_budget() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let held = |sim: &Simulator| -> usize {
+        sim.checkpoints()
+            .iter()
+            .map(|c| c.stock.memory_bytes())
+            .sum()
+    };
+    let mut free = Simulator::new(make(), &m, Some(20));
+    free.run_group(&g1, &profile, &ctx).unwrap();
+    free.run_group(&g2, &profile, &ctx).unwrap();
+    let all = free.checkpoints().len();
+    assert!(all > 6, "{all}");
+    // A budget for about a third of them: never passed, at the copies' real
+    // sizes, the start always kept, and the stock at every point the same.
+    let budget = held(&free) / 3;
+    let mut tight = Simulator::new(make(), &m, Some(20)).with_checkpoint_budget(budget);
+    tight.run_group(&g1, &profile, &ctx).unwrap();
+    tight.run_group(&g2, &profile, &ctx).unwrap();
+    assert!(held(&tight) <= budget, "{} > {budget}", held(&tight));
+    assert!(tight.checkpoints().len() < all && tight.checkpoints().len() > 1);
+    assert_eq!(
+        (tight.checkpoints()[0].group, tight.checkpoints()[0].moves),
+        (0, 0)
+    );
+    assert_eq!(tight.stock().state_hash(), free.stock().state_hash());
+    for (g, moves) in [(0, 0), (0, 57), (1, 0), (1, 101), (1, g2.segments.len())] {
+        assert_eq!(
+            tight
+                .stock_at(g, moves, &groups, &ctx)
+                .unwrap()
+                .state_hash(),
+            free.stock_at(g, moves, &groups, &ctx).unwrap().state_hash(),
+            "group {g}, move {moves}"
+        );
+    }
+    // A budget that holds them all keeps them all.
+    let mut roomy = Simulator::new(make(), &m, Some(20)).with_checkpoint_budget(usize::MAX);
+    roomy.run_group(&g1, &profile, &ctx).unwrap();
+    roomy.run_group(&g2, &profile, &ctx).unwrap();
+    assert_eq!(roomy.checkpoints(), free.checkpoints());
+}
+
+#[test]
 fn req_sim_06_jumping_to_a_move_matches_running_up_to_it() {
     let m = machine();
     let profile = ball(4.0);
@@ -582,6 +727,42 @@ impl ProgressSink for Recorder {
     fn report(&self, progress: Progress) {
         self.0.lock().unwrap().push(progress);
     }
+}
+
+/// The cut-part bar's loading fill (decision record 0322) reads a jump's
+/// progress: one total, the moves to replay across every group, counted up
+/// without going back, ending at the total.
+#[test]
+fn req_ui_09_req_sim_04_a_jump_reports_its_replay_as_one_total() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let quiet = JobContext::new(&cancel, &NoProgress);
+    // Only the start is kept, so the jump replays the first group whole and
+    // 37 moves of the second.
+    let mut sim = Simulator::new(make(), &m, None).with_checkpoint_budget(0);
+    sim.run_group(&g1, &profile, &quiet).unwrap();
+    sim.run_group(&g2, &profile, &quiet).unwrap();
+    assert_eq!(sim.checkpoints().len(), 1);
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let recorder = Recorder(Mutex::new(Vec::new()));
+    let ctx = JobContext::new(&cancel, &recorder);
+    sim.stock_at(1, 37, &groups, &ctx).unwrap();
+    let reports = recorder.0.into_inner().unwrap();
+    let total = (g1.segments.len() + 37) as u64;
+    // A report at least every 256 moves, besides those after each batch.
+    assert!(reports.len() as u64 >= total / 256, "{}", reports.len());
+    assert!(
+        reports.iter().all(|p| p.total == Some(total)),
+        "{reports:?}"
+    );
+    assert!(reports.windows(2).all(|w| w[0].done <= w[1].done));
+    assert_eq!(reports.last().map(|p| p.done), Some(total));
 }
 
 #[test]

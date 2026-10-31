@@ -332,6 +332,13 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
         .iter()
         .map(|(k, v)| ((*k).to_owned(), v.clone()))
         .collect();
+    // The reference parts' free ends are not part of what these jobs check,
+    // and their goldens predate Face free ends: off, as a saved operation is
+    // migrated (decision record 0344).
+    let mut parameters = parameters;
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&sample.strategy) {
+        parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
     app.execute(Command::Add {
         item: Item::Operation(Operation {
             enabled: true,

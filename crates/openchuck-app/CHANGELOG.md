@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- SIMPERF (#382, accepted decision 0322): the example `playback_times` (CARVEPERF's, below) is replaced by this lane's, which also builds a project from an STL, times the surface job and forward play and takes a memory budget. Stock colours are computed over the job's threads (the same at any thread count); `StockPlayback` keeps the last request's stock and spaces checkpoints to fill a memory budget (`start_stock_playback` takes it; `MAX_CHECKPOINT_BYTES` becomes `DEFAULT_PLAYBACK_MEMORY`); `start_playing_stock_surface` makes a cut part without a picker; `SimulateSettings::playback_memory_mb`. Not in the library family.
+
 - OUTPUT3 (accepted decision 0327; #312): the `output_preview` module and `Application::output_preview(run)`: the program files exactly as `prepare_output` writes them, each a `PreviewFile` with its final name, bytes, size, SHA-256, line count, `line(n)` and `find(text, from, forward)`; `LineIndex`. `prepare_output` and the preview share one source of file names and texts. No library-family change.
 
 - FOURSTEP (accepted decision 0282; #322; UI-10): **Changed:** `overview::Step` has four values (`Step::Export` removed, `Step::ALL` is `[Step; 4]`, Simulate has no next step); `Overview::health` is the worst of four. New `Overview::export_action` (Post and export, with the old fifth step's rules), `Overview::simulation_action`, `Overview::g_code_written` and `Overview::wrote_g_code_before`; `Overview::primary(Step::Simulate)` is the filled one of the two. `g_code_written` needs the last complete write to hold exactly the enabled operations, so an exported operation since turned off or removed reads "not written". No library-family change.
