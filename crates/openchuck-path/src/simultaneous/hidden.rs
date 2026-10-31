@@ -327,7 +327,14 @@ impl Chain {
         } else {
             *self.points.first()?
         };
-        let normal = *self.normals.get(i).or(self.normals.last())?;
+        // A facet of no area (a sliver a mesh repair left) has no normal:
+        // the nearest segment's that has one, after it and then before.
+        let has = |k: &usize| self.normals.get(*k).is_some_and(|n| n.length() > 1e-12);
+        let k = (i..self.normals.len())
+            .find(has)
+            .or_else(|| (0..i).rev().find(has))
+            .unwrap_or(i);
+        let normal = *self.normals.get(k).or(self.normals.last())?;
         let s0 = *self.s.get(i)?;
         let s1 = self.s.get(i + 1).copied().unwrap_or(s0);
         let f = if s1 > s0 { (s - s0) / (s1 - s0) } else { 0.0 };
@@ -865,17 +872,26 @@ impl Plan<'_> {
             };
             // The tool is placed by the exact or the facet normal, and its
             // axis aims by the exact or the smoothed one.
+            // A point with no normal (on a facet of no area) is passed
+            // over; the contour keeps its other points.
             let (point, seed, normal) = if exact {
                 match self.input.surface.project(p) {
                     Some(q) => (q.point, q.normal, q.normal),
                     None => {
-                        let f = UnitVec3::new(facet).ok()?;
+                        let Ok(f) = UnitVec3::new(facet) else {
+                            continue;
+                        };
                         (p, f, f)
                     }
                 }
             } else {
-                let f = UnitVec3::new(facet).ok()?;
-                (p, f, self.contour_normal(chain, at, p, facet, beside)?)
+                let (Ok(f), Some(smoothed)) = (
+                    UnitVec3::new(facet),
+                    self.contour_normal(chain, at, p, facet, beside),
+                ) else {
+                    continue;
+                };
+                (p, f, smoothed)
             };
             let t = i as f64 / n as f64;
             let visible = self.visible(x, p, facet, exact);
@@ -1459,6 +1475,40 @@ mod tests {
         assert!(Slicer::new(&mesh).chains(0.0).len() <= 1);
         assert!(Slicer::new(&mesh).chains(9.0).is_empty());
         assert!(Slicer::new(&mesh).chains(-9.0).is_empty());
+    }
+
+    #[test]
+    fn req_op_20_a_facet_of_no_area_leaves_the_section_whole_with_normals() {
+        // The box's side Z = -1 with its diagonal split at its middle and a
+        // facet of no area along it (a T-junction's filler): the section is
+        // still one closed chain round the box, and every point of it has
+        // a unit normal pointing out.
+        let mut mesh = square(0.0, 4.0);
+        let m = u32::try_from(mesh.vertices.len()).unwrap();
+        mesh.vertices.push(Point3::new(2.0, 0.0, -1.0));
+        // The side's first triangle [0, 1, 5] becomes two through the middle
+        // of its diagonal, and [0, m, 5] closes the T-junction with no area.
+        mesh.triangles[0] = [0, 1, m];
+        mesh.triangles.insert(0, [0, m, 5]);
+        mesh.triangles.push([m, 1, 5]);
+        for x in [0.7, 1.3, 2.6, 3.3] {
+            let chains = Slicer::new(&mesh).chains(x);
+            assert_eq!(chains.len(), 1, "X {x}");
+            let c = &chains[0];
+            assert!(c.closed, "X {x}");
+            assert!((c.length() - 8.0).abs() < 1e-9, "X {x}: {}", c.length());
+            assert!(c.normals.iter().any(|n| n.length() < 1e-12), "X {x}");
+            for k in 0..c.s.len() {
+                for s in [c.s[k], c.s[k] + 1e-6, c.s[k] - 1e-6] {
+                    let (p, n) = c.at(s).unwrap();
+                    assert!(n.length() > 1e-6, "X {x}, s {s}: no normal");
+                    assert!(
+                        n.dot(Vec3::new(0.0, p.y, p.z)) > 0.0,
+                        "X {x}, s {s}: {n:?} at {p:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

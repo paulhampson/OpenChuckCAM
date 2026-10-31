@@ -16,7 +16,7 @@
 - **Open items:**
   - closed: OI-1431 (a section in several separate pieces: its pieces' facing sides are hidden surfaces and are finished or reported here), and OI-1456 (the shank on the drive's passes, item 7);
   - noted: OI-148 (closed in decision 0036; the P1 limit it records is lifted here);
-  - new: OI-1450 and OI-1451 (deferred by the owner), and OI-1456 and OI-1457.
+  - new: OI-1450 and OI-1451 (deferred by the owner), OI-1456 (closed here), OI-1457 and OI-1458 (open).
 
 ## Context
 
@@ -90,6 +90,7 @@ The machine can lean the tool only in the plane across the rotary axis: A turns 
 8. **A drop with a lower bound.**
    - `SurfaceSource` gains the provided method `drop_tool_above(profile, line, at_least)`, the same answer as `drop_tool` for a line on which the tool is known to touch the surface at `at_least` or above. The default ignores the bound. `MeshSurface` uses it as the drop's floor (a hair below, so a tie is decided as without it), when the line's own highest surface point gives none or a lower one.
    - The tool placed on a hidden wall, with its axis along the wall, is on a line that often misses the surface, and then every triangle within the tool's radius of the line was tried. The answer is the same.
+   - `CompositeSurface` and `BrepSurface` keep the default, so on a part with held regions or a STEP part these drops are not yet faster (OI-1458).
 9. **Always on (owner's decision 3, B).** There is no setting. A saved project whose part has hidden surfaces the tool can reach gets the new passes when it is regenerated, and one whose part has hidden surfaces the tool cannot reach gets the warning. Every other project's program is unchanged. The user's control is `max_hidden_lean` (0: no lean from the normal, so no side cutting).
 10. **Determinism (NFR-06, GC-07).**
     - Sections, chains (joined by edge keys made from the end points' bits, so a welded and an unwelded mesh chain alike) and their points are made in the triangles' order.
@@ -138,7 +139,8 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
   - sections of a box, closed, counter-clockwise, with outward normals, and through a ring of vertices;
   - an open mesh's open chain;
   - areas all round or not;
-  - the outline with a wider shank.
+  - the outline with a wider shank;
+  - a facet of no area in a section (a T-junction's filler): the section stays one closed chain, and every point of it has an outward normal. A point with no normal is passed over, and the contour keeps the rest (CodeRabbit on #419). Zero-length segments were already never chosen, so this guards the code rather than reproducing a failure.
 - `openchuck-testkit`:
   - `parts::prism` (a section along X in bands, its ends capped by ear clipping) and `parts::join`;
   - `parts::revolve` documented for a profile that turns back, with tests that each is closed and outward.
@@ -175,3 +177,4 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
 | 2 | Highlight the unreached areas in the viewport and go to each, reading `GeneratedPath::unreached` (owner's decision 4). Deferred by the owner: issue #416. (OI-1451) | A later interface lane | This lane merged |
 | 3 | The drive's passes of simultaneous finishing did not check a shank wider than the cutting part: with a 1 mm ball on a 3.175 mm shank, the spiral took the shank 1.09 mm into a 3 mm slot's edges. Closed: the owner chose option A with the breaks said (31 Oct 2026, relayed); every pass now checks it (item 7). (OI-1456) | Closed | |
 | 4 | Faces square to the rotary axis under an overhang (the side walls of a T-slot groove round the axis) lie in no section, so they are neither driven nor reported; the groove's floor under the lips is reported. (OI-1457) | When such a part is to be finished | A test part and a sampling across X |
+| 5 | `CompositeSurface` and `BrepSurface` keep the default `drop_tool_above`, which ignores the bound (item 8): the same answers, no faster. (OI-1458) | When generation speed on such parts is worked on | Overrides with tests |
