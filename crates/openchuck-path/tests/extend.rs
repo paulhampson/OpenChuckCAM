@@ -8,6 +8,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 
@@ -17,7 +18,7 @@ use openchuck_path::params::names;
 use openchuck_path::roughing::parameter as roughing;
 use openchuck_path::{
     AnalyticStock, AxialFinishing, Facing, GeneratedPath, HelicalFinishing, IndexedFinishing,
-    MeshSurface, ParameterKind, ParameterValue, RotaryRoughing, Strategy, generate,
+    MeshSurface, ParameterKind, ParameterValue, RotaryRoughing, Strategy,
 };
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge};
 use openchuck_testkit::parts::{Cylinder, RadialPart};

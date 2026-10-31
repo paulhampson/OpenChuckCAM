@@ -10,6 +10,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use openchuck_path::rotary::{
 };
 use openchuck_path::{
     AnalyticStock, CommonParameters, MeshSurface, ParameterValue, PathError, Registry,
-    RotaryMapping, StockModel, Strategy, generate,
+    RotaryMapping, StockModel, Strategy,
 };
 use openchuck_testkit::gouge::{Outline, Pose, coverage, max_gouge};
 use openchuck_testkit::oracle::{OracleMachine, model_tip};

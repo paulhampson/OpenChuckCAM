@@ -1184,6 +1184,7 @@ pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
              inspector's Geometry section, or take the set out of the operation."
         ),
         parameter: None,
+        requires_acknowledgement: false,
     }
 }
 
@@ -1669,6 +1670,11 @@ mod tests {
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v))
         .collect();
+        // Adaptive spacing off unless a test asks: these are not about it,
+        // and a new operation has it on (decision record 0239).
+        if openchuck_path::adaptive::STRATEGIES.contains(&strategy) {
+            values.insert("adaptive_spacing".to_owned(), Value::Flag(false));
+        }
         for (k, v) in parameters {
             values.insert((*k).to_owned(), v.clone());
         }

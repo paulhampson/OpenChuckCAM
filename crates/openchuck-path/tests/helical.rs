@@ -10,6 +10,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 
@@ -18,7 +19,6 @@ use openchuck_path::params::names;
 use openchuck_path::rotary::{AxisPosition, reversals};
 use openchuck_path::{
     GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError, SurfaceSource,
-    generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose, coverage, max_gouge, min_clearance};
 use openchuck_testkit::parts::{

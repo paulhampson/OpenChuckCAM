@@ -20,6 +20,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,7 +31,7 @@ use openchuck_path::stock::StockModel;
 use openchuck_path::{
     AcceptAll, AnalyticStock, AxialFinishing, CompositeSurface, GeneratedPath, HelicalFinishing,
     IndexedFinishing, MeshSurface, ParameterValue, RestMachining, RotaryMapping, RotaryRoughing,
-    SimultaneousFinishing, Solid, Strategy, StrategyInput, SurfaceSource, generate,
+    SimultaneousFinishing, Solid, Strategy, StrategyInput, SurfaceSource,
 };
 use openchuck_testkit::gouge::{Outline, Pose};
 use openchuck_testkit::parts::{Cone, RadialPart, revolve};

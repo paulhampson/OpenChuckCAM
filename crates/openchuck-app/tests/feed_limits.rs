@@ -487,5 +487,17 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
         out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+        "simultaneous_finishing",
+    ]
+    .contains(&strategy)
+    {
+        out.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
     out
 }

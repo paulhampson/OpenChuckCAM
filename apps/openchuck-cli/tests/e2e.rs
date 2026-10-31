@@ -339,6 +339,18 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
     if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&sample.strategy) {
         parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+        "simultaneous_finishing",
+    ]
+    .contains(&sample.strategy)
+    {
+        parameters.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
     app.execute(Command::Add {
         item: Item::Operation(Operation {
             enabled: true,
@@ -1073,4 +1085,74 @@ fn req_gc_17_req_gc_12_cli_writes_same_run_short_block_reports() {
         }
     }
     std::fs::remove_dir_all(root).unwrap();
+}
+
+/// A partial path (decision record 0239 item 10) is written from the
+/// command line only with `--acknowledge-partial-path`, which acknowledges
+/// that run alone; without it nothing is written and the refusal names the
+/// operation (NFR-12).
+#[test]
+fn req_op_04_req_nfr_12_the_cli_writes_a_partial_path_only_when_acknowledged() {
+    let root = scratch("partial");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    // Resaved at the current schema, then the operation asks for less than
+    // its passes can give: the Smallest spacing is wider than half the
+    // pitch, so no pass can be added and the path is partial.
+    cli_ok(&["resave".as_ref(), project.as_os_str()]);
+    let ops = project.join("operations");
+    let file = std::fs::read_dir(&ops)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let text = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("adaptive_spacing = false", "adaptive_spacing = true")
+        .replace(
+            "[parameters]\n",
+            "[parameters]\nmin_spacing = 50.0\nscallop = 0.0001\n",
+        );
+    std::fs::write(&file, text).unwrap();
+    let out = root.join("out");
+    let args = |acknowledge: bool| {
+        let mut a: Vec<OsString> = [
+            "regenerate",
+            &project.to_string_lossy(),
+            "--post",
+            "linuxcnc",
+            "--tool-numbers",
+            "keep",
+            "--out",
+            &out.to_string_lossy(),
+        ]
+        .iter()
+        .map(OsString::from)
+        .collect();
+        if acknowledge {
+            a.push("--acknowledge-partial-path".into());
+        }
+        a
+    };
+    let refused = cli(&args(false));
+    assert_ne!(refused.code, Some(0), "{}", refused.stdout);
+    assert!(
+        refused.stderr.contains("'Finish'")
+            && refused.stderr.contains("partial")
+            && refused.stderr.contains("--acknowledge-partial-path"),
+        "{}",
+        refused.stderr
+    );
+    assert!(!out.exists(), "nothing is written");
+    let written = cli_ok(&args(true));
+    assert!(
+        written
+            .stderr
+            .contains("partial path of 'Finish' acknowledged")
+            && written.stderr.contains("not complete"),
+        "{}",
+        written.stderr
+    );
+    assert!(std::fs::read_dir(&out).unwrap().next().is_some());
+    std::fs::remove_dir_all(root).ok();
 }

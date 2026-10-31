@@ -69,6 +69,7 @@
 
 #![warn(missing_docs)]
 
+pub mod adaptive;
 pub mod assemble;
 pub mod axial;
 pub mod brep;

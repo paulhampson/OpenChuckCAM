@@ -112,10 +112,10 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             spindle_speed: None,
             material: None,
             // Not about free ends (decision record 0344, OI-1396).
-            parameters: BTreeMap::from([(
-                "face_free_ends".to_owned(),
-                ParameterValue::Flag(false),
-            )]),
+            parameters: BTreeMap::from([
+                ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+                ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+            ]),
         }),
     ] {
         app.execute(Command::Add {
@@ -234,7 +234,10 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
         spindle_speed: None,
         material: None,
         // Not about free ends (decision record 0344, OI-1396).
-        parameters: BTreeMap::from([("face_free_ends".to_owned(), ParameterValue::Flag(false))]),
+        parameters: BTreeMap::from([
+            ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+            ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+        ]),
     };
     app.execute(Command::Add {
         item: Item::Operation(op),
@@ -753,6 +756,7 @@ fn req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp() {
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "rotary_roughing".into();
     operation.parameters.remove("face_free_ends");
+    operation.parameters.remove("adaptive_spacing");
     operation
         .parameters
         .insert("form".into(), ParameterValue::Text("indexed".into()));

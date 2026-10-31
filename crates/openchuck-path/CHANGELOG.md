@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.0
+
+- **Breaking (0.29.0, ENDFACE stage 3; issue #303; decision 0239, accepted):** adaptive pass spacing. The new module `adaptive` (`parameter::ADAPTIVE_SPACING`, `parameter::MIN_SPACING`, `DEFAULT_ALLOWED_EXCESS`, `DEFAULT_MIN_SPACING`) measures the material left between neighbouring passes with the operation's own cutter model and drops, and adds passes halfway over the stretches holding more than the Allowed excess (the Scallop height, one value), never closer than the Smallest spacing, within the owner's limits (1,000,000 queries and points, 10,000 added passes, 20 levels, 65,536 pending intervals), the same at any thread count. Helical finishing (clean-up arcs between the wraps), axial finishing and the axial pattern of simultaneous finishing (which gains `scallop`) have the switch, on for a new operation; off, their paths are unchanged. Where a limit is met or a place cannot be confirmed, the path made so far is kept with a warning that must be acknowledged: `PathWarning::requires_acknowledgement` (struct literals add `requires_acknowledgement: false`). `Strategy::passes_in_zones` returns `StrategyOutput`, so its notes and warnings reach the host. The tool clearance swarf used moves to `cutter` (crate-private).
+
 ## 0.28.0
 
 - **Breaking family release (0.28.0, Z1AXIS, decision 0317):** `openchuck_types::machine::MachineProfile` gains the spindle-height fields and `ProfileField` three variants. No change in this crate; all family crates advance together under 0048. Project schema 22 and machine profile schema 7 in `openchuck-project`.

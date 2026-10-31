@@ -213,7 +213,12 @@ fn build_with_mesh(
         operation(
             "Finish",
             "helical_finishing",
-            vec![("max_angle_step", ParameterValue::Number(5.0))],
+            // Adaptive spacing off: not what these check (decision record
+            // 0239), and their programs predate it.
+            vec![
+                ("max_angle_step", ParameterValue::Number(5.0)),
+                ("adaptive_spacing", ParameterValue::Flag(false)),
+            ],
         ),
     ];
     if rough {
