@@ -61,6 +61,8 @@ mod pending_pick;
 mod tree;
 
 #[cfg(test)]
+mod adaptive_tests;
+#[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
 mod pending_edit_tests;
@@ -145,6 +147,26 @@ enum Dialog {
     /// The opened project has models outside its folder: ask, each time it
     /// is opened, whether to copy them in (decision record 0307 item 5).
     CopyLinked(usize),
+    /// Adaptive spacing is being turned on for an operation saved with a
+    /// Scallop height of 0: ask for the Allowed excess first (decision
+    /// record 0239 item 5). `height` is the typed text.
+    AdaptiveHeight {
+        operation: OperationId,
+        height: String,
+    },
+}
+
+/// What the dialog that turns adaptive spacing on from a saved zero says
+/// (decision record 0239 item 5).
+pub(crate) const ADAPTIVE_HEIGHT_TEXT: &str = "This operation was saved with a Scallop height of 0, which meant no limit on the cusp. With adaptive spacing on, the same value is the Allowed excess: the most material that may stand between two passes above the finished surface and its stock to leave. 0 there asks for no excess at all, which may leave places unverified or meet the limits. 0.01 mm is suggested. Cancel leaves the operation as it is; Turn on sets both in one step you can undo.";
+
+/// The Allowed excess typed in the dialog, when it is a finite number of
+/// millimetres, at least 0.
+pub(crate) fn adaptive_height(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|h| h.is_finite() && *h >= 0.0)
 }
 
 /// The question asked on opening a project with `count` models outside its
@@ -375,6 +397,7 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -564,6 +587,7 @@ impl Shell {
             self.dialog = Some(Dialog::CopyLinked(linked));
         }
         self.app = Some(app);
+        self.apply_playback_with_generation();
         self.overview_dirty = true;
         self.rebuild_scene(true);
     }
@@ -747,6 +771,42 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
+        self.settings_touched();
+    }
+
+    /// Whether playback information is made with toolpath generation: the
+    /// user's choice, or this computer's default (decision record 0333).
+    fn playback_with_generation_on(&self) -> bool {
+        self.settings
+            .simulate
+            .playback_with_generation
+            .unwrap_or_else(|| {
+                crate::memory::playback_with_generation_default(self.physical_memory)
+            })
+    }
+
+    /// Gives the application the memory for playback's checkpoints while it
+    /// simulates, or none when "Generate playback information with toolpath
+    /// generation" is off (decision record 0333).
+    fn apply_playback_with_generation(&mut self) {
+        let memory = self.playback_with_generation_on().then(|| {
+            crate::memory::playback_memory(
+                self.settings.simulate.playback_memory_mb,
+                self.physical_memory,
+            )
+            .0
+        });
+        if let Some(app) = &mut self.app {
+            app.set_playback_with_generation(memory);
+        }
+    }
+
+    /// Sets "Generate playback information with toolpath generation": the
+    /// user's choice, or `None` for this computer's default.
+    fn set_playback_with_generation(&mut self, choice: Option<bool>) {
+        self.settings.simulate.playback_with_generation = choice;
+        self.apply_playback_with_generation();
         self.settings_touched();
     }
 
@@ -1204,6 +1264,18 @@ impl Shell {
         };
         if let Some(name) = name {
             self.dialog = Some(Dialog::Rename { item, name });
+        }
+    }
+
+    /// Turns adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, as one undoable step (decision record 0239 item 5).
+    fn enable_adaptive_spacing(&mut self, operation: OperationId, height: f64) {
+        let Some(app) = &mut self.app else { return };
+        if let Err(e) = app.enable_adaptive_spacing(operation, height) {
+            self.dialog = Some(Dialog::Error(format!(
+                "Adaptive spacing was not turned on: {}",
+                e.user_message()
+            )));
         }
     }
 
@@ -2102,6 +2174,46 @@ impl Shell {
                      either way. The copies are never allowed to use more than this. A change \
                      applies the next time the cut part is prepared.",
                 );
+                let mut with_generation = self.playback_with_generation_on();
+                if ui
+                    .checkbox(
+                        &mut with_generation,
+                        "Generate playback information with toolpath generation",
+                    )
+                    .changed()
+                {
+                    action = Some(Box::new(move |s: &mut Self| {
+                        s.set_playback_with_generation(Some(with_generation));
+                    }));
+                }
+                ui.horizontal(|ui| {
+                    let default =
+                        crate::memory::playback_with_generation_default(self.physical_memory);
+                    let state = if default { "On" } else { "Off" };
+                    ui.label(match crate::memory::gigabytes(self.physical_memory) {
+                        Some(gb) => format!("{state} by default on this computer ({gb} GB)"),
+                        None => format!(
+                            "{state} by default: this computer's memory could not be read"
+                        ),
+                    });
+                    if self.settings.simulate.playback_with_generation.is_some()
+                        && ui.button("Use this computer's default").clicked()
+                    {
+                        action = Some(Box::new(|s: &mut Self| {
+                            s.set_playback_with_generation(None);
+                        }));
+                    }
+                });
+                ui.label(
+                    "On: generating also keeps the copies of the cut part that playback \
+                     needs, so the cut part plays at once. Each generation takes a little \
+                     longer (about a tenth of the simulation's time) and holds up to the \
+                     memory for playback checkpoints above while its result is shown. Off: \
+                     nothing more is held, and the copies are made when the cut part is first \
+                     played, which takes about as long as the simulation. The toolpaths, the \
+                     G-code and the cut part are the same either way. A change applies from \
+                     the next generation.",
+                );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
@@ -2141,6 +2253,37 @@ impl Shell {
                 if ui.button("OK").clicked() {
                     close = true;
                 }
+            }
+            Dialog::AdaptiveHeight {
+                operation,
+                mut height,
+            } => {
+                ui.heading("Turn on adaptive spacing");
+                ui.label(ADAPTIVE_HEIGHT_TEXT);
+                ui.horizontal(|ui| {
+                    ui.label("Allowed excess (mm)");
+                    ui.text_edit_singleline(&mut height);
+                });
+                let parsed = adaptive_height(&height);
+                if parsed.is_none() {
+                    ui.colored_label(DARK.error, "Enter a number of millimetres, at least 0.");
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(parsed.is_some(), egui::Button::new("Turn on"))
+                        .clicked()
+                        && let Some(h) = parsed
+                    {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.enable_adaptive_spacing(operation, h);
+                        }));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+                self.dialog = Some(Dialog::AdaptiveHeight { operation, height });
             }
         });
         if form_browse {

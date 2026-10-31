@@ -96,9 +96,10 @@ pub use command::{
 };
 pub use error::AppError;
 pub use export::{
-    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
-    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
-    run_is_current, simulation_out_of_date, write_gcode_files,
+    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL,
+    EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary,
+    builtin_post_summaries, partial_operations, partial_path_refusal, post_summary, run_is_current,
+    simulation_out_of_date, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
@@ -228,6 +229,10 @@ pub struct Application {
     /// The user's file name templates (issues 308 and 310); the defaults
     /// give the names written before templates existed.
     file_names: output_names::FileNameTemplates,
+    /// Playback's checkpoints kept while simulating, within this many bytes
+    /// ("Generate playback information with toolpath generation", decision
+    /// record 0333); `None` keeps none, and playback simulates again.
+    playback_with_generation: Option<usize>,
 }
 
 /// What a new project starts with, from the user's settings
@@ -323,6 +328,7 @@ impl Application {
             actions: Vec::new(),
             clock: Box::new(SystemClock),
             file_names: output_names::FileNameTemplates::default(),
+            playback_with_generation: None,
         })
     }
 
@@ -1167,6 +1173,66 @@ impl Application {
         self.set_parameter(operation, name, None)
     }
 
+    /// Whether turning Adaptive spacing on for `operation` must first ask
+    /// for the height: it is off and the operation holds a Scallop height of
+    /// 0, which meant no scallop limit, not "no excess at all" (decision
+    /// record 0239 item 5). An unknown operation needs nothing.
+    pub fn adaptive_spacing_needs_height(&self, operation: OperationId) -> bool {
+        use openchuck_path::adaptive::parameter::ADAPTIVE_SPACING;
+        use openchuck_project::ParameterValue;
+        let Some(op) = self.document.project.operation(operation) else {
+            return false;
+        };
+        let has = self
+            .strategies
+            .get(&op.strategy)
+            .is_ok_and(|s| s.schema().get(ADAPTIVE_SPACING).is_some());
+        has && op.parameters.get(ADAPTIVE_SPACING) == Some(&ParameterValue::Flag(false))
+            && matches!(op.parameters.get("scallop"), Some(ParameterValue::Number(h)) if *h == 0.0)
+    }
+
+    /// Turns Adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, both in one undoable step, after checking both (decision
+    /// record 0239 item 5). Nothing changes when either is refused. The
+    /// height stays the Scallop height if adaptive spacing is turned off
+    /// again: one value serves both.
+    pub fn enable_adaptive_spacing(
+        &mut self,
+        operation: OperationId,
+        height: f64,
+    ) -> Result<(), AppError> {
+        use openchuck_path::adaptive::parameter::ADAPTIVE_SPACING;
+        use openchuck_project::ParameterValue;
+        let on = ParameterValue::Flag(true);
+        let height = ParameterValue::Number(height);
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            ADAPTIVE_SPACING,
+            Some(&on),
+        )?;
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            "scallop",
+            Some(&height),
+        )?;
+        self.execute(Command::Batch(vec![
+            Command::SetParameter {
+                operation,
+                name: ADAPTIVE_SPACING.into(),
+                value: Some(on),
+            },
+            Command::SetParameter {
+                operation,
+                name: "scallop".into(),
+                value: Some(height),
+            },
+        ]))
+    }
+
     /// Sets or clears one parameter after schema validation (UI-07).
     pub fn set_parameter(
         &mut self,
@@ -1353,6 +1419,7 @@ impl Application {
         let grouping = self.grouping;
         let cache = self.cache.clone();
         let record = std::sync::Arc::clone(&self.record);
+        let playback = self.playback_with_generation;
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
                 let result = pipeline::regenerate(
@@ -1361,6 +1428,7 @@ impl Application {
                     &strategies,
                     post.as_ref().map(|p| (p, grouping)),
                     simulate,
+                    playback,
                     &cache,
                     &record,
                     until,
@@ -1395,6 +1463,27 @@ impl Application {
     /// number costs memory on long paths.
     pub fn set_cache_versions(&self, count: usize) {
         self.cache.set_versions(count);
+    }
+
+    /// Keeps playback's checkpoints while simulating, within `memory` bytes
+    /// (the user's "Memory for playback checkpoints", capped by the front
+    /// end), or none with `None`: "Generate playback information with
+    /// toolpath generation" (decision record 0333). With them, playback of
+    /// the run opens at once ([`Application::start_stock_playback`] uses
+    /// them); without, it simulates again. The toolpaths, the G-code and the
+    /// stock are the same either way. A change drops the stocks kept for
+    /// reuse, so the next run simulates again and keeps them, or not.
+    pub fn set_playback_with_generation(&mut self, memory: Option<usize>) {
+        if self.playback_with_generation != memory {
+            self.playback_with_generation = memory;
+            self.cache.clear_stocks();
+        }
+    }
+
+    /// The memory playback's checkpoints may hold when they are kept while
+    /// simulating, or `None` when they are not.
+    pub fn playback_with_generation(&self) -> Option<usize> {
+        self.playback_with_generation
     }
 
     /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).
@@ -1614,7 +1703,8 @@ impl Application {
         let [html, pdf] = named.setup_sheet;
         files.push((html, sheet.to_html().into_bytes()));
         files.push((pdf, sheet.to_pdf()));
-        output_write::prepare(folder, std::sync::Arc::clone(run), files)
+        let partial = export::partial_operations(&self.document.project, run);
+        output_write::prepare(folder, std::sync::Arc::clone(run), files, partial)
     }
 
     /// The final names of the program files and, for each, the index of its
@@ -1677,6 +1767,12 @@ impl Application {
                 plan.paths(),
                 plan.paths().first().cloned().unwrap_or_default(),
                 reason,
+            )
+        } else if !plan.partial_operations().is_empty() && !plan.partial_path_acknowledged() {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                export::partial_path_refusal(plan.partial_operations()),
             )
         } else {
             output_write::write(plan, replace)

@@ -105,6 +105,7 @@ fn req_op_10_a_step_blank_with_a_radial_hole_is_found_and_drilled() {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let values: BTreeMap<String, ParameterValue> =
         [(names::FEED, 100.0), (names::PLUNGE_FEED, 300.0)]

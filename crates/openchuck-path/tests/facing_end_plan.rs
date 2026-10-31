@@ -637,6 +637,7 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
         entry_safety: None,
         facing: Some(&setup),
         keep_out: &[],
+        shank: None,
     };
     let path = openchuck_path::assemble::assemble_with_entry(
         &plan.passes,

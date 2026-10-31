@@ -102,10 +102,10 @@ pub fn cube_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) 
             material: None,
             // Not about free ends (decision 0344): the stock past the
             // cube's ends would otherwise be faced, with its warning.
-            parameters: BTreeMap::from([(
-                "face_free_ends".to_owned(),
-                ParameterValue::Flag(false),
-            )]),
+            parameters: BTreeMap::from([
+                ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+                ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+            ]),
         }),
     ] {
         app.execute(Command::Add {

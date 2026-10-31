@@ -186,20 +186,36 @@ pub(crate) fn drop_on_mesh(
     profile: &RevolvedProfile,
     line: &ToolLine,
 ) -> Option<Contact> {
+    drop_on_mesh_above(mesh, profile, line, None)
+}
+
+/// [`drop_on_mesh`] where the answer is known to be at `at_least` along
+/// the line or above (a tool placed touching the surface there): triangles
+/// lower down are passed over, as they are below the highest surface point
+/// of the axis line, when the line meets the surface. The answer is the
+/// same.
+pub(crate) fn drop_on_mesh_above(
+    mesh: &MeshSurface,
+    profile: &RevolvedProfile,
+    line: &ToolLine,
+    at_least: Option<f64>,
+) -> Option<Contact> {
     // The thread's lists, or new ones when they are in use or gone (a drop
     // made while the thread ends).
     SCRATCH
         .try_with(|scratch| match scratch.try_borrow_mut() {
             Ok(mut scratch) => {
-                let contact = drop_with::<true>(mesh, profile, line, &mut scratch);
+                let contact = drop_with::<true>(mesh, profile, line, at_least, &mut scratch);
                 if scratch.found.capacity().max(scratch.order.capacity()) > SCRATCH_KEPT {
                     *scratch = Scratch::default();
                 }
                 contact
             }
-            Err(_) => drop_with::<true>(mesh, profile, line, &mut Scratch::default()),
+            Err(_) => drop_with::<true>(mesh, profile, line, at_least, &mut Scratch::default()),
         })
-        .unwrap_or_else(|_| drop_with::<true>(mesh, profile, line, &mut Scratch::default()))
+        .unwrap_or_else(|_| {
+            drop_with::<true>(mesh, profile, line, at_least, &mut Scratch::default())
+        })
 }
 
 /// [`drop_on_mesh`] with the lists in `scratch`, skipping the edges
@@ -209,12 +225,16 @@ fn drop_with<const SKIP_EDGES: bool>(
     mesh: &MeshSurface,
     profile: &RevolvedProfile,
     line: &ToolLine,
+    at_least: Option<f64>,
     scratch: &mut Scratch,
 ) -> Option<Contact> {
     let frame = Frame::new(line);
     // A tip height the answer cannot be below: the tool's tip rests on the
     // highest surface point of the axis line (h(0) = 0).
-    let floor = mesh.highest_on_line(line);
+    let floor = match (mesh.highest_on_line(line), at_least) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
     // Each candidate gets an upper bound on the tip height it can give: its
     // highest vertex, less the lowest the tool gets at the nearest the
     // triangle comes to the axis (h(r) never decreases with r). Triangles
@@ -629,6 +649,96 @@ fn sampled_max(f: &impl Fn(f64) -> f64, a: f64, b: f64, n: u32) -> f64 {
 
 // ---- stock to leave -----------------------------------------------------------
 
+// Signed distance to the tool body (swarf's checks and adaptive spacing's
+// measure, decision record 0239).
+
+/// The signed distance from a point at distance `rho` from the tool axis and
+/// height `h` above the tip to the tool's surface: negative inside the tool.
+/// The body is the revolved profile, continued upward at the cutting radius
+/// (the shank and holder are not known here; OI-237).
+pub(crate) fn clearance(profile: &RevolvedProfile, rho: f64, h: f64) -> f64 {
+    let r = profile.cutting_radius();
+    let top = profile.top();
+    let inside = rho <= r + 1e-12 && profile.height_at(rho.min(r)).is_some_and(|z| h >= z);
+    let mut d = f64::INFINITY;
+    for piece in profile.pieces() {
+        d = d.min(distance_to_piece(piece, rho, h));
+    }
+    // The side above the profile's end.
+    let dz = (top - h).max(0.0);
+    d = d.min(((rho - r).powi(2) + dz * dz).sqrt());
+    if inside { -d } else { d }
+}
+
+fn distance_to_piece(piece: &ProfilePiece, rho: f64, h: f64) -> f64 {
+    match *piece {
+        ProfilePiece::Line { start, end } => {
+            let (ar, az) = (start.radius.0, start.height.0);
+            let (dr, dz) = (end.radius.0 - ar, end.height.0 - az);
+            let l2 = dr * dr + dz * dz;
+            let t = if l2 > 0.0 {
+                (((rho - ar) * dr + (h - az) * dz) / l2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            (rho - ar - t * dr).hypot(h - az - t * dz)
+        }
+        ProfilePiece::Arc {
+            start,
+            end,
+            centre,
+            radius,
+            ..
+        } => {
+            let (cr, cz) = (centre.radius.0, centre.height.0);
+            let angle = |r: f64, z: f64| {
+                let t = (z - cz).atan2(r - cr);
+                if t < -std::f64::consts::FRAC_PI_2 {
+                    t + std::f64::consts::TAU
+                } else {
+                    t
+                }
+            };
+            let (ta, tb) = (
+                angle(start.radius.0, start.height.0),
+                angle(end.radius.0, end.height.0),
+            );
+            let tq = angle(rho, h);
+            let ends = (rho - start.radius.0)
+                .hypot(h - start.height.0)
+                .min((rho - end.radius.0).hypot(h - end.height.0));
+            if tq >= ta.min(tb) && tq <= ta.max(tb) {
+                (radius - (rho - cr).hypot(h - cz)).abs().min(ends)
+            } else {
+                ends
+            }
+        }
+    }
+}
+
+/// A lower bound of [`clearance_at`] that costs two dot products: the tool
+/// lies within `radius` of its axis and above its tip, so a point is at
+/// least as far from it as from that half cylinder.
+pub(crate) fn bound_at(radius: f64, tip: Point3, axis: UnitVec3, p: Point3) -> f64 {
+    let w = p - tip;
+    let h = w.dot(axis.get());
+    let rho = (w - axis.get() * h).length();
+    (rho - radius).max(-h)
+}
+
+/// `clearance` for a model point against the tool at `tip` along `axis`.
+pub(crate) fn clearance_at(
+    profile: &RevolvedProfile,
+    tip: Point3,
+    axis: UnitVec3,
+    p: Point3,
+) -> f64 {
+    let w = p - tip;
+    let h = w.dot(axis.get());
+    let rho = (w - axis.get() * h).length();
+    clearance(profile, rho, h)
+}
+
 use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, ToolProfile};
 
 use crate::error::{PathError, Result};
@@ -737,7 +847,7 @@ pub fn grow_profile(profile: &RevolvedProfile, offset: f64) -> Result<RevolvedPr
 
 /// The point of `profile` (in tool coordinates: radius, height) nearest to
 /// (`r`, `z`).
-fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
+pub(crate) fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
     let mut best = (f64::INFINITY, (0.0, 0.0));
     for piece in profile.pieces() {
         let cand = match *piece {
@@ -971,8 +1081,9 @@ mod tests {
                 let a = 11.7 * f64::from(i);
                 let across = 0.37 * (f64::from(i % 7) - 3.0);
                 let line = rotary.tool_line(Millimetres(x), Degrees(a), Millimetres(across));
-                let fast = drop_with::<true>(&mesh, &profile, &line, &mut Scratch::default());
-                let every = drop_with::<false>(&mesh, &profile, &line, &mut Scratch::default());
+                let fast = drop_with::<true>(&mesh, &profile, &line, None, &mut Scratch::default());
+                let every =
+                    drop_with::<false>(&mesh, &profile, &line, None, &mut Scratch::default());
                 assert_eq!(bits(fast), bits(every), "x {x}, A {a}, across {across}");
                 skipped += usize::from(fast.is_some());
             }

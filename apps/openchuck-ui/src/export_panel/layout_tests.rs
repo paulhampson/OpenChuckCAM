@@ -366,6 +366,7 @@ fn req_ui_12_req_ui_16_confirmations_and_results_keep_bounds_and_actions_while_s
                         } else {
                             (21..40).map(path).collect()
                         },
+                        partial: Vec::new(),
                     });
                     ("export result", ["Copy paths", "Dismiss"])
                 };

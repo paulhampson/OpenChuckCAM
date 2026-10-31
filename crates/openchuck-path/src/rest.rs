@@ -451,6 +451,7 @@ impl Strategy for RestMachining {
             thin: false,
             max_dt: 1.0 / seeds as f64,
             wanted: Some(&wanted),
+            across: 0.0,
         };
         let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
         // One whole turn at each face across the axis, where the tool's side
@@ -503,6 +504,8 @@ impl Strategy for RestMachining {
             passes,
             notes,
             warnings: free.warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

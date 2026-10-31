@@ -74,6 +74,55 @@ pub struct PathWarning {
     /// The operation parameter that, changed, would accept or remove it
     /// (`tolerance`), for the host to point at; `None` when no one does.
     pub parameter: Option<String>,
+    /// Whether the path is partial: it is kept, but the user must
+    /// acknowledge this result before its program is written, and it is
+    /// never called complete (adaptive spacing that met a limit or could not
+    /// confirm a place; decision record 0239 item 10). An ordinary warning
+    /// never counts as one.
+    pub requires_acknowledgement: bool,
+}
+
+/// An area of the part a strategy could not reach with the tool (OP-20;
+/// decision record 0368): the path leaves it uncut, and a warning says so.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unreached {
+    /// The X range it spans, `(low, high)`, in millimetres.
+    pub x: (f64, f64),
+    /// The A range at which its surface faces the tool, `(low, high)`, in
+    /// degrees; a range of 360 or more goes all round.
+    pub a: (f64, f64),
+    /// Its area, in square millimetres.
+    pub area: f64,
+    /// Why the tool cannot reach it.
+    pub reason: UnreachedReason,
+}
+
+/// Why a tool cannot reach an area of the part.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnreachedReason {
+    /// The part is in the way in every direction the tool's axis can take
+    /// across the rotary axis: the tool would have to lean along it.
+    Blocked,
+    /// A direction is clear, but the tool is too wide for the gap, or its
+    /// flutes too short or its shank too wide for the depth.
+    TooNarrow,
+    /// The tool reaches it only leaning further from the surface normal
+    /// than the operation allows.
+    NeedsLean {
+        /// The least lean that reaches it, in degrees.
+        degrees: f64,
+    },
+}
+
+/// A place where a strategy broke a pass because the tool's shank, wider
+/// than its cutting part, would meet the part there (OP-12, OP-20; decision
+/// record 0368): the pass is linked round it, and a warning says so.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShankBreak {
+    /// Its X, in millimetres.
+    pub x: f64,
+    /// A there, in degrees.
+    pub a: f64,
 }
 
 /// A toolpath group with notes about it.
@@ -87,6 +136,12 @@ pub struct GeneratedPath {
     /// also one of `notes`, against the first segment, so a host that shows
     /// only notes still says it.
     pub warnings: Vec<PathWarning>,
+    /// The areas the strategy could not reach, as it gave them (OP-20;
+    /// decision record 0368).
+    pub unreached: Vec<Unreached>,
+    /// The places the strategy broke a pass for the tool's shank, as it gave
+    /// them (decision record 0368).
+    pub shank_breaks: Vec<ShankBreak>,
 }
 
 const EPS: f64 = 1e-9;
@@ -513,6 +568,8 @@ pub fn assemble_with_entry(
         },
         notes: b.notes,
         warnings: Vec::new(),
+        unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 

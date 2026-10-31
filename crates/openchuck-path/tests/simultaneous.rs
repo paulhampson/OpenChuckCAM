@@ -9,6 +9,7 @@
 )]
 
 mod support;
+use support::{generate, generate_in_region};
 
 use std::collections::BTreeMap;
 
@@ -17,7 +18,7 @@ use openchuck_path::rotary::reversals;
 use openchuck_path::simultaneous::parameter;
 use openchuck_path::{
     GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError, SimultaneousFinishing,
-    SurfaceSource, generate,
+    SurfaceSource,
 };
 use openchuck_testkit::gouge::{Outline, Pose, coverage, max_gouge};
 use openchuck_testkit::parts::{Cone, Cylinder, LobedVase, RadialPart, Sphere};
@@ -852,7 +853,6 @@ fn req_op_05_exact_faces_drive_the_path_with_their_own_normals() {
 
 #[test]
 fn req_op_02_cuts_stay_on_the_selected_region() {
-    use openchuck_path::generate_in_region;
     use openchuck_path::region::RegionConstraint;
     let mesh = Cylinder {
         radius: 15.0,

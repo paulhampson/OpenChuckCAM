@@ -19,13 +19,14 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 
 use openchuck_path::helical::parameter;
 use openchuck_path::params::names;
 use openchuck_path::{
-    GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, SurfaceSource, ToolLine, generate,
+    GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, SurfaceSource, ToolLine,
 };
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;

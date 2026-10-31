@@ -440,6 +440,9 @@ fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_st
     operation
         .parameters
         .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    operation
+        .parameters
+        .insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let first = app.regenerate().unwrap();
@@ -1417,6 +1420,9 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     operation
         .parameters
         .insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    operation
+        .parameters
+        .insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
     let mut model = app.project().models()[0].clone();
@@ -2061,6 +2067,62 @@ fn req_op_24_req_gc_07_req_set_09_legacy_default_with_workholding_matches_pre_sc
     };
     assert_eq!(bytes(&after), bytes(&before));
     assert!(after.facing.is_none());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_04_req_ui_07_turning_adaptive_spacing_on_from_a_saved_zero_asks_for_the_height() {
+    // Decision record 0239 item 5: an operation saved with Scallop 0 (which
+    // meant off) asks for the height before adaptive spacing is turned on;
+    // confirming sets both in one undoable step, and a refused height
+    // changes nothing.
+    let (dir, mut app, op) = project("adaptive-zero");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "helical_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation.clone())))
+        .unwrap();
+    // A new operation (no switch stored) and one with no height asks
+    // nothing.
+    assert!(!app.adaptive_spacing_needs_height(op));
+    app.set_parameter(op, "adaptive_spacing", Some(ParameterValue::Flag(false)))
+        .unwrap();
+    assert!(!app.adaptive_spacing_needs_height(op));
+    app.set_parameter(op, "scallop", Some(ParameterValue::Number(0.0)))
+        .unwrap();
+    assert!(app.adaptive_spacing_needs_height(op));
+    let before = app.project().operation(op).unwrap().clone();
+    // Refused: nothing changes.
+    assert!(app.enable_adaptive_spacing(op, -1.0).is_err());
+    assert_eq!(app.project().operation(op).unwrap(), &before);
+    // Confirmed: both at once, a deliberate 0 allowed.
+    for height in [0.02, 0.0] {
+        app.enable_adaptive_spacing(op, height).unwrap();
+        let now = app.project().operation(op).unwrap();
+        assert_eq!(
+            now.parameters.get("adaptive_spacing"),
+            Some(&ParameterValue::Flag(true))
+        );
+        assert_eq!(
+            now.parameters.get("scallop"),
+            Some(&ParameterValue::Number(height))
+        );
+        assert!(!app.adaptive_spacing_needs_height(op));
+        // One undo restores both.
+        app.undo().unwrap();
+        assert_eq!(app.project().operation(op).unwrap(), &before);
+    }
+    // Turning it off again keeps the chosen height as the Scallop height.
+    app.enable_adaptive_spacing(op, 0.03).unwrap();
+    app.set_parameter(op, "adaptive_spacing", Some(ParameterValue::Flag(false)))
+        .unwrap();
+    assert_eq!(
+        app.project()
+            .operation(op)
+            .unwrap()
+            .parameters
+            .get("scallop"),
+        Some(&ParameterValue::Number(0.03))
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 

@@ -9,6 +9,7 @@
 )]
 
 mod support;
+use support::generate_in_region;
 
 use std::collections::BTreeMap;
 
@@ -17,7 +18,7 @@ use openchuck_path::params::names;
 use openchuck_path::region::RegionConstraint;
 use openchuck_path::{
     AxialFinishing, GeneratedPath, HelicalFinishing, IndexedFinishing, MeshSurface, ParameterValue,
-    Strategy, generate_in_region,
+    Strategy,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::geometry::Point3;
