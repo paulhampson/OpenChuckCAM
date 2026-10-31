@@ -853,6 +853,11 @@ impl Shell {
                     self.open_tool_library(purpose, None);
                     ui.close();
                 }
+                // The machine library too (SET-10; 12.5).
+                if ui.button("Machine library…").clicked() {
+                    self.open_machine_library();
+                    ui.close();
+                }
                 ui.separator();
                 let operations = self.overview.step(Step::Operations).is_available();
                 if ui

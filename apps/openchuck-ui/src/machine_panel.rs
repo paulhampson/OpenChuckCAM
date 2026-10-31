@@ -123,6 +123,9 @@ pub struct MachinePanel {
     chosen: usize,
     message: Option<String>,
     fields: FieldState,
+    /// "Manage machines…" was pressed: the shell opens the machine library
+    /// window (SET-10; 12.5).
+    manage: bool,
 }
 
 impl Default for MachinePanel {
@@ -135,11 +138,17 @@ impl Default for MachinePanel {
             chosen: 0,
             message: None,
             fields: FieldState::default(),
+            manage: false,
         }
     }
 }
 
 impl MachinePanel {
+    /// Whether "Manage machines…" was pressed since last asked.
+    pub fn take_manage_request(&mut self) -> bool {
+        std::mem::take(&mut self.manage)
+    }
+
     fn refresh(&mut self) {
         self.available = available_machines(self.library.as_deref());
         self.chosen = self.chosen.min(self.available.len().saturating_sub(1));
@@ -399,8 +408,14 @@ impl MachinePanel {
         }
         ui.separator();
 
-        // Choosing a machine (SET-01).
-        ui.strong("Machine profiles");
+        // Choosing a machine (SET-01); managing them is the machine library
+        // window (SET-10; 12.5).
+        ui.horizontal(|ui| {
+            ui.strong("Machine profiles");
+            if ui.button("Manage machines…").clicked() {
+                self.manage = true;
+            }
+        });
         match &self.library {
             Some(dir) => {
                 ui.weak(format!("Library: {}", dir.display()));

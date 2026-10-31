@@ -76,12 +76,12 @@ Machine profiles are TOML files: built in (the Makera Z1, in `crates/openchuck-p
 1. **The model** (`openchuck-app`, and `ToolLibrary::rename_tool_set` in `openchuck-project`): items 1 to 11, with tests named by requirement. This record, SET-10 in the requirements, the verification plan and the work breakdown, and the registers.
 2. **The window** (`openchuck-ui`): a machine library window built like the tool library window:
    - the list (this project, built in, library);
-   - the form with a provenance icon and tooltip on each value;
+   - the form, with the provenance icon, its tooltip and "Mark confirmed…" after the last value of each provenance entry;
    - Save, Cancel, New, Duplicate, Copy to edit, Delete, Import and Export;
    - the project copy edited as undoable steps, with "Save to library…";
    - "Manage machines…" in the machine inspector.
 
-   Specification section 12 gains its description.
+   Specification section 12.5 describes it, and section 8's machine panel gains "Manage machines…". Its tests are in `apps/openchuck-ui/src/shell/machine_library_tests.rs` (`req_set_10_*`).
 
 ## Alternatives considered
 
