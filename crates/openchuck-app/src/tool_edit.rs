@@ -89,6 +89,7 @@ fn number(
         value: Some(ParameterValue::Number(value)),
         source: Source::Operation,
         section: FormSection::ToolAndFeeds,
+        problem: None,
     }
 }
 
@@ -133,6 +134,7 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
         value: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
         source: Source::Operation,
         section: FormSection::ToolAndFeeds,
+        problem: None,
     });
     match &tool.shape {
         ToolShape::BullNose { corner_radius } => out.push(mm(

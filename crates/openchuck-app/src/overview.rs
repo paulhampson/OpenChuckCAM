@@ -1671,6 +1671,25 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 Some(MessageAction::Show(item)),
             ));
         }
+        // A back-and-forth ramp that cannot be used on this part or with
+        // this tool: said at once, from the same check generation makes
+        // (#291). Said once, when a generation already failed with it.
+        if let Some(reason) = crate::ramp_entry::refusal(project, o) {
+            if status.state != ItemState::Error {
+                status = ItemStatus::new(ItemState::Error, sentence(&reason));
+            }
+            if !messages
+                .iter()
+                .any(|m| m.source == Some(item) && m.text.contains(&reason))
+            {
+                messages.push(Message::new(
+                    Severity::Error,
+                    reason,
+                    Some((item, label.clone())),
+                    Some(MessageAction::Show(item)),
+                ));
+            }
+        }
         // A selection set the strategy cannot use on a STEP part: said at
         // once, from the same check generation makes (decision 0209 item
         // 10). The first sets the operation's state.
