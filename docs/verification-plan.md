@@ -415,9 +415,9 @@ Written by lane ENDFACE with [decision 0239](decisions/0239-adaptive-pass-spacin
 - **The legacy-zero dialog** (decision 0239 item 5): Cancel changes nothing; Turn on sets both in one undoable step (`apps/openchuck-ui/src/shell/adaptive_tests.rs`, `crates/openchuck-app/tests/operation.rs`).
 - **Not yet covered:** rotary roughing's axial forms and flat Facing (the lane's second pull request, OI-1453) and engagement off the rotary centreline (OI-1373). Generated G-code remains the user's to verify before it is run (NFR-12).
 
-### Helical finishing in rings (proposed with decision 0390)
+### Helical finishing in rings (decision 0390)
 
-Proposed by lane LINKEDPASS for the owner's review with [decision 0390](decisions/0390-helical-finishing-in-rings.md). OP-02, OP-04, OP-11, OP-12, OP-14, OP-15, GC-07, NFR-06, NFR-07.
+With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 Oct 2026 (relayed). OP-02, OP-04, OP-11, OP-12, OP-14, OP-15, GC-07, NFR-06, NFR-07.
 
 - **Shape.** On a cylinder at three stepovers, rotations and start angles, every cutting move turns A at constant X or moves along X at constant A, at the start angle; the rings are a whole turn each, evenly spaced from end to end no wider than the stepover (or the scallop pitch), and the whole part is one cut (`crates/openchuck-path/tests/helical_rings.rs`).
 - **The material left** is measured independently with the test kit's gouge and coverage checks on a cylinder and a cone; the shaft's faces and the CrankShaft's faces are left at the stock to leave where the tool reaches, as with the spiral, and the shaft is still one cut with each face's ring among the others (`helical_faces.rs`). With adaptive spacing on, rings are added until the Allowed excess is met over the whole length (`adaptive.rs`).

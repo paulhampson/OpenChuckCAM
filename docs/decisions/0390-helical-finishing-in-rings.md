@@ -1,6 +1,6 @@
 # 0390: Helical finishing can cut rings stepped along the part instead of a spiral (OP-04, OP-11, OP-12, OP-14, OP-15, GC-07, NFR-06, NFR-07, NFR-12; issue #423; lane LINKEDPASS)
 
-- **Status:** proposed. The owner chose the pass shape (item 1, option 1 of 4) and the default for new operations (item 2, Spiral) on 31 Oct 2026, relayed by the coordinator session (decision 0049). Those choices are not acceptance of this record.
+- **Status:** accepted by the project owner on 31 Oct 2026, relayed by the coordinator (decision 0049). The owner chose the pass shape (item 1, option 1 of 4) and the default for new operations (item 2, Spiral) the same day, also relayed by the coordinator.
 - **Date:** 31 Oct 2026.
 - **Issue:** #423, "Helical strategies: option to cut linked parallel passes instead of a continuous helix".
 - **Builds on:** [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (one turn at each face across the axis), [0343](0343-end-faces-beside-a-short-tab.md), [0344](0344-finishing-stepdown-and-free-ends.md) and [0345](0345-finishing-layers.md) (end faces, free ends and finishing layers), [0239](0239-adaptive-pass-spacing.md) (adaptive pass spacing; proposed), 0212 (extend past the stock), 0241 (A between operations).
@@ -28,8 +28,8 @@ Helical finishing cuts one continuous helix: A turns once every pitch of X, so X
 ## Documents
 
 - No change to the requirements or the architecture: this is a setting of an OP-04 strategy, and the shared services do not change.
-- UI specification, section 8: the **Passes** entry (proposed for the owner to check).
-- Verification plan: "Helical finishing in rings" (proposed with this record).
+- UI specification, section 8: the **Passes** entry.
+- Verification plan: "Helical finishing in rings".
 
 ## Options not chosen
 
