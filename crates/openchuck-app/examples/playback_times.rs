@@ -98,7 +98,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "prepare playback: {:.1} s{}, {} checkpoints holding {:.0} MB, peak {:.0} MB",
         started.elapsed().as_secs_f64(),
-        if playback.from_the_run() { " (from the run)" } else { "" },
+        if playback.from_the_run() {
+            " (from the run)"
+        } else {
+            ""
+        },
         playback.checkpoints(),
         playback.checkpoint_bytes() as f64 / 1e6,
         peak_mb()

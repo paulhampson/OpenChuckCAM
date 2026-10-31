@@ -154,14 +154,6 @@ pub struct Regeneration {
     pub project: Arc<Project>,
 }
 
-/// Regenerates every enabled operation of `project` (in the folder
-/// `location`) in machining order. The first operation that cannot be
-/// generated stops the run with its error: nothing is left out silently
-/// (verification policy 8). A disabled operation is skipped as if it were
-/// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
-/// 0029 item 10). `record` follows which operation is being made, for the
-/// item states (decision record 0117).
-#[allow(clippy::too_many_arguments)]
 /// How an operation's playback checkpoints are spaced while the pipeline
 /// simulates it (decision record 0333): of `memory` bytes, `used` are held
 /// by the checkpoints so far (`own` of them by this setup's), and each of
@@ -192,6 +184,14 @@ fn checkpoint_share(
     (every, budget)
 }
 
+/// Regenerates every enabled operation of `project` (in the folder
+/// `location`) in machining order. The first operation that cannot be
+/// generated stops the run with its error: nothing is left out silently
+/// (verification policy 8). A disabled operation is skipped as if it were
+/// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
+/// 0029 item 10). `record` follows which operation is being made, for the
+/// item states (decision record 0117).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
@@ -391,7 +391,7 @@ pub(crate) fn regenerate(
                             memory,
                             used,
                             state.checkpoint_bytes(),
-                            state.stock().memory_bytes(),
+                            state.copy_bytes(),
                             operations.len() - i,
                             linked.group.segments.len(),
                         );
@@ -563,7 +563,10 @@ mod tests {
         let (_, budget) = checkpoint_share(memory, memory / 2, 0, stock, 1, 1_000);
         assert!(budget <= memory / 2);
         // No room for any inside: none, and never a wrap-around.
-        assert_eq!(checkpoint_share(3 * stock, stock, stock, stock, 1, 50_000).0, None);
+        assert_eq!(
+            checkpoint_share(3 * stock, stock, stock, stock, 1, 50_000).0,
+            None
+        );
         assert_eq!(checkpoint_share(0, usize::MAX, 0, stock, 0, 10).0, None);
         assert_eq!(checkpoint_share(memory, 0, 0, 0, 1, 2_000).0, Some(1_000));
     }

@@ -301,7 +301,10 @@ fn req_ui_15_req_nfr_07_the_playback_checkpoint_memory_is_personal_and_bounded()
 fn req_ui_15_req_sim_04_playback_with_generation_is_personal_and_defaults_to_the_computer() {
     let config = folder("playback-with-generation");
     let file = SettingsFile::in_folder(&config);
-    assert_eq!(UserSettings::default().simulate.playback_with_generation, None);
+    assert_eq!(
+        UserSettings::default().simulate.playback_with_generation,
+        None
+    );
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(file.file(), "[interface.simulate]\nshow_cut_part = true\n").unwrap();
     assert_eq!(file.load().settings.simulate.playback_with_generation, None);

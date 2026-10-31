@@ -1203,8 +1203,13 @@ fn req_ui_15_req_sim_04_settings_sets_playback_information_with_generation() {
     assert!(rig.shows("Generate playback information with toolpath generation"));
     assert!(rig.shows("On by default on this computer (32 GB)"));
     assert!(!rig.shows("Use this computer's default"));
-    // The user turns it off: the application keeps none.
-    rig.shell.set_playback_with_generation(Some(false));
+    // The user turns it off in the dialog: the application keeps none.
+    super::checkpoint_tests::click(&mut rig, "Generate playback information");
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.settings.simulate.playback_with_generation,
+        Some(false)
+    );
     assert_eq!(given(&rig), None);
     rig.frame(Vec::new());
     assert!(rig.shows("Use this computer's default"));
@@ -1213,8 +1218,10 @@ fn req_ui_15_req_sim_04_settings_sets_playback_information_with_generation() {
         file.load().settings.simulate.playback_with_generation,
         Some(false)
     );
-    // Back to the default.
-    rig.shell.set_playback_with_generation(None);
+    // Back to the default, from the dialog.
+    super::checkpoint_tests::click(&mut rig, "Use this computer's default");
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.settings.simulate.playback_with_generation, None);
     assert_eq!(given(&rig), Some(2_048 * MIB));
     // 8 GB: off by default, and Settings says so; the user may turn it on,
     // with the memory capped at a quarter of the computer.

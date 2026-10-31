@@ -23,7 +23,14 @@ Since [decision 0025](0025-slice-7-simulation.md) the pipeline's simulation keep
 
 Carving test piece of [decision 0332](0332-simulator-skips-sure-misses.md) (`CarvedRelief::STANDARD`, 538,433 moves in 2 groups), 4 threads, the default 1,536 MB, `playback_times` with and without `on`:
 
-RESULTS_TABLE
+| Setting | Generate and simulate | Prepare playback | Checkpoints | Peak while generating | Peak after preparing playback |
+| --- | --- | --- | --- | --- | --- |
+| Off | 44.4 s | 26.2 s (simulated again) | 541, 1,194 MB | 626 MB | 2,214 MB |
+| On | 44.1 s | 1.3 s (from the run) | 541, 1,194 MB | 1,718 MB | 2,244 MB |
+
+With the setting on, the run keeps the same checkpoints as playback prepared separately keeps (the finishing gets nearly all of the memory), the generation takes no measurably longer (keeping the checkpoints costs about 2 s of the simulation's 19 s, within the run-to-run spread here), and the cut part plays after about 1 s instead of 26 s. The cost is memory: the run holds the 1,194 MB of checkpoints for as long as its result is shown, whether or not playback is used. On the owner's project (a stock of about 7 MB, 1,536 MB) the same is expected: preparing playback from 97 s (25 to 35 s after decision 0332) to about 1 s; not measured (OI-1320).
+
+A first version sized each copy by the stock as held, not packed; it kept 301 checkpoints in 664 MB, so jumps replayed further than needed. Each operation's share is now counted in copies of the size of the last checkpoint kept.
 
 ## Tests
 

@@ -1695,9 +1695,10 @@ fn two_operations(name: &str) -> (PathBuf, Application) {
     let mut second = app.project().operation(first).unwrap().clone();
     second.id = OperationId::new();
     second.name = "Finish again".into();
-    second
-        .parameters
-        .insert("max_angle_step".to_owned(), openchuck_app::project::ParameterValue::Number(3.0));
+    second.parameters.insert(
+        "max_angle_step".to_owned(),
+        openchuck_app::project::ParameterValue::Number(3.0),
+    );
     app.execute(Command::Add {
         item: Item::Operation(second),
         placement: Placement::End,
@@ -1735,7 +1736,11 @@ fn req_sim_04_req_nfr_06_playback_from_the_runs_checkpoints_shows_the_same_stock
         assert!((removed - (y.initial_volume - y.final_volume)).abs() < 1e-6);
         assert!(x.checkpoints.is_empty());
         // The start, inside the operations, and after each one.
-        assert!(y.checkpoints.len() >= 1 + y.operations.len(), "{}", y.checkpoints.len());
+        assert!(
+            y.checkpoints.len() > y.operations.len(),
+            "{}",
+            y.checkpoints.len()
+        );
     }
     let (cancel, progress) = (
         openchuck_types::job::CancelToken::new(),
@@ -1803,7 +1808,10 @@ fn req_nfr_07_req_sim_04_the_runs_checkpoints_keep_to_their_memory() {
     );
     let context = openchuck_types::job::JobContext::new(&cancel, &progress);
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&on)).unwrap());
-    let play = app.start_stock_playback(Arc::clone(&t), memory).wait().unwrap();
+    let play = app
+        .start_stock_playback(Arc::clone(&t), memory)
+        .wait()
+        .unwrap();
     assert!(play.from_the_run());
     let full = app
         .start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
@@ -1811,7 +1819,10 @@ fn req_nfr_07_req_sim_04_the_runs_checkpoints_keep_to_their_memory() {
         .unwrap();
     let n = t.move_count();
     for done in (0..=n).step_by((n / 9).max(1)) {
-        let c = Cursor { done, fraction: 0.5 };
+        let c = Cursor {
+            done,
+            fraction: 0.5,
+        };
         assert_eq!(
             play.stock_at(c, &context).unwrap().state_hash(),
             full.stock_at(c, &context).unwrap().state_hash(),
@@ -1821,6 +1832,13 @@ fn req_nfr_07_req_sim_04_the_runs_checkpoints_keep_to_their_memory() {
     // Off again: the next run keeps none.
     app.set_playback_with_generation(None);
     let again = app.simulate().unwrap();
-    assert!(again.simulation.unwrap().setups.iter().all(|s| s.checkpoints.is_empty()));
+    assert!(
+        again
+            .simulation
+            .unwrap()
+            .setups
+            .iter()
+            .all(|s| s.checkpoints.is_empty())
+    );
     let _ = std::fs::remove_dir_all(dir);
 }

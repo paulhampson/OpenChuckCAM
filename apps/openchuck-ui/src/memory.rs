@@ -156,7 +156,11 @@ mod tests {
             (Some(12 * GIB), false, Some(12)),
             (None, false, None),
         ] {
-            assert_eq!(playback_with_generation_default(physical), on, "{physical:?}");
+            assert_eq!(
+                playback_with_generation_default(physical),
+                on,
+                "{physical:?}"
+            );
             assert_eq!(gigabytes(physical), gb, "{physical:?}");
         }
     }

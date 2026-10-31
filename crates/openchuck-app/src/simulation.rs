@@ -154,6 +154,16 @@ impl SetupState {
         self.simulator.checkpoint_bytes()
     }
 
+    /// The size of one more checkpoint, as near as is known without making
+    /// one: the last one kept (the stock packed; it grows a little as it is
+    /// cut), or the stock as it is held when none is.
+    pub(crate) fn copy_bytes(&self) -> usize {
+        self.simulator
+            .checkpoints()
+            .last()
+            .map_or_else(|| self.stock().memory_bytes(), |c| c.stock.memory_bytes())
+    }
+
     /// Spaces the next operation's checkpoints `every` moves apart, kept
     /// while they hold no more than `budget` bytes in all (decision record
     /// 0333). Nothing for a state that keeps no checkpoints.

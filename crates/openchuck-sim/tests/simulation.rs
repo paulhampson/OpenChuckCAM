@@ -579,7 +579,11 @@ fn req_sim_04_req_nfr_06_checkpoints_kept_while_simulating_replay_any_move() {
         if group_index == 1 {
             direct.run_group(&g1, &profile, &ctx).unwrap();
         }
-        let mut partial = if group_index == 0 { g1.clone() } else { g2.clone() };
+        let mut partial = if group_index == 0 {
+            g1.clone()
+        } else {
+            g2.clone()
+        };
         partial.segments.truncate(moves);
         direct.run_group(&partial, &profile, &ctx).unwrap();
         direct.stock().state_hash()
@@ -593,6 +597,15 @@ fn req_sim_04_req_nfr_06_checkpoints_kept_while_simulating_replay_any_move() {
         .unwrap();
     assert_eq!(end.state_hash(), plain.stock().state_hash());
     assert_eq!(replay.checkpoint_bytes(), kept.checkpoint_bytes());
+    // A budget set on a simulator in use limits what it keeps from then on:
+    // with none left, only the start is kept, and the stock is the same.
+    let mut tight = Simulator::new(make(), &m, Some(40));
+    tight.set_checkpoint_budget(Some(tight.checkpoint_bytes()));
+    tight.run_group(&g1, &profile, &ctx).unwrap();
+    assert_eq!(tight.checkpoints().len(), 1);
+    let mut first = Simulator::without_checkpoints(make(), &m);
+    first.run_group(&g1, &profile, &ctx).unwrap();
+    assert_eq!(tight.stock().state_hash(), first.stock().state_hash());
     // Checkpoints that do not start at the start of the first group cannot
     // replay every move: refused.
     let late = kept.checkpoints().get(1..).unwrap().to_vec();
