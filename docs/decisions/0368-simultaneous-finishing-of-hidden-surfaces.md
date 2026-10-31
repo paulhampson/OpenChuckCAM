@@ -5,7 +5,8 @@
   - decision 2, option B: the reachable direction nearest the normal, limited by a new parameter, the largest lean on hidden surfaces;
   - decision 3, option B: always on, with no setting to turn it off;
   - decision 4, option B: a warning, plus the unreached areas as structured data on the strategy's output (viewport highlighting deferred, OI-1451, issue #416);
-  - decision 5, option A: OP-20's wording and verification row, with OP-20 raised to P1 (*Consequences*).
+  - decision 5, option A: OP-20's wording and verification row, with OP-20 raised to P1 (*Consequences*);
+  - on OI-1452, option A with an addition: the shank is checked on every simultaneous pass, and a warning and structured data say where the path breaks for it (item 7).
 
   This record's text awaits the owner's acceptance.
 - **Date:** 31 Oct 2026.
@@ -13,7 +14,7 @@
 - **Requirements:** OP-20 (now P1), with OP-05, OP-06, OP-12, OP-15, OP-26, OP-02, SET-09, NFR-06, NFR-07, GC-07 and NFR-12.
 - **Builds on:** [0036](0036-slice-13-simultaneous-finishing.md) (the strategy, whose item 1 left these surfaces as a P1 limit, OI-148), [0363](0363-simultaneous-finishing-off-axis-sections-walls-and-held-ends.md) (the section-centre drive, OP-26, and the move test), [0050](0050-walls-merge-micro-moves.md), [0133](0133-simultaneous-fitter-tests-the-quarter-points.md), [0161](0161-tools-keep-clear-of-the-gripped-length.md), [0277](0277-exact-ball-drops.md) and [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md).
 - **Open items:**
-  - closed: OI-1431 (a section in several separate pieces: its pieces' facing sides are hidden surfaces and are finished or reported here);
+  - closed: OI-1431 (a section in several separate pieces: its pieces' facing sides are hidden surfaces and are finished or reported here), and OI-1452 (the shank on the drive's passes, item 7);
   - noted: OI-148 (closed in decision 0036; the P1 limit it records is lifted here);
   - new: OI-1450 and OI-1451 (deferred by the owner), and OI-1452 and OI-1453.
 
@@ -80,8 +81,12 @@ The machine can lean the tool only in the plane across the rotary axis: A turns 
    - **The viewport.** Highlighting the areas in the viewport and going to each is a later interface lane's (OI-1451, issue #416), reading `unreached`.
 7. **The shank.**
    - `StrategyInput` gains `shank: Option<Shank>`: the tool's shank where it is wider than the cutting part, a cylinder of its radius from its height above the tip upwards. `openchuck-app` fills it from the tool (the shank's radius from the flute length) when the shank is the wider. Every other host passes `None`, and the tool above its cutting part is then a cylinder of its cutting radius, as every drop takes it.
-   - The passes on hidden surfaces keep the shank clear of the part. This is checked at each point by dropping the tool's outline with the shank (the cutting profile, then the shank's radius from the flute length) and comparing it with the cutting part's drop, and at each test pose of the fitter.
-   - The drive's passes do not check the shank, as no strategy did before (COL-02, P2; OI-1452). The holder is not checked anywhere (COL-04, P2), and the note says so.
+   - **Every pass of simultaneous finishing keeps the shank clear of the part**, the drive's and the hidden surfaces' alike (the owner's answer on OI-1452, 31 Oct 2026, relayed: option A, with the breaks said). This is checked at each seeded and added point by dropping the tool's outline with the shank (the cutting profile, then the shank's radius from the flute length) and comparing it with the cutting part's drop, and at each test pose of the fitter.
+   - Where the shank would meet the part, the pass breaks there and the shared services link round it, so the surface there is left uncut. A test pose that still clashes after every halving breaks the pass as well.
+   - Each break is recorded as a `ShankBreak { x, a }`, on `StrategyOutput::shank_breaks` and `GeneratedPath::shank_breaks`. Breaks within 1 mm of X and 1 degree of A of each other are one place (the halvings round one place find it several times).
+   - One warning says them: "simultaneous finishing breaks the path at N places where the tool's shank, wider than its cutting part, would meet the part, and links round them, so the surface there is left uncut: X a near A b; ...; check them in the simulation before running the program". It lists the first five in X order, with how many more.
+   - Without a wider shank, or wherever the shank does not touch the part, every program is byte for byte the one it was. No golden file changes.
+   - The other strategies still do not check the shank, as before (COL-02, P2). The holder is not checked anywhere (COL-04, P2), and the note says so.
 8. **A drop with a lower bound.**
    - `SurfaceSource` gains the provided method `drop_tool_above(profile, line, at_least)`, the same answer as `drop_tool` for a line on which the tool is known to touch the surface at `at_least` or above. The default ignores the bound. `MeshSurface` uses it as the drop's floor (a hair below, so a tie is decided as without it), when the line's own highest surface point gives none or a lower one.
    - The tool placed on a hidden wall, with its axis along the wall, is on a line that often misses the surface, and then every triangle within the tool's radius of the line was tried. The answer is the same.
@@ -100,7 +105,7 @@ The machine can lean the tool only in the plane across the rotary axis: A turns 
 - **The lean held to the largest tilt** (decision 2, option C). Most slot walls need the tool's side, and would only be reported.
 - **A corner rule by distance alone** (unreached points within a tool radius of reached ones). It also hid the walls of a slot narrower than the tool, within a radius of their reached top edges. The turn of the surface tells a corner from a gap.
 - **Growing the runs by one stepover only.** On two pins side by side the drive's grazing coverage ended 0.5 mm before the hidden run began, and 0.071 mm was left there. Growing by the tool's radius covers it.
-- **Checking the shank on the drive's passes too.** Safer, and unchanged wherever the shank does not touch the part, but it changes a P1 strategy's behaviour beyond OP-20: left to OI-1452 for the owner.
+- **The shank on the hidden passes only** (as first built), or **left to COL-02** (OI-1452, options B and C). With a 1 mm ball on a 3.175 mm shank, the drive's spiral then took the shank 1.09 mm into a 3 mm slot's edges. The owner chose to check it on every pass and to say where the path breaks.
 
 ## Verification
 
@@ -114,11 +119,12 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
   - `req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported`: 2 mm apart. A too-narrow area over more than 8 mm of X.
   - `req_op_20_blades_without_a_hub_are_finished_on_both_sides`: three radial blades 2 mm thick. Both sides left within 0.03 mm and nothing cut in. Where the rays aimed at the section's centre meet a side squarely enough, the drive finishes it with its own scallop (up to 0.024 mm measured).
   - `req_op_20_a_wall_needing_more_lean_than_the_limit_is_reported_with_its_parameter`: `max_hidden_lean` 30 on the 6 mm slot. The walls are left, reported as needing 30 to 90 degrees, and the warning names the parameter.
-  - `req_op_20_req_op_12_a_shank_wider_than_the_cutter_is_kept_out_of_a_slot`: a 1 mm ball with 1.5 mm flutes on a 3.175 mm shank, in a 3 mm slot. On the passes on hidden surfaces the shank never meets the part (deepest 0.0096 mm), the walls' tops are finished, and the deeper walls are reported too narrow.
+  - `req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part`: a 1 mm ball with 1.5 mm flutes on a 3.175 mm shank, in a 3 mm slot. On every pass the shank never meets the part (deepest 0.0097 mm), the walls' tops are finished, the deeper walls are reported too narrow, and the path breaks at 57 places, each recorded and said in the warning. Before the owner's answer on OI-1452 the drive's spiral took the shank 1.09 mm into the slot's edges. 105 s alone, listed as long-running.
+  - `req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing`: a plain cylinder with the same tool. The path with the shank is the path without it, with no break and no warning.
   - `req_op_20_req_op_06_on_a_hidden_wall_the_tool_axis_is_the_reachable_one_nearest_the_normal`: with no smoothing, turning the tool 3 degrees nearer the wall's normal about the ball's centre makes it meet the part, at 74 poses on the walls.
   - `req_op_20_req_op_12_the_crankshaft_is_finished_where_reached_and_nothing_is_cut_in` (`stl/crankshaft.stl`, 3.175 mm ball, 0.3 mm stepover): generated in 6 s; nothing is cut in beyond the tolerance at any of its 4,512 vertices away from the ends (deepest 0.006 mm). Three areas are reported, all where the first pin meets the web at X 10, with a combined area of 3.6 mm2: 3.2 mm2 blocked near A 180, and two of 0.2 mm2 too narrow near A 137 and A 223.
   - `req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads`, and `req_op_20_a_part_with_nothing_hidden_gets_no_hidden_passes_or_reports` (a plain cylinder).
-- **Test times** (alone on one test thread, uninstrumented): the blades 79 s and the keyway's walls 69 s, listed as long-running in `.config/nextest.toml`. The others take 0.6 to 58 s (the two pins 4 mm apart 44 s, 2 mm apart 58 s, the crankshaft 13 s), 7.7 minutes in all for the sixteen. Most of each test's time is the independent check, not the generation (6 to 24 s).
+- **Test times** (alone on one test thread, uninstrumented): the blades 79 s, the keyway's walls 69 s and the shank 105 s, listed as long-running in `.config/nextest.toml`. The others take 0.6 to 58 s (the two pins 4 mm apart 44 s, 2 mm apart 58 s, the crankshaft 13 s), 7.7 minutes in all for the sixteen. Most of each test's time is the independent check, not the generation (6 to 24 s).
 - `req_op_20_req_op_02_only_areas_inside_the_operations_boundary_are_reported`: the 2.5 mm slot within a boundary of X 0 to 10. Only the walls inside it are reported (11 s).
 - **Coverage** (`cargo llvm-cov`, `openchuck-path`, the OP-20 tests alone, without the two long ones): `simultaneous/hidden.rs` 94.2 % of lines. The lines left are:
   - the defensive branches of NFR-07 (a mesh with no finite vertex, a missing triangle or vertex, a degenerate normal);
@@ -148,8 +154,8 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
 - **Verification plan.** The OP-20 row becomes P1, T, A, System: "On synthetic parts with a keyway, a dovetail slot along the axis, a dovetail groove round it, two off-axis pins side by side and blades without a hub, and on the crankshaft: every hidden surface point the tool can reach (classed independently of the strategy) is finished within the tolerance plus the stock to leave; the independent checker reports no gouge beyond the tolerance by the cutter or the shank; every unreachable hidden region is named in the operation's warnings with its X range, angle, area and reason, and no reachable region is; the tool axis is within the lead and tilt limits wherever they reach the surface and otherwise at the reachable direction nearest the normal, never beyond the largest lean; output is identical at 1, 2 and N threads, and a part with no hidden surface gives the same program as before."
 - **Work breakdown.** 102 of 175 requirements are P1 (OP 21). OP-20 is built by lane OP20 on slice 13's strategy and closes with slice 20, as OP-26 does.
 - **Library API (breaking; decision 0048).** The workspace minor goes to 0.29.0, with changelog entries:
-  - `StrategyOutput::unreached`, `GeneratedPath::unreached` and `StrategyInput::shank` are new public fields;
-  - `Unreached`, `UnreachedReason` and `Shank` are new types;
+  - `StrategyOutput::unreached`, `GeneratedPath::unreached`, `StrategyOutput::shank_breaks`, `GeneratedPath::shank_breaks` and `StrategyInput::shank` are new public fields;
+  - `Unreached`, `UnreachedReason`, `ShankBreak` and `Shank` are new types;
   - `SurfaceSource::drop_tool_above` and `simultaneous::parameter::MAX_HIDDEN_LEAN` are additive;
   - every host's `StrategyInput` literal gains `shank`.
 
@@ -167,5 +173,5 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
 | --- | --- | --- | --- |
 | 1 | A unified per-section contour drive in place of the ray drive (owner's decision 1, option B). Deferred by the owner: issue #415. (OI-1450) | After OP-20 is built, merged and proven | Byte-identical output for parts with nothing hidden, or an owner-approved golden change |
 | 2 | Highlight the unreached areas in the viewport and go to each, reading `GeneratedPath::unreached` (owner's decision 4). Deferred by the owner: issue #416. (OI-1451) | A later interface lane | This lane merged |
-| 3 | The drive's passes of simultaneous finishing (and the other strategies) do not check a shank wider than the cutting part: with a 1 mm ball on a 3.175 mm shank, the spiral took the shank 1.09 mm into a 3 mm slot's edges. The passes on hidden surfaces do check it (item 7). Checking it on every pass changes the program only where the shank would meet the part. (OI-1452) | The owner, or COL-02 (P2) | A decision |
+| 3 | The drive's passes of simultaneous finishing did not check a shank wider than the cutting part: with a 1 mm ball on a 3.175 mm shank, the spiral took the shank 1.09 mm into a 3 mm slot's edges. Closed: the owner chose option A with the breaks said (31 Oct 2026, relayed); every pass now checks it (item 7). (OI-1452) | Closed | |
 | 4 | Faces square to the rotary axis under an overhang (the side walls of a T-slot groove round the axis) lie in no section, so they are neither driven nor reported; the groove's floor under the lips is reported. (OI-1453) | When such a part is to be finished | A test part and a sampling across X |

@@ -438,7 +438,7 @@ struct Plan<'a> {
 }
 
 /// What a run found worth telling the user.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct Findings {
     slope: f64,
     slope_at: Option<Point3>,
@@ -450,6 +450,8 @@ struct Findings {
     /// where (OP-20).
     lean: f64,
     lean_at: Option<(f64, f64)>,
+    /// Where a pass broke because the shank would meet the part.
+    shank_breaks: Vec<crate::assemble::ShankBreak>,
 }
 
 /// The points a move is refined into, and the most material it leaves.
@@ -457,6 +459,8 @@ struct Findings {
 struct Refined {
     points: Vec<Option<Node>>,
     under: f64,
+    /// Where the pass broke because the shank would meet the part.
+    breaks: Vec<crate::assemble::ShankBreak>,
 }
 
 fn run(
@@ -766,7 +770,7 @@ fn run(
     notes.extend(faces::held_note(&held));
     if let Some((x, a)) = findings.lean_at {
         let shank = if plan.body.is_some() {
-            "the shank, wider than the cutting part, is kept clear of the part"
+            "the shank, wider than the cutting part, is kept clear of the part, as on every pass"
         } else {
             "the tool above its flutes is taken as no wider than its cutting part"
         };
@@ -779,18 +783,82 @@ fn run(
             hidden_x.0, hidden_x.1, findings.lean
         ));
     }
+    let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
     let warnings = unreached_warning(
         &found.unreached,
         2.0 * input.tool.cutting_radius(),
         max_lean,
     )
     .into_iter()
+    .chain(shank_warning(&shank_breaks))
     .collect();
     Ok(StrategyOutput {
         passes,
         notes,
         warnings,
         unreached: found.unreached,
+        shank_breaks,
+    })
+}
+
+/// The breaks for the shank as places: in X order, one for each run of
+/// breaks within [`BREAK_NEAR`] mm of X and as many degrees of A of each
+/// other (the halvings round one place find it several times).
+fn places(mut breaks: Vec<crate::assemble::ShankBreak>) -> Vec<crate::assemble::ShankBreak> {
+    breaks.sort_by(|a, b| {
+        a.x.total_cmp(&b.x)
+            .then(a.a.rem_euclid(TURN).total_cmp(&b.a.rem_euclid(TURN)))
+    });
+    let mut out: Vec<crate::assemble::ShankBreak> = Vec::new();
+    for b in breaks {
+        let close = out
+            .iter()
+            .rev()
+            .take_while(|p| b.x - p.x <= BREAK_NEAR)
+            .any(|p| {
+                let da = (b.a - p.a).rem_euclid(TURN);
+                da.min(TURN - da) <= BREAK_NEAR
+            });
+        if !close {
+            out.push(b);
+        }
+    }
+    out
+}
+
+/// How near two breaks for the shank are one place, mm along X and degrees
+/// of A.
+const BREAK_NEAR: f64 = 1.0;
+
+/// The warning for the places a pass broke because the tool's shank would
+/// meet the part (decision record 0368, the owner's answer on OI-1452).
+fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemble::PathWarning> {
+    const LISTED: usize = 5;
+    if breaks.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = breaks
+        .iter()
+        .take(LISTED)
+        .map(|b| format!("X {:.3} near A {:.0}", b.x, b.a.rem_euclid(TURN)))
+        .collect();
+    let more = breaks.len().saturating_sub(LISTED);
+    let more = if more > 0 {
+        format!("; and {more} more")
+    } else {
+        String::new()
+    };
+    let plural = if breaks.len() == 1 { "" } else { "s" };
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing breaks the path at {} place{plural} where the tool's shank, \
+             wider than its cutting part, would meet the part, and links round them, so the \
+             surface there is left uncut: {}{more}; check them in the simulation before running \
+             the program",
+            breaks.len(),
+            listed.join("; ")
+        ),
+        parameter: None,
     })
 }
 
@@ -1133,6 +1201,12 @@ impl Plan<'_> {
         {
             return None;
         }
+        // The shank, where wider than the cutting part, must not meet the
+        // part: the pass breaks there (decision record 0368, the owner's
+        // answer on OI-1452).
+        if track.contour.is_none() && self.body.is_some() && self.shank_clashes(&line, None) {
+            return None;
+        }
         // On a hidden surface the tool must rest on its drive point, not on
         // something in the way between the samples where its axis was
         // found to reach, and the shank, where wider than the cutting part,
@@ -1156,6 +1230,32 @@ impl Plan<'_> {
             phi,
             raised: false,
         })
+    }
+
+    /// Where the tool at `t` on `track` is lost because its shank would meet
+    /// the part: its X and A. `None` when there is no wider shank, or the
+    /// tool is lost for another reason or not at all.
+    fn shank_at(
+        &self,
+        track: &Track,
+        axis: &AxisPlan,
+        t: f64,
+    ) -> Option<crate::assemble::ShankBreak> {
+        self.body?;
+        let drive = self.drive_at(track, t)?;
+        let phi = axis.phi_at(t)?;
+        let a = Degrees(self.sense * (90.0 - phi));
+        let axis_dir = self.input.rotary.tool_axis(a);
+        let line = ToolLine {
+            origin: self.seed_tip(drive.point, drive.normal, axis_dir),
+            axis: axis_dir,
+        };
+        let floor = track.contour.map(|_| 0.0);
+        self.shank_clashes(&line, floor)
+            .then_some(crate::assemble::ShankBreak {
+                x: drive.point.x,
+                a: a.0,
+            })
     }
 
     /// Where the tip goes for the tool's point with outward normal `-n` to
@@ -1402,11 +1502,17 @@ impl Plan<'_> {
         // On a hidden surface a test pose where the shank meets the part
         // fails too (OP-20).
         let clash = |q: &Node| {
-            track.contour.is_some()
-                && self.body.is_some()
-                && self.shank_clashes(&self.straight_pose(a, b, q).0, None)
+            self.body.is_some() && self.shank_clashes(&self.straight_pose(a, b, q).0, None)
         };
-        match middle.unwrap_or_else(|| self.node(track, axis, t)) {
+        let middle = middle.unwrap_or_else(|| self.node(track, axis, t));
+        // A middle lost because the shank would meet the part breaks the
+        // pass, as on a hidden surface (decision record 0368).
+        let shank_mid = if middle.is_none() {
+            self.shank_at(track, axis, t)
+        } else {
+            None
+        };
+        match middle {
             Some(mid) => {
                 let over = self.deviation(track, a, b, &mid);
                 let error = over.unwrap_or(0.0);
@@ -1452,6 +1558,10 @@ impl Plan<'_> {
                 } else if clash(&mid) {
                     // The shank still meets the part after every halving:
                     // the pass breaks here, and the move is a link.
+                    out.breaks.push(crate::assemble::ShankBreak {
+                        x: mid.contact.contact.x,
+                        a: mid.a.0,
+                    });
                     out.points.push(None);
                 } else if (error.abs() > self.chord || jumps) && !self.wall_move(a, b) {
                     // After every halving the tool still cuts in, or still
@@ -1486,7 +1596,8 @@ impl Plan<'_> {
                     }
                 }
             }
-            None if self.gappy(track) && depth < MAX_DEPTH => {
+            None if (self.gappy(track) || shank_mid.is_some()) && depth < MAX_DEPTH => {
+                out.breaks.extend(shank_mid);
                 if let Some(left) = self.edge(track, axis, a, t) {
                     self.refine(track, axis, a, &left, depth + 1, out)?;
                 }
@@ -1502,7 +1613,10 @@ impl Plan<'_> {
             }
             // A contour's tool that cannot reach its drive point at the
             // middle after every halving: the pass breaks there (OP-20).
-            None if track.contour.is_some() => out.points.push(None),
+            None if track.contour.is_some() || shank_mid.is_some() => {
+                out.breaks.extend(shank_mid);
+                out.points.push(None);
+            }
             None => {}
         }
         out.points.push(Some(*b));
@@ -1529,6 +1643,20 @@ impl Plan<'_> {
         let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
         let nodes: Vec<Option<Node>> = parallel::map_in_order(&ts, |t| self.node(track, axis, *t));
         context.check_cancelled()?;
+        // Where a seed is lost because the shank would meet the part, the
+        // pass breaks there and the break is said (decision record 0368).
+        let lost: Vec<Option<crate::assemble::ShankBreak>> = if self.body.is_some() {
+            parallel::map_in_order(&ts.iter().zip(&nodes).collect::<Vec<_>>(), |(t, n)| {
+                if n.is_none() {
+                    self.shank_at(track, axis, **t)
+                } else {
+                    None
+                }
+            })
+        } else {
+            vec![None; ts.len()]
+        };
+        let breaks = |i: usize| self.gappy(track) || lost.get(i).is_some_and(Option::is_some);
 
         let mut pieces: Vec<Vec<Node>> = Vec::new();
         let mut current: Vec<Node> = Vec::new();
@@ -1536,7 +1664,7 @@ impl Plan<'_> {
             match node {
                 Some(n) => {
                     if current.is_empty()
-                        && self.gappy(track)
+                        && i.checked_sub(1).is_some_and(breaks)
                         && let Some(previous) = i.checked_sub(1).and_then(|p| ts.get(p))
                         && let Some(edge) = self.edge(track, axis, n, *previous)
                     {
@@ -1545,8 +1673,9 @@ impl Plan<'_> {
                     current.push(*n);
                 }
                 None => {
+                    findings.shank_breaks.extend(lost.get(i).copied().flatten());
                     if let Some(last) = current.last().copied() {
-                        if self.gappy(track)
+                        if breaks(i)
                             && let Some(next) = ts.get(i)
                             && let Some(edge) = self.edge(track, axis, &last, *next)
                         {
@@ -1571,6 +1700,7 @@ impl Plan<'_> {
                 self.refine(track, axis, a, b, 0, &mut out).map(|()| out)
             });
             let mut points = Vec::new();
+            let mut breaks = Vec::new();
             let offset = lead * track.travel();
             let mut under = 0.0_f64;
             let mut push = |n: &Node, points: &mut Vec<CutPoint>| {
@@ -1587,6 +1717,7 @@ impl Plan<'_> {
             for steps in refined {
                 let steps = steps?;
                 under = under.max(steps.under);
+                breaks.extend(steps.breaks);
                 for step in steps.points {
                     match step {
                         Some(n) => push(&n, &mut points),
@@ -1604,6 +1735,7 @@ impl Plan<'_> {
                 }
             }
             findings.under = findings.under.max(under);
+            findings.shank_breaks.extend(breaks);
             if !points.is_empty() {
                 passes.push(Pass {
                     helical_pass_start: false,

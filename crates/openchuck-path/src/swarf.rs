@@ -2382,6 +2382,7 @@ fn swarf(
         notes,
         warnings,
         unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 

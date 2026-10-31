@@ -115,6 +115,7 @@ impl Strategy for Plain {
                 parameter: Some("tolerance".into()),
             }],
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

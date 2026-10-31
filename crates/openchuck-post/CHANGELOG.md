@@ -2,7 +2,7 @@
 
 ## 0.29.0
 
-- **Breaking family release (0.29.0, OP20, decision 0368):** `openchuck_path` gains `StrategyInput::shank`, `StrategyOutput::unreached` and `GeneratedPath::unreached`. No change in this crate; all family crates advance together under 0048.
+- **Breaking family release (0.29.0, OP20, decision 0368):** `openchuck_path` gains `StrategyInput::shank`, `StrategyOutput::unreached` and `shank_breaks`, and `GeneratedPath::unreached` and `shank_breaks`. No change in this crate; all family crates advance together under 0048.
 
 ## 0.28.0
 

@@ -639,11 +639,12 @@ fn small_ball() -> (openchuck_types::tool::Tool, RevolvedProfile) {
 }
 
 #[test]
-fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_is_kept_out_of_a_slot() {
+fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
     // A 3 mm slot: the 1 mm ball reaches into it, its 3.175 mm shank does
     // not, so the walls deeper than the flutes are left and reported, and on
-    // the passes along them the shank never meets the part. (The main passes
-    // do not check the shank: OI-1452.)
+    // every pass, the main ones included, the shank never meets the part:
+    // a pass breaks where it would, and the breaks are said (decision record
+    // 0368, the owner's answer on OI-1452).
     let (mesh, section) = keyway(3.0);
     let (small, body) = small_ball();
     let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &small);
@@ -659,7 +660,7 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_is_kept_out_of_a_slot() {
     let hidden = poses_across(&path, &f.rotary, 4, (0.0, 20.0, 0.15));
     assert!(hidden.len() > 1000, "{}", hidden.len());
     let all = on_polygon(&section, (3.0, 17.0), 0.5);
-    let left = left_on(&Outline::new(&body), &hidden, &all, 1.0);
+    let left = left_on(&Outline::new(&body), &poses, &all, 1.0);
     let (_, deepest) = extremes(&left);
     eprintln!(
         "shank: deepest {deepest:.4} mm at {:?}",
@@ -693,6 +694,47 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_is_kept_out_of_a_slot() {
     let wall = on_segment((1.5, 9.0), (1.5, 9.3), (5.0, 15.0), 0.2);
     let (most, _) = extremes(&left_on(&Outline::new(&f.tool), &poses, &wall, 1.0));
     assert!(most <= LEFT, "{most}");
+    // The main passes break where the shank would meet the slot's edges,
+    // and the warning says where.
+    assert!(!path.shank_breaks.is_empty());
+    for b in &path.shank_breaks {
+        assert!(b.x >= -0.5 && b.x <= 20.5, "{b:?}");
+    }
+    let warning = path
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("shank"))
+        .unwrap();
+    assert!(
+        warning
+            .message
+            .contains("check them in the simulation before running the program"),
+        "{}",
+        warning.message
+    );
+}
+
+#[test]
+fn req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing() {
+    // A plain cylinder with the 1 mm ball on its 3.175 mm shank: the shank
+    // never meets the part, so the path is the one without a shank, with no
+    // break and no warning.
+    let mesh = revolve(&[(0.0, 10.0), (20.0, 10.0)], 360);
+    let (small, _) = small_ball();
+    let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &small);
+    let with = StrategyInput {
+        shank: Some(Shank {
+            radius: 0.5 * DIAMETER,
+            height: 1.5,
+        }),
+        ..f.input()
+    };
+    let v = values(&[(names::STEPOVER, 1.0)]);
+    let a = run(|ctx| generate(&SimultaneousFinishing, &with, &v, ctx)).unwrap();
+    let b = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    assert!(a.shank_breaks.is_empty());
+    assert!(a.warnings.is_empty(), "{:?}", a.warnings);
+    assert_eq!(a.group, b.group);
 }
 
 #[test]

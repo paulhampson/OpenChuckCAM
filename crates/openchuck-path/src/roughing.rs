@@ -369,6 +369,7 @@ impl Strategy for RotaryRoughing {
             notes: faces::note(&turns).into_iter().collect(),
             warnings: Vec::new(),
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

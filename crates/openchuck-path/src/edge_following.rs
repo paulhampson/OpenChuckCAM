@@ -936,6 +936,7 @@ pub fn follow_chains(
         notes,
         warnings: Vec::new(),
         unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 

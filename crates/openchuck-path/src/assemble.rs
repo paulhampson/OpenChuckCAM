@@ -107,6 +107,17 @@ pub enum UnreachedReason {
     },
 }
 
+/// A place where a strategy broke a pass because the tool's shank, wider
+/// than its cutting part, would meet the part there (OP-12, OP-20; decision
+/// record 0368): the pass is linked round it, and a warning says so.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShankBreak {
+    /// Its X, in millimetres.
+    pub x: f64,
+    /// A there, in degrees.
+    pub a: f64,
+}
+
 /// A toolpath group with notes about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedPath {
@@ -121,6 +132,9 @@ pub struct GeneratedPath {
     /// The areas the strategy could not reach, as it gave them (OP-20;
     /// decision record 0368).
     pub unreached: Vec<Unreached>,
+    /// The places the strategy broke a pass for the tool's shank, as it gave
+    /// them (decision record 0368).
+    pub shank_breaks: Vec<ShankBreak>,
 }
 
 const EPS: f64 = 1e-9;
@@ -548,6 +562,7 @@ pub fn assemble_with_entry(
         notes: b.notes,
         warnings: Vec::new(),
         unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 

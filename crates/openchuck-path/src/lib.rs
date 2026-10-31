@@ -109,7 +109,7 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, PathNote, PathWarning, Unreached, UnreachedReason};
+pub use assemble::{GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, UnreachedReason};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius};
 pub use brep_edges::BrepEdges;

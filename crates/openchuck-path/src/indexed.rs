@@ -183,6 +183,7 @@ impl Strategy for IndexedFinishing {
             passes,
             warnings: Vec::new(),
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

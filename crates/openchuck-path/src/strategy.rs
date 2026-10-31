@@ -20,7 +20,9 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, PathNote, PathWarning, Unreached, assemble_with_entry};
+use crate::assemble::{
+    GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, assemble_with_entry,
+};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -100,6 +102,9 @@ pub struct StrategyOutput {
     /// host to show (OP-20; decision record 0368). Each is also said in a
     /// warning.
     pub unreached: Vec<Unreached>,
+    /// Places where the strategy broke a pass because the tool's shank would
+    /// meet the part (decision record 0368). Each is also said in a warning.
+    pub shank_breaks: Vec<ShankBreak>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -333,6 +338,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
             notes: Vec::new(),
             warnings: Vec::new(),
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 
@@ -469,10 +475,12 @@ fn generate_with(
     context.check_cancelled()?;
     let mut warnings = Vec::new();
     let mut unreached = Vec::new();
+    let mut shank_breaks = Vec::new();
     let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
         let output = strategy.passes_with_notes(input, region, &parameters, context)?;
         warnings = output.warnings;
         unreached = output.unreached;
+        shank_breaks = output.shank_breaks;
         (output.passes, output.notes)
     } else {
         let most = zones
@@ -508,6 +516,7 @@ fn generate_with(
         .collect();
     path.warnings = warnings;
     path.unreached = unreached;
+    path.shank_breaks = shank_breaks;
     if !notes.is_empty() {
         let mut notes: Vec<PathNote> = notes
             .into_iter()
@@ -1012,6 +1021,7 @@ mod tests {
             notes: Vec::new(),
             warnings: Vec::new(),
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         }
     }
 

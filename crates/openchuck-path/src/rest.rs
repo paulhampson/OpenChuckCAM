@@ -504,6 +504,7 @@ impl Strategy for RestMachining {
             notes,
             warnings: free.warnings,
             unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }
