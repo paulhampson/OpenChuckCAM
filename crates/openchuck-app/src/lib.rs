@@ -38,6 +38,8 @@ pub mod facing;
 pub mod form;
 mod jobs;
 pub mod library;
+pub mod machine_edit;
+pub mod machine_library;
 pub mod machine_view;
 pub mod materials;
 pub mod model;

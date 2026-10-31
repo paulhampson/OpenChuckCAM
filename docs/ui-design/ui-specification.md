@@ -322,6 +322,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - "copy stored in project";
   - the comparison with the library source, with an Update button;
   - "Create the library folder" or "Open the library folder".
+  - "Manage machines…", which opens the machine library window (12.5; SET-10).
 
 ## 9. Dock
 
@@ -802,6 +803,40 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 - **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
 - **Keyboard.** Tab visits the Licences box, Open log folder, Copy and Close in that order; the box scrolls with the arrow keys; The tooltips of Open log folder and Copy open on focus (section 16).
 - A fact the build could not find reads "unknown".
+
+### 12.5 Machine library
+
+SET-10, SET-01, UI-13, TL-11, NFR-07; [decision 0380](../decisions/0380-machine-library-in-the-application.md) (the owner's answers on OI-1470 to OI-1474).
+
+- **Opens** from Tools, "Machine library…", and from "Manage machines…" in the Machine section of the Setup inspector, on the project's machine when it has one. It opens without a project, to edit the library.
+- **Left: the machines.** New machine, Duplicate and Delete… at the top. The list has three parts:
+  - **This project:** the project's copy.
+  - **Built in:** read-only.
+  - **Library:** the profile files in the library folder. A file that cannot be read is listed in red with its reason in the tooltip.
+
+  The library folder is named at the foot.
+- **Three kinds of machine:**
+  - **Built in.** "Built in: it cannot be edited", with the primary button **Copy to edit**. The form is read-only and nothing in it can be confirmed.
+  - **A library profile** is edited as a draft: nothing is written until Save, Cancel drops the changes, and leaving it with changes (another machine, New machine, Duplicate, Close) asks "Discard the changes to this machine?" first. Beside Save it says "New: not saved yet", "Changed: not saved yet" or "Saved in the library".
+  - **The project's copy** reads "The project's copy: each change can be undone". Each change is one undoable step that keeps the copy's source, and the library is untouched.
+- **New machine** starts with the name, the rotary reference point, the travel, the feeds and rapids, and the clearance blank, each marked "Fill in before saving". Save names what is still blank. Everything else starts neutral and not confirmed. To start from the Makera Z1, choose it and Copy to edit.
+- **Duplicate and Copy to edit** make a draft named "<name> copy" (then "copy 2") with a new reference, so projects made from the original keep comparing with the original.
+- **Centre: the form.** The groups are Profile, Rotary axis, Travel, Maximum feeds, Clearance, Tools and spindle, Short moves and Spindle height. Their values are the fields of section 8, with the inspector's typed entry and sums (UI-26).
+  - A value that is refused keeps the last good value, and a line under it says why in plain words, naming both values when the rule is between two ("The safe Z (30 mm) must not be below the safe cylinder radius (40 mm).").
+  - A rotary axis about Y is shown and refused as not supported yet (SET-02).
+  - After the last value of each provenance entry, a line has its status icon (section 8; the tooltip gives where the value came from and how to confirm it) and "Confirmed on the machine" or "Not confirmed on the machine".
+  - A value the user changes becomes not confirmed.
+  - Where it is not confirmed and the machine is not built in, **Mark confirmed…** asks how it was confirmed (for example what was measured and when). The note becomes its source; it cannot be blank. The short-move mode is a software setting and has no icon.
+- **Save to library…** (the project's copy):
+  - When the copy came from a library profile, it asks whether to write over it, naming the values that change, or to save as a new profile.
+  - When it came from a built-in profile, or from none, it offers only a new profile.
+  - A new profile gets its own reference, and the project's copy then records it (one undoable step).
+- **Renaming** a saved library machine that a machine tool set names (TL-11): Save asks "The tool set for "<old>" holds this machine's tool numbers. Also rename the tool set to "<new>"?" with **Also rename the tool set** ticked at first.
+- **Delete…** (a library profile) asks first: "Delete "<name>" from the library? This cannot be undone." It adds that projects keep their own copy, and that the project's copy will then say its profile is not in the library when that is so. It cannot be undone; a built-in profile cannot be deleted.
+- **Footer.** **Import…** and **Export…** on the left (TOML profile files), Close on the right, and under them the last result or why it was refused.
+  - **Import** says, before writing anything, whether the file's machine is new, the same as one already known, or differs from it (naming the values). For one that differs the choices are Keep mine, Replace (a library profile only) and Keep both, which adds it with " (imported)" after its name.
+  - **Export** writes the machine shown, with its reference.
+- **Wording.** Values are "confirmed on the machine" or "not confirmed on the machine" (section 15). Nothing in the window speaks of the G-code (NFR-12).
 
 ## 13. Per-user settings
 

@@ -229,6 +229,8 @@ pub struct Shell {
     model_panel: Option<ModelPanel>,
     /// The machine panel, with the profiles found when it was opened.
     machine_panel: Option<MachinePanel>,
+    /// The machine library window (SET-10; specification 12.5).
+    machine_library: crate::machine_library_window::MachineLibraryWindow,
     /// The chosen setup's workholding and tabs (SET-09, OP-21).
     workholding_panel: Option<WorkholdingPanel>,
     /// Typed text and refused values in the inspector's fields.
@@ -344,6 +346,7 @@ impl Shell {
             import: None,
             model_panel: None,
             machine_panel: None,
+            machine_library: crate::machine_library_window::MachineLibraryWindow::new(None, None),
             workholding_panel: None,
             form: FormState::default(),
             pending_field: None,
@@ -910,6 +913,19 @@ impl Shell {
         }
     }
 
+    /// Opens the machine library window (SET-10; specification 12.5), on
+    /// the project's machine when it has one.
+    pub(super) fn open_machine_library(&mut self) {
+        if self.defer(|s| s.open_machine_library()) {
+            return;
+        }
+        let project = self
+            .app
+            .as_ref()
+            .is_some_and(|a| a.project().machine().is_some());
+        self.machine_library.open(project);
+    }
+
     /// Opens the tool library window (specification 12.1) for `purpose`,
     /// with `tool` chosen when given.
     pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<Chosen>) {
@@ -1161,10 +1177,12 @@ impl Shell {
                 i.consume_shortcut(&LATER),
             )
         });
-        // The tool library window is a floating window, so these keys would
-        // otherwise act on the selected operation behind it.
+        // The tool and machine library windows are floating windows, so
+        // these keys would otherwise act on the selected operation behind
+        // them.
+        let library_open = self.tool_library.is_open() || self.machine_library.is_open();
         if let Some(Selection::Operation(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             let action = if duplicate {
                 Some(TreeAction::Duplicate(id))
@@ -1183,7 +1201,7 @@ impl Shell {
         }
         if delete
             && let Some(Selection::Set(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             self.tree_action(TreeAction::DeleteSet(id));
         }
@@ -1611,6 +1629,18 @@ impl Shell {
         if let Some(status) = library.status {
             self.status = status;
         }
+        // The machine library window also works with or without a project
+        // (SET-10; 12.5). A change to the project's copy is an undoable
+        // command it executes itself; the machine panel then lists the
+        // library again.
+        if self.machine_library.is_open() {
+            if let Some(status) = self.machine_library.frame(ctx, self.app.as_mut()) {
+                self.status = status;
+            }
+            if !self.machine_library.is_open() {
+                self.machine_panel = None;
+            }
+        }
         if let Some(tool) = library.for_new_operation {
             self.run.set_adding_tool(tool);
         }
@@ -1815,6 +1845,7 @@ impl Shell {
             || self.run.has_window()
             || self.import.is_some()
             || self.tool_library.is_open()
+            || self.machine_library.is_open()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -2853,6 +2884,8 @@ mod simulate_tests;
 #[cfg(test)]
 mod smoke_tests;
 
+#[cfg(test)]
+mod machine_library_tests;
 #[cfg(test)]
 mod tool_library_tests;
 
