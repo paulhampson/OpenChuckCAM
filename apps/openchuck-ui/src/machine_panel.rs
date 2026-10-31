@@ -410,32 +410,40 @@ impl MachinePanel {
 
         // Choosing a machine (SET-01); managing them is the machine library
         // window (SET-10; 12.5).
-        ui.horizontal(|ui| {
-            ui.strong("Machine profiles");
-            if ui.button("Manage machines…").clicked() {
-                self.manage = true;
-            }
-        });
-        match &self.library {
+        // "Manage machines…" shares the folder button's row, so the panel is
+        // no taller than before it.
+        ui.strong("Machine profiles");
+        let mut manage = false;
+        match self.library.clone() {
             Some(dir) => {
                 ui.weak(format!("Library: {}", dir.display()));
                 if dir.is_dir() {
-                    if ui.button("Open the library folder").clicked() {
-                        self.message = open_folder(dir).err();
-                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Open the library folder").clicked() {
+                            self.message = open_folder(&dir).err();
+                        }
+                        manage = ui.button("Manage machines…").clicked();
+                    });
                 } else {
                     ui.weak("The folder does not exist yet; only built-in profiles are listed.");
-                    if ui.button("Create the library folder").clicked() {
-                        self.message = Some(match std::fs::create_dir_all(dir) {
-                            Ok(()) => format!("Created {}.", dir.display()),
-                            Err(e) => format!("{}: {e}", dir.display()),
-                        });
-                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Create the library folder").clicked() {
+                            self.message = Some(match std::fs::create_dir_all(&dir) {
+                                Ok(()) => format!("Created {}.", dir.display()),
+                                Err(e) => format!("{}: {e}", dir.display()),
+                            });
+                        }
+                        manage = ui.button("Manage machines…").clicked();
+                    });
                 }
             }
             None => {
                 ui.weak("No configuration folder was found; only built-in profiles are listed.");
+                manage = ui.button("Manage machines…").clicked();
             }
+        }
+        if manage {
+            self.manage = true;
         }
         let label = |a: &AvailableMachine| match &a.profile {
             Ok(p) => format!("{} ({})", p.name, a.source),

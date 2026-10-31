@@ -653,3 +653,21 @@ fn req_set_10_shell_keys_leave_the_project_alone_behind_the_machine_library() {
     let ops = rig.shell.app.as_ref().unwrap().project().operations().len();
     assert_eq!(ops, 1, "Delete and Ctrl D did not act behind the window");
 }
+
+#[test]
+fn req_set_10_manage_machines_in_the_inspector_opens_the_window() {
+    let mut rig = Rig::cube("machines-manage", None);
+    rig.shell.machine_library = MachineLibraryWindow::new(Some(folder("manage")), None);
+    let id = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(id, None);
+    draw(&mut rig);
+    assert!(!rig.shell.machine_library.is_open());
+    rig.click(centre_of(&rig, "Manage machines…"));
+    draw(&mut rig);
+    assert!(rig.shell.machine_library.is_open());
+    assert_eq!(
+        rig.shell.machine_library.selected(),
+        Some(&Selected::Project),
+        "it opens on the project's machine"
+    );
+}
