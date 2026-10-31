@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- FIRSTRUN (accepted decision 0302): `overview` reads a missing machine as `StepHealth::Attention` ("Choose a machine") instead of an error; `Requirement` gains the public field `detail` (a longer line for under the field, set for an empty stepdown); `workholding_view::NO_TABS_WARNING` is replaced by `no_tabs_warning(&Workholding)`; `Application::operation_path_is_current`; `note_groups::feed_limit_summary` and `FeedLimit`. Not in the library family; no output changes.
+
 - SIMPERF (#382, accepted decision 0322): the example `playback_times` (CARVEPERF's, below) is replaced by this lane's, which also builds a project from an STL, times the surface job and forward play and takes a memory budget. Stock colours are computed over the job's threads (the same at any thread count); `StockPlayback` keeps the last request's stock and spaces checkpoints to fill a memory budget (`start_stock_playback` takes it; `MAX_CHECKPOINT_BYTES` becomes `DEFAULT_PLAYBACK_MEMORY`); `start_playing_stock_surface` makes a cut part without a picker; `SimulateSettings::playback_memory_mb`. Not in the library family.
 
 - OUTPUT3 (accepted decision 0327; #312): the `output_preview` module and `Application::output_preview(run)`: the program files exactly as `prepare_output` writes them, each a `PreviewFile` with its final name, bytes, size, SHA-256, line count, `line(n)` and `find(text, from, forward)`; `LineIndex`. `prepare_output` and the preview share one source of file names and texts. No library-family change.
