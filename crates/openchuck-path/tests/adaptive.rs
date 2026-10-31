@@ -447,3 +447,72 @@ fn req_op_04_indexed_finishing_has_the_switch_and_the_allowed_excess_only_with_i
     assert!(schema.get("scallop").is_none());
     assert!(schema.get(MIN_SPACING).is_none());
 }
+
+/// `mesh`'s triangles whose corners all pass `keep`.
+fn pick(
+    mesh: &openchuck_types::mesh::TriangleMesh,
+    keep: impl Fn(openchuck_types::geometry::Point3) -> bool,
+) -> openchuck_types::mesh::TriangleMesh {
+    let triangles = (0..mesh.triangles.len())
+        .filter(|&t| mesh.triangle(t).unwrap().into_iter().all(&keep))
+        .map(|t| mesh.triangles[t])
+        .collect();
+    openchuck_types::mesh::TriangleMesh {
+        vertices: mesh.vertices.clone(),
+        triangles,
+    }
+}
+
+#[test]
+fn req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing() {
+    // Decision record 0239 item 1: the excess is measured above each part's
+    // own target, so a zone with stock to leave is never refined below it,
+    // and the passes are added where the material over either target is too
+    // high (OP-11 per selection).
+    let part = Cylinder {
+        radius: 10.0,
+        length: 12.0,
+    };
+    let mesh = part.mesh(49, 720);
+    let p = cylinder();
+    let low = MeshSurface::new(&pick(&mesh, |q| q.x <= 6.0 + 1e-9)).unwrap();
+    let high = MeshSurface::new(&pick(&mesh, |q| q.x >= 6.0 - 1e-9)).unwrap();
+    let leave = 0.3;
+    let zones = [
+        openchuck_path::LeaveZone {
+            surface: &low,
+            leave: 0.0,
+        },
+        openchuck_path::LeaveZone {
+            surface: &high,
+            leave,
+        },
+    ];
+    let path = run(|ctx| {
+        openchuck_path::generate_in_zones(
+            &AxialFinishing,
+            &p.fixture.input(),
+            None,
+            &zones,
+            &values(&AxialFinishing, &[]),
+            ctx,
+        )
+    })
+    .unwrap();
+    assert!(has_note(&path, "adaptive spacing:"), "{:?}", path.notes);
+    assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+    // Over the zone with none, at most the Allowed excess is left.
+    let bare = left(&p, &path, (1.5, 4.5));
+    assert!(bare <= 0.012, "bare zone left {bare}");
+    // Over the zone with 0.3 mm, its stock plus at most the Allowed excess,
+    // and the tool never comes closer than the stock to leave.
+    let kept = left(&p, &path, (7.5, 10.5));
+    assert!(kept <= leave + 0.012, "zone with stock left {kept}");
+    let outline = Outline::new(&p.fixture.tool);
+    let closest = poses(&path, 4)
+        .iter()
+        .filter(|q| (8.5..=11.0).contains(&q.tip.x))
+        .map(|q| min_clearance(&outline, &p.part, q, 0.1))
+        .fold(f64::INFINITY, f64::min);
+    assert!(closest >= leave - 0.003, "closest {closest}");
+}
