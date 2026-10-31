@@ -515,13 +515,15 @@ fn write_through_dialog(
     open(rig);
     assert!(rig.shell.export.is_open());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    while !rig.shows("Start of") {
+    while !rig.shows("Go to line") {
         // The body keeps its scroll between openings: back to the top,
         // where the folder and the preview are.
         let top = rig
             .ctx
             .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
-            .map(|r| r.center());
+            // Over the left column: over the preview the wheel scrolls the
+            // preview and not the dialog (decision 0327).
+            .map(|r| egui::pos2(r.left() + 40.0, r.center().y));
         let events = top.map_or_else(Vec::new, |at| {
             vec![
                 egui::Event::PointerMoved(at),
@@ -549,8 +551,8 @@ fn write_through_dialog(
     let centre = rig
         .ctx
         .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
-        .unwrap()
-        .center();
+        .map(|r| egui::pos2(r.left() + 40.0, r.center().y))
+        .unwrap();
     for _ in 0..12 {
         if rig.visible_text_rects().iter().any(|(t, _)| {
             t == openchuck_app::EXPORT_ACKNOWLEDGE_LABEL

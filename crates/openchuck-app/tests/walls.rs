@@ -112,8 +112,14 @@ fn build(name: &str, profile: &[(f64, f64)], radius: f64) -> (PathBuf, Applicati
         },
         cutting_data,
     };
-    let parameters: BTreeMap<String, ParameterValue> =
-        [("max_angle_step".to_owned(), ParameterValue::Number(5.0))].into();
+    // Face free ends off: the walls part's free ends are not what this
+    // checks, and its golden predates the switch (decision record 0344).
+    let parameters: BTreeMap<String, ParameterValue> = [
+        ("max_angle_step".to_owned(), ParameterValue::Number(5.0)),
+        ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+        ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+    ]
+    .into();
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),

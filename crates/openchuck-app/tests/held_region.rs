@@ -254,9 +254,9 @@ fn build(
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: parameters
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            parameters: free_ends_off(strategy)
+                .into_iter()
+                .chain(parameters.iter().map(|(k, v)| ((*k).to_owned(), v.clone())))
                 .collect::<BTreeMap<_, _>>(),
         }));
     }
@@ -508,6 +508,40 @@ fn req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region()
     keeps_clear("simultaneous_finishing", Vec::new());
 }
 
+/// Simultaneous finishing beside a held start with the default tabs (OI-1372,
+/// issue #411; decision record 0363 item 1): the drop surface holds the tab
+/// from the held region's inner edge, so a spiral over the whole drop surface
+/// drove inside the held keep-out band, rode past the held stock's face and
+/// was refused ("would cut ... into the surface" a tool radius from that
+/// face). The spiral now starts and ends outside the band, as the faces' turns
+/// do, so the operation generates and keeps clear of the held regions.
+#[test]
+fn req_set_09_req_op_05_simultaneous_finishing_beside_a_held_start_with_tabs_generates() {
+    for shape in [Shape::Round, Shape::Box] {
+        let name = format!("simultaneous finishing with tabs on {shape:?} stock");
+        let mut b = build(
+            &format!("simultaneous-tabs-{shape:?}"),
+            shape,
+            None,
+            &[(
+                "simultaneous_finishing",
+                vec![("stepover", ParameterValue::Number(1.0))],
+            )],
+        );
+        let tabs = b.app.start_default_tabs(b.setup).wait().unwrap();
+        assert!(!tabs.is_empty(), "{name}: no default tabs");
+        let mut setup = b.app.project().setup(b.setup).unwrap().clone();
+        setup.workholding.tabs = tabs;
+        b.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+        let (overlap, at) = reach_into_grip(&b);
+        assert!(
+            overlap <= TOLERANCE,
+            "{name}: a cutting move reaches {overlap:.3} mm over the gripped length at {at:?}"
+        );
+        assert_kept(&name, &run(&b, shape.held(None)));
+    }
+}
+
 #[test]
 fn req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region() {
     keeps_clear("rest_machining", Vec::new());
@@ -626,4 +660,27 @@ fn req_set_09_req_nfr_07_a_ramp_over_the_held_region_is_refused_naming_it() {
             && error.contains("use a plunge entry"),
         "{error}"
     );
+}
+
+/// Face free ends off for the strategies that have it: these tests are not
+/// about free ends, and a new operation faces them (decision record 0344,
+/// OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+        "simultaneous_finishing",
+    ]
+    .contains(&strategy)
+    {
+        out.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
+    out
 }

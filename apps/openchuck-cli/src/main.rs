@@ -134,6 +134,11 @@ enum Action {
         /// Also write the setup sheet as HTML and PDF into the `--out` folder.
         #[arg(long)]
         setup_sheet: bool,
+        /// Write the files of this run even though an operation's path is
+        /// partial (adaptive spacing met a limit or could not confirm a
+        /// place; the warning says where). It acknowledges this run only.
+        #[arg(long)]
+        acknowledge_partial_path: bool,
     },
     /// Regenerate and simulate material removal for every operation, then
     /// compare the stock left with each setup's part (SIM-03, SIM-05 to
@@ -575,6 +580,7 @@ fn run(cli: Cli) -> Result<()> {
             tool_numbers,
             grouping,
             setup_sheet,
+            acknowledge_partial_path,
         } => {
             let mut app = open_project(&project, threads, create)?;
             if setup_sheet && out.is_none() {
@@ -606,6 +612,26 @@ fn run(cli: Cli) -> Result<()> {
                         "blocks"
                     },
                     sources.block_window.as_str()
+                );
+            }
+            // A partial path is written only when this run is acknowledged
+            // (decision record 0239 item 10); nothing is written otherwise.
+            let partial = openchuck_app::partial_operations(app.project(), &result);
+            if out.is_some() && !partial.is_empty() {
+                if !acknowledge_partial_path {
+                    anyhow::bail!(
+                        "{} Pass --acknowledge-partial-path to write them.",
+                        openchuck_app::partial_path_refusal(&partial)
+                    );
+                }
+                eprintln!(
+                    "warning: writing with the partial path of {} acknowledged for this run: \
+                     it is not complete",
+                    partial
+                        .iter()
+                        .map(|n| format!("'{n}'"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
             if let Some(out) = &out {
@@ -1749,6 +1775,22 @@ fn print_machine(profile: &MachineProfile) {
         (None, Some(max)) => println!("spindle:    up to {} rpm", max.0),
         (Some(min), None) => println!("spindle:    from {} rpm", min.0),
         (None, None) => {}
+    }
+    // The recommended minimum is shown whenever given, measured tool
+    // lengths or not (decision record 0317).
+    let minimum = p
+        .recommended_min_safe_z
+        .map(|m| format!("recommended minimum safe Z {} mm", m.0));
+    if p.automatic_tool_length {
+        let distance = p
+            .spindle_to_axis
+            .map_or_else(|| "not known".to_owned(), |d| format!("{} mm", d.0));
+        let minimum = minimum.map_or_else(String::new, |m| format!("; {m}"));
+        println!(
+            "spindle height: tool lengths measured automatically; spindle to axis {distance}{minimum}"
+        );
+    } else if let Some(minimum) = minimum {
+        println!("spindle height: {minimum}");
     }
     println!(
         "short blocks: {} ms averaged over {} {}; {}",

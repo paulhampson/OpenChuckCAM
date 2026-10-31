@@ -21,9 +21,10 @@ use openchuck_app::project::id::ToolId;
 use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_command};
 use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
-    EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks,
-    JobHandle, OutputGrouping, OutputPlan, OutputReport, PlannedFile, PostSelection, PostSummary,
-    Regeneration, builtin_post_summaries, post_summary,
+    EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
+    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, JobHandle, OutputGrouping, OutputPlan, OutputReport,
+    PlannedFile, PostSelection, PostSummary, Regeneration, builtin_post_summaries,
+    partial_operations, post_summary,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -34,17 +35,18 @@ mod feedback;
 
 #[path = "export_panel/file_names.rs"]
 mod file_names;
+mod preview;
 
 const PROBLEM: Color32 = DARK.error;
 const WARNING: Color32 = DARK.warning;
 /// The safety notice is the warning box of the tokens (14.1).
 const NOTICE_FILL: Color32 = DARK.warning_box.bg;
-/// How many lines of a file the preview shows.
-const PREVIEW_LINES: usize = 14;
 
 #[cfg(test)]
 #[path = "export_panel/layout_tests.rs"]
 mod layout_tests;
+#[cfg(test)]
+mod preview_tests;
 
 #[cfg(test)]
 #[path = "export_panel/write_feedback_tests.rs"]
@@ -86,6 +88,15 @@ struct Files {
     run: Arc<Regeneration>,
     plan: Vec<PlannedFile>,
 }
+
+/// The preview made for a run: the run, the templates, whether the run's
+/// project was the project then, and the files or why there are none.
+type CachedPreview = (
+    Arc<Regeneration>,
+    openchuck_app::FileNameTemplates,
+    bool,
+    Result<openchuck_app::output_preview::OutputPreview, String>,
+);
 
 /// Something the user asked for this frame, done after drawing.
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +152,11 @@ pub struct ExportPanel {
     /// every frame (a post folder is read from disk).
     summary: Option<(PostSelection, Result<PostSummary, String>)>,
     preview: usize,
+    /// The position in the file shown in the preview (issue 312).
+    preview_view: preview::PreviewView,
+    /// The files as they would be written, made when the run or the
+    /// templates change.
+    output_preview: Option<CachedPreview>,
     ack: Option<Acknowledgements>,
     ack_lookup: AcknowledgementLookup,
     /// Whether this computer has the acknowledgement that the project skips
@@ -148,6 +164,11 @@ pub struct ExportPanel {
     /// 0168).
     skip_lookup: AcknowledgementLookup,
     skip_ticked: bool,
+    /// The run whose partial paths the user accepted: an acknowledgement
+    /// holds for that result only (decision record 0239 item 10). The run is
+    /// held, not its address, so a later run at a reused address never
+    /// matches it.
+    partial_ticked: Option<Arc<Regeneration>>,
     ticked: bool,
     /// The user's file name templates (issues 308 and 310).
     file_names: openchuck_app::FileNameTemplates,
@@ -184,12 +205,15 @@ impl ExportPanel {
             files_error: None,
             summary: None,
             preview: 0,
+            preview_view: preview::PreviewView::default(),
+            output_preview: None,
             ack,
             skip_lookup: AcknowledgementLookup {
                 acknowledged: false,
                 problem: None,
             },
             skip_ticked: false,
+            partial_ticked: None,
             ack_lookup: AcknowledgementLookup {
                 acknowledged: false,
                 problem: None,
@@ -224,6 +248,7 @@ impl ExportPanel {
         self.summary = None;
         self.ticked = false;
         self.skip_ticked = false;
+        self.partial_ticked = None;
         self.refresh_acknowledgement(app);
         self.read_numbers(app);
     }
@@ -262,6 +287,28 @@ impl ExportPanel {
     /// the stock simulation (OI-602).
     fn skip_unacknowledged(&self, app: &Application) -> bool {
         self.skips(app) && !(self.skip_lookup.acknowledged || self.skip_ticked)
+    }
+
+    /// The operations whose path in the current files is partial, and the
+    /// files' run (decision record 0239 item 10).
+    fn partial(&self, app: &Application) -> Option<(Vec<String>, Arc<Regeneration>)> {
+        let files = self.files_current(app)?;
+        let partial = partial_operations(app.project(), &files.run);
+        (!partial.is_empty()).then(|| (partial, Arc::clone(&files.run)))
+    }
+
+    /// Whether the user accepted the partial paths of `run`.
+    fn partial_accepted(&self, run: &Arc<Regeneration>) -> bool {
+        self.partial_ticked
+            .as_ref()
+            .is_some_and(|t| Arc::ptr_eq(t, run))
+    }
+
+    /// Whether writing waits for the acknowledgement of the current files'
+    /// partial paths.
+    fn partial_unacknowledged(&self, app: &Application) -> bool {
+        self.partial(app)
+            .is_some_and(|(_, run)| !self.partial_accepted(&run))
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -382,6 +429,12 @@ impl ExportPanel {
         if self.skip_unacknowledged(app) {
             return Some(
                 "Tick the box to say you know the cut has not been simulated for this project."
+                    .to_owned(),
+            );
+        }
+        if self.partial_unacknowledged(app) {
+            return Some(
+                "Tick the box to accept the partial path of these files: it is not complete."
                     .to_owned(),
             );
         }
@@ -573,7 +626,14 @@ impl ExportPanel {
     /// project.
     fn write(&mut self, app: &Application, files: &Arc<Regeneration>) -> Outcome {
         let folder = PathBuf::from(self.folder.trim());
-        match app.prepare_output(&folder, files) {
+        let prepared = app.prepare_output(&folder, files).map(|mut plan| {
+            // Ticked for these very files, so it holds for this plan only.
+            if self.partial_accepted(files) {
+                plan.acknowledge_partial_path();
+            }
+            plan
+        });
+        match prepared {
             Ok(plan) if !plan.existing().is_empty() => {
                 if let Some(key) = self.key(app) {
                     self.overwrite = Some(PendingOutput {
@@ -727,6 +787,7 @@ impl ExportPanel {
             ui.add_space(8.0);
             self.notice(ui);
             self.skip_notice(ui, app);
+            self.partial_notice(ui, app);
         });
     }
 
@@ -986,6 +1047,14 @@ impl ExportPanel {
         } else {
             None
         };
+        if let Some(run) = self
+            .files
+            .as_ref()
+            .filter(|_| current)
+            .map(|f| Arc::clone(&f.run))
+        {
+            self.ensure_preview(app, &run);
+        }
         let Some(files) = self.files.as_ref().filter(|_| current) else {
             if self.job.is_none() && self.files_error.is_none() {
                 ui.weak("The files appear here once every operation is generated and up to date.");
@@ -993,6 +1062,26 @@ impl ExportPanel {
             return;
         };
         let mut chosen = None;
+        let run = Arc::clone(&files.run);
+        let counts: Vec<Option<usize>> = files
+            .plan
+            .iter()
+            .map(|planned| {
+                let (_, _, _, made) = self.output_preview.as_ref()?;
+                let named = named.as_ref()?.as_ref().ok()?;
+                let name = &named
+                    .programs
+                    .iter()
+                    .find(|p| p.posted_name == planned.name)?
+                    .name;
+                made.as_ref()
+                    .ok()?
+                    .files()
+                    .iter()
+                    .find(|f| f.name() == name)
+                    .map(|f| f.line_count())
+            })
+            .collect();
         egui::Grid::new("export files")
             .num_columns(4)
             .striped(true)
@@ -1003,12 +1092,16 @@ impl ExportPanel {
                 ui.strong("Programmed time");
                 ui.end_row();
                 for (i, planned) in files.plan.iter().enumerate() {
-                    let lines = files
-                        .run
-                        .gcode
-                        .iter()
-                        .find(|(name, _)| *name == planned.name)
-                        .map_or(0, |(_, text)| text.lines().count());
+                    // The count comes from the preview's line index; it is a
+                    // scan of the whole text otherwise, once per frame.
+                    let lines = counts.get(i).copied().flatten().unwrap_or_else(|| {
+                        files
+                            .run
+                            .gcode
+                            .iter()
+                            .find(|(name, _)| *name == planned.name)
+                            .map_or(0, |(_, text)| text.lines().count())
+                    });
                     let shown = final_name(named.as_ref(), &planned.name);
                     if ui.selectable_label(self.preview == i, shown).clicked() {
                         chosen = Some(i);
@@ -1077,25 +1170,77 @@ impl ExportPanel {
         }
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
-        let shown_index = chosen.unwrap_or(self.preview);
-        if let Some(planned) = files.plan.get(shown_index) {
-            ui.strong(format!(
-                "Start of {}",
-                final_name(named.as_ref(), &planned.name)
-            ));
-            if let Some((_, text)) = files.run.gcode.iter().find(|(n, _)| *n == planned.name) {
-                let shown: Vec<&str> = text.lines().take(PREVIEW_LINES).collect();
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    for line in &shown {
-                        ui.label(RichText::new(*line).monospace());
-                    }
-                });
-            }
-        }
         if let Some(i) = chosen {
             self.preview = i;
         }
+        self.preview_section(ui, &run);
+    }
+
+    /// Makes the preview when the run or the file name templates changed.
+    fn ensure_preview(&mut self, app: &Application, run: &Arc<Regeneration>) {
+        let templates = app.file_name_templates();
+        // `files_current` ignores the stock simulation switch and the hidden
+        // paths, which `output_preview` does not: so the preview is also keyed
+        // on whether the run's project is the project now, and a refusal for
+        // a project that has since gone back is not kept.
+        let same = *run.project == *app.project();
+        let fresh = self
+            .output_preview
+            .as_ref()
+            .is_some_and(|(r, t, same_then, _)| {
+                Arc::ptr_eq(r, run) && t == templates && *same_then == same
+            });
+        if !fresh {
+            let made = app.output_preview(run).map_err(|e| e.to_string());
+            self.output_preview = Some((Arc::clone(run), templates.clone(), same, made));
+        }
+    }
+
+    /// The read-only preview: the files as they would be written, with their
+    /// line counts and hashes (issue 312; decision 0327).
+    fn preview_section(&mut self, ui: &mut egui::Ui, run: &Arc<Regeneration>) {
+        ui.add_space(4.0);
+        ui.heading("Preview");
+        let Some((_, _, _, made)) = &self.output_preview else {
+            return;
+        };
+        let preview = match made {
+            Ok(preview) => preview,
+            Err(problem) => {
+                ui.colored_label(PROBLEM, problem);
+                return;
+            }
+        };
+        let files = preview.files();
+        let index = self.preview.min(files.len().saturating_sub(1));
+        let Some(file) = files.get(index) else { return };
+        ui.weak("Read-only. These are the bytes that \"Write G-code\" puts in the file; nothing is written by looking.");
+        let mut picked = index;
+        if files.len() > 1 {
+            egui::ComboBox::from_label("File")
+                .selected_text(file.name())
+                .show_ui(ui, |ui| {
+                    for (i, f) in files.iter().enumerate() {
+                        ui.selectable_value(&mut picked, i, f.name());
+                    }
+                });
+        }
+        ui.strong(file.name());
+        ui.label(format!(
+            "{} lines, {} bytes",
+            file.line_count(),
+            file.size()
+        ));
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SHA-256");
+            ui.label(RichText::new(file.sha256()).monospace());
+            if ui.button("Copy").clicked() {
+                ui.ctx().copy_text(file.sha256().to_owned());
+            }
+        });
+        self.preview_view.follow(Arc::as_ptr(run) as usize, picked);
+        self.preview_view.show(ui, file);
+        self.preview = picked;
     }
 
     /// While the project skips the stock simulation, the warning and its tick
@@ -1115,6 +1260,32 @@ impl ExportPanel {
             ui.label("Acknowledged for this project on this computer.");
         } else {
             ui.checkbox(&mut self.skip_ticked, EXPORT_STOCK_SKIPPED_LABEL);
+        }
+    }
+
+    /// While the files hold a partial path, what it is and the tick box that
+    /// accepts it for these files only (decision record 0239 item 10).
+    fn partial_notice(&mut self, ui: &mut egui::Ui, app: &Application) {
+        let Some((names, run)) = self.partial(app) else {
+            return;
+        };
+        ui.add_space(6.0);
+        let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+        ui.label(
+            RichText::new(format!(
+                "The path of {} is partial: adaptive spacing could not confirm every place \
+                 between its passes, and the path made so far is kept. Read its warning in \
+                 Messages.",
+                quoted.join(", ")
+            ))
+            .color(DARK.warning_box.text),
+        );
+        let mut ticked = self.partial_accepted(&run);
+        if ui
+            .checkbox(&mut ticked, EXPORT_PARTIAL_PATH_LABEL)
+            .changed()
+        {
+            self.partial_ticked = ticked.then_some(run);
         }
     }
 
@@ -1491,6 +1662,84 @@ mod tests {
         )));
         fresh.open(&app);
         assert!(!fresh.skip_unacknowledged(&app));
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_op_04_req_nfr_12_a_partial_path_is_accepted_for_these_files_before_writing() {
+        // Decision record 0239 item 10: files holding a partial path are
+        // written only once the user accepts it, for those files alone.
+        let (dir, mut app, op, _) = cube_project("export-partial");
+        app.set_post(None);
+        for (name, value) in [
+            (
+                "adaptive_spacing",
+                openchuck_app::project::ParameterValue::Flag(true),
+            ),
+            (
+                "scallop",
+                openchuck_app::project::ParameterValue::Number(0.0001),
+            ),
+            (
+                "min_spacing",
+                openchuck_app::project::ParameterValue::Number(50.0),
+            ),
+        ] {
+            app.set_parameter(op, name, Some(value)).unwrap();
+        }
+        let (settings_dir, ack) = settings("export-partial-settings");
+        let mut panel = ExportPanel::new(Some(ack));
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        panel.folder = dir.join("out").display().to_string();
+        panel.ticked = true;
+        let checks = app.export_checks(Some(&run), panel.files.as_ref().map(|f| &*f.run), None);
+        assert!(checks.can_write(), "a warning, not a blocking check");
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("partial path"), "{reason}");
+        // Accepted for other files, it does not count.
+        panel.partial_ticked = Some(Arc::clone(&run));
+        assert!(panel.write_blocker(&app, &checks, true).is_some());
+        let posted = panel
+            .files_current(&app)
+            .map(|f| Arc::clone(&f.run))
+            .unwrap();
+        panel.partial_ticked = Some(Arc::clone(&posted));
+        assert_eq!(panel.write_blocker(&app, &checks, true), None);
+        let outcome = panel.write(&app, &posted);
+        assert_eq!(outcome.error, None);
+        let status = outcome.status.unwrap_or_default();
+        assert!(
+            status.contains("is partial") && status.contains("not complete"),
+            "{status}"
+        );
+        // New files made after the tick ask again, even once every other
+        // holder of the accepted run is gone and its memory could be reused.
+        drop(posted);
+        app.set_parameter(
+            op,
+            "scallop",
+            Some(openchuck_app::project::ParameterValue::Number(0.0002)),
+        )
+        .unwrap();
+        let rerun = Arc::new(app.regenerate().unwrap());
+        drop(run);
+        settle(&mut panel, &ctx, &mut app, Some(&rerun));
+        let current = panel
+            .files_current(&app)
+            .map(|f| Arc::clone(&f.run))
+            .expect("files for the changed project");
+        assert!(panel.partial_ticked.is_some(), "the old tick is still held");
+        assert!(!panel.partial_accepted(&current), "it does not carry over");
+        let checks = app.export_checks(Some(&rerun), Some(&*current), None);
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("partial path"), "{reason}");
+        // A new dialog asks again.
+        panel.open(&app);
+        assert!(panel.partial_ticked.is_none());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }

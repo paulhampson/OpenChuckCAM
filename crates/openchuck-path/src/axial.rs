@@ -13,20 +13,27 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use std::collections::BTreeMap;
+
+use openchuck_types::geometry::Point3;
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
+use crate::assemble::PathWarning;
 use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
+use crate::faces;
 use crate::helical::CONSTRAINED_SPACING;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
+use crate::rotary::RotaryMapping;
 use crate::scallop;
-use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput, StrategyOutput};
 use crate::wrap_fit::{
     CHORD_FACTOR, Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits,
 };
@@ -139,7 +146,20 @@ impl Strategy for AxialFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
+            .chain(adaptive::specs())
             .collect(),
+        )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        adaptive::schema_for(
+            crate::finishing::schema_for(self.schema(), values),
+            values,
+            parameter::SCALLOP,
         )
     }
 
@@ -148,6 +168,14 @@ impl Strategy for AxialFinishing {
     }
 
     fn parameter_warnings(&self, tool: &RevolvedProfile, parameters: &Parameters) -> Vec<String> {
+        // With adaptive spacing on the height is measured with the tool
+        // itself, so no closed form is needed (decision record 0239).
+        if parameters
+            .flag(adaptive::parameter::ADAPTIVE_SPACING)
+            .unwrap_or(false)
+        {
+            return Vec::new();
+        }
         parameters
             .number(parameter::SCALLOP)
             .ok()
@@ -167,8 +195,13 @@ impl Strategy for AxialFinishing {
         zones: &[LeaveZone<'_>],
         parameters: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context)
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, zones, parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+        })
     }
 
     fn passes(
@@ -177,7 +210,7 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -187,7 +220,22 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
+    }
+
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+        })
     }
 }
 
@@ -231,6 +279,11 @@ pub(crate) struct AlongX<'a> {
     pub(crate) zigzag: bool,
     /// Past the stock's ends, when the operation asks (OP-24).
     extension: Option<Extension>,
+    /// How far, mm, each pass runs on past the ends of the target, so the
+    /// tool can go down beside an end face (indexed finishing; decision
+    /// record 0343). Zero for axial finishing, which turns at the end faces
+    /// instead.
+    pub(crate) beyond: f64,
 }
 
 impl<'a> AlongX<'a> {
@@ -303,7 +356,18 @@ impl<'a> AlongX<'a> {
             radius,
             zigzag,
             extension,
+            beyond: 0.0,
         })
+    }
+
+    /// The target's extent along X, mm.
+    pub(crate) fn range(&self) -> (f64, f64) {
+        (self.x0, self.x1)
+    }
+
+    /// The cutting radius of the tool grown by the stock to leave, mm.
+    pub(crate) fn grown_radius(&self) -> f64 {
+        self.grown.cutting_radius()
     }
 
     /// Refuses a job of `count` passes that would make too many points.
@@ -328,14 +392,54 @@ impl<'a> AlongX<'a> {
         backwards: bool,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        let length = self.x1 - self.x0;
+        let (x0, x1) = (self.x0, self.x1);
+        let passes = if self.beyond > 0.0 {
+            // The pass over the target is fitted as before, so its points do
+            // not move; the stretches past each end are fitted on their own
+            // and joined to it where they meet (decision record 0343).
+            let h = (x1 - x0) / self.seeds as f64;
+            let seeds = ((self.beyond / h).ceil() as usize).max(1);
+            let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
+            let pieces = if backwards {
+                [(hi, x1, seeds), (x1, x0, self.seeds), (x0, lo, seeds)]
+            } else {
+                [(lo, x0, seeds), (x0, x1, self.seeds), (x1, hi, seeds)]
+            };
+            let mut out: Vec<Pass> = Vec::new();
+            for (from, to, n) in pieces {
+                for pass in self.fit_span((a, 0.0), (from, to), n, context)? {
+                    join(&mut out, pass);
+                }
+            }
+            out
+        } else if backwards {
+            self.fit_span((a, 0.0), (x1, x0), self.seeds, context)?
+        } else {
+            self.fit_span((a, 0.0), (x0, x1), self.seeds, context)?
+        };
+        let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
+        Ok(match self.extension {
+            Some(e) => e.run_out(passes, self.input, &self.grown, self.leave, (lo, hi)),
+            None => passes,
+        })
+    }
+
+    /// The fit of one stretch along X at `a`, from `span.0` to `span.1`,
+    /// with `seeds` seeds.
+    fn fit_span(
+        &self,
+        (a, across): (Degrees, f64),
+        (from, to): (f64, f64),
+        seeds: usize,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
         let fit = Fit {
             input: self.input,
             drop_profile: &self.grown,
             leave: self.leave,
             zones: &self.zones,
-            x0: if backwards { self.x1 } else { self.x0 },
-            length: if backwards { -length } else { length },
+            x0: from,
+            length: to - from,
             start: a.0,
             sign: 1.0,
             total_angle: 0.0,
@@ -345,20 +449,22 @@ impl<'a> AlongX<'a> {
             candidates: self.candidates.as_ref(),
             spacing: self.spacing,
             thin: false,
-            max_dt: 1.0 / self.seeds as f64,
+            max_dt: 1.0 / seeds as f64,
             wanted: None,
+            across,
         };
-        let passes = fit_region(&fit, self.seeds, "axial finishing", context)?;
-        Ok(match self.extension {
-            Some(e) => e.run_out(
-                passes,
-                self.input,
-                &self.grown,
-                self.leave,
-                (self.x0, self.x1),
-            ),
-            None => passes,
-        })
+        // The region's candidates are developed for a tool over the axis, so
+        // a tool across it samples the whole pass.
+        let fit = if across == 0.0 {
+            fit
+        } else {
+            Fit {
+                candidates: None,
+                spacing: self.spacing.min(CONSTRAINED_SPACING),
+                ..fit
+            }
+        };
+        fit_region(&fit, seeds, "axial finishing", context)
     }
 
     /// The passes at each of `angles` in order, every other one backwards
@@ -373,6 +479,20 @@ impl<'a> AlongX<'a> {
         label: &str,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
+        Ok(self
+            .passes_by_angle(angles, label, context)?
+            .into_iter()
+            .flatten()
+            .collect())
+    }
+
+    /// [`passes_at`](Self::passes_at), the passes at each angle apart.
+    pub(crate) fn passes_by_angle(
+        &self,
+        angles: &[f64],
+        label: &str,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Vec<Pass>>> {
         let stage = format!("{label}: fitting the passes");
         let total = angles.len() as u64;
         context.report(&stage, 0, Some(total));
@@ -395,30 +515,114 @@ impl<'a> AlongX<'a> {
             }
             pass
         });
-        let mut out = Vec::new();
         // The first error in pass order, so a failure is the same at any
         // thread count.
-        for pass in fitted {
-            out.extend(pass?);
-        }
-        Ok(out)
+        fitted.into_iter().collect()
+    }
+
+    /// The drop at model X `x`, angle `a`, as a pass makes it: the contact
+    /// and the stock to leave there, or `None` where the pass would find
+    /// nothing to cut (adaptive spacing's measure, decision record 0239).
+    pub(crate) fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        self.probe_across(x, a, 0.0)
+    }
+
+    /// [`probe`](Self::probe) with the tool's line `across` mm across the
+    /// rotary axis.
+    pub(crate) fn probe_across(&self, x: f64, a: Degrees, across: f64) -> Option<(Point3, f64)> {
+        let fit = Fit {
+            input: self.input,
+            drop_profile: &self.grown,
+            leave: self.leave,
+            zones: &self.zones,
+            x0: x,
+            length: 0.0,
+            start: a.0,
+            sign: 1.0,
+            total_angle: 0.0,
+            chord: self.chord,
+            region: self.region,
+            constrained: self.constrained,
+            candidates: self.candidates.as_ref(),
+            spacing: self.spacing,
+            thin: false,
+            max_dt: 1.0,
+            wanted: None,
+            across,
+        };
+        fit.node(0.0).map(|n| (n.contact.contact, n.leave))
+    }
+
+    /// The pass at `a` over `span` along X, fitted as the passes are, with
+    /// no run past the ends: a pass adaptive spacing adds.
+    pub(crate) fn pass_over(
+        &self,
+        a: Degrees,
+        span: (f64, f64),
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        self.pass_over_across(a, 0.0, span, context)
+    }
+
+    /// [`pass_over`](Self::pass_over) with the tool's line `across` mm across
+    /// the rotary axis, A held at `a`: a pass indexed finishing adds beside
+    /// a position (decision record 0239).
+    pub(crate) fn pass_over_across(
+        &self,
+        a: Degrees,
+        across: f64,
+        span: (f64, f64),
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let h = (self.x1 - self.x0) / self.seeds as f64;
+        let seeds = (((span.1 - span.0).abs() / h).ceil() as usize).max(1);
+        self.fit_span((a, across), span, seeds, context)
+    }
+
+    /// The distance between the points of a pass before refinement, mm.
+    pub(crate) fn x_step(&self) -> f64 {
+        (self.x1 - self.x0) / self.seeds as f64
     }
 }
 
+/// Adds `pass` to `out`, joined to the last pass where it starts at the
+/// point that pass ends at.
+fn join(out: &mut Vec<Pass>, pass: Pass) {
+    if let Some(last) = out.last_mut()
+        && let (Some(end), Some(start)) = (last.points.last(), pass.points.first())
+        && end.tip.distance(start.tip) <= 1e-9
+        && last.rapids.is_empty()
+        && pass.rapids.is_empty()
+    {
+        last.points.extend(pass.points.into_iter().skip(1));
+        return;
+    }
+    out.push(pass);
+}
+
+/// The largest A step, degrees, between the seeds of a turn at an end face.
+const TURN_STEP: f64 = 5.0;
+
+/// The passes of axial finishing, with its notes and warnings: the end
+/// faces past the ends of the target it turned at, those a held region kept
+/// it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
-    let along = AlongX::read(input, region, zones, parameters)?;
+    let adaptive = adaptive::Settings::read(parameters, parameter::SCALLOP)?;
+    let mut along = AlongX::read(input, region, zones, parameters)?;
     // A tool with no closed form for a cusp is warned about
     // ([`Strategy::parameter_warnings`]) and the stepover alone is used.
-    let scallop = if height > 0.0 {
+    // With adaptive spacing on, the height is the Allowed excess and the
+    // stepover is the widest spacing (decision record 0239).
+    let scallop = if height > 0.0 && adaptive.is_none() {
         scallop::cusp_radius(input.tool).map(|rho| (rho, height))
     } else {
         None
@@ -427,5 +631,244 @@ fn passes(
     along.check_passes(count)?;
     let step = 360.0 / count as f64;
     let angles: Vec<f64> = (0..count).map(|i| start + step * i as f64).collect();
-    along.passes_at(&angles, "axial finishing", context)
+    let (mut passes, spaced) = match adaptive {
+        None => (along.passes_at(&angles, "axial finishing", context)?, None),
+        Some(settings) => {
+            let zigzag = along.zigzag;
+            along.zigzag = false;
+            let (passes, outcome) = adaptive_passes(
+                input,
+                (region, zones, parameters),
+                &along,
+                &angles,
+                (settings, zigzag),
+                context,
+            )?;
+            (passes, Some((settings, outcome)))
+        }
+    };
+    // A pass along X reaches over the target's own length only, so an end
+    // face whose turn lies past the target's end (beside a tab shorter than
+    // the tool's radius) is never met by the tool's side: one whole turn of
+    // A at each such face, as the helix strategies make (decision records
+    // 0297 and 0343). The faces inside the target's length are left to the
+    // passes, as before.
+    let tolerance = parameters.number(names::TOLERANCE)?;
+    let found = faces::turns_to_the_ends(
+        input,
+        &along.grown,
+        (along.x0, along.x1),
+        tolerance,
+        context,
+    )?;
+    let beyond = |x: f64| x < along.x0 || x > along.x1;
+    let turns: Vec<f64> = found
+        .turns
+        .iter()
+        .map(|t| t.x)
+        .filter(|&x| beyond(x))
+        .collect();
+    let held: Vec<f64> = found.held.iter().copied().filter(|&x| beyond(x)).collect();
+    for &x in &turns {
+        context.check_cancelled()?;
+        passes.extend(crate::helical::turn_passes(
+            input,
+            region,
+            (&along.grown, along.leave, &along.zones),
+            tolerance,
+            (x, start, 1.0),
+            TURN_STEP,
+            None,
+            context,
+        )?);
+    }
+    // Finishing layers above the passes made so far, when on (decision
+    // record 0345).
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    // The free ends, in layers down beside them (decision record 0344).
+    let free = crate::finishing::free_ends(
+        input,
+        &along.grown,
+        &found.free,
+        parameters,
+        (start, 1.0, TURN_STEP),
+    )?;
+    passes.extend(free.passes);
+    let mut warnings = free.warnings;
+    let mut spaced_note = None;
+    if let Some((settings, outcome)) = &spaced {
+        spaced_note = Some(outcome.note(settings));
+        warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
+    }
+    let notes = faces::note(&turns)
+        .into_iter()
+        .chain(faces::held_note(&held))
+        .chain(spaced_note)
+        .chain(layered)
+        .chain(free.notes)
+        .collect();
+    Ok((passes, notes, warnings))
+}
+
+/// Axial finishing's passes as a family for adaptive spacing: across it,
+/// the angle of each pass in degrees; along it, model X.
+struct Axial<'a> {
+    along: &'a AlongX<'a>,
+    counters: &'a [Counting<'a>],
+    rotary: RotaryMapping,
+    pose_step: f64,
+    window: f64,
+    station: f64,
+}
+
+impl Family for Axial<'_> {
+    fn pose(&self, c: f64, s: f64) -> (f64, Degrees) {
+        (s, Degrees(c))
+    }
+
+    fn poses(&self, _c: f64, pass: &Pass) -> Vec<Pose> {
+        adaptive::machine_poses(&self.rotary, pass, self.pose_step, |tip, _| tip.x)
+    }
+
+    fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        self.along.probe(x, a)
+    }
+
+    fn fit(&self, c: f64, span: (f64, f64), context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        self.along.pass_over(Degrees(c), span, context)
+    }
+
+    fn width(&self, dc: f64) -> f64 {
+        self.along.radius * dc.to_radians().abs()
+    }
+
+    fn window(&self) -> f64 {
+        self.window
+    }
+
+    fn station_step(&self) -> f64 {
+        self.station
+    }
+
+    fn margin(&self) -> f64 {
+        self.along.grown_radius()
+    }
+
+    fn queries(&self) -> u64 {
+        self.counters.iter().map(Counting::count).sum()
+    }
+
+    fn probe_cost(&self) -> u64 {
+        self.counters.len() as u64
+    }
+}
+
+/// The passes at `angles` with passes added between them where more than
+/// the Allowed excess is left (decision record 0239), in order of angle,
+/// every other one backwards when `zigzag`. `along` fits every pass
+/// forwards.
+fn adaptive_passes(
+    input: &StrategyInput<'_>,
+    (region, zones, parameters): (Option<&RegionConstraint<'_>>, &[LeaveZone<'_>], &Parameters),
+    along: &AlongX<'_>,
+    angles: &[f64],
+    (settings, zigzag): (adaptive::Settings, bool),
+    context: &JobContext<'_>,
+) -> Result<(Vec<Pass>, adaptive::Outcome)> {
+    let groups = along.passes_by_angle(angles, "axial finishing", context)?;
+    // The measure and the added passes drop through counters, so their
+    // geometry queries are limited (decision record 0239 item 8).
+    let counters: Vec<Counting<'_>> = std::iter::once(input.surface)
+        .chain(zones.iter().map(|z| z.surface))
+        .map(Counting::new)
+        .collect();
+    let Some((first, rest)) = counters.split_first() else {
+        return Err(PathError::Strategy("no surface to finish".to_owned()));
+    };
+    let counted = StrategyInput {
+        surface: first,
+        ..*input
+    };
+    let counted_zones: Vec<LeaveZone<'_>> = zones
+        .iter()
+        .zip(rest)
+        .map(|(z, c)| LeaveZone {
+            surface: c,
+            leave: z.leave,
+        })
+        .collect();
+    let measure = AlongX::read(&counted, region, &counted_zones, parameters)?;
+    let r = input.tool.cutting_radius();
+    let family = Axial {
+        along: &measure,
+        counters: &counters,
+        rotary: input.rotary,
+        // The tool's travel along a pass between poses leaves no more than
+        // a tenth of the Allowed excess: a ball's along-pass cusp is about
+        // step^2 / 8r.
+        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        window: 2.0 * along.grown_radius() + along.x_step(),
+        station: along.x_step().min(0.5 * r).max(1e-3),
+    };
+    let n = angles.len();
+    let mut tracks: Vec<Track> = angles
+        .iter()
+        .zip(groups)
+        .map(|(&a, passes)| Track::new(&family, a, passes))
+        .collect();
+    // The last pass's neighbour is the first, a turn on.
+    if let (Some(&a), Some(first)) = (angles.first(), tracks.first()) {
+        let passes = first.passes.clone();
+        tracks.push(Track::new(&family, a + 360.0, passes));
+    }
+    let points: u64 = tracks
+        .iter()
+        .take(n)
+        .flat_map(|t| &t.passes)
+        .map(|p| p.points.len() as u64 + adaptive::LINK_POINTS)
+        .sum();
+    let (x0, x1) = along.range();
+    let intervals: Vec<Interval> = (0..n)
+        .map(|i| Interval {
+            lo: i,
+            hi: i + 1,
+            spans: vec![(x0, x1)],
+            level: 0,
+        })
+        .collect();
+    let outcome = adaptive::refine(
+        &family,
+        tracks,
+        intervals,
+        input.tool,
+        &settings,
+        &adaptive::Limits::OWNER,
+        points,
+        context,
+    )?;
+    let mut order: Vec<&Track> = outcome
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != n)
+        .map(|(_, t)| t)
+        .collect();
+    order.sort_by(|p, q| p.c.total_cmp(&q.c));
+    let mut out = Vec::new();
+    for (i, track) in order.into_iter().enumerate() {
+        if zigzag && i % 2 == 1 {
+            out.extend(track.passes.iter().rev().cloned().map(reversed));
+        } else {
+            out.extend(track.passes.iter().cloned());
+        }
+    }
+    Ok((out, outcome))
+}
+
+/// `pass` cut the other way.
+fn reversed(mut pass: Pass) -> Pass {
+    if pass.rapids.is_empty() {
+        pass.points.reverse();
+    }
+    pass
 }

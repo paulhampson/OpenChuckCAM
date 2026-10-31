@@ -33,6 +33,15 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     fn x_extent(&self) -> Option<(f64, f64)> {
         None
     }
+
+    /// True when this is the material earlier operations in the setup left
+    /// (SIM-06), so what lies past the part is known; false for the setup's
+    /// own stock definition, the default. A free end is faced on either; on
+    /// the setup's own stock its note says the real blank must match it
+    /// (decision record 0344, OI-1394).
+    fn left_by_earlier_operations(&self) -> bool {
+        false
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box

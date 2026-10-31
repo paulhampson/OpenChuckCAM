@@ -9,6 +9,7 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use openchuck_path::params::names;
 use openchuck_path::{
     AcceptAll, AnalyticStock, CompositeSurface, HelicalFinishing, MeshSurface, ParameterValue,
-    RotaryMapping, Solid, StrategyInput, SurfaceSource, ToolLine, generate,
+    RotaryMapping, Solid, StrategyInput, SurfaceSource, ToolLine,
 };
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
@@ -842,4 +843,75 @@ fn req_set_09_a_box_answers_as_its_own_mesh_does() {
         }
     }
     assert!(drops > 50 && rays > 50, "{drops} drops, {rays} rays");
+}
+
+/// Skipping a solid that lies below the part's contact leaves every drop the
+/// same, bit for bit, as dropping onto the model and every solid and keeping
+/// the highest with ties to the model (issue #382; GC-07, decision record
+/// 0113): along passes over a carving, a tab and a held box, with the tool
+/// over each and between them.
+#[test]
+fn req_gc_07_a_solid_below_the_part_is_skipped_with_the_same_answer() {
+    use openchuck_testkit::parts::CarvedRelief;
+    use openchuck_types::geometry::Aabb;
+    use openchuck_types::units::Degrees;
+    let part = CarvedRelief::STANDARD;
+    let model = Arc::new(MeshSurface::new(&part.mesh(121, 302)).unwrap());
+    let solids = vec![
+        Solid::cuboid(Aabb {
+            min: Point3::new(-10.0, -15.0, -15.0),
+            max: Point3::new(-4.0, 15.0, 15.0),
+        })
+        .unwrap(),
+        Solid::cylinder(Point3::new(-4.0, 0.0, 0.0), UnitVec3::X, 4.0, 5.0).unwrap(),
+        // A collar higher than the carving, so it wins near its end.
+        Solid::cylinder(Point3::new(30.0, 0.0, 0.0), UnitVec3::X, 2.0, 14.0).unwrap(),
+        // A band at the carving's own radius: the carving and the band take
+        // turns to be higher, by less than a tenth of a millimetre at times.
+        Solid::cylinder(Point3::new(13.0, 0.0, 0.0), UnitVec3::X, 2.0, 12.25).unwrap(),
+    ];
+    let composite = CompositeSurface::new(model.clone(), solids.clone());
+    let profile = tool(
+        ToolShape::VBit {
+            included_angle: openchuck_types::units::Degrees(60.0),
+            tip_diameter: Millimetres(0.1),
+        },
+        3.175,
+    )
+    .profile()
+    .unwrap();
+    let rotary = RotaryMapping::of_profile(&machine());
+    let (mut on_solid, mut on_model) = (0, 0);
+    // Six angles all along, and many over the band, where the race is close.
+    let along = (0..=440)
+        .flat_map(|i| (0..6).map(move |k| (-11.0 + 0.1 * f64::from(i), 61.3 * f64::from(k))));
+    let band = (0..=60)
+        .flat_map(|i| (0..48).map(move |k| (12.5 + 0.05 * f64::from(i), 7.45 * f64::from(k))));
+    for (x, a) in along.chain(band) {
+        let line = rotary.tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+        let mut want = model.drop_tool(&profile, &line);
+        let mut from_solid = false;
+        for solid in &solids {
+            if let Some(c) = solid.drop_tool(&profile, &line)
+                && want.is_none_or(|b| c.offset > b.offset + openchuck_path::cutter::TIP_TIE)
+            {
+                want = Some(c);
+                from_solid = true;
+            }
+        }
+        let got = composite.drop_tool(&profile, &line);
+        let bits = |c: Option<openchuck_path::Contact>| {
+            c.map(|c| [c.tip.x, c.tip.y, c.tip.z, c.offset].map(f64::to_bits))
+        };
+        assert_eq!(bits(got), bits(want), "x {x}, A {a}");
+        if from_solid {
+            on_solid += 1;
+        } else if want.is_some() {
+            on_model += 1;
+        }
+    }
+    assert!(
+        on_solid > 100 && on_model > 1000,
+        "{on_solid} on solids, {on_model} on the model"
+    );
 }

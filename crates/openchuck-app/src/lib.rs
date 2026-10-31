@@ -45,6 +45,7 @@ pub mod note_groups;
 pub mod operation;
 pub mod opflow;
 pub mod output_names;
+pub mod output_preview;
 mod output_write;
 pub mod overview;
 pub mod pathview;
@@ -53,6 +54,7 @@ mod pipeline;
 pub mod playback;
 mod posting;
 pub mod preset;
+mod ramp_entry;
 pub mod requirements;
 pub mod scene;
 pub mod selection;
@@ -92,9 +94,10 @@ pub use command::{
 };
 pub use error::AppError;
 pub use export::{
-    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
-    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
-    run_is_current, simulation_out_of_date, write_gcode_files,
+    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL,
+    EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary,
+    builtin_post_summaries, partial_operations, partial_path_refusal, post_summary, run_is_current,
+    simulation_out_of_date, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
@@ -1163,6 +1166,66 @@ impl Application {
         self.set_parameter(operation, name, None)
     }
 
+    /// Whether turning Adaptive spacing on for `operation` must first ask
+    /// for the height: it is off and the operation holds a Scallop height of
+    /// 0, which meant no scallop limit, not "no excess at all" (decision
+    /// record 0239 item 5). An unknown operation needs nothing.
+    pub fn adaptive_spacing_needs_height(&self, operation: OperationId) -> bool {
+        use openchuck_path::adaptive::parameter::ADAPTIVE_SPACING;
+        use openchuck_project::ParameterValue;
+        let Some(op) = self.document.project.operation(operation) else {
+            return false;
+        };
+        let has = self
+            .strategies
+            .get(&op.strategy)
+            .is_ok_and(|s| s.schema().get(ADAPTIVE_SPACING).is_some());
+        has && op.parameters.get(ADAPTIVE_SPACING) == Some(&ParameterValue::Flag(false))
+            && matches!(op.parameters.get("scallop"), Some(ParameterValue::Number(h)) if *h == 0.0)
+    }
+
+    /// Turns Adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, both in one undoable step, after checking both (decision
+    /// record 0239 item 5). Nothing changes when either is refused. The
+    /// height stays the Scallop height if adaptive spacing is turned off
+    /// again: one value serves both.
+    pub fn enable_adaptive_spacing(
+        &mut self,
+        operation: OperationId,
+        height: f64,
+    ) -> Result<(), AppError> {
+        use openchuck_path::adaptive::parameter::ADAPTIVE_SPACING;
+        use openchuck_project::ParameterValue;
+        let on = ParameterValue::Flag(true);
+        let height = ParameterValue::Number(height);
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            ADAPTIVE_SPACING,
+            Some(&on),
+        )?;
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            "scallop",
+            Some(&height),
+        )?;
+        self.execute(Command::Batch(vec![
+            Command::SetParameter {
+                operation,
+                name: ADAPTIVE_SPACING.into(),
+                value: Some(on),
+            },
+            Command::SetParameter {
+                operation,
+                name: "scallop".into(),
+                value: Some(height),
+            },
+        ]))
+    }
+
     /// Sets or clears one parameter after schema validation (UI-07).
     pub fn set_parameter(
         &mut self,
@@ -1595,17 +1658,12 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let named = self.output_files(run)?;
+        let (named, sources) = self.program_sources(run)?;
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-        for program in &named.programs {
-            let text = run
-                .gcode
-                .iter()
-                .find(|(name, _)| *name == program.posted_name)
-                .map(|(_, text)| text)
-                .ok_or_else(|| {
-                    AppError::Post(format!("no G-code for '{}'", program.posted_name))
-                })?;
+        for (program, source) in named.programs.iter().zip(sources) {
+            let text = run.gcode.get(source).map(|(_, text)| text).ok_or_else(|| {
+                AppError::Post(format!("no G-code for '{}'", program.posted_name))
+            })?;
             files.push((program.name.clone(), text.as_bytes().to_vec()));
         }
         // The sheet lists the program files by these names and the hashes
@@ -1615,7 +1673,51 @@ impl Application {
         let [html, pdf] = named.setup_sheet;
         files.push((html, sheet.to_html().into_bytes()));
         files.push((pdf, sheet.to_pdf()));
-        output_write::prepare(folder, std::sync::Arc::clone(run), files)
+        let partial = export::partial_operations(&self.document.project, run);
+        output_write::prepare(folder, std::sync::Arc::clone(run), files, partial)
+    }
+
+    /// The final names of the program files and, for each, the index of its
+    /// text in the run: the one source of the write and the preview.
+    fn program_sources(&self, run: &Regeneration) -> Result<(OutputFiles, Vec<usize>), AppError> {
+        let named = self.output_files(run)?;
+        let sources = named
+            .programs
+            .iter()
+            .map(|program| {
+                run.gcode
+                    .iter()
+                    .position(|(name, _)| *name == program.posted_name)
+                    .ok_or_else(|| {
+                        AppError::Post(format!("no G-code for '{}'", program.posted_name))
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        Ok((named, sources))
+    }
+
+    /// The program files exactly as [`Self::prepare_output`] would write
+    /// them, for a read-only preview before anything is written (issue 312).
+    /// Refused for a run the project has left behind, like the write.
+    pub fn output_preview(
+        &self,
+        run: &std::sync::Arc<Regeneration>,
+    ) -> Result<output_preview::OutputPreview, AppError> {
+        if run.gcode.is_empty() {
+            return Err(AppError::Post(
+                "There is no G-code to preview. Generate the operations first.".to_owned(),
+            ));
+        }
+        if *run.project != self.document.project {
+            return Err(AppError::OutOfDate);
+        }
+        let (named, sources) = self.program_sources(run)?;
+        output_preview::OutputPreview::new(
+            run,
+            sources
+                .into_iter()
+                .zip(named.programs.iter().map(|p| p.name.clone())),
+        )
     }
 
     /// Revalidates the reviewed plan and writes in order, stopping at the
@@ -1635,6 +1737,12 @@ impl Application {
                 plan.paths(),
                 plan.paths().first().cloned().unwrap_or_default(),
                 reason,
+            )
+        } else if !plan.partial_operations().is_empty() && !plan.partial_path_acknowledged() {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                export::partial_path_refusal(plan.partial_operations()),
             )
         } else {
             output_write::write(plan, replace)

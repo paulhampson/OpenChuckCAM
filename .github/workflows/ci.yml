@@ -12,6 +12,11 @@
 #   docs/dependencies.md, docs/open-items.md and docs/decisions/**), so Fast checks run on a
 #   Markdown-only pull request that changes one of those, and the heavy jobs do not.
 #
+# Light run on `main` (decision 0358, Option 4): a push to `main` whose commit has exactly the git tree
+# that a full, green pull request run already tested (the `tested-tree` artifact of that run) runs only
+# the fast checks and the Ubuntu legs of Build and test (`mode` = light); every other push, and every
+# scheduled or manual run, runs the full matrix. Any error while deciding means full.
+#
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
 # fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
@@ -24,6 +29,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  # The nightly full run on `main` (decision 0358, Option 4, OI-1413): a push to `main` may be a light run
+  # (below), so the whole matrix, and the `main` caches of every leg that pull requests restore, are
+  # refreshed once a day. 04:23 UTC is after the other nightly workflows.
+  schedule:
+    - cron: "23 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +48,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Cache policy (decision 0358, Option 1, OI-1410): every `rust-cache` step below saves only on `main`
+# (`save-if`); a pull request run restores the entries `main` wrote (a cache written on a pull request
+# branch is visible to that pull request only, and a push to each of several pull requests filled the
+# 10 GB repository limit and evicted the OpenCASCADE installs).
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -54,14 +68,20 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # The light-run check reads the pull request's CI runs and their `tested-tree` artifact.
+      actions: read
     outputs:
-      rust: ${{ steps.heavy.outputs.rust }}
-      records: ${{ steps.filter.outputs.records }}
-      any: ${{ steps.filter.outputs.any }}
-      fuzz: ${{ steps.heavy.outputs.fuzz }}
-      step: ${{ steps.heavy.outputs.step }}
-      gate3: ${{ steps.heavy.outputs.gate3 }}
-      linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
+      mode: ${{ steps.mode.outputs.mode }}
+      bt_matrix: ${{ steps.mode.outputs.bt_matrix }}
+      rust: ${{ steps.mode.outputs.rust }}
+      # `others`: the jobs that a light run leaves out besides the three below (UI smoke, Each library alone).
+      others: ${{ steps.mode.outputs.others }}
+      records: ${{ steps.mode.outputs.records }}
+      any: ${{ steps.mode.outputs.any }}
+      fuzz: ${{ steps.mode.outputs.fuzz }}
+      step: ${{ steps.mode.outputs.step }}
+      gate3: ${{ steps.mode.outputs.gate3 }}
+      linuxcnc_image: ${{ steps.mode.outputs.linuxcnc_image }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,6 +89,7 @@ jobs:
       # `records`, `any` and `linuxcnc_image` match Markdown too (see the header).
       - uses: dorny/paths-filter@v4
         id: filter
+        if: github.event_name != 'schedule'
         with:
           filters: |
             records:
@@ -93,6 +114,7 @@ jobs:
       # v4.0.3 is the first release with `some-with-excludes`; the moving `v4` tag is not relied on.
       - uses: dorny/paths-filter@v4.0.3
         id: heavy
+        if: github.event_name != 'schedule'
         with:
           predicate-quantifier: some-with-excludes
           filters: |
@@ -159,6 +181,26 @@ jobs:
               - '.github/workflows/ci.yml'
               - '!**/*.md'
 
+      # Which run this is (decision 0358, Option 4). A scheduled run is full and due everywhere. A push to
+      # `main` is light only when the pushed commit's git tree is the tree a full green pull request run
+      # tested; every failure, ambiguity or missing piece below means full.
+      - name: Work out the run mode and the due jobs
+        id: mode
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          F_RUST: ${{ steps.heavy.outputs.rust }}
+          F_STEP: ${{ steps.heavy.outputs.step }}
+          F_GATE3: ${{ steps.heavy.outputs.gate3 }}
+          F_FUZZ: ${{ steps.heavy.outputs.fuzz }}
+          F_RECORDS: ${{ steps.filter.outputs.records }}
+          F_ANY: ${{ steps.filter.outputs.any }}
+          F_IMAGE: ${{ steps.filter.outputs.linuxcnc_image }}
+        run: bash tools/ci/main-run-mode.sh
+
   # The simulator runs in real time. Bounded first-cut fixtures are expanded before
   # the golden programs and fixtures are dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
   # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
@@ -185,6 +227,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Get the LinuxCNC image
         env:
           IMAGE_CHANGED: ${{ needs.changes.outputs.linuxcnc_image }}
@@ -205,9 +249,8 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
-  # Every OS splits the test run over two jobs (decision 0052, Option 4):
-  # `--partition hash:I/N` gives each test to one share by a hash of its name, so a
-  # new test never moves the others. Shard 1 also runs clippy, the doctests and
+  # Every OS splits the test run over two jobs (decision 0052, Option 4; dealt by binary and measured
+  # time since decision 0358, Option 3, see SHARD1_BINARIES below). Shard 1 also runs clippy, the doctests and
   # the examples, which the other shards would only repeat. The partition check below fails a job whose
   # shares are empty or do not add up to the full list, so no test goes unrun.
   build-test:
@@ -216,21 +259,19 @@ jobs:
     if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, shard: 1, shards: 2 }
-          - { os: ubuntu-latest, shard: 2, shards: 2 }
-          - { os: windows-latest, shard: 1, shards: 2 }
-          - { os: windows-latest, shard: 2, shards: 2 }
-          - { os: macos-latest, shard: 1, shards: 2 }
-          - { os: macos-latest, shard: 2, shards: 2 }
+      matrix: ${{ fromJSON(needs.changes.outputs.bt_matrix) }}
     runs-on: ${{ matrix.os }}
+    env:
+      SHARD1_BINARIES: >-
+        openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
+        openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: shard-${{ matrix.shard }}
       - uses: taiki-e/install-action@v2
         with:
@@ -238,29 +279,46 @@ jobs:
       - name: clippy (deny warnings, unwrap and unchecked indexing)
         if: matrix.shard == 1
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The two shares are dealt by test binary, by measured time (decision 0358, Option 3, OI-1412):
+      # share 1 runs the binaries listed in SHARD1_BINARIES, share 2 runs every other test (the exact
+      # complement), so a new test or binary always runs, in share 2 unless it is listed. The list was
+      # chosen from the per-test times of run 41096871005 on all three systems so that both shares hold
+      # about half of the test time on each (Ubuntu 18.4 and 18.7 min of 4-thread time, Windows 23.5
+      # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
+      # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
+      # removed), if either share is empty or if the shares do not add up to the full list.
       - name: Check the test partition
         shell: bash
-        env:
-          SHARDS: ${{ matrix.shards }}
         run: |
-          total=$(cargo nextest list --workspace --locked --message-format oneline | wc -l)
-          sum=0
-          for i in $(seq 1 "$SHARDS"); do
-            n=$(cargo nextest list --workspace --locked --message-format oneline --partition "hash:$i/$SHARDS" | wc -l)
-            echo "share $i of $SHARDS: $n tests"
+          list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          total=$(list | wc -l)
+          n1=$(list -E "$shard1" | wc -l)
+          n2=$(list -E "not ($shard1)" | wc -l)
+          echo "full list: $total tests; share 1: $n1; share 2: $n2"
+          for b in $SHARD1_BINARIES; do
+            n=$(list -E "binary_id(=$b)" | wc -l)
             if [ "$n" -eq 0 ]; then
-              echo "::error title=Empty test share::share $i of $SHARDS has no tests"
+              echo "::error title=Listed test binary has no tests::$b in SHARD1_BINARIES matches no test; rename or remove it"
               exit 1
             fi
-            sum=$((sum + n))
           done
-          echo "full list: $total tests, shares add up to $sum"
-          if [ "$sum" -ne "$total" ]; then
-            echo "::error title=Test shares do not add up::the $SHARDS shares hold $sum tests, the full list $total"
+          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ]; then
+            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2"
+            exit 1
+          fi
+          if [ $((n1 + n2)) -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::$n1 + $n2 is not the full list of $total"
             exit 1
           fi
       - name: Tests
-        run: cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail --partition "hash:${{ matrix.shard }}/${{ matrix.shards }}"
+        shell: bash
+        run: |
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          if [ "${{ matrix.shard }}" = 1 ]; then filter="$shard1"; else filter="not ($shard1)"; fi
+          cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
       - name: Doctests
         if: matrix.shard == 1
         run: cargo test --workspace --doc --locked
@@ -277,7 +335,7 @@ jobs:
   ui-smoke:
     name: UI smoke test (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.others == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
     # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb. Windows (WARP) and
@@ -310,6 +368,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Software Vulkan and a virtual display (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -378,6 +438,7 @@ jobs:
       - uses: ./.github/actions/occt
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: step-kernel
           cache-on-failure: true
       - name: Tool versions
@@ -432,7 +493,7 @@ jobs:
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.others == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -443,9 +504,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-hack
+          tool: cargo-hack,cargo-nextest
       # The library family builds and tests on its own, without the C++
       # toolchain, GPU libraries or application crates (architecture section 12).
       - name: Build each library crate on its own
@@ -454,11 +517,15 @@ jobs:
           --package openchuck-types --package openchuck-path
           --package openchuck-post --package openchuck-gcode
           --package openchuck-geom --package openchuck-sim --package openchuck-project
+      # nextest runs a crate's test binaries side by side (cargo test runs them one after another:
+      # 21 to 24 min a leg, mostly openchuck-path), and the crate is still built and tested alone, one
+      # `-p` at a time. nextest does not run doctests, so they follow (decision 0358, Option 2, OI-1411).
       - name: Test each library-family crate on its own
         shell: bash
         run: |
           for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
-            cargo test --locked -p "$crate"
+            cargo nextest run --locked --no-fail-fast --no-tests=fail -p "$crate"
+            cargo test --locked --doc -p "$crate"
           done
       # The library family packages and builds from its packages alone, as `cargo publish` would
       # (OI-302, decision 0138). Once is enough: packaging does not depend on the platform.
@@ -492,6 +559,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: fast-checks
       - uses: taiki-e/install-action@v2
         if: needs.changes.outputs.rust == 'true'
@@ -521,6 +589,10 @@ jobs:
         id: publish
         if: always() && needs.changes.outputs.rust == 'true'
         run: cargo xtask publish
+      # The light-run decision of the `changes` job, against a fake `gh` (decision 0358, Option 4).
+      - name: Main-run mode logic (light or full)
+        run: bash tools/ci/main-run-mode.test.sh
+        if: always() && needs.changes.outputs.rust == 'true'
       - name: Unresolved merge conflict markers
         id: conflicts
         if: always()
@@ -648,6 +720,7 @@ jobs:
           tool: cargo-fuzz
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: fuzz
           key: fuzz-smoke
       - name: Seed the STL corpus from testdata
@@ -751,6 +824,8 @@ jobs:
       - fast-checks
       - fuzz-smoke
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check the required jobs
         shell: bash
@@ -788,8 +863,8 @@ jobs:
           }
           check gate3 "$(out gate3)"
           check build-test "$(out rust)"
-          check ui-smoke "$(out rust)"
-          check libraries-alone "$(out rust)"
+          check ui-smoke "$(out others)"
+          check libraries-alone "$(out others)"
           check step-kernel "$(out step)"
           fast=false
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
@@ -808,3 +883,27 @@ jobs:
             exit 1
           fi
           echo "All required jobs passed or were turned off by their path filters."
+      # The tested tree for the light-run check on `main` (decision 0358, Option 4): written only by a
+      # pull request run that is not a draft and whose required jobs all passed (the step above fails
+      # otherwise). `full=true` only when the code jobs were due, so a docs-only run never counts.
+      - name: Record the tested tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUST: ${{ needs.changes.outputs.rust }}
+        run: |
+          set -euo pipefail
+          tree=$(gh api "repos/$REPO/git/commits/$SHA" --jq .tree.sha)
+          full=false
+          [ "$RUST" = true ] && full=true
+          printf 'tree=%s\nfull=%s\n' "$tree" "$full" > tested-tree.txt
+          cat tested-tree.txt
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+        with:
+          name: tested-tree
+          path: tested-tree.txt
+          retention-days: 30

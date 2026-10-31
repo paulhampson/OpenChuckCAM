@@ -61,6 +61,8 @@ mod pending_pick;
 mod tree;
 
 #[cfg(test)]
+mod adaptive_tests;
+#[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
 mod pending_edit_tests;
@@ -145,6 +147,26 @@ enum Dialog {
     /// The opened project has models outside its folder: ask, each time it
     /// is opened, whether to copy them in (decision record 0307 item 5).
     CopyLinked(usize),
+    /// Adaptive spacing is being turned on for an operation saved with a
+    /// Scallop height of 0: ask for the Allowed excess first (decision
+    /// record 0239 item 5). `height` is the typed text.
+    AdaptiveHeight {
+        operation: OperationId,
+        height: String,
+    },
+}
+
+/// What the dialog that turns adaptive spacing on from a saved zero says
+/// (decision record 0239 item 5).
+pub(crate) const ADAPTIVE_HEIGHT_TEXT: &str = "This operation was saved with a Scallop height of 0, which meant no limit on the cusp. With adaptive spacing on, the same value is the Allowed excess: the most material that may stand between two passes above the finished surface and its stock to leave. 0 there asks for no excess at all, which may leave places unverified or meet the limits. 0.01 mm is suggested. Cancel leaves the operation as it is; Turn on sets both in one step you can undo.";
+
+/// The Allowed excess typed in the dialog, when it is a finite number of
+/// millimetres, at least 0.
+pub(crate) fn adaptive_height(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|h| h.is_finite() && *h >= 0.0)
 }
 
 /// The question asked on opening a project with `count` models outside its
@@ -166,6 +188,9 @@ pub struct Shell {
     edit_context: Option<egui::Context>,
     edit_guard: pending::Guard,
     app: Option<Application>,
+    /// The computer's physical memory, read once, which caps the memory for
+    /// playback checkpoints at a quarter (decision record 0322 item 5).
+    physical_memory: Option<u64>,
     /// The window title last sent to the system (#218).
     sent_title: String,
     /// The setting the inspector brings into view on its next frame: a
@@ -300,6 +325,7 @@ impl Shell {
             edit_context: None,
             edit_guard: pending::Guard::default(),
             app: None,
+            physical_memory: crate::memory::physical(),
             sent_title: String::new(),
             setting_jump: None,
             viewport: Viewport::new(viewport_available),
@@ -365,6 +391,9 @@ impl Shell {
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -722,6 +751,22 @@ impl Shell {
                 false
             }
         }
+    }
+
+    /// Sets "Memory for playback checkpoints" in MB, brought into its range
+    /// and steps (decision record 0322), for the next time the cut part is
+    /// prepared.
+    fn set_playback_memory_mb(&mut self, mb: u32) {
+        let simulate = openchuck_app::settings::SimulateSettings {
+            playback_memory_mb: mb,
+            ..self.settings.simulate
+        }
+        .clamped();
+        self.settings.simulate.playback_memory_mb = simulate.playback_memory_mb;
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
+        self.settings_touched();
     }
 
     /// Turns the recording of the user's actions in the log on or off, and
@@ -1165,6 +1210,18 @@ impl Shell {
         };
         if let Some(name) = name {
             self.dialog = Some(Dialog::Rename { item, name });
+        }
+    }
+
+    /// Turns adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, as one undoable step (decision record 0239 item 5).
+    fn enable_adaptive_spacing(&mut self, operation: OperationId, height: f64) {
+        let Some(app) = &mut self.app else { return };
+        if let Err(e) = app.enable_adaptive_spacing(operation, height) {
+            self.dialog = Some(Dialog::Error(format!(
+                "Adaptive spacing was not turned on: {}",
+                e.user_message()
+            )));
         }
     }
 
@@ -2020,6 +2077,37 @@ impl Shell {
                     }
                 });
                 ui.label("Keeps three periodic checkpoints and one interim checkpoint after 15 seconds without a confirmed change. Recovery never saves over your project automatically.");
+                let (least, _, most, step) = openchuck_app::settings::PLAYBACK_MEMORY_MB;
+                let mut memory = self.settings.simulate.playback_memory_mb;
+                ui.horizontal(|ui| {
+                    ui.label("Memory for playback checkpoints (MB)");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut memory)
+                                .range(least..=most)
+                                .speed(f64::from(step) / 8.0),
+                        )
+                        .changed()
+                    {
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.set_playback_memory_mb(memory);
+                        }));
+                    }
+                    let (_, cap) = crate::memory::playback_memory(
+                        self.settings.simulate.playback_memory_mb,
+                        self.physical_memory,
+                    );
+                    if let Some(cap) = cap {
+                        ui.label(format!("This computer: at most {cap} MB"));
+                    }
+                });
+                ui.label(
+                    "Simulate keeps copies of the cut part along the program so that a jump in \
+                     playback needs to replay only a short stretch. More memory gives shorter \
+                     waits after a jump; less gives longer waits. The cut part shown is the same \
+                     either way. The copies are never allowed to use more than this. A change \
+                     applies the next time the cut part is prepared.",
+                );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
@@ -2059,6 +2147,37 @@ impl Shell {
                 if ui.button("OK").clicked() {
                     close = true;
                 }
+            }
+            Dialog::AdaptiveHeight {
+                operation,
+                mut height,
+            } => {
+                ui.heading("Turn on adaptive spacing");
+                ui.label(ADAPTIVE_HEIGHT_TEXT);
+                ui.horizontal(|ui| {
+                    ui.label("Allowed excess (mm)");
+                    ui.text_edit_singleline(&mut height);
+                });
+                let parsed = adaptive_height(&height);
+                if parsed.is_none() {
+                    ui.colored_label(DARK.error, "Enter a number of millimetres, at least 0.");
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(parsed.is_some(), egui::Button::new("Turn on"))
+                        .clicked()
+                        && let Some(h) = parsed
+                    {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.enable_adaptive_spacing(operation, h);
+                        }));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+                self.dialog = Some(Dialog::AdaptiveHeight { operation, height });
             }
         });
         if form_browse {

@@ -150,6 +150,75 @@ pub struct DexelStock {
     z_range: ZRange,
 }
 
+/// A [`DexelStock`] packed into two arrays: each column's spans one after
+/// another, and where each column's spans end. A checkpoint holds its copy
+/// this way (decision record 0322).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackedStock {
+    x0: f64,
+    y0: f64,
+    cx: f64,
+    cy: f64,
+    nx: usize,
+    ny: usize,
+    reach: f64,
+    ends: Vec<usize>,
+    spans: Vec<[f64; 2]>,
+}
+
+impl PackedStock {
+    /// The stock again, column by column, to be cut or shown.
+    pub fn unpack(&self) -> DexelStock {
+        let mut start = 0;
+        let cols = self
+            .ends
+            .iter()
+            .map(|&end| {
+                let col = self.spans.get(start..end).unwrap_or_default().to_vec();
+                start = end;
+                col
+            })
+            .collect();
+        DexelStock {
+            x0: self.x0,
+            y0: self.y0,
+            cx: self.cx,
+            cy: self.cy,
+            nx: self.nx,
+            ny: self.ny,
+            cols,
+            reach: self.reach,
+            z_range: ZRange::default(),
+        }
+    }
+
+    /// Bytes held, from the arrays' capacities.
+    pub fn memory_bytes(&self) -> usize {
+        self.ends.capacity() * std::mem::size_of::<usize>()
+            + self.spans.capacity() * std::mem::size_of::<[f64; 2]>()
+            + std::mem::size_of::<Self>()
+    }
+
+    /// The [`DexelStock::state_hash`] of the stock it holds.
+    pub fn state_hash(&self) -> u64 {
+        let mut h = FNV_START;
+        for x in [self.x0, self.y0, self.cx, self.cy] {
+            fnv(&mut h, &x.to_bits().to_le_bytes());
+        }
+        let mut start = 0;
+        for &end in &self.ends {
+            let col = self.spans.get(start..end).unwrap_or_default();
+            fnv(&mut h, &(col.len() as u64).to_le_bytes());
+            for iv in col {
+                fnv(&mut h, &iv[0].to_bits().to_le_bytes());
+                fnv(&mut h, &iv[1].to_bits().to_le_bytes());
+            }
+            start = end;
+        }
+        h
+    }
+}
+
 /// The material's lowest and highest Z, kept once worked out until the stock
 /// is cut again (issue #252): [`DexelStock::bounds`] reads every column, and
 /// a toolpath's entry moves cast thousands of rays, each of which asked for
@@ -377,6 +446,29 @@ impl DexelStock {
             .sum::<usize>()
             + self.cols.capacity() * std::mem::size_of::<Vec<[f64; 2]>>()
             + std::mem::size_of::<Self>()
+    }
+
+    /// The stock packed into two arrays, for a checkpoint: copying it is two
+    /// allocations instead of one per column, and its size is what it holds
+    /// (decision record 0322).
+    pub fn pack(&self) -> PackedStock {
+        let mut ends = Vec::with_capacity(self.cols.len());
+        let mut spans = Vec::with_capacity(self.cols.iter().map(Vec::len).sum());
+        for c in &self.cols {
+            spans.extend_from_slice(c);
+            ends.push(spans.len());
+        }
+        PackedStock {
+            x0: self.x0,
+            y0: self.y0,
+            cx: self.cx,
+            cy: self.cy,
+            nx: self.nx,
+            ny: self.ny,
+            reach: self.reach,
+            ends,
+            spans,
+        }
     }
 
     /// A 64-bit FNV-1a hash of the stored state, for determinism checks
@@ -762,6 +854,151 @@ impl StockModel for DexelStock {
 mod tests {
     use super::*;
     use openchuck_types::units::Millimetres;
+
+    /// A checkpoint holds its copy packed (decision record 0322): the same
+    /// stock back, bit for bit, in two allocations, counted at its size.
+    #[test]
+    fn req_sim_04_req_nfr_07_a_packed_stock_unpacks_to_the_same_stock() {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(30.0),
+            x_start: Millimetres(0.0),
+        };
+        let mut d = DexelStock::from_stock(&stock, None, 0.2).unwrap();
+        // Cut a groove so columns hold none, one and two spans.
+        let tool = openchuck_types::tool::Tool {
+            shape: openchuck_types::tool::ToolShape::BallEnd,
+            diameter: Millimetres(6.0),
+            flute_length: Millimetres(20.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(6.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let tool = ToolSolid::new(&tool.profile().unwrap());
+        let poses: Vec<Pose> = (0..40)
+            .map(|i| Pose {
+                tip: Point3::new(f64::from(i) * 0.5, 0.0, 6.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+            })
+            .collect();
+        d.cut(&tool, &poses);
+        let spans = |s: &DexelStock| s.cols.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(spans(&d) >= 1);
+        let packed = d.pack();
+        assert_eq!(packed.state_hash(), d.state_hash());
+        let back = packed.unpack();
+        assert_eq!(back, d);
+        assert_eq!(back.state_hash(), d.state_hash());
+        assert_eq!(back.volume().to_bits(), d.volume().to_bits());
+        // Smaller than the column-by-column copy it replaces.
+        assert!(
+            packed.memory_bytes() < d.memory_bytes(),
+            "{} {}",
+            packed.memory_bytes(),
+            d.memory_bytes()
+        );
+        // An empty stock packs and unpacks too.
+        let empty = DexelStock::from_stock(&stock, None, 0.2).unwrap();
+        assert_eq!(empty.pack().unpack(), empty);
+    }
+
+    /// A V-bit finishing of a carving, as the owner's project and the test
+    /// piece of issue #382 have: a 60 degree V-bit with a 0.1 mm tip, passes
+    /// along X a hundredth of a radian apart round a relief, on a stock
+    /// already roughed close to it.
+    fn carving_finishing() -> (DexelStock, ToolSolid, Vec<Pose>) {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(22.0),
+            length: Millimetres(12.0),
+            x_start: Millimetres(-6.0),
+        };
+        let mut d = DexelStock::from_stock(&stock, None, 0.1).unwrap();
+        let tool = |shape, diameter| {
+            let t = openchuck_types::tool::Tool {
+                shape,
+                diameter: Millimetres(diameter),
+                flute_length: Millimetres(10.0),
+                overall_length: Millimetres(40.0),
+                shank_diameter: Millimetres(3.0),
+                flute_count: 2,
+                material: None,
+                centre_cutting: None,
+            };
+            ToolSolid::new(&t.profile().unwrap())
+        };
+        let relief = |x: f64, a: f64| 9.0 + 0.4 * (2.0 * x).sin() * (5.0 * a).cos();
+        let pose = |x: f64, a: f64, lift: f64| {
+            let axis = Vec3::new(0.0, a.sin(), a.cos());
+            let r = relief(x, a) + lift;
+            Pose {
+                tip: Point3::new(x, r * axis.y, r * axis.z),
+                axis,
+            }
+        };
+        let passes = |step: f64, count: usize, along: f64, lift: f64| -> Vec<Pose> {
+            let mut poses = Vec::new();
+            for k in 0..count {
+                let a = -0.3 + k as f64 * step;
+                for i in 0..=((10.0 / along) as usize) {
+                    // Back and forth, as a raster finishing goes.
+                    let t = i as f64 * along;
+                    let x = if k % 2 == 0 { -5.0 + t } else { 5.0 - t };
+                    poses.push(pose(x, a, lift));
+                }
+            }
+            poses
+        };
+        let ball = tool(openchuck_types::tool::ToolShape::BallEnd, 3.0);
+        d.cut(&ball, &passes(0.1, 7, 0.1, 0.3));
+        let vbit = tool(
+            openchuck_types::tool::ToolShape::VBit {
+                included_angle: openchuck_types::units::Degrees(60.0),
+                tip_diameter: Millimetres(0.1),
+            },
+            3.0,
+        );
+        (d, vbit, passes(0.01, 60, 0.05, 0.0))
+    }
+
+    /// Skipping the lines that surely miss the tool (decision record 0332)
+    /// cuts the same stock, bit for bit, as the search alone, with the same
+    /// removed volume, at 1, 2 and 4 threads (SIM-03, NFR-06, GC-07: later
+    /// operations are made against this stock).
+    #[test]
+    fn req_sim_03_req_nfr_06_a_carving_finishing_cuts_the_same_stock_as_the_search_alone() {
+        let (start, vbit, poses) = carving_finishing();
+        let pool = |n| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(n)
+                .build()
+                .unwrap()
+        };
+        // The search alone, on one thread whose every line is searched.
+        let (searched, searched_removed) = pool(1).install(|| {
+            crate::span::SEARCH_EVERY_LINE.with(|s| s.set(true));
+            let mut d = start.clone();
+            let removed = d.cut(&vbit, &poses);
+            crate::span::SEARCH_EVERY_LINE.with(|s| s.set(false));
+            (d, removed)
+        });
+        assert!(searched_removed > 1.0, "{searched_removed}");
+        for threads in [1, 2, 4] {
+            let (d, removed) = pool(threads).install(|| {
+                let mut d = start.clone();
+                let removed = d.cut(&vbit, &poses);
+                (d, removed)
+            });
+            assert_eq!(d.state_hash(), searched.state_hash(), "{threads} threads");
+            assert_eq!(d, searched, "{threads} threads");
+            assert_eq!(
+                removed.to_bits(),
+                searched_removed.to_bits(),
+                "{threads} threads"
+            );
+        }
+    }
 
     #[test]
     fn req_op_24_the_stock_ends_are_where_its_material_is() {

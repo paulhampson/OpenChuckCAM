@@ -8,6 +8,7 @@ use openchuck_types::ir::{Toolpath, ToolpathGroup};
 pub fn post_run(
     groups: &[Result<ToolpathGroup, String>],
     job: &PostJob,
+    id: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let groups: Vec<_> = groups
         .iter()
@@ -16,6 +17,6 @@ pub fn post_run(
     if groups.is_empty() {
         return Err("M4 cannot post a run with no successful operations".into());
     }
-    let post = TemplatePost::new(builtin("makera-z1").ok_or("no Z1 post")??);
+    let post = TemplatePost::new(builtin(id).ok_or("no such built-in post")??);
     Ok(post.post(&Toolpath { groups }, job)?.text)
 }

@@ -9,6 +9,7 @@
 )]
 
 mod support;
+use support::{generate, generate_in_zones};
 
 use std::collections::BTreeMap;
 
@@ -16,7 +17,7 @@ use openchuck_path::axial::parameter as axial_parameter;
 use openchuck_path::params::names;
 use openchuck_path::{
     AxialFinishing, GeneratedPath, HelicalFinishing, IndexedFinishing, LeaveZone, MeshSurface,
-    ParameterValue, Strategy, generate, generate_in_zones,
+    ParameterValue, Strategy,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::geometry::Point3;
@@ -86,7 +87,10 @@ fn check_leaves(cuts: &[(f64, f64)], what: &str) {
     assert!(cuts.len() > 50, "{what}");
     let mut by_x: Vec<(f64, f64)> = cuts.to_vec();
     by_x.sort_by(|a, b| a.0.total_cmp(&b.0));
-    for &(x, r) in cuts {
+    // Over the part's length only: indexed finishing's passes run on past
+    // each end by the tool's radius, where the ball rolls over the end's
+    // edge and its tip goes below the part's radius (decision record 0343).
+    for &(x, r) in cuts.iter().filter(|(x, _)| (0.0..=LENGTH).contains(x)) {
         // Never closer than the smaller leave, never beyond the larger.
         assert!(
             (RADIUS - 2e-3..=RADIUS + 0.5 + 2e-3).contains(&r),

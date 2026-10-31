@@ -97,8 +97,12 @@ impl Strategy for Plain {
         _: &[LeaveZone<'_>],
         p: &Parameters,
         c: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        self.passes(i, p, c)
+    ) -> Result<StrategyOutput> {
+        Ok(StrategyOutput {
+            passes: self.passes(i, p, c)?,
+            notes: Vec::new(),
+            warnings: Vec::new(),
+        })
     }
     fn passes_with_notes(
         &self,
@@ -113,6 +117,7 @@ impl Strategy for Plain {
             warnings: vec![PathWarning {
                 message: "Existing strategy warning".into(),
                 parameter: Some("tolerance".into()),
+                requires_acknowledgement: false,
             }],
         })
     }
@@ -168,7 +173,7 @@ impl Strategy for Validating {
         z: &[LeaveZone<'_>],
         p: &Parameters,
         c: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
+    ) -> Result<StrategyOutput> {
         Plain.passes_in_zones(i, r, z, p, c)
     }
     fn passes_with_notes(
@@ -268,7 +273,8 @@ fn req_op_24_req_op_16_final_validation_runs_after_keepout_assembly_and_diagnost
                 path.warnings,
                 vec![PathWarning {
                     message: "Existing strategy warning".into(),
-                    parameter: Some("tolerance".into())
+                    parameter: Some("tolerance".into()),
+                    requires_acknowledgement: false,
                 }]
             );
             assert!(

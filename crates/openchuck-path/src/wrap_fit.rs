@@ -223,6 +223,10 @@ pub(crate) struct Fit<'a> {
     /// (decision record 0044 item 3). The caller also sets `constrained`, so
     /// the limits of the wanted places are found by bisection.
     pub(crate) wanted: Option<&'a (dyn Fn(Point3) -> bool + Send + Sync)>,
+    /// How far across the rotary axis the tool's line stands, mm: 0 for a
+    /// tool over the axis; a pass indexed finishing adds beside a position
+    /// stands off it (decision record 0239).
+    pub(crate) across: f64,
 }
 
 impl Fit<'_> {
@@ -273,7 +277,7 @@ impl Fit<'_> {
         let line = self
             .input
             .rotary
-            .tool_line(Millimetres(x), a, Millimetres(0.0));
+            .tool_line(Millimetres(x), a, Millimetres(self.across));
         let (contact, leave, profile) = self.drop(&line)?;
         if let Some(region) = self.region
             && !region.allows(contact.contact, contact.tip, profile, &line)
