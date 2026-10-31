@@ -1862,7 +1862,11 @@ fn req_sim_04_a_stock_cached_without_checkpoints_is_simulated_again_for_playback
     assert!(plain.simulation.is_none());
     let run = Arc::new(app.simulate().unwrap());
     let setups = &run.simulation.as_ref().unwrap().setups;
-    assert!(setups.iter().all(|s| s.checkpoints.len() > s.operations.len()));
+    assert!(
+        setups
+            .iter()
+            .all(|s| s.checkpoints.len() > s.operations.len())
+    );
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
     let play = app
         .start_stock_playback(t, DEFAULT_PLAYBACK_MEMORY)

@@ -303,7 +303,13 @@ pub(crate) fn regenerate(
         let cached_path = hit.is_some();
         let (path, cached_stock) = if let Some(hit) = hit {
             regeneration.reused.push(operation.id);
-            (hit.path, hit.stock)
+            // A stock left by a run that kept no playback checkpoints (one
+            // that did not simulate every operation) is simulated again
+            // when this run keeps them (decision record 0333).
+            let stock = hit
+                .stock
+                .filter(|s| playback.is_none() || s.keeps_checkpoints());
+            (hit.path, stock)
         } else {
             let own = share(STAGE_GENERATE, i, 0.0, made_part);
             let within = JobContext::new(context.cancel, &own);

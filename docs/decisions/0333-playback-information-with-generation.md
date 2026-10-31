@@ -41,7 +41,12 @@ A first version sized each copy by the stock as held, not packed; it kept 301 ch
 - `req_ui_15_req_sim_04_playback_with_generation_is_personal_and_defaults_to_the_computer` (`openchuck-app/tests/settings.rs`): unset by default, unset when read from an older file, and kept on, off and unset.
 - `req_sim_04_req_nfr_07_playback_with_generation_is_on_by_default_from_16_gb` (`openchuck-ui` `memory.rs`): on at 32 GB, at 16 GB and at a 16 GB computer's reported 15.5 GiB, off at 12 and 8 GB and when unknown; the GB named in Settings.
 - `req_ui_15_req_sim_04_settings_sets_playback_information_with_generation` (`openchuck-ui` frame tests): the line and the default note in Settings at 32 GB, 8 GB and unknown memory; the user's choice and "Use this computer's default"; the application given the memory when on (capped at a quarter of the computer) and none when off; the choice kept in the settings file.
+- `req_sim_04_a_stock_cached_without_checkpoints_is_simulated_again_for_playback` (`openchuck-app/tests/playback.rs`, 5.6 s): with the setting on, a regenerate that does not simulate everything (as the export dialog's), then a simulating run: the run keeps checkpoints for every operation and playback is made from it. Added after review (below); it failed before the fix.
 - The existing simulation, playback, pipeline, cache, reference-job and golden tests pass unchanged.
+
+### From the review of pull request 420
+
+CodeRabbit found that a run that does not simulate every operation (the export dialog's regenerate, or a project that skips the simulation) caches the stocks a later operation needs without checkpoints, and a simulating run with the setting on reused them, so its playback was prepared by simulating again: correct, but the setting did nothing until something forced a new simulation. The coordinator triaged it to be fixed in this pull request's one push. With the setting on, a cached stock that keeps no checkpoints is now simulated again (and cached with them).
 
 ### From the review of pull request 417
 

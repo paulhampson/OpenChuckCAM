@@ -149,6 +149,12 @@ impl SetupState {
         self.simulator.stock()
     }
 
+    /// Whether it keeps playback's checkpoints (decision record 0333): a
+    /// state made by a run that did not keep them has none to give.
+    pub(crate) fn keeps_checkpoints(&self) -> bool {
+        !self.simulator.checkpoints().is_empty()
+    }
+
     /// The memory its checkpoints hold.
     pub(crate) fn checkpoint_bytes(&self) -> usize {
         self.simulator.checkpoint_bytes()
