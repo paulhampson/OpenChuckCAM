@@ -671,3 +671,31 @@ fn req_set_10_manage_machines_in_the_inspector_opens_the_window() {
         "it opens on the project's machine"
     );
 }
+
+#[test]
+fn req_set_10_req_ui_16_a_long_library_path_keeps_the_machine_panel_height() {
+    // A library path long enough to wrap (as on Windows) must not make the
+    // machine panel taller: the Stock section below it stays where it is.
+    let measure = |dir: PathBuf| {
+        let mut rig = Rig::cube("machines-long-path", None);
+        rig.size = egui::vec2(1920.0, 1080.0);
+        rig.shell.machine_panel = Some(crate::machine_panel::MachinePanel::with_library(Some(dir)));
+        let id = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+        rig.shell.choose_setup(id, None);
+        draw(&mut rig);
+        rig.texts()
+            .into_iter()
+            .find(|(t, _)| t == "Diameter")
+            .map(|(_, y)| y)
+            .unwrap()
+    };
+    let short = measure(PathBuf::from("/m"));
+    let long = measure(PathBuf::from(format!(
+        "C:\\Users\\{}\\AppData\\Roaming\\OpenChuckCAM\\machines",
+        "a-very-long-user-name".repeat(6)
+    )));
+    assert_eq!(
+        short, long,
+        "the Stock section moved with the path's length"
+    );
+}

@@ -130,7 +130,14 @@ pub struct MachinePanel {
 
 impl Default for MachinePanel {
     fn default() -> Self {
-        let library = default_folders().map(|f| f.machines);
+        Self::with_library(default_folders().map(|f| f.machines))
+    }
+}
+
+impl MachinePanel {
+    /// A panel on the machine library folder `library` (the user's default
+    /// folder in [`Default`]).
+    pub fn with_library(library: Option<PathBuf>) -> Self {
         let available = available_machines(library.as_deref());
         Self {
             library,
@@ -416,7 +423,12 @@ impl MachinePanel {
         let mut manage = false;
         match self.library.clone() {
             Some(dir) => {
-                ui.weak(format!("Library: {}", dir.display()));
+                // One line however long the path is (a Windows profile path
+                // would wrap and push the sections below it down); the whole
+                // path is in the tooltip.
+                let path = format!("Library: {}", dir.display());
+                ui.add(egui::Label::new(RichText::new(&path).color(DARK.muted)).truncate())
+                    .on_hover_text(&path);
                 if dir.is_dir() {
                     ui.horizontal(|ui| {
                         if ui.button("Open the library folder").clicked() {
