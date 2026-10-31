@@ -852,6 +852,47 @@ pub fn set_machine_field(
     Ok(p)
 }
 
+/// `profile` with the value `field` marked confirmed on the machine, with
+/// `how` (how the user confirmed it) as its source (UI-13; the owner's
+/// choice on OI-1471, decision 0380 item 8). `how` must say something. The
+/// short-move mode is a software setting and cannot be confirmed on the
+/// machine. The window never offers this on a built-in profile, which is
+/// never written.
+pub fn confirm_value(
+    profile: &MachineProfile,
+    field: ProfileField,
+    how: &str,
+) -> Result<MachineProfile, FieldProblem> {
+    let name = SPECS
+        .iter()
+        .find(|s| s.provenance == Some(field))
+        .map_or("", |s| s.name);
+    if field == ProfileField::ShortBlockMode {
+        return Err(problem(
+            name,
+            "This is a software setting, not a machine value, so it cannot be confirmed on \
+             the machine.",
+        ));
+    }
+    let how = how.trim();
+    if how.is_empty() {
+        return Err(problem(
+            name,
+            "Say how the value was confirmed on the machine, for example what was measured \
+             and when.",
+        ));
+    }
+    let mut p = profile.clone();
+    p.provenance.insert(
+        field,
+        Provenance {
+            state: Confirmation::Confirmed,
+            source: how.to_owned(),
+        },
+    );
+    Ok(p)
+}
+
 /// Checks the whole profile, giving the first problem in plain words with
 /// the field it belongs to: the rules between values first (the A range,
 /// the travel, the safe Z against the cylinder, the spindle speeds), then
@@ -963,7 +1004,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_req_ui_13_the_form_lists_every_value_with_its_provenance() {
+    fn req_set_10_req_ui_13_the_form_lists_every_value_with_its_provenance() {
         let p = z1();
         let form = machine_form(&p);
         // Every profile field that has provenance is in the form.
@@ -1003,7 +1044,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_the_form_shows_every_choice_and_sets_it_back_unchanged() {
+    fn req_set_10_the_form_shows_every_choice_and_sets_it_back_unchanged() {
         let mut p = z1();
         p.a_sense = ASense::Negative;
         p.a_range = ARange::Limited {
@@ -1050,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_13_an_edited_value_is_marked_not_confirmed_and_others_keep_theirs() {
+    fn req_set_10_req_ui_13_an_edited_value_is_marked_not_confirmed_and_others_keep_theirs() {
         let p = z1();
         assert!(p.is_confirmed(ProfileField::MaxFeeds));
         let q = set_machine_field(&p, FEED_Z, Some(&num(500.0))).expect("valid");
@@ -1078,7 +1119,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_every_kind_of_value_can_be_set() {
+    fn req_set_10_every_kind_of_value_can_be_set() {
         let p = z1();
         let set = |p: &MachineProfile, n: &str, v: Option<ParameterValue>| {
             set_machine_field(p, n, v.as_ref()).unwrap_or_else(|e| panic!("{n}: {e}"))
@@ -1143,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_07_bad_values_are_refused_in_plain_words_naming_the_field() {
+    fn req_set_10_req_nfr_07_bad_values_are_refused_in_plain_words_naming_the_field() {
         let p = z1();
         let cases: &[(&str, Option<ParameterValue>, &str, &str)] = &[
             (
@@ -1289,7 +1330,36 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_07_a_whole_profile_check_names_the_field_in_plain_words() {
+    fn req_set_10_req_ui_13_a_value_is_confirmed_only_with_how() {
+        let p = set_machine_field(&z1(), FEED_Z, Some(&num(500.0))).expect("valid");
+        assert!(!p.is_confirmed(ProfileField::MaxFeeds));
+        for how in ["", "   "] {
+            let e = confirm_value(&p, ProfileField::MaxFeeds, how).expect_err("no text");
+            assert_eq!(e.name, FEED_LINEAR);
+            assert_eq!(
+                e.message,
+                "Say how the value was confirmed on the machine, for example what was \
+                 measured and when."
+            );
+        }
+        let q = confirm_value(&p, ProfileField::MaxFeeds, "  Jogged at F500, 31 Oct  ")
+            .expect("confirmed");
+        assert!(q.is_confirmed(ProfileField::MaxFeeds));
+        assert_eq!(
+            q.provenance[&ProfileField::MaxFeeds].source,
+            "Jogged at F500, 31 Oct"
+        );
+        assert_eq!(q.max_feeds, p.max_feeds);
+        let e = confirm_value(&p, ProfileField::ShortBlockMode, "checked").expect_err("policy");
+        assert_eq!(e.name, SHORT_BLOCK_MODE);
+        assert!(e.message.contains("software setting"));
+        // Editing the value again marks it not confirmed.
+        let r = set_machine_field(&q, FEED_Z, Some(&num(550.0))).expect("valid");
+        assert!(!r.is_confirmed(ProfileField::MaxFeeds));
+    }
+
+    #[test]
+    fn req_set_10_req_nfr_07_a_whole_profile_check_names_the_field_in_plain_words() {
         let mut p = z1();
         assert_eq!(check_machine(&p), Ok(()));
         p.provenance
@@ -1312,7 +1382,7 @@ mod tests {
         /// NFR-07: no name or value panics, and whatever is accepted is a
         /// valid profile.
         #[test]
-        fn req_nfr_07_setting_any_value_never_panics(
+        fn req_set_10_req_nfr_07_setting_any_value_never_panics(
             which in 0usize..40,
             kind in 0u8..5,
             n in proptest::num::f64::ANY,

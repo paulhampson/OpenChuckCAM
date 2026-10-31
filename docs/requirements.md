@@ -120,6 +120,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
 | SET-08 | Optionally define a maximum acceleration for the rotary axis in the machine profile. Where it is set, time estimates (SIM-08) and motion smoothing use it; where it is not, no limit is assumed. Maximum feed rates stay in SET-01. | P2 |
 | SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth). The held region is a cylinder of the holding diameter when one is given, otherwise the stock's own section over the gripped length. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
+| SET-10 | Manage machine profiles in the application: view, create, edit, duplicate, import and export as files, and delete library profiles; edit the project's copy and save it to the library. Built-in profiles are read-only and can be copied to edit. ([Decision 0380](decisions/0380-machine-library-in-the-application.md); text agreed by the owner, relayed by the coordinator, 31 Oct 2026.) | P1 |
 
 ### 3.4 Tool management
 

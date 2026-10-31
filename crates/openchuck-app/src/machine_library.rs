@@ -11,6 +11,7 @@
 //! keep their own copy (decision 0011 item 7), so nothing here changes a
 //! project; a project copy compares with its source by ID (OI-54).
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use openchuck_project::ParameterValue;
@@ -18,9 +19,18 @@ use openchuck_project::machines::{
     ProfileEntry, builtin_entry, builtin_keys, list_library_entries, load_profile_entry,
     new_machine_id, save_profile_entry,
 };
-use openchuck_types::machine::MachineProfile;
+use openchuck_project::tools::ToolLibrary;
+use openchuck_types::geometry::{Aabb, Point3};
+use openchuck_types::machine::{
+    ARange, ASense, Clearance, Confirmation, MachineProfile, MaxFeeds, ProfileField, Provenance,
+    RotaryAxis, RotaryInFeed, ShortBlockMode,
+};
+use openchuck_types::units::{FeedRate, Millimetres, RotaryFeedRate};
 
-use crate::machine_edit::{FieldProblem, check_machine, set_machine_field};
+use crate::machine_edit::{
+    FieldProblem, MachineField, USER_CHANGED, check_machine, fields, machine_form,
+    set_machine_field,
+};
 use crate::setup::differing_fields;
 
 /// Why a library action failed, in plain words.
@@ -59,6 +69,89 @@ pub struct MachineDraft {
     pub saved: Option<MachineProfile>,
     /// The profile as edited.
     pub profile: MachineProfile,
+    /// Required values of a new machine not filled in yet ([`fields`]
+    /// names). They hold placeholders that are never shown or saved: the
+    /// form shows them blank and [`save_draft`] refuses while any is left.
+    pub blanks: BTreeSet<&'static str>,
+}
+
+/// The source of a value a new machine starts with (OI-1472).
+pub const NEW_MACHINE_DEFAULT: &str = "Default for a new machine; check it on the machine";
+
+/// The values a new machine must be given before it is saved (the owner's
+/// choice on OI-1472, decision 0380 item 9), in form order.
+pub const REQUIRED_FOR_NEW: [&str; 18] = [
+    fields::NAME,
+    fields::ORIGIN_X,
+    fields::ORIGIN_Y,
+    fields::ORIGIN_Z,
+    fields::TRAVEL_MIN_X,
+    fields::TRAVEL_MAX_X,
+    fields::TRAVEL_MIN_Y,
+    fields::TRAVEL_MAX_Y,
+    fields::TRAVEL_MIN_Z,
+    fields::TRAVEL_MAX_Z,
+    fields::FEED_LINEAR,
+    fields::FEED_Z,
+    fields::FEED_ROTARY,
+    fields::RAPID_LINEAR,
+    fields::RAPID_Z,
+    fields::RAPID_ROTARY,
+    fields::CLEARANCE_RADIUS,
+    fields::SAFE_Z,
+];
+
+/// Placeholders far from any real value, so that filling the required
+/// values one at a time never meets a rule between two values that the
+/// user has not both given.
+const FAR: f64 = 1.0e9;
+
+fn blank_profile() -> MachineProfile {
+    MachineProfile {
+        name: "New machine".to_owned(),
+        rotary_axis: RotaryAxis::X,
+        a_sense: ASense::Positive,
+        rotary_origin: Point3::new(0.0, 0.0, 0.0),
+        a_range: ARange::Continuous,
+        travel: Aabb {
+            min: Point3::new(-FAR, -FAR, -FAR),
+            max: Point3::new(FAR, FAR, FAR),
+        },
+        max_feeds: MaxFeeds {
+            linear: FeedRate(1.0),
+            z: FeedRate(1.0),
+            rotary: RotaryFeedRate(1.0),
+            rapid_linear: FeedRate(1.0),
+            rapid_z: FeedRate(1.0),
+            rapid_rotary: RotaryFeedRate(1.0),
+            rotary_in_feed: RotaryInFeed::Separate,
+        },
+        clearance: Clearance {
+            radius: Millimetres(1.0 / FAR),
+            safe_z: Millimetres(FAR),
+        },
+        max_tool_number: 99,
+        min_spindle_rpm: None,
+        max_spindle_rpm: None,
+        min_block_ms: 0.0,
+        block_window: 1,
+        short_block_mode: ShortBlockMode::Off,
+        automatic_tool_length: false,
+        spindle_to_axis: None,
+        recommended_min_safe_z: None,
+        provenance: ProfileField::ALL
+            .into_iter()
+            .map(|f| {
+                (
+                    f,
+                    Provenance {
+                        state: Confirmation::Unconfirmed,
+                        source: NEW_MACHINE_DEFAULT.to_owned(),
+                    },
+                )
+            })
+            .collect(),
+    }
 }
 
 /// Where a draft stands, shown beside Save and Cancel.
@@ -92,7 +185,62 @@ impl MachineDraft {
             id: entry.id,
             saved: Some(entry.profile.clone()),
             profile: entry.profile,
+            blanks: BTreeSet::new(),
         })
+    }
+
+    /// A new machine (New): its required values blank
+    /// ([`REQUIRED_FOR_NEW`]), the rest neutral (A continuous and positive,
+    /// A separate from the feed word, tool numbers to 99, short moves off,
+    /// no spindle range, no tool length measurement), every value not
+    /// confirmed. It has no ID until it is saved.
+    pub fn new_machine() -> Self {
+        Self {
+            path: None,
+            id: None,
+            saved: None,
+            profile: blank_profile(),
+            blanks: REQUIRED_FOR_NEW.into_iter().collect(),
+        }
+    }
+
+    /// A copy of `profile` to edit (Duplicate, or Copy to edit on a built-in
+    /// profile), named "<name> copy" (then "copy 2" and so on) so its name is
+    /// free in the library folder `dir`. It always gets a new ID, so it never
+    /// becomes the source that projects made from the original compare with
+    /// (the owner's choice on OI-1473, decision 0380 item 10). Its values
+    /// keep their provenance until edited.
+    pub fn copy_of(dir: &Path, profile: &MachineProfile) -> Self {
+        let mut copy = profile.clone();
+        copy.name = free_name(dir, &profile.name, "copy");
+        Self {
+            path: None,
+            id: Some(new_machine_id()),
+            saved: None,
+            profile: copy,
+            blanks: BTreeSet::new(),
+        }
+    }
+
+    /// The form of the draft: [`machine_form`], with the values not filled
+    /// in yet shown blank.
+    pub fn form(&self) -> Vec<MachineField> {
+        let mut form = machine_form(&self.profile);
+        for f in &mut form {
+            if self.blanks.contains(f.name) {
+                f.value = None;
+            }
+        }
+        form
+    }
+
+    /// The name the draft had when it was last saved, if it has been
+    /// renamed since.
+    pub fn renamed_from(&self) -> Option<&str> {
+        self.saved
+            .as_ref()
+            .map(|s| s.name.as_str())
+            .filter(|old| old.trim() != self.profile.name.trim())
     }
 
     /// A draft that has never been saved, of `profile` with `id`.
@@ -102,6 +250,7 @@ impl MachineDraft {
             id,
             saved: None,
             profile,
+            blanks: BTreeSet::new(),
         }
     }
 
@@ -127,7 +276,26 @@ impl MachineDraft {
         name: &str,
         value: Option<&ParameterValue>,
     ) -> std::result::Result<(), FieldProblem> {
-        self.profile = set_machine_field(&self.profile, name, value)?;
+        let mut next = set_machine_field(&self.profile, name, value)?;
+        if self.blanks.contains(name) {
+            // A required value given for the first time is the user's,
+            // even when it equals the hidden placeholder.
+            if let Some(field) = machine_form(&next)
+                .into_iter()
+                .find(|f| f.name == name)
+                .and_then(|f| f.provenance)
+            {
+                next.provenance.insert(
+                    field,
+                    Provenance {
+                        state: Confirmation::Unconfirmed,
+                        source: USER_CHANGED.to_owned(),
+                    },
+                );
+            }
+            self.blanks.remove(name);
+        }
+        self.profile = next;
         Ok(())
     }
 }
@@ -196,6 +364,18 @@ fn check_name_free(dir: &Path, name: &str, own: Option<&Path>) -> Result<()> {
 /// saved from the editor always has an ID, so project copies of it can be
 /// compared with it (OI-54). Returns the file.
 pub fn save_draft(dir: &Path, draft: &mut MachineDraft) -> Result<PathBuf> {
+    if !draft.blanks.is_empty() {
+        let form = draft.form();
+        let missing: Vec<&str> = form
+            .iter()
+            .filter(|f| draft.blanks.contains(f.name))
+            .map(|f| f.label)
+            .collect();
+        return Err(refused(format!(
+            "Fill in before saving: {}.",
+            missing.join(", ")
+        )));
+    }
     check_machine(&draft.profile)?;
     check_name_free(dir, &draft.profile.name, draft.path.as_deref())?;
     std::fs::create_dir_all(dir).map_err(|e| {
@@ -336,20 +516,28 @@ pub fn plan_import(dir: &Path, file: &Path) -> Result<ImportPlan> {
     Ok(ImportPlan { entry, status })
 }
 
-/// A name for `name` that no library or built-in profile has, adding
-/// " (imported)", then " (imported 2)" and so on.
-fn free_import_name(dir: &Path, name: &str) -> String {
+/// A name for `name` that no library or built-in profile has: for the word
+/// "imported", " (imported)", then " (imported 2)" and so on; for "copy",
+/// " copy", then " copy 2" and so on.
+fn free_name(dir: &Path, name: &str, word: &str) -> String {
     let known = known_profiles(dir);
     let taken = |n: &str| {
         known
             .iter()
             .any(|(_, e)| e.profile.name.trim().eq_ignore_ascii_case(n.trim()))
     };
-    let mut candidate = format!("{name} (imported)");
-    let mut n = 2;
+    let name = name.trim();
+    let make = |n: u32| match (word, n) {
+        ("copy", 1) => format!("{name} copy"),
+        ("copy", n) => format!("{name} copy {n}"),
+        (w, 1) => format!("{name} ({w})"),
+        (w, n) => format!("{name} ({w} {n})"),
+    };
+    let mut n = 1;
+    let mut candidate = make(n);
     while taken(&candidate) {
-        candidate = format!("{name} (imported {n})");
         n += 1;
+        candidate = make(n);
     }
     candidate
 }
@@ -374,7 +562,7 @@ pub fn apply_import(
                     .trim()
                     .eq_ignore_ascii_case(profile.name.trim())
             }) {
-                profile.name = free_import_name(dir, &profile.name);
+                profile.name = free_name(dir, &profile.name, "imported");
             }
             add_new(
                 plan.entry.id.clone().unwrap_or_else(new_machine_id),
@@ -400,10 +588,69 @@ pub fn apply_import(
         }
         (ImportStatus::Differs { .. }, ImportChoice::KeepBoth) => {
             let mut profile = plan.entry.profile.clone();
-            profile.name = free_import_name(dir, &profile.name);
+            profile.name = free_name(dir, &profile.name, "imported");
             add_new(new_machine_id(), profile)
         }
     }
+}
+
+/// The values in which the project's machine `copy` differs from the
+/// library profile in `path`, in the user's words, for the confirmation
+/// before "Save to library" writes the copy over it.
+pub fn copy_changes(path: &Path, copy: &MachineProfile) -> Result<Vec<&'static str>> {
+    let entry = load_profile_entry(path).map_err(|e| refused(e.to_string()))?;
+    Ok(differing_fields(&entry.profile, copy))
+}
+
+/// "Save to library" for the project's machine `copy` onto the library
+/// profile it came from, the file `path`: the file takes the copy's values
+/// and keeps its ID (decision 0380 item 10). Its name must still be free.
+pub fn save_copy_to_source(dir: &Path, path: &Path, copy: &MachineProfile) -> Result<PathBuf> {
+    let mut draft = MachineDraft::open(path)?;
+    draft.profile = copy.clone();
+    save_draft(dir, &mut draft)
+}
+
+/// "Save to library as a new profile" for the project's machine `copy`: a
+/// new library profile with a new ID (OI-1473), named after the copy, or
+/// "<name> copy" when that name is taken. Returns the file and the ID, which
+/// the project's copy then records as its source.
+pub fn save_copy_as_new(dir: &Path, copy: &MachineProfile) -> Result<(PathBuf, String)> {
+    let mut profile = copy.clone();
+    if check_name_free(dir, &profile.name, None).is_err() {
+        profile.name = free_name(dir, &copy.name, "copy");
+    }
+    let id = new_machine_id();
+    let mut draft = MachineDraft::unsaved(profile, Some(id.clone()));
+    let path = save_draft(dir, &mut draft)?;
+    Ok((path, id))
+}
+
+/// The question to ask before saving a renamed draft when a machine tool
+/// set (TL-11) is tied to its old name (the owner's choice on OI-1474,
+/// decision 0380 item 11): the window offers "Also rename the tool set",
+/// ticked at first, in the same confirmation. `None` when no set names the
+/// old name or the draft is not renamed.
+pub fn tool_set_rename_question(tools: &ToolLibrary, draft: &MachineDraft) -> Option<String> {
+    let old = draft.renamed_from()?;
+    tools.tool_set(old)?;
+    Some(format!(
+        "The tool set for \"{}\" holds this machine's tool numbers. Also rename the tool set \
+         to \"{}\"?",
+        old.trim(),
+        draft.profile.name.trim()
+    ))
+}
+
+/// Renames the tool set tied to `old` so it follows the machine to `new`,
+/// after the machine profile is saved. Returns the tool set's file, or
+/// `None` when no set names `old`.
+pub fn rename_tool_set(tools: &mut ToolLibrary, old: &str, new: &str) -> Result<Option<PathBuf>> {
+    tools.rename_tool_set(old, new).map_err(|e| {
+        refused(format!(
+            "The machine is saved, but its tool set was not renamed: {e}."
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -435,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_a_draft_is_written_only_on_save() {
+    fn req_set_10_a_draft_is_written_only_on_save() {
         let dir = scratch("save");
         let mut draft = MachineDraft::unsaved(renamed("Shop Z1"), None);
         assert_eq!(draft.status(), DraftStatus::New);
@@ -488,7 +735,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_07_save_refuses_a_taken_name_and_an_invalid_profile() {
+    fn req_set_10_req_nfr_07_save_refuses_a_taken_name_and_an_invalid_profile() {
         let dir = scratch("names");
         let mut draft = MachineDraft::unsaved(renamed("Makera Z1"), None);
         assert_eq!(
@@ -519,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_delete_removes_only_a_library_profile() {
+    fn req_set_10_delete_removes_only_a_library_profile() {
         let dir = scratch("delete");
         let mut draft = MachineDraft::unsaved(renamed("Old"), None);
         let path = save_draft(&dir, &mut draft).expect("saves");
@@ -550,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn req_set_01_export_then_import_round_trips_and_clashes_are_resolved() {
+    fn req_set_10_export_then_import_round_trips_and_clashes_are_resolved() {
         let dir = scratch("import");
         let out = scratch("import-out");
         std::fs::create_dir_all(&out).expect("folder");
@@ -629,7 +876,218 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_07_a_damaged_file_is_refused_with_its_reason() {
+    fn req_set_10_a_new_machine_starts_blank_and_saves_only_when_filled() {
+        let dir = scratch("new");
+        let mut draft = MachineDraft::new_machine();
+        assert_eq!(draft.status(), DraftStatus::New);
+        assert_eq!(draft.id, None);
+        // The required values are blank in the form; the rest are neutral.
+        let form = draft.form();
+        for name in REQUIRED_FOR_NEW {
+            let f = form.iter().find(|f| f.name == name).expect(name);
+            assert_eq!(f.value, None, "{name}");
+        }
+        let value =
+            |d: &MachineDraft, n: &str| d.form().into_iter().find(|f| f.name == n).expect(n).value;
+        assert_eq!(
+            value(&draft, fields::A_RANGE),
+            Some(ParameterValue::Text("continuous".into()))
+        );
+        assert_eq!(
+            value(&draft, fields::SHORT_BLOCK_MODE),
+            Some(ParameterValue::Text("off".into()))
+        );
+        assert_eq!(
+            value(&draft, fields::MAX_TOOL_NUMBER),
+            Some(ParameterValue::Integer(99))
+        );
+        assert_eq!(value(&draft, fields::MAX_SPINDLE_RPM), None);
+        assert!(
+            ProfileField::ALL
+                .iter()
+                .all(|f| !draft.profile.is_confirmed(*f))
+        );
+        assert_eq!(
+            draft.profile.provenance[&ProfileField::ARange].source,
+            NEW_MACHINE_DEFAULT
+        );
+
+        // Save names every value still blank.
+        let e = save_draft(&dir, &mut draft).expect_err("blank");
+        assert_eq!(
+            e.to_string(),
+            "Fill in before saving: Name, Rotary reference X, Rotary reference Y, \
+             Axis height (machine Z), Lowest X, Highest X, Lowest Y, Highest Y, Lowest Z, \
+             Highest Z, X and Y feed, Z feed, A feed, X and Y rapid, Z rapid, A rapid, \
+             Safe cylinder radius, Safe Z."
+        );
+        assert!(!dir.exists());
+
+        // Filling them one at a time meets only the rules between values
+        // the user has given.
+        let n = |v: f64| ParameterValue::Number(v);
+        let values = [
+            (fields::NAME, ParameterValue::Text("Router".into())),
+            (fields::ORIGIN_X, n(0.0)),
+            (fields::ORIGIN_Y, n(-50.0)),
+            (fields::ORIGIN_Z, n(-60.0)),
+            (fields::TRAVEL_MAX_X, n(300.0)),
+            (fields::TRAVEL_MIN_X, n(0.0)),
+            (fields::TRAVEL_MIN_Y, n(-200.0)),
+            (fields::TRAVEL_MAX_Y, n(0.0)),
+            (fields::TRAVEL_MIN_Z, n(-120.0)),
+            (fields::TRAVEL_MAX_Z, n(0.0)),
+            (fields::FEED_LINEAR, n(2000.0)),
+            (fields::FEED_Z, n(1.0)),
+            (fields::FEED_ROTARY, n(3600.0)),
+            (fields::RAPID_LINEAR, n(4000.0)),
+            (fields::RAPID_Z, n(1000.0)),
+            (fields::RAPID_ROTARY, n(7200.0)),
+            (fields::SAFE_Z, n(60.0)),
+        ];
+        for (name, v) in &values {
+            draft
+                .set(name, Some(v))
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        assert_eq!(
+            save_draft(&dir, &mut draft)
+                .expect_err("one left")
+                .to_string(),
+            "Fill in before saving: Safe cylinder radius."
+        );
+        // A value the user gives is theirs, even if it equals the hidden
+        // placeholder (the Z feed of 1 above).
+        assert_eq!(
+            draft.profile.provenance[&ProfileField::MaxFeeds].source,
+            USER_CHANGED
+        );
+        // A rule between two given values still applies.
+        assert!(draft.set(fields::CLEARANCE_RADIUS, Some(&n(70.0))).is_err());
+        assert!(draft.blanks.contains(fields::CLEARANCE_RADIUS));
+        draft
+            .set(fields::CLEARANCE_RADIUS, Some(&n(50.0)))
+            .expect("valid");
+        let path = save_draft(&dir, &mut draft).expect("saves");
+        let saved = MachineDraft::open(&path).expect("reads");
+        assert_eq!(saved.profile.name, "Router");
+        assert_eq!(saved.profile.travel.max.x, 300.0);
+        assert!(saved.id.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn req_set_10_a_copy_has_a_free_name_and_a_new_id() {
+        let dir = scratch("copy");
+        let z1 = z1();
+        let mut copy = MachineDraft::copy_of(&dir, &z1);
+        assert_eq!(copy.profile.name, "Makera Z1 copy");
+        assert_eq!(copy.status(), DraftStatus::New);
+        let first_id = copy.id.clone().expect("an ID");
+        assert_ne!(first_id, Z1_ID);
+        // The copy keeps the values and their provenance until edited.
+        assert_eq!(copy.profile.provenance, z1.provenance);
+        assert_eq!(copy.profile.rotary_origin, z1.rotary_origin);
+        let path = save_draft(&dir, &mut copy).expect("saves");
+        assert_eq!(
+            MachineDraft::open(&path).expect("reads").id,
+            Some(first_id.clone())
+        );
+        let again = MachineDraft::copy_of(&dir, &z1);
+        assert_eq!(again.profile.name, "Makera Z1 copy 2");
+        assert_ne!(again.id, Some(first_id));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn req_set_10_the_project_copy_saves_to_its_source_or_as_a_new_profile() {
+        let dir = scratch("copy-save");
+        let mut mine = MachineDraft::unsaved(renamed("Shop"), None);
+        let path = save_draft(&dir, &mut mine).expect("saves");
+        let id = mine.id.clone().expect("an ID");
+
+        // The project's copy, edited in the project.
+        let copy = crate::machine_edit::set_machine_field(
+            &mine.profile,
+            fields::SAFE_Z,
+            Some(&ParameterValue::Number(65.0)),
+        )
+        .expect("valid");
+        assert_eq!(
+            copy_changes(&path, &copy),
+            Ok(vec!["clearance", "which values are confirmed"])
+        );
+        assert_eq!(save_copy_to_source(&dir, &path, &copy), Ok(path.clone()));
+        let written = MachineDraft::open(&path).expect("reads");
+        assert_eq!(written.profile, copy);
+        assert_eq!(written.id.as_deref(), Some(id.as_str()));
+        assert_eq!(copy_changes(&path, &copy), Ok(vec![]));
+
+        // As a new profile: a new ID, and a free name.
+        let (new_path, new_id) = save_copy_as_new(&dir, &copy).expect("saves");
+        assert_ne!(new_id, id);
+        let added = MachineDraft::open(&new_path).expect("reads");
+        assert_eq!(added.profile.name, "Shop copy");
+        assert_eq!(added.id, Some(new_id));
+        let mut free = copy.clone();
+        free.name = "Annex".into();
+        let (annex, _) = save_copy_as_new(&dir, &free).expect("saves");
+        assert_eq!(
+            MachineDraft::open(&annex).expect("reads").profile.name,
+            "Annex"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn req_set_10_req_tl_11_renaming_a_machine_offers_to_rename_its_tool_set() {
+        let dir = scratch("rename");
+        let tools_dir = scratch("rename-tools");
+        let mut draft = MachineDraft::unsaved(renamed("My Z1"), None);
+        save_draft(&dir, &mut draft).expect("saves");
+        let mut tools = ToolLibrary::open(&tools_dir).expect("opens");
+        tools
+            .save_tool_set(openchuck_project::tools::ToolSet {
+                machine: "My Z1".into(),
+                entries: Vec::new(),
+            })
+            .expect("saves");
+        assert_eq!(tool_set_rename_question(&tools, &draft), None);
+        draft
+            .set(
+                fields::NAME,
+                Some(&ParameterValue::Text("Z1 workshop".into())),
+            )
+            .expect("valid");
+        assert_eq!(draft.renamed_from(), Some("My Z1"));
+        assert_eq!(
+            tool_set_rename_question(&tools, &draft).as_deref(),
+            Some(
+                "The tool set for \"My Z1\" holds this machine's tool numbers. Also rename the \
+                 tool set to \"Z1 workshop\"?"
+            )
+        );
+        save_draft(&dir, &mut draft).expect("saves");
+        assert!(
+            rename_tool_set(&mut tools, "My Z1", "Z1 workshop")
+                .expect("renames")
+                .is_some()
+        );
+        assert!(tools.tool_set("Z1 workshop").is_some());
+        assert_eq!(rename_tool_set(&mut tools, "Gone", "Other"), Ok(None));
+        // A machine whose tool set is not tied to it asks nothing.
+        let mut other = MachineDraft::unsaved(renamed("Lathe"), None);
+        save_draft(&dir, &mut other).expect("saves");
+        other
+            .set(fields::NAME, Some(&ParameterValue::Text("Lathe 2".into())))
+            .expect("valid");
+        assert_eq!(tool_set_rename_question(&tools, &other), None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&tools_dir);
+    }
+
+    #[test]
+    fn req_set_10_req_nfr_07_a_damaged_file_is_refused_with_its_reason() {
         let dir = scratch("damaged");
         let out = scratch("damaged-out");
         std::fs::create_dir_all(&out).expect("folder");

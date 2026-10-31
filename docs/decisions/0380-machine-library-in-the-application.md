@@ -1,9 +1,10 @@
 # 0380: Managing machine profiles in the application (lane MACHINES)
 
-- **Status:** proposed, 31 Oct 2026, by lane MACHINES. The plan was approved by the coordinator session on 31 Oct 2026. The owner's choices OI-1470 to OI-1474 have been sent to the coordinator, one per message, and are not yet answered. Items 1 to 6 do not depend on them; item 7 lists what does.
+- **Status:** proposed, 31 Oct 2026, by lane MACHINES, for the owner's acceptance. The plan was approved by the coordinator session on 31 Oct 2026. The owner answered the five choices (OI-1470 to OI-1474) on 31 Oct 2026, relayed by the coordinator (decision 0049), each as recommended; items 7 to 11 record them.
 - **Date:** 31 Oct 2026.
 - **Branch:** `claude/lane-machines`. Issue [#335](https://github.com/paulhampson/OpenChuckCAM/issues/335) ("GUI has no way to manage machine library").
-- **Requirements:** SET-01, UI-13, NFR-07, NFR-12, GC-07 and NFR-06. There is no requirement yet for managing a library of profiles in the application (OI-1470). SET-02, SET-08 and COL-04 (P2) are not built.
+- **Requirements:** SET-10 (new, item 7), SET-01, UI-13, TL-11, NFR-07, NFR-12, GC-07 and NFR-06. SET-02, SET-08 and COL-04 (P2) are not built.
+- **What it amends:** `docs/requirements.md` gains SET-10 (item 7), with its row in the verification plan and in the work breakdown's traceability table (slice 22).
 - **Records it relies on:** [0011](0011-slice-3-machine-stock-setup.md) item 7 (profiles are files; the project keeps a full copy), [0029](0029-slice-8-viewport-and-shell.md) items 15 and 16 (library folder; IDs and the comparison, OI-53 and OI-54 closed), [0127](0127-slice-22-tool-library-window.md) and [0199](0199-tool-library-sections-filter-and-default-tools.md) (the tool library window this follows), [0222](0222-short-moves-minimum-block-time.md) (GC-17 fields), and [0317](0317-z1-measured-axis-height-and-safe-z.md) and [0318](0318-z1-spindle-height-warning-switched-on.md) (the Z1's measured and derived values).
 - **Schema and versions:** no machine profile schema and no project schema change (the profile file already holds every value, its ID and its provenance). The library family is not touched, so its version does not change.
 
@@ -51,18 +52,28 @@ Machine profiles are TOML files: built in (the Makera Z1, in `crates/openchuck-p
      A file with no ID is new and is given one. A new profile whose name is taken gets " (imported)" too.
    - A damaged, empty, newer-schema or missing file is refused with its reason, and nothing is written (NFR-07).
 6. **No change to G-code or its wording.** The editor changes profile values only. The same project, post and software version still give byte-identical G-code (GC-07, NFR-06). The window describes values as "confirmed on the machine" or "not confirmed on the machine" (specification section 15). It never says G-code is safe, verified or ready to run, and the export warning (NFR-12) is unchanged.
-7. **Waiting for the owner (pull request 2, the window).**
-   - OI-1470: the requirement that covers this.
-   - OI-1471: marking a value confirmed.
-   - OI-1472: what New starts from.
-   - OI-1473: the ID of a copy.
-   - OI-1474: renaming a profile a tool set names.
+7. **The requirement (OI-1470; the owner chose option A).** A new P1 requirement, in the owner's agreed words: "SET-10 | Manage machine profiles in the application: view, create, edit, duplicate, import and export as files, and delete library profiles; edit the project's copy and save it to the library. Built-in profiles are read-only and can be copied to edit. | P1". Tests are named `req_set_10_*`. SET-01's meaning and ID are unchanged.
+8. **Confirming a value (OI-1471; option A).** `confirm_value` marks a value confirmed on the machine only with a note saying how it was confirmed. The note must not be blank, and it becomes the value's source. This applies to library profiles and to the project's copy. A built-in profile is never written, so its values cannot be confirmed by the user. The short-move mode is a software setting and cannot be confirmed (as `MachineProfile::is_confirmed` already says). Editing the value again makes it not confirmed. "Confirmed" describes the profile value, not the G-code: the export warning (NFR-12) is unchanged.
+9. **A new machine starts blank (OI-1472; option B).** `MachineDraft::new_machine` leaves these values blank:
+   - the name;
+   - the rotary reference point;
+   - the six travel limits;
+   - the six maximum feeds and rapids;
+   - the safe cylinder and the safe Z.
 
-   The window, the project copy's full editor and "Save to library…", and the specification section that describes them are built after these are answered.
+   The rest are neutral: A continuous and positive, A separate from the feed word, tool numbers to 99, short moves Off, no spindle range, and no tool length measurement. Every value is not confirmed, with the source "Default for a new machine; check it on the machine".
+
+   Save names every value still blank ("Fill in before saving: …"). The blanks hold placeholders far from any real value. They are never shown or saved, so filling them one at a time meets only the rules between values the user has given. A value given for the first time is the user's, even when it equals its placeholder. To start from the Makera Z1, the user duplicates it.
+10. **Copies get a new ID (OI-1473; option A).**
+    - Duplicate, Copy to edit (on a built-in) and "Save to library as a new profile" always give a new ID (`MachineDraft::copy_of`, `save_copy_as_new`), so a copy never becomes the source that projects made from the original compare with.
+    - A copy is named "<name> copy", then "<name> copy 2" and so on, to a name no library or built-in profile has.
+    - "Save to library" onto the library profile the project's copy came from (`save_copy_to_source`) keeps that profile's ID. Its confirmation names the values that change (`copy_changes`).
+    - After saving as a new profile, the project's copy records the new ID (an undoable `SetMachineFrom`, in pull request 2).
+11. **A renamed machine keeps its tool set (OI-1474; option A).** Machine tool sets are tied to a machine by name (OI-770). When a saved library profile is renamed, `tool_set_rename_question` gives the question for the same confirmation as Save, with "Also rename the tool set" ticked at first. `rename_tool_set` then rewrites that tool set's own file under the new name (`ToolLibrary::rename_tool_set` in `openchuck-project`, not in the library family). A name another tool set already holds is refused, and nothing is written. Built-in profiles cannot be renamed, so their tool sets are never touched.
 
 ## Pull requests
 
-1. **The model** (`openchuck-app`): items 1 to 6, with tests named by requirement. This record and the registers.
+1. **The model** (`openchuck-app`, and `ToolLibrary::rename_tool_set` in `openchuck-project`): items 1 to 11, with tests named by requirement. This record, SET-10 in the requirements, the verification plan and the work breakdown, and the registers.
 2. **The window** (`openchuck-ui`): a machine library window built like the tool library window:
    - the list (this project, built in, library);
    - the form with a provenance icon and tooltip on each value;
@@ -80,29 +91,35 @@ Machine profiles are TOML files: built in (the Makera Z1, in `crates/openchuck-p
 
 ## Verification
 
-Tests in `crates/openchuck-app/src/machine_edit.rs` and `machine_library.rs`:
+Tests in `crates/openchuck-app/src/machine_edit.rs`, `machine_library.rs` and `crates/openchuck-project/src/tools/mod.rs`; they take under a second together, uninstrumented:
 
-- `req_set_01_req_ui_13_the_form_lists_every_value_with_its_provenance`
-- `req_ui_13_an_edited_value_is_marked_not_confirmed_and_others_keep_theirs`
-- `req_set_01_the_form_shows_every_choice_and_sets_it_back_unchanged`
-- `req_set_01_every_kind_of_value_can_be_set`
-- `req_nfr_07_bad_values_are_refused_in_plain_words_naming_the_field`
-- `req_nfr_07_a_whole_profile_check_names_the_field_in_plain_words`
-- `req_nfr_07_setting_any_value_never_panics` (property test)
-- `req_set_01_a_draft_is_written_only_on_save`
-- `req_nfr_07_save_refuses_a_taken_name_and_an_invalid_profile`
-- `req_set_01_delete_removes_only_a_library_profile`
-- `req_set_01_export_then_import_round_trips_and_clashes_are_resolved`
-- `req_nfr_07_a_damaged_file_is_refused_with_its_reason`
+- `req_set_10_req_ui_13_the_form_lists_every_value_with_its_provenance`
+- `req_set_10_the_form_shows_every_choice_and_sets_it_back_unchanged`
+- `req_set_10_req_ui_13_an_edited_value_is_marked_not_confirmed_and_others_keep_theirs`
+- `req_set_10_every_kind_of_value_can_be_set`
+- `req_set_10_req_ui_13_a_value_is_confirmed_only_with_how`
+- `req_set_10_req_nfr_07_bad_values_are_refused_in_plain_words_naming_the_field`
+- `req_set_10_req_nfr_07_a_whole_profile_check_names_the_field_in_plain_words`
+- `req_set_10_req_nfr_07_setting_any_value_never_panics` (property test)
+- `req_set_10_a_draft_is_written_only_on_save`
+- `req_set_10_req_nfr_07_save_refuses_a_taken_name_and_an_invalid_profile`
+- `req_set_10_a_new_machine_starts_blank_and_saves_only_when_filled`
+- `req_set_10_a_copy_has_a_free_name_and_a_new_id`
+- `req_set_10_the_project_copy_saves_to_its_source_or_as_a_new_profile`
+- `req_set_10_delete_removes_only_a_library_profile`
+- `req_set_10_export_then_import_round_trips_and_clashes_are_resolved`
+- `req_set_10_req_nfr_07_a_damaged_file_is_refused_with_its_reason`
+- `req_set_10_req_tl_11_renaming_a_machine_offers_to_rename_its_tool_set`
+- `req_set_10_req_tl_11_a_tool_set_follows_its_renamed_machine` (`openchuck-project`)
 
 ## Open items
 
 | # | Item | State |
 | --- | --- | --- |
-| OI-1470 | The requirement that covers managing machine profiles in the application | open, with the owner |
-| OI-1471 | Marking a value confirmed in the user's own profile | open, with the owner |
-| OI-1472 | What a new profile starts from | open, with the owner |
-| OI-1473 | The ID of a copied profile | open, with the owner |
-| OI-1474 | Renaming a profile that a machine tool set names | open, with the owner |
+| OI-1470 | The requirement that covers managing machine profiles in the application | closed: SET-10 (item 7) |
+| OI-1471 | Marking a value confirmed in the user's own profile | closed: only with a note (item 8) |
+| OI-1472 | What a new profile starts from | closed: blank required values (item 9) |
+| OI-1473 | The ID of a copied profile | closed: always a new ID (item 10) |
+| OI-1474 | Renaming a profile that a machine tool set names | closed: offer to rename the tool set too (item 11) |
 
 OI-254 (the profile's `rotary_in_feed` against the post's feed rule) stays open. The form's description of that value points to it. OI-494 (making a tool set for a new machine) stays out of scope, by the coordinator's direction.
