@@ -1848,3 +1848,26 @@ fn req_nfr_07_req_sim_04_the_runs_checkpoints_keep_to_their_memory() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A run that does not simulate every operation (the export dialog's
+/// regenerate) caches the stocks a later operation needs without
+/// checkpoints; a simulating run with the setting on does not reuse those,
+/// so its playback still comes from the run (decision record 0333; review
+/// of pull request 420).
+#[test]
+fn req_sim_04_a_stock_cached_without_checkpoints_is_simulated_again_for_playback() {
+    let (dir, mut app) = two_operations("stock-from-run-after-regenerate");
+    app.set_playback_with_generation(Some(DEFAULT_PLAYBACK_MEMORY));
+    let plain = app.regenerate().unwrap();
+    assert!(plain.simulation.is_none());
+    let run = Arc::new(app.simulate().unwrap());
+    let setups = &run.simulation.as_ref().unwrap().setups;
+    assert!(setups.iter().all(|s| s.checkpoints.len() > s.operations.len()));
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let play = app
+        .start_stock_playback(t, DEFAULT_PLAYBACK_MEMORY)
+        .wait()
+        .unwrap();
+    assert!(play.from_the_run());
+    let _ = std::fs::remove_dir_all(dir);
+}
