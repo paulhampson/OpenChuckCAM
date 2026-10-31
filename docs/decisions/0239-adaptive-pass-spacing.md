@@ -1,0 +1,51 @@
+# 0239: Adaptive pass spacing (OP-03, OP-04, OP-05, OP-11, OP-12, OP-14, OP-15, OP-21, OP-24, SET-09, GC-07, NFR-04 to NFR-07, NFR-12; issue #303; lanes FINSTEP and ENDFACE)
+
+- **Status:** proposed. Number allocated to FINSTEP by the Merge Manager (#326, comment 6385503719, acknowledged in 6404831340). The owner's individual choices below were made with FINSTEP from 26 Oct 2026 and are kept as they were given; they are not acceptance of this record. The requirements paragraph (R1) and the architecture paragraph (A1) quoted under Documents were approved by the owner as written on 30 Oct 2026, relayed by the coordinator session (decision 0049). The full text was shown to the owner on 30 Oct 2026, who chose to keep it proposed until the stage 3 pull request shows it built and measured (relayed by the coordinator).
+- **Date:** 26 Oct 2026 (choices); reconstructed 30 Oct 2026 by lane ENDFACE from the FINSTEP checkpoint (`codex/lane-finstep-adaptive-spacing-and-layers`, `e4e89668`).
+- **Builds on:** [0344](0344-finishing-stepdown-and-free-ends.md) and [0345](0345-finishing-layers.md) (finishing Stepdown, free ends and layers: #314 is settled there, not here), 0252 (Facing), 0255 (the bounded tool-contact checker), 0277 (exact ball drops).
+- **Open items:** OI-1373 (engagement off the rotary centreline; FINSTEP's OI-1341, renumbered). New ones, if any, from lane ENDFACE's stage 3 range.
+
+## Context
+
+A fixed stepover, and the ideal scallop formula for a ball or a bull nose, do not show how much material is really left between passes: on a steep or vertical profile the cusp the formula predicts is not the cusp the tool leaves, and fitting points within one pass does not choose where the next pass goes. The owner asked for adaptive spacing on every operation that cuts passes along or round the axis, keeping each operation's own target (its stock to leave and its layers) and any A positions the user fixed.
+
+## Decision (the owner's individual choices, in plain words)
+
+1. **What is measured.** The height of the material left between neighbouring passes, above the operation's own target: the surface plus its stock to leave, and the layer it is cutting (decision 0345). What the operation is meant to leave is never counted as missed, and the spacing is never refined to cut below it.
+2. **Which operations.** Helical finishing and every operation that cuts passes along the axis: axial and indexed finishing, the axial pattern of simultaneous finishing, both axial forms of roughing, and flat Facing. The stepover is the widest spacing, reduced locally where needed. Facing's defaults and equal-depth layers are kept. Patterns that do not cut along the axis are not changed.
+3. **Fixed A stays fixed.** An operation whose A positions the user chose (indexed finishing, a chosen side) gains no cutting angle and no rotary cutting. Where rotary cutting is allowed, a partial clean-up arc between passes is a permitted result, not a ring the operation must add; it keeps the stock to leave, the selections and protections, the cutting direction, the travel limits and the entries and links.
+4. **One height setting.** Scallop with adaptive spacing off (0 mm by default, exactly as before) and Allowed excess with it on (0.01 mm by default). A default applies only when the operation has no value. The measure uses the operation's own validated cutter model, including flat, tapered and custom tools where the operation supports them; the closed-form scallop is only a first guess.
+5. **Turning it on from a saved zero.** An operation saved with Scallop 0 (which meant off) asks for the height before adaptive spacing is turned on: it suggests 0.01 mm, allows a deliberate 0, and explains that 0 here asks for no excess at all and may stay unverified or meet the limits. Cancel changes nothing. Confirm sets the switch and the height together in one undoable step. The value is shared: turning it off again keeps the height chosen as the Scallop.
+6. **Per operation.** On for a new operation of these strategies; an existing operation is migrated to an explicit off (project schema 23, shared with decision 0344); explicit settings are kept. (Lane note, 31 Oct 2026: schema 23 merged with #412 before this was built, so the stage 3 plan, `docs/handoffs/endface-stage3-plan.md`, proposes schema 24 for this migration; awaiting the coordinator.) No project-wide or global default.
+7. **Smallest spacing.** 0.01 mm by default, editable. A stepover already below it is not enlarged.
+8. **Limits, per operation across all its layers.** 1,000,000 adaptive geometry queries; 1,000,000 points emitted (counting the entries and links); 10,000 added passes; 20 levels of refinement; 65,536 pending intervals. They bound work, not time or memory, and are charged before the work is done, with checked arithmetic, so the result does not depend on the thread count or the machine's load.
+9. **What the limits cover.** Adaptive planning, measuring and fitting. The final protection, entry, clearance and replay checks run in full under their own limits, and their cost is reported apart, so a whole generation may make more than 1,000,000 queries.
+10. **A partial result.** Where a limit is reached or the excess cannot be confirmed, the valid path made so far is kept, a prominent warning says where, and export asks the user to acknowledge that current result first. An acknowledged result is never called complete. Bad input, cancelling, a gouge or a protection reached, clearance, entry and replay failures stay errors.
+11. **Uncertain places.** Where samples meet the height but no bound justifies it, refinement stops there and the place is marked unverified, rather than subdividing blindly. Excess that is found is refined within the limits. A narrow feature may be missed, and the warning says so. A cutter the measure cannot model is reported as unverified, never ignored.
+12. **What is reported.** The number of passes added, the smallest spacing used, which limits were met and why places are unverified, with where when known; progress and the generation time include the refinement.
+13. **Off, and versions.** Off, the output is byte-identical at the same version. Because the default for new operations changes the output, the workspace's minor version is bumped (extending decision 0048 beyond API breaks); public API changes still follow decision 0048.
+
+## Documents
+
+- **Requirements (R1),** after the OP-22 notes, approved by the owner as written on 30 Oct 2026 (relayed): the "Adaptive pass spacing (OP-03, OP-04, OP-05, OP-24; issue #303; decision 0239)" paragraph.
+- **Architecture (A1),** section 5.2 after the back-and-forth ramping paragraph, approved by the owner as written on 30 Oct 2026 (relayed): the "Adaptive spacing (decision 0239)" paragraph.
+- **UI specification and verification plan:** sections proposed in the stage 3 pull request, from the FINSTEP checkpoint, in plain words.
+
+## How it fits what is there
+
+- Facing's merged `schema_for` and `resolve_parameters` hooks carry the mode-dependent settings: the full schema knows every name, the active one gives the active controls and defaults; resolving refuses unknown names and drops known inactive ones, which the host keeps.
+- Roughing's layer engine stays ROUGHPATH's: its groups, pass-start stock, links and rotary resets are kept. Facing's strict completion checks are separate from adaptive coverage and are not waived by an acknowledgement. Coverage windows are not protective geometry, and warn-only samples are not clearance certificates.
+- Exact contacts (decisions 0260, 0277) and the bounded checker of decision 0255 are used as they stand on `main`; nothing is forced through a mesh approximation, and the strategy's own sampler is never the proof.
+
+## Alternatives and risks
+
+- **Keep only the ideal scallop formula:** cheap, but it does not measure what is really left; it stays as the off route.
+- **Extra cutting angles or mandatory rings:** would change what a fixed-angle operation means; not chosen.
+- **Two height fields:** rejected for one shared value.
+- **A wall-clock limit:** would make a partial result depend on the machine's load and the thread count; not chosen.
+- **Refusing every partial result:** not chosen; a warned result acknowledged at export was.
+- **Risks:** closer passes and arcs add work, output size and possibly engagement (OI-1373). Faces the tool cannot reach, contact, tessellation and trim uncertainty, and the limits can leave places unverified. No acknowledgement or extra pass proves coverage, clearance or that a program suits a machine: generated G-code remains the user's to verify (NFR-12).
+
+## Verification (stage 3 pull request)
+
+Tests written from the requirements first: an independent measure of the excess in the emitted and the posted motion; the stock to leave and layers kept; steep and vertical walls; protections and tabs; entries and links; flute reach; exact off bytes; 1, 2 and N threads, including a partial result at a limit; every limit; bad settings; progress and cancelling; stale acknowledgement refused. Uninstrumented timings, the long-test rule, each changed crate's own coverage, and the repository's checks. No result from the lost FINSTEP source is relied on.
