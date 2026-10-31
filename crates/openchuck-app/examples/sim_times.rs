@@ -3,7 +3,8 @@
 //! NFR-04, NFR-06): the project is generated once, then each group of its
 //! toolpath is simulated again from the setup's stock at each thread count
 //! asked for, and the time of every group and the stock's state hash are
-//! printed. The hash must be the same at every thread count (NFR-06).
+//! printed, with the SHA-256 of each G-code file the project gives. The
+//! hash must be the same at every thread count (NFR-06).
 //!
 //! ```text
 //! cargo run --release -p openchuck-app --example sim_times -- PROJECT|PART.stl [THREADS,...] [REPEATS]
@@ -50,6 +51,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "generate and simulate: {:.1} s",
         started.elapsed().as_secs_f64()
     );
+    // The G-code, by hash: later operations are made against the simulated
+    // stock (SIM-06), so a stock one bit different can change it (GC-07).
+    for (name, text) in &run.gcode {
+        use sha2::Digest;
+        let digest = sha2::Sha256::digest(text.as_bytes());
+        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        println!("G-code {name}: {} bytes, sha256 {hex}", text.len());
+    }
     let project = app.project();
     let cell = project.simulation().cell.0;
     let machine = project.machine().ok_or("the project has no machine")?;

@@ -660,49 +660,88 @@ mod tests {
         }
     }
 
+    /// The spans as bits, to compare them exactly.
+    fn bits(s: &Spans) -> Vec<(u64, u64)> {
+        s.as_slice()
+            .iter()
+            .map(|&(a, b)| (a.to_bits(), b.to_bits()))
+            .collect()
+    }
+
+    /// Normalised, or `v` itself when it has no length.
+    fn normal(v: [f64; 3]) -> [f64; 3] {
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        if l > 0.0 {
+            [v[0] / l, v[1] / l, v[2] / l]
+        } else {
+            v
+        }
+    }
+
     /// Skipping the lines that surely miss the tool changes no span, not by
-    /// one bit, so the stock is the same (NFR-06, decision record 0332):
-    /// lines at random near the tool, and lines that pass just under its
-    /// surface, where the bound is closest, against the search alone.
+    /// one bit, so the stock is the same (NFR-06, decision record 0332), for
+    /// every kind of tool: lines at random near the tool; lines a hair under
+    /// its surface, where the bound is closest; lines along the axis and
+    /// almost along it; lines through or next to the axis; and empty ranges.
     #[test]
     fn req_sim_03_req_nfr_06_skipping_sure_misses_changes_no_span() {
         let mut rng = Lcg(0x5EED_0332);
         for (name, solid) in every_kind_of_tool() {
             let (r, top) = (solid.radius(), solid.top());
             let (mut skipped, mut lines) = (0usize, 0usize);
-            for k in 0..20_000 {
-                let (o, d) = if k % 2 == 0 {
-                    // Anywhere near the tool, in any direction.
-                    let o = [
-                        rng.next(-1.5 * r, 1.5 * r),
-                        rng.next(-1.5 * r, 1.5 * r),
-                        rng.next(-1.0, top + 1.0),
-                    ];
-                    (o, rng.unit())
-                } else {
-                    // Through a point a hair under the surface (between
-                    // 1e-13 and 1e-3 mm), close to level.
-                    let q = rng.next(0.0, r);
-                    let gap = 10f64.powf(rng.next(-13.0, -3.0));
-                    let o = [q, 0.0, solid.height_at(q) - gap];
-                    let mut d = rng.unit();
-                    d[2] *= 0.05;
-                    let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-                    (o, [d[0] / l, d[1] / l, d[2] / l])
+            for k in 0..30_000 {
+                let (o, d) = match k % 5 {
+                    1 => {
+                        // Through a point a hair under the surface (between
+                        // 1e-13 and 1e-3 mm), close to level.
+                        let q = rng.next(0.0, r);
+                        let gap = 10f64.powf(rng.next(-13.0, -3.0));
+                        let mut d = rng.unit();
+                        d[2] *= 0.05;
+                        ([q, 0.0, solid.height_at(q) - gap], normal(d))
+                    }
+                    2 => {
+                        // Along the axis, or tilted from it by 1e-10 to 1e-2
+                        // (either side of where the solver takes it as along).
+                        let o = [rng.next(-r, r), rng.next(-r, r), rng.next(-1.0, top)];
+                        let tilt = if k % 10 == 2 {
+                            0.0
+                        } else {
+                            10f64.powf(rng.next(-10.0, -2.0))
+                        };
+                        let up = if rng.next(0.0, 1.0) < 0.5 { 1.0 } else { -1.0 };
+                        (o, normal([tilt, 0.0, up]))
+                    }
+                    3 => {
+                        // Through the axis or 1e-12 to 1e-3 mm from it.
+                        let off = if k % 10 == 3 {
+                            0.0
+                        } else {
+                            10f64.powf(rng.next(-12.0, -3.0))
+                        };
+                        ([off, 0.0, rng.next(-1.0, top + 1.0)], rng.unit())
+                    }
+                    _ => {
+                        // Anywhere near the tool, in any direction.
+                        let o = [
+                            rng.next(-1.5 * r, 1.5 * r),
+                            rng.next(-1.5 * r, 1.5 * r),
+                            rng.next(-1.0, top + 1.0),
+                        ];
+                        (o, rng.unit())
+                    }
                 };
-                let (s0, s1) = if k % 3 == 0 {
-                    (-100.0, 100.0)
-                } else {
-                    (rng.next(-2.0 * r, 0.0), rng.next(0.0, 2.0 * r))
+                let (s0, s1) = match k % 7 {
+                    0 => (-100.0, 100.0),
+                    1 => {
+                        // An empty range: one point.
+                        let s = rng.next(-r, r);
+                        (s, s)
+                    }
+                    _ => (rng.next(-2.0 * r, 0.0), rng.next(0.0, 2.0 * r)),
                 };
                 let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
                 let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
-                let bits = |s: &Spans| {
-                    s.as_slice()
-                        .iter()
-                        .map(|&(a, b)| (a.to_bits(), b.to_bits()))
-                        .collect::<Vec<_>>()
-                };
                 assert_eq!(
                     bits(&skipping),
                     bits(&searched),
@@ -717,6 +756,34 @@ mod tests {
             // a flat end, which has nothing under its face to skip).
             println!("{name}: {skipped} of {lines} lines skipped");
             assert!(skipped > 0, "{name}: no line skipped");
+        }
+    }
+
+    /// A line with a value that is not a number or is infinite, in any
+    /// coordinate, direction or end, gives the same spans with and without
+    /// the skip, and no crash (NFR-07, decision record 0332).
+    #[test]
+    fn req_nfr_07_req_nfr_06_a_line_that_is_not_finite_is_no_crash_either_way() {
+        let line = ([0.5, 0.2, -1.0], normal([0.1, 0.0, 1.0]), -5.0, 5.0);
+        for (name, solid) in every_kind_of_tool() {
+            for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                for at in 0..8 {
+                    let (mut o, mut d, mut s0, mut s1) = line;
+                    match at {
+                        0..=2 => o[at] = bad,
+                        3..=5 => d[at - 3] = bad,
+                        6 => s0 = bad,
+                        _ => s1 = bad,
+                    }
+                    let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
+                    let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
+                    assert_eq!(
+                        bits(&skipping),
+                        bits(&searched),
+                        "{name}: {bad} at {at}"
+                    );
+                }
+            }
         }
     }
 
