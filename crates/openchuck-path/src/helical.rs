@@ -439,7 +439,7 @@ fn passes(
                 .collect();
             xs.sort_by(f64::total_cmp);
             xs.dedup_by(|b, a| (*b - *a).abs() < 1e-9);
-            let (passes, each) = ring_passes(&fit, &xs, step, context)?;
+            let (passes, each) = ring_passes(&fit, &xs, step, adaptive.is_some(), context)?;
             let spaced = match adaptive {
                 Some(settings) => Some(adaptive_passes(
                     input,
@@ -453,8 +453,8 @@ fn passes(
                 None => None,
             };
             let note = format!(
-                "helical finishing cut {} rings, {spacing:.4} mm apart, each a whole turn at one \
-                 place along the part, joined by steps along it at A {start}",
+                "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a whole \
+                 turn at one place along the part, joined by steps along it at A {start}",
                 xs.len()
             );
             (passes, spaced, Some(note))
@@ -537,11 +537,13 @@ fn passes(
 /// turn from the start angle the way `fit` turns, joined by steps along the
 /// part at the start angle (decision record 0390). `fit` is the helix's fit:
 /// the same tool, stock to leave, zones and region. Gives the joined passes
-/// and each ring's own passes, by X, for adaptive spacing.
+/// and, when `keep_each` (adaptive spacing is on), each ring's own passes,
+/// by X, for adaptive spacing.
 fn ring_passes(
     fit: &Fit<'_>,
     xs: &[f64],
     step: f64,
+    keep_each: bool,
     context: &JobContext<'_>,
 ) -> Result<(Vec<Pass>, Vec<Ring>)> {
     let around = (360.0 / step).ceil().max(1.0) as usize;
@@ -557,8 +559,12 @@ fn ring_passes(
             ..*fit
         };
         let pieces = fit_region(&ring, around, "helical finishing", context)?;
-        join(&mut joined, pieces.clone());
-        each.push((x, pieces));
+        if keep_each {
+            join(&mut joined, pieces.clone());
+            each.push((x, pieces));
+        } else {
+            join(&mut joined, pieces);
+        }
         if let Some(&next) = xs.get(i + 1) {
             let length = next - x;
             let seeds = (length / CONSTRAINED_SPACING).ceil().max(1.0) as usize;
