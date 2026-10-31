@@ -99,6 +99,7 @@ pub mod rest;
 pub mod rotary;
 pub mod roughing;
 mod scallop;
+mod section;
 pub mod simultaneous;
 mod solid;
 pub mod stock;
