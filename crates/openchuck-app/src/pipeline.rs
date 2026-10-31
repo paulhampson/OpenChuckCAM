@@ -154,6 +154,36 @@ pub struct Regeneration {
     pub project: Arc<Project>,
 }
 
+/// How an operation's playback checkpoints are spaced while the pipeline
+/// simulates it (decision record 0333): of `memory` bytes, `used` are held
+/// by the checkpoints so far (`own` of them by this setup's), and each of
+/// the `remaining` operations, this one included, must still keep the copy
+/// after it, as must a replay its two; this operation's `moves` share the
+/// rest equally with the operations after it, never closer than 1,000 moves
+/// apart. Gives the spacing (`None` for none inside) and this setup's
+/// budget, so the checkpoints of every setup together stay within `memory`.
+fn checkpoint_share(
+    memory: usize,
+    used: usize,
+    own: usize,
+    stock_bytes: usize,
+    remaining: usize,
+    moves: usize,
+) -> (Option<usize>, usize) {
+    let stock_bytes = stock_bytes.max(1);
+    let replay = stock_bytes.saturating_mul(2);
+    let budget = own.saturating_add(memory.saturating_sub(used.saturating_add(replay)));
+    let reserve = stock_bytes.saturating_mul(remaining.saturating_add(2));
+    let share = memory.saturating_sub(used.saturating_add(reserve)) / remaining.max(1);
+    let copies = share / stock_bytes;
+    let every = (copies > 0).then(|| {
+        moves
+            .div_ceil(copies + 1)
+            .max(crate::stockplay::MIN_CHECKPOINT_SPACING)
+    });
+    (every, budget)
+}
+
 /// Regenerates every enabled operation of `project` (in the folder
 /// `location`) in machining order. The first operation that cannot be
 /// generated stops the run with its error: nothing is left out silently
@@ -171,11 +201,15 @@ pub(crate) fn regenerate(
         crate::posting::OutputGrouping,
     )>,
     simulate: bool,
+    playback: Option<usize>,
     cache: &PipelineCache,
     record: &crate::overview::GenerationRecord,
     until: Option<OperationId>,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
+    // Playback's checkpoints are kept only by a run that simulates every
+    // operation it makes, within `playback` bytes (decision record 0333).
+    let playback = playback.filter(|_| simulate);
     context.check_cancelled()?;
     let mut operations: Vec<&openchuck_project::Operation> =
         project.operations().iter().filter(|o| o.enabled).collect();
@@ -340,6 +374,7 @@ pub(crate) fn regenerate(
                             path.part_bounds,
                             machine,
                             settings,
+                            playback.is_some(),
                         )?));
                         setups.len() - 1
                     }
@@ -349,6 +384,20 @@ pub(crate) fn regenerate(
                 let from = if cached_path { 0.0 } else { made_part };
                 let own = share(STAGE_GENERATE, i, from, 1.0);
                 let within = JobContext::new(context.cancel, &own);
+                if let Some(memory) = playback {
+                    let used: usize = setups.iter().map(|s| s.checkpoint_bytes()).sum();
+                    if let Some(state) = setups.get_mut(at) {
+                        let (every, budget) = checkpoint_share(
+                            memory,
+                            used,
+                            state.checkpoint_bytes(),
+                            state.copy_bytes(),
+                            operations.len() - i,
+                            linked.group.segments.len(),
+                        );
+                        Arc::make_mut(state).space_checkpoints(every, budget);
+                    }
+                }
                 if let Some(state) = setups.get_mut(at) {
                     Arc::make_mut(state).run(
                         operation.id,
@@ -489,6 +538,39 @@ mod tests {
     use openchuck_types::job::{CancelToken, Progress, ProgressSink};
     use openchuck_types::units::{Degrees, Millimetres};
 
+    /// While simulating with the setting on (decision record 0333), each
+    /// operation gets an equal share of what is left of the memory, so a
+    /// short roughing at the 1,000-move floor leaves nearly all of it to the
+    /// long finishing after it, and every setup together stays within it.
+    /// The numbers are the owner's carving (lanes CARVEPERF and SIMPERF).
+    #[test]
+    fn req_sim_04_req_nfr_07_each_operation_shares_the_checkpoint_memory() {
+        const MIB: usize = 1024 * 1024;
+        let (memory, stock) = (1_536 * MIB, 7_000_000);
+        // The roughing, first of two: the start copy is held already.
+        let (every, budget) = checkpoint_share(memory, stock, stock, stock, 2, 12_217);
+        assert_eq!(every, Some(1_000));
+        assert_eq!(budget, stock + memory - 3 * stock);
+        // It keeps 12 inside and one after it; the finishing gets the rest.
+        let used = stock + 13 * stock;
+        let (every, budget) = checkpoint_share(memory, used, used, stock, 1, 287_000);
+        let every = every.unwrap();
+        assert!((1_300..=1_450).contains(&every), "{every}");
+        // Its copies, the one after it and the replay's two fit.
+        assert!(used + (287_000 / every + 1 + 2) * stock <= memory);
+        assert!(budget >= used);
+        // A second setup shares the same memory: what the first holds counts.
+        let (_, budget) = checkpoint_share(memory, memory / 2, 0, stock, 1, 1_000);
+        assert!(budget <= memory / 2);
+        // No room for any inside: none, and never a wrap-around.
+        assert_eq!(
+            checkpoint_share(3 * stock, stock, stock, stock, 1, 50_000).0,
+            None
+        );
+        assert_eq!(checkpoint_share(0, usize::MAX, 0, stock, 0, 10).0, None);
+        assert_eq!(checkpoint_share(memory, 0, 0, 0, 1, 2_000).0, Some(1_000));
+    }
+
     use super::*;
     use crate::overview::{GenerationRecord, PipelineActivity};
     use crate::test_project::TestProject;
@@ -596,6 +678,7 @@ mod tests {
             &app.strategies,
             None,
             true,
+            None,
             &app.cache,
             &app.record,
             None,
@@ -687,6 +770,7 @@ mod tests {
             &p.app.strategies,
             None,
             true,
+            None,
             &p.app.cache,
             &p.app.record,
             None,
@@ -774,6 +858,7 @@ mod tests {
                 &p.app.strategies,
                 Some((&post, crate::posting::OutputGrouping::default())),
                 simulate,
+                None,
                 &p.app.cache,
                 &p.app.record,
                 None,

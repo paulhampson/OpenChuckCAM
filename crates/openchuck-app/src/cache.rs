@@ -198,6 +198,21 @@ impl PipelineCache {
         self.lock().entries.retain(|id, _| keep.contains(id));
     }
 
+    /// Drops the stocks kept, but not the toolpaths: the next run simulates
+    /// the operations again (decision record 0333: the stocks kept for reuse
+    /// hold playback's checkpoints, or none, as the setting was when they
+    /// were made). Results still being made when this is called are not
+    /// kept.
+    pub(crate) fn clear_stocks(&self) {
+        let mut state = self.lock();
+        state.generation += 1;
+        for versions in state.entries.values_mut() {
+            for (_, entry) in versions.iter_mut() {
+                entry.stock = None;
+            }
+        }
+    }
+
     /// Drops everything (for example when the strategies change).
     pub(crate) fn clear(&self) {
         let mut state = self.lock();

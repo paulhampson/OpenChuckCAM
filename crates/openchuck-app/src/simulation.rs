@@ -14,7 +14,8 @@ use std::sync::{Arc, OnceLock};
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
-    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_classified,
+    Checkpoint, Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator,
+    compare_classified,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -64,6 +65,11 @@ pub struct SetupSimulation {
     pub deviation: Option<Deviation>,
     /// The stock left, as plain data for the viewport and later queries.
     pub stock: DexelStock,
+    /// Playback's checkpoints, kept while simulating when the user asks for
+    /// it ("Generate playback information with toolpath generation",
+    /// decision record 0333): the stock at the start, inside the operations
+    /// and after each one. Empty when none were kept.
+    pub checkpoints: Vec<Checkpoint>,
 }
 
 /// The result of a simulation run (SIM-03, SIM-05, SIM-07).
@@ -75,10 +81,11 @@ pub struct SimulationReport {
     pub setups: Vec<SetupSimulation>,
 }
 
-/// One setup's simulator while the pipeline runs. It keeps no checkpoints:
-/// the pipeline needs only the stock each operation leaves. A copy of it after
-/// an operation is what the pipeline cache keeps as the stock that operation
-/// leaves (decision record 0190).
+/// One setup's simulator while the pipeline runs. It keeps no checkpoints
+/// unless the user asks for playback's (decision record 0333): the pipeline
+/// needs only the stock each operation leaves. A copy of it after an
+/// operation is what the pipeline cache keeps as the stock that operation
+/// leaves (decision record 0190); the checkpoints are shared, not copied.
 #[derive(Clone)]
 pub(crate) struct SetupState {
     pub(crate) id: SetupId,
@@ -116,13 +123,20 @@ impl SetupState {
         part_bounds: Aabb,
         machine: &MachineProfile,
         settings: SimulationSettings,
+        checkpoints: bool,
     ) -> Result<Self, AppError> {
         settings.validate()?;
         let stock = DexelStock::from_stock(stock, Some(part_bounds), settings.cell.0)?;
+        let initial_volume = stock.volume();
+        let simulator = if checkpoints {
+            Simulator::new(stock, machine, None)
+        } else {
+            Simulator::without_checkpoints(stock, machine)
+        };
         Ok(Self {
             id,
-            initial_volume: stock.volume(),
-            simulator: Simulator::without_checkpoints(stock, machine),
+            initial_volume,
+            simulator,
             name: name.to_owned(),
             operations: Vec::new(),
             operation_ids: Vec::new(),
@@ -133,6 +147,29 @@ impl SetupState {
     /// The material left so far.
     pub(crate) fn stock(&self) -> &DexelStock {
         self.simulator.stock()
+    }
+
+    /// The memory its checkpoints hold.
+    pub(crate) fn checkpoint_bytes(&self) -> usize {
+        self.simulator.checkpoint_bytes()
+    }
+
+    /// The size of one more checkpoint, as near as is known without making
+    /// one: the last one kept (the stock packed; it grows a little as it is
+    /// cut), or the stock as it is held when none is.
+    pub(crate) fn copy_bytes(&self) -> usize {
+        self.simulator
+            .checkpoints()
+            .last()
+            .map_or_else(|| self.stock().memory_bytes(), |c| c.stock.memory_bytes())
+    }
+
+    /// Spaces the next operation's checkpoints `every` moves apart, kept
+    /// while they hold no more than `budget` bytes in all (decision record
+    /// 0333). Nothing for a state that keeps no checkpoints.
+    pub(crate) fn space_checkpoints(&mut self, every: Option<usize>, budget: usize) {
+        self.simulator.set_checkpoint_every(every);
+        self.simulator.set_checkpoint_budget(Some(budget));
     }
 
     /// Simulates an operation's moves.
@@ -147,13 +184,16 @@ impl SetupState {
         // The stock changes, so a comparison of the old one no longer holds;
         // a copy made to simulate on must not share it with the cache either.
         self.compared = Arc::default();
+        let before = self.simulator.stock().volume();
         let result = self.simulator.run_group(group, tool, context)?;
         self.operation_ids.push(id);
         self.operations.push(OperationSimulation {
             operation: operation.to_owned(),
             moves: result.moves,
             poses: result.poses,
-            removed_volume: result.removed_volume,
+            // From the stock, so it is the same however the moves were
+            // batched (checkpoints end a batch; decision record 0333).
+            removed_volume: before - self.simulator.stock().volume(),
             rapid_cuts: result.rapid_cuts.clone(),
         });
         Ok(result)
@@ -220,6 +260,7 @@ impl SetupState {
     /// [`SetupState::compare`]. The stock moves into the report; nothing is
     /// copied.
     pub(crate) fn finish(self, deviation: Option<Deviation>) -> SetupSimulation {
+        let checkpoints = self.simulator.checkpoints().to_vec();
         let mut stock = self.simulator.into_stock();
         // The report holds the stock; without the slack cutting left, it holds
         // and reports the same memory whether the stock was simulated in this
@@ -235,6 +276,7 @@ impl SetupState {
             operations: self.operations,
             deviation,
             stock,
+            checkpoints,
         }
     }
 }
