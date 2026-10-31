@@ -851,10 +851,10 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemb
     let plural = if breaks.len() == 1 { "" } else { "s" };
     Some(crate::assemble::PathWarning {
         message: format!(
-            "simultaneous finishing breaks the path at {} place{plural} where the tool's shank, \
-             wider than its cutting part, would meet the part, and links round them, so the \
-             surface there is left uncut: {}{more}; check them in the simulation before running \
-             the program",
+            "simultaneous finishing breaks the path at {} place{plural} and links round them, \
+             because the tool's shank is wider than its cutting part and would touch the part \
+             there; the surface there is left uncut: {}{more}; check them in the simulation \
+             before running the program",
             breaks.len(),
             listed.join("; ")
         ),
