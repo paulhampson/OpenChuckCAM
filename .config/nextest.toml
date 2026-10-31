@@ -242,6 +242,13 @@ priority = 79
 # Retain default execution and select both in the nightly long profile.
 # Existing app workholding both-direction roughing regression: 92.703 s
 # in the same full uninstrumented app run; retain default/nightly execution.
+# HELICALFACES (decision 0297, 30 Oct 2026, four cores): with the turns at the
+# faces across the rotary axis, in a full uninstrumented `cargo nextest run
+# --workspace`: the first-cut committed-project test 605.232 s (413.063 s alone;
+# 308.269 s alone on main before the change, same machine), the wall
+# determinism test 174.483 s (121.325 s alone), blisk_helical_2 45.432 s and
+# blisk_helical_5 37.084 s. All were already listed except blisk_helical_5,
+# which stays under a minute and is not.
 
 # TOOLLIB2 validation (24 Oct 2026): existing machining regressions exceeded
 # a minute uninstrumented in the contended four-test run. Default still runs

@@ -18,6 +18,7 @@ bench = false
 openchuck-types.workspace = true
 openchuck-testkit.workspace = true
 openchuck-geom.workspace = true
+openchuck-path.workspace = true
 openchuck-import.workspace = true
 criterion.workspace = true
 
@@ -27,6 +28,10 @@ harness = false
 
 [[bench]]
 name = "stl"
+harness = false
+
+[[bench]]
+name = "carving"
 harness = false
 
 [lints]

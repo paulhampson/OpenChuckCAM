@@ -35,7 +35,11 @@ fn paint(shape: &egui::Shape, clip: egui::Rect, snapshot: &mut Snapshot) {
             }
         }
         egui::Shape::Rect(rect) if rect.rect.width() < 14.0 && rect.rect.height() > 40.0 => {
-            snapshot.bars.push(rect.rect.intersect(clip));
+            // A bar scrolled out of the visible area draws nothing.
+            let seen = rect.rect.intersect(clip);
+            if seen.is_positive() {
+                snapshot.bars.push(seen);
+            }
         }
         egui::Shape::Rect(rect)
             if (14.0..=40.0).contains(&rect.rect.height()) && rect.rect.width() >= 14.0 =>
@@ -70,7 +74,11 @@ fn draw(
         *clock += 0.1;
         let pointer = ctx
             .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
-            .map_or(screen.to_pos2() / 2.0, |rect| rect.center());
+            // Over the left column: over the preview the wheel scrolls the
+            // preview and not the dialog (decision 0327).
+            .map_or(screen.to_pos2() / 2.0, |rect| {
+                egui::pos2(rect.left() + 40.0, rect.center().y)
+            });
         let mut events = vec![egui::Event::PointerMoved(pointer)];
         if bottom && pass == 2 {
             events.push(egui::Event::MouseWheel {
@@ -162,7 +170,8 @@ fn check_actions(snapshot: &Snapshot, screen: egui::Vec2, case: &str, names: [&s
     for bar in &snapshot.bars {
         assert!(
             snapshot.dialog.expand(0.5).contains_rect(*bar),
-            "{case}: bar outside window"
+            "{case}: bar {bar:?} outside window {:?}",
+            snapshot.dialog
         );
         for (text, _, seen) in &snapshot.texts {
             assert!(
@@ -255,6 +264,15 @@ fn layout(files: bool) {
                     assert!(
                         (button(&top, action).top() - button(&bottom, action).top()).abs() < 0.5,
                         "{case}: {action} moved while scrolling"
+                    );
+                }
+                if files {
+                    assert!(
+                        top.texts
+                            .iter()
+                            .chain(&bottom.texts)
+                            .any(|(t, _, _)| t == "Preview"),
+                        "{case}: the preview is part of the dialog"
                     );
                 }
                 assert!(

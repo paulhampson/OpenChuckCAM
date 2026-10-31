@@ -1,5 +1,7 @@
 # 0244: Bounded first-cut LinuxCNC replay chunks (lane GATES; OI-991)
 
+**Later change (pointer only; the numbers below are as recorded):** [decision 0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (30 Oct 2026) re-blessed the first-cut golden programs with a turn at the face beside the tab. The program these numbers describe, which the owner ran on 24 Oct 2026, is no longer what the project generates; it stays at commit `0620cd0` (`testdata/golden/first_cut/`). The new LinuxCNC program is 18,106 lines and 1,849.5 s (30.8 minutes) of cutting.
+
 - **Status:** accepted by the project owner (26 Oct 2026, directly in the GATES takeover session: “Accept 0244”). This accepts the complete record. The earlier 25 Oct instruction, “Apply your suggested approach to allow support of the test,” authorized implementation before the complete record was written. Decisions 0221, 0222 and 0232 retain their existing acceptance.
 - **Date:** 25 Oct 2026.
 - **Requirements:** GC-10, GC-07, NFR-06, NFR-07 and NFR-12. Verification tooling and its independent library API; no machine/project schema or production G-code change. The verification API additions use the 0.22.0 library-family version.

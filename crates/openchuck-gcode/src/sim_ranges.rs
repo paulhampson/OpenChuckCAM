@@ -80,6 +80,15 @@ fn state_at(program: &Program, line: usize) -> Result<(Move, f64), SimError> {
     Ok((state, rpm))
 }
 
+/// LinuxCNC may hold the feed and speed as 32-bit floats (F2755.6 reads back
+/// as 2755.60009765625), so `actual` matches `want` or its single-precision
+/// rounding to 1e-6.
+#[allow(clippy::cast_possible_truncation)] // The rounding is the point.
+fn matches_held(actual: f64, want: f64) -> bool {
+    actual.is_finite()
+        && ((actual - want).abs() <= 1e-6 || (actual - f64::from(want as f32)).abs() <= 1e-6)
+}
+
 fn check_boundary(
     program: &Program,
     line: usize,
@@ -117,14 +126,10 @@ fn check_boundary(
     {
         return Err(bad("tool/spindle"));
     }
-    if !actual.rpm.is_finite() || (actual.rpm - rpm).abs() > 1e-6 {
+    if !matches_held(actual.rpm, rpm) {
         return Err(bad("S"));
     }
-    if !actual.feed.is_finite()
-        || expected
-            .feed
-            .is_some_and(|f| (actual.feed - f).abs() > 1e-6)
-    {
+    if !actual.feed.is_finite() || expected.feed.is_some_and(|f| !matches_held(actual.feed, f)) {
         return Err(bad("F"));
     }
     if actual

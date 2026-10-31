@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0
+
+- **Breaking family release (0.28.0, Z1AXIS, decision 0317):** `openchuck_types::machine::MachineProfile` gains the spindle-height fields and `ProfileField` three variants. No change in this crate; all family crates advance together under 0048. Project schema 22 and machine profile schema 7 in `openchuck-project`.
+
 ## 0.27.0
 
 - **Breaking family release (0.27.0, BUG-SWARF4, decision 0272):** `openchuck_path::swarf::FacePath::overcut_warning` takes a checked `Clearing`. No change in this crate; all family crates advance together under 0048. No project-schema migration.
@@ -22,6 +26,8 @@
 All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
+
+- GC-10: `compare_simulator_range` accepts a boundary feed or speed that matches the original's single-precision rounding to 1e-6, as LinuxCNC holds them (F2755.6 reads back as 2755.60009765625; lane HELICALFACES). No API change.
 
 - `compare_with_moves` exposes each actual replayed move with its source group/segment, controller counter shift and programmed fed duration. Observations are provisional until the complete comparison succeeds. Existing `compare` delegates with a no-op observer and preserves its result/structural checks; no motion is silently accepted because a callback ran.
 
