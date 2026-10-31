@@ -943,6 +943,7 @@ fn upper_first(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::fields::*;
     use super::*;
