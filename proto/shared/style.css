@@ -229,3 +229,14 @@ a.term:hover { color: var(--accent); }
 }
 /* mdBook's search script hides and shows its wrapper; here the box is always shown. */
 .search.hidden { display: block !important; }
+/* Zola 0.23 writes GitHub alerts as <blockquote class="markdown-alert-note"> with no title; the label comes from CSS. */
+blockquote.markdown-alert-note, blockquote.markdown-alert-warning {
+  border-left: 3px solid var(--accent); background: var(--note-bg); padding: 0.75rem 1rem; margin-left: 0; color: var(--text);
+}
+blockquote.markdown-alert-warning { border-left-color: var(--warn); background: var(--warn-bg); }
+blockquote.markdown-alert-note::before, blockquote.markdown-alert-warning::before {
+  content: "Note"; display: block; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 0.3rem;
+}
+blockquote.markdown-alert-warning::before { content: "Warning"; color: var(--warn); }
+blockquote.markdown-alert-note > :last-child, blockquote.markdown-alert-warning > :last-child { margin-bottom: 0; }

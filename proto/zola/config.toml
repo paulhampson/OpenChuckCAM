@@ -9,7 +9,8 @@ build_search_index = true
 generate_feeds = false
 
 [markdown]
-highlight_code = false
+github_alerts = true
+definition_list = true
 smart_punctuation = true
 
 [search]

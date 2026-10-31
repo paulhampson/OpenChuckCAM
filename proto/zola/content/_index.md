@@ -7,22 +7,22 @@ OpenChuckCAM turns a 3D model into G-code for 4-axis rotary machining: the work 
 
 This guide is for people who want to make parts with the program, including people who have not used [CAM](@/glossary.md#cam) software before. It explains each term the first time it is used and collects them in the [glossary](@/glossary.md).
 
-{% warning() %}
-Generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup. The program is in early development, and very little of its output has been run on a real machine. Read *Checking G-code before you run it* before you cut anything.
-{% end %}
+> [!WARNING]
+> Generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup. The program is in early development, and very little of its output has been run on a real machine. Read *Checking G-code before you run it* before you cut anything.
 
 ## Where to start
 
-<dl>
-<dt>New to the program</dt>
-<dd>Read <em>Install and first run</em>, then work through <a href="@/tutorial/_index.md">Your first project</a>. The tutorial takes one small part from a model file to G-code in ten steps, with a screenshot of each.</dd>
-<dt>New to CAM or to 4-axis work</dt>
-<dd>The <em>Concepts</em> pages explain what a rotary axis does, what stock and a held region are, and why a job is usually cut in two passes, roughing and then finishing.</dd>
-<dt>Ready to run a program on the Makera Z1</dt>
-<dd>Follow <em>Air cut on the Makera Z1</em> and the <em>Safe-practice checklist</em>. An air cut runs the program with no tool and no material, so you can watch the moves before anything can be damaged.</dd>
-<dt>Looking for a setting or a word</dt>
-<dd>Use the search box, the <a href="@/glossary.md">glossary</a>, or the <em>Reference</em> pages.</dd>
-</dl>
+New to the program
+: Read *Install and first run*, then work through [Your first project](@/tutorial/_index.md). The tutorial takes one small part from a model file to G-code in ten steps, with a screenshot of each.
+
+New to CAM or to 4-axis work
+: The *Concepts* pages explain what a rotary axis does, what stock and a held region are, and why a job is usually cut in two passes, roughing and then finishing.
+
+Ready to run a program on the Makera Z1
+: Follow *Air cut on the Makera Z1* and the *Safe-practice checklist*. An air cut runs the program with no tool and no material, so you can watch the moves before anything can be damaged.
+
+Looking for a setting or a word
+: Use the search box, the [glossary](@/glossary.md), or the *Reference* pages.
 
 ## What the program does
 

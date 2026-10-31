@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 {#- SPDX-License-Identifier: AGPL-3.0-or-later -#}
 {#- OpenChuckCAM user documentation: the Zola base template (lane DOCSITE prototype, throwaway). -#}
-{%- import "macros/nav.html" as nav -%}
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -34,7 +33,27 @@
           <input type="search" id="search" autocomplete="off" aria-controls="search-results">
           <ul id="search-results" class="hidden" aria-live="polite"></ul>
         </div>
-        {{ nav::contents(current=current_path | default(value="/")) }}
+        {%- set root = get_section(path="_index.md") %}
+        <ol>
+          <li><a href="{{ root.permalink }}"{% if current_path == root.path %} aria-current="page"{% endif %}>{{ root.title }}</a></li>
+          {#- Zola has no contents file: subsections first, then the root's own pages, each in `weight` order;
+              part headings come from `[extra] part` in each front matter. -#}
+          {%- for s in root.subsections %}
+          {%- set sub = get_section(path=s) %}
+          {%- if sub.extra.part %}<li class="nav-part">{{ sub.extra.part }}</li>{% endif %}
+          <li><a href="{{ sub.permalink }}"{% if current_path == sub.path %} aria-current="page"{% endif %}>{{ sub.title }}</a>
+            <ol>
+            {%- for p in sub.pages %}
+              <li><a href="{{ p.permalink }}"{% if current_path == p.path %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+            {%- endfor %}
+            </ol>
+          </li>
+          {%- endfor %}
+          {%- for p in root.pages %}
+          {%- if p.extra.part %}<li class="nav-part">{{ p.extra.part }}</li>{% endif %}
+          <li><a href="{{ p.permalink }}"{% if current_path == p.path %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+          {%- endfor %}
+        </ol>
       </details>
     </nav>
     <div class="content">

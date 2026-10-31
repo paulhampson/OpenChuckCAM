@@ -1,0 +1,8 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- Components used in the content (Zola 0.23, Tera 2). A figure with a numbered caption. -#}
+{% component figure(src: string, number: integer, alt: string, caption: string, width: integer, height: integer) -%}
+<figure>
+  <img src="{{ src }}" width="{{ width }}" height="{{ height }}" alt="{{ alt }}">
+  <figcaption><b>Figure {{ number }}.</b> {{ caption | markdown(inline=true) | safe }}</figcaption>
+</figure>
+{%- endcomponent %}

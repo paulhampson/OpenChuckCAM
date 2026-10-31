@@ -1,5 +1,0 @@
-{%- set meta = get_image_metadata(path=page.colocated_path ~ src, allow_missing=true) -%}
-<figure>
-  <img src="{{ src }}"{% if meta %} width="{{ meta.width }}" height="{{ meta.height }}"{% endif %} alt="{{ alt }}">
-  <figcaption><b>Figure {{ number }}.</b> {{ caption | markdown(inline=true) | safe }}</figcaption>
-</figure>
