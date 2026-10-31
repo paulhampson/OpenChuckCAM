@@ -418,7 +418,8 @@ impl MachinePanel {
         // Choosing a machine (SET-01); managing them is the machine library
         // window (SET-10; 12.5).
         // "Manage machines…" shares the folder button's row, so the panel is
-        // no taller than before it.
+        // no taller than before it; the row wraps when the inspector is
+        // narrower than the two buttons (280 px at the narrowest).
         ui.strong("Machine profiles");
         let mut manage = false;
         match self.library.clone() {
@@ -430,7 +431,7 @@ impl MachinePanel {
                 ui.add(egui::Label::new(RichText::new(&path).color(DARK.muted)).truncate())
                     .on_hover_text(&path);
                 if dir.is_dir() {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Open the library folder").clicked() {
                             self.message = open_folder(&dir).err();
                         }
@@ -438,7 +439,7 @@ impl MachinePanel {
                     });
                 } else {
                     ui.weak("The folder does not exist yet; only built-in profiles are listed.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Create the library folder").clicked() {
                             self.message = Some(match std::fs::create_dir_all(&dir) {
                                 Ok(()) => format!("Created {}.", dir.display()),
