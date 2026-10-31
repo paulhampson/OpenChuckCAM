@@ -490,6 +490,14 @@ Boards 3 and 3b.
 - **Finish allowance** (helical, axial, indexed): a number in mm, 0.1 by default, shown only while Finishing layers is ticked, with an error under it when it is not less than the Stepdown.
 - The free-end warnings ("can be cut free and thrown while the rotary axis turns") and the layer and free-end notes show in Messages and on the operation as other path warnings and notes do.
 
+**Adaptive spacing ([decision 0239](../decisions/0239-adaptive-pass-spacing.md), proposed; the entries below are proposed by lane ENDFACE for the owner to check).** The inspector of a helical or axial finishing operation, and of a simultaneous finishing operation with the axial pattern, shows:
+
+- **Adaptive spacing**: a checkbox, ticked for a new operation and unticked for one saved before it (project schema 24). Its tooltip is the parameter's description.
+- **Scallop height / Allowed excess**: one number in mm, the same value. Unticked, it is labelled Scallop height, 0 by default, as before; ticked, it is labelled Allowed excess, 0.01 by default when the operation holds none, with the description saying that 0 asks for no excess at all. Simultaneous finishing shows it only while Adaptive spacing is ticked on the axial pattern.
+- **Smallest spacing**: a number in mm, 0.01 by default, shown only while Adaptive spacing is ticked.
+- **Turning it on from a saved 0.** Ticking Adaptive spacing on an operation that holds a Scallop height of 0 opens a dialog, "Turn on adaptive spacing", that explains that 0 meant no limit and asks for the Allowed excess, suggesting 0.01 mm and accepting a deliberate 0. Cancel changes nothing; Turn on sets the switch and the height in one step that one Undo reverses. Unticking it again keeps the height as the Scallop height.
+- **A partial path.** When adaptive spacing met a limit or could not confirm a place, the operation's warning (in Messages and on the operation) says where and why, and that the path made so far is kept and is not complete. Post and export (11.6) lists it and asks for its own tick box before writing.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.
@@ -618,6 +626,8 @@ shared pending-edit guard. Dismissal and project edits do not remove history;
 historical failures do not block present readiness. Full batch success shows
 "G-code written" in the step bar (section 4). The existing unattended CLI behaviour is unchanged.
 
+
+**A partial path at export ([decision 0239](../decisions/0239-adaptive-pass-spacing.md) item 10, proposed by lane ENDFACE for the owner to check).** When the files hold an operation whose path is partial, the checks list it as a warning, "Operation 'Finish' has a partial path, which must be acknowledged before the files are written: …", and the safety band below the notice shows what it is and a tick box, "I accept the partial path made for this result: it is not complete, and I will check the surface before running the program". Write G-code stays disabled until it is ticked, with the reason in its tooltip. The tick holds for the files shown only: files made again, or the dialog opened again, ask again. The export result says which operations were written with a partial path and that it is not complete.
 ### 11.7 Workholding and retaining tabs
 
 UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md); the data is decision 0041, the defaults and checks decision 0035 and its owner's answers, the wiring decision 0045). Board "Workholding and tabs" (section 20). The viewport display is section 7.5.

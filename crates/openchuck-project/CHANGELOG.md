@@ -9,6 +9,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- ENDFACE stage 3 (#303, decision 0239, proposed): project schema 24. The 23 to 24 step writes `adaptive_spacing = false` into each saved helical, axial and simultaneous finishing operation, so it machines as before; a schema 23 file that already holds the switch is refused, naming it.
+
 - MODELCOPY (#385, accepted decision 0307): project schema 21. `ModelRef` has a new public field, `name`, the file name a model had when it was added, written only when it differs from the stored path's file name; `display_name`, `label` and `copy_path` (`models/<hash>.<ext>`), `RelativePath::is_outside_project` and `file_name`, and `MODELS_FOLDER`. The 20 to 21 migration changes only the number and refuses a schema 20 file that already holds a `name`.
 
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.

@@ -3,7 +3,7 @@
 - **Status:** proposed. Number allocated to FINSTEP by the Merge Manager (#326, comment 6385503719, acknowledged in 6404831340). The owner's individual choices below were made with FINSTEP from 26 Oct 2026 and are kept as they were given; they are not acceptance of this record. The requirements paragraph (R1) and the architecture paragraph (A1) quoted under Documents were approved by the owner as written on 30 Oct 2026, relayed by the coordinator session (decision 0049). The full text was shown to the owner on 30 Oct 2026, who chose to keep it proposed until the stage 3 pull request shows it built and measured (relayed by the coordinator).
 - **Date:** 26 Oct 2026 (choices); reconstructed 30 Oct 2026 by lane ENDFACE from the FINSTEP checkpoint (`codex/lane-finstep-adaptive-spacing-and-layers`, `e4e89668`).
 - **Builds on:** [0344](0344-finishing-stepdown-and-free-ends.md) and [0345](0345-finishing-layers.md) (finishing Stepdown, free ends and layers: #314 is settled there, not here), 0252 (Facing), 0255 (the bounded tool-contact checker), 0277 (exact ball drops).
-- **Open items:** OI-1373 (engagement off the rotary centreline; FINSTEP's OI-1341, renumbered). New ones, if any, from lane ENDFACE's stage 3 range.
+- **Open items:** OI-1373 (engagement off the rotary centreline; FINSTEP's OI-1341, renumbered). New in stage 3: OI-1452 (indexed finishing, the owner's choice), OI-1453 (rotary roughing's axial forms and flat Facing), OI-1454 (the helix's ends), OI-1455 (the point limit's allowance for entries and links).
 
 ## Context
 
@@ -45,6 +45,16 @@ A fixed stepover, and the ideal scallop formula for a ball or a bull nose, do no
 - **A wall-clock limit:** would make a partial result depend on the machine's load and the thread count; not chosen.
 - **Refusing every partial result:** not chosen; a warned result acknowledged at export was.
 - **Risks:** closer passes and arcs add work, output size and possibly engagement (OI-1373). Faces the tool cannot reach, contact, tessellation and trim uncertainty, and the limits can leave places unverified. No acknowledgement or extra pass proves coverage, clearance or that a program suits a machine: generated G-code remains the user's to verify (NFR-12).
+
+## How stage 3 builds it (lane ENDFACE, branch `claude/lane-endface-adaptive`)
+
+- **Where.** `openchuck-path::adaptive` holds the settings, the limits, the measure and the halving; each strategy gives its passes as a family (across it: an angle for passes along the axis, an offset along X for the wraps of a helix; along it: X, or the degrees turned) with its own drop, region and parts with their own stock to leave.
+- **The measure.** At stations along two neighbouring passes the tool (grown by the stock to leave) is dropped at 8 to 64 evenly spaced poses between them, as the operation drops it. Each contact's clearance to the real tool at the nearby poses of either pass (the machine's straight moves between the fitted points, densified so the travel along a pass adds no more than a tenth of the Allowed excess), less the stock to leave there, is the material left over the target. Between samples the height is bounded from the samples' own slope, `(p + q + d) / 2`; where the samples meet the Allowed excess and that bound does not, the place is unverified and not refined (item 11). It is not a proof: the tests grade the result with the test kit's coverage of the exact surface.
+- **Halving.** Where a station holds too much, a pass is added halfway between the two passes over that stretch and a tool radius past it, and each half is measured again, left first, never closer than the Smallest spacing.
+- **Limits.** Queries are drops and rays through a counter; the stations of an interval are measured in parallel, their most queries charged first, so the work is the same at any thread count; a candidate pass that would pass a limit is dropped whole. The point limit charges each pass's entry and link at 16 points (OI-1455).
+- **Built:** helical finishing (clean-up arcs between the wraps; the helix's ends as before, OI-1454), axial finishing, the axial pattern of simultaneous finishing. **Not yet:** indexed finishing (OI-1452), rotary roughing's axial forms and flat Facing (OI-1453).
+- **Partial results.** `PathWarning::requires_acknowledgement`; the leave-zone route returns the strategy's notes and warnings; `openchuck-app`'s output plan must be acknowledged for its own run before it writes, and the command line takes `--acknowledge-partial-path`.
+- **Library version.** 0.29.0 (decision 0048, and item 13).
 
 ## Verification (stage 3 pull request)
 

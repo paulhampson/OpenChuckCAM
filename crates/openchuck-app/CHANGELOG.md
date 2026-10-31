@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- ENDFACE stage 3 (#303, decision 0239, proposed): a partial path (adaptive spacing that met a limit or could not confirm a place) is listed in the export checks and written only once the output plan is acknowledged for its own run (`OutputPlan::partial_operations`, `acknowledge_partial_path`, `partial_path_acknowledged`; `partial_operations`, `partial_path_refusal`, `EXPORT_PARTIAL_PATH_LABEL`); `OutputReport` gains `partial` and says the path is not complete. `Application::adaptive_spacing_needs_height` and `enable_adaptive_spacing` (one undoable step). The command line's `regenerate` takes `--acknowledge-partial-path`.
+
 - SIMPERF (#382, accepted decision 0322): the example `playback_times` (CARVEPERF's, below) is replaced by this lane's, which also builds a project from an STL, times the surface job and forward play and takes a memory budget. Stock colours are computed over the job's threads (the same at any thread count); `StockPlayback` keeps the last request's stock and spaces checkpoints to fill a memory budget (`start_stock_playback` takes it; `MAX_CHECKPOINT_BYTES` becomes `DEFAULT_PLAYBACK_MEMORY`); `start_playing_stock_surface` makes a cut part without a picker; `SimulateSettings::playback_memory_mb`. Not in the library family.
 
 - OUTPUT3 (accepted decision 0327; #312): the `output_preview` module and `Application::output_preview(run)`: the program files exactly as `prepare_output` writes them, each a `PreviewFile` with its final name, bytes, size, SHA-256, line count, `line(n)` and `find(text, from, forward)`; `LineIndex`. `prepare_output` and the preview share one source of file names and texts. No library-family change.

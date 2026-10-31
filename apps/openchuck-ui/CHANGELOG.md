@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ENDFACE stage 3 (#303, decision 0239, proposed): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.
+
 - SIMPERF (#382, accepted decision 0322; owner decisions D1, D3, D5): Settings has "Memory for playback checkpoints (MB)" (1,536 by default, 256 to 8,192), capped at a quarter of the computer's memory with "This computer: at most N MB" when it applies. While playback plays, the tool follows the clock and the cut part follows behind it; a cut-part bar under the position bar shows where the cut part is, how far behind, and the progress of the one being made. When playback is still, the tool and the cut part match exactly, as before. Frames made while playing have no picker; once still, the probe works as before.
 
 - OUTPUT3 (accepted decision 0327; #312; GC-05, GC-07, NFR-15): the export dialog has a read-only Preview of the program as it would be written, in place of the first 14 lines: a file picker for split output, line count, size and SHA-256 with Copy, Go to line (Ctrl or Cmd G), Find, monospaced rows with line numbers and a scroll bar, smooth on a million lines. It leaves with the files when an edit makes them out of date. Nothing written, no editing.
