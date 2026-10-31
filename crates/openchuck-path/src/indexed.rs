@@ -357,7 +357,10 @@ impl Positions<'_> {
             .position(|w| matches!(w, [p, q] if c >= *p && c <= *q))?;
         let (p, q) = (*self.sorted.get(k)?, *self.sorted.get(k + 1)?);
         let (to_next, to_previous) = *self.sides.get(k)?;
-        let r = self.along.radius;
+        // A vertical tool's centre stands the tool's radius off the part, so
+        // the offset that puts its contact `phi` round from the position is
+        // taken on the circle through its centre (exact for a round part).
+        let r = self.along.radius + self.along.grown_radius();
         let (phi, g) = (c - p, q - p);
         if phi <= 0.5 * g {
             Some((k, to_next * r * phi.to_radians().sin(), phi))

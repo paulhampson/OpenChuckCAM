@@ -2037,6 +2037,10 @@ fn req_prj_04_req_op_04_older_operations_keep_adaptive_spacing_off() {
         (104, "rotary_roughing"),
         (105, "indexed_finishing"),
     ];
+    // A fifth operation, for indexed finishing.
+    let mut fifth = p.operation(op_id(104)).unwrap().clone();
+    fifth.id = op_id(105);
+    p.insert(Item::Operation(fifth), Placement::End).unwrap();
     for (n, strategy) in strategies {
         let mut op = p.operation(op_id(n)).unwrap().clone();
         op.strategy = strategy.into();

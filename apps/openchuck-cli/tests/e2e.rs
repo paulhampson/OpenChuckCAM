@@ -344,6 +344,7 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
     if [
         "helical_finishing",
         "axial_finishing",
+        "indexed_finishing",
         "simultaneous_finishing",
     ]
     .contains(&sample.strategy)

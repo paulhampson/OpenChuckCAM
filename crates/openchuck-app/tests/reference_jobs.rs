@@ -320,6 +320,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     if [
         "helical_finishing",
         "axial_finishing",
+        "indexed_finishing",
         "simultaneous_finishing",
     ]
     .contains(&job.strategy)

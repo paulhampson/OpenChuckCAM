@@ -2171,6 +2171,7 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     if [
         "helical_finishing",
         "axial_finishing",
+        "indexed_finishing",
         "simultaneous_finishing",
     ]
     .contains(&strategy)
