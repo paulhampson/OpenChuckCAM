@@ -2026,3 +2026,62 @@ fn req_prj_04_req_op_04_older_finishing_operations_keep_free_ends_off() {
         "{err}"
     );
 }
+
+#[test]
+fn req_prj_04_req_op_04_older_operations_keep_adaptive_spacing_off() {
+    let mut p = sample();
+    let strategies = [
+        (101, "helical_finishing"),
+        (102, "axial_finishing"),
+        (103, "simultaneous_finishing"),
+        (104, "rotary_roughing"),
+    ];
+    for (n, strategy) in strategies {
+        let mut op = p.operation(op_id(n)).unwrap().clone();
+        op.strategy = strategy.into();
+        p.replace(Item::Operation(op)).unwrap();
+    }
+    let dir = temp_dir_saved(&p, "adaptive-current");
+    for older in [22, 23] {
+        let at = copy_tree_with(&read_tree(&dir), &format!("adaptive-{older}"), |_, text| {
+            text.replacen(&current(), &format!("schema = {older}\n"), 1)
+        });
+        let opened = file::load(&at).unwrap();
+        for (n, strategy) in strategies {
+            let flag = opened
+                .operation(op_id(n))
+                .unwrap()
+                .parameters
+                .get("adaptive_spacing")
+                .cloned();
+            if strategy == "rotary_roughing" {
+                assert_eq!(flag, None, "schema {older}, {strategy}");
+            } else {
+                assert_eq!(
+                    flag,
+                    Some(ParameterValue::Flag(false)),
+                    "schema {older}, {strategy}"
+                );
+            }
+        }
+    }
+    // A current file keeps what it holds: no switch written means none set.
+    let opened = file::load(&dir).unwrap();
+    assert_eq!(opened, p);
+
+    // An older file that already holds the switch is refused, naming it.
+    let mut early = p.clone();
+    let mut op = early.operation(op_id(101)).unwrap().clone();
+    op.parameters
+        .insert("adaptive_spacing".into(), ParameterValue::Flag(true));
+    early.replace(Item::Operation(op)).unwrap();
+    let saved = temp_dir_saved(&early, "adaptive-early");
+    let at_23 = copy_tree_with(&read_tree(&saved), "adaptive-early-23", |_, text| {
+        text.replacen(&current(), "schema = 23\n", 1)
+    });
+    let err = file::load(&at_23).unwrap_err().to_string();
+    assert!(
+        err.contains("`adaptive_spacing`") && err.contains("schema 24"),
+        "{err}"
+    );
+}
