@@ -682,7 +682,9 @@ impl MachineLibraryWindow {
                         self.selected = Some(Selected::Library(None));
                         Ok(None)
                     }
-                    _ => Err(no_folder()),
+                    // Nothing is shown (a new draft that was discarded).
+                    (None, _) => Ok(None),
+                    (Some(_), None) => Err(no_folder()),
                 }
             }
             Act::Set(name, value) => self.set(name, value, app),
@@ -841,7 +843,14 @@ impl MachineLibraryWindow {
             }
             Act::Discard => match self.ask.take() {
                 Some(Ask::Discard(next)) => {
-                    self.draft = None;
+                    // Drop the edits but keep a saved library profile as it
+                    // is in its file, so the next act (Duplicate) still has
+                    // a machine to work on.
+                    self.fields.clear();
+                    self.draft = match &self.selected {
+                        Some(Selected::Library(Some(path))) => MachineDraft::open(path).ok(),
+                        _ => None,
+                    };
                     return self.act(*next, app);
                 }
                 _ => Ok(None),

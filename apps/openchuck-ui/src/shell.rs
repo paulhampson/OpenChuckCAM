@@ -1177,10 +1177,12 @@ impl Shell {
                 i.consume_shortcut(&LATER),
             )
         });
-        // The tool library window is a floating window, so these keys would
-        // otherwise act on the selected operation behind it.
+        // The tool and machine library windows are floating windows, so
+        // these keys would otherwise act on the selected operation behind
+        // them.
+        let library_open = self.tool_library.is_open() || self.machine_library.is_open();
         if let Some(Selection::Operation(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             let action = if duplicate {
                 Some(TreeAction::Duplicate(id))
@@ -1199,7 +1201,7 @@ impl Shell {
         }
         if delete
             && let Some(Selection::Set(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             self.tree_action(TreeAction::DeleteSet(id));
         }
@@ -1843,6 +1845,7 @@ impl Shell {
             || self.run.has_window()
             || self.import.is_some()
             || self.tool_library.is_open()
+            || self.machine_library.is_open()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in

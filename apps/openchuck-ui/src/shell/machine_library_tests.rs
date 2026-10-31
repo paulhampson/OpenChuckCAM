@@ -611,3 +611,45 @@ fn req_set_10_req_ui_13_cancel_drops_changes_and_a_library_value_is_confirmed_wi
     assert!(draft.is_dirty());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_set_10_discarding_edits_then_duplicating_copies_the_saved_machine() {
+    let dir = folder("discard-duplicate");
+    let mut window = MachineLibraryWindow::new(Some(dir.clone()), Some(folder("dd-tools")));
+    window.open(false);
+    window.click(Selected::BuiltIn("built-in makera-z1".into()));
+    window.duplicate(None);
+    window.set_value(None, fields::NAME, text("Shop"));
+    window.save();
+    window.set_value(None, fields::SAFE_Z, num(70.0));
+    window.duplicate(None);
+    assert!(window.asks_to_discard());
+    window.answer_discard(true);
+    let draft = window.draft().unwrap();
+    assert_eq!(draft.profile.name, "Shop copy");
+    assert_eq!(
+        draft.profile.clearance.safe_z.0, 40.0,
+        "the saved values, not the edits"
+    );
+    assert!(
+        window.message().is_none_or(|m| !m.1),
+        "{:?}",
+        window.message()
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn req_set_10_shell_keys_leave_the_project_alone_behind_the_machine_library() {
+    let mut rig = Rig::cube("machines-keys", None);
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    rig.shell.machine_library = MachineLibraryWindow::new(Some(folder("keys")), None);
+    rig.shell.open_machine_library();
+    draw(&mut rig);
+    rig.press(egui::Key::Delete, egui::Modifiers::NONE);
+    rig.press(egui::Key::D, egui::Modifiers::COMMAND);
+    draw(&mut rig);
+    let ops = rig.shell.app.as_ref().unwrap().project().operations().len();
+    assert_eq!(ops, 1, "Delete and Ctrl D did not act behind the window");
+}
