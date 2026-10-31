@@ -668,14 +668,10 @@ mod tests {
             .collect()
     }
 
-    /// Normalised, or `v` itself when it has no length.
+    /// `v` (not zero) at unit length.
     fn normal(v: [f64; 3]) -> [f64; 3] {
         let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        if l > 0.0 {
-            [v[0] / l, v[1] / l, v[2] / l]
-        } else {
-            v
-        }
+        [v[0] / l, v[1] / l, v[2] / l]
     }
 
     /// Skipping the lines that surely miss the tool changes no span, not by
