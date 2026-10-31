@@ -516,3 +516,302 @@ fn req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spac
         .fold(f64::INFINITY, f64::min);
     assert!(closest >= leave - 0.003, "closest {closest}");
 }
+
+// Rotary roughing's two axial forms and flat Facing (OI-1453; decision
+// record 0239 item 2): each layer's target is its own level, or the part
+// with its stock to leave where the tool follows it.
+
+use openchuck_path::facing::parameter as facing;
+use openchuck_path::roughing::parameter as roughing;
+use openchuck_path::{AnalyticStock, Facing, RotaryRoughing};
+use openchuck_types::tool::{Tool, ToolShape};
+
+/// The cylinder of radius 10 with `t`, roughed from a stock of radius 12.
+fn cylinder_with(t: &Tool) -> Part<Cylinder> {
+    let part = Cylinder {
+        radius: 10.0,
+        length: 12.0,
+    };
+    let mesh = part.mesh(49, 720);
+    Part {
+        part,
+        fixture: Fixture::new(MeshSurface::new(&mesh).unwrap(), 12.0, t),
+    }
+}
+
+fn flat_end(diameter: f64) -> Tool {
+    support::tool(ToolShape::FlatEnd, diameter)
+}
+
+/// `p` roughed with no stock to leave, so the coverage's distance is the
+/// excess, in layers of 1.5 mm.
+fn roughed(p: &Part<Cylinder>, extra: &[(&str, ParameterValue)]) -> GeneratedPath {
+    let mut v = values(&RotaryRoughing, &[]);
+    v.insert(roughing::STEPDOWN.to_owned(), ParameterValue::Number(1.5));
+    for (k, x) in extra {
+        v.insert((*k).to_owned(), x.clone());
+    }
+    run(|ctx| generate(&RotaryRoughing, &p.fixture.input(), &v, ctx)).unwrap()
+}
+
+fn text(s: &str) -> ParameterValue {
+    ParameterValue::Text(s.to_owned())
+}
+
+fn indexed_along() -> [(&'static str, ParameterValue); 2] {
+    [
+        (roughing::FORM, text("indexed")),
+        (roughing::DIRECTION, text(roughing::ALONG)),
+    ]
+}
+
+fn continuous_along() -> [(&'static str, ParameterValue); 2] {
+    [
+        (roughing::FORM, text("continuous")),
+        (roughing::DIRECTION, text(roughing::ALONG)),
+    ]
+}
+
+fn with(
+    form: &[(&'static str, ParameterValue)],
+    more: &[(&'static str, ParameterValue)],
+) -> Vec<(&'static str, ParameterValue)> {
+    form.iter().chain(more).cloned().collect()
+}
+
+fn off() -> (&'static str, ParameterValue) {
+    (ADAPTIVE_SPACING, ParameterValue::Flag(false))
+}
+
+#[test]
+fn req_op_04_roughing_and_facing_have_the_switch_only_where_passes_run_along_the_axis() {
+    let r = RotaryRoughing;
+    assert_eq!(
+        r.schema().get(ADAPTIVE_SPACING).unwrap().kind,
+        ParameterKind::Flag { default: true }
+    );
+    let map = |pairs: &[(&str, ParameterValue)]| -> BTreeMap<String, ParameterValue> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            .collect()
+    };
+    // Both axial forms: the switch, on for a new operation, and the
+    // Allowed excess (0.01 mm) and Smallest spacing with it on.
+    for form in [indexed_along(), continuous_along()] {
+        let (label, default, spacing) = label_and_default(&r, &map(&form));
+        assert_eq!(label, "Allowed excess");
+        assert_eq!(default, Some(0.01));
+        assert!(spacing);
+        // Off: no height setting (roughing has no Scallop) and no spacing.
+        let schema = r.schema_for(&map(&with(&form, &[off()])));
+        assert!(schema.get(ADAPTIVE_SPACING).is_some());
+        assert!(schema.get("scallop").is_none());
+        assert!(schema.get(MIN_SPACING).is_none());
+    }
+    // Passes around the part: not changed, so no switch at all.
+    for (form, direction) in [
+        ("continuous", roughing::USUAL),
+        ("indexed", roughing::AROUND),
+    ] {
+        let schema = r.schema_for(&map(&[
+            (roughing::FORM, text(form)),
+            (roughing::DIRECTION, text(direction)),
+        ]));
+        assert!(schema.get(ADAPTIVE_SPACING).is_none(), "{form}");
+        assert!(schema.get("scallop").is_none(), "{form}");
+    }
+    // Facing: flat only.
+    let f = Facing;
+    let (label, default, _) = label_and_default(&f, &map(&[(facing::SHAPE, text(facing::FLAT))]));
+    assert_eq!((label.as_str(), default), ("Allowed excess", Some(0.01)));
+    for shape in [facing::ROUND, facing::END, facing::BOX] {
+        let schema = f.schema_for(&map(&[(facing::SHAPE, text(shape))]));
+        assert!(schema.get(ADAPTIVE_SPACING).is_none(), "{shape}");
+        assert!(schema.get("scallop").is_none(), "{shape}");
+    }
+}
+
+#[test]
+fn req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met()
+ {
+    let p = cylinder_with(&flat_end(6.0));
+    let before = left(
+        &p,
+        &roughed(&p, &with(&continuous_along(), &[off()])),
+        (2.0, 10.0),
+    );
+    let on = roughed(&p, &continuous_along());
+    let after = left(&p, &on, (2.0, 10.0));
+    assert!(before > 0.05, "off left {before}");
+    assert!(after <= 0.012, "on left {after}");
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+}
+
+#[test]
+fn req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a() {
+    // Measured against the part with its stock to leave only, not each
+    // layer's own level (the owner's choice on OI-1453): a ball's cusp on a
+    // flat layer above the part is cut again by the layers below.
+    let p = cylinder();
+    let before = left(
+        &p,
+        &roughed(&p, &with(&indexed_along(), &[off()])),
+        (2.0, 10.0),
+    );
+    let on = roughed(&p, &indexed_along());
+    let after = left(&p, &on, (2.0, 10.0));
+    assert!(before > 0.1, "off left {before}");
+    assert!(after <= 0.012, "on left {after}");
+    assert!(has_note(&on, "pass"), "{:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    // A is held while the tool cuts (OP-15): every cutting move keeps its A.
+    let mut from = on.group.start;
+    for s in &on.group.segments {
+        if s.kind == MoveKind::Cutting {
+            assert!(
+                (s.end.a.0 - from.a.0).abs() < 1e-9,
+                "A turned while cutting"
+            );
+        }
+        from = s.end;
+    }
+}
+
+#[test]
+fn req_op_04_req_nfr_12_what_a_flat_end_leaves_between_indexed_positions_is_said() {
+    // Between two A positions the part's surface is tilted to a vertical
+    // tool at either A: a flat end's corner leaves a ridge there that no
+    // line at either A cleans. It is measured, and said with the warning to
+    // acknowledge, not refined (decision record 0239 item 3, as indexed
+    // finishing).
+    let p = cylinder_with(&flat_end(6.0));
+    let off = roughed(&p, &with(&indexed_along(), &[off()]));
+    let on = roughed(&p, &indexed_along());
+    let before = left(&p, &off, (2.0, 10.0));
+    assert!(before > 0.1, "off left {before}");
+    let reach: Vec<_> = on
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("cannot reach there"))
+        .collect();
+    assert_eq!(reach.len(), 1, "{:?}", on.warnings);
+    assert!(reach.iter().all(|w| w.requires_acknowledgement));
+    // Nothing between the lines of one position is too high: the flat end
+    // covers its own stepover.
+    assert!(has_note(&on, "no passes were added"), "{:?}", on.notes);
+}
+
+#[test]
+fn req_op_04_req_op_11_roughing_keeps_its_stock_to_leave() {
+    let p = cylinder_with(&flat_end(6.0));
+    let leave = 0.3;
+    let on = roughed(
+        &p,
+        &with(
+            &continuous_along(),
+            &[(names::STOCK_TO_LEAVE, ParameterValue::Number(leave))],
+        ),
+    );
+    let outline = Outline::new(&p.fixture.tool);
+    let closest = poses(&on, 4)
+        .iter()
+        .filter(|q| (1.0..=11.0).contains(&q.tip.x))
+        .map(|q| min_clearance(&outline, &p.part, q, 0.1))
+        .fold(f64::INFINITY, f64::min);
+    assert!(closest >= leave - 0.003, "closest {closest}");
+    let after = left(&p, &on, (2.0, 10.0));
+    assert!(after <= leave + 0.012, "left {after}");
+}
+
+#[test]
+fn req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads() {
+    // A shorter part and a coarser Allowed excess keep the four runs short.
+    let part = Cylinder {
+        radius: 10.0,
+        length: 3.0,
+    };
+    let mesh = part.mesh(13, 360);
+    let p = Part {
+        part,
+        fixture: Fixture::new(MeshSurface::new(&mesh).unwrap(), 12.0, &flat_end(6.0)),
+    };
+    for form in [indexed_along(), continuous_along()] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = roughed(
+                &p,
+                &with(
+                    &form,
+                    &[
+                        ("scallop", ParameterValue::Number(0.05)),
+                        (roughing::STEPDOWN, ParameterValue::Number(3.0)),
+                    ],
+                ),
+            );
+            format!("{:?}{:?}{:?}", path.group, path.notes, path.warnings).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4);
+    }
+}
+
+/// Flat Facing of a stock of radius 12 from X -2 to 14 down to a face 11 mm
+/// from the axis at A 0, over the cylinder of radius 10.
+fn faced(t: &Tool, extra: &[(&str, ParameterValue)]) -> GeneratedPath {
+    let mesh = Cylinder {
+        radius: 10.0,
+        length: 12.0,
+    }
+    .mesh(49, 720);
+    let mut f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 12.0, t);
+    f.stock = AnalyticStock::Cylinder {
+        radius: 12.0,
+        x_start: -2.0,
+        x_end: 14.0,
+    };
+    let mut v = values(&Facing, &[]);
+    for (k, x) in [
+        (facing::SHAPE, text(facing::FLAT)),
+        (facing::SIZE, ParameterValue::Number(11.0)),
+        (facing::ANGLES, text("0")),
+        (roughing::STEPDOWN, ParameterValue::Number(1.0)),
+    ] {
+        v.insert(k.to_owned(), x);
+    }
+    for (k, x) in extra {
+        v.insert((*k).to_owned(), x.clone());
+    }
+    run(|ctx| generate(&Facing, &f.input(), &v, ctx)).unwrap()
+}
+
+fn cutting(path: &GeneratedPath) -> usize {
+    path.group
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .count()
+}
+
+#[test]
+fn req_op_04_req_op_24_flat_facing_spaces_its_lines_by_the_material_left() {
+    // A flat end on a flat face leaves no cusp between lines no wider apart
+    // than its flat: the measure runs and adds nothing, and the spacing is
+    // never wider than the stepover (the coordinator's ruling, 31 Oct 2026).
+    let flat = support::tool(ToolShape::FlatEnd, 4.0);
+    let on = faced(&flat, &[]);
+    let fixed = faced(&flat, &[off()]);
+    assert!(
+        has_note(&on, "adaptive spacing: no passes were added"),
+        "{:?}",
+        on.notes
+    );
+    assert_eq!(on.group.segments, fixed.group.segments);
+    // A ball leaves a cusp between lines on the face: lines are added.
+    let ball = ball(4.0);
+    let on = faced(&ball, &[]);
+    let fixed = faced(&ball, &[off()]);
+    assert!(cutting(&on) > cutting(&fixed));
+    assert!(has_note(&on, "pass"), "{:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+}

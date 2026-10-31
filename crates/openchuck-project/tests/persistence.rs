@@ -2059,15 +2059,13 @@ fn req_prj_04_req_op_04_older_operations_keep_adaptive_spacing_off() {
                 .parameters
                 .get("adaptive_spacing")
                 .cloned();
-            if strategy == "rotary_roughing" {
-                assert_eq!(flag, None, "schema {older}, {strategy}");
-            } else {
-                assert_eq!(
-                    flag,
-                    Some(ParameterValue::Flag(false)),
-                    "schema {older}, {strategy}"
-                );
-            }
+            // Rotary roughing gained the switch in schema 25 (OI-1453),
+            // also as an explicit off.
+            assert_eq!(
+                flag,
+                Some(ParameterValue::Flag(false)),
+                "schema {older}, {strategy}"
+            );
         }
     }
     // A current file keeps what it holds: no switch written means none set.
@@ -2087,6 +2085,63 @@ fn req_prj_04_req_op_04_older_operations_keep_adaptive_spacing_off() {
     let err = file::load(&at_23).unwrap_err().to_string();
     assert!(
         err.contains("`adaptive_spacing`") && err.contains("schema 24"),
+        "{err}"
+    );
+}
+
+#[test]
+fn req_prj_04_req_op_04_older_roughing_and_facing_operations_keep_adaptive_spacing_off() {
+    // Schema 25 (decision record 0239; OI-1453): rotary roughing and Facing
+    // gain the switch; their older operations open with it off, and the
+    // finishing operations keep what schema 24 gave them.
+    let mut p = sample();
+    let strategies = [
+        (101, "rotary_roughing"),
+        (102, "facing"),
+        (103, "axial_finishing"),
+    ];
+    for (n, strategy) in strategies {
+        let mut op = p.operation(op_id(n)).unwrap().clone();
+        op.strategy = strategy.into();
+        if strategy == "axial_finishing" {
+            op.parameters
+                .insert("adaptive_spacing".into(), ParameterValue::Flag(true));
+        }
+        p.replace(Item::Operation(op)).unwrap();
+    }
+    let dir = temp_dir_saved(&p, "line-adaptive-current");
+    let at_24 = copy_tree_with(&read_tree(&dir), "line-adaptive-24", |_, text| {
+        text.replacen(&current(), "schema = 24\n", 1)
+    });
+    let opened = file::load(&at_24).unwrap();
+    let flag = |n: u128| {
+        opened
+            .operation(op_id(n))
+            .unwrap()
+            .parameters
+            .get("adaptive_spacing")
+            .cloned()
+    };
+    assert_eq!(flag(101), Some(ParameterValue::Flag(false)));
+    assert_eq!(flag(102), Some(ParameterValue::Flag(false)));
+    assert_eq!(flag(103), Some(ParameterValue::Flag(true)));
+    // A current file keeps what it holds.
+    assert_eq!(file::load(&dir).unwrap(), p);
+
+    // A schema 24 roughing operation that already holds the switch is
+    // refused, naming it.
+    let mut early = p.clone();
+    let mut op = early.operation(op_id(101)).unwrap().clone();
+    op.parameters
+        .insert("adaptive_spacing".into(), ParameterValue::Flag(true));
+    early.replace(Item::Operation(op)).unwrap();
+    let saved = temp_dir_saved(&early, "line-adaptive-early");
+    let at_24 = copy_tree_with(&read_tree(&saved), "line-adaptive-early-24", |_, text| {
+        text.replacen(&current(), "schema = 24\n", 1)
+    });
+    let err = file::load(&at_24).unwrap_err().to_string();
+    assert!(
+        err.contains("`adaptive_spacing`") && err.contains("schema 25"),
         "{err}"
     );
 }

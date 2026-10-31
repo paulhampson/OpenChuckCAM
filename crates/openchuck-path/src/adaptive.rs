@@ -72,6 +72,10 @@ pub mod parameter {
     pub const ADAPTIVE_SPACING: &str = "adaptive_spacing";
     /// The closest two passes may be, mm.
     pub const MIN_SPACING: &str = "min_spacing";
+    /// The Allowed excess, mm, for a strategy with no Scallop height: the
+    /// same name, so one value serves both where both exist (decision record
+    /// 0239 item 4).
+    pub const ALLOWED_EXCESS: &str = "scallop";
 }
 
 /// The strategies with adaptive spacing (decision record 0239): their
@@ -82,6 +86,12 @@ pub const STRATEGIES: [&str; 4] = [
     "indexed_finishing",
     "simultaneous_finishing",
 ];
+
+/// The strategies whose lines along the axis gained adaptive spacing in the
+/// lane's second pull request (OI-1453): rotary roughing's two axial forms
+/// and flat Facing. Their operations saved before it are migrated to it off
+/// (project schema 25).
+pub const LINE_STRATEGIES: [&str; 2] = ["rotary_roughing", "facing"];
 
 /// The Allowed excess when the operation sets none and Adaptive spacing is
 /// on, mm (decision record 0239 item 4).
@@ -121,6 +131,54 @@ pub(crate) fn specs() -> Vec<ParameterSpec> {
     ]
 }
 
+/// The Allowed excess, for a strategy with no Scallop height (rotary
+/// roughing and Facing): shown only with Adaptive spacing on.
+pub(crate) fn allowed_excess_spec() -> ParameterSpec {
+    ParameterSpec {
+        name: parameter::ALLOWED_EXCESS.to_owned(),
+        label: "Allowed excess".to_owned(),
+        description: ALLOWED_EXCESS_DESCRIPTION.to_owned(),
+        kind: ParameterKind::Number {
+            unit: Unit::Millimetres,
+            min: Some(0.0),
+            min_exclusive: false,
+            max: None,
+            default: Some(DEFAULT_ALLOWED_EXCESS),
+        },
+    }
+}
+
+const ALLOWED_EXCESS_DESCRIPTION: &str = "With adaptive spacing on, the most material that may \
+                                          stand between two passes above the finished surface \
+                                          and its stock to leave. 0 asks for none at all, which \
+                                          may leave places unverified or meet the limits.";
+
+/// `schema` as it applies to `values`, for a strategy with no Scallop
+/// height whose lines run along the axis only in some of its forms
+/// (`applies`): elsewhere the switch and its settings are hidden, and with
+/// the switch off only the switch is shown (OI-1453).
+pub(crate) fn schema_for_lines(
+    mut schema: ParameterSchema,
+    values: &BTreeMap<String, ParameterValue>,
+    applies: bool,
+) -> ParameterSchema {
+    let hidden: &[&str] = if !applies {
+        &[
+            parameter::ADAPTIVE_SPACING,
+            parameter::MIN_SPACING,
+            parameter::ALLOWED_EXCESS,
+        ]
+    } else if is_on(values) {
+        &[]
+    } else {
+        &[parameter::MIN_SPACING, parameter::ALLOWED_EXCESS]
+    };
+    schema
+        .parameters
+        .retain(|p| !hidden.contains(&p.name.as_str()));
+    schema
+}
+
 /// Whether `values` turn Adaptive spacing on: on unless set off, as for a
 /// new operation.
 pub(crate) fn is_on(values: &BTreeMap<String, ParameterValue>) -> bool {
@@ -142,11 +200,7 @@ pub(crate) fn schema_for(
     if is_on(values) {
         if let Some(spec) = schema.parameters.iter_mut().find(|p| p.name == height) {
             spec.label = "Allowed excess".to_owned();
-            spec.description = "With adaptive spacing on, the most material that may stand \
-                                between two passes above the finished surface and its stock \
-                                to leave. 0 asks for none at all, which may leave places \
-                                unverified or meet the limits."
-                .to_owned();
+            spec.description = ALLOWED_EXCESS_DESCRIPTION.to_owned();
             if let ParameterKind::Number { default, .. } = &mut spec.kind {
                 *default = Some(DEFAULT_ALLOWED_EXCESS);
             }
@@ -495,6 +549,13 @@ pub(crate) trait Family: Sync {
     fn reachable(&self, _c: f64) -> bool {
         true
     }
+
+    /// The model X and A to report for a place at `c` across the family, at
+    /// `s` along it: [`pose`](Self::pose), unless the family's positions
+    /// across it are not angles (offsets across the axis at one A).
+    fn at(&self, c: f64, s: f64) -> (f64, Degrees) {
+        self.pose(c, s)
+    }
 }
 
 /// One measuring interval: the stretch between two tracks, by index, where
@@ -544,21 +605,7 @@ impl Outcome {
     /// The note: how many passes were added and the smallest spacing used
     /// (decision record 0239 item 12).
     pub(crate) fn note(&self, settings: &Settings) -> String {
-        match (self.added(), self.smallest) {
-            (0, _) | (_, None) => format!(
-                "adaptive spacing: no passes were added; the material measured between the \
-                 passes is within the allowed excess of {:.3} mm",
-                settings.height
-            ),
-            (n, Some(w)) => format!(
-                "adaptive spacing: {n} pass{} added where more than the allowed excess of \
-                 {:.3} mm was left, the closest {w:.3} mm from its neighbour; measuring and \
-                 fitting them made {} geometry queries",
-                if n == 1 { "" } else { "es" },
-                settings.height,
-                self.queries
-            ),
-        }
+        note(self.added(), self.smallest, self.queries, settings)
     }
 
     /// The warning, when a place could not be confirmed: the path made is
@@ -570,26 +617,104 @@ impl Outcome {
         limits: &Limits,
         height: &str,
     ) -> Option<PathWarning> {
-        let first = self.places.first()?;
-        let reasons: BTreeSet<Reason> = self.places.iter().map(|p| p.reason).collect();
-        let why: Vec<String> = reasons.iter().map(|r| r.words(limits, settings)).collect();
-        let count = self.places.len();
-        Some(PathWarning {
-            message: format!(
-                "adaptive spacing could not confirm that the material left between the passes \
-                 is within the allowed excess of {:.3} mm at {count} place{}, the first near \
-                 X {:.3} A {:.1}: {}. The path made so far is kept; it is not complete. \
-                 Check the surface there before using the program",
-                settings.height,
-                if count == 1 { "" } else { "s" },
-                first.x,
-                first.a,
-                why.join("; ")
-            ),
-            parameter: Some(height.to_owned()),
-            requires_acknowledgement: true,
-        })
+        warning(&self.places, settings, limits, height)
     }
+}
+
+/// What several refinements of one operation did together: rotary
+/// roughing refines each layer, and each A position of a layer, apart
+/// (OI-1453), under one set of limits.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Tally {
+    /// Passes added.
+    pub(crate) added: u64,
+    /// The smallest spacing between neighbouring passes added, mm.
+    pub(crate) smallest: Option<f64>,
+    /// The places not confirmed.
+    pub(crate) places: Vec<Place>,
+    /// The geometry queries made.
+    pub(crate) queries: u64,
+}
+
+impl Tally {
+    /// Adds `outcome` to the tally.
+    pub(crate) fn absorb(&mut self, outcome: &Outcome) {
+        self.added = self.added.saturating_add(outcome.added() as u64);
+        self.smallest = match (self.smallest, outcome.smallest) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        self.places.extend(outcome.places.iter().copied());
+        self.queries = self.queries.max(outcome.queries);
+    }
+
+    /// The note, as [`Outcome::note`].
+    pub(crate) fn note(&self, settings: &Settings) -> String {
+        note(
+            usize::try_from(self.added).unwrap_or(usize::MAX),
+            self.smallest,
+            self.queries,
+            settings,
+        )
+    }
+
+    /// The warning, as [`Outcome::warning`].
+    pub(crate) fn warning(
+        &self,
+        settings: &Settings,
+        limits: &Limits,
+        height: &str,
+    ) -> Option<PathWarning> {
+        warning(&self.places, settings, limits, height)
+    }
+}
+
+/// The note for `added` passes, the closest `smallest` from a neighbour,
+/// after `queries` geometry queries (decision record 0239 item 12).
+fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> String {
+    match (added, smallest) {
+        (0, _) | (_, None) => format!(
+            "adaptive spacing: no passes were added; the material measured between the \
+             passes is within the allowed excess of {:.3} mm",
+            settings.height
+        ),
+        (n, Some(w)) => format!(
+            "adaptive spacing: {n} pass{} added where more than the allowed excess of \
+             {:.3} mm was left, the closest {w:.3} mm from its neighbour; measuring and \
+             fitting them made {} geometry queries",
+            if n == 1 { "" } else { "es" },
+            settings.height,
+            queries
+        ),
+    }
+}
+
+/// The warning for `places` not confirmed (decision record 0239 item 10).
+fn warning(
+    places: &[Place],
+    settings: &Settings,
+    limits: &Limits,
+    height: &str,
+) -> Option<PathWarning> {
+    let first = places.first()?;
+    let reasons: BTreeSet<Reason> = places.iter().map(|p| p.reason).collect();
+    let why: Vec<String> = reasons.iter().map(|r| r.words(limits, settings)).collect();
+    let count = places.len();
+    Some(PathWarning {
+        message: format!(
+            "adaptive spacing could not confirm that the material left between the passes \
+             is within the allowed excess of {:.3} mm at {count} place{}, the first near \
+             X {:.3} A {:.1}: {}. The path made so far is kept; it is not complete. \
+             Check the surface there before using the program",
+            settings.height,
+            if count == 1 { "" } else { "s" },
+            first.x,
+            first.a,
+            why.join("; ")
+        ),
+        parameter: Some(height.to_owned()),
+        requires_acknowledgement: true,
+    })
 }
 
 /// The verdict of one station.
@@ -852,7 +977,7 @@ impl Work<'_> {
     }
 
     fn place(&mut self, c: f64, s: f64, reason: Reason) {
-        let (x, a) = self.family.pose(c, s);
+        let (x, a) = self.family.at(c, s);
         self.places.push(Place { x, a: a.0, reason });
     }
 

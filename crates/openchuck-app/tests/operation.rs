@@ -2023,9 +2023,15 @@ fn req_op_24_req_gc_07_req_set_09_legacy_default_with_workholding_matches_pre_sc
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let token = openchuck_types::job::CancelToken::new();
     let context = JobContext::new(&token, &openchuck_types::job::NoProgress);
+    // Adaptive spacing is on for a new flat Facing operation, which changes
+    // the output on purpose (decision record 0239; OI-1453); one saved
+    // before it is migrated to off (project schema 25), as compared here.
+    // The frozen strategy borrows Facing's schema and passes, so it is told
+    // the same.
     let parameters = [
         ("size", ParameterValue::Number(7.)),
         ("angles", ParameterValue::Text("0,90".into())),
+        ("adaptive_spacing", ParameterValue::Flag(false)),
     ];
     set_strategy(&mut app, op, "pre_scope_facing", &parameters);
     let before = openchuck_app::operation::generate_operation(

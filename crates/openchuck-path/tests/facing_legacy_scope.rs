@@ -88,6 +88,9 @@ fn values(extent: &str, margin: f64) -> BTreeMap<String, ParameterValue> {
         ("stepdown", ParameterValue::Number(2.)),
         ("extent", ParameterValue::Text(extent.into())),
         ("extent_margin", ParameterValue::Number(margin)),
+        // These tests are about the scope, not adaptive spacing (decision
+        // record 0239; OI-1453).
+        ("adaptive_spacing", ParameterValue::Flag(false)),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v))

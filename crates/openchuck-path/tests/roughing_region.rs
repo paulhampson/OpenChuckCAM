@@ -16,15 +16,12 @@ use std::collections::BTreeMap;
 use openchuck_path::params::names;
 use openchuck_path::region::{Protection, RegionConstraint, WatchedSurface, Window};
 use openchuck_path::roughing::{NAME, parameter};
-use openchuck_path::{
-    GeneratedPath, MeshSurface, ParameterValue, PathError, RotaryRoughing, generate,
-    generate_in_region,
-};
+use openchuck_path::{GeneratedPath, MeshSurface, ParameterValue, PathError, RotaryRoughing};
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::MoveKind;
 use openchuck_types::mesh::TriangleMesh;
-use support::{Fixture, ball, run};
+use support::{Fixture, ball, generate, generate_in_region, run};
 
 const RADIUS: f64 = 10.0;
 const LENGTH: f64 = 20.0;

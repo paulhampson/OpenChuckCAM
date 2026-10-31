@@ -14,12 +14,12 @@ use std::collections::BTreeMap;
 
 use openchuck_path::params::names;
 use openchuck_path::roughing::{NAME, parameter};
-use openchuck_path::{GeneratedPath, MeshSurface, ParameterValue, RotaryRoughing, generate};
+use openchuck_path::{GeneratedPath, MeshSurface, ParameterValue, RotaryRoughing};
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge, min_clearance};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
 use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::{Tool, ToolShape};
-use support::{Fixture, run, tool};
+use support::{Fixture, generate, run, tool};
 
 fn num(x: f64) -> ParameterValue {
     ParameterValue::Number(x)
