@@ -20,8 +20,8 @@ use openchuck_app::setup::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, PartFacing, check_draft, default_chips,
-    default_tabs_state, end_tab, grip_warning, held_span, holding_hint, new_tab, part_facing,
-    set_layout, set_shape, set_tab_auto, set_tab_span, to_field_places,
+    default_tabs_state, end_tab, grip_warning, held_span, holding_hint, new_tab, no_tabs_warning,
+    part_facing, set_layout, set_shape, set_tab_auto, set_tab_span, to_field_places,
 };
 use openchuck_app::{Application, Command, Threads};
 use openchuck_types::units::Degrees;
@@ -207,6 +207,31 @@ fn req_ui_25_validation_marks_the_field_with_a_plain_message() {
             "Reaches 14.000 mm from the axis, outside the stock (radius 13.000 mm).".to_owned()
         )
     );
+}
+
+#[test]
+fn req_ui_25_req_op_21_no_tabs_warning_is_true_when_a_held_region_joins_the_part() {
+    // FIRSTRUN item 3: with a held region the part stays joined to the held
+    // bar, so "not joined to the stock" would be false. The text then says
+    // what is true; with no held region and no tab it keeps the old words.
+    let none = no_tabs_warning(&Workholding::default());
+    assert!(none.starts_with("No tabs are stored."), "{none}");
+    assert!(none.contains("not joined to the stock"), "{none}");
+    for w in [
+        Workholding {
+            start: Some(held(6.0)),
+            ..Workholding::default()
+        },
+        Workholding {
+            end: Some(held(6.0)),
+            ..Workholding::default()
+        },
+    ] {
+        let text = no_tabs_warning(&w);
+        assert!(text.starts_with("No tabs are stored."), "{text}");
+        assert!(!text.contains("not joined to the stock"), "{text}");
+        assert!(text.contains("held end"), "{text}");
+    }
 }
 
 #[test]
@@ -996,6 +1021,10 @@ fn req_set_09_the_grip_field_says_how_much_of_the_part_the_grip_covers() {
     let end = grip_warning(&w, End::End, Some(&stock), Some(&part)).expect("a warning");
     assert!(end.contains("4.175 mm of the part"), "{end}");
     assert!(end.contains("never machined"), "{end}");
+    // In plain words for a beginner (FIRSTRUN item 3): what the grip is, and
+    // what to do if that length should be cut.
+    assert!(end.contains("The chuck grips"), "{end}");
+    assert!(end.contains("Shorten the grip"), "{end}");
     // The start grip ends at X -12, clear of the part.
     assert_eq!(
         grip_warning(&w, End::Start, Some(&stock), Some(&part)),
