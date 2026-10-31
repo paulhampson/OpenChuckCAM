@@ -1,6 +1,6 @@
 # 0368: Simultaneous finishing of surfaces hidden from the drive (lane OP20)
 
-- **Status:** proposed. The owner chose, on 31 Oct 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7; decision 0049):
+- **Status:** accepted by the project owner on 31 Oct 2026, relayed by the coordinator (decision 0049), including OP-20 as P1 and the answer on OI-1452 (now OI-1456). The owner chose, on 31 Oct 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7; decision 0049):
   - decision 1, option A: passes added for the hidden surfaces, with the drive left as it is (the unified drive is deferred, OI-1450, issue #415);
   - decision 2, option B: the reachable direction nearest the normal, limited by a new parameter, the largest lean on hidden surfaces;
   - decision 3, option B: always on, with no setting to turn it off;
@@ -8,7 +8,6 @@
   - decision 5, option A: OP-20's wording and verification row, with OP-20 raised to P1 (*Consequences*);
   - on OI-1456, option A with an addition: the shank is checked on every simultaneous pass, and a warning and structured data say where the path breaks for it (item 7).
 
-  This record's text awaits the owner's acceptance.
 - **Date:** 31 Oct 2026.
 - **Numbers:** record 0368 and OI-1450 to OI-1469 were assigned by the coordinator. ENDFACE stage 3 merged first with OI-1452 to OI-1455, so this lane's OI-1452 and OI-1453 were renumbered OI-1456 and OI-1457 when it merged `main` (the Merge Manager's release of #419); OI-1450 and OI-1451, cited by issues #415 and #416, keep their numbers.
 - **Lane:** OP20 (issue #413), branch `claude/lane-op20`.
