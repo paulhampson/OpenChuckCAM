@@ -29,9 +29,13 @@
 //! surface does not reach under it) the pass is split there and the shared
 //! services link the pieces.
 
+use openchuck_types::geometry::Point3;
+use std::collections::BTreeMap;
+
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
+use crate::assemble::PathWarning;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
@@ -147,8 +151,16 @@ impl Strategy for HelicalFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
             .collect(),
         )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {
@@ -176,7 +188,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, _)| p)
+        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
     }
 
     fn passes(
@@ -185,7 +197,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context).map(|(p, _)| p)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -195,7 +207,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context).map(|(p, _)| p)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_with_notes(
@@ -205,11 +217,11 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, turns) = passes(input, region, &[], parameters, context)?;
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns).into_iter().collect(),
-            warnings: Vec::new(),
+            notes,
+            warnings,
         })
     }
 }
@@ -218,8 +230,10 @@ impl Strategy for HelicalFinishing {
 /// by `sign`, with the tool across the rotary axis dropped onto the surface
 /// as helical finishing drops it (`grown` by `leave`), no more than `step`
 /// degrees between seeds, each part of the surface left its own stock where
-/// `zones` gives one: a face's turn (decision record 0297), for helical
-/// finishing and the simultaneous spiral.
+/// `zones` gives one, cut only where `wanted` (when given) takes the
+/// contact: a face's turn (decision record 0297), for helical finishing, the
+/// simultaneous spiral and rest machining.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn turn_passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
@@ -227,6 +241,7 @@ pub(crate) fn turn_passes(
     tolerance: f64,
     (x, start, sign): (f64, f64, f64),
     step: f64,
+    wanted: Option<&(dyn Fn(Point3) -> bool + Send + Sync)>,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let n = (360.0 / step).ceil().max(1.0) as usize;
@@ -247,20 +262,21 @@ pub(crate) fn turn_passes(
         spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
         thin: false,
         max_dt: 1.0 / n as f64,
-        wanted: None,
+        wanted,
     };
     fit_region(&fit, n, "a turn at a face", context)
 }
 
 /// The passes of helical finishing, limited to `region` when given, with
-/// the X of the turns it made at faces across the axis.
+/// its notes and warnings: the faces across the axis it turned at, those a
+/// held region kept it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<f64>)> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -348,10 +364,8 @@ fn passes(
         // One whole turn at each face across the axis, where the tool's side
         // touches it, cut after the helix as its own pass, so the helix is
         // as before (decision record 0297).
-        let turns: Vec<f64> = faces::turns(input, &grown, (x0, x1), tolerance, context)?
-            .into_iter()
-            .map(|t| t.x)
-            .collect();
+        let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
+        let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
         for &x in &turns {
             context.check_cancelled()?;
             let at = start + sign * 360.0 * (x - x0) / pitch;
@@ -362,9 +376,28 @@ fn passes(
                 tolerance,
                 (x, at, sign),
                 step,
+                None,
                 context,
             )?);
         }
-        Ok((passes, turns))
+        // Finishing layers above the passes made so far, when on (decision
+        // record 0345).
+        let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+        // The free ends, in layers down beside them (decision record 0344).
+        let free = crate::finishing::free_ends(
+            input,
+            &grown,
+            &found.free,
+            parameters,
+            (start, sign, step),
+        )?;
+        passes.extend(free.passes);
+        let notes = faces::note(&turns)
+            .into_iter()
+            .chain(faces::held_note(&found.held))
+            .chain(layered)
+            .chain(free.notes)
+            .collect();
+        Ok((passes, notes, free.warnings))
     }
 }

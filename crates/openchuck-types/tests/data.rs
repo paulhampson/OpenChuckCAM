@@ -190,7 +190,9 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     assert_eq!(m.spindle_limit(SpindleSpeed(1.0e6)), None);
     // No range: nothing to confirm either.
     assert!(!m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
-    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 4);
+    // The block-time pair, the software policy and the three spindle-height
+    // fields (decision 0317) are off too.
+    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 7);
     m.max_spindle_rpm = Some(SpindleSpeed(13000.0));
     m.validate().unwrap();
     assert!(m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
@@ -211,6 +213,78 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     // Written only when set.
     let plain = serde_json::to_string(&MachineProfile::example_x_rotary()).unwrap();
     assert!(!plain.contains("spindle"), "{plain}");
+}
+
+/// A machine that measures each tool's length (a tool setter) places every
+/// tip correctly, but the spindle rises with a longer tool; the profile can
+/// say so, give the distance from the spindle at home down to the axis, and a
+/// recommended minimum safe Z, each with its provenance (SET-01, UI-13,
+/// decision 0317). Unset, they are not written and not listed.
+#[test]
+fn req_set_01_req_ui_13_a_profile_can_state_tool_length_measurement_and_the_spindle_to_axis_distance()
+ {
+    use openchuck_types::machine::ProfileField;
+    let plain = MachineProfile::example_x_rotary();
+    assert!(!plain.automatic_tool_length);
+    assert_eq!(plain.spindle_to_axis, None);
+    assert_eq!(plain.recommended_min_safe_z, None);
+    for field in [
+        ProfileField::ToolLengthMeasurement,
+        ProfileField::SpindleToAxis,
+        ProfileField::RecommendedMinSafeZ,
+    ] {
+        assert!(ProfileField::ALL.contains(&field), "{field}");
+        assert!(!plain.fields().contains(&field), "{field}");
+    }
+    assert_eq!(
+        [
+            ProfileField::ToolLengthMeasurement.name(),
+            ProfileField::SpindleToAxis.name(),
+            ProfileField::RecommendedMinSafeZ.name()
+        ],
+        [
+            "tool_length_measurement",
+            "spindle_to_axis",
+            "recommended_min_safe_z"
+        ]
+    );
+    let text = serde_json::to_string(&plain).unwrap();
+    for key in [
+        "automatic_tool_length",
+        "spindle_to_axis",
+        "recommended_min_safe_z",
+    ] {
+        assert!(!text.contains(key), "{key}: {text}");
+    }
+
+    // With measurement, the distance is listed even while it is not known:
+    // it is what the spindle-height check needs.
+    let mut m = plain.clone();
+    m.automatic_tool_length = true;
+    m.validate().unwrap();
+    assert!(m.fields().contains(&ProfileField::ToolLengthMeasurement));
+    assert!(m.fields().contains(&ProfileField::SpindleToAxis));
+    assert!(!m.fields().contains(&ProfileField::RecommendedMinSafeZ));
+    m.spindle_to_axis = Some(Millimetres(78.6));
+    m.recommended_min_safe_z = Some(Millimetres(30.0));
+    m.validate().unwrap();
+    assert!(m.fields().contains(&ProfileField::RecommendedMinSafeZ));
+    let back: MachineProfile = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+    assert_eq!(back, m);
+}
+
+#[test]
+fn req_nfr_07_bad_spindle_height_values_are_refused() {
+    for value in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let mut m = MachineProfile::example_x_rotary();
+        m.spindle_to_axis = Some(Millimetres(value));
+        let e = m.validate().unwrap_err().to_string();
+        assert!(e.contains("spindle_to_axis"), "{value}: {e}");
+        let mut m = MachineProfile::example_x_rotary();
+        m.recommended_min_safe_z = Some(Millimetres(value));
+        let e = m.validate().unwrap_err().to_string();
+        assert!(e.contains("recommended_min_safe_z"), "{value}: {e}");
+    }
 }
 
 #[test]

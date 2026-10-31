@@ -62,6 +62,7 @@ use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, TURN};
+use crate::section;
 use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
 
 pub use crate::helical::{CHORD_FACTOR, CONSTRAINED_SPACING};
@@ -101,8 +102,25 @@ pub const AXIAL_SEED: f64 = 1.0;
 /// that gives the smoothed normal of a mesh (OI-67).
 pub const NORMAL_SPAN: f64 = 0.5;
 
+/// The lean of a flat-bottomed tool's axis from the normal, as the sine of
+/// the angle (about 5.7 degrees), at and beyond which the tool is seeded
+/// with its corner on the drive point; nearer the normal the seed moves
+/// towards the tool's centre in step with the lean (OI-337).
+const FLAT_BLEND: f64 = 0.1;
+
 /// How many times a move may be halved.
 pub const MAX_DEPTH: u32 = 12;
+
+/// Most poses a long move is tested at (decision record 0363 item 2).
+const MAX_TEST_POSES: usize = 256;
+
+/// The least share of a cut in along the tool axis that the move test reads
+/// as depth (decision record 0363 item 2).
+const MIN_ALONG: f64 = 0.5;
+
+/// How many times a move that still cuts in after [`MAX_DEPTH`] halvings
+/// may be kept as two moves through the raised tool at its middle.
+const RAISES: u32 = 12;
 
 /// How many times the limit of an allowed region is bisected.
 const EDGE_STEPS: u32 = 12;
@@ -282,6 +300,9 @@ struct Track {
     seeds: usize,
     /// Drive samples for the A smoothing.
     samples: usize,
+    /// The zone of [`Plan::zones`] the track lies in, whose centre its drive
+    /// rays aim at (OP-26).
+    zone: usize,
 }
 
 impl Track {
@@ -356,6 +377,9 @@ struct Node {
     /// The normal's in-plane angle and the tool axis angle, degrees.
     phi_n: f64,
     phi: f64,
+    /// A tool raised at the middle of a straight move (decision record 0363
+    /// item 2), whose axis is the move's, not one chosen for a normal.
+    raised: bool,
 }
 
 struct Plan<'a> {
@@ -364,11 +388,22 @@ struct Plan<'a> {
     constrained: bool,
     drop_profile: &'a RevolvedProfile,
     convex: bool,
+    /// The tool's cutting radius, mm. A move whose tip travels further over
+    /// the part is tested at a pose every quarter of it, so that a thin wall
+    /// between the middle and quarter points still meets the tool at one of
+    /// them; the first move that jumps further after the last halving goes
+    /// through the raised tool (decision record 0363 item 2).
+    reach: f64,
+    /// Whether the tool has a flat bottom, whose normal is the axis over a
+    /// width (a flat end or bull-nose), seeded by [`FLAT_BLEND`].
+    flat_bottom: bool,
     leave: f64,
     tolerance: f64,
     chord: f64,
     /// Radius from which drive rays start.
     outside: f64,
+    /// The X zones and the centres their drive rays aim at (OP-26).
+    zones: &'a [section::Zone],
     sense: f64,
 }
 
@@ -411,7 +446,7 @@ fn run(
     let max_tilt = parameters.number(parameter::MAX_TILT)?;
 
     let bounds = input.surface.bounds();
-    let (x0, x1) = (bounds.min.x, bounds.max.x);
+    let (x0, x1) = outside_held(bounds.min.x, bounds.max.x, input.keep_out);
     let length = x1 - x0;
     if length.is_nan() || length <= 0.0 {
         return Err(PathError::Strategy(
@@ -441,6 +476,7 @@ fn run(
 
     // Each face's turn: X, A at its start and the way A turns.
     let mut face_turns: Vec<(f64, f64, f64)> = Vec::new();
+    let mut held: Vec<f64> = Vec::new();
     let tracks: Vec<Track> = match pattern {
         "axial" => {
             if lead != 0.0 {
@@ -471,6 +507,7 @@ fn run(
                         th1: th,
                         seeds,
                         samples,
+                        zone: 0,
                     }
                 })
                 .collect()
@@ -494,15 +531,28 @@ fn run(
                 th1: th_start - sense * rotation * total,
                 seeds,
                 samples: samples as usize,
+                zone: 0,
             };
             // A whole turn at each face across the axis, where the tool's
             // side touches it (decision record 0297), cut after the spiral
             // as its own pass, so the spiral and its smoothed A are as
             // before.
             let grown = cutter::grow_profile(input.tool, leave)?;
-            let turns = faces::turns(input, &grown, (x0, x1), tolerance, context)?;
+            // The faces are searched over the part's whole range, as for the
+            // other helix strategies: a face beside a held band is found and
+            // noted there, while the tracks stay outside the band (decision
+            // record 0363 item 1).
+            let found = faces::turns_to_the_ends(
+                input,
+                &grown,
+                (bounds.min.x, bounds.max.x),
+                tolerance,
+                context,
+            )?;
+            held = found.held;
             let span = spiral.th1 - spiral.th0;
-            face_turns = turns
+            face_turns = found
+                .turns
                 .iter()
                 .map(|t| {
                     let th = spiral.th0 + span * (t.x - x0) / length;
@@ -513,6 +563,16 @@ fn run(
         }
     };
 
+    // Where the section does not surround the axis, the drive rays aim at
+    // its own centre (OP-26; decision record 0363 item 3). A part whose
+    // every section surrounds the axis has one zone and is driven as before.
+    let zones = section::zones(input.surface, x0, x1, radius, tolerance);
+    let tracks: Vec<Track> = if zones.len() > 1 || zones.iter().any(|z| z.centres.is_some()) {
+        tracks.iter().flat_map(|t| split(t, &zones)).collect()
+    } else {
+        tracks
+    };
+
     let grown = cutter::grow_profile(input.tool, leave)?;
     let plan = Plan {
         input,
@@ -520,11 +580,18 @@ fn run(
         constrained,
         drop_profile: &grown,
         convex: grown.is_convex(),
+        reach: input.tool.cutting_radius(),
+        // Just off straight down, a round bottom's point is still at the
+        // tip, a flat bottom's at its edge.
+        flat_bottom: grown
+            .point_for_normal(-std::f64::consts::FRAC_PI_2 + 1e-9)
+            .is_some_and(|q| q.radius.0 > 1e-6),
         leave,
         tolerance,
         chord: CHORD_FACTOR * tolerance,
         outside: radius + 1.0,
         sense,
+        zones: &zones,
     };
 
     let mut findings = Findings::default();
@@ -554,6 +621,7 @@ fn run(
             tolerance,
             turn,
             step,
+            None,
             context,
         )?);
     }
@@ -598,12 +666,83 @@ fn run(
                 .to_owned(),
         );
     }
+    let off: Vec<String> = zones
+        .iter()
+        .filter(|z| z.centres.is_some())
+        .map(|z| format!("X {:.3} to {:.3}", z.x0, z.x1))
+        .collect();
+    if !off.is_empty() {
+        notes.push(format!(
+            "the part's section does not surround the rotary axis at {}, so the path there goes \
+             round the section's own centre: the tool moves across the axis as A turns, to stay \
+             on the surface normal",
+            off.join(", ")
+        ));
+    }
     notes.extend(faces::note(&turned));
+    notes.extend(faces::held_note(&held));
     Ok(StrategyOutput {
         passes,
         notes,
         warnings: Vec::new(),
     })
+}
+
+/// `track` cut at the zones' boundaries, in the track's own order, each
+/// piece with its zone and its share of the seeds and samples (OP-26).
+fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
+    let dx = track.x1 - track.x0;
+    if dx.abs() < 1e-12 {
+        return vec![*track];
+    }
+    let mut pieces: Vec<(f64, f64, usize)> = zones
+        .iter()
+        .enumerate()
+        .filter_map(|(k, z)| {
+            let (ta, tb) = ((z.x0 - track.x0) / dx, (z.x1 - track.x0) / dx);
+            let (lo, hi) = (ta.min(tb).max(0.0), ta.max(tb).min(1.0));
+            (hi > lo).then_some((lo, hi, k))
+        })
+        .collect();
+    pieces.sort_by(|a, b| a.0.total_cmp(&b.0));
+    pieces
+        .into_iter()
+        .map(|(lo, hi, zone)| {
+            let ((x0, th0), (x1, th1)) = (track.at(lo), track.at(hi));
+            let share = |n: usize| ((n as f64 * (hi - lo)).ceil() as usize).max(1);
+            Track {
+                x0,
+                x1,
+                th0,
+                th1,
+                seeds: share(track.seeds),
+                samples: share(track.samples),
+                zone,
+            }
+        })
+        .collect()
+}
+
+/// The part's X range `x0` to `x1` less the held keep-out bands that cover
+/// its ends (decision record 0363 item 1, OI-1372): the drop surface holds
+/// the tabs from the held regions' inner edges, and a track there would ride
+/// past the held stock's face, where the tool's tip may not go while it cuts
+/// (decision record 0161). The faces' turns skip the bands the same way.
+fn outside_held(mut x0: f64, mut x1: f64, keep_out: &[(f64, f64)]) -> (f64, f64) {
+    loop {
+        let (start, end) = (x0, x1);
+        for &(a, b) in keep_out {
+            if a <= x0 && x0 < b {
+                x0 = b;
+            }
+            if a < x1 && x1 <= b {
+                x1 = a;
+            }
+        }
+        if (x0, x1) == (start, end) {
+            return (x0, x1);
+        }
+    }
 }
 
 fn too_many(stepover: f64, length: f64, samples: f64) -> PathError {
@@ -629,13 +768,13 @@ fn near(angle: f64, previous: f64) -> f64 {
 impl Plan<'_> {
     /// The drive point at (`x`, polar angle `th`): the first surface point on
     /// the ray from outside the part towards the axis.
-    fn drive(&self, x: f64, th: f64) -> Option<Drive> {
-        let hit = self.ray(x, th)?;
+    fn drive(&self, track: &Track, x: f64, th: f64) -> Option<Drive> {
+        let hit = self.ray(track.zone, x, th)?;
         let exact = hit.position.is_some();
         let normal = if exact {
             hit.normal
         } else {
-            self.smoothed_normal(x, th, hit.point, hit.normal)
+            self.smoothed_normal(track.zone, x, th, hit.point, hit.normal)
         };
         let phi = polar(normal.get())?;
         Some(Drive {
@@ -646,7 +785,16 @@ impl Plan<'_> {
         })
     }
 
-    fn ray(&self, x: f64, th: f64) -> Option<crate::surface::RayHit> {
+    /// The ray of the drive at (`x`, `th`) in `zone`: towards the axis, or
+    /// towards the section's own centre where the zone has one (OP-26).
+    fn ray(&self, zone: usize, x: f64, th: f64) -> Option<crate::surface::RayHit> {
+        if let Some(z) = self.zones.get(zone)
+            && z.centres.is_some()
+        {
+            let centre = z.centre_at(x);
+            let outside = self.outside + centre.0.hypot(centre.1);
+            return section::hit_towards(self.input.surface, x, centre, th, outside);
+        }
         let (s, c) = th.to_radians().sin_cos();
         let origin = Point3::new(x, self.outside * c, self.outside * s);
         let direction = UnitVec3::new(Vec3::new(0.0, -c, -s)).ok()?;
@@ -656,13 +804,29 @@ impl Plan<'_> {
     /// The normal of the surface through four neighbouring drive points
     /// [`NORMAL_SPAN`] away, which averages out the facet normals of a mesh
     /// (OI-67). The facet normal where a neighbour is missing.
-    fn smoothed_normal(&self, x: f64, th: f64, p: Point3, facet: UnitVec3) -> UnitVec3 {
-        let r = p.y.hypot(p.z);
+    fn smoothed_normal(
+        &self,
+        zone: usize,
+        x: f64,
+        th: f64,
+        p: Point3,
+        facet: UnitVec3,
+    ) -> UnitVec3 {
+        // A neighbour in another zone is on the far side of a face across
+        // the axis, and its rays aim at another centre: as missing.
+        if self.zones.len() > 1
+            && let Some(z) = self.zones.get(zone)
+            && (x - NORMAL_SPAN < z.x0 || x + NORMAL_SPAN > z.x1)
+        {
+            return facet;
+        }
+        let (cy, cz) = self.zones.get(zone).map_or((0.0, 0.0), |z| z.centre_at(x));
+        let r = (p.y - cy).hypot(p.z - cz);
         if r <= NORMAL_SPAN {
             return facet;
         }
         let dth = (NORMAL_SPAN / r).to_degrees();
-        let pt = |x: f64, th: f64| self.ray(x, th).map(|h| h.point);
+        let pt = |x: f64, th: f64| self.ray(zone, x, th).map(|h| h.point);
         let (Some(xp), Some(xm), Some(tp), Some(tm)) = (
             pt(x + NORMAL_SPAN, th),
             pt(x - NORMAL_SPAN, th),
@@ -693,7 +857,7 @@ impl Plan<'_> {
         let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
         let drives: Vec<Option<Drive>> = parallel::map_in_order(&ts, |t| {
             let (x, th) = track.at(*t);
-            self.drive(x, th)
+            self.drive(track, x, th)
         });
         let offset = lead * track.travel();
         let mut plan = AxisPlan::default();
@@ -725,7 +889,7 @@ impl Plan<'_> {
     /// the region forbids a cut.
     fn node(&self, track: &Track, axis: &AxisPlan, t: f64) -> Option<Node> {
         let (x, th) = track.at(t);
-        let drive = self.drive(x, th)?;
+        let drive = self.drive(track, x, th)?;
         // The plan's angle is continuous along the track; keep it so, and
         // take the normal's angle as its equivalent nearest it.
         let phi = axis.phi_at(t)?;
@@ -748,6 +912,7 @@ impl Plan<'_> {
             normal: drive.normal,
             phi_n: near(drive.phi, phi),
             phi,
+            raised: false,
         })
     }
 
@@ -771,7 +936,19 @@ impl Plan<'_> {
         } else {
             Vec3::ZERO
         };
-        p + (-(t * q.height.0 + e * q.radius.0))
+        // A flat bottom's contact is not unique near the normal: the corner
+        // on the drive point flips sides as the axis crosses the normal, and
+        // the planned axis is only within a few 1e-6 rad of it, so neighbouring
+        // points jumped by the tool's diameter (decision record 0363 item 2,
+        // OI-337). Such a tool's seed moves from its centre to its corner in
+        // step with the lean, reaching the corner at `FLAT_BLEND`; the drop
+        // then lowers it onto the surface. A round bottom is seeded as before.
+        let radius = if self.flat_bottom {
+            q.radius.0 * (b / FLAT_BLEND).min(1.0)
+        } else {
+            q.radius.0
+        };
+        p + (-(t * q.height.0 + e * radius))
     }
 
     /// The original tool's tip for a grown-tool drop.
@@ -799,10 +976,32 @@ impl Plan<'_> {
     /// `at` between them: the tool is dropped along its axis at that machine
     /// pose, and the distance it moves is taken along the surface normal.
     /// Positive when the move would cut into the surface, negative when it
-    /// would leave material; zero when there is no surface under it. A is
+    /// would leave material; `None` when there is no surface under it. A is
     /// linear in the track parameter, so the straight move reaches the same
     /// fraction of every axis.
-    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> f64 {
+    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> Option<f64> {
+        let (line, _) = self.straight_pose(a, b, at);
+        self.input
+            .surface
+            .drop_tool(self.drop_profile, &line)
+            .map(|c| {
+                let along = line.axis.get().dot(at.normal.get()).max(0.0);
+                // A cut in is never read at less than half its depth along
+                // the axis: on a face steep along X (a blisk's blade) the drive
+                // normal is nearly across the tool axis, and a drop of tenths
+                // of a millimetre read as thousandths (decision record 0363
+                // item 2). A wall the tool only slides on is a wall move.
+                if c.offset > 0.0 {
+                    c.offset * along.max(MIN_ALONG)
+                } else {
+                    c.offset * along
+                }
+            })
+    }
+
+    /// The tool's line and A on the straight machine move from `a` to `b`
+    /// at the track parameter of `at`.
+    fn straight_pose(&self, a: &Node, b: &Node, at: &Node) -> (ToolLine, Degrees) {
         let rotary = &self.input.rotary;
         let span = b.t - a.t;
         let frac = if span > 0.0 { (at.t - a.t) / span } else { 0.5 };
@@ -820,10 +1019,82 @@ impl Plan<'_> {
             origin: rotary.to_model(lin, a_lin),
             axis: rotary.tool_axis(a_lin),
         };
-        match self.input.surface.drop_tool(self.drop_profile, &line) {
-            Some(c) => c.offset * line.axis.get().dot(at.normal.get()).max(0.0),
-            None => 0.0,
+        (line, a_lin)
+    }
+
+    /// The tool at the middle of the straight move from `a` to `b` (at the
+    /// track parameter of `at`), raised along its axis until it touches
+    /// (decision record 0363 item 2): where the drive point passes from one
+    /// surface to another in a concave corner, the seeded tool lands on one
+    /// side or the other however close the two points are, and the straight
+    /// move between them would dip into the corner. This pose touches both,
+    /// so the move is kept as two moves through it.
+    fn raised(&self, a: &Node, b: &Node, at: &Node) -> Option<Node> {
+        let (line, a_lin) = self.straight_pose(a, b, at);
+        let contact = self.input.surface.drop_tool(self.drop_profile, &line)?;
+        Some(Node {
+            t: at.t,
+            a: a_lin,
+            contact,
+            phi: 90.0 - self.sense * a_lin.0,
+            raised: true,
+            ..*at
+        })
+    }
+
+    /// How far the tool's tip travels over the part on the straight move
+    /// from `a` to `b`: the larger of the straight distance between its ends
+    /// and the arc A turns it through at its distance from the rotary axis.
+    fn travel(&self, a: &Node, b: &Node) -> f64 {
+        let turn = (crate::rotary::nearest_turn(b.a, a.a).0 - a.a.0)
+            .abs()
+            .to_radians();
+        let (pa, pb) = (a.contact.tip, b.contact.tip);
+        let r = pa.y.hypot(pa.z).max(pb.y.hypot(pb.z));
+        (pb - pa).length().max(turn * r)
+    }
+
+    /// Whether a move whose tip travels further than [`reach`](Plan::reach)
+    /// fails the move test at one of the poses a quarter of the reach apart
+    /// along it (decision record 0363 item 2). A move that travels no
+    /// further is tested at its middle and quarter points alone, as before,
+    /// and so is a long move that holds at every pose: it is kept whole.
+    fn long_move_cuts(&self, track: &Track, axis: &AxisPlan, a: &Node, b: &Node) -> bool {
+        let travel = self.travel(a, b);
+        if travel <= self.reach {
+            return false;
         }
+        let n = ((4.0 * travel / self.reach).ceil() as usize).clamp(4, MAX_TEST_POSES);
+        (1..n).any(|k| {
+            let t = a.t + (b.t - a.t) * k as f64 / n as f64;
+            match self.node(track, axis, t) {
+                Some(at) => self
+                    .deviation(a, b, &at)
+                    .is_none_or(|e| e.abs() > self.chord),
+                None => self.constrained,
+            }
+        })
+    }
+
+    /// Whether the move from `a` to `b` is a wall move (decision record 0050
+    /// item 2; decision record 0363 item 2, OI-337): its tip moves across the
+    /// tool axis, and A turns the tool's edge, by less than the tolerance, so
+    /// the machine moves the tool
+    /// along its own axis, which sweeps only the tool's own body above the
+    /// lower end and cuts nothing that end does not. A wall across the rotary
+    /// axis (a shoulder, a held region's face, a tab meeting the part) makes
+    /// the drop height jump there, which no halving removes; the move between
+    /// is kept, as path assembly keeps it for the other strategies.
+    fn wall_move(&self, a: &Node, b: &Node) -> bool {
+        let rotary = &self.input.rotary;
+        let mid = Degrees(0.5 * (a.a.0 + crate::rotary::nearest_turn(b.a, a.a).0));
+        let axis = rotary.tool_axis(mid).get();
+        let d = b.contact.tip - a.contact.tip;
+        let turn = (crate::rotary::nearest_turn(b.a, a.a).0 - a.a.0)
+            .abs()
+            .to_radians();
+        let r = a.contact.tip.y.hypot(a.contact.tip.z) + self.reach;
+        (d - axis * d.dot(axis)).length() < self.tolerance && turn * r < self.tolerance
     }
 
     /// The node nearest `bad_t` where the tool may still cut, by bisection
@@ -877,20 +1148,31 @@ impl Plan<'_> {
         let t = 0.5 * (a.t + b.t);
         match middle.unwrap_or_else(|| self.node(track, axis, t)) {
             Some(mid) => {
-                let error = self.deviation(a, b, &mid);
+                let over = self.deviation(a, b, &mid);
+                let error = over.unwrap_or(0.0);
+                let jumps = self.travel(a, b) > self.reach;
                 if depth < MAX_DEPTH {
                     // The straight move must hold at the quarter points too.
                     // A quarter with no material under it is no reason to
                     // split, unless a region constraint forbids cutting
                     // there: then the half finds the gap as it would at its
-                    // own middle.
+                    // own middle. A test pose of the straight move that meets
+                    // no surface while the drive has one there says nothing
+                    // about the move: between thin walls (the blades of a
+                    // blisk) all three can miss while the tool sweeps through
+                    // a wall between them, so the move is split (decision
+                    // record 0363 item 2).
                     let quarter = |n: &Option<Node>| match n {
-                        Some(q) => self.deviation(a, b, q).abs() > self.chord,
+                        Some(q) => self.deviation(a, b, q).is_none_or(|e| e.abs() > self.chord),
                         None => self.constrained,
                     };
                     let first = self.node(track, axis, 0.5 * (a.t + mid.t));
                     let second = self.node(track, axis, 0.5 * (mid.t + b.t));
-                    if error.abs() > self.chord || quarter(&first) || quarter(&second) {
+                    if over.is_none_or(|e| e.abs() > self.chord)
+                        || self.long_move_cuts(track, axis, a, b)
+                        || quarter(&first)
+                        || quarter(&second)
+                    {
                         self.refine_from(track, axis, a, &mid, depth + 1, Some(first), out)?;
                         return self.refine_from(
                             track,
@@ -902,12 +1184,27 @@ impl Plan<'_> {
                             out,
                         );
                     }
-                } else if error.abs() > self.chord {
+                } else if (error.abs() > self.chord || jumps) && !self.wall_move(a, b) {
+                    // After every halving the tool still cuts in, or still
+                    // jumps further than its radius between two points as
+                    // good as equal on the track (where the drive passes
+                    // from one surface to another): the move is kept only as
+                    // moves through the raised tool at its middle.
+                    if (error > self.tolerance || jumps)
+                        && depth < MAX_DEPTH + RAISES
+                        && let Some(raised) = self.raised(a, b, &mid)
+                    {
+                        self.refine_from(track, axis, a, &raised, depth + 1, None, out)?;
+                        return self.refine_from(track, axis, &raised, b, depth + 1, None, out);
+                    }
                     if error > self.tolerance {
                         return Err(PathError::Strategy(format!(
                             "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \
                              within the tolerance: it would cut {error:.4} mm into the surface; \
-                             reduce the largest tilt or the largest angle step",
+                             the tool jumps between two surfaces there (a sharp edge, or a wall \
+                             the drive meets), so a smaller largest tilt or angle step does not \
+                             help: limit the operation to a region away from it, or finish that \
+                             part with helical finishing",
                             b.contact.tip.x, b.a.0
                         )));
                     }
@@ -1037,7 +1334,9 @@ impl Plan<'_> {
             findings.slope = slope;
             findings.slope_at = Some(n.contact.contact);
         }
-        findings.tilt = findings.tilt.max((n.phi - n.phi_n - offset).abs());
+        if !n.raised {
+            findings.tilt = findings.tilt.max((n.phi - n.phi_n - offset).abs());
+        }
     }
 }
 
@@ -1243,6 +1542,26 @@ mod tests {
         let i = v.partition_point(|p| p.0 < x).clamp(1, v.len() - 1);
         let (a, b) = (v[i - 1], v[i]);
         a.1 + (x - a.0) / (b.0 - a.0) * (b.1 - a.1)
+    }
+
+    #[test]
+    fn req_set_09_the_tracks_start_and_end_outside_the_held_bands() {
+        // A band over each end: the range starts and ends at the bands' inner
+        // edges; a band inside the range or beyond it changes nothing.
+        assert_eq!(
+            outside_held(-8.0, 42.0, &[(-20.0, -5.0), (38.0, 50.0)]),
+            (-5.0, 38.0)
+        );
+        assert_eq!(outside_held(0.0, 30.0, &[]), (0.0, 30.0));
+        assert_eq!(
+            outside_held(0.0, 30.0, &[(10.0, 12.0), (40.0, 50.0)]),
+            (0.0, 30.0)
+        );
+        // Overlapping bands at one end are both passed.
+        assert_eq!(
+            outside_held(0.0, 30.0, &[(2.0, 4.0), (-1.0, 3.0)]),
+            (4.0, 30.0)
+        );
     }
 
     #[test]

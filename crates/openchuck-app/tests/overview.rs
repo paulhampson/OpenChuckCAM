@@ -242,7 +242,7 @@ impl Fixture {
                     restriction_options: Default::default(),
                     spindle_speed: None,
                     material: None,
-                    parameters: BTreeMap::new(),
+                    parameters: free_ends_off(strategy),
                 }),
                 placement: Placement::End,
             })
@@ -591,6 +591,22 @@ fn req_ui_11_an_edit_to_operation_n_marks_n_and_later_operations_stale() {
 }
 
 #[test]
+fn req_ui_11_req_nfr_12_a_run_report_is_current_only_while_the_operation_is() {
+    // FIRSTRUN item 5: what a run said about an operation (such as feeds the
+    // machine's limits lowered) is shown only while its path is current.
+    let mut f = fixture("path-current", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    assert!(!f.app.operation_path_is_current(one));
+    f.app.regenerate().unwrap();
+    assert!(f.app.operation_path_is_current(one));
+    assert!(f.app.operation_path_is_current(two));
+    f.set_stepover(two, 0.5);
+    assert!(f.app.operation_path_is_current(one));
+    assert!(!f.app.operation_path_is_current(two));
+}
+
+#[test]
 fn req_ui_11_a_running_job_gives_the_operation_running() {
     let mut f = fixture("running", "cube_ascii.stl");
     let op = f.add_operation("Forever", "until_cancelled");
@@ -893,6 +909,37 @@ fn req_ui_11_req_ui_12_a_missing_model_file_is_an_error_that_blocks_setup() {
     assert!(primary.blocked.is_some());
     // It does not block the Setup step's own primary.
     assert!(o.primary(Step::Setup).message.is_none());
+}
+
+#[test]
+fn req_ui_11_req_ui_12_a_missing_machine_is_attention_not_an_error() {
+    // Decision 0173 (owner's answer, FIRSTRUN item 1): choosing a machine is
+    // a to-do. The bar reads "Needs attention", never "Error to fix", so it
+    // agrees with Messages, which counts no error.
+    let (_dir, app) = empty("empty-no-machine");
+    let o = app.overview(None, &JobLog::default());
+    assert!(app.project().machine().is_none());
+    let setup = o.step(Step::Setup);
+    assert_eq!(setup.health, StepHealth::Attention);
+    assert_eq!(setup.reason.as_deref(), Some("Choose a machine"));
+    assert!(o.health() < StepHealth::Error);
+    assert_eq!(
+        o.messages
+            .iter()
+            .filter(|m| m.severity == openchuck_app::overview::Severity::Error)
+            .count(),
+        0
+    );
+
+    let mut f = fixture("no-machine-bar", "cube_ascii.stl");
+    f.app.execute(Command::SetMachine(None)).unwrap();
+    let o = f.overview();
+    assert_eq!(o.step(Step::Setup).health, StepHealth::Attention);
+    assert_eq!(
+        o.step(Step::Setup).reason.as_deref(),
+        Some("Choose a machine")
+    );
+    assert!(o.health() < StepHealth::Error);
 }
 
 #[test]
@@ -1266,9 +1313,15 @@ fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_thread
 #[test]
 fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     let mut f = fixture("plain-machine", "cube_ascii.stl");
-    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
         .unwrap()
         .unwrap();
+    // An unconfirmed axis height, so the message names it (the Z1's is
+    // confirmed since decision 0317).
+    z1.provenance
+        .get_mut(&openchuck_app::setup::ProfileField::RotaryOrigin)
+        .unwrap()
+        .state = openchuck_app::setup::Confirmation::Unconfirmed;
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
@@ -1965,6 +2018,139 @@ fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
     );
 }
 
+/// A project whose Makera Z1 copy still has the old placeholder axis height
+/// (machine Z -55) keeps it, and the setup checks say so and how to update
+/// it; the built-in Z1, whose axis height is confirmed, gives neither that
+/// warning nor the "cannot be checked" one (SET-01, UI-13, decision 0317).
+#[test]
+fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
+    let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    let warnings = |tag: &str, z: f64, id: Option<String>| {
+        let mut f = fixture(tag, "cube_ascii.stl");
+        let mut machine = entry.profile.clone();
+        machine.rotary_origin.z = z;
+        f.app
+            .execute(Command::SetMachineFrom {
+                machine: Some(Box::new(machine)),
+                id,
+            })
+            .unwrap();
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let checks: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| c.text.clone())
+            .collect();
+        let messages: Vec<String> = o.messages.iter().map(|m| m.text.clone()).collect();
+        (checks, messages)
+    };
+    for (tag, id) in [("old-z1-id", entry.id.clone()), ("old-z1-name", None)] {
+        let (checks, messages) = warnings(tag, -55.0, id);
+        let check = checks
+            .iter()
+            .find(|t| t.contains("old placeholder axis height"))
+            .unwrap_or_else(|| panic!("{tag}: {checks:?}"));
+        for words in ["Makera Z1", "-55", "-48.6", "Choose the Makera Z1 again"] {
+            assert!(check.contains(words), "{words}: {check}");
+        }
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("old placeholder axis height")),
+            "{tag}: {messages:?}"
+        );
+    }
+    let (checks, messages) = warnings("measured-z1", -48.6, entry.id.clone());
+    for text in checks.iter().chain(&messages) {
+        assert!(!text.contains("old placeholder axis height"), "{text}");
+        assert!(
+            !text.contains("cannot be checked against the Z travel"),
+            "{text}"
+        );
+    }
+}
+
+/// On the Makera Z1 (tool lengths measured, the spindle 73.1 mm above the
+/// axis at home), a setup warns once per enabled operation's tool whose
+/// assumed stick-out takes the spindle past the top of the Z travel at the
+/// setup's safe Z; a setup clearance that fits clears it, and the same
+/// project gives the same checks (SET-06, NFR-12, GC-07, decision 0318).
+#[test]
+fn req_set_06_req_nfr_12_a_tool_too_long_for_the_safe_z_warns_on_the_z1() {
+    let mut f = fixture("spindle-height", "cube_ascii.stl");
+    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    let op = f.add_operation("Ring", "one_ring");
+    let spindle = |f: &Fixture| -> Vec<String> {
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let mut found: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed && c.text.contains("top of the Z travel at the safe Z"))
+            .map(|c| c.text.clone())
+            .collect();
+        let messages = o
+            .messages
+            .iter()
+            .filter(|m| m.text.contains("top of the Z travel at the safe Z"))
+            .count();
+        assert_eq!(messages, found.len(), "one message per check");
+        found.sort();
+        found
+    };
+    // Flute 10: sticks out 15, the tip reaches 58.1 above the axis.
+    assert!(spindle(&f).is_empty());
+
+    // Flute 42: sticks out 47, the tip reaches 26.1; at safe Z 40 the
+    // spindle is 13.9 mm past the top.
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.tool.flute_length = Millimetres(42.0);
+    tool.tool.overall_length = Millimetres(60.0);
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    let first = spindle(&f);
+    assert_eq!(first.len(), 1, "{first:?}");
+    for words in [
+        "Tool 1 (4 mm ball)",
+        "13.900 mm",
+        "26.100 mm",
+        "on your machine",
+        "recommended minimum is 30 mm",
+    ] {
+        assert!(first[0].contains(words), "{words}: {}", first[0]);
+    }
+    assert_eq!(spindle(&f), first, "the same project gives the same checks");
+
+    // The setup's own clearance is the safe Z checked: 26 fits.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = Some(openchuck_app::setup::Clearance {
+        radius: Millimetres(20.0),
+        safe_z: Millimetres(26.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(spindle(&f).is_empty());
+
+    // Back to the profile's safe Z, with the operation turned off: an
+    // operation that is not run does not warn.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut operation = f.app.project().operation(op).unwrap().clone();
+    operation.enabled = false;
+    f.app
+        .execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    assert!(spindle(&f).is_empty());
+}
+
 #[test]
 fn req_ui_10_req_nfr_12_with_every_operation_off_the_simulation_action_says_why() {
     // Decision 0282 item 3: the simulation action keeps its place on
@@ -2017,4 +2203,15 @@ fn req_ui_10_req_nfr_12_g_code_written_needs_exactly_the_enabled_operations() {
         !f.overview().g_code_written(),
         "an exported operation was removed"
     );
+}
+
+/// Face free ends off for the strategies that have it: these tests are not
+/// about free ends, and a new operation faces them (decision record 0344,
+/// OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    out
 }

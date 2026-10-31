@@ -182,6 +182,14 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
         0.0
     }
 
+    /// [`drop_tool`](Self::drop_tool) onto the part alone, leaving out any
+    /// held region or retaining tab joined to it (a [`crate::CompositeSurface`]);
+    /// the same as `drop_tool` for a surface that is only the part. Tells a
+    /// free end of the part from the end of a tab (decision record 0344).
+    fn drop_on_part(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
+        self.drop_tool(profile, line)
+    }
+
     /// The round holes of the selected surfaces, found from their cylindrical
     /// faces (OP-10; decision record 0051). Only an exact (B-rep) surface has
     /// any: a mesh answers with none.

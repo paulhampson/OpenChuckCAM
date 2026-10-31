@@ -196,6 +196,87 @@ impl RadialPart for HelicalGroove {
     }
 }
 
+/// A carving test piece (issue #382): a cylinder with a relief of raised
+/// strokes, like lettering or an ornament, on a grid of cells, each with
+/// chamfered walls that meet the background and the stroke's top in sharp
+/// edges, over a gentle wave. Which stroke a cell holds comes from a fixed
+/// hash of the cell, so the part is the same on every platform. Fine detail
+/// and sharp edges are what make a fine-stepover V-bit finish slow.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CarvedRelief {
+    /// Radius of the background.
+    pub radius: f64,
+    /// Length along X, starting at x = 0.
+    pub length: f64,
+    /// Height of the strokes above the background.
+    pub depth: f64,
+    /// Size of a cell along X; round the axis the cells are as near this as
+    /// closes the circle.
+    pub cell: f64,
+}
+
+impl CarvedRelief {
+    /// The test piece the carving benchmarks use: 24 mm across, 30 mm long,
+    /// strokes 0.8 mm high on 5 mm cells.
+    pub const STANDARD: Self = Self {
+        radius: 12.0,
+        length: 30.0,
+        depth: 0.8,
+        cell: 5.0,
+    };
+
+    /// The height of the relief above the background at `(x, angle)`.
+    fn relief(&self, x: f64, angle: f64) -> f64 {
+        let around = (std::f64::consts::TAU * self.radius / self.cell)
+            .round()
+            .max(1.0);
+        // Cell coordinates: whole numbers at the cell corners.
+        let u = x / self.cell;
+        let v = angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU * around;
+        let (iu, iv) = (u.floor(), v.floor());
+        let (fu, fv) = (u - iu, v - iv);
+        // A fixed integer hash of the cell (wrapping round the axis).
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let key = {
+            let a = iu as i64 as u64;
+            let b = (iv as i64).rem_euclid(around as i64) as u64;
+            let mut h =
+                a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+            h ^= h >> 29;
+            h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            h ^ (h >> 32)
+        };
+        // Distance, in cells, from the stroke's centre line.
+        let segment = |(ax, ay): (f64, f64), (bx, by): (f64, f64)| {
+            let (dx, dy) = (bx - ax, by - ay);
+            let t = (((fu - ax) * dx + (fv - ay) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+            ((fu - ax - t * dx).powi(2) + (fv - ay - t * dy).powi(2)).sqrt()
+        };
+        let d = match key % 4 {
+            0 => segment((0.2, 0.2), (0.8, 0.8)),
+            1 => segment((0.2, 0.8), (0.8, 0.2)),
+            2 => (((fu - 0.5).powi(2) + (fv - 0.5).powi(2)).sqrt() - 0.28).abs(),
+            _ => segment((0.2, 0.5), (0.8, 0.5)).min(segment((0.5, 0.2), (0.5, 0.8))),
+        };
+        // A flat top 0.12 cells across, then a chamfer 0.08 cells wide.
+        let (half, wall) = (0.06, 0.08);
+        self.depth * ((half + wall - d) / wall).clamp(0.0, 1.0)
+    }
+}
+
+impl RadialPart for CarvedRelief {
+    fn name(&self) -> &'static str {
+        "carved_relief"
+    }
+    fn x_range(&self) -> (f64, f64) {
+        (0.0, self.length)
+    }
+    fn radius_at(&self, x: f64, angle: f64) -> f64 {
+        let wave = 0.3 * (std::f64::consts::TAU * x / 7.0).sin() * (3.0 * angle).cos();
+        self.radius + wave + self.relief(x, angle)
+    }
+}
+
 impl RadialPart for RuledHyperboloid {
     fn name(&self) -> &'static str {
         "ruled_hyperboloid"

@@ -191,19 +191,21 @@ pub(crate) fn drop_on_mesh(
     SCRATCH
         .try_with(|scratch| match scratch.try_borrow_mut() {
             Ok(mut scratch) => {
-                let contact = drop_with(mesh, profile, line, &mut scratch);
+                let contact = drop_with::<true>(mesh, profile, line, &mut scratch);
                 if scratch.found.capacity().max(scratch.order.capacity()) > SCRATCH_KEPT {
                     *scratch = Scratch::default();
                 }
                 contact
             }
-            Err(_) => drop_with(mesh, profile, line, &mut Scratch::default()),
+            Err(_) => drop_with::<true>(mesh, profile, line, &mut Scratch::default()),
         })
-        .unwrap_or_else(|_| drop_with(mesh, profile, line, &mut Scratch::default()))
+        .unwrap_or_else(|_| drop_with::<true>(mesh, profile, line, &mut Scratch::default()))
 }
 
-/// [`drop_on_mesh`] with the lists in `scratch`.
-fn drop_with(
+/// [`drop_on_mesh`] with the lists in `scratch`, skipping the edges
+/// [`edge_can_win`] rules out when `SKIP_EDGES` (the tests compare it with
+/// every edge tested).
+fn drop_with<const SKIP_EDGES: bool>(
     mesh: &MeshSurface,
     profile: &RevolvedProfile,
     line: &ToolLine,
@@ -261,7 +263,9 @@ fn drop_with(
             vertex(profile, v, &mut best, *i);
         }
         for (p, q) in [(a, b), (b, c), (c, a)] {
-            edge(profile, p, q, &mut best, *i, breaks);
+            if !SKIP_EDGES || edge_can_win(profile, p, q, best) {
+                edge(profile, p, q, &mut best, *i, breaks);
+            }
         }
         facet(profile, tri, &mut best, *i);
     }
@@ -391,6 +395,39 @@ fn inside(tri: &[Local; 3], px: f64, py: f64) -> bool {
     let d2 = cross(c, a);
     let eps = 1e-12;
     (d0 >= -eps && d1 >= -eps && d2 >= -eps) || (d0 <= eps && d1 <= eps && d2 <= eps)
+}
+
+/// Rounding allowed for in [`edge_can_win`], mm: far above the rounding of
+/// any tip height the edge test computes (about 1e-13 mm on a part a metre
+/// across), so the bound never falls below a height the test could give.
+const EDGE_BOUND_SLACK: f64 = 1e-7;
+
+/// Whether the edge `p0` to `p1` could give a tip that [`better`] would take
+/// over `best`. No point of the edge lies above its higher end, and the
+/// profile is never lower than at the edge's nearest approach to the axis
+/// (`h(r)` never decreases with `r`), so no tip from the edge is above the
+/// higher end less `h` there. [`better`] takes no tip at or below `best`
+/// less [`TIP_TIE`], so an edge whose bound, with [`EDGE_BOUND_SLACK`] for
+/// rounding, is that low leaves `best` as it was and need not be tested:
+/// the answer is the same, bit for bit (GC-07, decision record 0113).
+fn edge_can_win(profile: &RevolvedProfile, p0: Local, p1: Local, best: Option<Best>) -> bool {
+    let Some(best) = best else {
+        return true;
+    };
+    let ex = p1.x - p0.x;
+    let ey = p1.y - p0.y;
+    let l2 = ex * ex + ey * ey;
+    let t = if l2 > 0.0 {
+        (-(p0.x * ex + p0.y * ey) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let nearest = radial(p0.x + t * ex, p0.y + t * ey);
+    // Beyond the cutting radius the edge test finds its own way out.
+    let Some(lowest) = profile.height_at(nearest) else {
+        return true;
+    };
+    p0.z.max(p1.z) - lowest + EDGE_BOUND_SLACK > best.tip_z - TIP_TIE
 }
 
 /// The tool against the edge from `p0` to `p1`: tried between the points
@@ -831,4 +868,164 @@ pub fn cutter_contact(
         Vec3::ZERO
     };
     tip + e3 * zq + dir * rq
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::rotary::RotaryMapping;
+    use openchuck_testkit::parts::{CarvedRelief, RadialPart};
+    use openchuck_types::machine::MachineProfile;
+    use openchuck_types::tool::{Tool, ToolShape};
+    use openchuck_types::units::{Degrees, Millimetres};
+
+    fn tool(shape: ToolShape, diameter: f64) -> RevolvedProfile {
+        Tool {
+            shape,
+            diameter: Millimetres(diameter),
+            flute_length: Millimetres(20.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(diameter),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap()
+    }
+
+    /// One tool of every kind of profile piece: lines, convex arcs at the
+    /// tip and on the side, and a concave arc (the sampled edge search).
+    fn tools() -> Vec<RevolvedProfile> {
+        use openchuck_types::tool::{ProfilePoint, ProfileSegment, ToolProfile};
+        vec![
+            tool(
+                ToolShape::VBit {
+                    included_angle: Degrees(60.0),
+                    tip_diameter: Millimetres(0.1),
+                },
+                3.175,
+            ),
+            tool(
+                ToolShape::TaperedBall {
+                    tip_radius: Millimetres(0.25),
+                    taper_half_angle: Degrees(5.0),
+                },
+                3.175,
+            ),
+            tool(ToolShape::BallEnd, 2.0),
+            tool(ToolShape::FlatEnd, 2.0),
+            tool(
+                ToolShape::BullNose {
+                    corner_radius: Millimetres(0.5),
+                },
+                3.0,
+            ),
+            tool(
+                ToolShape::Custom {
+                    profile: ToolProfile {
+                        segments: vec![
+                            ProfileSegment::Line {
+                                to: ProfilePoint::new(1.0, 0.0),
+                            },
+                            ProfileSegment::Arc {
+                                to: ProfilePoint::new(3.0, 2.0),
+                                centre: ProfilePoint::new(3.0, 0.0),
+                            },
+                        ],
+                    },
+                },
+                6.0,
+            ),
+        ]
+    }
+
+    /// Skipping the edges that cannot beat the best gives every drop the same
+    /// answer, bit for bit, as testing every edge (GC-07, NFR-06; issue
+    /// #382), for every kind of profile, on a carving's fine detail and sharp
+    /// edges, along tool lines through the rotary axis and off it.
+    #[test]
+    fn req_gc_07_skipped_edges_leave_every_drop_the_same() {
+        let part = CarvedRelief::STANDARD;
+        let mesh = MeshSurface::new(&part.mesh(121, 302)).unwrap();
+        let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
+        let bits = |c: Option<Contact>| {
+            c.map(|c| {
+                [
+                    c.tip.x,
+                    c.tip.y,
+                    c.tip.z,
+                    c.contact.x,
+                    c.contact.y,
+                    c.contact.z,
+                    c.offset,
+                ]
+                .map(f64::to_bits)
+            })
+        };
+        let mut skipped = 0_usize;
+        for profile in tools() {
+            for i in 0..400 {
+                let x = 0.0739 * f64::from(i);
+                let a = 11.7 * f64::from(i);
+                let across = 0.37 * (f64::from(i % 7) - 3.0);
+                let line = rotary.tool_line(Millimetres(x), Degrees(a), Millimetres(across));
+                let fast = drop_with::<true>(&mesh, &profile, &line, &mut Scratch::default());
+                let every = drop_with::<false>(&mesh, &profile, &line, &mut Scratch::default());
+                assert_eq!(bits(fast), bits(every), "x {x}, A {a}, across {across}");
+                skipped += usize::from(fast.is_some());
+            }
+        }
+        assert!(skipped > 1000, "too few drops touched the part: {skipped}");
+    }
+
+    /// The rule itself: an edge [`edge_can_win`] rules out never changes the
+    /// best, whatever the best is, for edges at every height and distance.
+    #[test]
+    fn req_gc_07_an_edge_ruled_out_never_changes_the_best() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1_u64 << 53) as f64
+        };
+        let mut ruled_out = 0;
+        for profile in tools() {
+            let reach = profile.cutting_radius();
+            for _ in 0..4000 {
+                let mut point = || Local {
+                    x: (next() - 0.5) * 3.0 * reach,
+                    y: (next() - 0.5) * 3.0 * reach,
+                    z: (next() - 0.5) * 2.0,
+                };
+                let (p, q) = (point(), point());
+                let best = Best {
+                    tip_z: (next() - 0.5) * 2.0,
+                    contact: Local {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    triangle: 5,
+                };
+                if edge_can_win(&profile, p, q, Some(best)) {
+                    continue;
+                }
+                ruled_out += 1;
+                for triangle in [0, 9] {
+                    let mut after = Some(best);
+                    edge(&profile, p, q, &mut after, triangle, &mut Vec::new());
+                    let (a, b) = (after.unwrap(), best);
+                    assert_eq!(
+                        (a.tip_z.to_bits(), a.triangle),
+                        (b.tip_z.to_bits(), b.triangle),
+                        "edge {p:?} {q:?}"
+                    );
+                }
+            }
+        }
+        assert!(ruled_out > 1000, "too few edges ruled out: {ruled_out}");
+    }
 }
