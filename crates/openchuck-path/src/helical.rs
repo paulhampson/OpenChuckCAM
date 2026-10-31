@@ -222,6 +222,7 @@ impl Strategy for HelicalFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
         })
     }
 }

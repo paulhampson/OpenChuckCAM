@@ -124,6 +124,7 @@ impl<S: SurfaceSource> Job<S> {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         }
     }
 }

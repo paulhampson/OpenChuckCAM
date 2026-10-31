@@ -114,6 +114,7 @@ impl Strategy for Plain {
                 message: "Existing strategy warning".into(),
                 parameter: Some("tolerance".into()),
             }],
+            unreached: Vec::new(),
         })
     }
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.0
+
+- **Breaking family release (0.29.0, OP20, decision 0368):** `openchuck_path` gains `StrategyInput::shank`, `StrategyOutput::unreached` and `GeneratedPath::unreached`. No change in this crate; all family crates advance together under 0048.
+
 ## 0.28.0
 
 - **Breaking (0.28.0, Z1AXIS, decision 0317):** `machine::MachineProfile` has three new public fields: `automatic_tool_length` (`bool`, the controller measures each tool on a tool setter), `spindle_to_axis` (`Option<Millimetres>`, from the spindle at the top of the Z travel down to the rotary axis) and `recommended_min_safe_z` (`Option<Millimetres>`, advice, never a limit). `ProfileField` gains `ToolLengthMeasurement`, `SpindleToAxis` and `RecommendedMinSafeZ` (`ProfileField::ALL` has 14 entries); `fields` lists the first two when the machine measures tool lengths and the third when it is given. `validate` refuses a value that is not above zero. Profiles without them read with none and write them only when set. Struct literals add `automatic_tool_length: false, spindle_to_axis: None, recommended_min_safe_z: None`.

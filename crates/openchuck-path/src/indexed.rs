@@ -182,6 +182,7 @@ impl Strategy for IndexedFinishing {
                 .collect(),
             passes,
             warnings: Vec::new(),
+            unreached: Vec::new(),
         })
     }
 }

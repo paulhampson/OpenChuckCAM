@@ -75,6 +75,38 @@ pub struct PathWarning {
     pub parameter: Option<String>,
 }
 
+/// An area of the part a strategy could not reach with the tool (OP-20;
+/// decision record 0368): the path leaves it uncut, and a warning says so.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unreached {
+    /// The X range it spans, `(low, high)`, in millimetres.
+    pub x: (f64, f64),
+    /// The A range at which its surface faces the tool, `(low, high)`, in
+    /// degrees; a range of 360 or more goes all round.
+    pub a: (f64, f64),
+    /// Its area, in square millimetres.
+    pub area: f64,
+    /// Why the tool cannot reach it.
+    pub reason: UnreachedReason,
+}
+
+/// Why a tool cannot reach an area of the part.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnreachedReason {
+    /// The part is in the way in every direction the tool's axis can take
+    /// across the rotary axis: the tool would have to lean along it.
+    Blocked,
+    /// A direction is clear, but the tool is too wide for the gap, or its
+    /// flutes too short or its shank too wide for the depth.
+    TooNarrow,
+    /// The tool reaches it only leaning further from the surface normal
+    /// than the operation allows.
+    NeedsLean {
+        /// The least lean that reaches it, in degrees.
+        degrees: f64,
+    },
+}
+
 /// A toolpath group with notes about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedPath {
@@ -86,6 +118,9 @@ pub struct GeneratedPath {
     /// also one of `notes`, against the first segment, so a host that shows
     /// only notes still says it.
     pub warnings: Vec<PathWarning>,
+    /// The areas the strategy could not reach, as it gave them (OP-20;
+    /// decision record 0368).
+    pub unreached: Vec<Unreached>,
 }
 
 const EPS: f64 = 1e-9;
@@ -512,6 +547,7 @@ pub fn assemble_with_entry(
         },
         notes: b.notes,
         warnings: Vec::new(),
+        unreached: Vec::new(),
     })
 }
 

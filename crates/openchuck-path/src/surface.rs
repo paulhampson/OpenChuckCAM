@@ -172,6 +172,22 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
     /// the line.
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact>;
 
+    /// [`drop_tool`](Self::drop_tool) on a line where the tool is known to
+    /// touch the surface at `at_least` along it from its origin, so that
+    /// its answer is there or higher: a source may pass over what lies
+    /// lower. The answer is the same. Simultaneous finishing places its
+    /// tool touching a hidden wall, on a line that may miss the surface,
+    /// where nothing else bounds the drop (OP-20; decision record 0368).
+    fn drop_tool_above(
+        &self,
+        profile: &RevolvedProfile,
+        line: &ToolLine,
+        at_least: f64,
+    ) -> Option<Contact> {
+        let _ = at_least;
+        self.drop_tool(profile, line)
+    }
+
     /// How far, in millimetres, a [`drop_tool`](Self::drop_tool) answer may
     /// lie below the highest contact on this surface: 0 for a drop solved
     /// to rounding (a mesh, which is its own surface), the exact drop's
@@ -425,6 +441,16 @@ impl SurfaceSource for MeshSurface {
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         cutter::drop_on_mesh(self, profile, line)
+    }
+
+    fn drop_tool_above(
+        &self,
+        profile: &RevolvedProfile,
+        line: &ToolLine,
+        at_least: f64,
+    ) -> Option<Contact> {
+        // A hair below, so a tie with the bound is decided as without it.
+        cutter::drop_on_mesh_above(self, profile, line, Some(at_least - 1e-7))
     }
 }
 

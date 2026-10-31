@@ -214,6 +214,7 @@ impl Strategy for AxialFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
         })
     }
 }

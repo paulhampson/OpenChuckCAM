@@ -427,6 +427,7 @@ fn main() {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let points: Vec<(u32, Vec<Point3>)> = selected
         .exact_faces()

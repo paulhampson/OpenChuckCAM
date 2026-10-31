@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.0
+
+- **Breaking family release (0.29.0, OP20, decision 0368):** `openchuck_path` gains `StrategyInput::shank`, `StrategyOutput::unreached` and `GeneratedPath::unreached`. No change in this crate; all family crates advance together under 0048.
+
 ## 0.28.0
 
 - **Breaking family release (0.28.0, Z1AXIS, decision 0317):** `openchuck_types::machine::MachineProfile` gains the spindle-height fields and `ProfileField` three variants. No change in this crate; all family crates advance together under 0048. Project schema 22 and machine profile schema 7 in `openchuck-project`.

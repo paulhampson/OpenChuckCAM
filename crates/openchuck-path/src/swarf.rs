@@ -2381,6 +2381,7 @@ fn swarf(
         passes,
         notes,
         warnings,
+        unreached: Vec::new(),
     })
 }
 

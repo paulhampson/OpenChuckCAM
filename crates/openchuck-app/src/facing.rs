@@ -236,6 +236,7 @@ mod tests {
             entry_safety: None,
             facing: Some(&setup),
             keep_out: &[],
+            shank: None,
         };
         let path = openchuck_path::assemble::assemble_with_entry(
             &passes,

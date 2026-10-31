@@ -186,20 +186,36 @@ pub(crate) fn drop_on_mesh(
     profile: &RevolvedProfile,
     line: &ToolLine,
 ) -> Option<Contact> {
+    drop_on_mesh_above(mesh, profile, line, None)
+}
+
+/// [`drop_on_mesh`] where the answer is known to be at `at_least` along
+/// the line or above (a tool placed touching the surface there): triangles
+/// lower down are passed over, as they are below the highest surface point
+/// of the axis line, when the line meets the surface. The answer is the
+/// same.
+pub(crate) fn drop_on_mesh_above(
+    mesh: &MeshSurface,
+    profile: &RevolvedProfile,
+    line: &ToolLine,
+    at_least: Option<f64>,
+) -> Option<Contact> {
     // The thread's lists, or new ones when they are in use or gone (a drop
     // made while the thread ends).
     SCRATCH
         .try_with(|scratch| match scratch.try_borrow_mut() {
             Ok(mut scratch) => {
-                let contact = drop_with::<true>(mesh, profile, line, &mut scratch);
+                let contact = drop_with::<true>(mesh, profile, line, at_least, &mut scratch);
                 if scratch.found.capacity().max(scratch.order.capacity()) > SCRATCH_KEPT {
                     *scratch = Scratch::default();
                 }
                 contact
             }
-            Err(_) => drop_with::<true>(mesh, profile, line, &mut Scratch::default()),
+            Err(_) => drop_with::<true>(mesh, profile, line, at_least, &mut Scratch::default()),
         })
-        .unwrap_or_else(|_| drop_with::<true>(mesh, profile, line, &mut Scratch::default()))
+        .unwrap_or_else(|_| {
+            drop_with::<true>(mesh, profile, line, at_least, &mut Scratch::default())
+        })
 }
 
 /// [`drop_on_mesh`] with the lists in `scratch`, skipping the edges
@@ -209,12 +225,16 @@ fn drop_with<const SKIP_EDGES: bool>(
     mesh: &MeshSurface,
     profile: &RevolvedProfile,
     line: &ToolLine,
+    at_least: Option<f64>,
     scratch: &mut Scratch,
 ) -> Option<Contact> {
     let frame = Frame::new(line);
     // A tip height the answer cannot be below: the tool's tip rests on the
     // highest surface point of the axis line (h(0) = 0).
-    let floor = mesh.highest_on_line(line);
+    let floor = match (mesh.highest_on_line(line), at_least) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
     // Each candidate gets an upper bound on the tip height it can give: its
     // highest vertex, less the lowest the tool gets at the nearest the
     // triangle comes to the axis (h(r) never decreases with r). Triangles
@@ -737,7 +757,7 @@ pub fn grow_profile(profile: &RevolvedProfile, offset: f64) -> Result<RevolvedPr
 
 /// The point of `profile` (in tool coordinates: radius, height) nearest to
 /// (`r`, `z`).
-fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
+pub(crate) fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
     let mut best = (f64::INFINITY, (0.0, 0.0));
     for piece in profile.pieces() {
         let cand = match *piece {
@@ -971,8 +991,9 @@ mod tests {
                 let a = 11.7 * f64::from(i);
                 let across = 0.37 * (f64::from(i % 7) - 3.0);
                 let line = rotary.tool_line(Millimetres(x), Degrees(a), Millimetres(across));
-                let fast = drop_with::<true>(&mesh, &profile, &line, &mut Scratch::default());
-                let every = drop_with::<false>(&mesh, &profile, &line, &mut Scratch::default());
+                let fast = drop_with::<true>(&mesh, &profile, &line, None, &mut Scratch::default());
+                let every =
+                    drop_with::<false>(&mesh, &profile, &line, None, &mut Scratch::default());
                 assert_eq!(bits(fast), bits(every), "x {x}, A {a}, across {across}");
                 skipped += usize::from(fast.is_some());
             }

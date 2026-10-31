@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.0
+
+- **Breaking (0.29.0, OP20, decision 0368; issue #413):** simultaneous finishing finishes the surfaces its drive's rays do not meet first (OP-20, now P1): `StrategyOutput` and `GeneratedPath` have the new public field `unreached: Vec<Unreached>` (the areas a strategy cannot reach, with `Unreached` and `UnreachedReason`), and `StrategyInput` the new public field `shank: Option<Shank>` (a shank wider than the cutting part, which the passes on hidden surfaces keep clear of the part); a host's struct literals add `unreached: Vec::new()` and `shank: None` (or the tool's shank). Additive: `SurfaceSource::drop_tool_above` (a drop with a known lower bound; the default ignores it) and `simultaneous::parameter::MAX_HIDDEN_LEAN` (`max_hidden_lean`, degrees, 0 to 90, default 90). Simultaneous finishing's program changes only for a part with hidden surfaces: new passes where the tool reaches them, and a warning naming the areas it does not; every other part's program, and every golden file, is unchanged.
+
 ## 0.28.0
 
 - **Breaking family release (0.28.0, Z1AXIS, decision 0317):** `openchuck_types::machine::MachineProfile` gains the spindle-height fields and `ProfileField` three variants. No change in this crate; all family crates advance together under 0048. Project schema 22 and machine profile schema 7 in `openchuck-project`.

@@ -20,9 +20,9 @@ use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
     CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
-    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy,
-    StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following, generate,
-    generate_in_region, generate_in_zones, pencil, swarf,
+    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, Shank, StockModel,
+    Strategy, StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following,
+    generate, generate_in_region, generate_in_zones, pencil, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
 use openchuck_project::{
@@ -304,6 +304,22 @@ pub fn generate_operation_with(
         Some(edges),
         context,
     )
+}
+
+/// The tool's shank where it is wider than the cutting part, for the
+/// strategies that keep it clear of the part (OP-20; decision 0368): a
+/// cylinder of the shank's radius from the flute length upwards. `None`
+/// when the shank is no wider, as the drops already take the tool above its
+/// cutting part as a cylinder of the cutting radius.
+fn shank_of(
+    profile: &openchuck_types::tool::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> Option<Shank> {
+    let radius = 0.5 * tool.shank_diameter.0;
+    (radius > profile.cutting_radius() + 1e-9).then_some(Shank {
+        radius,
+        height: tool.flute_length.0.max(profile.top()),
+    })
 }
 
 /// As [`generate_operation_on`], with the setup's part already placed when
@@ -630,6 +646,7 @@ pub(crate) fn generate_with_part(
         entry_safety: entry_safety.as_ref(),
         facing: facing_setup.as_ref(),
         keep_out: &keep_out,
+        shank: shank_of(&profile, &snapshot.tool),
     };
     let resolved = parameter_values(project, operation, registry)?;
     // The values as the strategy's schema reads them (a whole number given for

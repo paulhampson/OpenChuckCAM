@@ -795,6 +795,7 @@ impl Strategy for PencilFinishing {
             passes,
             notes,
             warnings: Vec::new(),
+            unreached: Vec::new(),
         })
     }
 }

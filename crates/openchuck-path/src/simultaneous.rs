@@ -67,6 +67,8 @@ use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
 
 pub use crate::helical::{CHORD_FACTOR, CONSTRAINED_SPACING};
 
+mod hidden;
+
 /// The registry name of [`SimultaneousFinishing`].
 pub const NAME: &str = "simultaneous_finishing";
 
@@ -85,6 +87,9 @@ pub mod parameter {
     pub const LEAD_ANGLE: &str = "lead_angle";
     /// The most the tool axis may leave its target to smooth A, degrees.
     pub const MAX_TILT: &str = "max_tilt";
+    /// The most the tool axis may lean from the surface normal on surfaces
+    /// hidden from the drive (OP-20; decision record 0368), degrees.
+    pub const MAX_HIDDEN_LEAN: &str = "max_hidden_lean";
 }
 
 /// How far apart the drive samples are round the axis, in degrees, where
@@ -132,6 +137,10 @@ const MAX_SAMPLES: f64 = 5.0e6;
 /// right angle, so the tool never faces away from the surface.
 const MAX_LEAD: f64 = 30.0;
 const MAX_TILT: f64 = 30.0;
+
+/// The largest lean from the normal on hidden surfaces, degrees: the tool's
+/// side (OP-20; decision record 0368).
+const MAX_HIDDEN_LEAN: f64 = 90.0;
 
 /// Simultaneous 4-axis finishing (OP-05, OP-06).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -250,6 +259,19 @@ impl Strategy for SimultaneousFinishing {
                 Some(MAX_TILT),
                 10.0,
             ),
+            degrees_spec(
+                parameter::MAX_HIDDEN_LEAN,
+                "Largest lean on hidden surfaces",
+                "Surfaces a straight approach from outside cannot see, such as the walls of a \
+                 slot or the side of a part facing another, are finished with their own passes \
+                 after the main one. There the tool leans from the surface normal as little as \
+                 the part lets it reach, up to this angle: 90 lets it cut a wall with its side, \
+                 0 keeps it on the normal. Anything needing more is left uncut and listed in a \
+                 warning.",
+                Some(0.0),
+                Some(MAX_HIDDEN_LEAN),
+                90.0,
+            ),
         ])
     }
 
@@ -303,6 +325,9 @@ struct Track {
     /// The zone of [`Plan::zones`] the track lies in, whose centre its drive
     /// rays aim at (OP-26).
     zone: usize,
+    /// The contour of [`Plan::contours`] the track follows instead, on a
+    /// surface hidden from the drive's rays (OP-20).
+    contour: Option<usize>,
 }
 
 impl Track {
@@ -405,6 +430,11 @@ struct Plan<'a> {
     /// The X zones and the centres their drive rays aim at (OP-26).
     zones: &'a [section::Zone],
     sense: f64,
+    /// The tool with its shank where wider than the cutting part, which the
+    /// passes on hidden surfaces keep clear of the part (OP-20).
+    body: Option<&'a RevolvedProfile>,
+    /// The passes along surfaces hidden from the drive (OP-20).
+    contours: Vec<hidden::Contour>,
 }
 
 /// What a run found worth telling the user.
@@ -416,6 +446,10 @@ struct Findings {
     /// The most material any kept move leaves beyond the tolerance, mm.
     under: f64,
     mesh: bool,
+    /// The largest lean from the normal on a hidden surface, degrees, and
+    /// where (OP-20).
+    lean: f64,
+    lean_at: Option<(f64, f64)>,
 }
 
 /// The points a move is refined into, and the most material it leaves.
@@ -444,6 +478,7 @@ fn run(
     let mut step = parameters.number(parameter::MAX_ANGLE_STEP)?;
     let lead = parameters.number(parameter::LEAD_ANGLE)?;
     let max_tilt = parameters.number(parameter::MAX_TILT)?;
+    let max_lean = parameters.number(parameter::MAX_HIDDEN_LEAN)?;
 
     let bounds = input.surface.bounds();
     let (x0, x1) = outside_held(bounds.min.x, bounds.max.x, input.keep_out);
@@ -508,6 +543,7 @@ fn run(
                         seeds,
                         samples,
                         zone: 0,
+                        contour: None,
                     }
                 })
                 .collect()
@@ -532,6 +568,7 @@ fn run(
                 seeds,
                 samples: samples as usize,
                 zone: 0,
+                contour: None,
             };
             // A whole turn at each face across the axis, where the tool's
             // side touches it (decision record 0297), cut after the spiral
@@ -574,7 +611,8 @@ fn run(
     };
 
     let grown = cutter::grow_profile(input.tool, leave)?;
-    let plan = Plan {
+    let body = hidden::body(&grown, input.shank, leave);
+    let mut plan = Plan {
         input,
         region,
         constrained,
@@ -592,6 +630,8 @@ fn run(
         outside: radius + 1.0,
         sense,
         zones: &zones,
+        body: body.as_ref(),
+        contours: Vec::new(),
     };
 
     let mut findings = Findings::default();
@@ -630,6 +670,49 @@ fn run(
         count,
         Some(count),
     );
+
+    // Surfaces the drive's rays do not meet first get passes of their own
+    // where the tool reaches them, and the rest are reported (OP-20;
+    // decision record 0368). A part with none gets nothing more.
+    context.check_cancelled()?;
+    let found = {
+        let _timing = context.time_stage("hidden surfaces");
+        plan.hidden(hidden::Settings {
+            stepover,
+            lead,
+            max_tilt,
+            max_lean,
+            x0,
+            x1,
+        })
+    };
+    plan.contours = found.contours;
+    let hidden_count = plan.contours.len() as u64;
+    let mut hidden_x = (f64::INFINITY, f64::NEG_INFINITY);
+    for k in 0..plan.contours.len() {
+        context.check_cancelled()?;
+        context.report(
+            "simultaneous finishing: surfaces hidden from the drive",
+            k as u64,
+            Some(hidden_count),
+        );
+        let Some(c) = plan.contours.get(k) else {
+            continue;
+        };
+        hidden_x = (hidden_x.0.min(c.x), hidden_x.1.max(c.x));
+        let track = Track {
+            x0: c.x,
+            x1: c.x,
+            th0: 0.0,
+            th1: 0.0,
+            seeds: (c.length() / hidden::CONTOUR_SEED).ceil().max(1.0) as usize,
+            samples: c.samples.len(),
+            zone: 0,
+            contour: Some(k),
+        };
+        let axis = contour_axis_plan(c);
+        passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+    }
 
     let mut notes = Vec::new();
     if let Some(at) = findings.slope_at
@@ -681,11 +764,132 @@ fn run(
     }
     notes.extend(faces::note(&turned));
     notes.extend(faces::held_note(&held));
+    if let Some((x, a)) = findings.lean_at {
+        let shank = if plan.body.is_some() {
+            "the shank, wider than the cutting part, is kept clear of the part"
+        } else {
+            "the tool above its flutes is taken as no wider than its cutting part"
+        };
+        notes.push(format!(
+            "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides \
+             of the section facing each other) between X {:.3} and {:.3} are finished with \
+             passes of their own after the main ones, the tool leaning from the surface normal \
+             as little as the part lets it reach them: up to {:.1} degrees (at X {x:.3}, \
+             A {a:.3}); {shank}; the tool holder is not checked",
+            hidden_x.0, hidden_x.1, findings.lean
+        ));
+    }
+    let warnings = unreached_warning(
+        &found.unreached,
+        2.0 * input.tool.cutting_radius(),
+        max_lean,
+    )
+    .into_iter()
+    .collect();
     Ok(StrategyOutput {
         passes,
         notes,
-        warnings: Vec::new(),
+        warnings,
+        unreached: found.unreached,
     })
+}
+
+/// The warning for the areas the tool cannot reach (OP-20; decision record
+/// 0368): the largest five, with how many more, each with where it is, how
+/// large and why. `None` when there are none.
+fn unreached_warning(
+    areas: &[crate::assemble::Unreached],
+    diameter: f64,
+    max_lean: f64,
+) -> Option<crate::assemble::PathWarning> {
+    use crate::assemble::UnreachedReason;
+    const LISTED: usize = 5;
+    if areas.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = areas
+        .iter()
+        .take(LISTED)
+        .map(|u| {
+            let place = if u.a.1 - u.a.0 >= TURN - 1e-9 {
+                "all round".to_owned()
+            } else {
+                format!("near A {:.0}", (0.5 * (u.a.0 + u.a.1)).rem_euclid(TURN))
+            };
+            let why = match u.reason {
+                UnreachedReason::Blocked => "blocked: the part is in the way of every direction \
+                                             the tool can take across the rotary axis, so it \
+                                             would have to lean along it"
+                    .to_owned(),
+                UnreachedReason::TooNarrow => format!(
+                    "too narrow for this {diameter:.3} mm tool, or deeper than its flutes or \
+                     shank allow"
+                ),
+                UnreachedReason::NeedsLean { degrees } => format!(
+                    "needs a lean of {degrees:.0} degrees from the surface normal, more than the \
+                     largest lean on hidden surfaces ({max_lean} degrees)"
+                ),
+            };
+            format!(
+                "X {:.3} to {:.3} {place} ({:.1} mm2), {why}",
+                u.x.0, u.x.1, u.area
+            )
+        })
+        .collect();
+    let more = areas.len().saturating_sub(LISTED);
+    let more = if more > 0 {
+        format!("; and {more} smaller")
+    } else {
+        String::new()
+    };
+    let plural = if areas.len() == 1 { "" } else { "s" };
+    let lean = areas
+        .iter()
+        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
+             uncut: {}{more}; check them in the simulation before running the program",
+            areas.len(),
+            listed.join("; ")
+        ),
+        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+    })
+}
+
+/// The tool-axis plan along a contour (OP-20): the reachable axis nearest
+/// the target at each sample, smoothed inside the band that still reaches,
+/// in runs between the samples the tool cannot reach.
+fn contour_axis_plan(c: &hidden::Contour) -> AxisPlan {
+    let mut plan = AxisPlan::default();
+    let mut run: Vec<(f64, f64)> = Vec::new();
+    let (mut lo, mut hi): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
+    let flush =
+        |run: &mut Vec<(f64, f64)>, lo: &mut Vec<f64>, hi: &mut Vec<f64>, plan: &mut AxisPlan| {
+            if !run.is_empty() {
+                plan.runs.push(smooth_gates(
+                    std::mem::take(run),
+                    &std::mem::take(lo),
+                    &std::mem::take(hi),
+                ));
+            }
+        };
+    for s in &c.samples {
+        match s.gate {
+            Some((best, l, h)) if !s.probe => {
+                let shift = match run.last() {
+                    Some(&(_, previous)) => near(best, previous) - best,
+                    None => 0.0,
+                };
+                run.push((s.t, best + shift));
+                lo.push(l + shift);
+                hi.push(h + shift);
+            }
+            _ => flush(&mut run, &mut lo, &mut hi, &mut plan),
+        }
+    }
+    flush(&mut run, &mut lo, &mut hi, &mut plan);
+    plan
 }
 
 /// `track` cut at the zones' boundaries, in the track's own order, each
@@ -718,6 +922,7 @@ fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
                 seeds: share(track.seeds),
                 samples: share(track.samples),
                 zone,
+                contour: None,
             }
         })
         .collect()
@@ -781,6 +986,22 @@ impl Plan<'_> {
             point: hit.point,
             normal,
             phi,
+            exact,
+        })
+    }
+
+    /// The drive point at `t` on `track`: on its contour where it follows
+    /// one (OP-20), else where the drive's ray meets the surface.
+    fn drive_at(&self, track: &Track, t: f64) -> Option<Drive> {
+        let Some(k) = track.contour else {
+            let (x, th) = track.at(t);
+            return self.drive(track, x, th);
+        };
+        let (point, normal, exact) = self.contours.get(k)?.drive(self, t)?;
+        Some(Drive {
+            point,
+            normal,
+            phi: polar(normal.get()).unwrap_or(0.0),
             exact,
         })
     }
@@ -888,8 +1109,7 @@ impl Plan<'_> {
     /// The tool at `t` on `track`, or `None` where there is no surface or
     /// the region forbids a cut.
     fn node(&self, track: &Track, axis: &AxisPlan, t: f64) -> Option<Node> {
-        let (x, th) = track.at(t);
-        let drive = self.drive(track, x, th)?;
+        let drive = self.drive_at(track, t)?;
         // The plan's angle is continuous along the track; keep it so, and
         // take the normal's angle as its equivalent nearest it.
         let phi = axis.phi_at(t)?;
@@ -899,11 +1119,33 @@ impl Plan<'_> {
             origin: self.seed_tip(drive.point, drive.normal, axis_dir),
             axis: axis_dir,
         };
-        let contact = self.input.surface.drop_tool(self.drop_profile, &line)?;
+        // On a hidden surface the tool is placed touching its drive point,
+        // and rests there or higher (OP-20).
+        let contact = if track.contour.is_some() {
+            self.input
+                .surface
+                .drop_tool_above(self.drop_profile, &line, 0.0)?
+        } else {
+            self.input.surface.drop_tool(self.drop_profile, &line)?
+        };
         if let Some(region) = self.region
             && !region.allows(contact.contact, contact.tip, self.drop_profile, &line)
         {
             return None;
+        }
+        // On a hidden surface the tool must rest on its drive point, not on
+        // something in the way between the samples where its axis was
+        // found to reach, and the shank, where wider than the cutting part,
+        // must not meet the part (OP-20).
+        if track.contour.is_some() {
+            let d = drive.point - contact.tip;
+            let along = d.dot(axis_dir.get());
+            let across = (d - axis_dir.get() * along).length();
+            if hidden::to_tool(self.drop_profile, across, along) > self.tolerance
+                || self.shank_clashes(&line, Some(0.0))
+            {
+                return None;
+            }
         }
         Some(Node {
             t,
@@ -979,12 +1221,23 @@ impl Plan<'_> {
     /// would leave material; `None` when there is no surface under it. A is
     /// linear in the track parameter, so the straight move reaches the same
     /// fraction of every axis.
-    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> Option<f64> {
+    ///
+    /// On a hidden surface (OP-20) a cut in is the depth inside the tool,
+    /// at the straight move's pose, of the point the drop came to rest on:
+    /// there the axis is far from the normal and changes quickly at an
+    /// edge, and the drive normal does not measure it.
+    fn deviation(&self, track: &Track, a: &Node, b: &Node, at: &Node) -> Option<f64> {
         let (line, _) = self.straight_pose(a, b, at);
         self.input
             .surface
             .drop_tool(self.drop_profile, &line)
             .map(|c| {
+                if track.contour.is_some() && c.offset > 0.0 {
+                    let d = c.contact - line.origin;
+                    let along = d.dot(line.axis.get());
+                    let across = (d - line.axis.get() * along).length();
+                    return hidden::to_tool(self.drop_profile, across, along).min(c.offset);
+                }
                 let along = line.axis.get().dot(at.normal.get()).max(0.0);
                 // A cut in is never read at less than half its depth along
                 // the axis: on a face steep along X (a blisk's blade) the drive
@@ -1069,9 +1322,9 @@ impl Plan<'_> {
             let t = a.t + (b.t - a.t) * k as f64 / n as f64;
             match self.node(track, axis, t) {
                 Some(at) => self
-                    .deviation(a, b, &at)
+                    .deviation(track, a, b, &at)
                     .is_none_or(|e| e.abs() > self.chord),
-                None => self.constrained,
+                None => self.gappy(track),
             }
         })
     }
@@ -1146,9 +1399,16 @@ impl Plan<'_> {
         out: &mut Refined,
     ) -> Result<()> {
         let t = 0.5 * (a.t + b.t);
+        // On a hidden surface a test pose where the shank meets the part
+        // fails too (OP-20).
+        let clash = |q: &Node| {
+            track.contour.is_some()
+                && self.body.is_some()
+                && self.shank_clashes(&self.straight_pose(a, b, q).0, None)
+        };
         match middle.unwrap_or_else(|| self.node(track, axis, t)) {
             Some(mid) => {
-                let over = self.deviation(a, b, &mid);
+                let over = self.deviation(track, a, b, &mid);
                 let error = over.unwrap_or(0.0);
                 let jumps = self.travel(a, b) > self.reach;
                 if depth < MAX_DEPTH {
@@ -1163,12 +1423,17 @@ impl Plan<'_> {
                     // a wall between them, so the move is split (decision
                     // record 0363 item 2).
                     let quarter = |n: &Option<Node>| match n {
-                        Some(q) => self.deviation(a, b, q).is_none_or(|e| e.abs() > self.chord),
-                        None => self.constrained,
+                        Some(q) => {
+                            self.deviation(track, a, b, q)
+                                .is_none_or(|e| e.abs() > self.chord)
+                                || clash(q)
+                        }
+                        None => self.gappy(track),
                     };
                     let first = self.node(track, axis, 0.5 * (a.t + mid.t));
                     let second = self.node(track, axis, 0.5 * (mid.t + b.t));
                     if over.is_none_or(|e| e.abs() > self.chord)
+                        || clash(&mid)
                         || self.long_move_cuts(track, axis, a, b)
                         || quarter(&first)
                         || quarter(&second)
@@ -1184,6 +1449,10 @@ impl Plan<'_> {
                             out,
                         );
                     }
+                } else if clash(&mid) {
+                    // The shank still meets the part after every halving:
+                    // the pass breaks here, and the move is a link.
+                    out.points.push(None);
                 } else if (error.abs() > self.chord || jumps) && !self.wall_move(a, b) {
                     // After every halving the tool still cuts in, or still
                     // jumps further than its radius between two points as
@@ -1197,7 +1466,11 @@ impl Plan<'_> {
                         self.refine_from(track, axis, a, &raised, depth + 1, None, out)?;
                         return self.refine_from(track, axis, &raised, b, depth + 1, None, out);
                     }
-                    if error > self.tolerance {
+                    if error > self.tolerance && track.contour.is_some() {
+                        // A pass on a hidden surface breaks where it cannot
+                        // be kept within the tolerance (OP-20).
+                        out.points.push(None);
+                    } else if error > self.tolerance {
                         return Err(PathError::Strategy(format!(
                             "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \
                              within the tolerance: it would cut {error:.4} mm into the surface; \
@@ -1213,7 +1486,7 @@ impl Plan<'_> {
                     }
                 }
             }
-            None if self.constrained && depth < MAX_DEPTH => {
+            None if self.gappy(track) && depth < MAX_DEPTH => {
                 if let Some(left) = self.edge(track, axis, a, t) {
                     self.refine(track, axis, a, &left, depth + 1, out)?;
                 }
@@ -1227,10 +1500,21 @@ impl Plan<'_> {
                 }
                 return Ok(());
             }
+            // A contour's tool that cannot reach its drive point at the
+            // middle after every halving: the pass breaks there (OP-20).
+            None if track.contour.is_some() => out.points.push(None),
             None => {}
         }
         out.points.push(Some(*b));
         Ok(())
+    }
+
+    /// Whether a node where the tool may not cut breaks the pass, rather
+    /// than meaning there is no surface under it: with a region constraint
+    /// (OI-138), and on a hidden surface, where it is a point the tool does
+    /// not reach (OP-20).
+    fn gappy(&self, track: &Track) -> bool {
+        self.constrained || track.contour.is_some()
     }
 
     fn track_passes(
@@ -1252,7 +1536,7 @@ impl Plan<'_> {
             match node {
                 Some(n) => {
                     if current.is_empty()
-                        && self.constrained
+                        && self.gappy(track)
                         && let Some(previous) = i.checked_sub(1).and_then(|p| ts.get(p))
                         && let Some(edge) = self.edge(track, axis, n, *previous)
                     {
@@ -1262,7 +1546,7 @@ impl Plan<'_> {
                 }
                 None => {
                     if let Some(last) = current.last().copied() {
-                        if self.constrained
+                        if self.gappy(track)
                             && let Some(next) = ts.get(i)
                             && let Some(edge) = self.edge(track, axis, &last, *next)
                         {
@@ -1290,7 +1574,11 @@ impl Plan<'_> {
             let offset = lead * track.travel();
             let mut under = 0.0_f64;
             let mut push = |n: &Node, points: &mut Vec<CutPoint>| {
-                self.note(n, offset, findings);
+                if track.contour.is_some() {
+                    self.note_hidden(n, findings);
+                } else {
+                    self.note(n, offset, findings);
+                }
                 points.push(self.cut_point(n));
             };
             if let Some(first) = piece.first() {
@@ -1328,6 +1616,18 @@ impl Plan<'_> {
         Ok(passes)
     }
 
+    /// The lean from the normal of a tool on a hidden surface (OP-20).
+    fn note_hidden(&self, n: &Node, findings: &mut Findings) {
+        if n.raised {
+            return;
+        }
+        let lean = (n.phi - n.phi_n).abs();
+        if findings.lean_at.is_none() || lean > findings.lean {
+            findings.lean = lean;
+            findings.lean_at = Some((n.contact.contact.x, n.a.0));
+        }
+    }
+
     fn note(&self, n: &Node, offset: f64, findings: &mut Findings) {
         let slope = n.normal.get().x.abs().clamp(0.0, 1.0).asin().to_degrees();
         if slope > findings.slope {
@@ -1357,13 +1657,22 @@ fn smooth_band(samples: Vec<(f64, f64)>, width: f64) -> Vec<(f64, f64)> {
     if width <= 0.0 || samples.len() < 3 {
         return samples;
     }
+    let lo: Vec<f64> = samples.iter().map(|s| s.1 - width).collect();
+    let hi: Vec<f64> = samples.iter().map(|s| s.1 + width).collect();
+    smooth_gates(samples, &lo, &hi)
+}
+
+/// [`smooth_band`] with a band of its own at each sample, `lo` to `hi`,
+/// holding its target: the angles that reach a hidden surface (OP-20).
+fn smooth_gates(samples: Vec<(f64, f64)>, lo: &[f64], hi: &[f64]) -> Vec<(f64, f64)> {
+    if samples.len() < 3 || lo.iter().zip(hi).all(|(l, h)| h - l <= 0.0) {
+        return samples;
+    }
     let xs: Vec<f64> = samples.iter().map(|s| s.0).collect();
     let ys: Vec<f64> = samples.iter().map(|s| s.1).collect();
-    let lo: Vec<f64> = ys.iter().map(|y| y - width).collect();
-    let hi: Vec<f64> = ys.iter().map(|y| y + width).collect();
-    let start = free_level(lo.iter().zip(&hi), ys.first().copied().unwrap_or(0.0));
-    let end = free_level(lo.iter().zip(&hi).rev(), ys.last().copied().unwrap_or(0.0));
-    let vertices = taut_vertices(&xs, &lo, &hi, start, end);
+    let start = free_level(lo.iter().zip(hi), ys.first().copied().unwrap_or(0.0));
+    let end = free_level(lo.iter().zip(hi).rev(), ys.last().copied().unwrap_or(0.0));
+    let vertices = taut_vertices(&xs, lo, hi, start, end);
 
     // Direction of each piece of the string; a flat piece keeps the one
     // before it (or after it, at the start).
