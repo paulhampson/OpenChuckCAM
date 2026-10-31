@@ -1104,8 +1104,18 @@ impl ExactFace {
                 let v = -r / sa;
                 if v >= self.bounds[2] && v <= self.bounds[3] {
                     let p = a.ax.o + a.ax.z * (v * ca);
-                    let (u, v) = a.uv_of(p);
-                    search.offer(p, self.number, Uv { u, v });
+                    // The point is the whole line at this v in (u, v): it is
+                    // on the face when the line is inside the trims somewhere.
+                    // A trim that leaves only gaps between the samples misses
+                    // it, which only leaves a lower contact to the search
+                    // (a trim through the point is searched as a boundary).
+                    let (u0, u1) = (self.bounds[0], self.bounds[1]);
+                    let on_face = (0..=64)
+                        .map(|k| u0 + (u1 - u0) * f64::from(k) / 64.0)
+                        .find(|&u| self.contains(Uv { u, v }));
+                    if let Some(u) = on_face {
+                        search.offer(p, self.number, Uv { u, v });
+                    }
                 }
             }
         }

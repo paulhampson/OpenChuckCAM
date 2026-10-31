@@ -732,6 +732,48 @@ fn req_op_12_a_flat_end_rests_on_the_point_of_a_cone() {
 }
 
 #[test]
+fn req_op_12_a_trimmed_cone_without_its_point_holds_no_tool_there() {
+    // The same sharp cone, its parameter box reaching the point (v = 0) but
+    // its trim keeping only 2 <= v <= 10: the point is not on the face, so
+    // a flat end over it is held by the trimmed face's top rim, below.
+    let down = Frame {
+        origin: Point3::ORIGIN,
+        x: Vec3::new(1.0, 0.0, 0.0),
+        y: Vec3::new(0.0, -1.0, 0.0),
+        z: Vec3::new(0.0, 0.0, -1.0),
+    };
+    let ring: Vec<(f64, f64)> = vec![(0.0, 2.0), (TAU, 2.0), (TAU, 10.0), (0.0, 10.0)];
+    let cone = face(
+        Surface::Cone {
+            frame: down,
+            radius: 0.0,
+            semi_angle: 0.3,
+        },
+        [0.0, TAU, 0.0, 10.0],
+        std::slice::from_ref(&ring),
+        one_triangle(p3(0.0, 0.0, -2.0), p3(1.0, 0.0, -3.0), p3(0.0, 1.0, -3.0)),
+    );
+    let surface = BrepSurface::new(&one_face(cone)).unwrap();
+    let f = surface.faces()[0].clone();
+    let tool = flat(1.0);
+    for dx in [0.0, 0.3] {
+        let line = ToolLine {
+            origin: p3(dx, 0.1 * dx, 10.0),
+            axis: UnitVec3::Z,
+        };
+        let got = surface.drop_exact(&tool.profile, &line).unwrap();
+        // Never at the point, which the trim leaves out.
+        assert!(
+            got.contact.contact.distance(Point3::ORIGIN) > 0.1,
+            "dx {dx}: {:?}",
+            got.contact.contact
+        );
+        let want = sampled_drop(&f, std::slice::from_ref(&ring), &line, &tool);
+        check(&format!("dx {dx}"), &f, &tool, &line, Some(got), want);
+    }
+}
+
+#[test]
 fn req_nfr_06_exact_outline_drop_is_the_same_on_every_thread_and_run() {
     let (_, bf, _) = kind_faces().into_iter().nth(6).unwrap();
     let surface = BrepSurface::new(&one_face(bf)).unwrap();
