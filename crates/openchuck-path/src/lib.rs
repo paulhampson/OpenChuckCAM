@@ -69,7 +69,7 @@
 
 #![warn(missing_docs)]
 
-pub(crate) mod adaptive;
+pub mod adaptive;
 pub mod assemble;
 pub mod axial;
 pub mod brep;

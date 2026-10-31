@@ -25,8 +25,10 @@
 //! tenth of the Allowed excess.
 //!
 //! **What is not proved.** The measure samples; it is not a bound on every
-//! point. Between neighbouring samples the height is taken as bounded by the
-//! larger of the two plus their difference. Where the samples meet the
+//! point. Between two neighbouring samples `p` and `q` the height is taken
+//! as bounded by `(p + q + d) / 2`, where `d` is the largest change between
+//! neighbouring samples there: the bound of a function whose slope is no
+//! steeper than the samples show. Where the samples meet the
 //! Allowed excess but that bound does not, the place is reported as
 //! unverified and not refined further (decision record 0239 item 11). A
 //! feature narrower than the samples can be missed. The tests grade the
@@ -458,6 +460,11 @@ pub(crate) trait Family: Sync {
     /// The distance between stations along the family, in its units.
     fn station_step(&self) -> f64;
 
+    /// How far past a station where too much is left, along the family in
+    /// its units, a pass added there runs: about the tool's radius, so the
+    /// tool sweeps the whole place.
+    fn margin(&self) -> f64;
+
     /// Geometry queries made so far.
     fn queries(&self) -> u64;
 }
@@ -561,8 +568,30 @@ struct Station {
     /// The highest material measured, mm above the target; `None` where no
     /// sample found surface the operation cuts.
     excess: Option<f64>,
-    /// The largest change between neighbouring samples, mm.
-    slack: f64,
+    /// The height between the samples, bounded from their own slope, mm.
+    bound: f64,
+}
+
+/// The bound of the height between neighbouring `values`: between `p` and
+/// `q`, `(p + q + d) / 2`, with `d` the largest change between neighbours
+/// at and next to them. Samples with nothing to cut are skipped.
+fn sloped_bound(values: &[Option<f64>]) -> f64 {
+    let change = |i: usize| match (values.get(i), values.get(i + 1)) {
+        (Some(Some(p)), Some(Some(q))) => (p - q).abs(),
+        _ => 0.0,
+    };
+    let mut bound = values.iter().flatten().copied().fold(0.0, f64::max);
+    for i in 0..values.len().saturating_sub(1) {
+        if let (Some(Some(p)), Some(Some(q))) = (values.get(i), values.get(i + 1)) {
+            let d = [i.checked_sub(1), Some(i), Some(i + 1)]
+                .into_iter()
+                .flatten()
+                .map(change)
+                .fold(0.0, f64::max);
+            bound = bound.max(0.5 * (p + q + d));
+        }
+    }
+    bound
 }
 
 /// Samples across an interval at a station, before any are added.
@@ -658,39 +687,40 @@ impl Work<'_> {
             return Ok(Vec::new());
         };
         let step = self.family.station_step();
-        let mut stations = Vec::new();
+        let mut at = Vec::new();
         for &(from, to) in &interval.spans {
             let n = (((to - from).abs() / step).ceil() as usize).clamp(1, 1_000_000);
-            for k in 0..=n {
-                let s = from + (to - from) * k as f64 / n as f64;
-                if self.family.queries() >= self.limits.queries {
-                    self.stopped = Some(Reason::Queries);
-                    self.give_up(interval, Reason::Queries);
-                    return Ok(Vec::new());
-                }
-                stations.push(self.station(lo, hi, s));
-            }
+            at.extend((0..=n).map(|k| from + (to - from) * k as f64 / n as f64));
         }
+        // The most queries the stations can make is charged before they are
+        // measured, so where the limit is met does not depend on the order
+        // the threads measure them in (decision record 0239 item 8).
+        let most = (at.len() as u64).saturating_mul((MOST_SAMPLES - 1) as u64);
+        if self.family.queries().saturating_add(most) > self.limits.queries {
+            self.stopped = Some(Reason::Queries);
+            self.give_up(interval, Reason::Queries);
+            return Ok(Vec::new());
+        }
+        context.check_cancelled()?;
+        let stations = crate::parallel::map_each_in_order(&at, |&s| self.station(lo, hi, s));
         let h = self.settings.height;
         let mut high = Vec::new();
         let mut unsure = Vec::new();
+        let along: Vec<Option<f64>> = stations.iter().map(|st| st.excess).collect();
         for (i, st) in stations.iter().enumerate() {
             let Some(e) = st.excess else { continue };
-            // The bound between this station and its neighbours: the larger
-            // of the two, and their difference.
-            let between = [i.checked_sub(1), Some(i + 1)]
-                .into_iter()
-                .flatten()
-                .filter_map(|j| stations.get(j).and_then(|n| n.excess))
-                .map(|n| n.max(e) + (n - e).abs())
-                .fold(e + st.slack, f64::max);
+            // The bound across the passes at this station, and along them to
+            // its neighbours.
+            let from = i.saturating_sub(1);
+            let near = along.get(from..(i + 2).min(along.len())).unwrap_or(&[]);
+            let between = st.bound.max(sloped_bound(near));
             if e > h + EPS {
                 high.push(st.s);
             } else if between > h + EPS {
                 unsure.push(st.s);
             }
         }
-        let reach = step + self.family.window();
+        let reach = step + self.family.margin();
         let spans_of = |at: &[f64]| merge(at, reach, &interval.spans);
         let c_mid = 0.5 * (lo.c + hi.c);
         let half = self.family.width((hi.c - lo.c) / 2.0);
@@ -805,23 +835,18 @@ impl Work<'_> {
             }
             Some((best - leave).max(0.0))
         };
-        // Evenly spaced samples, doubled where neighbours differ by more
-        // than half the Allowed excess, up to `MOST_SAMPLES`.
+        // Evenly spaced samples, doubled while the bound between them is
+        // above the Allowed excess and the samples are not, up to
+        // `MOST_SAMPLES`.
+        let h = self.settings.height;
         let mut n = SAMPLES;
         loop {
             let values: Vec<Option<f64>> = (1..n).map(|j| sample(j as f64 / n as f64)).collect();
-            let found: Vec<f64> = values.iter().flatten().copied().collect();
-            let slack = values
-                .windows(2)
-                .filter_map(|w| match w {
-                    [Some(p), Some(q)] => Some((p - q).abs()),
-                    _ => None,
-                })
-                .fold(0.0, f64::max);
-            let excess = found.iter().copied().reduce(f64::max);
-            let fine = slack <= 0.5 * self.settings.height || n >= MOST_SAMPLES;
-            if fine || excess.is_none_or(|e| e > self.settings.height + EPS) {
-                return Station { s, excess, slack };
+            let excess = values.iter().flatten().copied().reduce(f64::max);
+            let bound = sloped_bound(&values);
+            let settled = bound <= h + EPS || n >= MOST_SAMPLES;
+            if settled || excess.is_none_or(|e| e > h + EPS) {
+                return Station { s, excess, bound };
             }
             n *= 2;
         }
@@ -939,6 +964,10 @@ mod tests {
 
         fn station_step(&self) -> f64 {
             1.0
+        }
+
+        fn margin(&self) -> f64 {
+            2.0
         }
 
         fn queries(&self) -> u64 {
@@ -1159,6 +1188,15 @@ mod tests {
                 min_spacing: 0.01
             })
         );
+    }
+
+    #[test]
+    fn req_op_04_the_bound_between_samples_follows_their_slope() {
+        // A flat top is bounded by itself; a peak between samples is not
+        // hidden by them.
+        assert!((sloped_bound(&[Some(0.005), Some(0.005), Some(0.005)]) - 0.005).abs() < 1e-12);
+        assert!(sloped_bound(&[Some(0.0), Some(0.01), Some(0.01), Some(0.0)]) > 0.01);
+        assert!((sloped_bound(&[Some(0.002), None, Some(0.004)]) - 0.004).abs() < 1e-12);
     }
 
     #[test]
