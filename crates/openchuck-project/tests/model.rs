@@ -344,3 +344,72 @@ proptest! {
         prop_assert!(text.to_uppercase().parse::<ContentHash>().is_err());
     }
 }
+
+/// A model copied into the project folder is named by its content hash, so
+/// the same bytes always give the same name and the name is safe on every
+/// platform (issue 385, decision record 0307 items 2 and 3).
+#[test]
+fn req_prj_02_a_copied_model_is_named_by_its_content_hash() {
+    let hash = ContentHash::of_bytes(b"solid part");
+    let hex = &hash.to_string()["blake3:".len()..];
+    let first = ModelRef::copy_path(&hash, "STL", 1).unwrap();
+    assert_eq!(first.as_str(), format!("models/{}.stl", &hex[..32]));
+    assert_eq!(ModelRef::copy_path(&hash, "STL", 1).unwrap(), first);
+    assert_eq!(
+        ModelRef::copy_path(&hash, "stp", 2).unwrap().as_str(),
+        format!("models/{}-2.stp", &hex[..32])
+    );
+    assert!(!first.is_outside_project());
+    let other = ModelRef::copy_path(&ContentHash::of_bytes(b"solid other"), "stl", 1).unwrap();
+    assert_ne!(other, first);
+    // The extension is the only part taken from the original name; anything
+    // but letters and digits is refused (NFR-07).
+    for bad in ["", "st/l", "s.tl", "stl\u{0}", "\u{e9}"] {
+        assert!(ModelRef::copy_path(&hash, bad, 1).is_err(), "{bad:?}");
+    }
+    assert!(ModelRef::copy_path(&hash, "stl", 0).is_err());
+}
+
+/// A model whose path leaves the project folder is linked, not part of the
+/// folder; its name is the original file name, or the path's file name
+/// when none was recorded (issue 385, decision record 0307 items 4 and 5).
+#[test]
+fn req_prj_02_a_model_outside_the_folder_is_linked_and_keeps_its_name() {
+    for (path, outside) in [
+        ("models/part.stl", false),
+        ("part.stl", false),
+        ("deep/er/part.step", false),
+        ("../shared/part.stl", true),
+        ("../../elsewhere/part.stl", true),
+    ] {
+        assert_eq!(
+            RelativePath::new(path).unwrap().is_outside_project(),
+            outside,
+            "{path}"
+        );
+    }
+    let mut m = ModelRef::new(
+        ModelId::from_u128(1),
+        RelativePath::new("../../elsewhere/part.stl").unwrap(),
+        ContentHash::of_bytes(b"solid part"),
+    );
+    assert_eq!(m.display_name(), "part.stl");
+    // Messages and the setup sheet name the stored path, and a recorded name
+    // before it (decision record 0307 item 6).
+    assert_eq!(m.label(), "../../elsewhere/part.stl");
+    m.path = ModelRef::copy_path(&m.hash, "stl", 1).unwrap();
+    m.name = Some("Blade, rev B.STL".to_owned());
+    assert_eq!(m.display_name(), "Blade, rev B.STL");
+    assert_eq!(m.label(), format!("Blade, rev B.STL ({})", m.path.as_str()));
+
+    let mut p = Project::new("named");
+    p.insert(Item::Model(m.clone()), Placement::End).unwrap();
+    p.validate().unwrap();
+    // A name is a file name only: no folders, nothing empty or invisible.
+    for bad in ["", "  ", "a/b.stl", "a\\b.stl", "a\u{7}.stl"] {
+        let mut named = m.clone();
+        named.name = Some(bad.to_owned());
+        let err = p.replace(Item::Model(named)).unwrap_err().to_string();
+        assert!(err.contains("name"), "{bad:?}: {err}");
+    }
+}

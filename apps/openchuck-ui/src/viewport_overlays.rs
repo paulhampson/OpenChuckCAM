@@ -372,7 +372,7 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         // Under the selection tools box while it shows.
         let top = if viewport.is_picking() {
             ui.ctx()
-                .memory(|m| m.area_rect(egui::Id::new("selection tools")))
+                .memory(|m| m.area_rect(egui::Id::unique("selection tools")))
                 .map_or(rect.top() + MARGIN, |r| r.bottom() + 8.0)
         } else {
             rect.top() + MARGIN
@@ -586,7 +586,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         frame(&painter, r);
         // The continuous A, as the G-code gives it, on hovering the box
         // (issue 207).
-        ui.interact(r, ui.id().with("readout"), egui::Sense::hover())
+        ui.interact(r, ui.scope_id().with("readout"), egui::Sense::hover())
             .on_hover_text(crate::playback_panel::continuous_a_tip(work[3], 2));
         let colours = [
             roles::WORK_X,

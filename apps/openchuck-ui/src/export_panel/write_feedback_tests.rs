@@ -515,6 +515,7 @@ fn req_gc_05_the_dialog_lists_the_template_fields() {
             egui::Event::PointerMoved(at),
             egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 delta: egui::vec2(0.0, -60.0),
                 modifiers: egui::Modifiers::NONE,
                 phase: egui::TouchPhase::Move,

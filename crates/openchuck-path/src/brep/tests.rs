@@ -180,3 +180,286 @@ fn req_imp_02_hull_cells_tile_the_box_and_hold_the_surface() {
         }
     }
 }
+
+/// The patch of [`patch`] with every weight 1: a polynomial patch.
+fn polynomial(seed: &mut u64) -> BSplinePatch {
+    let p = patch(seed);
+    BSplinePatch {
+        weights: vec![1.0; p.weights.len()],
+        ..p
+    }
+}
+
+#[test]
+fn req_imp_02_normal_cone_holds_the_normals_of_every_cell() {
+    // Lane STEPALL-X2, decision 0277: the exact drop passes over a cell
+    // whose normal cone keeps the ball off it, so the cone must hold every
+    // normal `S_u x S_v` of the cell, split cells included.
+    let mut seed = 29;
+    let mut cones = 0;
+    for _ in 0..30 {
+        let p = polynomial(&mut seed);
+        let n = Nurbs::new(0, &p).unwrap();
+        let tree = hull::HullTree::new(
+            (n.pu, n.pv),
+            (n.nu, n.nv),
+            (&n.uk, &n.vk),
+            &n.poles,
+            &n.w,
+            [0.0, 1.0, 0.0, 1.0],
+            5.0,
+            6,
+        )
+        .unwrap();
+        let mut nets: Vec<hull::Net> = tree.nets.clone();
+        // And the halves a search splits off.
+        for net in tree.nets.iter().take(4) {
+            let (a, b) = net.split(net.longer_in_u());
+            let (c, d) = a.split(!a.longer_in_u());
+            nets.extend([b, c, d]);
+        }
+        for net in &nets {
+            let Some((axis, sin_half)) = net.normal_cone() else {
+                continue;
+            };
+            cones += 1;
+            assert!((axis.length() - 1.0).abs() < 1e-12);
+            let cos = 1.0 - 2.0 * sin_half * sin_half;
+            let [u0, u1, v0, v1] = net.uv;
+            for i in 0..=8 {
+                for j in 0..=8 {
+                    // Inside the cell: on a knot the derivatives are one
+                    // piece's or the next's.
+                    let t = |k: usize| (k as f64 + 0.5) / 9.0;
+                    let (u, v) = (u0 + (u1 - u0) * t(i), v0 + (v1 - v0) * t(j));
+                    let (_, du, dv) = n.d1(u, v).unwrap();
+                    let c = du.cross(dv);
+                    if c.length() <= 1e-9 * du.length() * dv.length() {
+                        continue;
+                    }
+                    let got = c.dot(axis) / c.length();
+                    assert!(
+                        got >= cos - 1e-9,
+                        "a normal at {got} leaves a cone of {cos}"
+                    );
+                }
+            }
+        }
+    }
+    assert!(cones > 100, "only {cones} cells had a cone");
+}
+
+#[test]
+fn req_imp_02_a_rational_cell_has_no_normal_cone() {
+    // Weights that differ make S_u no positive combination of the net's
+    // differences, so no cone is claimed (decision 0277).
+    let mut seed = 31;
+    let p = patch(&mut seed);
+    let n = Nurbs::new(0, &p).unwrap();
+    let tree = hull::HullTree::new(
+        (n.pu, n.pv),
+        (n.nu, n.nv),
+        (&n.uk, &n.vk),
+        &n.poles,
+        &n.w,
+        [0.0, 1.0, 0.0, 1.0],
+        5.0,
+        6,
+    )
+    .unwrap();
+    let varied = tree.nets.iter().filter(|net| {
+        let w: Vec<f64> = net.pts.iter().map(|h| h[3]).collect();
+        w.iter().any(|x| (x - w[0]).abs() > 1e-6)
+    });
+    let mut seen = 0;
+    for net in varied {
+        seen += 1;
+        assert!(net.normal_cone().is_none());
+    }
+    assert!(seen > 0);
+}
+
+#[test]
+fn req_imp_02_cell_distance_gradient_is_a_lower_bound_with_its_slope() {
+    // The exact drop bounds a cell by Newton steps on this distance, so it
+    // must never exceed the distance to the cell, and its gradient must be
+    // its slope (decision 0277).
+    let mut seed = 37;
+    for _ in 0..10 {
+        let p = patch(&mut seed);
+        let n = Nurbs::new(0, &p).unwrap();
+        let tree = hull::HullTree::new(
+            (n.pu, n.pv),
+            (n.nu, n.nv),
+            (&n.uk, &n.vk),
+            &n.poles,
+            &n.w,
+            [0.0, 1.0, 0.0, 1.0],
+            5.0,
+            6,
+        )
+        .unwrap();
+        for net in tree.nets.iter().take(8) {
+            let bound = net.bound();
+            let [u0, u1, v0, v1] = net.uv;
+            for _ in 0..20 {
+                let q = Point3::new(
+                    60.0 * lcg(&mut seed) - 10.0,
+                    60.0 * lcg(&mut seed) - 10.0,
+                    30.0 * lcg(&mut seed) - 10.0,
+                );
+                let (d, g) = bound.distance_gradient(q);
+                let mut nearest = f64::INFINITY;
+                for i in 0..=10 {
+                    for j in 0..=10 {
+                        let (s, _, _) = n
+                            .d1(
+                                u0 + (u1 - u0) * i as f64 / 10.0,
+                                v0 + (v1 - v0) * j as f64 / 10.0,
+                            )
+                            .unwrap();
+                        nearest = nearest.min(s.distance(q));
+                    }
+                }
+                assert!(d <= nearest + 1e-9, "{d} above a cell point at {nearest}");
+                assert!(d >= bound.lower(q) - 1e-9);
+                if d > 1e-3 {
+                    let h = 1e-6;
+                    for e in [
+                        openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0),
+                        openchuck_types::geometry::Vec3::new(0.0, 1.0, 0.0),
+                        openchuck_types::geometry::Vec3::new(0.0, 0.0, 1.0),
+                    ] {
+                        let slope = (bound.distance_gradient(q + e * h).0
+                            - bound.distance_gradient(q + e * -h).0)
+                            / (2.0 * h);
+                        assert!(
+                            (slope - g.dot(e)).abs() < 1e-4,
+                            "slope {slope} gradient {}",
+                            g.dot(e)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The outlines of decision 0338 as profiles: a tapered ball, a flat end,
+/// and a V-bit with a flat at its tip.
+fn outlines() -> Vec<openchuck_types::tool::profile::RevolvedProfile> {
+    use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, ToolProfile};
+    let p = |segments| ToolProfile { segments }.validate().unwrap();
+    let a = 5.0_f64.to_radians();
+    let (tr, tz) = (0.25 * a.cos(), 0.25 * (1.0 - a.sin()));
+    vec![
+        p(vec![
+            ProfileSegment::Arc {
+                to: ProfilePoint::new(tr, tz),
+                centre: ProfilePoint::new(0.0, 0.25),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.5875, tz + (1.5875 - tr) / a.tan()),
+            },
+        ]),
+        p(vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 4.0),
+            },
+        ]),
+        p(vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(0.4, 0.0),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(2.0, 1.9),
+            },
+        ]),
+    ]
+}
+
+#[test]
+fn req_op_12_the_outline_bound_is_never_below_a_lift_in_its_box() {
+    // Decision 0338: the outline drop passes over a box only on a proven
+    // bound, so the bound must hold every point of the box the tool can
+    // reach; and it should be close for a small box (it is exact for the
+    // box), which is what lets the search settle.
+    use super::hull::Para;
+    use super::outline::{Outline, Search};
+    use crate::cutter::ToolLine;
+    use openchuck_types::geometry::{UnitVec3, Vec3};
+    let mut seed = 5;
+    for profile in outlines() {
+        let tool = Outline::new(&profile).unwrap();
+        let mut close = 0;
+        for _ in 0..400 {
+            let axis = UnitVec3::new(Vec3::new(
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+            ))
+            .unwrap();
+            let line = ToolLine {
+                origin: Point3::new(lcg(&mut seed), lcg(&mut seed), lcg(&mut seed)),
+                axis,
+            };
+            let search = Search::new(&tool, &line);
+            // A box of random size and turn near the line.
+            let size = 10f64.powf(-3.0 + 3.5 * lcg(&mut seed));
+            let x = UnitVec3::new(Vec3::new(
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+                lcg(&mut seed) - 0.5,
+            ))
+            .unwrap()
+            .get();
+            let s = Vec3::new(0.3, 0.9, -0.2);
+            let y = UnitVec3::new(s - x * s.dot(x)).unwrap().get();
+            let b = Para {
+                centre: Point3::new(
+                    2.0 * lcg(&mut seed) - 0.5,
+                    2.0 * lcg(&mut seed) - 0.5,
+                    2.0 * lcg(&mut seed) - 0.5,
+                ),
+                axes: [x, y, x.cross(y)],
+                half: [
+                    size * lcg(&mut seed),
+                    size * lcg(&mut seed),
+                    size * lcg(&mut seed) * 0.2,
+                ],
+            };
+            let top = search.top_for_test(&b);
+            let n = 14;
+            for i in 0..=n {
+                for j in 0..=n {
+                    for k in 0..=n {
+                        let t = |m: usize| 2.0 * m as f64 / n as f64 - 1.0;
+                        let p = b.centre
+                            + b.axes[0] * (t(i) * b.half[0])
+                            + b.axes[1] * (t(j) * b.half[1])
+                            + b.axes[2] * (t(k) * b.half[2]);
+                        if let Some(l) = search.lift_for_test(p) {
+                            let top = top.unwrap_or_else(|| panic!("no bound, lift {l}"));
+                            assert!(top >= l - 1e-12, "bound {top} below lift {l}");
+                        }
+                    }
+                }
+            }
+            // The bound is exact for the box (the minimax theorem): a box
+            // shrunk to its middle has the middle's lift for its bound.
+            let point = Para {
+                half: [0.0; 3],
+                ..b
+            };
+            if let Some(l) = search.lift_for_test(b.centre) {
+                let t = search.top_for_test(&point).unwrap();
+                assert!(t >= l - 1e-12 && t - l <= 1e-9, "point bound {t}, lift {l}");
+                close += 1;
+            }
+        }
+        assert!(close > 40, "{close}");
+    }
+}

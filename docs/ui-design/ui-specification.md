@@ -41,7 +41,7 @@ Every workspace board has a dark and a light theme (its Tweaks panel on the canv
 The user is the one in requirements section 2: a machinist, maker or small-shop programmer, comfortable with G-code, tooling, feeds and speeds, who may know Fusion, SolidWorks or FreeCAD. The workflow is the eight steps of that section.
 
 1. **Familiar CAD layout.** Menu bar, project tree on the left, 3D view in the centre, properties on the right, messages below, status at the bottom. A user of another CAD or CAM tool should find each thing where they expect it.
-2. **The workflow order is visible.** The five steps (Model, Setup, Operations, Simulate, Post and export) follow requirements section 2 and architecture section 6, left to right.
+2. **The workflow order is visible.** The four steps (Model, Setup, Operations, Simulate) follow requirements section 2 and architecture section 6, left to right. Post and export is an action at the end of Simulate ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)).
 3. **Hierarchy of importance.** On any screen, in this order: whether the job can go on (errors, stale results, running work), then the result of the selected item, then its parameters, then reference information. Layout, size and weight follow that order.
 4. **State is always visible, and never by colour alone.** Each state has a shape as well as a colour, and a legend that does not scroll away.
 5. **Problems are shown where they are, and in one list.** A problem is marked on its item, explained in the inspector, and listed in the messages panel with a way to fix it.
@@ -58,7 +58,7 @@ Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148
 | Region | Size | Contents |
 | --- | --- | --- |
 | Title bar | 32 high | Menus (File, Edit, View, Project, Tools, Help); project name and save state; command search *(UI-17)*; Undo, Redo, Undo history *(UI-22)* |
-| Workflow bar | 44 high | The five steps (section 4) on the left; actions that start something new or change context on the right (New operation, Duplicate, Add setup, Import model, Simulate from). Nothing that moves the job forward is here (section 5) |
+| Workflow bar | 44 high | The four steps and the G-code status (section 4) on the left; actions that start something new or change context on the right (New operation, Duplicate, Add setup, Import model, Simulate from). Nothing that moves the job forward is here (section 5) |
 | Project panel | 264 wide (200 to 400) | The project tree (section 6) and its status legend |
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
 | Viewport | the rest | The 3D view and at most five overlays (section 7.2) |
@@ -85,8 +85,9 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 | 1 Model | Import, check units and mesh, place on the rotary axis (IMP-01 to IMP-06) | Always | | "Import model…" with no model; "Continue to setup" otherwise |
 | 2 Setup | Machine, stock, part position, work offset, clearance (SET-01, SET-03, SET-05, SET-06) | A model is in the project | "Import a model first" | "Continue to operations" |
 | 3 Operations | Select geometry, add operations, generate (OP, UI-04 to UI-07) | The setup has a machine and stock | "Set up the machine and stock first" | Section 5 |
-| 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 |
-| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation, and no required value is missing (generated or not: the dialog makes its own files; decision 0148 item 1, amended by decision 0173 item 6) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first", "Add an operation first" or "Fill in the missing values first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
+| 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 (two actions) |
+
+**Post and export** is not a step ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)). It writes G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) from the export dialog (11.6), opened from "Post and export…" on Simulate's footer, from File > Post and export…, with Ctrl E, or with Alt 5. It is available when the project has a model, a setup, a machine, a tool and an operation, and no required value is missing (generated or not: the dialog makes its own files; decision 0148 item 1, amended by decision 0173 item 6); otherwise it gives the first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first", "Add an operation first" or "Fill in the missing values first". "Write G-code" is the dialog's primary action.
 
 **The step indicator.** Each step shows a numbered circle and a name.
 
@@ -95,24 +96,25 @@ The steps are views over one project, not modes. The tree, menus, undo history a
   - Model: there is a model and none is in error;
   - Setup: there is a machine, every setup has stock and a part, and no setup check warns;
   - Operations: every enabled operation is up to date;
-  - Simulate: every enabled operation has been simulated as it is now;
-  - Post and export: G-code has been written from every enabled operation as it is now.
+  - Simulate: every enabled operation has been simulated as it is now.
 - An unavailable step is dimmed, and its tooltip gives the reason.
 - Each available step shows its own health after its name, by shape as well as colour: a green filled circle (good to go), an amber triangle outline (stale or needs attention) or a red filled triangle (an error to deal with, such as a missing tool or stock); its tooltip names what needs attention (decision 0173).
 - Machine values not confirmed on the machine do not change the bar (they are in the footer and on the machine row; decision 0173, OI-624). The bar stays amber until every enabled operation is simulated as it is now (OI-625).
-- A badge at the right end of the bar shows the worst of the five as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
-- Alt 1 to Alt 5 open the steps.
+- **The G-code status.** After step 4 the bar says whether G-code has been written, completely, from every enabled operation as it is now and from no other (an exported operation since turned off or removed makes it "not written"): "G-code written" with a green ring round a tick, or "G-code not written" with a hollow grey circle. Its tooltip says why ("No G-code has been written in this session" or "The project has changed since G-code was last written") and that past write results are in Messages. It does not change the health, and it is not a button (decision 0282 item 5).
+- A badge at the right end of the bar shows the worst of the four as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem. A project with no machine profile reads "Needs attention" ("Choose a machine"), not "Error to fix": choosing a machine is a to-do, and Messages counts no error for it (FIRSTRUN item 1; owner's answer relayed by the coordinator).
+- Alt 1 to Alt 4 open the steps. Alt 5 opens Post and export, as Ctrl E does (decision 0282 item 4).
 
 *(UI-10)*
 
 ## 5. The primary action
 
 - **One per screen.** Each screen has exactly one primary (filled) button, right-most in the footer. Secondary actions sit to its left, the most likely nearest. Cancel for running work sits left of them.
+- **Simulate has two actions in fixed places** ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md) item 2): the simulation action (rules 1 to 3), and right-most "Post and export…". Neither moves or changes into the other. Exactly one is filled: the simulation action while the simulation does not match the project, otherwise "Post and export…"; so on Simulate the filled button may not be right-most. Each is enabled by its own rules (item 3): the simulation action by the rules below, and once the simulation matches the project it reads "Run simulation" (or "Generate toolpaths" while the stock simulation is skipped), disabled, with the reason, and with every operation turned off it is disabled with "Turn on an operation to simulate"; "Post and export…" is disabled by an enabled item's error that blocks it, naming it, or by the first missing item of section 4, but not by a stale or missing simulation, since the dialog blocks writing from a stale run (GC-15). Both are disabled while a job runs, and both wait for the pending-edit guard (decision 0233).
 - **It is the next required step.** It is the first of these that applies:
   1. If an enabled item has an error that blocks the next step, the primary button is disabled. Its tooltip names the problem, and the problem's row in the messages panel is highlighted.
   2. If enabled operations are stale, it is "Generate stale (n)".
   3. On Simulate, if an operation has not been simulated, it is "Run simulation". If it has not been generated either, it is "Generate and simulate op N". On Simulate this rule is checked before rule 2, since simulating generates.
-  4. Otherwise it continues to the next step.
+  4. Otherwise it continues to the next step; on Simulate, it is "Post and export…".
 - **Disabled means explained.** A disabled primary button always has a tooltip with the reason, and the footer status says the same.
 - **Dialogs follow the rule.** Import has "Add to project", the tool library "Add to project" (primary when opened to add a tool or to choose an operation's tool), and export "Write G-code". Each is bottom right.
 - **Other actions go elsewhere.** Actions that start something new (New operation, Add setup, Import model) go in the workflow bar. Row actions go on the row.
@@ -121,7 +123,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 
 **One tree in every step** (UI-06). Groups, in pipeline order:
 
-1. **Model.** One row per model, with child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
+1. **Model.** One row per model, named by its original file name; a model linked from outside the project folder has a small link mark and the chip "linked" after its name, with a tooltip saying moving the folder will lose it ([decision 0307](../decisions/0307-model-copied-into-the-project-folder.md)). Child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
 2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Operations.** In machining order, each with its tool's number as a chip.
@@ -282,7 +284,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 **Order** (principle 3):
 
-1. **Header.** The name in an editable field, and a status chip in the words of the status mark. An operation or a setup with required values missing shows "1 value is missing" or "n values are missing" under it, with "Show first", from the moment it exists; each missing field has an amber border and, under it, the warning shape and a short sentence ("Choose a tool", "Enter feed", "Set the stock"). Nothing is red until a value is refused or the item is in error (decision 0173).
+1. **Header.** The name in an editable field, and a status chip in the words of the status mark. An operation or a setup with required values missing shows "1 value is missing" or "n values are missing" under it, with "Show first", from the moment it exists; each missing field has an amber border and, under it, the warning shape and a short sentence ("Choose a tool", "Enter feed", "Set the stock"). Nothing is red until a value is refused or the item is in error (decision 0173). An empty Stepdown, which nothing guesses, reads under its field "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library." while the lists keep the short "Enter stepdown" (FIRSTRUN item 2; owner's answer relayed by the coordinator).
 2. **Error banner,** when the item is in error. It gives what cannot be done, why, and the actions that fix it (the "Inspector: operation in error" board).
 3. **Result summary** of an operation: moves, cut length, A travel, A unwinds and programmed time, in a two-by-two (or two-by-three) grid of large numbers. Programmed time is labelled "programmed time" and is not the SIM-08 estimate (decision 0028 item 3). *(SIM-13)*
 4. **Basic and Advanced switch.** *(UI-19)* Without it, every field is shown, grouped.
@@ -361,8 +363,8 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - the tolerance of the selected operation or setup;
   - machine warnings in amber, linking to Setup;
   - a separator;
-  - the step's actions, with the primary right-most (section 5).
-- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited". Amber is kept for warnings.
+  - the step's actions, with the primary right-most (section 5; Simulate keeps its two actions in fixed places).
+- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited, not saved", with the tooltip "Changes are kept in memory only. File > Save (Ctrl S) writes them to the project." Nothing saves the project by itself (FIRSTRUN item 4; owner's answer relayed by the coordinator). Amber is kept for warnings.
 
 ## 11. The steps in detail
 
@@ -370,11 +372,11 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 File > New project opens a dialog for a parent folder and project name (decision 0165 item 4). Enabled OK accepts these entries and creates the project; Cancel discards them, with no additional unconfirmed-field warning (decision 0246). Empty or unusable input remains refused. Esc in an edited field restores its previous value; the application's window close control remains a guarded application close.
 
-- **The window.** The tree shows each group with "None yet". Steps 2 to 5 are dimmed with their reasons. Undo and Redo are dimmed.
+- **The window.** The tree shows each group with "None yet". Steps 2 to 4 are dimmed with their reasons. Undo and Redo are dimmed.
 - **The centre card,** "Start with a model":
   - a drop zone for a model file;
   - "Import model…" and "Open project…";
-  - the five steps, one line each;
+  - the four steps, one line each;
   - recent projects *(UI-23)*.
 - **The footer** primary is "Import model…".
 
@@ -397,6 +399,7 @@ File > New project opens a dialog for a parent folder and project name (decision
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
 - **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
+- **Copy into the project folder** ([decision 0307](../decisions/0307-model-copied-into-the-project-folder.md), accepted). Once the check has run, above the footer's buttons: the tick box "Copy the file into the project folder", ticked by default, with the file's size beside it ("84.2 MB"), and a line under it: ticked, "It will be copied into the project's models folder and listed as part.stl, so the project folder can be moved, zipped or shared. The original file is not changed."; cleared, "The file stays where it is and is linked by its path. If the project folder is moved without it, the model will be missing." A file already in the project folder turns the tick box off, with "The file is already in the project folder." The copy is named by the file's content hash (`models/<hash>.stl`) and listed by its original name.
 - **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary), which stays off until the check has run.
 
 **Model step** (board 1):
@@ -412,7 +415,7 @@ File > New project opens a dialog for a parent folder and project name (decision
     - removing a step is one undoable command;
     - "Add step" offers centre, orient, translate, rotate, scale and mirror;
   - mesh check summary and "Open full report";
-  - source: the content hash, "Replace file…" and "Show in folder".
+  - source: where the file is ("part.stl, stored in the project folder (models/d2a8b35f….stl)", or for a model linked from outside the folder "part.stl, linked from outside the project folder (../../elsewhere/part.stl). Moving the project folder will lose this model." in the warning colour, with "Copy model into project"; the section opens by default for a linked model; [decision 0307](../decisions/0307-model-copied-into-the-project-folder.md)), the content hash, "Replace file…" (which copies its file into the project folder too) and "Show in folder". Opening a project with linked models asks, each time, "This project's model is outside its folder. Copy it into the project now?" (Copy, Not now), and Messages keeps an information note for each.
 - **Dock.** Messages and Import history.
 - **Footer** primary: "Continue to setup".
 
@@ -440,13 +443,13 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 
 **Inspector:**
 
-1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel.
+1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel. A **Spindle height** part follows the short-move settings (decision 0317): tool length measurement, then, on a machine that measures tool lengths, spindle to axis (blank when not known) and the recommended minimum safe Z (also shown once given), each editable on the project copy with its provenance icon.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
 3. **Part position** (SET-05; [decision 0201](../decisions/0201-setup-offset-moves-the-part.md)): **Offset along X**, which moves the part along the rotary axis in this setup only, from where the Model step's placement puts it, while the stock, the held regions and tabs and the work zero stay where they are, so the toolpaths and G-code move with the part (its tooltip says so in those words); **Position**, read-only, the part's X range in this setup ("X 12.500 to 42.500 mm"), with a muted line under it naming where it comes from ("Placement X 0.000 to 30.000 + offset 12.500 mm") and a tooltip that says it is the placement plus the offset, measured from the machine's rotary reference point; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
-**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60).
+**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60). When the project's Makera Z1 copy still holds the old placeholder axis height (machine Z -55), a check and a message say so and ask the user to choose the Makera Z1 again (decision 0317). On a machine that measures tool lengths and gives its spindle-to-axis distance, a check and a message name each tool whose assumed stick-out (flute length + 5 mm) would take the spindle past the top of the Z travel at the setup's safe Z, with the safe Z that fits and, under the recommended minimum, the owner's line (decision 0318).
 
 **Footer** primary: "Continue to operations".
 
@@ -479,6 +482,14 @@ Boards 3 and 3b.
 
 **Facing controls (0252, accepted).** Preserve legacy Flat/Round and add End opposite held end and Box sides. Box sides offers individual standard faces and All four, plus arbitrary-angle rows with per-face model-derived offsets or explicit overrides and Reset to part plus allowance. Show opposite-plane separation. Standard selections run in fixed model order; arbitrary rows follow their listed order with keyboard-accessible Move up/down and an explicit stable Sort by A angle action. Sorting/reordering keeps offsets attached and is one undoable confirmed edit. New box sides offers Full stepdown, shorter final pass by default or Equal stepdowns; legacy layers are unchanged. End mode labels its maximum depth Axial stepdown and shows inferred end, target X and Length to opposite model end. Extents offer Whole stock, Part and Part plus tabs; planar margin expands four edges, Round Axial margin expands both X ends around the full circumference, all defaulting to zero. Tabs are always protected. Unsupported/unreachable requests explain the reason and produce no usable partial path.
 
+**Finishing layers and free ends ([decisions 0344](../decisions/0344-finishing-stepdown-and-free-ends.md) and [0345](../decisions/0345-finishing-layers.md), accepted; the inspector entries below are proposed by lane ENDFACE for the owner to check).** The inspector of a helical, axial or indexed finishing operation (and rest machining for Face free ends and Stepdown) shows, after the strategy's own settings and before the extension past the stock:
+
+- **Face free ends** (helical, axial, rest): a checkbox, ticked for a new operation and unticked for one saved before it. Its tooltip is the parameter's description. When the operation is refused because a free end is deeper than the tool's flutes, this is the field marked in red, with the message under it.
+- **Finishing layers** (helical, axial, indexed): a checkbox, unticked by default.
+- **Stepdown** (all four): a number in mm, filled by the material preset with the hint "from the tool's cutting data for Oak", as roughing's Stepdown is (decision 0230). With Finishing layers ticked and no value, it shows "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library." With them unticked and no value, it shows no error; a free end that needs it gives the operation's warning, which names the field.
+- **Finish allowance** (helical, axial, indexed): a number in mm, 0.1 by default, shown only while Finishing layers is ticked, with an error under it when it is not less than the Stepdown.
+- The free-end warnings ("can be cut free and thrown while the rotary axis turns") and the layer and free-end notes show in Messages and on the operation as other path warnings and notes do.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.
@@ -508,7 +519,7 @@ Board 4 (SIM-01 to SIM-07).
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
-- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the cut stock coloured by deviation, resting the pointer on its surface (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one its stock triangle is coloured by, explicitly labelled as a projected final result. Picking uses the same stock mesh on the CPU; a nearer visible model/stock face hides hover and pinned values in either display mode. A changed mesh clears pins because triangle identities change. The operation and move that left the point are added with the rest of SIM-11.
+- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the cut stock coloured by deviation, resting the pointer on its surface (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one its stock triangle is coloured by, explicitly labelled as a projected final result. Picking uses the same stock mesh on the CPU; a nearer visible model/stock face hides hover and pinned values in either display mode. A changed mesh clears pins because triangle identities change. While playback plays, the cut part is drawn without its picker, so nothing is read under the pointer and a kept value is not drawn; once playback is still (paused, stopped, stepped or jumped), the frame shown is made again with its picker and the probe works as above ([decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 6, the owner's decision D5 on issue #382). The operation and move that left the point are added with the rest of SIM-11.
 
 **Results inspector:**
 
@@ -528,7 +539,8 @@ Board 4 (SIM-01 to SIM-07).
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Preparation progress** (owner direction, issue 305; accepted 0238): directly below the playback position bar, during initial loading and regeneration. Read the existing monotonic pipeline progress; show its reported percentage without a time estimate. Other preparation stages without a stable total show activity without a percentage. Remove the display on readiness or failure; a disabled position bar provides the anchor before a timeline exists. Dock bounds stay fixed.
-- **Synchronized cut playback** (SIM-02/03/04, issue 333): Cut part includes the swept portion of the current move. The viewport's stock, tool pose, A rotation and tool readout share the exact same cursor. While a stock surface is being prepared, retain the previous matching pair; expensive work stays off the UI thread. With Cut part hidden, tool motion follows playback time directly.
+- **Synchronized cut playback** (SIM-02/03/04, issue 333; [decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 8, the owner's decision D3 on issue #382): Cut part includes the swept portion of the current move. When playback is still (paused, stopped, stepped or jumped), the viewport's stock, tool pose, A rotation and tool readout share the exact same cursor: the tool stays where it is while the cut part at that move is prepared, and the previous cut part stays on screen until then. While playback plays, the tool pose, A rotation and readout follow playback time, and the cut part shown is the newest one prepared, which may be behind the tool; pausing never moves the tool back. Expensive work stays off the UI thread. With Cut part hidden, tool motion follows playback time directly.
+- **Cut-part bar** (decision 0322 item 8): with Cut part shown, a thin bar under the position bar, on its scale and in the stock colour: filled up to the move of the cut part on screen, with a mark at its end; outlined from there to the play head while the cut part is behind; and a lighter fill that grows with the progress of the cut part being prepared, or of preparing the cut part for playback. At its right end it says "Preparing the cut part N%", "Cut part N s behind" (program time, while playing) or "Updating cut part N%", and nothing once the cut part matches the play head. Its tooltip says that while playing the cut part may follow behind the tool, and that it catches up on a pause. While the simulation itself is being prepared, its progress line under the position bar takes the bar's place.
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s. Speed and path-display choices share a row where they fit, with their existing target sizes; Playback uses denser row gaps and the drawing-detail note uses remaining row space.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
@@ -538,11 +550,11 @@ Board 4 (SIM-01 to SIM-07).
 - **The readout** gives A as in 7.2.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
 
-**Footer** primary: section 5.
+**Footer:** the simulation action and "Post and export…", in fixed places (section 5).
 
 ### 11.6 Post and export
 
-Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](../decisions/0071-slice-19-export-dialogs.md), accepted): until step 5 exists it opens from File, "Post and export…" as well as with Ctrl E; the post, grouping and folder are not remembered between openings (OI-248); a file that fails its own checks also blocks writing; the acknowledgement is kept when the first write succeeds.
+Board 5. Opened from "Post and export…" on Simulate, from File > Post and export…, with Ctrl E, or with Alt 5 ([decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md); before it, step 5). Built in lane S ([decision 0071](../decisions/0071-slice-19-export-dialogs.md), accepted): until step 5 exists it opens from File, "Post and export…" as well as with Ctrl E; the post, grouping and folder are not remembered between openings (OI-248); a file that fails its own checks also blocks writing; the acknowledgement is kept when the first write succeeds.
 
 **Left column:**
 
@@ -566,7 +578,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 **Right column:**
 
 - the files to write, each with the name it is written as (decision 0028 item 1, decision 0267), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189), which says the sheet lists each program file with its SHA-256; the names shown include any number added to tell clashing names apart, with the warning; while a template cannot name the files each shows a dash and the problem is shown;
-- a preview of the first lines.
+- **Preview** (decision 0327, issue 312): the program as it would be written, read-only. A "File" box picks the file when the output is split; under it the name, line count, size and SHA-256 with a Copy button; a Go to line box (Ctrl or Cmd G) and a Find box (Enter next, Shift Enter previous, wrapping); then 16 monospaced rows with a line-number gutter and a scroll bar. The wheel scrolls the preview while the pointer is over it; Up, Down, Page Up, Page Down, Home, End, Left and Right work with the keyboard on it. The bytes are those "Write G-code" writes; it leaves with the files when an edit makes them out of date. It does not say the program is checked or safe (NFR-12).
 
 The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
 
@@ -603,8 +615,8 @@ written. The fixed NFR-12 notice is shown. Result/confirmation actions remain
 outside scrolling content, whose scrollbar has its own strip. Messages keeps
 each result for the open project session and offers Show result through the
 shared pending-edit guard. Dismissal and project edits do not remove history;
-historical failures do not block present readiness. Full batch success marks
-export complete. The existing unattended CLI behaviour is unchanged.
+historical failures do not block present readiness. Full batch success shows
+"G-code written" in the step bar (section 4). The existing unattended CLI behaviour is unchanged.
 
 ### 11.7 Workholding and retaining tabs
 
@@ -661,7 +673,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
 
 **The default tabs shown as defaults** (decision 0035, owner's answers; decision 0045 item 3; OI-198). The defaults are never applied silently, and the stored data stays explicit (decision 0041 item 2). So:
 
-- **When the setup has no tabs,** the section works out the default tabs (a job, as the zones are) and shows them in the tab list as dimmed rows labelled "Default tab, not added", with their shape, span and diameters, read-only. Over them, an amber Warning line: "No tabs are stored. Without tabs the part is not joined to the stock when its last support is cut." The viewport draws them as in 7.5. "Add default tabs" adds them to the draft as ordinary rows, to be applied or edited.
+- **When the setup has no tabs,** the section works out the default tabs (a job, as the zones are) and shows them in the tab list as dimmed rows labelled "Default tab, not added", with their shape, span and diameters, read-only. Over them, an amber Warning line: "No tabs are stored. Without tabs the part is not joined to the stock when its last support is cut." While a held region is stored the part stays joined to the held bar, so the line instead reads "No tabs are stored. The part stays joined to the stock at the held end. Add tabs if an operation will cut it free of the held end, so it cannot drop or shift." (FIRSTRUN item 3: a wording fix that makes the first sentence true.) The by-design grip warning reads "The chuck grips N mm of the part here (X a to b mm), so that length is never machined. Shorten the grip if it should be cut." The viewport draws them as in 7.5. "Add default tabs" adds them to the draft as ordinary rows, to be applied or edited.
 - **Add default tabs** is enabled only while the draft has no tabs and its held regions are the stored ones (the defaults fit the stored held regions). Otherwise its tooltip gives the reason: "Remove the tabs first" or "Apply the held regions first: the default tabs fit the stored ones."
 - **No default.** When there is no room in a zone, no default row is shown for it, and a line says why: "No room for a default tab at the head: the held region reaches the part." When the part ends in a point there, "The part comes to a point at X 8.000 mm, so there is no diameter to base a default tab on; add the tab by hand."
 - **After they are added,** a tab whose values all equal, to 0.001 mm, the default for its zone carries the "Default" chip, in its collapsed and expanded row. **Overriding** a default is editing it: as soon as a value differs, the chip goes. Its tooltip says "Same as the default tab for the head zone. Editing a value overrides it." A tab that once was a default but no longer matches is an ordinary tab; nothing records where it came from.
@@ -791,6 +803,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - display units;
   - recent projects;
   - recovery checkpoint interval, three minutes by default and configurable from one to fifteen whole minutes (PRJ-08; owner's CHECKPOINT policy). Settings explains that three periodic checkpoints are retained independently of a single interim checkpoint updated after fifteen seconds without a confirmed project change;
+  - memory for playback checkpoints, 1,536 MB by default and configurable from 256 to 8,192 MB in steps of 256 ([decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 5, the owner's decision D1 on issue #382). Settings explains that Simulate keeps copies of the cut part along the program so a jump in playback replays only a short stretch, that more memory gives shorter waits and less longer ones, that the cut part shown is the same either way, that the copies never use more than this, and that a change applies the next time the cut part is prepared. The memory used is also capped at a quarter of the computer's physical memory, and Settings shows "This computer: at most N MB" beside the value when the cap applies (the owner's decision on OI-1315);
   - remembered sections;
   - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
@@ -874,7 +887,8 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | Ctrl E | Post and export |
 | Ctrl Z, Ctrl Y, Ctrl H | Undo, redo, undo history |
 | Ctrl K | Search commands *(UI-17)* |
-| Alt 1 to Alt 5 | Workflow steps |
+| Alt 1 to Alt 4 | Workflow steps |
+| Alt 5 | Post and export (as Ctrl E) |
 | Ctrl 1, Ctrl 2, Ctrl 3 | Collapse the project panel, inspector, dock |
 | F, V, S, M | Fit; show or hide; section; measure |
 | Numpad 1, 3, 7, 0 | Front, right, top, isometric |
@@ -952,7 +966,7 @@ Tracked in [open-items.md](../open-items.md):
 
 ## 20. Rendered mockups
 
-Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3; images 01, 02, 03, 04, 13, 14, 15 and 16 again, and 03c added, on 21 Oct 2026 by lane BUG-STALE for the step bar's status (decision 0173), [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3; images 01, 02, 03, 04, 13, 14, 15 and 16 again, and 03c added, on 21 Oct 2026 by lane BUG-STALE for the step bar's status (decision 0173), [decision 0119](../decisions/0119-slice-22-viewport-drawing.md); images 00, 01, 02, 03, 04, 14, 15 and 16 again on 29 Oct 2026 by lane FOURSTEP for the four steps, the G-code status and Simulate's two actions, [decision 0282](../decisions/0282-four-step-workflow-with-separate-simulate-and-export-actions.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
 
 | Image | Board | Section |
 | --- | --- | --- |

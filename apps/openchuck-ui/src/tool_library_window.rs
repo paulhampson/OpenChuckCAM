@@ -770,7 +770,7 @@ impl ToolLibraryWindow {
         let preflight = |field: &openchuck_app::form::Field| {
             let field = field.clone();
             crate::pending_edits::preflight(
-                egui::Id::new(("tool fields", tool.id)),
+                egui::Id::unique(("tool fields", tool.id)),
                 tool.tool.clone(),
                 move |tool, text| {
                     let value = form_panel::parse(&field.kind, text)?
@@ -1813,7 +1813,7 @@ fn list(
 ) {
     ui.add_space(6.0);
     ui.add(
-        egui::TextEdit::singleline(search)
+        crate::theme::single_line(ui, search)
             .hint_text("Search tools")
             .desired_width(f32::INFINITY),
     );
@@ -1981,12 +1981,12 @@ fn cutting_editor(
             field_row::tip(ui.label("Stock material"), MATERIAL_HELP);
             let before = draft.material.clone();
             let response = ui.add(
-                egui::TextEdit::singleline(&mut draft.material)
+                crate::theme::single_line(ui, &mut draft.material)
                     .desired_width(CUTTING_BOX_MIN * 1.5)
                     .hint_text("Softwood"),
             );
             response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Stock material")
+                egui::WidgetInfo::labeled(egui::Role::TextInput, true, "Stock material")
             });
             crate::pending_edits::draft_text(
                 ui,
@@ -2031,13 +2031,13 @@ fn cutting_editor(
                     let width = cutting_box_width(ui.available_width());
                     let before = text.clone();
                     let response = ui.add(
-                        egui::TextEdit::singleline(&mut *text)
+                        crate::theme::single_line(ui, &mut *text)
                             .desired_width(width)
                             .font(egui::TextStyle::Monospace),
                     );
                     response.widget_info(|| {
                         egui::WidgetInfo::labeled(
-                            egui::WidgetType::TextEdit,
+                            egui::Role::TextInput,
                             true,
                             format!("{label} in {unit}"),
                         )
@@ -2078,7 +2078,7 @@ fn cutting_editor(
 
 /// A modal in front of the window, drawn with `contents`.
 fn modal(ui: &egui::Ui, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
-    egui::Modal::new(egui::Id::new(("tool library", id))).show(ui.ctx(), contents);
+    egui::Modal::new(egui::Id::unique(("tool library", id))).show(ui.ctx(), contents);
 }
 
 /// A modal's two buttons.
@@ -2191,7 +2191,7 @@ fn size_filter(ui: &mut egui::Ui, filter: &mut library::ToolFilter) {
                 ("max", &mut size.max, "Only tools at most this size"),
             ] {
                 ui.add(
-                    egui::TextEdit::singleline(text)
+                    crate::theme::single_line(ui, text)
                         .hint_text(hint)
                         .desired_width(44.0),
                 )

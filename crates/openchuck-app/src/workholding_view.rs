@@ -458,7 +458,8 @@ pub fn grip_warning(
                 if at_end == matches!(end, End::End) =>
             {
                 Some(format!(
-                    "Covers {:.3} mm of the part (X {} to {} mm), which is never machined.",
+                    "The chuck grips {:.3} mm of the part here (X {} to {} mm), so that length is never \
+                     machined. Shorten the grip if it should be cut.",
                     span.1 - span.0,
                     x(span.0),
                     x(span.1)
@@ -701,9 +702,18 @@ pub fn default_chips(tabs: &[Tab], defaults: &[Tab]) -> Vec<bool> {
         .collect()
 }
 
-/// The warning shown while a setup stores no tabs (11.7).
-pub const NO_TABS_WARNING: &str = "No tabs are stored. Without tabs the part is not joined to \
-                                   the stock when its last support is cut.";
+/// The warning shown while a setup stores no tabs (11.7). With a held region
+/// the part stays joined to the held bar, so the words say what is true
+/// then: only a cut that frees the part from the held end drops it.
+pub fn no_tabs_warning(draft: &Workholding) -> &'static str {
+    if draft.start.is_some() || draft.end.is_some() {
+        "No tabs are stored. The part stays joined to the stock at the held end. Add tabs if \
+         an operation will cut it free of the held end, so it cannot drop or shift."
+    } else {
+        "No tabs are stored. Without tabs the part is not joined to the stock when its last \
+         support is cut."
+    }
+}
 
 /// Whether "Add default tabs" can be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

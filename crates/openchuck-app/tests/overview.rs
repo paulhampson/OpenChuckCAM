@@ -242,7 +242,7 @@ impl Fixture {
                     restriction_options: Default::default(),
                     spindle_speed: None,
                     material: None,
-                    parameters: BTreeMap::new(),
+                    parameters: free_ends_off(strategy),
                 }),
                 placement: Placement::End,
             })
@@ -272,13 +272,29 @@ impl Fixture {
 }
 
 #[test]
-fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
+fn req_ui_10_req_ui_11_req_ui_14_post_and_export_names_the_first_thing_missing() {
     // Decision 0148 item 1 (issue 140): the File menu's Post and export is
     // enabled with a model, a setup, a machine, a tool and an operation, and
     // otherwise names the first of them that is missing. Operations need not
     // be generated: the export dialog makes its own files.
     let (dir, mut app) = empty("post-blocker");
-    let blocker = |app: &Application| app.overview(None, &JobLog::default()).post_blocker();
+    // The Post and export action gives the same reason, and every reason
+    // is counted by one of the four steps, so the bar's health is no better
+    // than it was with a fifth step (decision 0282 items 1 and 6).
+    let blocker = |app: &Application| {
+        let o = app.overview(None, &JobLog::default());
+        assert_eq!(o.export_action().blocked.as_deref(), o.post_blocker());
+        assert_eq!(o.export_action().kind, PrimaryKind::OpenExport);
+        assert_eq!(o.export_action().label, "Post and export…");
+        if o.post_blocker().is_some() {
+            assert!(
+                o.health() >= StepHealth::Attention,
+                "{:?}",
+                o.post_blocker()
+            );
+        }
+        o.post_blocker()
+    };
     assert_eq!(blocker(&app), Some("Import a model first"));
     let model = add_model(&dir, &mut app, "cube_ascii.stl");
     assert_eq!(blocker(&app), Some("Add a setup first"));
@@ -360,8 +376,9 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     })
     .unwrap();
     // Nothing is generated, and the menu item is still enabled. So is the
-    // Post and export step, which gives the same reason (OI-436, decision
-    // 0148 item 1); Simulate still needs a generated operation.
+    // Post and export action, which gives the same reason (OI-436, decision
+    // 0148 item 1, decision 0282 item 3); Simulate still needs a generated
+    // operation.
     assert_eq!(blocker(&app), None);
     // Decision 0173 (issue 140): a missing value blocks it too.
     let id = app.project().operations()[0].id;
@@ -373,7 +390,7 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     app.undo().unwrap();
     assert_eq!(blocker(&app), None);
     let o = app.overview(None, &JobLog::default());
-    assert!(o.step(Step::Export).is_available());
+    assert!(o.export_action().blocked.is_none());
     assert!(!o.step(Step::Simulate).is_available());
     drop(app);
     let _ = std::fs::remove_dir_all(dir);
@@ -398,15 +415,13 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
         reason(&o, Step::Simulate).as_deref(),
         Some("Generate an operation first")
     );
-    // Post and export names what the File menu names (decision 0148).
+    // Post and export, an action and not a step, names what the File menu
+    // names (decision 0148, decision 0282 item 1).
     assert_eq!(
-        reason(&o, Step::Export).as_deref(),
+        o.export_action().blocked.as_deref(),
         Some("Import a model first")
     );
-    assert_eq!(
-        reason(&o, Step::Export).as_deref(),
-        o.post_blocker().map(str::to_owned).as_deref()
-    );
+    assert_eq!(o.export_action().blocked.as_deref(), o.post_blocker());
     assert_eq!(o.primary(Step::Model).kind, PrimaryKind::ImportModel);
 
     // A model only: Setup opens; Operations still waits for the machine.
@@ -434,13 +449,13 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
     assert!(o.step(Step::Operations).is_available());
     assert!(!o.step(Step::Simulate).is_available());
     assert_eq!(
-        o.step(Step::Export).unavailable.as_deref(),
+        o.export_action().blocked.as_deref(),
         Some("Add an operation first")
     );
     assert!(o.step(Step::Model).complete);
     assert!(!o.step(Step::Operations).complete);
 
-    // A generated operation: Simulate and Post and export open.
+    // A generated operation: Simulate opens, and Post and export with it.
     let op = f.add_operation("Ring", "one_ring");
     let o = f.overview();
     assert_eq!(
@@ -481,18 +496,26 @@ fn req_ui_10_the_primary_action_follows_the_rule_on_simulate_and_export() {
     let run = f.app.simulate().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
+    // Simulated: Post and export is the filled one, and the simulation
+    // action stays in its place, disabled with its reason (decision 0282
+    // items 2 and 3).
+    assert_eq!(o.primary(Step::Simulate).label, "Post and export…");
+    assert_eq!(o.primary(Step::Simulate), o.export_action());
+    let simulation = o.simulation_action();
+    assert_eq!(simulation.kind, PrimaryKind::RunSimulation);
+    assert_eq!(simulation.label, "Run simulation");
     assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        simulation.blocked.as_deref(),
+        Some("The simulation matches the project")
     );
-    assert_eq!(
-        o.primary(Step::Simulate).label,
-        "Continue to post and export"
-    );
-    assert_eq!(o.primary(Step::Export).kind, PrimaryKind::OpenExport);
-    assert!(!o.step(Step::Export).complete);
+    // G-code written only after a complete write from the run as it is now
+    // (decision 0282 item 5).
+    assert!(!o.g_code_written());
+    assert!(!o.wrote_g_code_before());
     f.app.record_export(&run);
-    assert!(f.overview().step(Step::Export).complete);
+    assert!(f.overview().g_code_written());
+    assert!(f.overview().wrote_g_code_before());
     // An edit makes the first stale; simulating it generates it too.
     f.set_stepover(first, 0.5);
     let o = f.overview();
@@ -500,7 +523,15 @@ fn req_ui_10_the_primary_action_follows_the_rule_on_simulate_and_export() {
         o.primary(Step::Simulate).kind,
         PrimaryKind::GenerateAndSimulate(1)
     );
-    assert!(!o.step(Step::Export).complete);
+    // The two actions never change into each other: the simulation action
+    // is filled, and Post and export keeps its own rules (stale runs are
+    // blocked by the dialog's checks, GC-15).
+    assert_eq!(o.primary(Step::Simulate), o.simulation_action());
+    assert!(o.export_action().blocked.is_none());
+    assert!(!o.g_code_written());
+    // The past write is still known, so the bar can say the project changed
+    // since (decision 0282 item 5).
+    assert!(o.wrote_g_code_before());
 }
 
 #[test]
@@ -557,6 +588,22 @@ fn req_ui_11_an_edit_to_operation_n_marks_n_and_later_operations_stale() {
             .cause
             .starts_with("Off: ")
     );
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_a_run_report_is_current_only_while_the_operation_is() {
+    // FIRSTRUN item 5: what a run said about an operation (such as feeds the
+    // machine's limits lowered) is shown only while its path is current.
+    let mut f = fixture("path-current", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    assert!(!f.app.operation_path_is_current(one));
+    f.app.regenerate().unwrap();
+    assert!(f.app.operation_path_is_current(one));
+    assert!(f.app.operation_path_is_current(two));
+    f.set_stepover(two, 0.5);
+    assert!(f.app.operation_path_is_current(one));
+    assert!(!f.app.operation_path_is_current(two));
 }
 
 #[test]
@@ -677,6 +724,11 @@ fn req_ui_11_req_ui_12_a_selection_set_with_a_problem_is_an_error_up_the_tree() 
     let primary = o.primary(Step::Operations);
     assert_eq!(primary.message, Some(index));
     assert!(primary.blocked.unwrap().contains("'Roof'"));
+    // Post and export, the action on Simulate, is blocked by it the same
+    // way, as the fifth step's button was (decision 0282 item 3).
+    let export = o.export_action();
+    assert_eq!(export.message, Some(index));
+    assert!(export.blocked.unwrap().contains("'Roof'"));
 }
 
 #[test]
@@ -857,6 +909,37 @@ fn req_ui_11_req_ui_12_a_missing_model_file_is_an_error_that_blocks_setup() {
     assert!(primary.blocked.is_some());
     // It does not block the Setup step's own primary.
     assert!(o.primary(Step::Setup).message.is_none());
+}
+
+#[test]
+fn req_ui_11_req_ui_12_a_missing_machine_is_attention_not_an_error() {
+    // Decision 0173 (owner's answer, FIRSTRUN item 1): choosing a machine is
+    // a to-do. The bar reads "Needs attention", never "Error to fix", so it
+    // agrees with Messages, which counts no error.
+    let (_dir, app) = empty("empty-no-machine");
+    let o = app.overview(None, &JobLog::default());
+    assert!(app.project().machine().is_none());
+    let setup = o.step(Step::Setup);
+    assert_eq!(setup.health, StepHealth::Attention);
+    assert_eq!(setup.reason.as_deref(), Some("Choose a machine"));
+    assert!(o.health() < StepHealth::Error);
+    assert_eq!(
+        o.messages
+            .iter()
+            .filter(|m| m.severity == openchuck_app::overview::Severity::Error)
+            .count(),
+        0
+    );
+
+    let mut f = fixture("no-machine-bar", "cube_ascii.stl");
+    f.app.execute(Command::SetMachine(None)).unwrap();
+    let o = f.overview();
+    assert_eq!(o.step(Step::Setup).health, StepHealth::Attention);
+    assert_eq!(
+        o.step(Step::Setup).reason.as_deref(),
+        Some("Choose a machine")
+    );
+    assert!(o.health() < StepHealth::Error);
 }
 
 #[test]
@@ -1230,9 +1313,15 @@ fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_thread
 #[test]
 fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     let mut f = fixture("plain-machine", "cube_ascii.stl");
-    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
         .unwrap()
         .unwrap();
+    // An unconfirmed axis height, so the message names it (the Z1's is
+    // confirmed since decision 0317).
+    z1.provenance
+        .get_mut(&openchuck_app::setup::ProfileField::RotaryOrigin)
+        .unwrap()
+        .state = openchuck_app::setup::Confirmation::Unconfirmed;
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
@@ -1479,7 +1568,6 @@ fn req_ui_11_the_bar_is_green_only_when_nothing_is_stale_or_missing() {
     assert_eq!(health(&o, Step::Setup), StepHealth::Good);
     assert_eq!(health(&o, Step::Operations), StepHealth::Good);
     assert_eq!(health(&o, Step::Simulate), StepHealth::Good);
-    assert_eq!(health(&o, Step::Export), StepHealth::Good);
     assert_eq!(o.health(), StepHealth::Good);
 
     // A rename does not turn it yellow (issue 209).
@@ -1529,7 +1617,7 @@ fn req_ui_11_a_missing_tool_or_stock_is_red_and_agrees_with_the_marks() {
             .contains("Ring")
     );
     assert_eq!(o.post_blocker(), Some("Fill in the missing values first"));
-    assert!(!o.step(Step::Export).is_available());
+    assert!(o.export_action().blocked.is_some());
     assert_eq!(o.first_problem(), Some(ItemRef::Operation(op)));
     // Generation still stops with its own message about the same thing
     // (NFR-07).
@@ -1690,10 +1778,7 @@ fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_
     f.app.start_generate().wait().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     let simulate = o.step(Step::Simulate);
     assert_eq!(simulate.health, StepHealth::Attention);
     assert_eq!(
@@ -1753,7 +1838,7 @@ fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_ask
     f.app.start_generate().wait().unwrap();
     assert_eq!(
         f.overview().primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        PrimaryKind::OpenExport
     );
     f.app
         .execute(Command::SetOperationEnabled {
@@ -1764,11 +1849,19 @@ fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_ask
     let primary = f.overview().primary(Step::Simulate);
     assert_eq!(primary.kind, PrimaryKind::Generate);
     assert_eq!(primary.label, "Generate toolpaths");
+    assert_eq!(f.overview().simulation_action(), primary);
     let run = f.app.start_generate().wait().unwrap();
     assert!(run.simulation.is_none());
+    // Generated: the toolpath action stays, disabled (decision 0282 item 3).
+    let simulation = f.overview().simulation_action();
+    assert_eq!(simulation.label, "Generate toolpaths");
+    assert_eq!(
+        simulation.blocked.as_deref(),
+        Some("The toolpaths match the project")
+    );
     assert_eq!(
         f.overview().primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
+        PrimaryKind::OpenExport
     );
 }
 
@@ -1852,10 +1945,7 @@ fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again
     let (mut f, [_, _, three]) = three_operations("sim-off");
     f.app.simulate().unwrap();
     let o = f.overview();
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     f.app
         .execute(Command::SetOperationEnabled {
             operation: three,
@@ -1874,10 +1964,7 @@ fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again
     f.app.simulate().unwrap();
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
-    assert_eq!(
-        o.primary(Step::Simulate).kind,
-        PrimaryKind::Continue(Step::Export)
-    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::OpenExport);
     // Undoing the turn-off: the operation is back, and not simulated.
     f.app.undo().unwrap();
     assert_eq!(
@@ -1929,4 +2016,202 @@ fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
             .iter()
             .any(|m| m.text.contains("The grip at the"))
     );
+}
+
+/// A project whose Makera Z1 copy still has the old placeholder axis height
+/// (machine Z -55) keeps it, and the setup checks say so and how to update
+/// it; the built-in Z1, whose axis height is confirmed, gives neither that
+/// warning nor the "cannot be checked" one (SET-01, UI-13, decision 0317).
+#[test]
+fn req_set_01_req_ui_13_an_old_z1_copy_warns_and_the_measured_z1_does_not() {
+    let entry = openchuck_app::setup::builtin_entry(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    let warnings = |tag: &str, z: f64, id: Option<String>| {
+        let mut f = fixture(tag, "cube_ascii.stl");
+        let mut machine = entry.profile.clone();
+        machine.rotary_origin.z = z;
+        f.app
+            .execute(Command::SetMachineFrom {
+                machine: Some(Box::new(machine)),
+                id,
+            })
+            .unwrap();
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let checks: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| c.text.clone())
+            .collect();
+        let messages: Vec<String> = o.messages.iter().map(|m| m.text.clone()).collect();
+        (checks, messages)
+    };
+    for (tag, id) in [("old-z1-id", entry.id.clone()), ("old-z1-name", None)] {
+        let (checks, messages) = warnings(tag, -55.0, id);
+        let check = checks
+            .iter()
+            .find(|t| t.contains("old placeholder axis height"))
+            .unwrap_or_else(|| panic!("{tag}: {checks:?}"));
+        for words in ["Makera Z1", "-55", "-48.6", "Choose the Makera Z1 again"] {
+            assert!(check.contains(words), "{words}: {check}");
+        }
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("old placeholder axis height")),
+            "{tag}: {messages:?}"
+        );
+    }
+    let (checks, messages) = warnings("measured-z1", -48.6, entry.id.clone());
+    for text in checks.iter().chain(&messages) {
+        assert!(!text.contains("old placeholder axis height"), "{text}");
+        assert!(
+            !text.contains("cannot be checked against the Z travel"),
+            "{text}"
+        );
+    }
+}
+
+/// On the Makera Z1 (tool lengths measured, the spindle 73.1 mm above the
+/// axis at home), a setup warns once per enabled operation's tool whose
+/// assumed stick-out takes the spindle past the top of the Z travel at the
+/// setup's safe Z; a setup clearance that fits clears it, and the same
+/// project gives the same checks (SET-06, NFR-12, GC-07, decision 0318).
+#[test]
+fn req_set_06_req_nfr_12_a_tool_too_long_for_the_safe_z_warns_on_the_z1() {
+    let mut f = fixture("spindle-height", "cube_ascii.stl");
+    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    let op = f.add_operation("Ring", "one_ring");
+    let spindle = |f: &Fixture| -> Vec<String> {
+        let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+        let o = f.app.overview(Some(&checks), &JobLog::default());
+        let mut found: Vec<String> = o
+            .setup_checks
+            .iter()
+            .filter(|c| !c.passed && c.text.contains("top of the Z travel at the safe Z"))
+            .map(|c| c.text.clone())
+            .collect();
+        let messages = o
+            .messages
+            .iter()
+            .filter(|m| m.text.contains("top of the Z travel at the safe Z"))
+            .count();
+        assert_eq!(messages, found.len(), "one message per check");
+        found.sort();
+        found
+    };
+    // Flute 10: sticks out 15, the tip reaches 58.1 above the axis.
+    assert!(spindle(&f).is_empty());
+
+    // Flute 42: sticks out 47, the tip reaches 26.1; at safe Z 40 the
+    // spindle is 13.9 mm past the top.
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.tool.flute_length = Millimetres(42.0);
+    tool.tool.overall_length = Millimetres(60.0);
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    let first = spindle(&f);
+    assert_eq!(first.len(), 1, "{first:?}");
+    for words in [
+        "Tool 1 (4 mm ball)",
+        "13.900 mm",
+        "26.100 mm",
+        "on your machine",
+        "recommended minimum is 30 mm",
+    ] {
+        assert!(first[0].contains(words), "{words}: {}", first[0]);
+    }
+    assert_eq!(spindle(&f), first, "the same project gives the same checks");
+
+    // The setup's own clearance is the safe Z checked: 26 fits.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = Some(openchuck_app::setup::Clearance {
+        radius: Millimetres(20.0),
+        safe_z: Millimetres(26.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(spindle(&f).is_empty());
+
+    // Back to the profile's safe Z, with the operation turned off: an
+    // operation that is not run does not warn.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut operation = f.app.project().operation(op).unwrap().clone();
+    operation.enabled = false;
+    f.app
+        .execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    assert!(spindle(&f).is_empty());
+}
+
+#[test]
+fn req_ui_10_req_nfr_12_with_every_operation_off_the_simulation_action_says_why() {
+    // Decision 0282 item 3: the simulation action keeps its place on
+    // Simulate, disabled with the reason; it never claims the simulation
+    // matches a project with nothing to simulate (decision 0238).
+    let mut f = calm("sim-action-off");
+    let op = f.add_operation("Ring", "one_ring");
+    f.app.simulate().unwrap();
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+    let o = f.overview();
+    let simulation = o.simulation_action();
+    assert_eq!(simulation.label, "Run simulation");
+    assert_eq!(
+        simulation.blocked.as_deref(),
+        Some("Turn on an operation to simulate")
+    );
+    assert_eq!(o.primary(Step::Simulate), o.export_action());
+}
+
+#[test]
+fn req_ui_10_req_nfr_12_g_code_written_needs_exactly_the_enabled_operations() {
+    // Decision 0282 item 5: "G-code written" means written from every
+    // enabled operation as it is now. Output that also holds an operation
+    // since turned off or removed is not that (the same rule as the run,
+    // issue 260); turning it on again matches once more.
+    let (mut f, [_, two, three]) = three_operations("written-set");
+    let run = f.app.simulate().unwrap();
+    f.app.record_export(&run);
+    assert!(f.overview().g_code_written());
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let o = f.overview();
+    assert!(!o.g_code_written(), "an exported operation was turned off");
+    assert!(o.wrote_g_code_before());
+    f.app.undo().unwrap();
+    assert!(f.overview().g_code_written(), "turned on again, as written");
+    f.app
+        .execute(Command::Remove(ItemId::Operation(two)))
+        .unwrap();
+    assert!(
+        !f.overview().g_code_written(),
+        "an exported operation was removed"
+    );
+}
+
+/// Face free ends off for the strategies that have it: these tests are not
+/// about free ends, and a new operation faces them (decision record 0344,
+/// OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    out
 }

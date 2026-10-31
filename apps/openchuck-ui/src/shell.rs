@@ -88,8 +88,11 @@ const DELETE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::Del
 const RENAME: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F2);
 const EARLIER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowUp);
 const LATER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowDown);
-/// Alt 1 to Alt 5 open the steps (specification section 4).
-const STEP_KEYS: [Key; 5] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5];
+/// Alt 1 to Alt 4 open the steps (specification section 4).
+const STEP_KEYS: [Key; 4] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4];
+/// Alt 5 opens Post and export as Ctrl E does, for users of the fifth step
+/// there was before (decision record 0282 item 4).
+const EXPORT_ALT: Key = Key::Num5;
 /// Ctrl 1, 2 and 3 collapse the project panel, the inspector and the dock.
 const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
@@ -139,6 +142,21 @@ enum Dialog {
     /// A command the user gave failed outright; the message says what
     /// (specification section 9: the only pop-up errors).
     Error(String),
+    /// The opened project has models outside its folder: ask, each time it
+    /// is opened, whether to copy them in (decision record 0307 item 5).
+    CopyLinked(usize),
+}
+
+/// The question asked on opening a project with `count` models outside its
+/// folder (decision record 0307 item 5).
+fn copy_linked_question(count: usize) -> String {
+    if count == 1 {
+        "This project's model is outside its folder. Copy it into the project now?".to_owned()
+    } else {
+        format!(
+            "This project has {count} models outside its folder. Copy them into the project now?"
+        )
+    }
 }
 
 /// The shell's state.
@@ -148,6 +166,9 @@ pub struct Shell {
     edit_context: Option<egui::Context>,
     edit_guard: pending::Guard,
     app: Option<Application>,
+    /// The computer's physical memory, read once, which caps the memory for
+    /// playback checkpoints at a quarter (decision record 0322 item 5).
+    physical_memory: Option<u64>,
     /// The window title last sent to the system (#218).
     sent_title: String,
     /// The setting the inspector brings into view on its next frame: a
@@ -156,6 +177,13 @@ pub struct Shell {
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
+    /// Linked models being copied into the project folder, off the UI thread
+    /// (decision record 0307 item 5), and the model whose inspector asked,
+    /// or `None` for the question on opening.
+    copy_job: Option<(
+        JobHandle<Vec<openchuck_app::model::ModelCopy>>,
+        Option<ModelId>,
+    )>,
     setup: Option<SetupId>,
     status: String,
     quitting: bool,
@@ -191,6 +219,10 @@ pub struct Shell {
     run: RunPanel,
     /// Post and export (slice 19 item 4).
     export: ExportPanel,
+    /// The export dialog was opened from Simulate's "Post and export…", so
+    /// the keyboard goes back to it when the dialog closes (UI-14; decision
+    /// record 0282 item 8).
+    export_from_footer: bool,
     /// A text field had the keyboard at the end of the last frame.
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
@@ -271,11 +303,13 @@ impl Shell {
             edit_context: None,
             edit_guard: pending::Guard::default(),
             app: None,
+            physical_memory: crate::memory::physical(),
             sent_title: String::new(),
             setting_jump: None,
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
+            copy_job: None,
             setup: None,
             status: String::new(),
             quitting: false,
@@ -295,6 +329,7 @@ impl Shell {
             run: RunPanel::default(),
             results: ResultsPanel::default(),
             export: ExportPanel::default(),
+            export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
             simulate_camera: None,
@@ -334,6 +369,9 @@ impl Shell {
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -411,6 +449,56 @@ impl Shell {
         }
     }
 
+    /// Starts copying the linked models `ids` into the project folder as a
+    /// job: every linked model for the question on opening (`from` `None`),
+    /// or the one whose inspector asked.
+    fn start_copying(&mut self, ids: &[ModelId], from: Option<ModelId>) {
+        let Some(app) = &self.app else { return };
+        if self.copy_job.is_some() || ids.is_empty() {
+            return;
+        }
+        self.copy_job = Some((app.start_copying_models(ids), from));
+    }
+
+    /// Stores the copies once the job ends, and says what happened: in the
+    /// status bar, and for refusals in the inspector that asked or, for the
+    /// question on opening, an error message with what to do.
+    fn poll_copying(&mut self, ctx: &egui::Context) {
+        let Some((job, _)) = &self.copy_job else {
+            return;
+        };
+        let Some(result) = job.try_result() else {
+            ctx.request_repaint();
+            return;
+        };
+        let Some((_, from)) = self.copy_job.take() else {
+            return;
+        };
+        let Some(app) = &mut self.app else { return };
+        let (copied, refused) = match result {
+            Ok(copies) => app.finish_copying_models(copies),
+            Err(e) => (Vec::new(), vec![e.to_string()]),
+        };
+        self.status = match copied.len() {
+            0 => String::new(),
+            1 => "Copied 1 model into the project folder".to_owned(),
+            n => format!("Copied {n} models into the project folder"),
+        };
+        match from {
+            Some(id) => {
+                if let Some(panel) = self.model_panel.as_mut().filter(|p| p.model() == id) {
+                    panel.copy_error = refused.into_iter().next();
+                }
+            }
+            None if !refused.is_empty() => {
+                self.dialog = Some(Dialog::Error(refused.join("\n")));
+            }
+            None => {}
+        }
+        self.overview_dirty = true;
+        self.rebuild_scene(false);
+    }
+
     fn create(&mut self, folder: PathBuf, name: &str) {
         let defaults = openchuck_app::NewProject {
             skip_stock_simulation: self.settings.simulate.skip_stock_simulation,
@@ -468,6 +556,10 @@ impl Shell {
         } else {
             Step::Operations
         };
+        let linked = app.linked_models().len();
+        if linked > 0 && self.bench.is_none() {
+            self.dialog = Some(Dialog::CopyLinked(linked));
+        }
         self.app = Some(app);
         self.overview_dirty = true;
         self.rebuild_scene(true);
@@ -637,6 +729,22 @@ impl Shell {
                 false
             }
         }
+    }
+
+    /// Sets "Memory for playback checkpoints" in MB, brought into its range
+    /// and steps (decision record 0322), for the next time the cut part is
+    /// prepared.
+    fn set_playback_memory_mb(&mut self, mb: u32) {
+        let simulate = openchuck_app::settings::SimulateSettings {
+            playback_memory_mb: mb,
+            ..self.settings.simulate
+        }
+        .clamped();
+        self.settings.simulate.playback_memory_mb = simulate.playback_memory_mb;
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
+        self.settings_touched();
     }
 
     /// Turns the recording of the user's actions in the log on or off, and
@@ -864,7 +972,30 @@ impl Shell {
         if self.defer(Self::primary) {
             return;
         }
-        let action = self.overview.primary(self.step);
+        self.act(self.overview.primary(self.step));
+    }
+
+    /// Simulate's simulation action, in its own place on the footer
+    /// (decision record 0282 item 2).
+    fn simulation(&mut self) {
+        if self.defer(Self::simulation) {
+            return;
+        }
+        self.act(self.overview.simulation_action());
+    }
+
+    /// Simulate's "Post and export…" (decision record 0282 items 2 and 3):
+    /// the old fifth step's button, with its rules.
+    fn post_and_export(&mut self) {
+        if self.defer(Self::post_and_export) {
+            return;
+        }
+        self.act(self.overview.export_action());
+    }
+
+    /// Does `action`, a footer action, unless it is disabled or a job runs:
+    /// then shows the message that disables it, if any.
+    fn act(&mut self, action: openchuck_app::overview::PrimaryAction) {
         if action.blocked.is_some() || self.run.is_running() {
             self.highlight = action.message;
             if action.message.is_some() {
@@ -923,13 +1054,17 @@ impl Shell {
         if export {
             self.open_export();
         }
-        // Alt 1 to 5: the steps. Ctrl 1 to 3: collapse the panels.
+        // Alt 1 to 4: the steps; Alt 5: Post and export. Ctrl 1 to 3:
+        // collapse the panels.
         for (index, key) in STEP_KEYS.into_iter().enumerate() {
             if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, key))
                 && let Some(step) = Step::ALL.get(index)
             {
                 self.open_step(*step);
             }
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, EXPORT_ALT)) {
+            self.open_export();
         }
         for (key, region) in PANEL_KEYS.into_iter().zip(frame::Region::ALL) {
             if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, key)) {
@@ -1698,7 +1833,7 @@ impl Shell {
         let mut form_submit = false;
         let mut form_browse = false;
         let mut action: Option<Action> = None;
-        egui::Modal::new(egui::Id::new("openchuck dialog")).show(ctx, |ui| match dialog {
+        egui::Modal::new(egui::Id::unique("openchuck dialog")).show(ctx, |ui| match dialog {
             Dialog::Folder {
                 create,
                 mut folder,
@@ -1792,6 +1927,32 @@ impl Shell {
                     }
                 });
             }
+            Dialog::CopyLinked(count) => {
+                ui.label(copy_linked_question(count));
+                ui.label(
+                    egui::RichText::new(
+                        "The originals are not changed, and selections and toolpaths stay as \
+                         they are.",
+                    )
+                    .color(DARK.muted),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Copy").clicked() {
+                        close = true;
+                        action = Some(Box::new(|s: &mut Self| {
+                            let ids = s
+                                .app
+                                .as_ref()
+                                .map(Application::linked_models)
+                                .unwrap_or_default();
+                            s.start_copying(&ids, None);
+                        }));
+                    }
+                    if ui.button("Not now").clicked() {
+                        close = true;
+                    }
+                });
+            }
             Dialog::OfferCreate { folder } => {
                 ui.label(format!(
                     "{} holds no project. Create a new project there?",
@@ -1882,6 +2043,37 @@ impl Shell {
                     }
                 });
                 ui.label("Keeps three periodic checkpoints and one interim checkpoint after 15 seconds without a confirmed change. Recovery never saves over your project automatically.");
+                let (least, _, most, step) = openchuck_app::settings::PLAYBACK_MEMORY_MB;
+                let mut memory = self.settings.simulate.playback_memory_mb;
+                ui.horizontal(|ui| {
+                    ui.label("Memory for playback checkpoints (MB)");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut memory)
+                                .range(least..=most)
+                                .speed(f64::from(step) / 8.0),
+                        )
+                        .changed()
+                    {
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.set_playback_memory_mb(memory);
+                        }));
+                    }
+                    let (_, cap) = crate::memory::playback_memory(
+                        self.settings.simulate.playback_memory_mb,
+                        self.physical_memory,
+                    );
+                    if let Some(cap) = cap {
+                        ui.label(format!("This computer: at most {cap} MB"));
+                    }
+                });
+                ui.label(
+                    "Simulate keeps copies of the cut part along the program so that a jump in \
+                     playback needs to replay only a short stretch. More memory gives shorter \
+                     waits after a jump; less gives longer waits. The cut part shown is the same \
+                     either way. The copies are never allowed to use more than this. A change \
+                     applies the next time the cut part is prepared.",
+                );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
@@ -2267,6 +2459,7 @@ impl Shell {
         self.guard_close(&ctx);
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
+        self.poll_copying(&ctx);
         self.finish_pick(&ctx);
         self.overview_frame(&ctx);
         // Before anything is drawn, so a result is never drawn as current
@@ -2499,6 +2692,8 @@ mod tests {
 mod keys_tests;
 
 #[cfg(test)]
+mod four_step_tests;
+#[cfg(test)]
 mod frame_tests;
 #[cfg(test)]
 mod strategy_picker_tests;
@@ -2523,3 +2718,5 @@ mod tooltip_tests;
 
 #[cfg(test)]
 mod import_layout_tests;
+#[cfg(test)]
+mod model_copy_tests;

@@ -22,7 +22,7 @@ enum Action {
 }
 
 pub fn show(ui: &mut egui::Ui, field: &Field, state: &mut FieldState) -> Option<Edit> {
-    let key = ui.id().with(("indexed facing actions", &field.name));
+    let key = ui.scope_id().with(("indexed facing actions", &field.name));
     let mut pending = ui
         .ctx()
         .data_mut(|d| d.get_temp::<Option<(Ticket, Action)>>(key))

@@ -101,7 +101,7 @@ fn run<T: Default>(
     let (fit, position) = place(ctx, size);
     let mut open = true;
     let window = egui::Window::new(title)
-        .id(egui::Id::new(("dialog", key)))
+        .id(egui::Id::unique(("dialog", key)))
         .open(&mut open)
         .collapsible(false)
         .default_pos(position);
@@ -114,7 +114,7 @@ fn run<T: Default>(
         window.fixed_size(fit).resizable(false)
     };
     let shown = window.show(ctx, |ui| {
-        crate::pending_edits::form(ctx, egui::Id::new(("dialog form", key)), || {
+        crate::pending_edits::form(ctx, egui::Id::unique(("dialog form", key)), || {
             if scroll {
                 egui::ScrollArea::vertical().show(ui, &mut contents).inner
             } else {

@@ -29,17 +29,22 @@
 //! surface does not reach under it) the pass is split there and the shared
 //! services link the pieces.
 
+use openchuck_types::geometry::Point3;
+use std::collections::BTreeMap;
+
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
+use crate::assemble::PathWarning;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
+use crate::faces;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
-use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{Fit, fit_region, region_index, region_spacing, zone_fits};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput, StrategyOutput};
+use crate::wrap_fit::{Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
 
@@ -71,6 +76,12 @@ pub mod parameter {
 }
 
 impl Strategy for HelicalFinishing {
+    /// Exact contacts on a STEP part: measured within the limits of OI-835
+    /// (decision 0277).
+    fn exact_contact(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -140,8 +151,16 @@ impl Strategy for HelicalFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
             .collect(),
         )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {
@@ -169,7 +188,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context)
+        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
     }
 
     fn passes(
@@ -178,7 +197,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -188,18 +207,76 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
+    }
+
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+        })
     }
 }
 
-/// The passes of helical finishing, limited to `region` when given.
+/// The passes of one whole turn of A at constant `x`, from A `start` turning
+/// by `sign`, with the tool across the rotary axis dropped onto the surface
+/// as helical finishing drops it (`grown` by `leave`), no more than `step`
+/// degrees between seeds, each part of the surface left its own stock where
+/// `zones` gives one, cut only where `wanted` (when given) takes the
+/// contact: a face's turn (decision record 0297), for helical finishing, the
+/// simultaneous spiral and rest machining.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn turn_passes(
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    (grown, leave, zones): (&RevolvedProfile, f64, &[ZoneFit<'_>]),
+    tolerance: f64,
+    (x, start, sign): (f64, f64, f64),
+    step: f64,
+    wanted: Option<&(dyn Fn(Point3) -> bool + Send + Sync)>,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    let n = (360.0 / step).ceil().max(1.0) as usize;
+    let fit = Fit {
+        input,
+        drop_profile: grown,
+        leave,
+        zones,
+        x0: x,
+        length: 0.0,
+        start,
+        sign,
+        total_angle: 360.0,
+        chord: CHORD_FACTOR * tolerance,
+        region,
+        constrained: region.is_some_and(|r| !r.is_empty()),
+        candidates: None,
+        spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
+        thin: false,
+        max_dt: 1.0 / n as f64,
+        wanted,
+    };
+    fit_region(&fit, n, "a turn at a face", context)
+}
+
+/// The passes of helical finishing, limited to `region` when given, with
+/// its notes and warnings: the faces across the axis it turned at, those a
+/// held region kept it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
@@ -280,9 +357,47 @@ fn passes(
         };
 
         let passes = fit_region(&fit, seeds, "helical finishing", context)?;
-        Ok(match extension {
+        let mut passes = match extension {
             Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
             None => passes,
-        })
+        };
+        // One whole turn at each face across the axis, where the tool's side
+        // touches it, cut after the helix as its own pass, so the helix is
+        // as before (decision record 0297).
+        let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
+        let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
+        for &x in &turns {
+            context.check_cancelled()?;
+            let at = start + sign * 360.0 * (x - x0) / pitch;
+            passes.extend(turn_passes(
+                input,
+                region,
+                (&grown, leave, &zone_fits),
+                tolerance,
+                (x, at, sign),
+                step,
+                None,
+                context,
+            )?);
+        }
+        // Finishing layers above the passes made so far, when on (decision
+        // record 0345).
+        let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+        // The free ends, in layers down beside them (decision record 0344).
+        let free = crate::finishing::free_ends(
+            input,
+            &grown,
+            &found.free,
+            parameters,
+            (start, sign, step),
+        )?;
+        passes.extend(free.passes);
+        let notes = faces::note(&turns)
+            .into_iter()
+            .chain(faces::held_note(&found.held))
+            .chain(layered)
+            .chain(free.notes)
+            .collect();
+        Ok((passes, notes, free.warnings))
     }
 }

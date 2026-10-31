@@ -385,9 +385,64 @@ pub fn install_style(ctx: &egui::Context, theme: Theme) {
     ctx.set_theme(egui::ThemePreference::from(egui_theme));
 }
 
+/// A one-line text field as egui 0.36 drew it: 4 pixels of padding at the left
+/// and 2 above and below, with the text at the left and, vertically, where the
+/// layout of `ui` puts its widgets (centred in a row that centres them, at the
+/// top in one that does not): in 0.36 the box was as high as the text and so
+/// sat in the row the same way. egui 0.37 pads a field like a button (8 and 4 here) and always sets
+/// its text at the top of the box, so every field of the interface is made
+/// here.
+pub fn single_line<'t>(ui: &egui::Ui, text: &'t mut dyn egui::TextBuffer) -> egui::TextEdit<'t> {
+    egui::TextEdit::singleline(text)
+        .margin(egui::Margin::symmetric(4, 2))
+        .align(egui::Align2([
+            egui::Align::Min,
+            ui.layout().vertical_align(),
+        ]))
+}
+
+/// A multi-line text field with the padding of [`single_line`].
+pub fn multi_line<'t>(text: &'t mut dyn egui::TextBuffer) -> egui::TextEdit<'t> {
+    egui::TextEdit::multiline(text).margin(egui::Margin::symmetric(4, 2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UI-16: a field keeps the padding it had, and its text sits where the
+    /// layout puts it (the centre line of the box in a row that centres its
+    /// widgets), in a box as tall as a button (egui 0.37 set the text at the
+    /// top with the padding of a button).
+    #[test]
+    fn req_ui_16_a_text_field_pads_its_text_and_centres_it() {
+        let ctx = egui::Context::default();
+        install_style(&ctx, Theme::Dark);
+        let mut text = String::from("Operation 2");
+        let mut out = None;
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            out = Some(
+                ui.horizontal(|ui| single_line(ui, &mut text).show(ui))
+                    .inner,
+            );
+        })
+        .textures_delta
+        .clear();
+        let out = out.unwrap();
+        let (rect, galley) = (out.response.rect, out.galley_pos);
+        assert!(
+            (galley.x - rect.left() - 4.0).abs() < 1.0,
+            "padding {}",
+            galley.x - rect.left()
+        );
+        let text_middle = galley.y + out.galley.rect.height() / 2.0;
+        assert!(
+            (text_middle - rect.center().y).abs() < 1.0,
+            "text at {text_middle}, box centre {}",
+            rect.center().y
+        );
+        assert!(rect.height() >= target::BUTTON - 0.5, "{}", rect.height());
+    }
 
     /// WCAG relative luminance of an opaque colour.
     fn luminance(c: Color32) -> f64 {

@@ -23,10 +23,10 @@ use openchuck_app::workholding::{
     PartFacts, SetupTool, WorkholdingFinding, ZoneDefault, setup_tools,
 };
 use openchuck_app::workholding_view::{
-    DefaultTabsState, Draft, End, Field, FieldProblem, NO_TABS_WARNING, Zone, check_draft,
-    default_chips, default_tabs_state, display_items, end_tab, grip_warning, held_span,
-    holding_hint, narrowest_line, new_held_region, new_tab, no_default_line, no_room, part_facing,
-    set_layout, set_shape, set_tab_auto, set_tab_span, tab_zone, zone_lines,
+    DefaultTabsState, Draft, End, Field, FieldProblem, Zone, check_draft, default_chips,
+    default_tabs_state, display_items, end_tab, grip_warning, held_span, holding_hint,
+    narrowest_line, new_held_region, new_tab, no_default_line, no_room, no_tabs_warning,
+    part_facing, set_layout, set_shape, set_tab_auto, set_tab_span, tab_zone, zone_lines,
 };
 use openchuck_app::{Application, Command, JobHandle};
 
@@ -865,7 +865,7 @@ impl WorkholdingPanel {
                 let more = ui.small_button("\u{2026}").on_hover_text("Tab menu");
                 more.widget_info(|| {
                     egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
+                        egui::Role::Button,
                         true,
                         format!("Tab {} menu", i + 1),
                     )
@@ -1017,7 +1017,7 @@ impl WorkholdingPanel {
         if !setup.workholding.tabs.is_empty() || !self.draft.workholding().tabs.is_empty() {
             return;
         }
-        ui.label(RichText::new(NO_TABS_WARNING).color(NOTE));
+        ui.label(RichText::new(no_tabs_warning(self.draft.workholding())).color(NOTE));
         if setup.part.is_none() || setup.stock.is_none() {
             return;
         }

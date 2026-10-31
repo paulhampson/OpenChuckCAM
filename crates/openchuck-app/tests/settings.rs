@@ -253,6 +253,46 @@ fn req_sim_03_req_ui_15_the_simulate_view_choices_are_kept_and_never_empty() {
     let _ = std::fs::remove_dir_all(config);
 }
 
+/// Issue #382, owner's decision D1 (decision record 0322): the memory for
+/// playback checkpoints is the user's, 1,536 MB by default, 256 to 8,192 MB
+/// in steps of 256, kept on this computer and never in a project.
+#[test]
+fn req_ui_15_req_nfr_07_the_playback_checkpoint_memory_is_personal_and_bounded() {
+    let config = folder("playback-memory");
+    let file = SettingsFile::in_folder(&config);
+    assert_eq!(UserSettings::default().simulate.playback_memory_mb, 1536);
+    // A file written before the setting existed reads the default.
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(file.file(), "[interface.simulate]\nshow_cut_part = true\n").unwrap();
+    assert_eq!(file.load().settings.simulate.playback_memory_mb, 1536);
+    let mut settings = UserSettings::default();
+    settings.simulate.playback_memory_mb = 4096;
+    file.save(&settings).unwrap();
+    assert_eq!(file.load().settings.simulate.playback_memory_mb, 4096);
+    // A value out of range or between steps is brought to the nearest one
+    // allowed.
+    for (written, read) in [
+        (0, 256),
+        (100, 256),
+        (1000, 1024),
+        (1500, 1536),
+        (99_999, 8192),
+    ] {
+        std::fs::write(
+            file.file(),
+            format!("[interface.simulate]\nplayback_memory_mb = {written}\n"),
+        )
+        .unwrap();
+        let loaded = file.load();
+        assert!(loaded.problem.is_none(), "{written}");
+        assert_eq!(
+            loaded.settings.simulate.playback_memory_mb, read,
+            "{written}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(config);
+}
+
 /// Issues 308 and 310: the file name templates are the user's, kept on this
 /// computer across projects, never in a project, with defaults that give the
 /// names written before templates existed.

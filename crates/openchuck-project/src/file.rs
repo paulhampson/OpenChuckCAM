@@ -106,7 +106,17 @@ use openchuck_types::workholding::Workholding;
 /// - 19: optional minimum block time, window and mode in machine copies
 ///   (decision record 0222); absent fields retain Off.
 /// - 20: Slow down integration; schema 19 Report settings retain their meaning.
-pub const SCHEMA: i64 = 20;
+/// - 21: a model reference gains the optional `name`, the file name it had
+///   when it was added, written only when recorded (issue 385, decision
+///   record 0307 item 4).
+/// - 22: the machine copy gains the optional `automatic_tool_length`,
+///   `spindle_to_axis` and `recommended_min_safe_z` (decision record 0317).
+/// - 23: helical finishing, axial finishing and rest machining gain the
+///   per-operation `face_free_ends` switch, on for a new operation; an
+///   older operation of those strategies is migrated to an explicit
+///   `face_free_ends = false`, so it machines as before (decision record
+///   0344).
+pub const SCHEMA: i64 = 23;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -140,7 +150,56 @@ const MIGRATIONS: &[Migration] = &[
     schema_17_to_18,
     schema_18_to_19,
     schema_19_to_20,
+    schema_20_to_21,
+    schema_21_to_22,
+    schema_22_to_23,
 ];
+
+/// Schema 22 adds the optional spindle-height fields to the machine copy,
+/// which an older file does not have; one that already holds one is refused
+/// (decision record 0317).
+fn schema_21_to_22(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::premature_spindle_height(table, 21, 22)?;
+    }
+    Ok(())
+}
+
+/// The strategies whose operations gained `face_free_ends` in schema 23.
+const FREE_END_STRATEGIES: [&str; 3] = ["helical_finishing", "axial_finishing", "rest_machining"];
+
+/// Schema 23 (decision record 0344): an operation of helical finishing,
+/// axial finishing or rest machining saved before it is given an explicit
+/// `face_free_ends = false`, so it machines as it did; a new operation takes
+/// the strategy's default, on. An older file that already holds the switch
+/// was not written by any version that knew it, so it is refused rather than
+/// guessed at.
+fn schema_22_to_23(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let finishing = table
+        .get("strategy")
+        .and_then(toml::Value::as_str)
+        .is_some_and(|s| FREE_END_STRATEGIES.contains(&s));
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("face_free_ends") {
+        return Err(
+            "this schema 22 file has the parameter `face_free_ends`, which schema 23 \
+             introduced; remove it, or set `schema = 23` if the file was written for schema 23"
+                .to_owned(),
+        );
+    }
+    if finishing {
+        parameters.insert("face_free_ends".to_owned(), toml::Value::Boolean(false));
+    }
+    Ok(())
+}
 
 /// GC-17 is additive. Older project copies retain Off, never the new Z1 default.
 fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
@@ -154,6 +213,31 @@ fn schema_18_to_19(kind: FileKind, table: &mut toml::Table) -> Result<(), String
 fn schema_19_to_20(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Machine {
         crate::machines::premature_slow_down(table, 19, 20)?;
+    }
+    Ok(())
+}
+
+/// Schema 21 adds the optional `name` of a model reference, which a schema 20
+/// file does not have, so it needs no change but its number: the model shows
+/// its path's file name. A schema 20 file that already holds one was not
+/// written by any version that knew it, so it is refused rather than guessed
+/// at.
+fn schema_20_to_21(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let named = kind == FileKind::Project
+        && table
+            .get("models")
+            .and_then(toml::Value::as_array)
+            .is_some_and(|models| {
+                models
+                    .iter()
+                    .any(|m| m.as_table().is_some_and(|m| m.contains_key("name")))
+            });
+    if named {
+        return Err(
+            "this schema 20 file has a model `name`, a field schema 21 introduced; remove it, \
+             or set `schema = 21` if the file was written for schema 21"
+                .to_owned(),
+        );
     }
     Ok(())
 }

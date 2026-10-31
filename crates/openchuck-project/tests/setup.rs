@@ -577,3 +577,57 @@ fn req_gc_17_req_prj_04_slow_down_requires_project_schema_20_even_when_inactive(
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The spindle-height fields need project schema 22: a machine copy that
+/// holds one under an older number is refused naming the field, and an older
+/// copy without them reads with none (decision record 0317).
+#[test]
+fn req_set_01_req_prj_04_the_spindle_height_fields_need_project_schema_22() {
+    use openchuck_types::units::Millimetres;
+    let mut project = Project::new("Spindle height format");
+    let dir = temp_dir("spindle-height-schema");
+    let mut plain = MachineProfile::example_x_rotary();
+    plain.automatic_tool_length = false;
+    project.set_machine(Some(plain)).unwrap();
+    file::save(&project, &dir).unwrap();
+    let path = dir.join(file::MACHINE_FILE);
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        text.replacen(&format!("schema = {}", file::SCHEMA), "schema = 20", 1),
+    )
+    .unwrap();
+    let m = file::load(&dir).unwrap().machine().unwrap().clone();
+    assert!(!m.automatic_tool_length);
+    assert_eq!((m.spindle_to_axis, m.recommended_min_safe_z), (None, None));
+    for (field, set) in [
+        (
+            "automatic_tool_length",
+            (|m: &mut MachineProfile| m.automatic_tool_length = true) as fn(&mut MachineProfile),
+        ),
+        ("spindle_to_axis", |m| {
+            m.spindle_to_axis = Some(Millimetres(78.6))
+        }),
+        ("recommended_min_safe_z", |m| {
+            m.recommended_min_safe_z = Some(Millimetres(30.0));
+        }),
+    ] {
+        let mut machine = MachineProfile::example_x_rotary();
+        set(&mut machine);
+        project.set_machine(Some(machine)).unwrap();
+        file::save(&project, &dir).unwrap();
+        assert_eq!(file::load(&dir).unwrap(), project);
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            text.replacen(&format!("schema = {}", file::SCHEMA), "schema = 21", 1),
+        )
+        .unwrap();
+        let error = file::load(&dir).unwrap_err().to_string();
+        assert!(
+            error.contains("machine.toml") && error.contains(field) && error.contains("schema 22"),
+            "{field}: {error}"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
