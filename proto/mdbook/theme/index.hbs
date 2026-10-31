@@ -18,9 +18,9 @@
     {{#if search_js}}window.path_to_searchindex_js = "{{ resource "searchindex.js" }}";{{/if}}
   </script>
 </head>
-<body>
+<body{{#if is_index}} class="home"{{/if}}>
   <a class="skip" href="#content">Skip to the content</a>
-  <div class="banner" role="note">This is the documentation for the development version (main). It may describe features that are not in a release yet. <a href="{{ path_to_root }}versions.html">Other versions</a></div>
+  {{#unless is_index}}<div class="banner" role="note">This is the documentation for the development version (main). It may describe features that are not in a release yet. <a href="{{ path_to_root }}versions.html">Other versions</a></div>{{/unless}}
   <header class="site-header">
     <a class="site-title" href="{{ path_to_root }}index.html">OpenChuckCAM <span>User guide</span></a>
     <div class="tools">

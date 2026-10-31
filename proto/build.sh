@@ -22,6 +22,8 @@ if command -v "${ZOLA:-zola}" >/dev/null 2>&1; then
   cp "$fonts"/IBMPlex*.ttf "$here/zola/static/fonts/"
   cp "$here/shared/style.css" "$here/zola/static/style.css"
   cp "$here/versions.html.in" "$here/zola/static/versions.html"
+  mkdir -p "$here/zola/static/images"
+  cp "$here/mdbook/src/images/hero-1-toolpaths.png" "$here/zola/static/images/"
   cp "$here/mdbook/src/tutorial/images/06-workholding.png" "$here/zola/content/tutorial/05-hold-the-work/"
   cp "$here/out/mdbook"/elasticlunr-*.min.js "$here/zola/static/elasticlunr.min.js"
   cp "$here/zola/static-search.js" "$here/zola/static/search.js"

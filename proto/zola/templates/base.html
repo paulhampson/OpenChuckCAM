@@ -16,7 +16,7 @@
 </head>
 <body>
   <a class="skip" href="#content">Skip to the content</a>
-  <div class="banner" role="note">This is the documentation for the development version (main). It may describe features that are not in a release yet. <a href="{{ get_url(path='versions.html') }}">Other versions</a></div>
+  {% block banner %}<div class="banner" role="note">This is the documentation for the development version (main). It may describe features that are not in a release yet. <a href="{{ get_url(path='versions.html') }}">Other versions</a></div>{% endblock banner %}
   <header class="site-header">
     <a class="site-title" href="{{ get_url(path='@/_index.md') }}">OpenChuckCAM <span>User guide</span></a>
     <div class="tools">
@@ -24,6 +24,7 @@
       <button class="theme-toggle" type="button" hidden>Dark theme</button>
     </div>
   </header>
+  {% block layout %}
   <div class="layout">
     <nav class="sidebar" aria-label="Contents">
       <details open>
@@ -67,8 +68,9 @@
       </footer>
     </div>
   </div>
+  {% endblock layout %}
   <script>
-    if (matchMedia('(max-width: 900px)').matches) document.querySelector('.sidebar details').open = false;
+    var d = document.querySelector('.sidebar details'); if (d && matchMedia('(max-width: 900px)').matches) d.open = false;
     (function () {
       var b = document.querySelector('.theme-toggle'), root = document.documentElement;
       function dark() { return root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; }

@@ -4,7 +4,7 @@
 
 # Start here
 
-- [Install and first run]()
+- [Install and first run](start/install.md)
 - [Known limitations]()
 
 # Tutorial

@@ -1,3 +1,47 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ section.title }}</h1>
-{{ section.content | safe }}{% endblock %}
+{#- The landing page: no sidebar; the hero spans the page, then a contents overview, then the page text.
+    The hero's words live in content/_index.md ([extra]), not here. -#}
+{% block banner %}{% endblock banner %}
+{% block layout %}
+<main id="content" class="landing">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-text">
+      <p class="hero-meta">User guide for the development version · <a href="{{ get_url(path='versions.html') }}">Other versions</a></p>
+      <h1 id="hero-title">{{ section.extra.headline | safe }}</h1>
+      <p class="hero-lead">{{ section.extra.lead }}</p>
+      <ol class="routes">
+        {%- for r in section.extra.routes %}
+        <li><a href="{{ get_url(path=r.path) }}"><span class="route-num">{{ loop.index }}</span><span class="route-title">{{ r.title }}</span><span class="route-text">{{ r.text }}</span></a></li>
+        {%- endfor %}
+      </ol>
+      <p class="hero-notice"><strong>Before you cut:</strong> generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for your machine, tool or setup.</p>
+    </div>
+    <figure class="hero-figure">
+      <img src="{{ get_url(path=section.extra.hero_image) }}" width="1366" height="768" alt="{{ section.extra.hero_alt }}">
+      <figcaption>{{ section.extra.hero_caption }}</figcaption>
+    </figure>
+  </section>
+
+  <h2 class="visually-plain">Contents of this guide</h2>
+  <ul class="contents-overview">
+    {%- for s in section.subsections %}
+    {%- set sub = get_section(path=s) %}
+    <li><span class="nav-part">{{ sub.extra.part | default(value=sub.title) }}</span>
+      <ul>
+        {% if sub.title != sub.extra.part %}<li><a href="{{ sub.permalink }}">{{ sub.title }}</a></li>{% endif %}
+        {%- for p in sub.pages %}<li><a href="{{ p.permalink }}">{{ p.title }}</a></li>{% endfor %}
+      </ul>
+    </li>
+    {%- endfor %}
+    {%- for p in section.pages %}
+    <li><span class="nav-part">{{ p.extra.part | default(value="More") }}</span><ul><li><a href="{{ p.permalink }}">{{ p.title }}</a></li></ul></li>
+    {%- endfor %}
+  </ul>
+
+  <div class="body">{{ section.content | safe }}</div>
+  <footer class="site-footer">
+    <p>Generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup.</p>
+    <p>Describes the development version, commit PROTO000, built 2026-10-31. Licensed AGPL-3.0-or-later.</p>
+  </footer>
+</main>
+{% endblock layout %}

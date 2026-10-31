@@ -33,10 +33,31 @@ Zola 0.23.0 (5 August 2026) moved to a new major version of its template languag
 
 | | mdBook | Zola |
 | --- | --- | --- |
-| Stylesheet (shared) | 242 lines | the same file |
-| Page templates | `theme/index.hbs`, 101 lines (replaces mdBook's 367-line default) | 6 templates, 115 lines in all |
+| Stylesheet (shared) | 289 lines, of which 46 are the home page hero | the same file |
+| Page templates | `theme/index.hbs`, 101 lines (replaces mdBook's 367-line default) | 6 templates, 161 lines in all (115 before the landing page) |
 | Extra code we keep | `fixnav.py`, 38 lines: mdBook writes the contents list with links relative to the site root and marks no current page (its own theme fixes this in JavaScript), so this post-build step makes it work without JavaScript. Search reuses mdBook's own script, adapted in 6 lines. | `static-search.js`, 18 lines: Zola builds the search index but gives no search box (a full one, with highlighting, would be about 80 lines). The elasticlunr script must be supplied; here it is copied from mdBook's output. |
 | Default files we cannot switch off | mdBook still writes its own `book.js`, highlight and theme files, unused (about 0.2 MB). Harmless. | Zola writes `robots.txt` and `sitemap.xml` (wanted anyway). |
+
+## The home page hero (added at the owner's request)
+
+The owner asked for a proposed hero section on the home page in each tool, with the same design intent. Both are built and in `screenshots/` (`*-home-*`).
+
+**Design.** A two-column band at desktop width, stacked on a phone:
+- left: a small line naming the guide's version, with a link to the other versions (the version switch); one plain headline; one paragraph saying what the program is and who the guide is for; two routes, *Start here* and *Your first project*, as a ruled, numbered list of links (not buttons); the G-code notice (NFR-12), set quietly with an ochre rule and the label "Before you cut";
+- right: a real screenshot of the application, the finishing toolpath of the tutorial's baluster (lane DOCSUSER's `hero-1-toolpaths.png`), with a caption saying it is from a development build.
+
+No gradient, no buttons, no icons, no feature cards, no marketing words. The same CSS serves both tools (46 lines added to the shared stylesheet).
+
+| | mdBook | Zola |
+| --- | --- | --- |
+| How it is done | The hero is a block of HTML at the top of `src/index.md` (16 lines). mdBook does not parse Markdown inside it, so the hero's words are HTML in the Markdown file. Template change: 3 lines in `index.hbs` (a `home` class on the body when `is_index`, and no development banner on the home page, since the hero names the version). | A dedicated landing template, `templates/index.html` (47 lines). The hero's words live in the front matter of `content/_index.md` (`[extra]`: headline, lead, routes, image, alt text, caption), so the template holds layout only. |
+| Page around it | The usual page: the contents sidebar stays on the left, so the hero shares the width with it. | A page of its own: no sidebar, the hero spans the page, and a "Contents of this guide" overview built from the sections replaces the sidebar. |
+| What was hacked | Nothing that fights mdBook: `is_index` is a variable mdBook gives every template. The cost is that the hero is HTML inside a Markdown file, and the home page cannot drop the sidebar without more template branching. | Nothing: this is what Zola's section templates are for. |
+| On GitHub | The HTML block renders on GitHub as plain text and a picture: readable. | The front matter shows as a table of values; the hero itself is only in the built site. |
+| Survives a major upgrade? | The HTML block in the Markdown survives anything. The 3 template lines depend on `is_index` and on our own `index.hbs`; if mdBook renames the variable, the hero still shows, only the wider column and the hidden banner are lost until the line is fixed. | The landing template uses Zola's template language, which changed completely in 0.23 (shortcodes removed, Tera 2). Another such change would mean rewriting it. |
+| Extra upkeep | Low: one HTML block and three template lines. | Moderate: a 47-line template, plus the contents overview's logic. |
+
+**Honest summary.** Zola gives the better home page: a true landing layout without the sidebar, with the hero's words kept as data. mdBook gets close with very little code, at the cost of the sidebar beside the hero and the hero being HTML inside the Markdown. Neither hero is a reason on its own to choose the tool; the maintenance points above still favour mdBook. If the owner prefers the full-width landing, mdBook can get it too: a separate static `index.html` built from a small template outside mdBook, about 60 lines, at the cost of a second build step.
 
 ## Print
 

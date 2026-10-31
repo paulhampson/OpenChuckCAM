@@ -240,3 +240,50 @@ blockquote.markdown-alert-note::before, blockquote.markdown-alert-warning::befor
 }
 blockquote.markdown-alert-warning::before { content: "Warning"; color: var(--warn); }
 blockquote.markdown-alert-note > :last-child, blockquote.markdown-alert-warning > :last-child { margin-bottom: 0; }
+
+/* ---------- Home page hero (both prototypes) ----------
+ * One plain statement, who it is for, two routes, the version, the G-code notice, and a real screenshot.
+ * No gradient, no buttons: the routes are a ruled list of links. */
+.hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 2.5rem; align-items: start;
+  padding: 0 0 1rem; margin: 0 0 1.5rem; }
+.nowrap { white-space: nowrap; }
+.hero-text { min-width: 0; }
+.hero-meta { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.9rem; }
+.hero-meta a { color: var(--muted); }
+.hero h1 { font-size: 2.35rem; line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 1rem; border: 0; padding: 0; }
+.hero-lead { font-size: 1.1rem; margin: 0 0 1.6rem; }
+.routes { list-style: none; padding: 0 !important; margin: 0 0 1.5rem; border-top: 1px solid var(--rule); counter-reset: none; }
+.routes > li { border-bottom: 1px solid var(--rule); margin: 0 !important; padding: 0; }
+.routes > li::before { content: none !important; }
+.routes a { display: grid; grid-template-columns: 2rem 1fr; padding: 0.75rem 0; text-decoration: none; color: var(--text); }
+.routes a:hover .route-title { text-decoration: underline; }
+.route-num { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.route-title { font-weight: 600; color: var(--accent); }
+.route-text { grid-column: 2; color: var(--muted); font-size: 0.92rem; }
+.hero-notice { border-left: 3px solid var(--warn); padding: 0.1rem 0 0.1rem 0.9rem; font-size: 0.92rem; margin: 0; }
+.hero-notice strong { color: var(--warn); }
+.hero-figure { margin: 0.4rem 0 0; }
+.hero-figure img { width: 100%; }
+/* mdBook: the hero sits in the content column beside the contents, so the column widens on the home page. */
+.home .content > main { max-width: 74rem; }
+.home .content > main > #mdbook-content > :not(.hero) { max-width: var(--measure); }
+/* Zola: a landing page without the sidebar; the hero spans the page and the rest keeps the measure. */
+.landing { max-width: 76rem; margin: 0 auto; padding: 2.5rem 2.5rem 4rem; }
+.landing .body { max-width: var(--measure); }
+.landing .contents-overview { columns: 2 16rem; column-gap: 2.5rem; margin: 0 0 2rem; padding: 0; list-style: none; }
+.landing .contents-overview > li { break-inside: avoid; margin: 0 0 1.2rem; }
+.landing .contents-overview .nav-part { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 0.25rem; }
+.landing .contents-overview ul { list-style: none; padding: 0; margin: 0; }
+@media (max-width: 1100px) {
+  .hero { grid-template-columns: 1fr; gap: 1.5rem; }
+  .hero-figure { order: 2; }
+}
+@media (max-width: 900px) {
+  .hero h1 { font-size: 1.8rem; }
+  .landing { padding: 1.5rem 1rem 3rem; }
+}
+@media print {
+  .hero { display: block; border: 0; }
+  .routes a { display: block; }
+}
