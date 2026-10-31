@@ -2226,6 +2226,7 @@ fn swarf(
                       no boundary."
                 .to_owned(),
             parameter: None,
+            requires_acknowledgement: false,
         });
     }
     // Each watched surface the tool breaks, over every face, in the
@@ -2253,6 +2254,7 @@ fn swarf(
                 warnings.push(PathWarning {
                     message,
                     parameter: Some(names::TOLERANCE.to_owned()),
+                    requires_acknowledgement: false,
                 });
             }
         }
@@ -2294,6 +2296,7 @@ fn swarf(
                 faces.join(", ")
             ),
             parameter: None,
+            requires_acknowledgement: false,
         });
     }
     context.report("swarf", total, Some(total));

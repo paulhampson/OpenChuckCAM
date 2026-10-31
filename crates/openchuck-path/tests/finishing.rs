@@ -116,9 +116,10 @@ fn req_tl_05_req_nfr_12_stepdown_is_required_only_with_layers_on() {
 // ---- finishing layers (decision record 0345) --------------------------------
 
 mod support;
+use support::generate;
 
 use openchuck_path::finishing::parameter::FINISH_ALLOWANCE;
-use openchuck_path::{GeneratedPath, MeshSurface, generate};
+use openchuck_path::{GeneratedPath, MeshSurface};
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::ToolShape;

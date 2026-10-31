@@ -21,9 +21,10 @@ use openchuck_app::project::id::ToolId;
 use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_command};
 use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
-    EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks,
-    JobHandle, OutputGrouping, OutputPlan, OutputReport, PlannedFile, PostSelection, PostSummary,
-    Regeneration, builtin_post_summaries, post_summary,
+    EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
+    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, JobHandle, OutputGrouping, OutputPlan, OutputReport,
+    PlannedFile, PostSelection, PostSummary, Regeneration, builtin_post_summaries,
+    partial_operations, post_summary,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -163,6 +164,10 @@ pub struct ExportPanel {
     /// 0168).
     skip_lookup: AcknowledgementLookup,
     skip_ticked: bool,
+    /// The run whose partial paths the user accepted, by its address: an
+    /// acknowledgement holds for that result only (decision record 0239
+    /// item 10).
+    partial_ticked: Option<usize>,
     ticked: bool,
     /// The user's file name templates (issues 308 and 310).
     file_names: openchuck_app::FileNameTemplates,
@@ -207,6 +212,7 @@ impl ExportPanel {
                 problem: None,
             },
             skip_ticked: false,
+            partial_ticked: None,
             ack_lookup: AcknowledgementLookup {
                 acknowledged: false,
                 problem: None,
@@ -241,6 +247,7 @@ impl ExportPanel {
         self.summary = None;
         self.ticked = false;
         self.skip_ticked = false;
+        self.partial_ticked = None;
         self.refresh_acknowledgement(app);
         self.read_numbers(app);
     }
@@ -279,6 +286,21 @@ impl ExportPanel {
     /// the stock simulation (OI-602).
     fn skip_unacknowledged(&self, app: &Application) -> bool {
         self.skips(app) && !(self.skip_lookup.acknowledged || self.skip_ticked)
+    }
+
+    /// The operations whose path in the current files is partial, and the
+    /// files' run (decision record 0239 item 10).
+    fn partial(&self, app: &Application) -> Option<(Vec<String>, usize)> {
+        let files = self.files_current(app)?;
+        let partial = partial_operations(app.project(), &files.run);
+        (!partial.is_empty()).then(|| (partial, Arc::as_ptr(&files.run) as usize))
+    }
+
+    /// Whether writing waits for the acknowledgement of the current files'
+    /// partial paths.
+    fn partial_unacknowledged(&self, app: &Application) -> bool {
+        self.partial(app)
+            .is_some_and(|(_, run)| self.partial_ticked != Some(run))
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -399,6 +421,12 @@ impl ExportPanel {
         if self.skip_unacknowledged(app) {
             return Some(
                 "Tick the box to say you know the cut has not been simulated for this project."
+                    .to_owned(),
+            );
+        }
+        if self.partial_unacknowledged(app) {
+            return Some(
+                "Tick the box to accept the partial path of these files: it is not complete."
                     .to_owned(),
             );
         }
@@ -590,7 +618,14 @@ impl ExportPanel {
     /// project.
     fn write(&mut self, app: &Application, files: &Arc<Regeneration>) -> Outcome {
         let folder = PathBuf::from(self.folder.trim());
-        match app.prepare_output(&folder, files) {
+        let prepared = app.prepare_output(&folder, files).map(|mut plan| {
+            // Ticked for these very files, so it holds for this plan only.
+            if self.partial_ticked == Some(Arc::as_ptr(files) as usize) {
+                plan.acknowledge_partial_path();
+            }
+            plan
+        });
+        match prepared {
             Ok(plan) if !plan.existing().is_empty() => {
                 if let Some(key) = self.key(app) {
                     self.overwrite = Some(PendingOutput {
@@ -744,6 +779,7 @@ impl ExportPanel {
             ui.add_space(8.0);
             self.notice(ui);
             self.skip_notice(ui, app);
+            self.partial_notice(ui, app);
         });
     }
 
@@ -1219,6 +1255,32 @@ impl ExportPanel {
         }
     }
 
+    /// While the files hold a partial path, what it is and the tick box that
+    /// accepts it for these files only (decision record 0239 item 10).
+    fn partial_notice(&mut self, ui: &mut egui::Ui, app: &Application) {
+        let Some((names, run)) = self.partial(app) else {
+            return;
+        };
+        ui.add_space(6.0);
+        let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+        ui.label(
+            RichText::new(format!(
+                "The path of {} is partial: adaptive spacing could not confirm every place \
+                 between its passes, and the path made so far is kept. Read its warning in \
+                 Messages.",
+                quoted.join(", ")
+            ))
+            .color(DARK.warning_box.text),
+        );
+        let mut ticked = self.partial_ticked == Some(run);
+        if ui
+            .checkbox(&mut ticked, EXPORT_PARTIAL_PATH_LABEL)
+            .changed()
+        {
+            self.partial_ticked = ticked.then_some(run);
+        }
+    }
+
     fn notice(&mut self, ui: &mut egui::Ui) {
         egui::Frame::new()
             .fill(NOTICE_FILL)
@@ -1592,6 +1654,63 @@ mod tests {
         )));
         fresh.open(&app);
         assert!(!fresh.skip_unacknowledged(&app));
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_op_04_req_nfr_12_a_partial_path_is_accepted_for_these_files_before_writing() {
+        // Decision record 0239 item 10: files holding a partial path are
+        // written only once the user accepts it, for those files alone.
+        let (dir, mut app, op, _) = cube_project("export-partial");
+        app.set_post(None);
+        for (name, value) in [
+            (
+                "adaptive_spacing",
+                openchuck_app::project::ParameterValue::Flag(true),
+            ),
+            (
+                "scallop",
+                openchuck_app::project::ParameterValue::Number(0.0001),
+            ),
+            (
+                "min_spacing",
+                openchuck_app::project::ParameterValue::Number(50.0),
+            ),
+        ] {
+            app.set_parameter(op, name, Some(value)).unwrap();
+        }
+        let (settings_dir, ack) = settings("export-partial-settings");
+        let mut panel = ExportPanel::new(Some(ack));
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        panel.folder = dir.join("out").display().to_string();
+        panel.ticked = true;
+        let checks = app.export_checks(Some(&run), panel.files.as_ref().map(|f| &*f.run), None);
+        assert!(checks.can_write(), "a warning, not a blocking check");
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("partial path"), "{reason}");
+        // Accepted for other files, it does not count.
+        panel.partial_ticked = Some(0);
+        assert!(panel.write_blocker(&app, &checks, true).is_some());
+        let posted = panel
+            .files_current(&app)
+            .map(|f| Arc::clone(&f.run))
+            .unwrap();
+        panel.partial_ticked = Some(Arc::as_ptr(&posted) as usize);
+        assert_eq!(panel.write_blocker(&app, &checks, true), None);
+        let outcome = panel.write(&app, &posted);
+        assert_eq!(outcome.error, None);
+        let status = outcome.status.unwrap_or_default();
+        assert!(
+            status.contains("is partial") && status.contains("not complete"),
+            "{status}"
+        );
+        // A new dialog asks again.
+        panel.open(&app);
+        assert_eq!(panel.partial_ticked, None);
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }

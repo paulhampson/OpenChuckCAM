@@ -315,6 +315,17 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&job.strategy) {
         parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "simultaneous_finishing",
+    ]
+    .contains(&job.strategy)
+    {
+        parameters.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),

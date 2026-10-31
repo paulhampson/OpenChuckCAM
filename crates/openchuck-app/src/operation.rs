@@ -1187,6 +1187,7 @@ pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
              inspector's Geometry section, or take the set out of the operation."
         ),
         parameter: None,
+        requires_acknowledgement: false,
     }
 }
 

@@ -144,8 +144,8 @@ impl Strategy for IndexedFinishing {
         zones: &[LeaveZone<'_>],
         parameters: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
+    ) -> Result<StrategyOutput> {
+        output(passes(input, region, zones, parameters, context)?)
     }
 
     fn passes(
@@ -174,16 +174,20 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, (x0, x1), layered) = passes(input, region, &[], parameters, context)?;
-        Ok(StrategyOutput {
-            notes: beyond_note(&passes, x0, x1)
-                .into_iter()
-                .chain(layered)
-                .collect(),
-            passes,
-            warnings: Vec::new(),
-        })
+        output(passes(input, region, &[], parameters, context)?)
     }
+}
+
+/// The passes made, with their notes.
+fn output((passes, (x0, x1), layered): Made) -> Result<StrategyOutput> {
+    Ok(StrategyOutput {
+        notes: beyond_note(&passes, x0, x1)
+            .into_iter()
+            .chain(layered)
+            .collect(),
+        passes,
+        warnings: Vec::new(),
+    })
 }
 
 /// The passes of indexed finishing, the target's extent along X and the

@@ -73,6 +73,12 @@ pub struct PathWarning {
     /// The operation parameter that, changed, would accept or remove it
     /// (`tolerance`), for the host to point at; `None` when no one does.
     pub parameter: Option<String>,
+    /// Whether the path is partial: it is kept, but the user must
+    /// acknowledge this result before its program is written, and it is
+    /// never called complete (adaptive spacing that met a limit or could not
+    /// confirm a place; decision record 0239 item 10). An ordinary warning
+    /// never counts as one.
+    pub requires_acknowledgement: bool,
 }
 
 /// A toolpath group with notes about it.

@@ -16,6 +16,7 @@
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
 mod support;
+use support::{generate, generate_in_region};
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -25,7 +26,7 @@ use openchuck_path::params::names;
 use openchuck_path::{
     AcceptAll, AnalyticStock, AxialFinishing, CompositeSurface, GeneratedPath, HelicalFinishing,
     MeshSurface, ParameterValue, RegionConstraint, RotaryMapping, Solid, StrategyInput,
-    SurfaceSource, generate, generate_in_region,
+    SurfaceSource,
 };
 use openchuck_testkit::parts::{CarvedRelief, RadialPart};
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3};

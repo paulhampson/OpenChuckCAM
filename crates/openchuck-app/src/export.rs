@@ -117,6 +117,48 @@ pub const EXPORT_STOCK_SKIPPED: &str = "Stock simulation is skipped for this pro
 pub const EXPORT_STOCK_SKIPPED_LABEL: &str =
     "I know the cut has not been simulated for this project";
 
+/// The tick box that acknowledges, before writing, the partial path of the
+/// result being written (decision record 0239 item 10).
+pub const EXPORT_PARTIAL_PATH_LABEL: &str = "I accept the partial path made for this result: it is not complete, and I will check the surface before running the program";
+
+/// The operations of `project`, enabled, in order, whose path in `run` is
+/// partial: adaptive spacing met a limit or could not confirm a place, and
+/// the path made so far is kept (decision record 0239 item 10). Only a
+/// warning that must be acknowledged counts, never an ordinary one.
+pub fn partial_operations(project: &Project, run: &Regeneration) -> Vec<String> {
+    project
+        .operations()
+        .iter()
+        .filter(|o| o.enabled)
+        .filter(|o| {
+            run.groups
+                .iter()
+                .filter(|g| g.operation == o.id)
+                .any(|g| g.warnings.iter().any(|w| w.requires_acknowledgement))
+        })
+        .map(|o| o.name.clone())
+        .collect()
+}
+
+/// Why writing is refused while `partial` operations are not acknowledged.
+pub fn partial_path_refusal(partial: &[String]) -> String {
+    format!(
+        "The path of {} is partial and has not been acknowledged for this result. Read its \
+         warning, then acknowledge it to write the files.",
+        quoted_list(partial)
+    )
+}
+
+/// `'a'`, `'a' and 'b'`, `'a', 'b' and 'c'`.
+pub(crate) fn quoted_list(names: &[String]) -> String {
+    let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// The sentence that states the rule, shown under the checks.
 pub const EXPORT_RULE: &str = "G-code is written only when every enabled operation is up to date and the files pass their checks. Operations that were not simulated, and machine values not confirmed on the machine, give warnings. Disabled operations are not written.";
 
@@ -358,13 +400,21 @@ pub fn export_checks(
             for operation in &enabled {
                 for group in run.groups.iter().filter(|g| g.operation == operation.id) {
                     for warning in &group.warnings {
-                        push(
-                            CheckLevel::Warning,
+                        // A partial path is written only once this result
+                        // is acknowledged (decision record 0239 item 10).
+                        let text = if warning.requires_acknowledgement {
+                            format!(
+                                "Operation '{}' has a partial path, which must be acknowledged \
+                                 before the files are written: {}",
+                                operation.name, warning.message
+                            )
+                        } else {
                             format!(
                                 "Operation '{}' was made with a warning: {}",
                                 operation.name, warning.message
-                            ),
-                        );
+                            )
+                        };
+                        push(CheckLevel::Warning, text);
                     }
                 }
             }

@@ -435,6 +435,7 @@ pub(crate) fn watched_warnings(
                     w.name
                 ),
                 parameter: None,
+                requires_acknowledgement: false,
             }
         })
         .collect())

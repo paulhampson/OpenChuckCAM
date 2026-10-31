@@ -117,6 +117,7 @@ fn build(name: &str, profile: &[(f64, f64)], radius: f64) -> (PathBuf, Applicati
     let parameters: BTreeMap<String, ParameterValue> = [
         ("max_angle_step".to_owned(), ParameterValue::Number(5.0)),
         ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+        ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
     ]
     .into();
     for item in [

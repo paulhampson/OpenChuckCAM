@@ -49,6 +49,7 @@ impl Dialog {
             Self::Settings => "Settings",
             Self::Error(_) => "Error message",
             Self::CopyLinked(_) => "Copy linked models",
+            Self::AdaptiveHeight { .. } => "Turn on adaptive spacing",
         }
     }
 }

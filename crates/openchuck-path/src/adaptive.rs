@@ -566,6 +566,7 @@ impl Outcome {
                 why.join("; ")
             ),
             parameter: Some(height.to_owned()),
+            requires_acknowledgement: true,
         })
     }
 }

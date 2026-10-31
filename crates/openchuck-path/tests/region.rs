@@ -10,6 +10,7 @@
 )]
 
 mod support;
+use support::{generate, generate_in_region};
 
 use std::collections::BTreeMap;
 
@@ -17,10 +18,7 @@ use openchuck_path::params::names;
 use openchuck_path::region::{
     BoundaryLimits, Protection, RegionConstraint, WatchedSurface, Window,
 };
-use openchuck_path::{
-    GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError, generate,
-    generate_in_region,
-};
+use openchuck_path::{GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError};
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::MoveKind;

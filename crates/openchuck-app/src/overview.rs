@@ -2566,6 +2566,7 @@ mod tests {
                 warnings: vec![openchuck_path::PathWarning {
                     message: message.to_owned(),
                     parameter: Some("tolerance".to_owned()),
+                    requires_acknowledgement: false,
                 }],
             }],
             ..crate::Regeneration::default()

@@ -203,8 +203,13 @@ impl Strategy for HelicalFinishing {
         zones: &[LeaveZone<'_>],
         parameters: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, zones, parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+        })
     }
 
     fn passes(
