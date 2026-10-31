@@ -443,13 +443,13 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 
 **Inspector:**
 
-1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel.
+1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel. A **Spindle height** part follows the short-move settings (decision 0317): tool length measurement, then, on a machine that measures tool lengths, spindle to axis (blank when not known) and the recommended minimum safe Z (also shown once given), each editable on the project copy with its provenance icon.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
 3. **Part position** (SET-05; [decision 0201](../decisions/0201-setup-offset-moves-the-part.md)): **Offset along X**, which moves the part along the rotary axis in this setup only, from where the Model step's placement puts it, while the stock, the held regions and tabs and the work zero stay where they are, so the toolpaths and G-code move with the part (its tooltip says so in those words); **Position**, read-only, the part's X range in this setup ("X 12.500 to 42.500 mm"), with a muted line under it naming where it comes from ("Placement X 0.000 to 30.000 + offset 12.500 mm") and a tooltip that says it is the placement plus the offset, measured from the machine's rotary reference point; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
-**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60).
+**Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60). When the project's Makera Z1 copy still holds the old placeholder axis height (machine Z -55), a check and a message say so and ask the user to choose the Makera Z1 again (decision 0317). On a machine that measures tool lengths and gives its spindle-to-axis distance, a check and a message name each tool whose assumed stick-out (flute length + 5 mm) would take the spindle past the top of the Z travel at the setup's safe Z, with the safe Z that fits and, under the recommended minimum, the owner's line (decision 0318).
 
 **Footer** primary: "Continue to operations".
 
@@ -569,7 +569,7 @@ Board 5. Opened from "Post and export…" on Simulate, from File > Post and expo
 **Right column:**
 
 - the files to write, each with the name it is written as (decision 0028 item 1, decision 0267), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189), which says the sheet lists each program file with its SHA-256; the names shown include any number added to tell clashing names apart, with the warning; while a template cannot name the files each shows a dash and the problem is shown;
-- a preview of the first lines.
+- **Preview** (decision 0327, issue 312): the program as it would be written, read-only. A "File" box picks the file when the output is split; under it the name, line count, size and SHA-256 with a Copy button; a Go to line box (Ctrl or Cmd G) and a Find box (Enter next, Shift Enter previous, wrapping); then 16 monospaced rows with a line-number gutter and a scroll bar. The wheel scrolls the preview while the pointer is over it; Up, Down, Page Up, Page Down, Home, End, Left and Right work with the keyboard on it. The bytes are those "Write G-code" writes; it leaves with the files when an edit makes them out of date. It does not say the program is checked or safe (NFR-12).
 
 The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
 

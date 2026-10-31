@@ -39,7 +39,10 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   `max_spindle_rpm` (decision record 0231).
 /// - 5: optional minimum block time, window and mode (decision record 0222).
 /// - 6: Slow down integration; schema 5 Report settings retain their meaning.
-pub const MACHINE_SCHEMA: i64 = 6;
+/// - 7: optional `automatic_tool_length`, `spindle_to_axis` and
+///   `recommended_min_safe_z` for the spindle-height check (decision record
+///   0317).
+pub const MACHINE_SCHEMA: i64 = 7;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
 const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
@@ -48,7 +51,39 @@ const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
     machine_3_to_4,
     machine_4_to_5,
     machine_5_to_6,
+    machine_6_to_7,
 ];
+
+/// Schema 7 adds the optional spindle-height fields, which a schema 6 file
+/// does not have, so it needs no change but its number.
+fn machine_6_to_7(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_spindle_height(table, 6, 7)
+}
+
+/// Refuses a machine file of schema `schema` that already holds a
+/// spindle-height field, which schema `introduced` added (decision record
+/// 0317).
+pub(crate) fn premature_spindle_height(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    let machine = table.get("machine").and_then(toml::Value::as_table);
+    match [
+        "automatic_tool_length",
+        "spindle_to_axis",
+        "recommended_min_safe_z",
+    ]
+    .into_iter()
+    .find(|f| machine.is_some_and(|m| m.contains_key(*f)))
+    {
+        Some(field) => Err(format!(
+            "this schema {schema} file has `{field}`, a field schema {introduced} introduced; \
+             remove it, or set `schema = {introduced}` if the file was written for it"
+        )),
+        None => Ok(()),
+    }
+}
 
 /// Existing Off/Report settings keep their meaning. Slow down did not exist in schema 5.
 fn machine_5_to_6(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
@@ -172,6 +207,26 @@ pub(crate) fn fill_rotary_in_feed(table: &mut toml::Table) {
             .entry("rotary_in_feed")
             .or_insert_with(|| toml::Value::String("makera".into()));
     }
+}
+
+/// The axis height the built-in Z1 profile held before the owner's
+/// measurement (decision record 0317): machine Z -55, from the chuck centre
+/// 45 mm above a bed taken at the bottom of the Z travel.
+const OLD_Z1_AXIS_HEIGHT: f64 = -55.0;
+
+/// Whether `profile`, stored with library ID `id`, is a copy of the built-in
+/// Makera Z1 that still has the old placeholder axis height (decision record
+/// 0317). It is the Z1 by its ID, or, with no ID, by its name (decision
+/// record 0109). The copy is not changed: the project's copy is the source of
+/// truth (SET-01), so the caller warns and the user chooses the Z1 again.
+pub fn has_old_z1_axis_height(id: Option<&str>, profile: &MachineProfile) -> bool {
+    let z1 = match id {
+        Some(id) => id == MAKERA_Z1_ID,
+        None => profile.name == MAKERA_Z1_NAME,
+    };
+    #[allow(clippy::float_cmp)] // The exact value the old built-in profile wrote.
+    let old = profile.rotary_origin.z == OLD_Z1_AXIS_HEIGHT;
+    z1 && old
 }
 
 /// A new machine ID, for a profile entering a library without one.
@@ -375,6 +430,21 @@ mod tests {
     use super::*;
     use openchuck_types::machine::{ASense, ProfileField, RotaryAxis};
 
+    /// `profile` without the spindle-height fields schema 7 added, as an
+    /// older file holds it (decision record 0317).
+    fn before_spindle_height(profile: &mut MachineProfile) {
+        profile.automatic_tool_length = false;
+        profile.spindle_to_axis = None;
+        profile.recommended_min_safe_z = None;
+        for field in [
+            ProfileField::ToolLengthMeasurement,
+            ProfileField::SpindleToAxis,
+            ProfileField::RecommendedMinSafeZ,
+        ] {
+            profile.provenance.remove(&field);
+        }
+    }
+
     #[test]
     fn req_set_01_builtin_z1_reads_and_marks_every_value() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
@@ -386,29 +456,113 @@ mod tests {
             assert!(z1.provenance.contains_key(&field), "{field} is not marked");
         }
         // The owner confirmed the axis, direction, range and feed limits from
-        // use of the machine. The reference point (OI-60), the travel frame
-        // and the default clearance are not machine-checked values, and the
-        // spindle range is Makera's published figure (decision 0231).
+        // use of the machine, and the axis height by Makera's probing routine
+        // (decision 0317). The travel frame and the default clearance are not
+        // machine-checked values, and the spindle range is Makera's published
+        // figure (decision 0231).
         assert_eq!(
             z1.unconfirmed_fields(),
             vec![
-                ProfileField::RotaryOrigin,
                 ProfileField::Travel,
                 ProfileField::Clearance,
                 ProfileField::BlockWindow,
                 ProfileField::SpindleRange,
+                ProfileField::SpindleToAxis,
+                ProfileField::RecommendedMinSafeZ,
             ]
         );
         for field in [
             ProfileField::RotaryAxis,
             ProfileField::ASense,
+            ProfileField::RotaryOrigin,
             ProfileField::ARange,
             ProfileField::MaxFeeds,
+            ProfileField::ToolLengthMeasurement,
         ] {
             assert!(z1.is_confirmed(field), "{field}");
         }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
+    }
+
+    /// The axis height is the owner's probing result, for the probe as the
+    /// reference tool; the default safe Z and safe cylinder are 40 mm, so the
+    /// safe Z is inside the Z travel (decision 0317, OI-60).
+    #[test]
+    fn req_set_01_req_set_06_the_z1_axis_height_is_measured_and_its_safe_z_is_in_the_travel() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(z1.rotary_origin.z, -48.6);
+        assert_eq!((z1.rotary_origin.x, z1.rotary_origin.y), (-180.4, -108.8));
+        assert!(z1.is_confirmed(ProfileField::RotaryOrigin));
+        let source = &z1.provenance[&ProfileField::RotaryOrigin].source;
+        // It says what was measured, with what, and what was not recorded.
+        for fact in [
+            "-48.6",
+            "probe",
+            "reference tool",
+            "G54",
+            "tool length offset",
+            "datum",
+            "0317",
+        ] {
+            assert!(source.contains(fact), "{fact}: {source}");
+        }
+        assert_eq!(z1.clearance.radius.0, 40.0);
+        assert_eq!(z1.clearance.safe_z.0, 40.0);
+        let safe = z1.rotary_origin.z + z1.clearance.safe_z.0;
+        assert!((safe - -8.6).abs() < 1e-9, "{safe}");
+        assert!(safe <= z1.travel.max.z && safe >= z1.travel.min.z);
+        assert!(!z1.is_confirmed(ProfileField::Clearance));
+    }
+
+    /// The Z1 measures each tool's length; the distance from the spindle at
+    /// home down to the axis is 73.1 mm, from the owner's probe stick-out
+    /// (decision 0318); the owner recommends a safe Z of at least 30 mm, to
+    /// be checked (decision 0317).
+    #[test]
+    fn req_set_01_req_ui_13_the_z1_measures_tool_lengths_and_gives_its_spindle_to_axis_distance() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        assert!(z1.automatic_tool_length);
+        assert!(z1.is_confirmed(ProfileField::ToolLengthMeasurement));
+        assert_eq!(z1.spindle_to_axis.map(|d| d.0), Some(73.1));
+        assert!(!z1.is_confirmed(ProfileField::SpindleToAxis), "derived");
+        let derived = &z1.provenance[&ProfileField::SpindleToAxis].source;
+        for fact in ["24.5", "48.6 + 24.5", "#395", "0318"] {
+            assert!(derived.contains(fact), "{fact}: {derived}");
+        }
+        assert_eq!(z1.recommended_min_safe_z.map(|m| m.0), Some(30.0));
+        assert!(!z1.is_confirmed(ProfileField::RecommendedMinSafeZ));
+        let advice = &z1.provenance[&ProfileField::RecommendedMinSafeZ].source;
+        assert!(
+            advice.contains(
+                "The recommended minimum is 30 mm. This must be checked before machining."
+            ),
+            "{advice}"
+        );
+    }
+
+    /// A project copy of the Z1 that still has the old placeholder axis
+    /// height (machine Z -55) is recognised by its ID, or by its name when it
+    /// has none (decision records 0109 and 0317).
+    #[test]
+    fn req_set_01_req_prj_04_a_z1_copy_with_the_old_axis_height_is_recognised() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let mut old = z1.clone();
+        old.rotary_origin.z = -55.0;
+        assert!(has_old_z1_axis_height(Some(MAKERA_Z1_ID), &old));
+        assert!(has_old_z1_axis_height(None, &old));
+        assert!(!has_old_z1_axis_height(Some(MAKERA_Z1_ID), &z1));
+        assert!(!has_old_z1_axis_height(None, &z1));
+        // Another machine's profile, or a renamed copy with no ID, is the
+        // user's own: its axis height is theirs.
+        assert!(!has_old_z1_axis_height(Some("another-id"), &old));
+        let mut renamed = old.clone();
+        renamed.name = "My Z1".to_owned();
+        assert!(!has_old_z1_axis_height(None, &renamed));
+        // A user's own measured value on the Z1 copy is not flagged.
+        let mut measured = old;
+        measured.rotary_origin.z = -50.2;
+        assert!(!has_old_z1_axis_height(Some(MAKERA_Z1_ID), &measured));
     }
 
     #[test]
@@ -434,7 +588,14 @@ mod tests {
         );
         let mut table: toml::Table = old.parse().unwrap();
         let machine = table.get_mut("machine").unwrap().as_table_mut().unwrap();
-        for key in ["min_block_ms", "block_window", "short_block_mode"] {
+        for key in [
+            "min_block_ms",
+            "block_window",
+            "short_block_mode",
+            "automatic_tool_length",
+            "spindle_to_axis",
+            "recommended_min_safe_z",
+        ] {
             machine.remove(key);
         }
         let old = toml::to_string(&table).unwrap();
@@ -479,7 +640,7 @@ mod tests {
                 &z1.replace("linear = 1200.0", "linear = -1.0"),
                 "max_feeds.linear",
             ),
-            (&z1.replace("safe_z = 50.0", "safe_z = 10.0"), "safe Z"),
+            (&z1.replace("safe_z = 40.0", "safe_z = 10.0"), "safe Z"),
             (
                 &z1.replace("a_sense = \"positive\"", "a_sense = \"up\""),
                 "a_sense",
@@ -526,6 +687,7 @@ mod tests {
         ] {
             z1.provenance.remove(&field);
         }
+        before_spindle_height(&mut z1);
         let text = render_profile(&z1).unwrap();
         let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 3");
         let err = parse_profile(Path::new("z1.toml"), &old)
@@ -564,6 +726,7 @@ mod tests {
         ] {
             profile.provenance.remove(&field);
         }
+        before_spindle_height(&mut profile);
         let z1 = render_profile(&profile).unwrap();
         let old: String = z1
             .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")

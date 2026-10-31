@@ -9,6 +9,10 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OUTPUT3 (accepted decision 0327; #312): the `output_preview` module and `Application::output_preview(run)`: the program files exactly as `prepare_output` writes them, each a `PreviewFile` with its final name, bytes, size, SHA-256, line count, `line(n)` and `find(text, from, forward)`; `LineIndex`. `prepare_output` and the preview share one source of file names and texts. No library-family change.
+
+- FOURSTEP (accepted decision 0282; #322; UI-10): **Changed:** `overview::Step` has four values (`Step::Export` removed, `Step::ALL` is `[Step; 4]`, Simulate has no next step); `Overview::health` is the worst of four. New `Overview::export_action` (Post and export, with the old fifth step's rules), `Overview::simulation_action`, `Overview::g_code_written` and `Overview::wrote_g_code_before`; `Overview::primary(Step::Simulate)` is the filled one of the two. `g_code_written` needs the last complete write to hold exactly the enabled operations, so an exported operation since turned off or removed reads "not written". No library-family change.
+
 - CARVEPERF (issue #382, decision 0292): new example `playback_times`, which times what the Simulate step waits on (generation and simulation, preparing the stock playback, and the stock, mesh and display surface at points along the run). No library change.
 
 - STEPALL-X2 (issue #349, decision 0277): on a STEP part, helical, indexed, rest and simultaneous finishing drop a ball-end tool on the exact faces (`Strategy::exact_contact`), and with a ball their region, avoid, check, watched and stock-to-leave face sets are the exact faces too (OI-833); other tools and strategies keep the tessellation. The operation note names which surface the tool was dropped on. Output of those operations on STEP parts changes; STL parts are unchanged. Decision 0211's `step_accuracy` example adds form (d), exact contacts where the strategy takes them, which the application's output is checked against; `step_queries` adds the exact drop's timing (`exact`).
