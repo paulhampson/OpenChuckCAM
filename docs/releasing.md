@@ -65,3 +65,78 @@ A released version of the guide is never changed. If one holds an error that mat
 3. adds a line to that release's notes giving the new manifest's SHA-256.
 
 The next deploy publishes the change. Nothing else ever writes that branch.
+
+## One-time setup for the documentation site
+
+What the repository owner does once, so that the user guide is published to GitHub Pages and each application release can add its own copy ([decision 0400](decisions/0400-user-documentation-site.md)). These are owner actions: nothing in the repository does them. Until they are done, the guide is still built and checked; the nightly deploy skips with a notice (step 6), and a release's `publish-docs` job fails with a message naming what is missing (steps 1 to 5), after the program release has been published.
+
+The menu names below were checked on 31 Oct 2026 against the source of GitHub's documentation (`github/docs`). Where GitHub's screens may differ, the step says so (*unchecked*).
+
+**Two environments, two different jobs.**
+
+| Environment | Used by | May run from | Can do |
+| --- | --- | --- | --- |
+| `github-pages` | `docs-site.yml`, job "Publish to GitHub Pages" | `main` only (a run after a Nightly build or Release run, or by hand, runs as `main`) | Deploy the Pages site. It only reads `docs-releases`. |
+| `docs-release` | `release.yml`, job `publish-docs` | `app-v*` tags only | Write `docs-releases`, with the App below. It holds the App's client ID and private key. |
+
+So limiting `docs-release` to release tags does not stop the nightly "latest" from being published: that is the other environment.
+
+### 1. Create the GitHub App that writes `docs-releases`
+
+1. Click your profile picture (top right), then **Settings**.
+2. In the left sidebar, click **Developer settings**, then **GitHub Apps**, then **New GitHub App**.
+3. **GitHub App name:** `OpenChuckCAM docs release` (it must be unique on GitHub and at most 34 characters; add your name if it is taken).
+4. **Description:** "Writes the released user guide to the docs-releases branch of paulhampson/OpenChuckCAM. Used only by the release workflow."
+5. **Homepage URL:** `https://github.com/paulhampson/OpenChuckCAM`.
+6. Leave **Callback URL** and **Setup URL** empty; leave **Request user authorization (OAuth) during installation** and **Enable Device Flow** unticked.
+7. Under **Webhook**, untick **Active**. The App receives no events.
+8. Under **Permissions**, **Repository permissions**: set **Contents** to **Read & write**. Leave everything else at **No access** (GitHub adds **Metadata: Read-only** itself).
+9. Under **Where can this GitHub App be installed?**, choose **Only on this account**.
+10. Click **Create GitHub App**.
+11. On the App's settings page, note the **Client ID** (shown in the "About" section near the top; *unchecked*: the exact place on the page).
+12. Generate a private key: in the left sidebar click **Credentials**, then **New key**; or, on the older page layout, under **Private keys** click **Generate a private key**. Your browser downloads a `.pem` file. GitHub keeps only the public half.
+
+### 2. Install it on this repository only
+
+1. Back in **Developer settings, GitHub Apps**, click **Edit** next to the App, then **Install App**.
+2. Click **Install** next to your account.
+3. Choose **Only select repositories**, select `OpenChuckCAM`, and click **Install**.
+
+### 3. Create the `docs-release` environment
+
+1. In the repository, **Settings**, then **Environments** in the left sidebar, then **New environment**. Name it `docs-release` and click **Configure environment**.
+2. Optionally, tick **Required reviewers** and add yourself: the job then waits for your approval at each release.
+3. Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, choose the type **Tag**, and enter `app-v*`. Add no branch rule.
+4. Under **Environment variables**, click **Add Variable**: name `DOCS_RELEASE_APP_CLIENT_ID`, value the App's client ID (step 1.11).
+5. Under **Environment secrets**, click **Add Secret**: name `DOCS_RELEASE_APP_PRIVATE_KEY`, value the whole content of the `.pem` file, including the `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines.
+6. Delete the downloaded `.pem` file from your computer. If the key is ever lost or may have leaked, generate a new one on the App's page, replace the secret, and delete the old key there.
+
+### 4. Make the App the only writer of `docs-releases`
+
+1. In the repository, **Settings**; under "Code, planning, and automation" in the left sidebar, **Rules**, then **Rulesets**.
+2. **New ruleset**, then **New branch ruleset**.
+3. **Ruleset name:** `docs-releases is written by the release workflow only`. **Enforcement status:** **Active**.
+4. Under **Bypass list**, click **Add bypass**, search for the App (`OpenChuckCAM docs release`), select it and click **Add selected**. Leave it as **Always allow**. Add nobody else.
+5. Under **Target branches**, click **Add target**, choose **Include by pattern**, and enter `docs-releases`. The branch does not have to exist yet: the first application release creates it.
+6. Under **Branch rules** (*unchecked*: GitHub's documentation calls this section "Branch protections"), tick **Restrict creations**, **Restrict updates**, **Restrict deletions**, **Require linear history** and **Block force pushes**. Do not tick **Require a pull request before merging**: the branch is never merged.
+7. Click **Create**.
+
+GitHub's documentation lists deploy keys as bypass actors only on GitHub Enterprise Server, which is why the writer is an App and not a deploy key.
+
+### 5. Check the `github-pages` environment
+
+GitHub creates `github-pages` when Pages is switched on (step 6). In **Settings, Environments, github-pages**, check that **Deployment branches and tags** allows `main` only (*unchecked*: GitHub's default for this environment). Add no secrets: the deploy job needs none.
+
+### 6. Switch on GitHub Pages
+
+**Settings**, then **Pages** (under "Code, planning, and automation"). Under **Build and deployment**, **Source**, choose **GitHub Actions**. No custom domain.
+
+The guide appears after the next Nightly build that publishes the `nightly` pre-release, or at once if you run the **Docs site** workflow by hand (**Actions, Docs site, Run workflow**, on `main`). Its address is `https://paulhampson.github.io/OpenChuckCAM/`.
+
+### 7. Check it
+
+1. Run the **Docs site** workflow by hand on `main`. It should build, check and deploy, and the page should show the nightly build's date and commit in its footer.
+2. Run the **Release** workflow by hand on `main` with **dry_run** ticked. The job "User guide for the release" should build and check the guide (on a dry run, problems are reported and the run goes on); `publish-docs` does not run.
+3. Try to push to `docs-releases` yourself, for example `git push origin HEAD:docs-releases` from any clone. GitHub must refuse it, naming the ruleset. If it is accepted, the ruleset is not working: check that it is **Active** and that only the App is in its bypass list, then remove the branch you created (set the ruleset to **Disabled** for that, and back to **Active** after).
+
+The first application release then creates `docs-releases` with its own folder, and the site lists the version.

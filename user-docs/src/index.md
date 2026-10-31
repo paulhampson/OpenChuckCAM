@@ -44,6 +44,6 @@ Read the [known limitations](start/limitations.md) before you rely on the progra
 
 ## About this guide
 
-Each release of OpenChuckCAM has its own copy of this guide; use **Version** at the top of the page to switch between them. The development version describes the program as it is built from the main branch, and may describe features that are not in a release yet.
+Each release of OpenChuckCAM has its own copy of this guide; use **Version** at the top of the page to switch between them. The version called *latest* describes the nightly build, the development version built each night from the main branch, and may describe features that are not in a release yet.
 
 The guide is part of the project's source and is licensed AGPL-3.0-or-later. To report a mistake in it, see [Contributing to this guide](contributing.md).

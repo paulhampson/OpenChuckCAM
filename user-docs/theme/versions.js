@@ -31,7 +31,7 @@
     data.versions.forEach(function (v) {
       var o = document.createElement('option');
       o.value = v.path;
-      o.textContent = v.version === 'latest' ? 'latest (development)' : v.version;
+      o.textContent = v.version === 'latest' ? 'latest (nightly build)' : v.version;
       if (v.version === current) o.selected = true;
       select.appendChild(o);
     });

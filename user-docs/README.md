@@ -30,4 +30,4 @@ To read it, serve the folder (`python3 -m http.server -d /tmp/guide/root`) and o
 
 ## How it is published
 
-Pull requests that change `user-docs/` run the checks above. A push to `main` also deploys the site to GitHub Pages: `latest/` from `main`, and every released version from the `docs-releases` branch, which only the release workflow writes. See [`docs/releasing.md`](../docs/releasing.md) for the release steps and the one-time setup.
+A pull request that changes `user-docs/` runs the checks above as the `User guide` job of CI, part of `CI required checks`. Nothing is published on a push to `main`: `latest/` is the nightly build, deployed by `.github/workflows/docs-site.yml` after each Nightly build that publishes the `nightly` pre-release, from that build's commit. Each released version comes from the `docs-releases` branch, which only the release workflow writes. See [`docs/releasing.md`](../docs/releasing.md) for the release steps and the one-time setup.

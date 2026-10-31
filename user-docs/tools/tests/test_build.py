@@ -52,9 +52,21 @@ class Stamp(unittest.TestCase):
         html = build.fill(TEMPLATE, version=None, tag=None, commit="abc1234", date="2026-11-02", notice=NOTICE)
         self.assertIn('content="latest"', html)
         self.assertIn("Version: latest", html)
-        self.assertIn("Describes the development version, commit abc1234, built 2026-11-02.", html)
+        self.assertIn("Describes the development version at commit abc1234 of 2026-11-02 (a preview, not a published build).", html)
         self.assertIn('<span data-newest-release></span>', html, "the assembler fills in the newest release")
         self.assertNotIn("@@", html)
+
+    def test_req_nfr_19_nightly_build(self):
+        html = build.fill(TEMPLATE, version=None, tag=None, commit="abc1234", date="2026-11-02", notice=NOTICE,
+                          nightly="2026-11-03")
+        self.assertIn('content="latest"', html)
+        self.assertIn("Describes the nightly build of 2026-11-03, commit abc1234.", html)
+        self.assertNotIn("@@", html)
+
+    def test_req_nfr_19_a_release_is_not_a_nightly_build(self):
+        with self.assertRaises(ValueError):
+            build.fill(TEMPLATE, version="0.31.0", tag="app-v0.31.0", commit="abc1234", date="2026-11-02",
+                       notice=NOTICE, nightly="2026-11-03")
 
     def test_req_nfr_19_release_build(self):
         html = build.fill(TEMPLATE, version="0.31.0", tag="app-v0.31.0", commit="abc1234", date="2026-11-02", notice=NOTICE)

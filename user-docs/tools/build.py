@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Builds the user guide with mdBook and finishes the pages (decision 0400, NFR-19).
 
-    python3 user-docs/tools/build.py --out DIR [--version X.Y.Z --tag app-vX.Y.Z]
+    python3 user-docs/tools/build.py --out DIR [--nightly YYYY-MM-DD | --version X.Y.Z --tag app-vX.Y.Z]
 
-Without --version it builds the development version ("latest"). MDBOOK names the mdBook binary
+Without --version it builds the development version: with --nightly DATE the published "latest"
+(the nightly build of that date), without it a preview. MDBOOK names the mdBook binary
 (default `mdbook`, pinned in .github/workflows/docs-site.yml). After mdBook it:
 - makes the contents list work without JavaScript (links relative to the page, the current page
   marked), because mdBook's {{#toc}} writes links relative to the site root;
@@ -48,13 +49,22 @@ def fix_nav(text, rel):
     return _NAV.sub(nav, text, count=1)
 
 
-def fill(text, version, tag, commit, date, notice):
-    """Fill the template's placeholders for the development build (version None) or a release."""
+def fill(text, version, tag, commit, date, notice, nightly=None):
+    """Fill the template's placeholders.
+
+    version None: the development version. With `nightly` (the date of the nightly build it was
+    built for) it is the published "latest"; without, a preview (a pull request or a local build).
+    """
     if version is None:
-        stamp = f"Describes the development version, commit {commit}, built {date}."
+        if nightly:
+            stamp = f"Describes the nightly build of {nightly}, commit {commit}."
+        else:
+            stamp = f"Describes the development version at commit {commit} of {date} (a preview, not a published build)."
         text = text.replace("<!--latest-banner-->", "").replace("<!--/latest-banner-->", "")
         meta, label = "latest", "latest"
     else:
+        if nightly:
+            raise ValueError("a release build is not a nightly build")
         if tag != f"app-v{version}":
             raise ValueError(f"a release build needs its tag app-v{version}, not {tag!r}")
         stamp = f"Describes OpenChuckCAM {version} ({tag}, commit {commit}), built {date}."
@@ -70,7 +80,7 @@ def _git(*args):
     return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
 
 
-def build(out, version=None, tag=None):
+def build(out, version=None, tag=None, nightly=None):
     mdbook = os.environ.get("MDBOOK", "mdbook")
     if os.path.exists(out):
         shutil.rmtree(out)
@@ -93,7 +103,7 @@ def build(out, version=None, tag=None):
             rel = os.path.relpath(path, out).replace(os.sep, "/")
             with open(path, encoding="utf-8") as f:
                 text = f.read()
-            text = fill(fix_nav(text, rel), version, tag, commit, date, notice)
+            text = fill(fix_nav(text, rel), version, tag, commit, date, notice, nightly)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
     os.makedirs(os.path.join(out, "fonts"), exist_ok=True)
@@ -111,9 +121,10 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--version", help="a release version (X.Y.Z); without it, the development version")
     ap.add_argument("--tag", help="the release tag, app-v<version>")
+    ap.add_argument("--nightly", metavar="DATE", help="the date of the nightly build this development version is published for")
     args = ap.parse_args(argv)
     try:
-        build(os.path.abspath(args.out), args.version, args.tag)
+        build(os.path.abspath(args.out), args.version, args.tag, args.nightly)
     except (ValueError, subprocess.CalledProcessError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

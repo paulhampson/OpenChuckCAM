@@ -1,34 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# The user guide in user-docs/ (decision 0400, NFR-19).
+# Publishes the user guide in user-docs/ to GitHub Pages (decision 0400, NFR-19).
 #
-# - On a pull request that changes user-docs/ or this file: build the development version and run
-#   the checks (the tools' own tests; links and anchors with lychee; HTML with the Nu HTML Checker;
-#   user-docs/tools/check.py for wording, images, the G-code notice of NFR-12 and requests to other
-#   sites). Stale tutorial screenshots only warn here; the release workflow refuses them.
-# - On a push to main that changes them, after a successful Release run (a new version may have been
-#   added to the docs-releases branch), or by hand: the same, then deploy to GitHub Pages: latest/
-#   from main beside every released version from docs-releases, each checked against its manifest.
+# "latest" is the nightly build: it is deployed only after a Nightly build run that published the
+# rolling `nightly` pre-release, and it is built from the commit of the `nightly` tag, stamped with
+# that build's date. Nothing is deployed on a push to main. After a Release run (which may have added
+# a version to the docs-releases branch), or by hand, the site is redeployed the same way: latest/
+# from the `nightly` tag beside every released version, each checked against its manifest.
 #
-# This is not one of ci.yml's required checks, and a change only to user-docs/ turns on none of
-# ci.yml's heavy jobs (decision 0249). It needs no Rust toolchain of the project: the two tools are
-# installed with `cargo install --locked` from crates.io (whose index records each crate's checksum)
-# and cached by version; the Nu HTML Checker comes from npm and is checked against its SHA-256.
-# Every action is pinned by full commit SHA. A pin written as UNVERIFIED fails the check.
+# Two environments, two jobs, two different powers:
+# - `github-pages` (this workflow's deploy job): deploys the Pages site. Its deployment branch rule
+#   is main only; a workflow_run or a manual run on main runs with GITHUB_REF = main, so it is
+#   admitted. This workflow only READS docs-releases and never writes it.
+# - `docs-release` (release.yml's publish-docs job only): the only writer of docs-releases, through
+#   the GitHub App whose credentials only that environment holds; app-v* tags only.
+#
+# The pull request check of the guide is the `docs` job of ci.yml, part of `CI required checks`.
+# Both use .github/actions/user-docs, so what is checked is what is published.
 name: Docs site
 
 on:
-  pull_request:
-    paths:
-      - "user-docs/**"
-      - ".github/workflows/docs-site.yml"
-  push:
-    branches: [main]
-    paths:
-      - "user-docs/**"
-      - ".github/workflows/docs-site.yml"
   workflow_run:
-    workflows: [Release]
+    workflows: [Nightly build, Release]
     types: [completed]
   workflow_dispatch:
 
@@ -36,104 +29,87 @@ permissions:
   contents: read
 
 concurrency:
-  group: docs-site-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  MDBOOK_VERSION: "0.5.4"
-  LYCHEE_VERSION: "0.24.2"
-  VNU_VERSION: "26.10.12"
-  # SHA-256 of https://registry.npmjs.org/vnu-jar/-/vnu-jar-26.10.12.tgz, computed when it was pinned after checking
-  # the tarball against the sha512 integrity the npm registry publishes for it.
-  VNU_SHA256: "3925f07364f5e5a111cef54a7baefa575b22d05c70f8ced048f0616d4579b7ab"
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  check:
-    name: Build and check the user guide
-    # After a Release run, only when it succeeded; every other event always.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+  build:
+    name: Build the user guide for Pages
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # To see whether the Nightly build run that triggered this one published the pre-release.
+      actions: read
+    outputs:
+      publish: ${{ steps.nightly.outputs.publish }}
     steps:
+      - name: Which nightly build does "latest" describe?
+        id: nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          TRIGGER: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_run ] && [ "$TRIGGER" = "Nightly build" ]; then
+            published=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name == "Publish the nightly pre-release" and .conclusion == "success")] | length')
+            if [ "$published" != 1 ]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "The Nightly build run published no new pre-release (no change, or not main); the guide is not redeployed." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          if ! gh release view nightly -R "$REPO" > /dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=User guide not published::There is no nightly pre-release yet, and \"latest\" is the nightly build."
+            exit 0
+          fi
+          date=$(gh release view nightly -R "$REPO" --json publishedAt --jq '.publishedAt[0:10]')
+          {
+            echo "publish=true"
+            echo "date=$date"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.nightly.outputs.publish == 'true'
         with:
           persist-credentials: false
-          # The screenshot check compares commits; the stamp names one.
+          ref: refs/tags/nightly
           fetch-depth: 0
-
-      - name: Cache the documentation tools
-        id: tools
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/docs-tools
-          key: docs-tools-mdbook-${{ env.MDBOOK_VERSION }}-lychee-${{ env.LYCHEE_VERSION }}-vnu-${{ env.VNU_VERSION }}-${{ runner.os }}
-
-      - name: Install mdBook, lychee and the Nu HTML Checker
-        if: steps.tools.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
-        run: |
-          # Outside the checkout, so the project's pinned toolchain is not downloaded for this.
-          cargo install mdbook --version "$MDBOOK_VERSION" --locked --root ~/docs-tools
-          cargo install lychee --version "$LYCHEE_VERSION" --locked --root ~/docs-tools
-          curl -sSfL -o vnu.tgz "https://registry.npmjs.org/vnu-jar/-/vnu-jar-${VNU_VERSION}.tgz"
-          echo "$VNU_SHA256  vnu.tgz" | sha256sum -c -
-          tar xzf vnu.tgz
-          mkdir -p ~/docs-tools/vnu
-          cp package/build/dist/vnu.jar ~/docs-tools/vnu/vnu.jar
-
-      - name: Test the documentation tools
-        run: python3 -m unittest discover -s user-docs/tools/tests -v
-
-      - name: Build the development version
-        run: MDBOOK=~/docs-tools/bin/mdbook python3 user-docs/tools/build.py --out "$RUNNER_TEMP/latest"
-
       - name: Fetch the released versions
         id: releases
+        if: steps.nightly.outputs.publish == 'true'
         run: |
-          # The publish-only branch (decision 0400 section V). It does not exist until the first release.
+          # The publish-only branch; it does not exist until the first application release.
           if git ls-remote --exit-code --heads origin docs-releases > /dev/null; then
             git fetch --depth 1 origin docs-releases
             git worktree add --detach "$RUNNER_TEMP/releases" FETCH_HEAD
             echo "dir=$RUNNER_TEMP/releases" >> "$GITHUB_OUTPUT"
           else
-            echo "No docs-releases branch yet: the site has the development version only."
+            echo "No docs-releases branch yet: the site has the nightly build only."
             echo "dir=" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Assemble the site
-        env:
-          RELEASES: ${{ steps.releases.outputs.dir }}
-          REPO_NAME: ${{ github.event.repository.name }}
-        run: |
-          # Under a folder named like the repository, so root-relative links resolve in the link check.
-          python3 user-docs/tools/assemble.py site --latest "$RUNNER_TEMP/latest" ${RELEASES:+--releases "$RELEASES"} \
-            --out "$RUNNER_TEMP/pages/$REPO_NAME" --base "/$REPO_NAME/"
-
-      - name: Check wording, images, the G-code notice and requests to other sites
-        env:
-          REPO_NAME: ${{ github.event.repository.name }}
-        run: python3 user-docs/tools/check.py --site "$RUNNER_TEMP/pages/$REPO_NAME" --screens warn
-
-      - name: Check links and anchors
-        env:
-          REPO_NAME: ${{ github.event.repository.name }}
-        run: ~/docs-tools/bin/lychee --offline --include-fragments --no-progress --root-dir "$RUNNER_TEMP/pages" "$RUNNER_TEMP/pages/$REPO_NAME"
-
-      - name: Check the HTML
-        env:
-          REPO_NAME: ${{ github.event.repository.name }}
-        run: java -jar ~/docs-tools/vnu/vnu.jar --skip-non-html --errors-only "$RUNNER_TEMP/pages/$REPO_NAME/latest" "$RUNNER_TEMP/pages/$REPO_NAME/index.html" "$RUNNER_TEMP/pages/$REPO_NAME/versions.html" "$RUNNER_TEMP/pages/$REPO_NAME/404.html"
-
-      - name: Keep the site for the deploy
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - name: Build and check
+        id: guide
+        if: steps.nightly.outputs.publish == 'true'
+        uses: ./.github/actions/user-docs
         with:
-          path: ${{ runner.temp }}/pages/${{ github.event.repository.name }}
+          mode: nightly
+          nightly-date: ${{ steps.nightly.outputs.date }}
+          releases: ${{ steps.releases.outputs.dir }}
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: steps.nightly.outputs.publish == 'true'
+        with:
+          path: ${{ steps.guide.outputs.site }}
 
   deploy:
     name: Publish to GitHub Pages
-    needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -142,9 +118,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     steps:
       - name: Is GitHub Pages switched on?
         id: pages
@@ -153,7 +126,7 @@ jobs:
       - name: Not published
         if: steps.pages.outcome != 'success'
         run: |
-          echo "::notice title=User guide not published::GitHub Pages is not switched on for this repository. The owner sets Settings > Pages > Source to GitHub Actions (docs/releasing.md, One-time setup for the documentation site). The guide was built and checked; nothing else is affected."
+          echo "::notice title=User guide not published::GitHub Pages is not switched on for this repository. The owner sets Settings, Pages, Source to GitHub Actions (docs/releasing.md, One-time setup for the documentation site). The guide was built and checked; nothing else is affected."
       - name: Deploy
         id: deploy
         if: steps.pages.outcome == 'success'

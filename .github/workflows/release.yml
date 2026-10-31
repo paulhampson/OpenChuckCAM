@@ -272,81 +272,46 @@ jobs:
           gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false
           echo "Published the release $TAG." >> "$GITHUB_STEP_SUMMARY"
 
-  # The user guide for this release (decision 0400 sections R and V). Built at the tag, stamped
-  # with its version, and checked: the checks of docs-site.yml, plus the release-notes section for
-  # the version, the stamp, and tutorial screenshots no older than the last change to the screens.
-  # On a publishing run a failure stops the release (publish-app needs this job); on a dry run the
-  # problems are reported as warnings.
+  # The user guide for this release (decision 0400 sections R and V): built at the tag, stamped with
+  # its version, and checked by .github/actions/user-docs as the pull request check does, plus the
+  # release checks (a release-notes section for the version, the stamp, and tutorial screenshots no
+  # older than the last change to the screens). On a publishing run a failure stops the release
+  # (publish-app needs this job); on a dry run it is reported and the run goes on.
   docs:
     name: User guide for the release
     needs: [plan, gate]
     if: needs.plan.outputs.app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      MDBOOK_VERSION: "0.5.4"
-      LYCHEE_VERSION: "0.24.2"
-      VNU_VERSION: "26.10.12"
-      # As in docs-site.yml.
-      VNU_SHA256: "3925f07364f5e5a111cef54a7baefa575b22d05c70f8ced048f0616d4579b7ab"
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Cache the documentation tools
-        id: tools
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Build and check
+        id: guide
+        uses: ./.github/actions/user-docs
+        continue-on-error: ${{ needs.plan.outputs.publish != 'true' }}
         with:
-          path: ~/docs-tools
-          key: docs-tools-mdbook-${{ env.MDBOOK_VERSION }}-lychee-${{ env.LYCHEE_VERSION }}-vnu-${{ env.VNU_VERSION }}-${{ runner.os }}
-      - name: Install mdBook, lychee and the Nu HTML Checker
-        if: steps.tools.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
-        run: |
-          cargo install mdbook --version "$MDBOOK_VERSION" --locked --root ~/docs-tools
-          cargo install lychee --version "$LYCHEE_VERSION" --locked --root ~/docs-tools
-          curl -sSfL -o vnu.tgz "https://registry.npmjs.org/vnu-jar/-/vnu-jar-${VNU_VERSION}.tgz"
-          echo "$VNU_SHA256  vnu.tgz" | sha256sum -c -
-          tar xzf vnu.tgz
-          mkdir -p ~/docs-tools/vnu
-          cp package/build/dist/vnu.jar ~/docs-tools/vnu/vnu.jar
-      - name: Build and check the user guide
-        env:
-          VERSION: ${{ needs.plan.outputs.version }}
-          PUBLISH: ${{ needs.plan.outputs.publish }}
-        run: |
-          set +e
-          tag="app-v$VERSION"
-          python3 -m unittest discover -s user-docs/tools/tests
-          rc=$?
-          MDBOOK=~/docs-tools/bin/mdbook python3 user-docs/tools/build.py --out "$RUNNER_TEMP/docs/v$VERSION" --version "$VERSION" --tag "$tag" || rc=1
-          if [ -d "$RUNNER_TEMP/docs/v$VERSION" ]; then
-            python3 user-docs/tools/check.py --site "$RUNNER_TEMP/docs/v$VERSION" --release "$VERSION" --screens strict || rc=1
-            # Links to the version list (../versions.html) resolve only in an assembled site.
-            python3 user-docs/tools/assemble.py site --latest "$RUNNER_TEMP/docs/v$VERSION" --out "$RUNNER_TEMP/check-site" || rc=1
-            ~/docs-tools/bin/lychee --offline --include-fragments --no-progress "$RUNNER_TEMP/check-site/latest" "$RUNNER_TEMP/check-site/versions.html" || rc=1
-            java -jar ~/docs-tools/vnu/vnu.jar --skip-non-html --errors-only "$RUNNER_TEMP/docs/v$VERSION" || rc=1
-          fi
-          if [ "$rc" -ne 0 ]; then
-            if [ "$PUBLISH" = "true" ]; then
-              echo "::error::The user guide for $tag failed its checks, so nothing is published (docs/releasing.md, Each application release)."
-              exit 1
-            fi
-            echo "::warning::The user guide for $VERSION failed its checks (see above). A release would stop here."
-          fi
-          echo "User guide for $VERSION built and checked." >> "$GITHUB_STEP_SUMMARY"
+          mode: release
+          version: ${{ needs.plan.outputs.version }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.guide.outcome == 'success'
         with:
           name: user-guide-${{ needs.plan.outputs.version }}
-          path: ${{ runner.temp }}/docs/v${{ needs.plan.outputs.version }}
+          path: ${{ steps.guide.outputs.guide }}
           if-no-files-found: error
 
   # Adds the release's user guide to the publish-only branch docs-releases (decision 0400 section V),
-  # after the program release is published. Only this job writes that branch, with the deploy key
-  # held in the `docs-release` environment, which only app-v* tags may use (docs/releasing.md,
-  # One-time setup for the documentation site). A version already on the branch is never replaced.
-  # When it pushes, docs-site.yml redeploys the site (it runs after every successful Release run).
+  # after the program release is published. This is the only job that writes that branch, and the
+  # only one that uses the `docs-release` environment: it holds the client ID and private key of the
+  # project's GitHub App, the ruleset's only bypass actor on docs-releases, and only app-v* tags may
+  # use it (docs/releasing.md, One-time setup for the documentation site). The token lasts an hour
+  # and can only write repository contents. A version already on the branch is never replaced.
+  # docs-site.yml then redeploys the site (it runs after every successful Release run); it only
+  # reads docs-releases, in the separate `github-pages` environment.
   publish-docs:
     name: Publish the release's user guide
     needs: [plan, docs, publish-app]
@@ -359,12 +324,23 @@ jobs:
     steps:
       - name: Is the documentation release set up?
         env:
-          KEY: ${{ secrets.DOCS_RELEASE_DEPLOY_KEY }}
+          CLIENT_ID: ${{ vars.DOCS_RELEASE_APP_CLIENT_ID }}
+          KEY: ${{ secrets.DOCS_RELEASE_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$KEY" ]; then
-            echo "::error title=User guide not published::The secret DOCS_RELEASE_DEPLOY_KEY of the docs-release environment is missing. The program release is published; its user guide is not. Do the one-time setup in docs/releasing.md (One-time setup for the documentation site), then re-run this job."
+          missing=""
+          [ -n "$CLIENT_ID" ] || missing="the variable DOCS_RELEASE_APP_CLIENT_ID"
+          [ -n "$KEY" ] || missing="${missing:+$missing and }the secret DOCS_RELEASE_APP_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=User guide not published::The docs-release environment has no $missing. The program release is published; its user guide is not. Do the one-time setup in docs/releasing.md (One-time setup for the documentation site), then re-run this job."
             exit 1
           fi
+      - name: Get a token from the docs release App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -376,21 +352,14 @@ jobs:
       - name: Add the guide to docs-releases
         id: add
         env:
-          KEY: ${{ secrets.DOCS_RELEASE_DEPLOY_KEY }}
+          TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.plan.outputs.version }}
           TAG: ${{ needs.plan.outputs.tag }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          umask 077
-          mkdir -p ~/.ssh
-          # GitHub's SSH host keys, read over HTTPS from its API rather than trusted on first use.
-          curl -sSf https://api.github.com/meta \
-            | python3 -c 'import json, sys; [print("github.com", k) for k in json.load(sys.stdin)["ssh_keys"]]' > ~/.ssh/known_hosts
-          printf '%s\n' "$KEY" > ~/.ssh/docs_release
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/docs_release -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
-          url="git@github.com:$REPO.git"
+          url="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
           if git ls-remote --exit-code --heads "$url" docs-releases > /dev/null; then
             git clone --quiet --depth 1 --branch docs-releases "$url" branch
           else

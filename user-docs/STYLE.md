@@ -59,6 +59,10 @@ Also avoid: asides that comment on how easy something is ("simply", "just", "of 
 - Screenshots show the real program, taken with `user-docs/tools/capture.py` at 1366 x 768 (decision 0400 section G), and only the repository's example models or generated ones. Never show a private project.
 - A diagram is inline SVG drawn with `currentColor`, so it works in the light and the dark theme, with a `<title>` and `<desc>`.
 
+## Versions
+
+The guide published as *latest* is the nightly build: it is built from the commit of the `nightly` pre-release and its footer says "Describes the nightly build of <date>, commit <commit>". Write each page for the program as it is on `main`, and change it in the same pull request as the behaviour it describes; it reaches readers with the next nightly build. A release's copy is fixed when the release is made.
+
 ## Design
 
 The look is set by `theme/style.css` and `theme/index.hbs`; pages do not set colours or fonts.

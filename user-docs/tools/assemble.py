@@ -90,7 +90,7 @@ td {{ border-bottom: 1px solid #d6d2ca; padding: 0.45rem 0.8rem 0.45rem 0; verti
 
 
 def _versions_page(newest, releases):
-    rows = ['<tr><td><a href="latest/">latest</a></td><td>The development version, built from the main branch. '
+    rows = ['<tr><td><a href="latest/">latest</a></td><td>The nightly build: the development version, built from the main branch. '
             'It may describe features that are not in a release yet.</td></tr>']
     for v in releases:
         what = "The newest release." if v == newest else "An earlier release."
