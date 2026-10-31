@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use openchuck_app::{Application, Threads};
+use openchuck_app::{Application, PostSelection, Threads};
 use openchuck_sim::{DexelStock, Simulator};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let repeats: usize = args.next().map(|r| r.parse()).transpose()?.unwrap_or(1);
     let temporary = std::env::temp_dir().join(format!("sim-times-{}", std::process::id()));
-    let app = if input
+    let mut app = if input
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("stl"))
     {
@@ -45,6 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Application::open(&input, Threads::All)?
     };
+    // The Makera Z1 post, as the reference jobs use, so there is G-code.
+    app.set_post(Some(PostSelection::parse("makera-z1")));
     let started = Instant::now();
     let run = app.simulate()?;
     println!(

@@ -777,11 +777,7 @@ mod tests {
                     }
                     let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
                     let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
-                    assert_eq!(
-                        bits(&skipping),
-                        bits(&searched),
-                        "{name}: {bad} at {at}"
-                    );
+                    assert_eq!(bits(&skipping), bits(&searched), "{name}: {bad} at {at}");
                 }
             }
         }
