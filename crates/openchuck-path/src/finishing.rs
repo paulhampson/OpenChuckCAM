@@ -158,13 +158,15 @@ pub(crate) struct FreeEnds {
 }
 
 /// The turns at the part's free ends `ends` (decision record 0344): with
-/// Face free ends on, a Stepdown and stock that earlier operations left,
-/// the tool (`grown` by the stock to leave) goes down beside each free end
-/// face in layers of the Stepdown to the rotary axis, one whole turn of A at
-/// constant X each, starting at A `start` turning by `sign`, no more than
-/// `step` degrees between points. Without a Stepdown, or on stock no earlier
-/// operation left, the face is not faced and a warning says why (C1, C2 and
-/// OI-1394). A face deeper than the flutes refuses the operation (C3). Where
+/// Face free ends on and a Stepdown, the tool (`grown` by the stock to leave)
+/// goes down beside each free end face in layers of the Stepdown to the
+/// rotary axis, one whole turn of A at constant X each, starting at A `start`
+/// turning by `sign`, no more than `step` degrees between points, from the
+/// stock earlier operations left or, for the first operation of a setup, the
+/// setup's own stock, when the note says the real blank must match it
+/// (OI-1394). Without a Stepdown, or on a stock of no known size, the face is
+/// not faced and a warning says why (C1, C2). A face deeper than the flutes
+/// refuses the operation (C3; OI-1396). Where
 /// the stock carries on past the ring the tool cuts, a warning says the
 /// stock there can be cut free (the owner's choice on OI-1390).
 pub(crate) fn free_ends(
