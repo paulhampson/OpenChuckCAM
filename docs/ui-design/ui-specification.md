@@ -498,6 +498,11 @@ Boards 3 and 3b.
 - **Turning it on from a saved 0.** Ticking Adaptive spacing on an operation that holds a Scallop height of 0 opens a dialog, "Turn on adaptive spacing", that explains that 0 meant no limit and asks for the Allowed excess, suggesting 0.01 mm and accepting a deliberate 0. Cancel changes nothing; Turn on sets the switch and the height in one step that one Undo reverses. Unticking it again keeps the height as the Scallop height.
 - **A partial path.** When adaptive spacing met a limit or could not confirm a place, the operation's warning (in Messages and on the operation) says where and why, and that the path made so far is kept and is not complete. Post and export (11.6) lists it and asks for its own tick box before writing.
 
+**Rings ([decision 0390](../decisions/0390-helical-finishing-in-rings.md), proposed; the entry below is proposed by lane LINKEDPASS for the owner to check).** The inspector of a helical finishing operation shows, in Pattern and tolerance:
+
+- **Passes**: a segmented control, Spiral or Rings, Spiral for a new operation and for one saved before it. Its tooltip is the parameter's description: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle."
+- The note "helical finishing cut n rings, s mm apart, …" shows in Messages and on the operation as other path notes do.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.

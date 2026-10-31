@@ -320,6 +320,31 @@ fn req_op_04_req_op_05_clean_up_arcs_are_added_between_the_wraps_of_a_helix() {
     assert!(on.warnings.is_empty(), "{:?}", on.warnings);
 }
 
+#[test]
+fn req_op_04_rings_are_added_between_rings_until_the_allowed_excess_is_met() {
+    // Rings reach both ends of the part, so the whole length is measured
+    // (decision record 0390 item 5).
+    let p = cylinder();
+    let rings = (
+        openchuck_path::helical::parameter::PASS_SHAPE,
+        ParameterValue::Text("rings".to_owned()),
+    );
+    let off = generated(
+        &p,
+        &HelicalFinishing,
+        &[
+            rings.clone(),
+            (ADAPTIVE_SPACING, ParameterValue::Flag(false)),
+        ],
+    );
+    let on = generated(&p, &HelicalFinishing, &[rings]);
+    let (before, after) = (left(&p, &off, (1.0, 11.0)), left(&p, &on, (1.0, 11.0)));
+    assert!(before > 0.3, "off left {before}");
+    assert!(after <= 0.012, "on left {after}");
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+}
+
 fn axial_pattern() -> (&'static str, ParameterValue) {
     (PATTERN, ParameterValue::Text("axial".to_owned()))
 }
