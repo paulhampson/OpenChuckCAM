@@ -58,7 +58,7 @@ Tests named after the requirements (AGENTS.md), written first and seen failing:
 
 ## Consequences
 
-- `openchuck-path::simultaneous`: private changes, plus the new public constant `FLAT_BLEND`; a new private module `section`. Additions only, so no version bump (decision 0048).
+- `openchuck-path::simultaneous`: private changes only, and a new private module `section`; the public API does not change, so no version bump (decision 0048).
 - **Requirements (agreed by the owner, 30 Oct 2026, relayed):** `requirements.md` gains OP-26 (P1): "Simultaneous 4-axis finishing drives a section of the part that does not surround the rotary axis (an off-axis feature such as a crank pin) round that section's own centre, so its whole outline is cut with the tool on the normal; a section in several separate pieces, and surfaces hidden from that centre, stay under OP-20." OP-20 gains "Off-axis sections are covered by OP-26." `verification-plan.md` gains the row OP-26 (P1, T, System): "On the crankshaft test piece every off-axis pin is covered all round within tolerance in one pass per pin zone, the tool axis stays within the lead and tilt limits, and the independent checker reports no gouge". The work breakdown's count of requirements is brought up to date (101 of 175 P1).
 - No golden file changes. Programs change only where the job was refused before, at a held band, or where the new tests apply (a long move that fails at one of its extra poses, a blind test pose, a flat bottom on the normal).
 - `testdata/step/valid/crankshaft.step`: the owner's CrankShaft STEP, with its row in `testdata/README.md`.

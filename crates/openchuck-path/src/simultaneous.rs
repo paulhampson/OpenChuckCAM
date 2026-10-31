@@ -106,7 +106,7 @@ pub const NORMAL_SPAN: f64 = 0.5;
 /// the angle (about 5.7 degrees), at and beyond which the tool is seeded
 /// with its corner on the drive point; nearer the normal the seed moves
 /// towards the tool's centre in step with the lean (OI-337).
-pub const FLAT_BLEND: f64 = 0.1;
+const FLAT_BLEND: f64 = 0.1;
 
 /// How many times a move may be halved.
 pub const MAX_DEPTH: u32 = 12;
@@ -1150,6 +1150,7 @@ impl Plan<'_> {
             Some(mid) => {
                 let over = self.deviation(a, b, &mid);
                 let error = over.unwrap_or(0.0);
+                let jumps = self.travel(a, b) > self.reach;
                 if depth < MAX_DEPTH {
                     // The straight move must hold at the quarter points too.
                     // A quarter with no material under it is no reason to
@@ -1183,10 +1184,7 @@ impl Plan<'_> {
                             out,
                         );
                     }
-                } else if let jumps = self.travel(a, b) > self.reach
-                    && (error.abs() > self.chord || jumps)
-                    && !self.wall_move(a, b)
-                {
+                } else if (error.abs() > self.chord || jumps) && !self.wall_move(a, b) {
                     // After every halving the tool still cuts in, or still
                     // jumps further than its radius between two points as
                     // good as equal on the track (where the drive passes
