@@ -1115,7 +1115,12 @@ impl Plan<'_> {
         // An edge found by halving lies within a fraction of a degree of
         // angles that do not reach: the axis keeps `GATE_MARGIN` inside it,
         // as the reach between samples changes.
-        let away = (best - t0).signum();
+        // 0 when the target itself reaches (`signum` of 0.0 is 1).
+        let away = if (best - t0).abs() < 1e-12 {
+            0.0
+        } else {
+            (best - t0).signum()
+        };
         let best = if away != 0.0 && test(best + away * GATE_MARGIN) {
             best + away * GATE_MARGIN
         } else {

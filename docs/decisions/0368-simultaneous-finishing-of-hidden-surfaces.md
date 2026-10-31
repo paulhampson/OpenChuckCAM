@@ -119,6 +119,14 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
   - `req_op_20_req_op_12_the_crankshaft_is_finished_where_reached_and_nothing_is_cut_in` (`stl/crankshaft.stl`, 3.175 mm ball, 0.3 mm stepover): generated in 6 s; nothing is cut in beyond the tolerance at any of its 4,512 vertices away from the ends (deepest 0.006 mm). Three areas are reported, all where the first pin meets the web at X 10, with a combined area of 3.6 mm2: 3.2 mm2 blocked near A 180, and two of 0.2 mm2 too narrow near A 137 and A 223.
   - `req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads`, and `req_op_20_a_part_with_nothing_hidden_gets_no_hidden_passes_or_reports` (a plain cylinder).
 - **Test times** (alone on one test thread, uninstrumented): the blades 79 s and the keyway's walls 69 s, listed as long-running in `.config/nextest.toml`. The others take 0.6 to 58 s (the two pins 4 mm apart 44 s, 2 mm apart 58 s, the crankshaft 13 s), 7.7 minutes in all for the sixteen. Most of each test's time is the independent check, not the generation (6 to 24 s).
+- `req_op_20_req_op_02_only_areas_inside_the_operations_boundary_are_reported`: the 2.5 mm slot within a boundary of X 0 to 10. Only the walls inside it are reported (11 s).
+- **Coverage** (`cargo llvm-cov`, `openchuck-path`, the OP-20 tests alone, without the two long ones): `simultaneous/hidden.rs` 94.2 % of lines. The lines left are:
+  - the defensive branches of NFR-07 (a mesh with no finite vertex, a missing triangle or vertex, a degenerate normal);
+  - the exact-face branches, which the crate's exact-cylinder test runs;
+  - the shank step above a profile ending below the flutes;
+  - the region scope, now covered by the boundary test.
+
+  The coverage run also found a defect: where the target angle reached, the band was taken on one side only, 0.5 degrees off (`f64::signum` of 0 is 1). It is fixed.
 - **On exact faces.** `req_op_05_exact_faces_drive_the_path_with_their_own_normals` (an exact B-rep cylinder) found the first version taking the whole cylinder as hidden (item 1), and passes again. No test drives hidden surfaces on a STEP part's exact faces yet: they use the same contours, placed and aimed by the faces' own points and normals.
 - Unit tests in `simultaneous/hidden.rs`:
   - sections of a box, closed, counter-clockwise, with outward normals, and through a ring of vertices;

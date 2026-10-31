@@ -869,3 +869,35 @@ fn req_op_20_req_op_12_the_crankshaft_is_finished_where_reached_and_nothing_is_c
         assert!(u.x.0 >= -0.5 && u.x.1 <= 40.5 && u.area > 0.0, "{u:?}");
     }
 }
+
+#[test]
+fn req_op_20_req_op_02_only_areas_inside_the_operations_boundary_are_reported() {
+    // The 2.5 mm slot, with the operation contained within X 0 to 10: the
+    // walls beyond are not this operation's, and are not reported.
+    let (mesh, _) = keyway(2.5);
+    let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &ball(DIAMETER));
+    let region = openchuck_path::RegionConstraint {
+        boundary: Some(openchuck_path::Window {
+            x_min: 0.0,
+            x_max: 10.0,
+            arc: None,
+        }),
+        ..openchuck_path::RegionConstraint::default()
+    };
+    let v = values(&[(names::STEPOVER, 0.6)]);
+    let path = run(|ctx| {
+        openchuck_path::generate_in_region(&SimultaneousFinishing, &f.input(), &region, &v, ctx)
+    })
+    .unwrap();
+    eprintln!("unreached in the boundary: {:?}", path.unreached);
+    assert!(
+        path.unreached
+            .iter()
+            .any(|u| u.reason == UnreachedReason::TooNarrow),
+        "{:?}",
+        path.unreached
+    );
+    for u in &path.unreached {
+        assert!(u.x.1 <= 10.0 + 0.6, "{u:?}");
+    }
+}
