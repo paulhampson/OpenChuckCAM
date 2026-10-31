@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .num_threads(threads)
             .build()?;
         for repeat in 0..repeats {
-            pool.install(|| -> Result<(), Box<dyn std::error::Error>> {
+            pool.install(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 // One simulator per setup, in order of first use.
                 let mut setups: Vec<(_, Simulator)> = Vec::new();
                 let mut whole = 0.0;
@@ -92,7 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!("threads {threads} run {repeat} all groups: {whole:.2} s");
                 Ok(())
-            })?;
+            })
+            .map_err(|e| e.to_string())?;
         }
     }
     let _ = std::fs::remove_dir_all(&temporary);
