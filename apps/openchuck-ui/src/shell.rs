@@ -731,8 +731,6 @@ impl Shell {
         }
     }
 
-    /// Turns the recording of the user's actions in the log on or off, and
-    /// keeps the choice in the settings (NFR-18).
     /// Sets "Memory for playback checkpoints" in MB, brought into its range
     /// and steps (decision record 0322), for the next time the cut part is
     /// prepared.
@@ -749,6 +747,8 @@ impl Shell {
         self.settings_touched();
     }
 
+    /// Turns the recording of the user's actions in the log on or off, and
+    /// keeps the choice in the settings (NFR-18).
     fn set_record_actions(&mut self, on: bool) {
         self.settings.record_actions = on;
         crate::logging::set_recording(on);
