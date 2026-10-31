@@ -482,10 +482,11 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
         let kept = Checkpoint {
             group: kept_at.0,
             moves: kept_at.1,
-            stock: sim
-                .stock_at(kept_at.0, kept_at.1, &groups, &ctx)
-                .unwrap()
-                .pack(),
+            stock: std::sync::Arc::new(
+                sim.stock_at(kept_at.0, kept_at.1, &groups, &ctx)
+                    .unwrap()
+                    .pack(),
+            ),
         };
         let jumped = sim
             .stock_at_from(Some(&kept), later.0, later.1, &groups, &ctx)
@@ -517,7 +518,7 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
     let kept = Checkpoint {
         group: 1,
         moves: 37,
-        stock: sim.stock().pack(),
+        stock: std::sync::Arc::new(sim.stock().pack()),
     };
     let same = sim
         .stock_at_from(Some(&kept), 1, 37, &groups, &ctx)
@@ -532,6 +533,71 @@ fn req_sim_04_req_nfr_04_jumping_from_a_kept_stock_matches_running_up_to_it() {
     assert_eq!(end.state_hash(), after_first.stock.state_hash());
     let last = sim.stock_at(1, g2.segments.len(), &groups, &ctx).unwrap();
     assert_eq!(last.state_hash(), sim.stock().state_hash());
+}
+
+/// The pipeline keeps playback's checkpoints while it simulates when the
+/// user asks for it (decision record 0333): the spacing is set for each
+/// group as it comes, the stock is the same as without checkpoints, and a
+/// simulator rebuilt from those checkpoints gives the stock at any move as
+/// running up to it does. Its copies are shared, not copied, by a clone.
+#[test]
+fn req_sim_04_req_nfr_06_checkpoints_kept_while_simulating_replay_any_move() {
+    let m = machine();
+    let profile = ball(4.0);
+    let rough = turning_poses(&m, &Cyl(11.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let finish = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g1 = group("rough", &rough, MoveKind::Cutting);
+    let g2 = group("finish", &finish, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut plain = Simulator::without_checkpoints(make(), &m);
+    let mut kept = Simulator::new(make(), &m, None);
+    // A different spacing for each group, set before it runs.
+    for (g, every) in [(&g1, Some(40)), (&g2, Some(90))] {
+        let a = plain.run_group(g, &profile, &ctx).unwrap();
+        kept.set_checkpoint_every(every);
+        let b = kept.run_group(g, &profile, &ctx).unwrap();
+        assert_eq!(a.poses, b.poses);
+        assert_eq!(plain.stock().state_hash(), kept.stock().state_hash());
+    }
+    let inside = |g: &ToolpathGroup, every: usize| g.segments.len().saturating_sub(1) / every;
+    assert_eq!(
+        kept.checkpoints().len(),
+        1 + inside(&g1, 40) + 1 + inside(&g2, 90) + 1
+    );
+    // A clone shares the copies.
+    let copy = kept.clone();
+    for (a, b) in kept.checkpoints().iter().zip(copy.checkpoints()) {
+        assert!(std::sync::Arc::ptr_eq(&a.stock, &b.stock));
+    }
+    // Rebuilt from the checkpoints alone, it replays any move.
+    let replay = Simulator::from_checkpoints(&m, kept.checkpoints().to_vec(), 2).unwrap();
+    let groups = [(&g1, &profile), (&g2, &profile)];
+    let direct = |group_index: usize, moves: usize| {
+        let mut direct = Simulator::without_checkpoints(make(), &m);
+        if group_index == 1 {
+            direct.run_group(&g1, &profile, &ctx).unwrap();
+        }
+        let mut partial = if group_index == 0 { g1.clone() } else { g2.clone() };
+        partial.segments.truncate(moves);
+        direct.run_group(&partial, &profile, &ctx).unwrap();
+        direct.stock().state_hash()
+    };
+    for (gi, moves) in [(0, 0), (0, 41), (0, 80), (1, 0), (1, 1), (1, 91), (1, 200)] {
+        let stock = replay.stock_at(gi, moves, &groups, &ctx).unwrap();
+        assert_eq!(stock.state_hash(), direct(gi, moves), "{gi} {moves}");
+    }
+    let end = replay
+        .stock_at(1, g2.segments.len(), &groups, &ctx)
+        .unwrap();
+    assert_eq!(end.state_hash(), plain.stock().state_hash());
+    assert_eq!(replay.checkpoint_bytes(), kept.checkpoint_bytes());
+    // Checkpoints that do not start at the start of the first group cannot
+    // replay every move: refused.
+    let late = kept.checkpoints().get(1..).unwrap().to_vec();
+    assert!(Simulator::from_checkpoints(&m, late, 2).is_none());
+    assert!(Simulator::from_checkpoints(&m, Vec::new(), 2).is_none());
 }
 
 #[test]

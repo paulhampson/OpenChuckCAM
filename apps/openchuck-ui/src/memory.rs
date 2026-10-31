@@ -4,7 +4,9 @@
 //! (decision record 0322 item 5; the owner's decision on OI-1315). The
 //! budget is a ceiling: one above what the computer can hold would make the
 //! operating system page to disk or stop the program, which it cannot
-//! report as a clear error (NFR-07).
+//! report as a clear error (NFR-07). The memory also sets whether playback
+//! information is made with toolpath generation by default (decision record
+//! 0333).
 
 /// Bytes in a MB of 2^20 bytes.
 const MIB: u64 = 1024 * 1024;
@@ -22,6 +24,23 @@ pub(crate) fn playback_memory(setting_mb: u32, physical: Option<u64>) -> (usize,
         }
         _ => (usize::try_from(wanted).unwrap_or(usize::MAX), None),
     }
+}
+
+/// Whether "Generate playback information with toolpath generation" is on
+/// when the user has not chosen, on a computer with `physical` bytes
+/// (decision record 0333, the owner's decision): on with 16 GB or more, off
+/// below and when the memory cannot be read. A computer sold as 16 GB
+/// reports a little less (memory the system keeps for itself), so 15 GB
+/// counts.
+pub(crate) fn playback_with_generation_default(physical: Option<u64>) -> bool {
+    physical.is_some_and(|bytes| bytes >= 15 * 1024 * MIB)
+}
+
+/// The computer's memory in whole GB of 2^30 bytes, to the nearest, as
+/// Settings names it.
+pub(crate) fn gigabytes(physical: Option<u64>) -> Option<u64> {
+    let gib = 1024 * MIB;
+    physical.map(|bytes| bytes.saturating_add(gib / 2) / gib)
 }
 
 /// The physical memory of this computer, in bytes, if it can be read.
@@ -120,6 +139,26 @@ mod tests {
             "3 bytes over a multiple of 4 are dropped"
         );
         assert_eq!(cap, Some(1_536));
+    }
+
+    /// The owner's decision on record 0333: playback information is made
+    /// with toolpath generation by default on a computer of 16 GB or more,
+    /// not below, and not when the memory cannot be read; a computer sold as
+    /// 16 GB reports a little less, and still counts.
+    #[test]
+    fn req_sim_04_req_nfr_07_playback_with_generation_is_on_by_default_from_16_gb() {
+        let sixteen = 16_303_740 * 1024;
+        for (physical, on, gb) in [
+            (Some(32 * GIB), true, Some(32)),
+            (Some(sixteen), true, Some(16)),
+            (Some(16 * GIB), true, Some(16)),
+            (Some(8 * GIB), false, Some(8)),
+            (Some(12 * GIB), false, Some(12)),
+            (None, false, None),
+        ] {
+            assert_eq!(playback_with_generation_default(physical), on, "{physical:?}");
+            assert_eq!(gigabytes(physical), gb, "{physical:?}");
+        }
     }
 
     #[test]
