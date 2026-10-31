@@ -74,6 +74,7 @@ use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 use openchuck_types::units::Degrees;
 
 use crate::assemble::PathWarning;
+use crate::cutter::{bound_at, clearance_at};
 use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
@@ -451,87 +452,6 @@ impl Flank {
     pub fn radius_at(&self, h: f64) -> f64 {
         self.r_start + (h - self.z_start) * self.half_angle.tan()
     }
-}
-
-// ---------------------------------------------------------------------------
-// Signed distance to the tool body.
-
-/// The signed distance from a point at distance `rho` from the tool axis and
-/// height `h` above the tip to the tool's surface: negative inside the tool.
-/// The body is the revolved profile, continued upward at the cutting radius
-/// (the shank and holder are not known here; OI-237).
-fn clearance(profile: &RevolvedProfile, rho: f64, h: f64) -> f64 {
-    let r = profile.cutting_radius();
-    let top = profile.top();
-    let inside = rho <= r + 1e-12 && profile.height_at(rho.min(r)).is_some_and(|z| h >= z);
-    let mut d = f64::INFINITY;
-    for piece in profile.pieces() {
-        d = d.min(distance_to_piece(piece, rho, h));
-    }
-    // The side above the profile's end.
-    let dz = (top - h).max(0.0);
-    d = d.min(((rho - r).powi(2) + dz * dz).sqrt());
-    if inside { -d } else { d }
-}
-
-fn distance_to_piece(piece: &ProfilePiece, rho: f64, h: f64) -> f64 {
-    match *piece {
-        ProfilePiece::Line { start, end } => {
-            let (ar, az) = (start.radius.0, start.height.0);
-            let (dr, dz) = (end.radius.0 - ar, end.height.0 - az);
-            let l2 = dr * dr + dz * dz;
-            let t = if l2 > 0.0 {
-                (((rho - ar) * dr + (h - az) * dz) / l2).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            (rho - ar - t * dr).hypot(h - az - t * dz)
-        }
-        ProfilePiece::Arc {
-            start,
-            end,
-            centre,
-            radius,
-            ..
-        } => {
-            let (cr, cz) = (centre.radius.0, centre.height.0);
-            let angle = |r: f64, z: f64| {
-                let t = (z - cz).atan2(r - cr);
-                if t < -FRAC_PI_2 { t + 2.0 * PI } else { t }
-            };
-            let (ta, tb) = (
-                angle(start.radius.0, start.height.0),
-                angle(end.radius.0, end.height.0),
-            );
-            let tq = angle(rho, h);
-            let ends = (rho - start.radius.0)
-                .hypot(h - start.height.0)
-                .min((rho - end.radius.0).hypot(h - end.height.0));
-            if tq >= ta.min(tb) && tq <= ta.max(tb) {
-                (radius - (rho - cr).hypot(h - cz)).abs().min(ends)
-            } else {
-                ends
-            }
-        }
-    }
-}
-
-/// A lower bound of [`clearance_at`] that costs two dot products: the tool
-/// lies within `radius` of its axis and above its tip, so a point is at
-/// least as far from it as from that half cylinder.
-fn bound_at(radius: f64, tip: Point3, axis: UnitVec3, p: Point3) -> f64 {
-    let w = p - tip;
-    let h = w.dot(axis.get());
-    let rho = (w - axis.get() * h).length();
-    (rho - radius).max(-h)
-}
-
-/// `clearance` for a model point against the tool at `tip` along `axis`.
-fn clearance_at(profile: &RevolvedProfile, tip: Point3, axis: UnitVec3, p: Point3) -> f64 {
-    let w = p - tip;
-    let h = w.dot(axis.get());
-    let rho = (w - axis.get() * h).length();
-    clearance(profile, rho, h)
 }
 
 // ---------------------------------------------------------------------------
