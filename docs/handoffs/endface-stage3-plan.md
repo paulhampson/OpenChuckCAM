@@ -4,7 +4,7 @@ Base: main 5ece3ce (#412 merged; library 0.28.0, project schema 23). Branch `cla
 
 ## Authority
 - R1 (requirements, after the OP-22 notes) and A1 (architecture 5.2) as the owner approved them, inserted word for word.
-- Decision 0239 stays proposed; its 13 owner choices are the specification. The FINSTEP handoff is guidance only: no FINSTEP source survives, so nothing from it is relied on.
+- Decision 0239 (proposed when this plan was written; accepted by the owner on 31 Oct 2026, relayed); its 13 owner choices are the specification. The FINSTEP handoff is guidance only: no FINSTEP source survives, so nothing from it is relied on.
 
 ## Points needing a call before code
 1. **Schema number.** 0239 item 6 says "schema 23, shared with 0344", but 23 merged with #412, and a file saved at 23 from now on would skip a migration added to the 22→23 step. Proposal: claim schema 24 (free on main and every branch), with a 23→24 step writing an explicit `adaptive_spacing = false` into existing helical, axial, indexed, simultaneous, roughing and facing operations. 0239 item 6 gets reworded to "schema 24" (wording only). The alternative (absent means off, new operations write on, no bump) would contradict 0239's "migrated to an explicit off".

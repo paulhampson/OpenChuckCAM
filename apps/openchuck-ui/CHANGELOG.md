@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- ENDFACE stage 3 (#303, decision 0239, proposed): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.
+- ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.
 
 - FIRSTRUN (accepted decision 0302): a project with no machine reads "Needs attention", not "Error to fix"; an empty Stepdown says "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library."; the "No tabs are stored" line is true when a held region joins the part and the grip warning is in plain words; the title bar says "Edited, not saved" with a tooltip; under Cutting feed a line says what the machine's feed limits did in the last run. Nothing written changes.
 
