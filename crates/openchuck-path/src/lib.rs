@@ -110,7 +110,7 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, PathNote, PathWarning};
+pub use assemble::{GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, UnreachedReason};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius, has_exact_drop};
 pub use brep_edges::BrepEdges;
@@ -138,7 +138,7 @@ pub use simultaneous::SimultaneousFinishing;
 pub use solid::Solid;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyGroup, StrategyInput,
+    CutPoint, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup, StrategyInput,
     StrategyOutput, generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{

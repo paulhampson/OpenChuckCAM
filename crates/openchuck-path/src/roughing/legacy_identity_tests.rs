@@ -63,6 +63,7 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>)) {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     test(&input);
 }

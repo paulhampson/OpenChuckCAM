@@ -140,6 +140,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
 
     let mut registry = Registry::builtin();

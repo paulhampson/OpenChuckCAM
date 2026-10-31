@@ -141,6 +141,7 @@ fn carving(c: &mut Criterion) {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     // Few passes, so the run is short: each still seeds its region interval
     // every 0.01 mm and finds it among 300k region triangles.

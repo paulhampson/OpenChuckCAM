@@ -198,6 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         };
         let started = Instant::now();
         let path = pool.install(|| generate(chosen, &input, &values, &context))?;

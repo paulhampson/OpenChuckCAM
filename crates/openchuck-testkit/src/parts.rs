@@ -377,7 +377,8 @@ fn radial_mesh<P: RadialPart + ?Sized>(part: &P, rings: u32, around: u32) -> Tri
 }
 
 /// A closed surface of revolution about X from a profile of `(x, radius)`
-/// points, in increasing X and joined by straight lines, with `around`
+/// points, in increasing X (a profile may turn back in X, for an undercut
+/// such as a dovetail groove) and joined by straight lines, with `around`
 /// vertices per ring. Two points at the same X make a wall (an annulus), so a
 /// stepped shaft has a true inside corner. The first and last points are
 /// capped; their radius must be above zero.
@@ -423,6 +424,97 @@ pub fn revolve(profile: &[(f64, f64)], around: u32) -> TriangleMesh {
         vertices,
         triangles,
     }
+}
+
+/// A closed prism along X from `x0` to `x1` whose section across X is the
+/// simple polygon `section` of `(y, z)` points, counter-clockwise seen from
+/// +X (OP-20's test parts, decision record 0368): a shaft with a keyway, a
+/// dovetail slot, pins beside each other, a blade. The sides are cut into
+/// `rings` bands along X (at least one), as a real mesh would be, so a tool
+/// dropped on them meets only the triangles nearby. The polygon need not be
+/// star-shaped about the axis or contain it; its ends are capped by ear
+/// clipping. An exact oracle is the polygon itself.
+pub fn prism(section: &[(f64, f64)], x0: f64, x1: f64, rings: u32) -> TriangleMesh {
+    let n = section.len();
+    let rings = rings.max(1);
+    let mut vertices = Vec::with_capacity((rings as usize + 1) * n);
+    for k in 0..=rings {
+        let x = x0 + (x1 - x0) * f64::from(k) / f64::from(rings);
+        vertices.extend(section.iter().map(|&(y, z)| Point3::new(x, y, z)));
+    }
+    let id = |k: usize| u32::try_from(k).unwrap_or(u32::MAX);
+    let mut triangles = Vec::with_capacity(2 * n * rings as usize + 2 * n);
+    for k in 0..rings as usize {
+        let (lo, hi) = (k * n, (k + 1) * n);
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let (a0, a1, b0, b1) = (id(lo + i), id(lo + j), id(hi + i), id(hi + j));
+            triangles.push([a0, a1, b1]);
+            triangles.push([a0, b1, b0]);
+        }
+    }
+    let last = rings as usize * n;
+    for [a, b, c] in ear_clip(section) {
+        triangles.push([id(last + a), id(last + b), id(last + c)]);
+        triangles.push([id(a), id(c), id(b)]);
+    }
+    TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
+/// Several closed meshes as one (separate pieces of one part).
+pub fn join(meshes: &[TriangleMesh]) -> TriangleMesh {
+    let mut out = TriangleMesh {
+        vertices: Vec::new(),
+        triangles: Vec::new(),
+    };
+    for m in meshes {
+        let base = u32::try_from(out.vertices.len()).unwrap_or(u32::MAX);
+        out.vertices.extend_from_slice(&m.vertices);
+        out.triangles.extend(
+            m.triangles
+                .iter()
+                .map(|t| [t[0] + base, t[1] + base, t[2] + base]),
+        );
+    }
+    out
+}
+
+/// The counter-clockwise triangles of a simple counter-clockwise polygon.
+fn ear_clip(poly: &[(f64, f64)]) -> Vec<[usize; 3]> {
+    let at = |q: usize| poly.get(q).copied().unwrap_or((0.0, 0.0));
+    let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| {
+        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+    };
+    let mut left: Vec<usize> = (0..poly.len()).collect();
+    let mut out = Vec::new();
+    while left.len() > 3 {
+        let m = left.len();
+        let corner = |k: usize| {
+            let v = |d: usize| left.get((k + d) % m).copied().unwrap_or(0);
+            [v(m - 1), v(0), v(1)]
+        };
+        let ear = (0..m).find(|&k| {
+            let [i, j, l] = corner(k);
+            let (a, b, c) = (at(i), at(j), at(l));
+            cross(a, b, c) > 1e-12
+                && left.iter().all(|&q| {
+                    [i, j, l].contains(&q)
+                        || cross(a, b, at(q)) < 0.0
+                        || cross(b, c, at(q)) < 0.0
+                        || cross(c, a, at(q)) < 0.0
+                })
+        });
+        let Some(k) = ear else { break };
+        out.push(corner(k));
+        left.remove(k);
+    }
+    if let [a, b, c] = left[..] {
+        out.push([a, b, c]);
+    }
+    out
 }
 
 /// The standard set of analytic parts with modest dimensions (millimetres).

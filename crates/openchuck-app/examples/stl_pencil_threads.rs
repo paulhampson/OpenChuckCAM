@@ -395,6 +395,7 @@ impl Job<'_> {
             keep_out: &[],
             entry_safety: None,
             facing: None,
+            shank: None,
         };
         let cancel = CancelToken::new();
         let stages = Stages::default();
