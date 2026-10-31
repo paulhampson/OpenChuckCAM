@@ -221,6 +221,9 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# OP20 (decision 0368, 31 Oct 2026, 4 vCPU), alone on one test thread,
+# uninstrumented: blades without a hub 79.3 s, the keyway's walls 69.3 s.
+# Kept in the default Tests run and selected by the nightly long run.
 # RAMPBUDGET released integration, 27 Oct 2026: existing region/avoid
 # combination test took 62.367 s uninstrumented under concurrent validation.
 # Retain default execution and select nightly long; exclude future coverage.
@@ -339,6 +342,8 @@ default-filter = '''not (
   | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
 )'''
 
 [profile.long]
@@ -408,4 +413,6 @@ default-filter = '''
   | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
 '''

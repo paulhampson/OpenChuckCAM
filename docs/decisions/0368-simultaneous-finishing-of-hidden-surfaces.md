@@ -34,6 +34,7 @@ The machine can lean the tool only in the plane across the rotary axis: A turns 
 1. **Where (OP-20).** The part, or the tessellation of a STEP part, is cut across X at sections the stepover apart, between the part's ends less the held bands (decision 0363 item 1). The first section is half a step in.
    - Each section is a set of chains of the triangles' edges, running round the material counter-clockwise seen from +X. A vertex on the plane counts as beyond it, and each segment is oriented by its triangle's winding, so the chains close wherever the mesh does, and a mesh with an open edge gives an open chain.
    - Points along each chain, 0.2 mm apart (`REACH_SPACING`), are **hidden** when the drive's ray at their angle round the drive's centre (the axis, or the section's own centre, OP-26) does not meet them first (within 0.1 mm, `VISIBLE_GAP`).
+   - On a STEP part each point is first put on its exact face, with the face's normal, since the drive's rays meet the faces, not their tessellation. A chord of the tessellation lies further than 0.1 mm inside a coarse face, and a tessellation's winding need not match the face's normal: without this, an exact cylinder was taken as hidden all round.
    - A point is also hidden when that ray meets it at a **grazing** angle: across X, more than 75 degrees (`GRAZING`) from the facet's normal. There the drive's rays fall far apart on the surface, and the drive's tool, on the normal, lies across them: the sides of a radial blade are an example. A surface of revolution, and the lobed part (whose normal leans up to about 17 degrees across X), are nowhere near it.
 2. **The passes (owner's decision 1, A: added).**
    - Each run of hidden points along a chain is grown on both sides by the larger of the stepover and the tool's cutting radius. The drive's own coverage near a grazing edge ends before the points stop being met.
@@ -115,7 +116,10 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
   - `req_op_20_a_wall_needing_more_lean_than_the_limit_is_reported_with_its_parameter`: `max_hidden_lean` 30 on the 6 mm slot. The walls are left, reported as needing 30 to 90 degrees, and the warning names the parameter.
   - `req_op_20_req_op_12_a_shank_wider_than_the_cutter_is_kept_out_of_a_slot`: a 1 mm ball with 1.5 mm flutes on a 3.175 mm shank, in a 3 mm slot. On the passes on hidden surfaces the shank never meets the part (deepest 0.0096 mm), the walls' tops are finished, and the deeper walls are reported too narrow.
   - `req_op_20_req_op_06_on_a_hidden_wall_the_tool_axis_is_the_reachable_one_nearest_the_normal`: with no smoothing, turning the tool 3 degrees nearer the wall's normal about the ball's centre makes it meet the part, at 74 poses on the walls.
+  - `req_op_20_req_op_12_the_crankshaft_is_finished_where_reached_and_nothing_is_cut_in` (`stl/crankshaft.stl`, 3.175 mm ball, 0.3 mm stepover): generated in 6 s; nothing is cut in beyond the tolerance at any of its 4,512 vertices away from the ends (deepest 0.006 mm). Three areas are reported, all where the first pin meets the web at X 10, with a combined area of 3.6 mm2: 3.2 mm2 blocked near A 180, and two of 0.2 mm2 too narrow near A 137 and A 223.
   - `req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads`, and `req_op_20_a_part_with_nothing_hidden_gets_no_hidden_passes_or_reports` (a plain cylinder).
+- **Test times** (alone on one test thread, uninstrumented): the blades 79 s and the keyway's walls 69 s, listed as long-running in `.config/nextest.toml`. The others take 0.6 to 58 s (the two pins 4 mm apart 44 s, 2 mm apart 58 s, the crankshaft 13 s), 7.7 minutes in all for the sixteen. Most of each test's time is the independent check, not the generation (6 to 24 s).
+- **On exact faces.** `req_op_05_exact_faces_drive_the_path_with_their_own_normals` (an exact B-rep cylinder) found the first version taking the whole cylinder as hidden (item 1), and passes again. No test drives hidden surfaces on a STEP part's exact faces yet: they use the same contours, placed and aimed by the faces' own points and normals.
 - Unit tests in `simultaneous/hidden.rs`:
   - sections of a box, closed, counter-clockwise, with outward normals, and through a ring of vertices;
   - an open mesh's open chain;
@@ -124,7 +128,7 @@ Tests named after the requirements (AGENTS.md), written first and seen failing. 
 - `openchuck-testkit`:
   - `parts::prism` (a section along X in bands, its ends capped by ear clipping) and `parts::join`;
   - `parts::revolve` documented for a profile that turns back, with tests that each is closed and outward.
-- Unchanged: every test of `simultaneous.rs`, `simultaneous_off_axis.rs` (OP-26, the crankshaft's pins), `helical_faces.rs`, the region and wall tests, and the reference jobs. The `lobed` golden programs are byte for byte the same.
+- Unchanged: every other test of `openchuck-path`, `openchuck-app` and `openchuck-testkit` (1,249 of 1,250 in one run, the 1,250th the exact cylinder above, since fixed), among them `simultaneous.rs`, `simultaneous_off_axis.rs` (OP-26, the crankshaft's pins), `helical_faces.rs`, the region and wall tests and the reference jobs. The golden programs, `lobed`'s included, are byte for byte the same.
 
 ## Consequences
 

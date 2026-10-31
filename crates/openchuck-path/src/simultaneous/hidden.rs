@@ -32,7 +32,7 @@
 //! corner, which rest machining finishes (OP-09) as on visible surfaces,
 //! and are not reported. The rest are grouped into areas and reported.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
@@ -244,11 +244,11 @@ impl<'a> Slicer<'a> {
 /// their free starts, then the closed ones, each from its first segment in
 /// the triangles' order.
 fn chain_up(segments: &[Segment]) -> Vec<Chain> {
-    let mut by_start: HashMap<EdgeKey, usize> = HashMap::with_capacity(segments.len());
+    let mut by_start: BTreeMap<EdgeKey, usize> = BTreeMap::new();
     for (i, s) in segments.iter().enumerate() {
         by_start.entry(s.from).or_insert(i);
     }
-    let ends: HashSet<EdgeKey> = segments.iter().map(|s| s.to).collect();
+    let ends: BTreeSet<EdgeKey> = segments.iter().map(|s| s.to).collect();
     let mut used = vec![false; segments.len()];
     let mut out = Vec::new();
     let starts: Vec<usize> = (0..segments.len())
@@ -261,8 +261,7 @@ fn chain_up(segments: &[Segment]) -> Vec<Chain> {
         }
         let mut chain = Chain::default();
         let mut cur = first;
-        loop {
-            let Some(s) = segments.get(cur) else { break };
+        while let Some(s) = segments.get(cur) {
             if let Some(u) = used.get_mut(cur) {
                 *u = true;
             }
@@ -424,6 +423,10 @@ pub(super) struct Contour {
     /// The facet normal of each segment between them.
     facets: Vec<Vec3>,
     pub samples: Vec<Sample>,
+    /// +1 when the chain runs counter-clockwise round the material seen
+    /// from +X (its normals point to the right of its direction), -1 when
+    /// a tessellation wound the other way made it run clockwise.
+    sense: f64,
     /// Whether the exact faces give the points and normals.
     exact: bool,
 }
@@ -583,6 +586,7 @@ fn order(contours: &mut Vec<Contour>, near_mm: f64) {
 impl Contour {
     fn reverse(&mut self) {
         let len = self.length();
+        self.sense = -self.sense;
         self.points.reverse();
         self.facets.reverse();
         self.s = self.s.iter().rev().map(|s| len - s).collect();
@@ -631,7 +635,7 @@ impl Plan<'_> {
         // grown by a stepover each side.
         let found: Vec<(Vec<Chain>, Vec<Run>)> = parallel::map_in_order(&xs, |x| {
             let chains = slicer.chains(*x);
-            let runs = self.hidden_runs(*x, &chains, settings.stepover.max(self.reach));
+            let runs = self.hidden_runs(*x, &chains, settings.stepover.max(self.reach), exact);
             (chains, runs)
         });
         // The neighbouring sections, for the smoothed normals of a mesh.
@@ -676,7 +680,22 @@ impl Plan<'_> {
     /// `facet`. A surface nearly along the rays (the side of a blade, the
     /// edge of a pin seen from beside) is met by rays far apart on it and
     /// with the tool's axis across it, and is finished as a hidden one.
-    fn visible(&self, x: f64, p: Point3, facet: Vec3) -> bool {
+    ///
+    /// On exact faces (`exact`) the point of the tessellation is first put
+    /// on the face it lies on, with the face's normal, as the rays meet the
+    /// faces, not their tessellation.
+    fn visible(&self, x: f64, p: Point3, facet: Vec3, exact: bool) -> bool {
+        // The face's own normal too: a tessellation's winding need not
+        // match it.
+        let (p, facet) = if exact {
+            self.input
+                .surface
+                .project(p)
+                .filter(|q| q.position.is_some())
+                .map_or((p, facet), |q| (q.point, q.normal.get()))
+        } else {
+            (p, facet)
+        };
         let zone = self
             .zones
             .iter()
@@ -697,7 +716,7 @@ impl Plan<'_> {
     /// The runs of points on `chains` at `x` the drive's rays do not meet,
     /// each grown by `grow` along its chain on both sides, joined where
     /// they then overlap.
-    fn hidden_runs(&self, x: f64, chains: &[Chain], grow: f64) -> Vec<Run> {
+    fn hidden_runs(&self, x: f64, chains: &[Chain], grow: f64, exact: bool) -> Vec<Run> {
         let mut out = Vec::new();
         for (c, chain) in chains.iter().enumerate() {
             let len = chain.length();
@@ -708,7 +727,7 @@ impl Plan<'_> {
                 .map(|i| {
                     chain
                         .at(i as f64 * ds)
-                        .is_some_and(|(p, facet)| !self.visible(x, p, facet))
+                        .is_some_and(|(p, facet)| !self.visible(x, p, facet, exact))
                 })
                 .collect();
             if !hidden.iter().any(|h| *h) {
@@ -732,15 +751,16 @@ impl Plan<'_> {
                 runs.push((s, count - 1));
             }
             let all = hidden.iter().all(|h| *h);
-            if chain.closed && !all && runs.len() > 1 {
-                if let (Some(&(f0, _)), Some(&(_, l1))) = (runs.first(), runs.last())
-                    && f0 == 0
-                    && l1 == count - 1
-                {
-                    let (_, f1) = runs.remove(0);
-                    if let Some(last) = runs.last_mut() {
-                        last.1 = count + f1;
-                    }
+            if chain.closed
+                && !all
+                && runs.len() > 1
+                && let (Some(&(f0, _)), Some(&(_, l1))) = (runs.first(), runs.last())
+                && f0 == 0
+                && l1 == count - 1
+            {
+                let (_, f1) = runs.remove(0);
+                if let Some(last) = runs.last_mut() {
+                    last.1 = count + f1;
                 }
             }
             let mut spans: Vec<(f64, f64)> = runs
@@ -835,6 +855,7 @@ impl Plan<'_> {
         let mut samples: Vec<Sample> = Vec::with_capacity(n + 1);
         let mut warm: Option<f64> = None;
         let mut previous_phi: Option<f64> = None;
+        let mut sense = 0.0_f64;
         let window = settings.max_lean;
         for i in 0..=n {
             let at = s0 + length * i as f64 / n as f64;
@@ -857,7 +878,7 @@ impl Plan<'_> {
                 (p, f, self.contour_normal(chain, at, p, facet, beside)?)
             };
             let t = i as f64 / n as f64;
-            let visible = self.visible(x, p, facet);
+            let visible = self.visible(x, p, facet, exact);
             let phi_n = match polar(normal.get()) {
                 Some(phi) if normal.get().y.hypot(normal.get().z) > 1e-6 => phi,
                 _ => {
@@ -869,9 +890,12 @@ impl Plan<'_> {
             previous_phi = Some(phi_n);
             // Lead leans the tool towards the way the pass travels round the
             // section's centre.
+            let ahead = chain.at(at + REACH_SPACING).map_or(point, |q| q.0);
+            sense += normal
+                .get()
+                .dot((ahead - point).cross(Vec3::new(1.0, 0.0, 0.0)));
             let travel = {
                 let (cy, cz) = self.centre(x);
-                let ahead = chain.at(at + REACH_SPACING).map_or(point, |q| q.0);
                 let r = Vec3::new(0.0, point.y - cy, point.z - cz);
                 let d = ahead - point;
                 r.cross(d).x.signum()
@@ -919,6 +943,7 @@ impl Plan<'_> {
             facets,
             samples,
             exact,
+            sense: if sense < 0.0 { -1.0 } else { 1.0 },
         })
     }
 
@@ -1232,7 +1257,7 @@ impl Plan<'_> {
             }
         }
         let mut groups: Vec<Vec<usize>> = Vec::new();
-        let mut index: HashMap<usize, usize> = HashMap::new();
+        let mut index: BTreeMap<usize, usize> = BTreeMap::new();
         for i in 0..kept.len() {
             let root = find(&mut parent, i);
             let g = *index.entry(root).or_insert_with(|| {
@@ -1327,7 +1352,8 @@ impl Plan<'_> {
                 continue;
             };
             let span = (after.t - before.t) * contour.length();
-            if span <= CORNER_SPAN * self.reach && after.phi_n - before.phi_n < -CORNER_TURN {
+            let turn = contour.sense * (after.phi_n - before.phi_n);
+            if span <= CORNER_SPAN * self.reach && turn < -CORNER_TURN {
                 for slot in out.iter_mut().take(i).skip(start) {
                     *slot = true;
                 }

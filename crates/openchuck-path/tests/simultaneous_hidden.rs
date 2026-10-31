@@ -145,11 +145,11 @@ fn poses_across(
     for s in &path.group.segments {
         let across =
             s.kind == MoveKind::Cutting && on_section(s.end.tip.x) && on_section(from.tip.x);
-        let mut s = s.clone();
+        let mut s = *s;
         if !across {
             s.kind = MoveKind::Linking;
         }
-        segments.push(s.clone());
+        segments.push(s);
         from = s.end;
     }
     kept.group.segments = segments;
@@ -819,7 +819,7 @@ fn cutting(
         if s.kind == MoveKind::Cutting {
             let one = GeneratedPath {
                 group: openchuck_types::ir::ToolpathGroup {
-                    segments: vec![s.clone()],
+                    segments: vec![*s],
                     start: from,
                     ..path.group.clone()
                 },
