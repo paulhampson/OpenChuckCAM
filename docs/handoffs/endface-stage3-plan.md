@@ -1,6 +1,6 @@
 # Lane ENDFACE stage 3: adaptive pass spacing (#303), plan
 
-Base: main 5ece3ce (#412 merged; library 0.28.0, project schema 23). Branch `claude/lane-endface-adaptive` (the coordinator, 31 Oct 2026). Sent to the coordinator 31 Oct 2026; the four points below await an answer. One draft PR, one push (decision 0055). Refs #303.
+Base: main 5ece3ce (#412 merged; library 0.28.0, project schema 23). Branch `claude/lane-endface-adaptive` (the coordinator, 31 Oct 2026). Accepted by the coordinator 31 Oct 2026: schema 24 assigned, the product-side bound sentence added to 0239, library 0.29.0, one pull request (a split put to the owner only if the diff is too large to review). One draft PR, one push (decision 0055). Refs #303.
 
 ## Authority
 - R1 (requirements, after the OP-22 notes) and A1 (architecture 5.2) as the owner approved them, inserted word for word.
