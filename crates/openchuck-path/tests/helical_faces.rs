@@ -383,6 +383,57 @@ fn req_op_04_a_ball_end_leaves_only_its_corner_on_a_face() {
     shaft_faces_left_at(&job, &path, 0.0, 0.5 * DIAMETER + 0.05, "ball end");
 }
 
+/// Points on the shaft's round surfaces (r 6, 10 and 7), `step` mm apart
+/// along X and round, kept `margin` mm from each face across the axis.
+fn shaft_rounds(step: f64, margin: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    for (lo, hi, r) in [(0.0, 10.0, 6.0), (10.0, 25.0, 10.0), (25.0, 40.0, 7.0)] {
+        let nx = ((hi - lo - 2.0 * margin) / step).ceil() as u32;
+        let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+        for i in 0..=nx {
+            let x = lo + margin + (hi - lo - 2.0 * margin) * f64::from(i) / f64::from(nx);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(x, r * t.cos(), r * t.sin()));
+            }
+        }
+    }
+    out
+}
+
+/// Simultaneous finishing on a stepped shaft (OI-1200; decision record 0363
+/// item 2): the drop height jumps where the tool's side passes a shoulder,
+/// which no halving removes, and the move test read that wall as a cut and
+/// refused the job ("would cut 1.9367 mm" with the flat, 1.2066 with the
+/// ball). A move along the tool's own axis is a wall move and is kept, so the
+/// job generates; nothing is cut into the rounds or the faces (the
+/// independent check, as above), and the rounds are finished.
+#[test]
+fn req_op_05_req_op_12_simultaneous_finishing_crosses_the_shoulders_of_a_stepped_shaft() {
+    for shape in [ToolShape::BallEnd, ToolShape::FlatEnd] {
+        let flat = shape == ToolShape::FlatEnd;
+        let job = Job::shaft(shape.clone());
+        let path = job.path(&SimultaneousFinishing, &[]);
+        let rounds = shaft_rounds(0.25, 0.5 * DIAMETER + 0.1);
+        let faces = shaft_faces(0.1);
+        let mut groups = faces.clone();
+        groups.push(rounds);
+        let left = job.left(&path, &groups, 3.0);
+        for (k, l) in left.iter().enumerate() {
+            assert!(
+                deepest(l) >= -TOLERANCE,
+                "{shape:?}, group {k}: cut to {:.4}",
+                deepest(l)
+            );
+        }
+        // The rounds: a ball leaves scallops of its stepover between turns
+        // (2.2225 mm on a 3.175 mm ball is up to 0.48 mm), a flat end none.
+        let cap = if flat { 0.05 } else { 0.5 };
+        let w = worst(&left[faces.len()]);
+        assert!(w <= cap, "{shape:?}: {w:.4} mm left on the rounds");
+    }
+}
+
 #[test]
 fn req_op_03_continuous_roughing_leaves_the_stock_to_leave_on_the_faces() {
     // Before decision 0297: up to 2.35 mm where 0.3 was asked for.
