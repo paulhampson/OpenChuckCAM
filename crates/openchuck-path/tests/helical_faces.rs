@@ -26,9 +26,11 @@ use std::path::PathBuf;
 
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
+use openchuck_path::stock::StockModel;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue,
-    RotaryMapping, RotaryRoughing, SimultaneousFinishing, Strategy, StrategyInput, generate,
+    AcceptAll, AnalyticStock, AxialFinishing, CompositeSurface, GeneratedPath, HelicalFinishing,
+    IndexedFinishing, MeshSurface, ParameterValue, RestMachining, RotaryMapping, RotaryRoughing,
+    SimultaneousFinishing, Solid, Strategy, StrategyInput, SurfaceSource, generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose};
 use openchuck_testkit::parts::{Cone, RadialPart, revolve};
@@ -222,8 +224,8 @@ fn left_on(outline: &Outline, bins: &Bins, points: &[Point3], cap: f64) -> Vec<f
 }
 
 fn input_for<'a>(
-    surface: &'a MeshSurface,
-    stock: &'a AnalyticStock,
+    surface: &'a dyn SurfaceSource,
+    stock: &'a dyn StockModel,
     profile: &'a RevolvedProfile,
     tag: &'a openchuck_types::ir::PathTags,
 ) -> StrategyInput<'a> {
@@ -247,39 +249,44 @@ fn input_for<'a>(
 }
 
 struct Job {
-    surface: MeshSurface,
-    stock: AnalyticStock,
+    surface: Box<dyn SurfaceSource>,
+    stock: Box<dyn StockModel>,
     profile: RevolvedProfile,
 }
 
 impl Job {
     fn shaft(shape: ToolShape) -> Self {
         Self {
-            surface: MeshSurface::new(&revolve(&SHAFT, 720)).unwrap(),
-            stock: AnalyticStock::Cylinder {
+            surface: Box::new(MeshSurface::new(&revolve(&SHAFT, 720)).unwrap()),
+            stock: Box::new(AnalyticStock::Cylinder {
                 radius: 11.0,
                 x_start: -2.0,
                 x_end: 42.0,
-            },
+            }),
             profile: tool(shape, DIAMETER).profile().unwrap(),
         }
     }
 
     fn crankshaft() -> Self {
         Self {
-            surface: MeshSurface::new(&crankshaft()).unwrap(),
-            stock: AnalyticStock::Cylinder {
+            surface: Box::new(MeshSurface::new(&crankshaft()).unwrap()),
+            stock: Box::new(AnalyticStock::Cylinder {
                 radius: 18.0,
                 x_start: -2.0,
                 x_end: 42.0,
-            },
+            }),
             profile: tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap(),
         }
     }
 
     fn path(&self, strategy: &dyn Strategy, extra: &[(&str, f64)]) -> GeneratedPath {
         let tag = tags();
-        let input = input_for(&self.surface, &self.stock, &self.profile, &tag);
+        let input = input_for(
+            self.surface.as_ref(),
+            self.stock.as_ref(),
+            &self.profile,
+            &tag,
+        );
         let mut values: BTreeMap<String, ParameterValue> = [
             (names::STEPOVER, STEPOVER),
             (names::FEED, 600.0),
@@ -373,6 +380,57 @@ fn req_op_04_a_ball_end_leaves_only_its_corner_on_a_face() {
     let cut = job.left(&path, &faces, 3.0);
     assert!(cut.iter().all(|l| deepest(l) >= -TOLERANCE));
     shaft_faces_left_at(&job, &path, 0.0, 0.5 * DIAMETER + 0.05, "ball end");
+}
+
+/// Points on the shaft's round surfaces (r 6, 10 and 7), `step` mm apart
+/// along X and round, kept `margin` mm from each face across the axis.
+fn shaft_rounds(step: f64, margin: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    for (lo, hi, r) in [(0.0, 10.0, 6.0), (10.0, 25.0, 10.0), (25.0, 40.0, 7.0)] {
+        let nx = ((hi - lo - 2.0 * margin) / step).ceil() as u32;
+        let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+        for i in 0..=nx {
+            let x = lo + margin + (hi - lo - 2.0 * margin) * f64::from(i) / f64::from(nx);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(x, r * t.cos(), r * t.sin()));
+            }
+        }
+    }
+    out
+}
+
+/// Simultaneous finishing on a stepped shaft (OI-1200; decision record 0363
+/// item 2): the drop height jumps where the tool's side passes a shoulder,
+/// which no halving removes, and the move test read that wall as a cut and
+/// refused the job ("would cut 1.9367 mm" with the flat, 1.2066 with the
+/// ball). A move along the tool's own axis is a wall move and is kept, so the
+/// job generates; nothing is cut into the rounds or the faces (the
+/// independent check, as above), and the rounds are finished.
+#[test]
+fn req_op_05_req_op_12_simultaneous_finishing_crosses_the_shoulders_of_a_stepped_shaft() {
+    for shape in [ToolShape::BallEnd, ToolShape::FlatEnd] {
+        let flat = shape == ToolShape::FlatEnd;
+        let job = Job::shaft(shape.clone());
+        let path = job.path(&SimultaneousFinishing, &[]);
+        let rounds = shaft_rounds(0.25, 0.5 * DIAMETER + 0.1);
+        let faces = shaft_faces(0.1);
+        let mut groups = faces.clone();
+        groups.push(rounds);
+        let left = job.left(&path, &groups, 3.0);
+        for (k, l) in left.iter().enumerate() {
+            assert!(
+                deepest(l) >= -TOLERANCE,
+                "{shape:?}, group {k}: cut to {:.4}",
+                deepest(l)
+            );
+        }
+        // The rounds: a ball leaves scallops of its stepover between turns
+        // (2.2225 mm on a 3.175 mm ball is up to 0.48 mm), a flat end none.
+        let cap = if flat { 0.05 } else { 0.5 };
+        let w = worst(&left[faces.len()]);
+        assert!(w <= cap, "{shape:?}: {w:.4} mm left on the rounds");
+    }
 }
 
 #[test]
@@ -697,7 +755,7 @@ fn req_op_04_a_part_with_no_face_across_the_axis_gets_no_turn() {
         length: 30.0,
     };
     let job = Job {
-        surface: MeshSurface::new(&cone.mesh(61, 720)).unwrap(),
+        surface: Box::new(MeshSurface::new(&cone.mesh(61, 720)).unwrap()),
         ..Job::shaft(ToolShape::FlatEnd)
     };
     assert!(turns_in_place(&job.path(&HelicalFinishing, &[])).is_empty());
@@ -712,5 +770,525 @@ fn req_nfr_06_req_gc_07_face_turns_are_identical_at_1_2_and_n_threads() {
         })
         .unwrap();
         assert_eq!(runs.len(), 4);
+    }
+}
+
+/// A plain cylinder of radius 10 from X 0 to X 30 with a short retaining
+/// tab on the axis at each end (OP-21): radius 7.25, 0.8 mm long, so each tab
+/// stands out from the part's end by less than the tool's radius. The shape
+/// of the owner's blisk project at its far end (issue 404), where the turn
+/// at the end face lies one tool radius beyond the face, past the tab's end.
+const TAB_RADIUS: f64 = 7.25;
+const TAB_LENGTH: f64 = 0.8;
+
+fn short_tabs() -> Job {
+    let along = openchuck_types::geometry::UnitVec3::new(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+    let tab = |x: f64| Solid::cylinder(Point3::new(x, 0.0, 0.0), along, TAB_LENGTH, TAB_RADIUS);
+    let model: std::sync::Arc<dyn SurfaceSource> =
+        std::sync::Arc::new(MeshSurface::new(&revolve(&[(0.0, 10.0), (30.0, 10.0)], 720)).unwrap());
+    Job {
+        surface: Box::new(CompositeSurface::new(
+            model,
+            vec![tab(-TAB_LENGTH).unwrap(), tab(30.0).unwrap()],
+        )),
+        stock: Box::new(AnalyticStock::Cylinder {
+            radius: 11.0,
+            x_start: -TAB_LENGTH,
+            x_end: 30.0 + TAB_LENGTH,
+        }),
+        profile: tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap(),
+    }
+}
+
+/// Points on the part's two end faces outside the tabs, `step` mm apart:
+/// from 0.05 mm beyond the tab's radius (the corner the tool's tip stands
+/// in on top of the tab) to the part's radius.
+fn end_faces(step: f64) -> Vec<Vec<Point3>> {
+    let lo = TAB_RADIUS + 0.05;
+    [0.0, 30.0]
+        .into_iter()
+        .map(|x| {
+            let nr = ((10.0 - lo) / step).ceil() as u32;
+            let mut out = Vec::new();
+            for i in 0..=nr {
+                let r = lo + (10.0 - lo) * f64::from(i) / f64::from(nr);
+                let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+                for j in 0..na {
+                    let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                    out.push(Point3::new(x, r * t.cos(), r * t.sin()));
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// Points on each tab's round side and outer end, `step` mm apart.
+fn tab_surfaces(step: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    let na = (std::f64::consts::TAU * TAB_RADIUS / step).ceil() as u32;
+    for (x0, outer) in [(-TAB_LENGTH, -TAB_LENGTH), (30.0, 30.0 + TAB_LENGTH)] {
+        let nx = (TAB_LENGTH / step).ceil() as u32;
+        for i in 0..=nx {
+            let x = x0 + TAB_LENGTH * f64::from(i) / f64::from(nx);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(x, TAB_RADIUS * t.cos(), TAB_RADIUS * t.sin()));
+            }
+        }
+        let nr = (TAB_RADIUS / step).ceil() as u32;
+        for i in 0..nr {
+            let r = TAB_RADIUS * f64::from(i) / f64::from(nr);
+            let na = ((std::f64::consts::TAU * r / step).ceil() as u32).max(1);
+            for j in 0..na {
+                let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+                out.push(Point3::new(outer, r * t.cos(), r * t.sin()));
+            }
+        }
+    }
+    out
+}
+
+/// Each end face of the part beside a short tab is left at the stock to
+/// leave within the tolerance, never cut into, and the tabs are never cut
+/// (issue 404).
+fn end_faces_beside_short_tabs_cleaned(strategy: &dyn Strategy) {
+    let job = short_tabs();
+    let path = job.path(strategy, &[]);
+    let faces = end_faces(0.1);
+    for (face, left) in faces.iter().zip(job.left(&path, &faces, 3.0)) {
+        let (w, d) = (worst(&left), deepest(&left));
+        let x = face[0].x;
+        assert!(
+            w <= TOLERANCE,
+            "{} end face X {x}: {w:.4} mm left",
+            strategy.name()
+        );
+        assert!(
+            d >= -TOLERANCE,
+            "{} end face X {x}: cut to {d:.4}",
+            strategy.name()
+        );
+    }
+    let tabs = tab_surfaces(0.1);
+    let cut = deepest(&job.left(&path, &[tabs], 3.0)[0]);
+    assert!(
+        cut >= -TOLERANCE,
+        "{}: a tab is cut into by {cut:.4} mm",
+        strategy.name()
+    );
+}
+
+#[test]
+fn req_op_04_req_op_21_helical_finishing_faces_the_ends_beside_a_short_tab() {
+    // Before the fix the turn at each end face, one tool radius beyond it,
+    // lay past the tab's end, outside the range searched, and the face kept
+    // what roughing left (0.43 mm mean on the owner's blisk project).
+    end_faces_beside_short_tabs_cleaned(&HelicalFinishing);
+}
+
+#[test]
+fn req_op_05_req_op_21_the_simultaneous_spiral_faces_the_ends_beside_a_short_tab() {
+    end_faces_beside_short_tabs_cleaned(&SimultaneousFinishing);
+}
+
+#[test]
+fn req_op_09_req_op_21_rest_machining_faces_the_ends_beside_a_short_tab() {
+    // Rest machining is helical finishing where material is left, so it
+    // turns at the faces as helical finishing does (decision record 0297).
+    end_faces_beside_short_tabs_cleaned(&RestMachining);
+}
+
+#[test]
+fn req_op_04_req_op_21_axial_finishing_faces_the_ends_beside_a_short_tab() {
+    // Its passes run along X over the target's own length, so the tool never
+    // got down beside an end face whose tab is shorter than its radius: a
+    // whole turn at each such end face, as the helix strategies make
+    // (decision record 0343).
+    end_faces_beside_short_tabs_cleaned(&AxialFinishing);
+}
+
+#[test]
+fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
+    // Indexed finishing holds A at each position (default four, A 0, 90, 180
+    // and 270) and cuts one pass along X there, so it reaches the end faces
+    // only along those lines: points across the face from the tab to the
+    // part's radius, within 0.15 mm of each line (the round side of the tool
+    // stands back from the face by r - sqrt(r^2 - v^2) at v off the line, so
+    // within the tolerance only for v up to sqrt(2 r tol), 0.178 mm). Its
+    // passes now run on past each end of the target by the tool's radius, so
+    // the tool goes down beside the face onto the tab (decision record 0343).
+    let job = short_tabs();
+    let path = job.path(&IndexedFinishing, &[]);
+    let rotary = RotaryMapping::of_profile(&machine());
+    // Each A only once: the tool is fixed while it cuts, and no extra
+    // cutting angle is added (owner's choice for indexed finishing).
+    let mut angles: Vec<i64> = poses_along(&path, &rotary, 1)
+        .iter()
+        .map(|p| (p.axis.z.atan2(p.axis.y).to_degrees() * 1000.0).round() as i64)
+        .collect();
+    angles.sort_unstable();
+    angles.dedup();
+    assert_eq!(angles.len(), 4, "{angles:?}");
+    let across = 0.15;
+    let lo = TAB_RADIUS + 0.05;
+    let faces: Vec<Vec<Point3>> = [0.0, 30.0]
+        .into_iter()
+        .map(|x| {
+            let mut out = Vec::new();
+            for &a in &angles {
+                let t = (a as f64 / 1000.0).to_radians();
+                let (d, n) = (
+                    Vec3::new(0.0, t.cos(), t.sin()),
+                    Vec3::new(0.0, -t.sin(), t.cos()),
+                );
+                for i in 0..=20 {
+                    let r = lo + (10.0 - lo) * f64::from(i) / 20.0;
+                    for j in -4..=4 {
+                        let v = across * f64::from(j) / 4.0;
+                        out.push(Point3::new(x, 0.0, 0.0) + d * r + n * v);
+                    }
+                }
+            }
+            out
+        })
+        .collect();
+    for (face, left) in faces.iter().zip(job.left(&path, &faces, 3.0)) {
+        let (w, d) = (worst(&left), deepest(&left));
+        assert!(w <= TOLERANCE, "end face X {}: {w:.4} mm left", face[0].x);
+        assert!(d >= -TOLERANCE, "end face X {}: cut to {d:.4}", face[0].x);
+    }
+    let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
+    assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
+    // The note says the passes ran on past both ends of the part.
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("past both ends")),
+        "{:?}",
+        path.notes
+    );
+}
+
+#[test]
+fn req_nfr_06_req_gc_07_end_faces_beside_a_short_tab_are_identical_at_1_2_and_n_threads() {
+    // Axial and indexed finishing, whose end-face handling is new here; the
+    // helix strategies share the face search the test above checks.
+    let job = short_tabs();
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = job.path(strategy, &[]);
+            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4, "{}", strategy.name());
+    }
+}
+
+#[test]
+fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
+    // A held region at the far end whose keep-out (widened by the tool)
+    // covers the X where the tool would turn at the part's end face: no turn
+    // there, as before (decision record 0297 item 2), and the note now says
+    // which face is left and why (decision record 0343).
+    let job = short_tabs();
+    let tag = tags();
+    let keep_out = [(30.5, 40.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    let turns = turns_in_place(&path);
+    assert!(turns.iter().all(|&x| x < 30.0), "{turns:?}");
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("X 31.589") && n.message.contains("gripped length")),
+        "{:?}",
+        path.notes
+    );
+}
+
+// ---- free ends (decision record 0344) -------------------------------------
+
+/// Stock that earlier operations left: a cylinder of radius 10.3 from X -5
+/// to X 30, standing for what roughing to 0.3 mm leaves on a radius 10
+/// part whose start end has 5 mm of bar past it and nothing holding it.
+#[derive(Debug)]
+struct Carried(AnalyticStock);
+
+impl StockModel for Carried {
+    fn contains(&self, point: Point3) -> bool {
+        self.0.contains(point)
+    }
+    fn ray_entry(
+        &self,
+        origin: Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<f64> {
+        self.0.ray_entry(origin, direction, max_distance)
+    }
+    fn max_radius(&self) -> Option<f64> {
+        self.0.max_radius()
+    }
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        self.0.x_extent()
+    }
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
+}
+
+/// A radius 10 cylinder from X 0 to X 30. Its start end is free: nothing of
+/// the target lies past it, while the stock carries on to X -5. Its far end
+/// is the stock's end.
+fn free_end(carried: bool, flute: f64) -> Job {
+    let bar = AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 30.0,
+    };
+    let mut cutter = tool(ToolShape::FlatEnd, DIAMETER);
+    cutter.flute_length = Millimetres(flute);
+    Job {
+        surface: Box::new(MeshSurface::new(&revolve(&[(0.0, 10.0), (30.0, 10.0)], 720)).unwrap()),
+        stock: if carried {
+            Box::new(Carried(bar))
+        } else {
+            Box::new(bar)
+        },
+        profile: cutter.profile().unwrap(),
+    }
+}
+
+/// Points on the free end face (X 0, outward normal -X), `step` mm apart,
+/// from the axis to the part's radius.
+fn free_face(step: f64) -> Vec<Point3> {
+    let mut out = vec![Point3::new(0.0, 0.0, 0.0)];
+    let nr = (10.0 / step).ceil() as u32;
+    for i in 1..=nr {
+        let r = 10.0 * f64::from(i) / f64::from(nr);
+        let na = (std::f64::consts::TAU * r / step).ceil() as u32;
+        for j in 0..na {
+            let t = std::f64::consts::TAU * f64::from(j) / f64::from(na);
+            out.push(Point3::new(0.0, r * t.cos(), r * t.sin()));
+        }
+    }
+    out
+}
+
+fn messages(path: &GeneratedPath) -> String {
+    path.notes
+        .iter()
+        .map(|n| n.message.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
+    // Decision record 0344: with Face free ends on (the default), a Stepdown
+    // and stock left by earlier operations, the tool goes down beside the
+    // free end face in layers of the Stepdown to the axis, a whole turn each,
+    // so the face keeps only the stock to leave; the part is never cut into.
+    let job = free_end(true, 12.0);
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = job.path(strategy, &[("stepdown", 2.0)]);
+        let left = &job.left(&path, &[free_face(0.1)], 3.0)[0];
+        let (w, d) = (worst(left), deepest(left));
+        assert!(w <= TOLERANCE, "{}: {w:.4} mm left", strategy.name());
+        assert!(d >= -TOLERANCE, "{}: cut to {d:.4}", strategy.name());
+        // Layers at whole Stepdowns above the axis, from the first below the
+        // stock's top (10.3): 10, 8, 6, 4, 2 and 0, at X -1.5885.
+        let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+        let turns: Vec<f64> = turns_in_place(&path)
+            .into_iter()
+            .filter(|t| (t - x).abs() < 1e-6)
+            .collect();
+        assert_eq!(turns.len(), 6, "{}: {turns:?}", strategy.name());
+        // The warning names the face and the depth, and says what can happen
+        // to the stock past the ring (owner's choice, OI-1390).
+        let text = messages(&path);
+        assert!(
+            text.contains("X 0.000")
+                && text.contains("down to the rotary axis")
+                && text.contains("cut free")
+                && text.contains("check the stock and the workholding"),
+            "{}: {text}",
+            strategy.name()
+        );
+    }
+}
+
+#[test]
+fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
+    // No Stepdown on the operation and none from the tool's cutting data: the
+    // free end is not faced, the rest is made, and the operation says why in
+    // the Required wording (decision record 0344, C1 and C2).
+    let job = free_end(true, 12.0);
+    let path = job.path(&HelicalFinishing, &[]);
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    let text = messages(&path);
+    assert!(
+        text.contains("X 0.000")
+            && text.contains(
+                "Required. Enter the depth of each layer, or add cutting data \
+                              for this tool and material in the tool library."
+            ),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
+    // With no earlier operation in the setup (a finish-only setup) the
+    // setup's own stock is what is on the machine: the free end is faced
+    // from it, and a note says so and that the real blank must match it
+    // (decision record 0344, OI-1394).
+    let job = free_end(false, 12.0);
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    let turns = turns_in_place(&path)
+        .into_iter()
+        .filter(|t| (t - x).abs() < 1e-6)
+        .count();
+    assert_eq!(turns, 6);
+    let text = messages(&path);
+    assert!(
+        text.contains("X 0.000")
+            && text.contains("the setup's own stock")
+            && text.contains("the real blank must match it"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
+    // The face is 10 mm deep; a tool with 8 mm of flute cannot face it.
+    let job = free_end(true, 8.0);
+    let tag = tags();
+    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
+        .unwrap_err()
+        .to_string();
+    // Named at the switch the user acts on, with the face, the depth, the
+    // flutes and each remedy (the owner's choice on OI-1396).
+    assert!(
+        err.contains("face_free_ends")
+            && err.contains("X 0.000")
+            && err.contains("10.300 mm deep")
+            && err.contains("8.000 mm of flute")
+            && err.contains("longer flutes")
+            && err.contains("turn off Face free ends for this operation")
+            && err.contains("Facing"),
+        "{err}"
+    );
+}
+
+#[test]
+fn req_op_04_face_free_ends_off_leaves_the_path_as_before() {
+    let job = free_end(true, 12.0);
+    let on = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let tag = tags();
+    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
+    let mut values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    values.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    let off = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    assert!(on.group.segments.len() > off.group.segments.len());
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&off).iter().all(|t| (t - x).abs() > 1e-6));
+}
+
+#[test]
+fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_warning() {
+    // A held region past the free end grips the stock beyond the ring, so it
+    // cannot be cut free there: the end is faced, with its note, and the
+    // cut-free warning is not given.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    let text = messages(&path);
+    assert!(text.contains("in 6 layers of 2 mm"), "{text}");
+    assert!(!text.contains("cut free"), "{text}");
+}
+
+#[test]
+fn req_op_21_the_outer_end_of_a_tab_is_not_a_free_end() {
+    // A tab joins the part to the stock past it; facing beside the tab's
+    // outer end down to the axis would cut it free of that stock. Only the
+    // part's own ends are free ends (decision record 0344).
+    let mut job = short_tabs();
+    job.stock = Box::new(Carried(AnalyticStock::Cylinder {
+        radius: 11.0,
+        x_start: -5.0,
+        x_end: 35.0,
+    }));
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let text = messages(&path);
+    assert!(!text.contains("nothing beyond it"), "{text}");
+    let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
+    assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
+}
+
+#[test]
+fn req_nfr_06_req_gc_07_free_end_turns_are_identical_at_1_2_and_n_threads() {
+    let job = free_end(true, 12.0);
+    for strategy in [&HelicalFinishing as &dyn Strategy, &AxialFinishing] {
+        let runs = openchuck_testkit::determinism::check(|| {
+            let path = job.path(strategy, &[("stepdown", 2.0)]);
+            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4, "{}", strategy.name());
     }
 }
