@@ -39,6 +39,7 @@
 
 mod entry;
 mod ramp;
+mod ramp_refusal;
 mod walls;
 
 use openchuck_types::geometry::Point3;

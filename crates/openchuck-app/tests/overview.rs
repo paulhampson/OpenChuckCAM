@@ -591,6 +591,22 @@ fn req_ui_11_an_edit_to_operation_n_marks_n_and_later_operations_stale() {
 }
 
 #[test]
+fn req_ui_11_req_nfr_12_a_run_report_is_current_only_while_the_operation_is() {
+    // FIRSTRUN item 5: what a run said about an operation (such as feeds the
+    // machine's limits lowered) is shown only while its path is current.
+    let mut f = fixture("path-current", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    assert!(!f.app.operation_path_is_current(one));
+    f.app.regenerate().unwrap();
+    assert!(f.app.operation_path_is_current(one));
+    assert!(f.app.operation_path_is_current(two));
+    f.set_stepover(two, 0.5);
+    assert!(f.app.operation_path_is_current(one));
+    assert!(!f.app.operation_path_is_current(two));
+}
+
+#[test]
 fn req_ui_11_a_running_job_gives_the_operation_running() {
     let mut f = fixture("running", "cube_ascii.stl");
     let op = f.add_operation("Forever", "until_cancelled");
@@ -893,6 +909,37 @@ fn req_ui_11_req_ui_12_a_missing_model_file_is_an_error_that_blocks_setup() {
     assert!(primary.blocked.is_some());
     // It does not block the Setup step's own primary.
     assert!(o.primary(Step::Setup).message.is_none());
+}
+
+#[test]
+fn req_ui_11_req_ui_12_a_missing_machine_is_attention_not_an_error() {
+    // Decision 0173 (owner's answer, FIRSTRUN item 1): choosing a machine is
+    // a to-do. The bar reads "Needs attention", never "Error to fix", so it
+    // agrees with Messages, which counts no error.
+    let (_dir, app) = empty("empty-no-machine");
+    let o = app.overview(None, &JobLog::default());
+    assert!(app.project().machine().is_none());
+    let setup = o.step(Step::Setup);
+    assert_eq!(setup.health, StepHealth::Attention);
+    assert_eq!(setup.reason.as_deref(), Some("Choose a machine"));
+    assert!(o.health() < StepHealth::Error);
+    assert_eq!(
+        o.messages
+            .iter()
+            .filter(|m| m.severity == openchuck_app::overview::Severity::Error)
+            .count(),
+        0
+    );
+
+    let mut f = fixture("no-machine-bar", "cube_ascii.stl");
+    f.app.execute(Command::SetMachine(None)).unwrap();
+    let o = f.overview();
+    assert_eq!(o.step(Step::Setup).health, StepHealth::Attention);
+    assert_eq!(
+        o.step(Step::Setup).reason.as_deref(),
+        Some("Choose a machine")
+    );
+    assert!(o.health() < StepHealth::Error);
 }
 
 #[test]

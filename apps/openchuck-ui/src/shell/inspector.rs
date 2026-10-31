@@ -1049,6 +1049,17 @@ impl Shell {
                 .setting_jump
                 .take_if(|(op, _)| *op == id)
                 .map(|(_, name)| name),
+            // What the machine's feed limits did to the feed in the last run,
+            // while that run's path is still the operation's current one.
+            feed_note: self
+                .run
+                .last()
+                .filter(|_| app.operation_path_is_current(id))
+                .and_then(|run| {
+                    let name = &app.project().operation(id)?.name;
+                    openchuck_app::note_groups::feed_limit_summary(&run.notes, name)
+                })
+                .map(|limit| limit.describe()),
         };
         let edits = match app.parameter_form(id) {
             Ok(form) => {

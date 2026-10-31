@@ -171,6 +171,10 @@ pub struct Field {
     pub source: Source,
     /// The inspector section it is shown in.
     pub section: FormSection,
+    /// Why the setting cannot be used as it is, when that is known before
+    /// the operation is generated, in plain words with what to change; shown
+    /// under it (the back-and-forth ramp, #291).
+    pub problem: Option<String>,
 }
 
 /// An operation's parameter form.
@@ -230,6 +234,7 @@ pub fn parameter_form(
         op.parameters.get(names::RAMP_BACK_AND_FORTH),
         Some(ParameterValue::Flag(true))
     ) && !matches!(op.parameters.get(names::ENTRY),Some(ParameterValue::Text(style)) if style=="ramp");
+    let ramp_refusal = crate::ramp_entry::refusal(project, op);
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
     let fields = schema
         .parameters
@@ -308,6 +313,9 @@ pub fn parameter_form(
                 set,
                 value,
                 source,
+                problem: (spec.name == names::RAMP_BACK_AND_FORTH)
+                    .then(|| ramp_refusal.clone())
+                    .flatten(),
             }
         })
         .collect();

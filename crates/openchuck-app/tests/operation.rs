@@ -2125,3 +2125,130 @@ fn req_op_04_req_ui_07_turning_adaptive_spacing_on_from_a_saved_zero_asks_for_th
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Turns on the back-and-forth ramp (Entry Ramp, Back-and-forth ramp on) in
+/// operation `op`, or with `entry` another entry style.
+fn back_and_forth(app: &mut Application, op: OperationId, entry: &str) {
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation
+        .parameters
+        .insert(names::ENTRY.into(), ParameterValue::Text(entry.into()));
+    operation.parameters.insert(
+        names::RAMP_BACK_AND_FORTH.into(),
+        ParameterValue::Flag(true),
+    );
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+}
+
+/// What the inspector shows under the Back-and-forth ramp field.
+fn ramp_problem(app: &Application, op: OperationId) -> Option<String> {
+    app.parameter_form(op)
+        .unwrap()
+        .fields
+        .into_iter()
+        .find(|f| f.name == names::RAMP_BACK_AND_FORTH)
+        .unwrap()
+        .problem
+}
+
+/// Issue #291: on a STEP part the back-and-forth ramp cannot be checked
+/// (decision 0242 item 5), so the operation is in error before it is
+/// generated, with one plain message that names the setting to change: under
+/// the Back-and-forth ramp field, as the operation's state, in Messages, and
+/// when it is generated. Only the part's file name is read.
+#[test]
+fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_step_part_says_what_to_change_before_generating() {
+    use openchuck_app::overview::{ItemRef, ItemState, MessageAction, Severity};
+    use openchuck_app::project::RelativePath;
+    let (dir, mut app, op) = project("ramp-step-part");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blisk.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model))).unwrap();
+    // Off, or with another entry, nothing is said.
+    assert_eq!(ramp_problem(&app, op), None);
+    back_and_forth(&mut app, op, "helix");
+    assert_eq!(ramp_problem(&app, op), None);
+    back_and_forth(&mut app, op, "ramp");
+    let said = "The back-and-forth ramp is not available on a STEP part yet: its clearance \
+                cannot be checked against the part's exact faces. To generate this operation, \
+                in the operation's Entry, links and retract settings, turn off Back-and-forth \
+                ramp or set Entry to Plunge, Lead or Helix.";
+    assert_eq!(ramp_problem(&app, op).as_deref(), Some(said));
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let status = &overview.items[&ItemRef::Operation(op)];
+    assert_eq!(status.state, ItemState::Error, "{status:?}");
+    assert!(status.cause.ends_with(said), "{}", status.cause);
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.text == said)
+        .expect("the refusal is in Messages");
+    assert_eq!(message.severity, Severity::Error);
+    assert_eq!(
+        message.action,
+        Some(MessageAction::Show(ItemRef::Operation(op)))
+    );
+    // Generating refuses with the same words, before the part is read, and
+    // Messages still says it once.
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert_eq!(e, format!("operation 'Ring' cannot be generated: {said}"));
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    assert_eq!(
+        overview
+            .messages
+            .iter()
+            .filter(|m| m.text.contains(said))
+            .count(),
+        1,
+        "{:?}",
+        overview.messages
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A shank wider than the cutter has no bound the ramp's clearance check
+/// supports (decision 0242 item 5): said before generating, naming the tool,
+/// both sizes and what to change (#291).
+#[test]
+fn req_op_11_req_nfr_07_back_and_forth_ramp_with_a_wider_shank_says_what_to_change() {
+    use openchuck_app::overview::{ItemRef, ItemState};
+    let (dir, mut app, op) = project("ramp-wide-shank");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let mut tool = app.project().tools()[0].clone();
+    tool.tool.shank_diameter = Millimetres(6.0);
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    back_and_forth(&mut app, op, "ramp");
+    let said = "The back-and-forth ramp cannot check its clearance with the tool '4 mm ball': \
+                its shank (6.000 mm) is wider than its cutting diameter (4.000 mm). Choose a \
+                tool whose shank is no wider than its cutter, or in the operation's Entry, \
+                links and retract settings, turn off Back-and-forth ramp or set Entry to \
+                Plunge, Lead or Helix.";
+    assert_eq!(ramp_problem(&app, op).as_deref(), Some(said));
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    assert_eq!(
+        overview.items[&ItemRef::Operation(op)].state,
+        ItemState::Error
+    );
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert_eq!(e, format!("operation 'Ring' cannot be generated: {said}"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// On a mesh part the application gives the ramp its clearance inputs: the
+/// ramp is checked, and refuses this pass, which only turns the part, for
+/// that reason, not for missing inputs (#291).
+#[test]
+fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_mesh_part_is_checked() {
+    let (dir, mut app, op) = project("ramp-mesh-part");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    back_and_forth(&mut app, op, "ramp");
+    assert_eq!(ramp_problem(&app, op), None);
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert!(
+        e.contains("only turns the part about the rotary axis") && !e.contains("were not supplied"),
+        "{e}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

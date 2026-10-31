@@ -138,6 +138,9 @@ pub struct Marks {
     /// The setting to scroll to this frame, its section opened: the "Show
     /// setting" link of a message.
     pub jump: Option<String>,
+    /// A line for under the feed field: what the machine's feed limits did
+    /// to the feed in the last run. The feed itself is not changed.
+    pub feed_note: Option<String>,
 }
 
 /// The sections open by default, the first time an operation is shown.
@@ -204,7 +207,7 @@ pub fn show(
                     let need = needs
                         .iter()
                         .find(|r| r.field == field_key)
-                        .map(|r| r.text.as_str());
+                        .map(|r| r.detail.as_deref().unwrap_or(r.text.as_str()));
                     let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
                     let scroll = jump == Some(&field_key)
                         || marks.jump.as_deref() == Some(field.name.as_str());
@@ -216,8 +219,17 @@ pub fn show(
                     } else {
                         row(ui, field, true, state, need, warned, scroll, None)
                     };
+                    // Known before Generate: what to change (#291).
+                    if let Some(problem) = &field.problem {
+                        field_row::warning_line(ui, problem);
+                    }
                     if let Some(e) = edit {
                         edits.push(e);
+                    }
+                    if field.name == openchuck_app::path::params::names::FEED
+                        && let Some(note) = &marks.feed_note
+                    {
+                        ui.label(RichText::new(note).color(DARK.muted));
                     }
                 }
                 edits
@@ -493,6 +505,7 @@ mod tests {
             value: Some(ParameterValue::Number(1200.0)),
             source: Source::CuttingData,
             section: FormSection::ToolAndFeeds,
+            problem: None,
         };
         assert_eq!(
             hint(&field).unwrap(),
@@ -537,6 +550,7 @@ mod tests {
             value: Some(ParameterValue::Text(data.into())),
             source: Source::Operation,
             section: FormSection::PatternAndTolerance,
+            problem: None,
         };
         let mut state = FormState::default();
         let mut output = ctx.run_ui(
@@ -592,6 +606,7 @@ mod tests {
                 value: Some(ParameterValue::Number(0.01)),
                 source: Source::Default,
                 section: FormSection::PatternAndTolerance,
+                problem: None,
             }],
             notes: Vec::new(),
         };
@@ -615,7 +630,7 @@ mod tests {
         };
         let warned = Marks {
             warned: vec!["tolerance".into()],
-            jump: None,
+            ..Marks::default()
         };
         // Closed by the user, and no jump: the mark waits in the section.
         assert!(
@@ -641,5 +656,124 @@ mod tests {
         let shown = run(&mut settings, &Marks::default());
         assert!(!shown.iter().any(|t| t == WARNED_SETTING), "{shown:?}");
         assert!(shown.iter().any(|t| t == "Tolerance"), "{shown:?}");
+    }
+
+    #[test]
+    fn req_op_11_req_nfr_07_a_back_and_forth_ramp_problem_shows_under_its_field() {
+        // Issue #291: what the application knows before Generate about the
+        // back-and-forth ramp is a warning line under the field, in the
+        // Entry, links and retract section; none when there is no problem.
+        let problem = "The back-and-forth ramp is not available on a STEP part yet.";
+        let field = |problem: Option<&str>| Field {
+            name: "ramp_back_and_forth".into(),
+            label: "Back-and-forth ramp (ramp entry only)".into(),
+            description: String::new(),
+            kind: FieldKind::Flag,
+            set: Some(ParameterValue::Flag(true)),
+            value: Some(ParameterValue::Flag(true)),
+            source: Source::Operation,
+            section: FormSection::EntryLinksAndRetract,
+            problem: problem.map(str::to_owned),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "links", true, &DEFAULT_OPEN);
+        let mut run = |field: Field| {
+            let form = ParameterForm {
+                operation: openchuck_app::project::id::OperationId::new(),
+                strategy: "rotary_roughing".into(),
+                fields: vec![field],
+                notes: Vec::new(),
+            };
+            let mut state = FormState::default();
+            let mut shown = Vec::new();
+            for _ in 0..30 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 400.0),
+                    )),
+                    ..Default::default()
+                };
+                let mut output = ctx.run_ui(input, |ui| {
+                    show(
+                        ui,
+                        &form,
+                        &mut state,
+                        &mut settings,
+                        &[],
+                        None,
+                        &Marks::default(),
+                    );
+                });
+                output.textures_delta.clear();
+                shown = texts(&output.shapes);
+            }
+            shown
+        };
+        let shown = run(field(Some(problem)));
+        assert!(shown.iter().any(|t| t == problem), "{shown:?}");
+        let shown = run(field(None));
+        assert!(!shown.iter().any(|t| t == problem), "{shown:?}");
+        assert!(
+            shown
+                .iter()
+                .any(|t| t == "Back-and-forth ramp (ramp entry only)"),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
+    fn req_nfr_12_req_op_11_the_feed_field_says_what_the_machine_limits_did() {
+        // FIRSTRUN item 5: the feed the user typed stays as it is; a plain
+        // line under it gives the feed the machine's limits left.
+        let form = ParameterForm {
+            operation: openchuck_app::project::id::OperationId::new(),
+            strategy: "roughing".into(),
+            fields: vec![Field {
+                name: "feed".into(),
+                label: "Cutting feed".into(),
+                description: String::new(),
+                kind: FieldKind::Number {
+                    unit: "mm/min",
+                    min: Some(0.0),
+                    min_exclusive: true,
+                    max: None,
+                },
+                set: Some(ParameterValue::Number(1000.0)),
+                value: Some(ParameterValue::Number(1000.0)),
+                source: Source::Operation,
+                section: FormSection::PatternAndTolerance,
+                problem: None,
+            }],
+            notes: Vec::new(),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "pattern", true, &DEFAULT_OPEN);
+        let run = |settings: &mut UserSettings, marks: &Marks| {
+            let mut state = FormState::default();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 400.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                show(ui, &form, &mut state, settings, &[], None, marks);
+            });
+            output.textures_delta.clear();
+            texts(&output.shapes)
+        };
+        let note = "Last run: the machine's feed limits slowed 4 moves.".to_owned();
+        let marks = Marks {
+            feed_note: Some(note.clone()),
+            ..Marks::default()
+        };
+        let shown = run(&mut settings, &marks);
+        assert!(shown.contains(&note), "{shown:?}");
+        let shown = run(&mut settings, &Marks::default());
+        assert!(!shown.iter().any(|t| t.contains("Last run")), "{shown:?}");
     }
 }

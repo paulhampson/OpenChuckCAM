@@ -55,6 +55,7 @@
 mod bound;
 mod drop;
 mod hull;
+mod outline;
 #[cfg(test)]
 mod tests;
 mod trim;
@@ -2343,6 +2344,65 @@ impl BrepSurface {
         })
     }
 
+    /// The tool dropped along `line` onto the exact faces, when the tool has
+    /// an exact drop ([`has_exact_drop`]): a ball by
+    /// [`drop_ball`](Self::drop_ball), any other outline of the family by the
+    /// outline drop (lane STEPALL-X3, decision 0338), within
+    /// [`DROP_TOLERANCE`] of the highest contact along the line, and passing
+    /// over only parts that reach the tool within [`DROP_TOLERANCE`] of its
+    /// rim; or, when a search ran out of its budget, at the bound it stopped
+    /// at, which is never below the contact. `None` for a tool without an
+    /// exact drop, or when a face has none; the caller then drops onto the
+    /// tessellation. The outline drop is several times slower than a drop on
+    /// the tessellation, so no strategy uses it yet (OI-1351).
+    pub fn drop_exact(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
+        if ball_radius(profile).is_some() {
+            return self.drop_ball(profile, line);
+        }
+        let tool = outline::Outline::new(profile)?;
+        self.drop_outline(&tool, line)
+    }
+
+    fn drop_outline(&self, tool: &outline::Outline, line: &ToolLine) -> Option<ExactDrop> {
+        if !line.origin.is_finite() || !line.axis.get().is_finite() {
+            return None;
+        }
+        let mut search = outline::Search::new(tool, line);
+        let mut order: Vec<(f64, usize)> = self
+            .faces
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| f.outline_top(&search).map(|t| (t, i)))
+            .collect();
+        order.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        for (top, i) in order {
+            if top <= search.floor() {
+                break;
+            }
+            if let Some(f) = self.faces.get(i) {
+                f.drop_outline(&mut search);
+            }
+            if search.unsupported {
+                return None;
+            }
+        }
+        let best = search.best?;
+        let offset = best.s.max(search.unresolved);
+        Some(ExactDrop {
+            contact: Contact {
+                tip: line.at(offset),
+                contact: best.point,
+                offset,
+            },
+            position: FacePosition {
+                face: best.face,
+                uv: best.uv,
+            },
+            raised: (search.unresolved - best.s).max(0.0),
+            looked: search.looked,
+        })
+    }
+
     fn nearest(
         &self,
         point: Point3,
@@ -2425,6 +2485,20 @@ pub struct ExactDrop {
     pub raised: f64,
     /// Cells and boundary pieces looked at.
     pub looked: usize,
+}
+
+/// Whether the tool has an exact drop on the faces
+/// ([`BrepSurface::drop_exact`]): a ball ([`ball_radius`]), or an outline
+/// whose lower envelope is convex, made of lines of finite slope and arcs
+/// centred on the axis that end before they turn upright, and level at the
+/// axis: the flat end, the tapered ball (also grown for stock to leave), and
+/// a V-bit or chamfer with a flat at the tip (decision 0338). A bull nose, a
+/// flat end grown for stock to leave, a sharp V-bit and a concave profile
+/// have none (OI-1350). [`SurfaceSource::drop_tool`] still drops only a ball
+/// on the exact faces: the outline drop is not adopted by any strategy yet
+/// (OI-1351).
+pub fn has_exact_drop(profile: &RevolvedProfile) -> bool {
+    ball_radius(profile).is_some() || outline::Outline::new(profile).is_some()
 }
 
 /// The radius of the ball that is the profile's lower envelope, or `None`
@@ -2643,7 +2717,9 @@ impl SurfaceSource for BrepSurface {
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         // A ball drops onto the exact faces when the host asked for it
         // (decision 0277); any other tool, or a face without an exact drop,
-        // drops onto the tessellation (OI-81).
+        // drops onto the tessellation (OI-81). The outline drop of decision
+        // 0338 is not adopted here: it is asked for by `drop_exact` only
+        // (OI-1351).
         if self.exact_drops
             && let Some(d) = self.drop_ball(profile, line)
         {
