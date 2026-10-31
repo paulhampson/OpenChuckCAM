@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- FIRSTRUN (accepted decision 0302): a project with no machine reads "Needs attention", not "Error to fix"; an empty Stepdown says "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library."; the "No tabs are stored" line is true when a held region joins the part and the grip warning is in plain words; the title bar says "Edited, not saved" with a tooltip; under Cutting feed a line says what the machine's feed limits did in the last run. Nothing written changes.
+
 - SIMPERF (#382, accepted decision 0322; owner decisions D1, D3, D5): Settings has "Memory for playback checkpoints (MB)" (1,536 by default, 256 to 8,192), capped at a quarter of the computer's memory with "This computer: at most N MB" when it applies. While playback plays, the tool follows the clock and the cut part follows behind it; a cut-part bar under the position bar shows where the cut part is, how far behind, and the progress of the one being made. When playback is still, the tool and the cut part match exactly, as before. Frames made while playing have no picker; once still, the probe works as before.
 
 - OUTPUT3 (accepted decision 0327; #312; GC-05, GC-07, NFR-15): the export dialog has a read-only Preview of the program as it would be written, in place of the first 14 lines: a file picker for split output, line count, size and SHA-256 with Copy, Go to line (Ctrl or Cmd G), Find, monospaced rows with line numbers and a scroll bar, smooth on a million lines. It leaves with the files when an edit makes them out of date. Nothing written, no editing.
