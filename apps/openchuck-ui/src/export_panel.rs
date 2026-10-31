@@ -293,7 +293,7 @@ impl ExportPanel {
     fn partial(&self, app: &Application) -> Option<(Vec<String>, usize)> {
         let files = self.files_current(app)?;
         let partial = partial_operations(app.project(), &files.run);
-        (!partial.is_empty()).then(|| (partial, Arc::as_ptr(&files.run) as usize))
+        (!partial.is_empty()).then_some((partial, Arc::as_ptr(&files.run) as usize))
     }
 
     /// Whether writing waits for the acknowledgement of the current files'

@@ -1433,7 +1433,7 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     let run = std::sync::Arc::new(run);
     let out = folder("partial-out");
     let mut plan = app.prepare_output(&out, &run).unwrap();
-    assert_eq!(plan.partial_operations(), [name.clone()]);
+    assert_eq!(plan.partial_operations(), std::slice::from_ref(&name));
     assert!(!plan.partial_path_acknowledged());
     let refused = app.write_output(&plan, false);
     assert!(refused.written.is_empty());
