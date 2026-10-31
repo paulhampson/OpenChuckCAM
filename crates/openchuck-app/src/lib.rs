@@ -227,6 +227,10 @@ pub struct Application {
     /// The user's file name templates (issues 308 and 310); the defaults
     /// give the names written before templates existed.
     file_names: output_names::FileNameTemplates,
+    /// Playback's checkpoints kept while simulating, within this many bytes
+    /// ("Generate playback information with toolpath generation", decision
+    /// record 0333); `None` keeps none, and playback simulates again.
+    playback_with_generation: Option<usize>,
 }
 
 /// What a new project starts with, from the user's settings
@@ -322,6 +326,7 @@ impl Application {
             actions: Vec::new(),
             clock: Box::new(SystemClock),
             file_names: output_names::FileNameTemplates::default(),
+            playback_with_generation: None,
         })
     }
 
@@ -1412,6 +1417,7 @@ impl Application {
         let grouping = self.grouping;
         let cache = self.cache.clone();
         let record = std::sync::Arc::clone(&self.record);
+        let playback = self.playback_with_generation;
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
                 let result = pipeline::regenerate(
@@ -1420,6 +1426,7 @@ impl Application {
                     &strategies,
                     post.as_ref().map(|p| (p, grouping)),
                     simulate,
+                    playback,
                     &cache,
                     &record,
                     until,
@@ -1454,6 +1461,27 @@ impl Application {
     /// number costs memory on long paths.
     pub fn set_cache_versions(&self, count: usize) {
         self.cache.set_versions(count);
+    }
+
+    /// Keeps playback's checkpoints while simulating, within `memory` bytes
+    /// (the user's "Memory for playback checkpoints", capped by the front
+    /// end), or none with `None`: "Generate playback information with
+    /// toolpath generation" (decision record 0333). With them, playback of
+    /// the run opens at once ([`Application::start_stock_playback`] uses
+    /// them); without, it simulates again. The toolpaths, the G-code and the
+    /// stock are the same either way. A change drops the stocks kept for
+    /// reuse, so the next run simulates again and keeps them, or not.
+    pub fn set_playback_with_generation(&mut self, memory: Option<usize>) {
+        if self.playback_with_generation != memory {
+            self.playback_with_generation = memory;
+            self.cache.clear_stocks();
+        }
+    }
+
+    /// The memory playback's checkpoints may hold when they are kept while
+    /// simulating, or `None` when they are not.
+    pub fn playback_with_generation(&self) -> Option<usize> {
+        self.playback_with_generation
     }
 
     /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).

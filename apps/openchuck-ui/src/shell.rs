@@ -394,6 +394,7 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -583,6 +584,7 @@ impl Shell {
             self.dialog = Some(Dialog::CopyLinked(linked));
         }
         self.app = Some(app);
+        self.apply_playback_with_generation();
         self.overview_dirty = true;
         self.rebuild_scene(true);
     }
@@ -766,6 +768,42 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
+        self.settings_touched();
+    }
+
+    /// Whether playback information is made with toolpath generation: the
+    /// user's choice, or this computer's default (decision record 0333).
+    fn playback_with_generation_on(&self) -> bool {
+        self.settings
+            .simulate
+            .playback_with_generation
+            .unwrap_or_else(|| {
+                crate::memory::playback_with_generation_default(self.physical_memory)
+            })
+    }
+
+    /// Gives the application the memory for playback's checkpoints while it
+    /// simulates, or none when "Generate playback information with toolpath
+    /// generation" is off (decision record 0333).
+    fn apply_playback_with_generation(&mut self) {
+        let memory = self.playback_with_generation_on().then(|| {
+            crate::memory::playback_memory(
+                self.settings.simulate.playback_memory_mb,
+                self.physical_memory,
+            )
+            .0
+        });
+        if let Some(app) = &mut self.app {
+            app.set_playback_with_generation(memory);
+        }
+    }
+
+    /// Sets "Generate playback information with toolpath generation": the
+    /// user's choice, or `None` for this computer's default.
+    fn set_playback_with_generation(&mut self, choice: Option<bool>) {
+        self.settings.simulate.playback_with_generation = choice;
+        self.apply_playback_with_generation();
         self.settings_touched();
     }
 
@@ -2107,6 +2145,46 @@ impl Shell {
                      waits after a jump; less gives longer waits. The cut part shown is the same \
                      either way. The copies are never allowed to use more than this. A change \
                      applies the next time the cut part is prepared.",
+                );
+                let mut with_generation = self.playback_with_generation_on();
+                if ui
+                    .checkbox(
+                        &mut with_generation,
+                        "Generate playback information with toolpath generation",
+                    )
+                    .changed()
+                {
+                    action = Some(Box::new(move |s: &mut Self| {
+                        s.set_playback_with_generation(Some(with_generation));
+                    }));
+                }
+                ui.horizontal(|ui| {
+                    let default =
+                        crate::memory::playback_with_generation_default(self.physical_memory);
+                    let state = if default { "On" } else { "Off" };
+                    ui.label(match crate::memory::gigabytes(self.physical_memory) {
+                        Some(gb) => format!("{state} by default on this computer ({gb} GB)"),
+                        None => format!(
+                            "{state} by default: this computer's memory could not be read"
+                        ),
+                    });
+                    if self.settings.simulate.playback_with_generation.is_some()
+                        && ui.button("Use this computer's default").clicked()
+                    {
+                        action = Some(Box::new(|s: &mut Self| {
+                            s.set_playback_with_generation(None);
+                        }));
+                    }
+                });
+                ui.label(
+                    "On: generating also keeps the copies of the cut part that playback \
+                     needs, so the cut part plays at once. Each generation takes a little \
+                     longer (about a tenth of the simulation's time) and holds up to the \
+                     memory for playback checkpoints above while its result is shown. Off: \
+                     nothing more is held, and the copies are made when the cut part is first \
+                     played, which takes about as long as the simulation. The toolpaths, the \
+                     G-code and the cut part are the same either way. A change applies from \
+                     the next generation.",
                 );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui

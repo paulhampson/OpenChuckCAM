@@ -389,11 +389,14 @@ fn spans_on(
 /// an end, and `h` never decreases with `r` (the monotone rule), so
 /// `w(s) - h(r(s))` is at most the larger end's `w` less `h` at the line's
 /// closest approach to the axis. Certain only when that is below
-/// [`MISS_MARGIN`], far beyond the rounding of either side; otherwise the
+/// [`MISS_MARGIN`], far beyond the rounding of either side; otherwise, and
+/// for a line along the axis or with an end that is not a number, the
 /// search decides.
 fn surely_misses(tool: &ToolSolid, o: [f64; 3], d: [f64; 3], a: f64, b: f64) -> bool {
     let qa = d[0] * d[0] + d[1] * d[1];
-    if qa < 1e-18 {
+    // An end that is not a number can survive the clipping; the search
+    // decides such a line, as it did before (NFR-07).
+    if qa < 1e-18 || a.is_nan() || b.is_nan() {
         return false;
     }
     let qb = o[0] * d[0] + o[1] * d[1];
@@ -401,6 +404,9 @@ fn surely_misses(tool: &ToolSolid, o: [f64; 3], d: [f64; 3], a: f64, b: f64) -> 
     let (x, y) = (o[0] + s * d[0], o[1] + s * d[1]);
     // A square root, not `hypot`: the margin covers the last bit.
     let closest = (x * x + y * y).sqrt();
+    if !closest.is_finite() {
+        return false;
+    }
     let highest = (o[2] + a * d[2]).max(o[2] + b * d[2]);
     highest - tool.height_at(closest) < -MISS_MARGIN
 }
@@ -760,21 +766,39 @@ mod tests {
     /// the skip, and no crash (NFR-07, decision record 0332).
     #[test]
     fn req_nfr_07_req_nfr_06_a_line_that_is_not_finite_is_no_crash_either_way() {
-        let line = ([0.5, 0.2, -1.0], normal([0.1, 0.0, 1.0]), -5.0, 5.0);
-        for (name, solid) in every_kind_of_tool() {
-            for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-                for at in 0..8 {
-                    let (mut o, mut d, mut s0, mut s1) = line;
-                    match at {
-                        0..=2 => o[at] = bad,
-                        3..=5 => d[at - 3] = bad,
-                        6 => s0 = bad,
-                        _ => s1 = bad,
+        // A line that rises through the tip, and a level one inside the
+        // flutes (where a bad end survives the clipping).
+        let lines = [
+            ([0.5, 0.2, -1.0], normal([0.1, 0.0, 1.0]), -5.0, 5.0),
+            ([-5.0, 0.2, 1.0], [1.0, 0.0, 0.0], 0.0, 10.0),
+        ];
+        // One value, or two at once, in any of the eight places.
+        let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        let mut cases = Vec::new();
+        for (i, &x) in bad.iter().enumerate() {
+            for at in 0..8 {
+                cases.push(vec![(at, x)]);
+                for &y in &bad[i..] {
+                    for other in (at + 1)..8 {
+                        cases.push(vec![(at, x), (other, y)]);
                     }
-                    let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
-                    let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
-                    assert_eq!(bits(&skipping), bits(&searched), "{name}: {bad} at {at}");
                 }
+            }
+        }
+        for (name, solid) in every_kind_of_tool() {
+            for (case, &line) in cases.iter().flat_map(|c| lines.iter().map(move |l| (c, l))) {
+                let (mut o, mut d, mut s0, mut s1) = line;
+                for &(at, value) in case {
+                    match at {
+                        0..=2 => o[at] = value,
+                        3..=5 => d[at - 3] = value,
+                        6 => s0 = value,
+                        _ => s1 = value,
+                    }
+                }
+                let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
+                let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
+                assert_eq!(bits(&skipping), bits(&searched), "{name}: {case:?}");
             }
         }
     }

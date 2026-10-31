@@ -35,10 +35,12 @@ use crate::{AppError, Application, JobHandle, Regeneration};
 pub const DEFAULT_PLAYBACK_MEMORY: usize = 1_536 * 1024 * 1024;
 
 /// The fewest moves between two checkpoints inside an operation.
-const MIN_CHECKPOINT_SPACING: usize = 1_000;
+pub(crate) const MIN_CHECKPOINT_SPACING: usize = 1_000;
 
 struct SetupPlay {
     id: SetupId,
+    /// Its checkpoints are the run's own (decision record 0333).
+    from_run: bool,
     simulator: Simulator,
     /// The groups run on this setup's stock, in order, counted across all
     /// groups of the timeline.
@@ -132,7 +134,7 @@ impl StockPlayback {
             Checkpoint {
                 group: local,
                 moves,
-                stock: stock.pack(),
+                stock: Arc::new(stock.pack()),
             },
         )));
         let Some(original) = path.groups.get(group) else {
@@ -195,6 +197,13 @@ impl StockPlayback {
             .iter()
             .map(|s| s.simulator.checkpoint_bytes())
             .sum()
+    }
+
+    /// True when every setup's checkpoints are those the run kept while it
+    /// simulated ("Generate playback information with toolpath generation",
+    /// decision record 0333), so nothing was simulated again.
+    pub fn from_the_run(&self) -> bool {
+        !self.setups.is_empty() && self.setups.iter().all(|s| s.from_run)
     }
 
     /// How many checkpoints are kept in all.
@@ -291,9 +300,36 @@ impl Application {
                 // each setup may use what the ones before it left.
                 let mut held = replay;
                 for ((id, groups), stock) in plan.into_iter().zip(stocks) {
-                    let mut simulator = Simulator::new(stock, machine, every)
-                        .with_checkpoint_budget(memory.saturating_sub(held));
-                    for g in &groups {
+                    // The run's own checkpoints, when it kept them while
+                    // simulating every operation of this setup (decision
+                    // record 0333): nothing is simulated again.
+                    let reused = run
+                        .simulation
+                        .as_ref()
+                        .and_then(|r| r.setups.iter().find(|s| s.id == id))
+                        .filter(|s| s.operations.len() == groups.len())
+                        .and_then(|s| {
+                            Simulator::from_checkpoints(
+                                machine,
+                                s.checkpoints.clone(),
+                                groups.len(),
+                            )
+                        });
+                    let from_run = reused.is_some();
+                    let mut simulator = match reused {
+                        Some(simulator) => {
+                            done += groups
+                                .iter()
+                                .filter_map(|g| run.toolpath.groups.get(*g))
+                                .map(|g| g.segments.len() as u64)
+                                .sum::<u64>();
+                            context.report("prepare playback", done, Some(total));
+                            simulator
+                        }
+                        None => Simulator::new(stock, machine, every)
+                            .with_checkpoint_budget(memory.saturating_sub(held)),
+                    };
+                    for g in groups.iter().filter(|_| !from_run) {
                         context.check_cancelled()?;
                         let (Some(path), Some(info)) =
                             (run.toolpath.groups.get(*g), run.groups.get(*g))
@@ -316,6 +352,7 @@ impl Application {
                     held = held.saturating_add(simulator.checkpoint_bytes());
                     setups.push(SetupPlay {
                         id,
+                        from_run,
                         simulator,
                         groups,
                         model: project.setup(id).and_then(|s| s.part),
