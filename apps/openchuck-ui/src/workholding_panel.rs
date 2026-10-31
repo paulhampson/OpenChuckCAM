@@ -865,7 +865,7 @@ impl WorkholdingPanel {
                 let more = ui.small_button("\u{2026}").on_hover_text("Tab menu");
                 more.widget_info(|| {
                     egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
+                        egui::Role::Button,
                         true,
                         format!("Tab {} menu", i + 1),
                     )

@@ -87,8 +87,8 @@ impl Rig {
         let mut output = ctx.run_ui(input, |ui| {
             shell.draw(ui);
             if *probe_focus {
-                egui::Area::new(egui::Id::new("probe area")).show(ui.ctx(), |ui| {
-                    let id = egui::Id::new("probe text");
+                egui::Area::new(egui::Id::unique("probe area")).show(ui.ctx(), |ui| {
+                    let id = egui::Id::unique("probe text");
                     let response = ui.add(egui::TextEdit::singleline(probe_text).id(id));
                     response.request_focus();
                 });

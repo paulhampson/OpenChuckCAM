@@ -199,11 +199,17 @@ pub enum ProfileField {
     /// [`MachineProfile::min_spindle_rpm`] and
     /// [`MachineProfile::max_spindle_rpm`].
     SpindleRange,
+    /// [`MachineProfile::automatic_tool_length`].
+    ToolLengthMeasurement,
+    /// [`MachineProfile::spindle_to_axis`].
+    SpindleToAxis,
+    /// [`MachineProfile::recommended_min_safe_z`].
+    RecommendedMinSafeZ,
 }
 
 impl ProfileField {
     /// Every field, in order.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 14] = [
         Self::RotaryAxis,
         Self::ASense,
         Self::RotaryOrigin,
@@ -215,6 +221,9 @@ impl ProfileField {
         Self::BlockWindow,
         Self::ShortBlockMode,
         Self::SpindleRange,
+        Self::ToolLengthMeasurement,
+        Self::SpindleToAxis,
+        Self::RecommendedMinSafeZ,
     ];
 
     /// The field's name in the profile file.
@@ -231,6 +240,9 @@ impl ProfileField {
             Self::MinBlockMs => "min_block_ms",
             Self::BlockWindow => "block_window",
             Self::ShortBlockMode => "short_block_mode",
+            Self::ToolLengthMeasurement => "tool_length_measurement",
+            Self::SpindleToAxis => "spindle_to_axis",
+            Self::RecommendedMinSafeZ => "recommended_min_safe_z",
         }
     }
 }
@@ -314,6 +326,9 @@ impl ShortBlockMode {
 fn is_zero(value: &f64) -> bool {
     *value == 0.0
 }
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 fn is_one(value: &usize) -> bool {
     *value == 1
 }
@@ -368,6 +383,21 @@ pub struct MachineProfile {
     /// Whether short blocks are reported or slowed; older profiles stay off.
     #[serde(default, skip_serializing_if = "ShortBlockMode::is_off")]
     pub short_block_mode: ShortBlockMode,
+    /// Whether the controller measures each tool's length and offsets it (a
+    /// tool setter), so every tool's tip reaches the programmed Z while the
+    /// spindle rises or falls with the tool's length (decision record 0317).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub automatic_tool_length: bool,
+    /// The distance from the spindle at the top of the Z travel down to the
+    /// rotary axis, when known: a tool sticking out further than this less
+    /// the safe Z takes the spindle past the top of the travel at the safe Z
+    /// (decision record 0317).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spindle_to_axis: Option<Millimetres>,
+    /// The lowest safe Z the machine's maker or owner recommends, when one is
+    /// given. Advice to check, never a limit (decision record 0317).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_min_safe_z: Option<Millimetres>,
     /// Where each value came from, and whether it is confirmed on the
     /// machine. A field not listed is treated as unconfirmed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -435,6 +465,17 @@ impl MachineProfile {
         )?;
         self.clearance.validate("machine.clearance")?;
         for (field, value) in [
+            ("machine.spindle_to_axis", self.spindle_to_axis),
+            (
+                "machine.recommended_min_safe_z",
+                self.recommended_min_safe_z,
+            ),
+        ] {
+            if let Some(v) = value {
+                require_positive(field, v.0)?;
+            }
+        }
+        for (field, value) in [
             ("machine.min_spindle_rpm", self.min_spindle_rpm),
             ("machine.max_spindle_rpm", self.max_spindle_rpm),
         ] {
@@ -474,6 +515,9 @@ impl MachineProfile {
     /// Machine-confirmable fields, in order. The spindle range is present
     /// only when configured; block-time values only while the check is active.
     /// The mode is software policy and never a machine-confirmable field.
+    /// Tool length measurement and the spindle-to-axis distance are present
+    /// when the machine measures tool lengths (the distance even while it is
+    /// not known), the recommended minimum safe Z when given.
     pub fn fields(&self) -> Vec<ProfileField> {
         let spindle = self.min_spindle_rpm.is_some() || self.max_spindle_rpm.is_some();
         let block_time = self.min_block_ms > 0.0 && self.short_block_mode != ShortBlockMode::Off;
@@ -483,6 +527,10 @@ impl MachineProfile {
                 ProfileField::SpindleRange => spindle,
                 ProfileField::MinBlockMs | ProfileField::BlockWindow => block_time,
                 ProfileField::ShortBlockMode => false,
+                ProfileField::ToolLengthMeasurement | ProfileField::SpindleToAxis => {
+                    self.automatic_tool_length
+                }
+                ProfileField::RecommendedMinSafeZ => self.recommended_min_safe_z.is_some(),
                 _ => true,
             })
             .collect()
@@ -541,6 +589,9 @@ impl MachineProfile {
             short_block_mode: ShortBlockMode::Off,
             min_spindle_rpm: None,
             max_spindle_rpm: None,
+            automatic_tool_length: false,
+            spindle_to_axis: None,
+            recommended_min_safe_z: None,
             clearance: Clearance {
                 radius: Millimetres(40.0),
                 safe_z: Millimetres(50.0),

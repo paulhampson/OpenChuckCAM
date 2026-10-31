@@ -1222,6 +1222,24 @@ fn earlier_change(
 }
 
 /// "the setup has no stock" becomes "The setup has no stock."
+/// What a setup says when the project's Makera Z1 copy still has the old
+/// placeholder axis height (decision record 0317). It names the built-in
+/// value as measured on one machine: the user checks their own (NFR-12).
+fn old_z1_axis_height_text() -> String {
+    let measured = crate::setup::builtin(crate::setup::MAKERA_Z1)
+        .and_then(Result::ok)
+        .map_or_else(String::new, |z1| {
+            format!(
+                " The built-in Makera Z1 profile now has {} mm, measured on one Z1 with Makera's probing routine.",
+                z1.rotary_origin.z
+            )
+        });
+    format!(
+        "This project's Makera Z1 copy has the old placeholder axis height, machine Z -55 mm.{measured} \
+         Choose the Makera Z1 again in the setup's machine section to update the copy, then check the axis height and the safe Z on your machine."
+    )
+}
+
 fn sentence(text: &str) -> String {
     let text = text.trim();
     let mut chars = text.chars();
@@ -1787,6 +1805,69 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                         setup: s.id,
                         passed: false,
                         text: "Safe Z cannot be checked against the Z travel: the machine's axis height is not confirmed on the machine.".to_owned(),
+                        action: Some(MessageAction::ReviewSetup(s.id)),
+                    });
+                }
+                // A tool too long for the safe Z on a machine that measures
+                // tool lengths (decision record 0318): once per tool of the
+                // setup's enabled operations, in the tool list's order.
+                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                for snapshot in project.tools().iter().filter(|t| {
+                    project
+                        .operations()
+                        .iter()
+                        .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
+                }) {
+                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                        let text = crate::setup::spindle_height_text(
+                            snapshot.controller.number,
+                            &snapshot.name,
+                            &found,
+                        );
+                        raise(
+                            &mut items,
+                            at(SetupPart::Machine),
+                            ItemStatus::new(
+                                ItemState::Warning,
+                                "a tool may take the spindle above the Z travel",
+                            ),
+                        );
+                        messages.push(Message::new(
+                            Severity::Warning,
+                            text.clone(),
+                            Some((at(SetupPart::Machine), s.name.clone())),
+                            Some(MessageAction::ReviewSetup(s.id)),
+                        ));
+                        setup_checks.push(SetupCheck {
+                            setup: s.id,
+                            passed: false,
+                            text,
+                            action: Some(MessageAction::ReviewSetup(s.id)),
+                        });
+                    }
+                }
+                if crate::setup::has_old_z1_axis_height(project.machine_id(), m) {
+                    // The copy is the project's own (SET-01); it is not
+                    // changed, only named (decision record 0317).
+                    let text = old_z1_axis_height_text();
+                    raise(
+                        &mut items,
+                        at(SetupPart::Machine),
+                        ItemStatus::new(
+                            ItemState::Warning,
+                            "the Makera Z1 copy has the old placeholder axis height",
+                        ),
+                    );
+                    messages.push(Message::new(
+                        Severity::Warning,
+                        text.clone(),
+                        Some((at(SetupPart::Machine), s.name.clone())),
+                        Some(MessageAction::ReviewSetup(s.id)),
+                    ));
+                    setup_checks.push(SetupCheck {
+                        setup: s.id,
+                        passed: false,
+                        text,
                         action: Some(MessageAction::ReviewSetup(s.id)),
                     });
                 }

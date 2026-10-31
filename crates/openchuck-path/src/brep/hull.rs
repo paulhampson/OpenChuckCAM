@@ -112,12 +112,76 @@ impl Net {
         lu >= lv
     }
 
+    /// A cone that holds the patch's normals `S_u x S_v` (up to sign and
+    /// length): its unit axis and the sine of half its angle. The patch is
+    /// taken as polynomial, which holds when its weights are equal; `None`
+    /// when they differ by more than rounding, when the derivative nets
+    /// vanish, or when the cone is not narrower than a half space.
+    ///
+    /// `S_u` is a positive combination of the differences of the net along
+    /// u, `S_v` of those along v, so `S_u x S_v` is a positive combination
+    /// of their cross products, and lies in the cone they span.
+    pub fn normal_cone(&self) -> Option<(Vec3, f64)> {
+        let (du, dv) = (self.du, self.dv);
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for h in &self.pts {
+            lo = lo.min(h[3]);
+            hi = hi.max(h[3]);
+        }
+        if lo.is_nan() || lo <= 0.0 || hi - lo > 1e-9 * lo {
+            return None;
+        }
+        let p = |i: usize, j: usize| project(self.at(i, j));
+        let mut ds_u = Vec::with_capacity(du * (dv + 1));
+        for i in 0..du {
+            for j in 0..=dv {
+                ds_u.push(p(i + 1, j) - p(i, j));
+            }
+        }
+        let mut ds_v = Vec::with_capacity((du + 1) * dv);
+        for i in 0..=du {
+            for j in 0..dv {
+                ds_v.push(p(i, j + 1) - p(i, j));
+            }
+        }
+        let mut gens = Vec::with_capacity(ds_u.len() * ds_v.len());
+        let mut sum = Vec3::ZERO;
+        for a in &ds_u {
+            for b in &ds_v {
+                let c = a.cross(*b);
+                let l = c.length();
+                if l > 0.0 && l.is_finite() {
+                    let c = c * (1.0 / l);
+                    sum = sum + c;
+                    gens.push(c);
+                }
+            }
+        }
+        let ls = sum.length();
+        if gens.is_empty() || ls.is_nan() || ls <= 0.0 {
+            return None;
+        }
+        let axis = sum * (1.0 / ls);
+        let cos = gens
+            .iter()
+            .map(|g| g.dot(axis))
+            .fold(f64::INFINITY, f64::min);
+        // A margin for the rounding of the generators and of weights equal
+        // only to rounding.
+        let cos = cos - 1e-9;
+        if cos.is_nan() || cos <= 0.0 {
+            return None;
+        }
+        // sin(theta / 2) = sqrt((1 - cos theta) / 2).
+        Some((axis, (0.5 * (1.0 - cos)).max(0.0).sqrt()))
+    }
+
     /// The boxes that hold the patch.
     pub fn bound(&self) -> Bound {
-        let pts: Vec<Point3> = self.pts.iter().map(|h| project(*h)).collect();
+        let pts = self.pts.iter().map(|h| project(*h));
         let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
         let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for p in &pts {
+        for p in pts.clone() {
             min = Point3::new(min.x.min(p.x), min.y.min(p.y), min.z.min(p.z));
             max = Point3::new(max.x.max(p.x), max.y.max(p.y), max.z.max(p.z));
         }
@@ -142,10 +206,10 @@ impl Net {
             Some([a, b, n])
         })();
         let oriented = frame.map(|axes| {
-            let origin = pts.first().copied().unwrap_or(Point3::ORIGIN);
+            let origin = self.pts.first().map_or(Point3::ORIGIN, |h| project(*h));
             let mut range = [(f64::INFINITY, f64::NEG_INFINITY); 3];
-            for q in &pts {
-                let d = *q - origin;
+            for q in pts {
+                let d = q - origin;
                 for (r, a) in range.iter_mut().zip(axes) {
                     let x = d.dot(a);
                     *r = (r.0.min(x), r.1.max(x));
@@ -168,6 +232,24 @@ impl Net {
     /// The surface point at the middle of the parameter box.
     pub fn centre(&self) -> Point3 {
         let (du, dv) = (self.du, self.dv);
+        if du >= MAX_POINTS || dv >= MAX_POINTS {
+            return self.centre_alloc();
+        }
+        let mut col = [[0.0; 4]; MAX_POINTS];
+        let mut row = [[0.0; 4]; MAX_POINTS];
+        for i in 0..=du {
+            for (j, r) in row.iter_mut().enumerate().take(dv + 1) {
+                *r = self.at(i, j);
+            }
+            if let (Some(c), Some(r)) = (col.get_mut(i), row.get_mut(..=dv)) {
+                *c = casteljau(r);
+            }
+        }
+        project(casteljau(col.get_mut(..=du).unwrap_or(&mut [])))
+    }
+
+    fn centre_alloc(&self) -> Point3 {
+        let (du, dv) = (self.du, self.dv);
         let mut col = vec![[0.0; 4]; du + 1];
         let mut row = vec![[0.0; 4]; dv + 1];
         for (i, c) in col.iter_mut().enumerate() {
@@ -179,6 +261,10 @@ impl Net {
         project(casteljau(&mut col))
     }
 }
+
+/// The most control points along one direction a net's middle is found
+/// for on the stack.
+const MAX_POINTS: usize = 16;
 
 /// The point at 1/2 of a Bezier curve (destroys `pts`).
 fn casteljau(pts: &mut [Hom]) -> Hom {
@@ -211,6 +297,14 @@ pub(super) struct Bound {
 }
 
 impl Bound {
+    /// The bound of a box alone.
+    pub fn from_aabb(aabb: Aabb) -> Self {
+        Self {
+            aabb,
+            oriented: None,
+        }
+    }
+
     /// A lower bound on the distance from `q` to any point of the cell.
     pub fn lower(&self, q: Point3) -> f64 {
         let b = &self.aabb;
@@ -230,6 +324,48 @@ impl Bound {
             lower = lower.max(s.sqrt() * (1.0 - 1e-12));
         }
         lower
+    }
+
+    /// The distance from `q` to the cell's boxes (the larger of the two
+    /// box distances, a lower bound on the distance to the cell) and its
+    /// gradient with respect to `q`: zero inside both boxes. The distance
+    /// to a box is convex, and so is the larger of two, which is what lets
+    /// a drop bound a cell by a Newton search from above (the `drop`
+    /// module).
+    pub fn distance_gradient(&self, q: Point3) -> (f64, Vec3) {
+        let b = &self.aabb;
+        let ex = |lo: f64, hi: f64, x: f64| {
+            if x < lo {
+                x - lo
+            } else if x > hi {
+                x - hi
+            } else {
+                0.0
+            }
+        };
+        let e = Vec3::new(
+            ex(b.min.x, b.max.x, q.x),
+            ex(b.min.y, b.max.y, q.y),
+            ex(b.min.z, b.max.z, q.z),
+        );
+        let mut best = (e.length(), e);
+        if let Some(o) = &self.oriented {
+            let d = q - o.origin;
+            let mut g = Vec3::ZERO;
+            for (a, r) in o.axes.iter().zip(o.range) {
+                g = g + *a * ex(r.0, r.1, d.dot(*a));
+            }
+            let l = g.length() * (1.0 - 1e-12);
+            if l > best.0 {
+                best = (l, g);
+            }
+        }
+        let (d, g) = best;
+        if d > 0.0 {
+            (d, g * (1.0 / g.length()))
+        } else {
+            (0.0, Vec3::ZERO)
+        }
     }
 
     /// The diagonal of the axis-aligned box: no two points of the cell are

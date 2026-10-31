@@ -204,7 +204,7 @@ pub(super) fn eye(ui: &mut egui::Ui, shown: bool) -> egui::Response {
 fn eye_shape(ui: &mut egui::Ui, shown: bool, name: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(20.0, 18.0), egui::Sense::click());
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), shown, name)
+        egui::WidgetInfo::selected(egui::Role::CheckBox, ui.is_enabled(), shown, name)
     });
     let visuals = ui.style().interact(&response);
     let painter = ui.painter_at(rect.expand(1.0));
@@ -541,7 +541,7 @@ impl Shell {
                         |ui| {
                             let handle = ui
                                 .dnd_drag_source(
-                                    egui::Id::new(("operation drag", id)),
+                                    egui::Id::unique(("operation drag", id)),
                                     index,
                                     |ui| {
                                         ui.label(RichText::new("\u{2630}").color(DARK.muted));
@@ -551,7 +551,7 @@ impl Shell {
                             #[cfg(test)]
                             ui.data_mut(|data| {
                                 data.insert_temp(
-                                    egui::Id::new(("operation reorder", id)),
+                                    egui::Id::unique(("operation reorder", id)),
                                     handle.rect,
                                 );
                             });
@@ -564,10 +564,10 @@ impl Shell {
                             #[cfg(test)]
                             ui.data_mut(|data| {
                                 data.insert_temp(
-                                    egui::Id::new(("operation enable", id)),
+                                    egui::Id::unique(("operation enable", id)),
                                     enable.rect,
                                 );
-                                data.insert_temp(egui::Id::new(("operation eye", id)), eye.rect);
+                                data.insert_temp(egui::Id::unique(("operation eye", id)), eye.rect);
                             });
                             if eye.clicked() {
                                 actions.push(TreeAction::Command(Box::new(
@@ -581,7 +581,10 @@ impl Shell {
                     );
                     #[cfg(test)]
                     ui.data_mut(|data| {
-                        data.insert_temp(egui::Id::new(("operation row focus", id)), response.id);
+                        data.insert_temp(
+                            egui::Id::unique(("operation row focus", id)),
+                            response.id,
+                        );
                     });
                     if toggled {
                         actions.push(TreeAction::Command(Box::new(

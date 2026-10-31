@@ -25,6 +25,9 @@ pub(super) struct Rig {
     pub(super) size: egui::Vec2,
     pub(super) shapes: Vec<egui::epaint::ClippedShape>,
     pub(super) dirs: Vec<PathBuf>,
+    /// The scope id of the root `Ui` the shell draws into: egui 0.37 derives a
+    /// panel's id from its parent's scope id and its salt.
+    root: egui::Id,
 }
 
 impl Rig {
@@ -35,6 +38,7 @@ impl Rig {
             size: egui::vec2(1440.0, 900.0),
             shapes: Vec::new(),
             dirs,
+            root: egui::Id::NULL,
         };
         rig.frame(Vec::new());
         rig
@@ -83,10 +87,27 @@ impl Rig {
             events,
             ..Default::default()
         };
-        let Self { shell, ctx, .. } = self;
-        let mut output = ctx.run_ui(input, |ui| shell.draw(ui));
+        let Self {
+            shell, ctx, root, ..
+        } = self;
+        let mut output = ctx.run_ui(input, |ui| {
+            *root = ui.scope_id();
+            shell.draw(ui);
+        });
         output.textures_delta.clear();
         self.shapes = output.shapes;
+    }
+
+    /// The state egui kept for the panel salted `salt`: the side panels are shown in
+    /// the root `Ui`. The dock is shown in the central panel's `Ui`, whose id the shell records.
+    pub(super) fn panel_state(&self, salt: &str) -> Option<egui::PanelState> {
+        let parent = if salt == "dock" {
+            self.ctx
+                .data(|d| d.get_temp(egui::Id::unique("test dock parent")))?
+        } else {
+            self.root
+        };
+        egui::PanelState::load(&self.ctx, parent.with(salt))
     }
 
     /// What the last frame painted.
@@ -1108,6 +1129,54 @@ fn req_nfr_18_the_settings_dialog_switches_the_recording_and_keeps_the_choice() 
     rig.shell.dialog = None;
     rig.frame(Vec::new());
     assert!(rig.shell.recorder_windows().is_empty());
+}
+
+/// Issue #382, the owner's decision D1 (decision record 0322): the memory
+/// for playback checkpoints is set in Settings, kept in the user's settings,
+/// given to playback, and brought into its range.
+#[test]
+fn req_ui_15_req_nfr_07_settings_sets_the_memory_for_playback_checkpoints() {
+    let config = temp("frame-playback-memory");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-playback-memory", Some(file.clone()));
+    rig.dirs.push(config);
+    const MIB: usize = 1024 * 1024;
+    // A computer of 32 GB, as the owner's laptop: no cap below 8,192 MB.
+    rig.shell.physical_memory = Some(32 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(1_536);
+    assert_eq!(rig.shell.play.playback_memory(), 1_536 * MIB);
+    rig.shell.dialog = Some(Dialog::Settings);
+    // A window is laid out on its first frame and drawn on the next.
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Recovery checkpoint interval"));
+    assert!(rig.shows("Memory for playback checkpoints (MB)"));
+    rig.shell.set_playback_memory_mb(4_096);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 4_096);
+    assert_eq!(rig.shell.play.playback_memory(), 4_096 * MIB);
+    rig.shell.set_playback_memory_mb(50);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 256);
+    assert_eq!(rig.shell.play.playback_memory(), 256 * MIB);
+    rig.shell.set_playback_memory_mb(3_000);
+    rig.shell.save_settings();
+    assert_eq!(file.load().settings.simulate.playback_memory_mb, 3_072);
+    // A restart gives playback the kept value (capped at a quarter of this
+    // computer's memory, as the owner decided on OI-1315).
+    let shell = Shell::with_settings(false, None, Some(file.clone()));
+    let expected = crate::memory::playback_memory(3_072, crate::memory::physical()).0;
+    assert_eq!(shell.play.playback_memory(), expected);
+    // On a computer of 4 GB the 3,072 MB asked for is capped at 1,024 MB,
+    // the setting is kept, and Settings says so.
+    rig.shell.physical_memory = Some(4 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(3_072);
+    assert_eq!(rig.shell.settings.simulate.playback_memory_mb, 3_072);
+    assert_eq!(rig.shell.play.playback_memory(), 1_024 * MIB);
+    rig.frame(Vec::new());
+    assert!(rig.shows("This computer: at most 1024 MB"));
+    rig.shell.set_playback_memory_mb(512);
+    assert_eq!(rig.shell.play.playback_memory(), 512 * MIB);
+    rig.frame(Vec::new());
+    assert!(!rig.shows("This computer: at most"));
 }
 
 /// A project with a model and no setup, which is what File, New project and

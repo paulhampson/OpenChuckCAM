@@ -73,6 +73,10 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
     parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(step));
     // A wide pitch keeps the programs short.
     parameters.insert("stepover".to_owned(), ParameterValue::Number(5.0));
+    // The part's free end is deeper than the tool's flutes: a new operation
+    // faces free ends and would be refused (decision record 0344, OI-1396).
+    // These tests are about writing programs, not facing.
+    parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
     Operation {
         id: OperationId::new(),
         order: OrderKey::default(),
@@ -1281,5 +1285,114 @@ fn req_gc_12_req_nfr_07_the_sheets_are_written_after_every_program_file() {
     let sheets = app.output_files(&run).unwrap().setup_sheet;
     assert_eq!(names.len(), run.gcode.len() + 2);
     assert_eq!(names[run.gcode.len()..], sheets);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+// OUTPUT3 (#312, decision 0327): the read-only preview of the program files.
+
+#[test]
+fn req_gc_07_req_gc_05_the_preview_bytes_are_the_bytes_written_with_their_hashes() {
+    let (dir, mut app) = project("Preview", true);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
+    app.set_file_name_templates(templates("{project}-{setup_no}", "{project}-sheet"));
+    let preview = app.output_preview(&run).unwrap();
+    assert!(preview.files().len() >= 2, "one file per setup");
+    let out = folder("preview-bytes");
+    let plan = app.prepare_output(&out, &run).unwrap();
+    assert!(app.write_output(&plan, false).is_complete());
+    for file in preview.files() {
+        let on_disk = std::fs::read(out.join(file.name())).unwrap();
+        assert_eq!(file.bytes(), on_disk.as_slice(), "{}", file.name());
+        assert_eq!(file.size(), on_disk.len());
+        assert_eq!(
+            file.sha256(),
+            openchuck_app::output_names::file_hash::hex(&on_disk)
+        );
+        // The setup sheet lists the same hash.
+        let html = std::fs::read_to_string(out.join("preview-sheet.html")).unwrap();
+        assert!(html.contains(file.sha256()), "{}", file.name());
+    }
+    assert_eq!(
+        preview.files().iter().map(|f| f.name()).collect::<Vec<_>>(),
+        app.output_files(&run)
+            .unwrap()
+            .programs
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_the_preview_follows_the_templates_and_numbers_clashing_names() {
+    let (dir, mut app) = project("Preview names", true);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
+    app.set_file_name_templates(templates("same", "sheet"));
+    let preview = app.output_preview(&run).unwrap();
+    let names: Vec<&str> = preview.files().iter().map(|f| f.name()).collect();
+    assert_eq!(names[0], "same.nc");
+    assert_eq!(names[1], "same-2.nc");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_15_a_preview_of_a_run_the_project_has_left_behind_is_refused() {
+    let (dir, mut app) = project("Preview stale", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Project));
+    let first = app.project().operations()[0].id;
+    app.execute(Command::SetOperationEnabled {
+        operation: first,
+        enabled: false,
+    })
+    .unwrap();
+    assert!(matches!(
+        app.output_preview(&run),
+        Err(openchuck_app::AppError::OutOfDate)
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_the_preview_lines_are_the_lines_of_the_file() {
+    let (dir, mut app) = project("Preview lines", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Project));
+    let preview = app.output_preview(&run).unwrap();
+    let file = &preview.files()[0];
+    let text = std::str::from_utf8(file.bytes()).unwrap();
+    assert_eq!(file.line_count(), text.lines().count());
+    for (n, line) in text.lines().enumerate() {
+        assert_eq!(file.line(n), Some(line));
+    }
+    assert_eq!(file.line(file.line_count()), None);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_search_finds_the_next_and_previous_line_and_wraps() {
+    let (dir, mut app) = project("Preview search", false);
+    let run = std::sync::Arc::new(post(&mut app, OutputGrouping::Project));
+    let preview = app.output_preview(&run).unwrap();
+    let file = &preview.files()[0];
+    let text = std::str::from_utf8(file.bytes()).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    let hits: Vec<usize> = (0..lines.len())
+        .filter(|n| lines[*n].contains("M6"))
+        .collect();
+    assert!(!hits.is_empty(), "the program changes tool at least once");
+    assert_eq!(file.find("M6", None, true), Some(hits[0]));
+    assert_eq!(file.find("M6", None, false), hits.last().copied());
+    // From a hit, forward goes to the next one, and wraps after the last.
+    let mut at = None;
+    let mut seen = Vec::new();
+    for _ in 0..hits.len() {
+        at = file.find("M6", at, true);
+        seen.push(at.unwrap());
+    }
+    assert_eq!(seen, hits);
+    assert_eq!(file.find("M6", at, true), Some(hits[0]));
+    assert_eq!(file.find("M6", Some(hits[0]), false), hits.last().copied());
+    assert_eq!(file.find("no such text anywhere", None, true), None);
+    assert_eq!(file.find("", None, true), None);
     std::fs::remove_dir_all(dir).unwrap();
 }

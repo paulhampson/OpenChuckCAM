@@ -27,6 +27,7 @@ use openchuck_app::playback::{Cursor, Playback, Timeline, ViewFrame, tool_meshes
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+use openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY;
 use openchuck_app::{Application, Command, PostSelection, Regeneration, Threads};
 use openchuck_types::geometry::Point3;
 use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
@@ -118,7 +119,11 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: BTreeMap::new(),
+            // Not about free ends (decision record 0344, OI-1396).
+            parameters: BTreeMap::from([(
+                "face_free_ends".to_owned(),
+                openchuck_app::project::ParameterValue::Flag(false),
+            )]),
         }),
     ] {
         app.execute(Command::Add {
@@ -777,7 +782,11 @@ fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
     let (dir, app, _) = project("stock-at");
     let run = Arc::new(app.simulate().unwrap());
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
-    let playback = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let playback = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     assert_eq!(playback.setups().len(), 1);
     assert!(playback.checkpoints() >= 2);
     let report = &run.simulation.as_ref().unwrap().setups[0];
@@ -839,6 +848,120 @@ fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
         .unwrap();
     assert!(volume(&partial) < volume(&at(mid)) - 1e-6);
     assert!(volume(&partial) >= volume(&at(mid + 1)) - 1e-6 * start);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_04_req_nfr_06_the_stock_at_a_move_is_the_same_whatever_was_shown_before() {
+    let (dir, app, _) = project("stock-kept");
+    let run = Arc::new(app.simulate().unwrap());
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let playing = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let reference = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let n = t.move_count();
+    let cursor = |done: usize, fraction: f64| Cursor { done, fraction };
+    // Playing forward, then stepping back, jumping and playing on: each
+    // stock equals the one replayed from the checkpoints alone (asking the
+    // reference for the start first leaves it nothing nearer to reuse).
+    let mut order: Vec<_> = (0..=n)
+        .step_by((n / 20).max(1))
+        .map(|k| cursor(k, 0.5))
+        .collect();
+    order.extend([
+        cursor(n / 2, 0.0),
+        cursor(n / 3, 0.25),
+        cursor(n / 3 + 1, 0.0),
+    ]);
+    order.extend([
+        cursor(n, 0.0),
+        cursor(n, 0.5),
+        cursor(0, 0.0),
+        cursor(n - 1, 0.9),
+    ]);
+    for c in order {
+        let shown = playing.stock_at(c, &context).unwrap();
+        reference.stock_at(cursor(0, 0.0), &context).unwrap();
+        let expected = reference.stock_at(c, &context).unwrap();
+        assert_eq!(shown.state_hash(), expected.state_hash(), "{c:?}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_07_req_sim_04_playback_never_holds_more_than_its_memory() {
+    let (dir, app, _) = project("stock-memory");
+    let run = Arc::new(app.simulate().unwrap());
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let roomy = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let start = roomy
+        .stock_at(
+            Cursor {
+                done: 0,
+                fraction: 0.0,
+            },
+            &context,
+        )
+        .unwrap();
+    // Checkpoints hold packed copies; a replay holds one packed (the stock
+    // kept from the last request) and one unpacked (the one being cut).
+    let (packed, working) = (start.pack().memory_bytes(), start.memory_bytes());
+    // Room for the copies that must be kept (the start, after the one
+    // operation, and the replay's) and about one more: playback keeps
+    // fewer checkpoints, never more memory, and shows the same stock.
+    let memory = 3 * packed + working + packed * 3 / 2;
+    let tight = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), memory)
+            .wait()
+            .unwrap(),
+    );
+    assert!(tight.checkpoint_bytes() + packed + working <= memory);
+    assert!(tight.checkpoints() < roomy.checkpoints());
+    let n = t.move_count();
+    for done in (0..=n).step_by((n / 7).max(1)) {
+        let c = Cursor {
+            done,
+            fraction: 0.5,
+        };
+        assert_eq!(
+            tight.stock_at(c, &context).unwrap().state_hash(),
+            roomy.stock_at(c, &context).unwrap().state_hash(),
+            "move {done}"
+        );
+    }
+    // Too little for the copies that must be kept: refused with the
+    // setting named, not a crash (NFR-07).
+    let error = app
+        .start_stock_playback(Arc::clone(&t), 3 * packed)
+        .wait()
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("Memory for playback checkpoints"),
+        "{error}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -994,6 +1117,14 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     assert_eq!(added.name, "Second pass");
     assert!(added.enabled && added.parameters.is_empty());
     assert_eq!(app.project().operations().last().unwrap().id, second);
+    // The cube's ends are free and deeper than the ball's flutes; this test
+    // is not about free ends (decision record 0344, OI-1396).
+    app.set_parameter(
+        second,
+        "face_free_ends",
+        Some(openchuck_app::project::ParameterValue::Flag(false)),
+    )
+    .unwrap();
     // Edit and generate: both operations make a toolpath; the first is
     // reused when only the second changed (chain invalidation, decision 0030).
     let first = app.regenerate().unwrap();
@@ -1146,7 +1277,11 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
     let (dir, mut app, _) = project("stock-edited");
     let run = Arc::new(app.simulate().unwrap());
     let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
-    let before = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let before = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     let first = app
         .start_stock_at(&before, Cursor::default())
         .wait()
@@ -1170,7 +1305,11 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
     settings.cell = Millimetres(0.2);
     app.execute(Command::SetSimulation(settings)).unwrap();
 
-    let after = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let after = Arc::new(
+        app.start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
     let second = app
         .start_stock_at(&after, Cursor::default())
         .wait()

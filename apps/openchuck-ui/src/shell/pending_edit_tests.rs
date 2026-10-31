@@ -118,7 +118,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
     let out = rig.dirs[0].join("guarded-output");
     rig.shell.open_export();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    while !rig.shows("Start of") {
+    while !rig.shows("Go to line") {
         rig.frame(Vec::new());
         assert!(
             std::time::Instant::now() < deadline,
@@ -127,11 +127,13 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     type_unconfirmed(&mut rig, "Output folder", &out.display().to_string());
-    let at = rig
+    // The pointer is over the left column: over the preview the wheel
+    // scrolls the preview and not the dialog (decision 0327).
+    let dialog = rig
         .ctx
-        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
-        .unwrap()
-        .center();
+        .memory(|m| m.area_rect(egui::Id::unique(("dialog", "export dialog"))))
+        .unwrap();
+    let at = egui::pos2(dialog.left() + 40.0, dialog.center().y);
     for _ in 0..12 {
         if rig
             .visible_text_rects()
@@ -144,6 +146,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
             Event::PointerMoved(at),
             Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(0.0, -160.0),
                 modifiers: Modifiers::NONE,

@@ -345,6 +345,7 @@ impl Shell {
             self.run.job_id(),
             self.run.running_simulates(),
         );
+        let bar = self.play.cut_part_bar(&self.jobs);
         let rest = || {
             egui::ScrollArea::vertical()
                 .id_salt("playback")
@@ -359,7 +360,7 @@ impl Shell {
                 // not scroll; the rest scrolls under it, with a bar in a strip
                 // of its own so it never lies over a control (issue 262). In a
                 // dock too short for the strip, the strip scrolls too.
-                let strip_id = egui::Id::new("playback strip height");
+                let strip_id = egui::Id::unique("playback strip height");
                 let strip_height = ui
                     .data(|d| d.get_temp::<f32>(strip_id))
                     .unwrap_or(f32::INFINITY);
@@ -372,7 +373,7 @@ impl Shell {
                             if stale {
                                 ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
                             }
-                            play.show_strip(ui, app, progress.as_ref())
+                            play.show_strip(ui, app, progress.as_ref(), bar.as_ref())
                         })
                         .inner;
                     let height = ui.cursor().top() - top;
@@ -406,7 +407,10 @@ impl Shell {
             Some(app) => {
                 crate::theme::solid_scroll_bar(ui);
                 rest()
-                    .show(ui, |ui| self.play.show_strip(ui, app, progress.as_ref()))
+                    .show(ui, |ui| {
+                        self.play
+                            .show_strip(ui, app, progress.as_ref(), bar.as_ref())
+                    })
                     .inner
             }
             None => {

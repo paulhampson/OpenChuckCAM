@@ -351,7 +351,7 @@ impl Shell {
             };
             let section = field_row::section(
                 ui,
-                egui::Id::new(("setup section", key)),
+                egui::Id::unique(("setup section", key)),
                 section_title(part),
                 open,
                 focus == Some(part),
@@ -609,7 +609,7 @@ impl Shell {
         let form = &mut self.form;
         let section = field_row::section(
             ui,
-            egui::Id::new(("operation section", "tool section")),
+            egui::Id::unique(("operation section", "tool section")),
             "Tool",
             open,
             false,
@@ -1006,7 +1006,7 @@ impl Shell {
         let mut reach_action = None;
         let section = field_row::section(
             ui,
-            egui::Id::new(("operation section", "geometry")),
+            egui::Id::unique(("operation section", "geometry")),
             "Geometry",
             open,
             false,
@@ -1530,7 +1530,7 @@ fn rows(
         let field = row.field;
         let machine_copy = machine.cloned();
         let preflight = crate::pending_edits::preflight(
-            egui::Id::new(("setup fields", setup.id)),
+            egui::Id::unique(("setup fields", setup.id)),
             setup.clone(),
             move |setup, text| setup_form::apply(setup, machine_copy.as_ref(), field, text),
         );

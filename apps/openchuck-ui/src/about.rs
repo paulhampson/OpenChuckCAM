@@ -64,7 +64,7 @@ const LOG_TIP: &str = "Shows the folder that holds the log file in the file brow
 /// "Log file": where this run writes its log (NFR-17, decision 0155) and a button that shows the
 /// folder. A failure to open it is written under the button.
 fn log_section(ui: &mut egui::Ui) {
-    let failure = egui::Id::new("about open log folder failure");
+    let failure = egui::Id::unique("about open log folder failure");
     ui.strong("Log file");
     match crate::logging::log_path() {
         Some(path) => ui.label(RichText::new(path.display().to_string()).monospace()),
@@ -119,7 +119,7 @@ pub fn show(ui: &mut egui::Ui, build: &str, licences: &str, project: Option<&str
         .max_height(220.0)
         .show(ui, |ui| {
             ui.add(
-                egui::TextEdit::multiline(&mut shown)
+                crate::theme::multi_line(&mut shown)
                     .font(egui::TextStyle::Monospace)
                     .desired_width(f32::INFINITY)
                     .desired_rows(10),

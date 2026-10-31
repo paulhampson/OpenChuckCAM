@@ -10,9 +10,9 @@ use openchuck_types::geometry::Vec3;
 use openchuck_types::kinematics::{RotaryFrame, facing_at, model_up};
 
 pub use openchuck_project::machines::{
-    MACHINE_SCHEMA, MAKERA_Z1, ProfileEntry, builtin, builtin_entry, builtin_keys, list_library,
-    list_library_entries, load_profile, load_profile_entry, new_machine_id, save_profile,
-    save_profile_entry,
+    MACHINE_SCHEMA, MAKERA_Z1, ProfileEntry, builtin, builtin_entry, builtin_keys,
+    has_old_z1_axis_height, list_library, list_library_entries, load_profile, load_profile_entry,
+    new_machine_id, save_profile, save_profile_entry,
 };
 pub use openchuck_types::geometry::{Aabb, Point3};
 pub use openchuck_types::machine::{
@@ -84,9 +84,170 @@ pub fn direction_name(v: Vec3) -> &'static str {
         .map_or("?", |c| c.1)
 }
 
+/// The length a tool is assumed to stick out beyond its flutes, since the
+/// tool library holds no stick-out (decision record 0318).
+pub const STICK_OUT_BEYOND_FLUTES: f64 = 5.0;
+
+/// A tool that would take the spindle past the top of the Z travel at the
+/// safe Z (decision record 0318), in millimetres.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpindleHeight {
+    /// The tool's assumed stick-out: flute length + 5 mm.
+    pub stick_out: f64,
+    /// The highest the tool's tip reaches above the axis: the spindle-to-axis
+    /// distance less the stick-out. A safe Z up to this fits.
+    pub highest_tip: f64,
+    /// How far past the top of the travel the spindle would go.
+    pub past_top: f64,
+    /// The profile's recommended minimum safe Z, when the fit is under it.
+    pub recommended_min: Option<f64>,
+}
+
+/// Whether `tool` would take the spindle past the top of the Z travel at
+/// `safe_z` above the axis on `profile`: only on a machine that measures tool
+/// lengths and gives its spindle-to-axis distance (decision record 0318).
+pub fn spindle_height(
+    profile: &MachineProfile,
+    safe_z: f64,
+    tool: &openchuck_types::tool::Tool,
+) -> Option<SpindleHeight> {
+    if !profile.automatic_tool_length {
+        return None;
+    }
+    let distance = profile.spindle_to_axis?.0;
+    let stick_out = tool.flute_length.0 + STICK_OUT_BEYOND_FLUTES;
+    let highest_tip = distance - stick_out;
+    // Millimetres to three places, as the G-code: a fit equal to the safe Z
+    // within rounding passes.
+    let past_top = safe_z - highest_tip;
+    if past_top <= 5e-4 {
+        return None;
+    }
+    Some(SpindleHeight {
+        stick_out,
+        highest_tip,
+        past_top,
+        recommended_min: profile
+            .recommended_min_safe_z
+            .map(|m| m.0)
+            .filter(|m| highest_tip < *m),
+    })
+}
+
+/// The setup check's words for a tool of [`spindle_height`] (NFR-12).
+pub fn spindle_height_text(number: u32, name: &str, found: &SpindleHeight) -> String {
+    let mut text = format!(
+        "Tool {number} ({name}) may take the spindle above the top of the Z travel at the safe Z: \
+         assuming it sticks out {:.3} mm (flute length + 5 mm), the spindle would be {:.3} mm past the top. \
+         Lower the setup's safe Z and clearance to {:.3} mm or less, or use a shorter tool, \
+         and check the clearance over the chuck and the Z travel on your machine before running.",
+        found.stick_out, found.past_top, found.highest_tip
+    );
+    if let Some(minimum) = found.recommended_min {
+        text.push_str(&format!(
+            " The recommended minimum is {minimum} mm. This must be checked before machining."
+        ));
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A flat end mill with `flute` mm of flute, as the Z1 defaults are.
+    fn tool(flute: f64) -> openchuck_types::tool::Tool {
+        openchuck_types::tool::Tool {
+            shape: openchuck_types::tool::ToolShape::FlatEnd,
+            diameter: Millimetres(3.175),
+            flute_length: Millimetres(flute),
+            overall_length: Millimetres(flute + 20.0),
+            shank_diameter: Millimetres(3.175),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+    }
+
+    /// The Makera Z1 as the owner measured it: the axis at -48.6 for the
+    /// probe, the probe sticking out 24.5 mm, so D = 73.1 (decision 0318).
+    fn z1() -> MachineProfile {
+        builtin(MAKERA_Z1)
+            .and_then(Result::ok)
+            .unwrap_or_else(MachineProfile::example_x_rotary)
+    }
+
+    /// The owner's worked cases at the safe Z 40: tool 104 (flute 25) and 204
+    /// (flute 22) fit; the 42 mm flute default does not, fits at 26.1 mm,
+    /// under the recommended 30 (SET-06, NFR-12, decision 0318).
+    #[test]
+    fn req_set_06_req_nfr_12_the_spindle_height_follows_the_owners_worked_cases() {
+        let z1 = z1();
+        assert_eq!(z1.spindle_to_axis.map(|d| d.0), Some(73.1));
+        assert_eq!(spindle_height(&z1, 40.0, &tool(25.0)), None);
+        assert_eq!(spindle_height(&z1, 40.0, &tool(22.0)), None);
+        let long = spindle_height(&z1, 40.0, &tool(42.0)).unwrap();
+        assert!((long.stick_out - 47.0).abs() < 1e-9, "{long:?}");
+        assert!((long.highest_tip - 26.1).abs() < 1e-9, "{long:?}");
+        assert!((long.past_top - 13.9).abs() < 1e-9, "{long:?}");
+        assert_eq!(long.recommended_min, Some(30.0));
+        // At the old safe Z 50, tool 104 would have been 6.9 mm past the top.
+        let gate5 = spindle_height(&z1, 50.0, &tool(25.0)).unwrap();
+        assert!((gate5.past_top - 6.9).abs() < 1e-9, "{gate5:?}");
+        assert_eq!(gate5.recommended_min, None, "43.1 is above 30");
+    }
+
+    /// The boundary: a tool that just reaches the top of the travel at the
+    /// safe Z passes; 0.001 mm more warns (decision 0318).
+    #[test]
+    fn req_set_06_the_spindle_height_is_checked_at_its_boundary() {
+        let z1 = z1();
+        // D - S = safe Z: 73.1 - (28.1 + 5) = 40.
+        assert_eq!(spindle_height(&z1, 40.0, &tool(28.1)), None);
+        let over = spindle_height(&z1, 40.0, &tool(28.101)).unwrap();
+        assert!((over.past_top - 0.001).abs() < 1e-9, "{over:?}");
+    }
+
+    /// No warning without the distance or without tool length measurement:
+    /// the check cannot be made, and is not guessed (decision 0318).
+    #[test]
+    fn req_set_06_req_nfr_12_no_distance_or_no_measurement_gives_no_spindle_height_warning() {
+        let mut unknown = z1();
+        unknown.spindle_to_axis = None;
+        assert_eq!(spindle_height(&unknown, 40.0, &tool(42.0)), None);
+        let mut manual = z1();
+        manual.automatic_tool_length = false;
+        assert_eq!(spindle_height(&manual, 40.0, &tool(42.0)), None);
+        assert_eq!(
+            spindle_height(&MachineProfile::example_x_rotary(), 40.0, &tool(42.0)),
+            None
+        );
+    }
+
+    /// The text names the tool, its assumed stick-out, how far past the top
+    /// the spindle goes and the safe Z that fits, says to check it on the
+    /// machine, and adds the owner's recommended minimum when the fit is
+    /// under it (NFR-12, decision 0318).
+    #[test]
+    fn req_nfr_12_the_spindle_height_warning_says_what_to_check() {
+        let z1 = z1();
+        let long = spindle_height(&z1, 40.0, &tool(42.0)).unwrap();
+        let text = spindle_height_text(7, "Z1 O-flute 3.175x42", &long);
+        for words in [
+            "Tool 7 (Z1 O-flute 3.175x42)",
+            "47.000 mm",
+            "flute length + 5 mm",
+            "13.900 mm",
+            "26.100 mm",
+            "on your machine",
+            "The recommended minimum is 30 mm. This must be checked before machining.",
+        ] {
+            assert!(text.contains(words), "{words}: {text}");
+        }
+        let gate5 = spindle_height(&z1, 50.0, &tool(25.0)).unwrap();
+        let text = spindle_height_text(1, "104", &gate5);
+        assert!(!text.contains("recommended minimum"), "{text}");
+    }
 
     #[test]
     fn req_set_01_a_direction_follows_the_sense() {
@@ -229,6 +390,9 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::MinBlockMs => "minimum block time",
         ProfileField::BlockWindow => "block window",
         ProfileField::ShortBlockMode => "short-block mode",
+        ProfileField::ToolLengthMeasurement => "tool length measurement",
+        ProfileField::SpindleToAxis => "spindle-to-axis distance",
+        ProfileField::RecommendedMinSafeZ => "recommended minimum safe Z",
     }
 }
 
@@ -251,6 +415,9 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         min_block_ms,
         block_window,
         short_block_mode,
+        automatic_tool_length,
+        spindle_to_axis,
+        recommended_min_safe_z,
         provenance,
     } = a;
     let checks = [
@@ -273,6 +440,18 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         ),
         ("block window", *block_window == b.block_window),
         ("short-block mode", *short_block_mode == b.short_block_mode),
+        (
+            "tool length measurement",
+            *automatic_tool_length == b.automatic_tool_length,
+        ),
+        (
+            "spindle-to-axis distance",
+            *spindle_to_axis == b.spindle_to_axis,
+        ),
+        (
+            "recommended minimum safe Z",
+            *recommended_min_safe_z == b.recommended_min_safe_z,
+        ),
         ("which values are confirmed", *provenance == b.provenance),
     ];
     checks

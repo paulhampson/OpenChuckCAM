@@ -121,7 +121,15 @@ pub struct SimulateSettings {
     /// Whether a new project skips the stock simulation (issue 214); each
     /// project then keeps its own choice.
     pub skip_stock_simulation: bool,
+    /// The most memory playback's checkpoints may hold, in MB of 2^20
+    /// bytes: [`PLAYBACK_MEMORY_MB`] steps (decision record 0322, the
+    /// owner's decision D1 on issue #382).
+    pub playback_memory_mb: u32,
 }
+
+/// The memory for playback checkpoints, MB of 2^20 bytes: the least, the
+/// default, the most and the step.
+pub const PLAYBACK_MEMORY_MB: (u32, u32, u32, u32) = (256, 1536, 8192, 256);
 
 impl Default for SimulateSettings {
     fn default() -> Self {
@@ -133,6 +141,7 @@ impl Default for SimulateSettings {
             show_toolpath: false,
             hide_outside_window: false,
             skip_stock_simulation: false,
+            playback_memory_mb: PLAYBACK_MEMORY_MB.1,
         }
     }
 }
@@ -140,11 +149,15 @@ impl Default for SimulateSettings {
 impl SimulateSettings {
     /// The settings with at least one of the view's tick boxes on: a file
     /// with none gives "Cut part", so the view is never empty (issue 204).
+    /// The playback memory is brought to the nearest allowed step.
     #[must_use]
     pub fn clamped(mut self) -> Self {
         if !(self.show_model || self.show_cut_part || self.show_toolpath) {
             self.show_cut_part = true;
         }
+        let (least, _, most, step) = PLAYBACK_MEMORY_MB;
+        let steps = (self.playback_memory_mb.saturating_add(step / 2) / step).max(1);
+        self.playback_memory_mb = steps.saturating_mul(step).clamp(least, most);
         self
     }
 }

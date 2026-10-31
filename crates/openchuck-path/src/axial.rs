@@ -13,20 +13,24 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use std::collections::BTreeMap;
+
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::assemble::PathWarning;
 use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
+use crate::faces;
 use crate::helical::CONSTRAINED_SPACING;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
-use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput, StrategyOutput};
 use crate::wrap_fit::{
     CHORD_FACTOR, Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits,
 };
@@ -139,8 +143,16 @@ impl Strategy for AxialFinishing {
             ]
             .into_iter()
             .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
             .collect(),
         )
+    }
+
+    fn schema_for(
+        &self,
+        values: &BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        crate::finishing::schema_for(self.schema(), values)
     }
 
     fn honours_region(&self) -> bool {
@@ -168,7 +180,7 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, region, zones, parameters, context)
+        passes(input, region, zones, parameters, context).map(|(p, ..)| p)
     }
 
     fn passes(
@@ -177,7 +189,7 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, &[], parameters, context)
+        passes(input, None, &[], parameters, context).map(|(p, ..)| p)
     }
 
     fn passes_in_region(
@@ -187,7 +199,22 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), &[], parameters, context)
+        passes(input, Some(region), &[], parameters, context).map(|(p, ..)| p)
+    }
+
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings,
+        })
     }
 }
 
@@ -231,6 +258,11 @@ pub(crate) struct AlongX<'a> {
     pub(crate) zigzag: bool,
     /// Past the stock's ends, when the operation asks (OP-24).
     extension: Option<Extension>,
+    /// How far, mm, each pass runs on past the ends of the target, so the
+    /// tool can go down beside an end face (indexed finishing; decision
+    /// record 0343). Zero for axial finishing, which turns at the end faces
+    /// instead.
+    pub(crate) beyond: f64,
 }
 
 impl<'a> AlongX<'a> {
@@ -303,7 +335,18 @@ impl<'a> AlongX<'a> {
             radius,
             zigzag,
             extension,
+            beyond: 0.0,
         })
+    }
+
+    /// The target's extent along X, mm.
+    pub(crate) fn range(&self) -> (f64, f64) {
+        (self.x0, self.x1)
+    }
+
+    /// The cutting radius of the tool grown by the stock to leave, mm.
+    pub(crate) fn grown_radius(&self) -> f64 {
+        self.grown.cutting_radius()
     }
 
     /// Refuses a job of `count` passes that would make too many points.
@@ -328,14 +371,54 @@ impl<'a> AlongX<'a> {
         backwards: bool,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        let length = self.x1 - self.x0;
+        let (x0, x1) = (self.x0, self.x1);
+        let passes = if self.beyond > 0.0 {
+            // The pass over the target is fitted as before, so its points do
+            // not move; the stretches past each end are fitted on their own
+            // and joined to it where they meet (decision record 0343).
+            let h = (x1 - x0) / self.seeds as f64;
+            let seeds = ((self.beyond / h).ceil() as usize).max(1);
+            let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
+            let pieces = if backwards {
+                [(hi, x1, seeds), (x1, x0, self.seeds), (x0, lo, seeds)]
+            } else {
+                [(lo, x0, seeds), (x0, x1, self.seeds), (x1, hi, seeds)]
+            };
+            let mut out: Vec<Pass> = Vec::new();
+            for (from, to, n) in pieces {
+                for pass in self.fit_span(a, (from, to), n, context)? {
+                    join(&mut out, pass);
+                }
+            }
+            out
+        } else if backwards {
+            self.fit_span(a, (x1, x0), self.seeds, context)?
+        } else {
+            self.fit_span(a, (x0, x1), self.seeds, context)?
+        };
+        let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
+        Ok(match self.extension {
+            Some(e) => e.run_out(passes, self.input, &self.grown, self.leave, (lo, hi)),
+            None => passes,
+        })
+    }
+
+    /// The fit of one stretch along X at `a`, from `span.0` to `span.1`,
+    /// with `seeds` seeds.
+    fn fit_span(
+        &self,
+        a: Degrees,
+        (from, to): (f64, f64),
+        seeds: usize,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
         let fit = Fit {
             input: self.input,
             drop_profile: &self.grown,
             leave: self.leave,
             zones: &self.zones,
-            x0: if backwards { self.x1 } else { self.x0 },
-            length: if backwards { -length } else { length },
+            x0: from,
+            length: to - from,
             start: a.0,
             sign: 1.0,
             total_angle: 0.0,
@@ -345,20 +428,10 @@ impl<'a> AlongX<'a> {
             candidates: self.candidates.as_ref(),
             spacing: self.spacing,
             thin: false,
-            max_dt: 1.0 / self.seeds as f64,
+            max_dt: 1.0 / seeds as f64,
             wanted: None,
         };
-        let passes = fit_region(&fit, self.seeds, "axial finishing", context)?;
-        Ok(match self.extension {
-            Some(e) => e.run_out(
-                passes,
-                self.input,
-                &self.grown,
-                self.leave,
-                (self.x0, self.x1),
-            ),
-            None => passes,
-        })
+        fit_region(&fit, seeds, "axial finishing", context)
     }
 
     /// The passes at each of `angles` in order, every other one backwards
@@ -405,13 +478,34 @@ impl<'a> AlongX<'a> {
     }
 }
 
+/// Adds `pass` to `out`, joined to the last pass where it starts at the
+/// point that pass ends at.
+fn join(out: &mut Vec<Pass>, pass: Pass) {
+    if let Some(last) = out.last_mut()
+        && let (Some(end), Some(start)) = (last.points.last(), pass.points.first())
+        && end.tip.distance(start.tip) <= 1e-9
+        && last.rapids.is_empty()
+        && pass.rapids.is_empty()
+    {
+        last.points.extend(pass.points.into_iter().skip(1));
+        return;
+    }
+    out.push(pass);
+}
+
+/// The largest A step, degrees, between the seeds of a turn at an end face.
+const TURN_STEP: f64 = 5.0;
+
+/// The passes of axial finishing, with its notes and warnings: the end
+/// faces past the ends of the target it turned at, those a held region kept
+/// it from, and its free ends.
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
@@ -427,5 +521,59 @@ fn passes(
     along.check_passes(count)?;
     let step = 360.0 / count as f64;
     let angles: Vec<f64> = (0..count).map(|i| start + step * i as f64).collect();
-    along.passes_at(&angles, "axial finishing", context)
+    let mut passes = along.passes_at(&angles, "axial finishing", context)?;
+    // A pass along X reaches over the target's own length only, so an end
+    // face whose turn lies past the target's end (beside a tab shorter than
+    // the tool's radius) is never met by the tool's side: one whole turn of
+    // A at each such face, as the helix strategies make (decision records
+    // 0297 and 0343). The faces inside the target's length are left to the
+    // passes, as before.
+    let tolerance = parameters.number(names::TOLERANCE)?;
+    let found = faces::turns_to_the_ends(
+        input,
+        &along.grown,
+        (along.x0, along.x1),
+        tolerance,
+        context,
+    )?;
+    let beyond = |x: f64| x < along.x0 || x > along.x1;
+    let turns: Vec<f64> = found
+        .turns
+        .iter()
+        .map(|t| t.x)
+        .filter(|&x| beyond(x))
+        .collect();
+    let held: Vec<f64> = found.held.iter().copied().filter(|&x| beyond(x)).collect();
+    for &x in &turns {
+        context.check_cancelled()?;
+        passes.extend(crate::helical::turn_passes(
+            input,
+            region,
+            (&along.grown, along.leave, &along.zones),
+            tolerance,
+            (x, start, 1.0),
+            TURN_STEP,
+            None,
+            context,
+        )?);
+    }
+    // Finishing layers above the passes made so far, when on (decision
+    // record 0345).
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    // The free ends, in layers down beside them (decision record 0344).
+    let free = crate::finishing::free_ends(
+        input,
+        &along.grown,
+        &found.free,
+        parameters,
+        (start, 1.0, TURN_STEP),
+    )?;
+    passes.extend(free.passes);
+    let notes = faces::note(&turns)
+        .into_iter()
+        .chain(faces::held_note(&held))
+        .chain(layered)
+        .chain(free.notes)
+        .collect();
+    Ok((passes, notes, free.warnings))
 }

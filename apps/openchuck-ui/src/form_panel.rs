@@ -164,7 +164,7 @@ pub fn show(
             .iter()
             .any(|f| matches!(f.kind, FieldKind::IndexedFaces))
     {
-        let key = ui.id().with(("Facing All four", form.operation));
+        let key = ui.scope_id().with(("Facing All four", form.operation));
         let mut pending = ui
             .ctx()
             .data_mut(|d| d.get_temp::<Option<(crate::pending_edits::Ticket, ())>>(key))
@@ -195,7 +195,7 @@ pub fn show(
         let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key)) || forced;
         let section = field_row::section(
             ui,
-            egui::Id::new(("operation section", key)),
+            egui::Id::unique(("operation section", key)),
             section.title(),
             open,
             forced,

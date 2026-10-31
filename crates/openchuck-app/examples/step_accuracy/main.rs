@@ -18,8 +18,10 @@
 //!   an interval proven to hold the exact value, against the exact faces
 //!   and the tessellation the tool was dropped on. The forms compared are
 //!   (a) the owner's `blisk.stl`, when its path is given, (b) the STEP part
-//!   as built today, dropping on the import's tessellation, and (c) the STEP
-//!   part dropping on a finer tessellation. M2 fails when any station's
+//!   dropping on the import's tessellation, (c) the STEP part dropping on a
+//!   finer tessellation, and (d) the STEP part with exact contacts for the
+//!   strategies that take them (lane STEPALL-X2, decision 0277): what the
+//!   application makes today. M2 fails when any station's
 //!   interval cannot be closed below the tolerance; `--raw DIR` keeps one
 //!   file of raw observations per form and operation, with provenance.
 //! - **M3**, time: each form's generation, drops, fitting, assembly and stock
@@ -28,14 +30,14 @@
 //!   an optional probe estimates exact-drop cost by refining sampled drops
 //!   against the exact faces.
 //! - **M4**, determinism: each form's toolpath at 1, 2 and all threads, and
-//!   each form's posted G-code, with (a) and (b) checked through the application, byte
-//!   for byte (GC-07, NFR-06); and the library's path of form (b) against
+//!   each form's posted G-code, with (a) and (d) checked through the application, byte
+//!   for byte (GC-07, NFR-06); and the library's path of form (d) against
 //!   the application's, so the harness measures what the application makes.
 //!
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--skip-probe] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c,d] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -155,7 +157,7 @@ fn args() -> Result<Args, Error> {
         deflections: DEFLECTIONS.to_vec(),
         fine: None,
         angular: TessellationSettings::default().angular,
-        forms: vec!['a', 'b', 'c'],
+        forms: vec!['a', 'b', 'c', 'd'],
         threads: vec![Threads::Exactly(1), Threads::All],
         sim_tilt: 10.0,
         sim_step: 2.0,
@@ -288,6 +290,14 @@ fn main() -> Result<(), Error> {
     if !(wants("m2") || wants("m3") || wants("m4")) {
         return Ok(());
     }
+    // M4 checks the application against the library's form (d): without it
+    // the equivalence checks would be skipped unnoticed.
+    if wants("m4") && !args.forms.contains(&APP_FORM) {
+        return Err(format!(
+            "M4 compares the application with form ({APP_FORM}); add it to --forms"
+        )
+        .into());
+    }
     let machine = builtin("makera-z1").ok_or("no Z1")??;
     let rotary = RotaryMapping::of_profile(&machine);
     let part_path = repo(&format!("testdata/step/valid/{}.step", args.part));
@@ -334,11 +344,21 @@ fn main() -> Result<(), Error> {
     let mut forms: Vec<(&str, Form<'_>)> = vec![
         (
             "b (STEP, import tessellation 0.01 mm)",
-            Form::Brep(BrepSurface::new(&placed_b)?, &placed_b),
+            Form::Brep(BrepSurface::new(&placed_b)?, None, &placed_b),
         ),
         (
             "c (STEP, finer tessellation)",
-            Form::Brep(BrepSurface::new(&placed_c)?, &placed_c),
+            Form::Brep(BrepSurface::new(&placed_c)?, None, &placed_c),
+        ),
+        (
+            "d (STEP, exact contacts where the strategy takes them)",
+            Form::Brep(
+                BrepSurface::new(&placed_b)?,
+                Some(Box::new(
+                    BrepSurface::new(&placed_b)?.with_exact_drops(true),
+                )),
+                &placed_b,
+            ),
         ),
     ];
     if let Some((mesh, _)) = &stl {
@@ -396,7 +416,7 @@ fn main() -> Result<(), Error> {
         );
         if wants("m2") || wants("m3") {
             let run = job.run(form, Threads::All)?;
-            if name.starts_with('b') {
+            if name.starts_with(APP_FORM) {
                 library_b = Some(
                     run.groups
                         .iter()
@@ -410,7 +430,7 @@ fn main() -> Result<(), Error> {
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
                 println!(
-                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm"
+                    "operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm | cut within {TOOLPATH_TOLERANCE} mm | gap within {TOOLPATH_TOLERANCE} mm"
                 );
                 for (op, group) in ops.iter().zip(&run.groups) {
                     let group = match group {
@@ -429,7 +449,7 @@ fn main() -> Result<(), Error> {
                     )?;
                     let m = bounded::summarise(&observations, op.leave);
                     println!(
-                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6}",
+                        "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {} | {:.6} | {} | {}",
                         op.label,
                         op.leave,
                         m.stations,
@@ -441,7 +461,9 @@ fn main() -> Result<(), Error> {
                         m.error_out,
                         m.drop_bound,
                         m.contacts,
-                        m.proven_error
+                        m.proven_error,
+                        checks::verdict(m.deepest_bound, TOOLPATH_TOLERANCE),
+                        checks::verdict(m.gap, TOOLPATH_TOLERANCE)
                     );
                     proven_error = Some(proven_error.unwrap_or(0.0).max(m.proven_error));
                     if let Some(raw) = &args.raw {
@@ -559,7 +581,7 @@ fn main() -> Result<(), Error> {
                         )
                     );
                 }
-                if let Form::Brep(surface, _) = form
+                if let Form::Brep(surface, None, _) = form
                     && !args.skip_probe
                 {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
@@ -606,13 +628,18 @@ fn main() -> Result<(), Error> {
             if let Some(letter) = name.chars().next() {
                 refused.insert(letter, first.groups.iter().map(Result::is_err).collect());
             }
-            if name.starts_with('b') && library_b.is_none() {
+            if name.starts_with(APP_FORM) && library_b.is_none() {
                 library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
             }
             let one = serde_json::to_string(&first.groups)?;
-            let posted = posting::post_run(&job.connected_groups(&first.groups)?, &post_job)?;
-            if let Some(letter) = name.chars().next() {
-                library_posts.insert(letter, posted.clone());
+            let connected = job.connected_groups(&first.groups)?;
+            let mut posted = BTreeMap::new();
+            for post in POSTS {
+                let text = posting::post_run(&connected, &post_job, post)?;
+                if let Some(letter) = name.chars().next() {
+                    library_posts.insert((letter, post), text.clone());
+                }
+                posted.insert(post, text);
             }
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
@@ -621,12 +648,18 @@ fn main() -> Result<(), Error> {
                     &serde_json::to_string(&again.groups)?,
                     &format!("form {name}, {n} threads, serialized toolpath"),
                 )?;
-                checks::identical(
-                    &posted,
-                    &posting::post_run(&job.connected_groups(&again.groups)?, &post_job)?,
-                    &format!("form {name}, {n} threads, posted G-code"),
-                )?;
-                println!("{n} threads: toolpath and posted G-code identical");
+                let connected = job.connected_groups(&again.groups)?;
+                for post in POSTS {
+                    checks::identical(
+                        posted.get(post).ok_or("no library program")?,
+                        &posting::post_run(&connected, &post_job, post)?,
+                        &format!("form {name}, {n} threads, posted G-code ({post})"),
+                    )?;
+                }
+                println!(
+                    "{n} threads: toolpath and posted G-code identical (posts: {})",
+                    POSTS.join(", ")
+                );
             }
         }
     }
@@ -635,41 +668,63 @@ fn main() -> Result<(), Error> {
         println!("\n## M4: the application's G-code at 1, 2 and {cores} threads");
         // The application stops at a refused operation, so those are turned
         // off (UI-06): the rest is generated as the library made it.
-        disable(&mut app, &ids, refused.get(&'b'))?;
+        disable(&mut app, &ids, refused.get(&APP_FORM))?;
         app.save()?;
-        let mut reference = None;
-        for n in [1, 2, cores] {
-            let mut again = Application::open(&dir, Threads::Exactly(n))?;
-            again.set_post(Some(PostSelection::parse("makera-z1")));
-            let started = Instant::now();
-            let result = again.regenerate()?;
-            let took = started.elapsed();
-            let clean = result.reports.iter().all(|r| r.is_clean());
-            let gcode = result.gcode.clone();
-            if let Some(library) = library_posts.get(&'b') {
-                checks::identical(&1, &gcode.len(), "form b application file count")?;
-                let (_, text) = gcode.first().ok_or("no form b G-code")?;
-                checks::identical(library, text, "form b library/application G-code")?;
-            }
-            checks::clean(clean, &format!("form b, {n} threads, replay gates"))?;
-            if let Some(expected) = &reference {
-                checks::identical(expected, &gcode, &format!("form b, {n} threads, G-code"))?;
-            }
-            println!(
-                "form b, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
-                took.as_secs_f64()
-            );
-            if n == cores
-                && let Some(library) = &library_b
-            {
-                checks::identical(
-                    library,
-                    &result.canonical_toolpath.groups,
-                    "form b application path",
+        for post in POSTS {
+            let mut reference = None;
+            for n in [1, 2, cores] {
+                let mut again = Application::open(&dir, Threads::Exactly(n))?;
+                again.set_post(Some(PostSelection::parse(post)));
+                let started = Instant::now();
+                let result = again.regenerate()?;
+                let took = started.elapsed();
+                let clean = result.reports.iter().all(|r| r.is_clean());
+                let gcode = result.gcode.clone();
+                if let Some(library) = library_posts.get(&(APP_FORM, post)) {
+                    checks::identical(&1, &gcode.len(), "form d application file count")?;
+                    let (_, text) = gcode.first().ok_or("no form d G-code")?;
+                    checks::identical(
+                        library,
+                        text,
+                        &format!("form d library/application G-code ({post})"),
+                    )?;
+                }
+                checks::clean(
+                    clean,
+                    &format!("application, {post}, {n} threads, replay gates"),
                 )?;
-                println!("the library's form b path is the application's");
+                if let Some(expected) = &reference {
+                    checks::identical(
+                        expected,
+                        &gcode,
+                        &format!("application, {post}, {n} threads, G-code"),
+                    )?;
+                }
+                println!(
+                    "application, {post}, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
+                    took.as_secs_f64()
+                );
+                if n == cores
+                    && let Some(library) = &library_b
+                {
+                    // The paths agree to rounding: OI-1110 (decision 0277).
+                    let largest = checks::within_rounding(
+                        &serde_json::to_value(library)?,
+                        &serde_json::to_value(&result.canonical_toolpath.groups)?,
+                        PATH_ROUNDING,
+                        "form d application path",
+                    )?;
+                    println!(
+                        "the library's form d path is the application's{}",
+                        if largest > 0.0 {
+                            format!(" to {largest:e} mm (OI-1110)")
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+                reference.get_or_insert(gcode);
             }
-            reference.get_or_insert(gcode);
         }
         if let Some(path) = &args.stl {
             let mut reference = None;
@@ -683,7 +738,7 @@ fn main() -> Result<(), Error> {
                 let started = Instant::now();
                 let result = again.regenerate()?;
                 let gcode = result.gcode.clone();
-                if let Some(library) = library_posts.get(&'a') {
+                if let Some(library) = library_posts.get(&('a', "makera-z1")) {
                     checks::identical(&1, &gcode.len(), "form a application file count")?;
                     let (_, text) = gcode.first().ok_or("no form a G-code")?;
                     checks::identical(library, text, "form a library/application G-code")?;
@@ -1131,10 +1186,17 @@ fn project(
             // The tool's cutting data for the setup's material (decision 0196).
             spindle_speed: None,
             material: None,
-            parameters: op
-                .parameters
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            // Face free ends off, as the measured project was saved before
+            // it (decision record 0344): the measures are of the strategies.
+            parameters: ["helical_finishing", "axial_finishing", "rest_machining"]
+                .contains(&op.strategy)
+                .then(|| ("face_free_ends".to_owned(), ParameterValue::Flag(false)))
+                .into_iter()
+                .chain(
+                    op.parameters
+                        .iter()
+                        .map(|(k, v)| ((*k).to_owned(), v.clone())),
+                )
                 .collect(),
         }));
     }
@@ -1164,17 +1226,47 @@ fn project_stl(
     project(dir, path, &placement, bounds, ops)
 }
 
-/// The surface a form drops the tool on.
+/// The toolpath tolerance of every measured operation (the default, OP-11):
+/// M2 says whether the proven deepest cut and the largest gap are within it
+/// (lane STEPALL-X2).
+const TOOLPATH_TOLERANCE: f64 = 0.01;
+
+/// The built-in posts M4 writes and replays (lane STEPALL-X2).
+const POSTS: [&str; 2] = ["makera-z1", "linuxcnc"];
+
+/// How far, in millimetres, a number of the library's path may differ from
+/// the application's (OI-1110): a thousandth of the 0.001 mm written
+/// resolution. The blisk's full sequence differs by 1.35e-9 mm (axial
+/// finishing's contact length, after the stock carried from the operations
+/// before it), with byte-identical G-code.
+const PATH_ROUNDING: f64 = 1e-6;
+
+/// The library form the application's output equals: the STEP part with
+/// exact contacts for the strategies that take them (decision 0277).
+const APP_FORM: char = 'd';
+
+/// The surface a form drops the tool on: for a STEP form, its faces with
+/// drops on the tessellation, and for form (d) the same faces with exact
+/// ball drops, which the operations whose strategy takes exact contacts use
+/// (decision 0277), as the application does.
 enum Form<'a> {
-    Brep(BrepSurface, &'a BrepModel),
+    Brep(BrepSurface, Option<Box<BrepSurface>>, &'a BrepModel),
     Mesh(MeshSurface),
 }
 
 impl Form<'_> {
     fn surface(&self) -> &dyn SurfaceSource {
         match self {
-            Self::Brep(s, _) => s,
+            Self::Brep(s, _, _) => s,
             Self::Mesh(s) => s,
+        }
+    }
+
+    /// The surface `strategy` drops on in this form.
+    fn surface_for(&self, strategy: &dyn Strategy) -> &dyn SurfaceSource {
+        match self {
+            Self::Brep(_, Some(exact), _) if strategy.exact_contact() => exact.as_ref(),
+            _ => self.surface(),
         }
     }
 }
@@ -1229,6 +1321,13 @@ impl SurfaceSource for Timed<'_> {
     fn distance(&self, point: Point3) -> Option<f64> {
         self.exact.fetch_add(1, Ordering::Relaxed);
         self.inner.distance(point)
+    }
+    fn within(&self, point: Point3, max_distance: f64) -> bool {
+        self.exact.fetch_add(1, Ordering::Relaxed);
+        self.inner.within(point, max_distance)
+    }
+    fn drop_accuracy(&self) -> f64 {
+        self.inner.drop_accuracy()
     }
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit> {
         self.exact.fetch_add(1, Ordering::Relaxed);
@@ -1464,7 +1563,7 @@ impl Job<'_> {
             let values =
                 openchuck_app::operation::parameter_values(self.project, operation, self.registry)?;
             let registered = self.registry.get(&operation.strategy)?;
-            let timed = Timed::new(form.surface());
+            let timed = Timed::new(form.surface_for(registered));
             let tags = PathTags {
                 operation: operation.id.to_string(),
                 setup: setup.id.to_string(),
@@ -1489,7 +1588,7 @@ impl Job<'_> {
             // (decision 0226). Include that preparation in each generation
             // timing, rather than caching it outside the measured run.
             let pencil_on_brep = match form {
-                Form::Brep(_, model) if operation.strategy == openchuck_path::pencil::NAME => {
+                Form::Brep(_, _, model) if operation.strategy == openchuck_path::pencil::NAME => {
                     Some(PencilFinishing::on_brep(model)?)
                 }
                 _ => None,

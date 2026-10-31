@@ -41,7 +41,7 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Send a small A+ move with a mark on the chuck and see which way its top turns."
         }
         ProfileField::RotaryOrigin => {
-            "Measure it by touching the tool tip to the chuck centre and reading G53 Z."
+            "Run the controller's 4th-axis Z probing routine and read G54 Z in machine coordinates (G53). The value holds for the tool fitted then, the reference tool: a longer tool raises the spindle by the difference."
         }
         ProfileField::ARange => {
             "Turn A past a full turn each way and see whether the controller stops it."
@@ -61,6 +61,15 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
         }
         ProfileField::ShortBlockMode => {
             "Choose Report to inspect demand or Slow down to preserve geometry at a lower feed."
+        }
+        ProfileField::ToolLengthMeasurement => {
+            "Check in the controller's documents whether it measures each tool on a tool setter and offsets it."
+        }
+        ProfileField::SpindleToAxis => {
+            "With the spindle at home, measure from the collet nose down to the chuck centre; or add the probe's stick-out to the distance from home down to the axis measured with the probe (48.6 mm for an axis height of -48.6)."
+        }
+        ProfileField::RecommendedMinSafeZ => {
+            "Check that the safe Z clears the chuck, the jaws and the part on your machine."
         }
         ProfileField::SpindleRange => {
             "Check the spindle's lowest and highest speed in the machine's documents or controller settings."
@@ -210,6 +219,40 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
             value.field == ProfileField::ShortBlockMode || hardware_fields.contains(&value.field)
         }),
     );
+    // The spindle-height check's values (decision record 0317), shown when
+    // the profile gives them.
+    let millimetres = |v: Option<crate::setup::Millimetres>| {
+        v.map_or_else(|| "Not known".to_owned(), |v| format!("{:.3} mm", v.0))
+    };
+    values.extend(
+        [
+            value(
+                ProfileField::ToolLengthMeasurement,
+                "Tool length measurement",
+                if profile.automatic_tool_length {
+                    "Automatic (tool setter)"
+                } else {
+                    "None"
+                }
+                .to_owned(),
+                false,
+            ),
+            value(
+                ProfileField::SpindleToAxis,
+                "Spindle to axis",
+                millimetres(profile.spindle_to_axis),
+                false,
+            ),
+            value(
+                ProfileField::RecommendedMinSafeZ,
+                "Recommended minimum safe Z",
+                millimetres(profile.recommended_min_safe_z),
+                false,
+            ),
+        ]
+        .into_iter()
+        .filter(|value| hardware_fields.contains(&value.field)),
+    );
     values
 }
 
@@ -237,8 +280,30 @@ mod tests {
                 "Spindle speed",
                 "Minimum block time",
                 "Block window",
-                "Short-block mode"
+                "Short-block mode",
+                "Tool length measurement",
+                "Spindle to axis",
+                "Recommended minimum safe Z"
             ]
+        );
+        // The Z1 measures tool lengths; the spindle-to-axis distance is
+        // derived from the owner's probe stick-out (decision 0318), and the
+        // recommended minimum is the owner's (decision 0317).
+        let find = |label: &str| values.iter().find(|v| v.label == label).unwrap();
+        let measuring = find("Tool length measurement");
+        assert_eq!(measuring.value, "Automatic (tool setter)");
+        assert!(measuring.confirmed);
+        let distance = find("Spindle to axis");
+        assert_eq!(distance.value, "73.100 mm");
+        assert!(!distance.confirmed);
+        assert!(distance.tooltip.contains("24.5"), "{}", distance.tooltip);
+        let minimum = find("Recommended minimum safe Z");
+        assert_eq!(minimum.value, "30.000 mm");
+        assert!(!minimum.confirmed);
+        assert!(
+            minimum.tooltip.contains("must be checked before machining"),
+            "{}",
+            minimum.tooltip
         );
         let spindle = values.iter().find(|v| v.label == "Spindle speed").unwrap();
         assert_eq!(spindle.value, "Up to 13000 rpm");
@@ -246,14 +311,25 @@ mod tests {
             !spindle.confirmed,
             "from Makera's documents, not the machine"
         );
-        // The Z1's axis height is a placeholder: the amber triangle, with
-        // where it came from and how to confirm it.
+        // The Z1's axis height is the owner's probing result: the tick, and
+        // the source says it holds for the probe as the reference tool
+        // (decision 0317).
         let height = values.iter().find(|v| v.label == "Axis height").unwrap();
-        assert!(!height.confirmed);
-        assert!(height.value.ends_with("mm (machine Z)"), "{}", height.value);
-        assert!(height.tooltip.starts_with("Not confirmed on the machine."));
-        assert!(height.tooltip.contains("Source: "));
-        assert!(height.tooltip.contains("G53 Z"));
+        assert!(height.confirmed);
+        assert_eq!(height.value, "-48.600 mm (machine Z)");
+        assert!(height.tooltip.starts_with("Confirmed on the machine."));
+        assert!(
+            height.tooltip.contains("reference tool"),
+            "{}",
+            height.tooltip
+        );
+        // The travel is not confirmed: the amber triangle, with where it came
+        // from and how to confirm it.
+        let travel = values.iter().find(|v| v.label == "Travel").unwrap();
+        assert!(!travel.confirmed);
+        assert!(travel.tooltip.starts_with("Not confirmed on the machine."));
+        assert!(travel.tooltip.contains("Source: "));
+        assert!(travel.tooltip.contains("G53"));
         // A+ is confirmed: the tick, with no instructions.
         let sense = values.iter().find(|v| v.label == "A+ direction").unwrap();
         assert!(sense.confirmed);
@@ -272,6 +348,25 @@ mod tests {
         assert!(mode.tooltip.starts_with("Posting policy."));
         assert!(!mode.tooltip.contains("confirmed on the machine"));
         assert!(values.iter().filter(|v| v.collapsed).count() == 3);
+    }
+
+    /// An unconfirmed axis height says how the Z1 measures it: the
+    /// controller's 4th-axis Z probe, read in machine coordinates, for the
+    /// tool fitted when it ran (decision 0317).
+    #[test]
+    fn req_ui_13_an_unconfirmed_axis_height_says_how_to_measure_it() {
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        z1.provenance.remove(&ProfileField::RotaryOrigin);
+        let tip = tooltip(&z1, ProfileField::RotaryOrigin);
+        assert!(tip.starts_with("Not confirmed on the machine."), "{tip}");
+        for words in [
+            "probing routine",
+            "G54 Z",
+            "machine coordinates",
+            "reference tool",
+        ] {
+            assert!(tip.contains(words), "{words}: {tip}");
+        }
     }
 
     #[test]
