@@ -23,6 +23,12 @@ const ROOT_TOLERANCE: f64 = 1e-9;
 /// Hard cap on search iterations, whatever the bracket.
 const MAX_ITERATIONS: u32 = 80;
 
+/// How far below the tool, in millimetres, the bound of [`surely_misses`]
+/// must put a line before the search is skipped: far more than the rounding
+/// of the bound and of the search's own evaluations (about 1e-14 mm at the
+/// sizes of a tool), so a skipped line is one the search would find empty.
+const MISS_MARGIN: f64 = 1e-9;
+
 /// One piece of the lower envelope in a form that is cheap to evaluate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Piece {
@@ -198,6 +204,32 @@ pub fn cut_spans(
     s1: f64,
     march: f64,
 ) -> Spans {
+    #[cfg(test)]
+    let skip = !SEARCH_EVERY_LINE.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    let skip = true;
+    spans_on(tool, o, d, s0, s1, march, skip)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: [`cut_spans`] on this thread searches every line, skipping
+    /// none, to compare a stock with the one the search alone cuts.
+    pub(crate) static SEARCH_EVERY_LINE: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// [`cut_spans`], with the search skipped where the line surely misses
+/// the tool (`skip_misses`) or not: the spans are the same either way.
+fn spans_on(
+    tool: &ToolSolid,
+    o: [f64; 3],
+    d: [f64; 3],
+    s0: f64,
+    s1: f64,
+    march: f64,
+    skip_misses: bool,
+) -> Spans {
     let big_r = tool.radius;
     let top = tool.top;
     let (mut a, mut b) = (s0, s1);
@@ -323,6 +355,11 @@ pub fn cut_spans(
         }
         return out;
     }
+    // Most lines near a fine tool pass under it (decision record 0332):
+    // proving that costs a search, unless the bound already shows it.
+    if skip_misses && surely_misses(tool, o, d, a, b) {
+        return Spans::EMPTY;
+    }
     if tool.convex {
         let peak = golden_max(&f, a, b);
         let (fa, fb, fp) = (f(a), f(b), f(peak));
@@ -344,6 +381,28 @@ pub fn cut_spans(
     let step = (big_r / 8.0).min(march).max(1e-6);
     march_spans(&f, a, b, step, &mut out);
     out
+}
+
+/// True when the line `o + s d` (`d` a unit vector, not along the axis) is
+/// outside the tool for every `s` in `[a, b]`, for certain, so the search
+/// would find no span (decision record 0332). The bound: `w` is largest at
+/// an end, and `h` never decreases with `r` (the monotone rule), so
+/// `w(s) - h(r(s))` is at most the larger end's `w` less `h` at the line's
+/// closest approach to the axis. Certain only when that is below
+/// [`MISS_MARGIN`], far beyond the rounding of either side; otherwise the
+/// search decides.
+fn surely_misses(tool: &ToolSolid, o: [f64; 3], d: [f64; 3], a: f64, b: f64) -> bool {
+    let qa = d[0] * d[0] + d[1] * d[1];
+    if qa < 1e-18 {
+        return false;
+    }
+    let qb = o[0] * d[0] + o[1] * d[1];
+    let s = (-qb / qa).clamp(a, b);
+    let (x, y) = (o[0] + s * d[0], o[1] + s * d[1]);
+    // A square root, not `hypot`: the margin covers the last bit.
+    let closest = (x * x + y * y).sqrt();
+    let highest = (o[2] + a * d[2]).max(o[2] + b * d[2]);
+    highest - tool.height_at(closest) < -MISS_MARGIN
 }
 
 /// The spans of `f >= 0` on `[a, b]`, marched at about `step` and refined
@@ -512,6 +571,177 @@ mod tests {
         assert_eq!(s.len(), 1);
         assert!((s[0].0 - 8.0).abs() < 1e-6, "{s:?}");
         assert!((s[0].1 - 12.0).abs() < 1e-6, "{s:?}");
+    }
+
+    /// The profiles the sweep meets: convex (ball, V-bit with and without a
+    /// flat tip, flat, bull-nose, tapered ball) and not (a concave arc, and a
+    /// line that bends down: a reflex joint).
+    fn every_kind_of_tool() -> Vec<(&'static str, ToolSolid)> {
+        use openchuck_types::tool::{ProfilePoint, ProfileSegment, ToolProfile};
+        let custom = |segments| ToolShape::Custom {
+            profile: ToolProfile { segments },
+        };
+        vec![
+            ("ball", tool(ToolShape::BallEnd)),
+            (
+                "V-bit 60, 0.1 tip",
+                tool(ToolShape::VBit {
+                    included_angle: Degrees(60.0),
+                    tip_diameter: Millimetres(0.1),
+                }),
+            ),
+            (
+                "V-bit 20, sharp",
+                tool(ToolShape::VBit {
+                    included_angle: Degrees(20.0),
+                    tip_diameter: Millimetres(0.0),
+                }),
+            ),
+            ("flat", tool(ToolShape::FlatEnd)),
+            (
+                "bull-nose",
+                tool(ToolShape::BullNose {
+                    corner_radius: Millimetres(1.0),
+                }),
+            ),
+            (
+                "tapered ball",
+                tool(ToolShape::TaperedBall {
+                    tip_radius: Millimetres(0.5),
+                    taper_half_angle: Degrees(10.0),
+                }),
+            ),
+            (
+                "concave arc",
+                tool(custom(vec![ProfileSegment::Arc {
+                    to: ProfilePoint::new(3.0, 3.0),
+                    centre: ProfilePoint::new(3.0, 0.0),
+                }])),
+            ),
+            (
+                "reflex joint",
+                tool(custom(vec![
+                    ProfileSegment::Line {
+                        to: ProfilePoint::new(1.0, 2.0),
+                    },
+                    ProfileSegment::Line {
+                        to: ProfilePoint::new(3.0, 3.0),
+                    },
+                ])),
+            ),
+        ]
+    }
+
+    /// A small generator for repeatable test lines.
+    struct Lcg(u64);
+
+    impl Lcg {
+        /// Uniform in `[lo, hi)`.
+        fn next(&mut self, lo: f64, hi: f64) -> f64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            lo + (hi - lo) * ((self.0 >> 11) as f64 / (1u64 << 53) as f64)
+        }
+
+        fn unit(&mut self) -> [f64; 3] {
+            loop {
+                let v = [
+                    self.next(-1.0, 1.0),
+                    self.next(-1.0, 1.0),
+                    self.next(-1.0, 1.0),
+                ];
+                let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                if l > 0.1 && l <= 1.0 {
+                    return [v[0] / l, v[1] / l, v[2] / l];
+                }
+            }
+        }
+    }
+
+    /// Skipping the lines that surely miss the tool changes no span, not by
+    /// one bit, so the stock is the same (NFR-06, decision record 0332):
+    /// lines at random near the tool, and lines that pass just under its
+    /// surface, where the bound is closest, against the search alone.
+    #[test]
+    fn req_sim_03_req_nfr_06_skipping_sure_misses_changes_no_span() {
+        let mut rng = Lcg(0x5EED_0332);
+        for (name, solid) in every_kind_of_tool() {
+            let (r, top) = (solid.radius(), solid.top());
+            let (mut skipped, mut lines) = (0usize, 0usize);
+            for k in 0..20_000 {
+                let (o, d) = if k % 2 == 0 {
+                    // Anywhere near the tool, in any direction.
+                    let o = [
+                        rng.next(-1.5 * r, 1.5 * r),
+                        rng.next(-1.5 * r, 1.5 * r),
+                        rng.next(-1.0, top + 1.0),
+                    ];
+                    (o, rng.unit())
+                } else {
+                    // Through a point a hair under the surface (between
+                    // 1e-13 and 1e-3 mm), close to level.
+                    let q = rng.next(0.0, r);
+                    let gap = 10f64.powf(rng.next(-13.0, -3.0));
+                    let o = [q, 0.0, solid.height_at(q) - gap];
+                    let mut d = rng.unit();
+                    d[2] *= 0.05;
+                    let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                    (o, [d[0] / l, d[1] / l, d[2] / l])
+                };
+                let (s0, s1) = if k % 3 == 0 {
+                    (-100.0, 100.0)
+                } else {
+                    (rng.next(-2.0 * r, 0.0), rng.next(0.0, 2.0 * r))
+                };
+                let skipping = spans_on(&solid, o, d, s0, s1, 0.1, true);
+                let searched = spans_on(&solid, o, d, s0, s1, 0.1, false);
+                let bits = |s: &Spans| {
+                    s.as_slice()
+                        .iter()
+                        .map(|&(a, b)| (a.to_bits(), b.to_bits()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    bits(&skipping),
+                    bits(&searched),
+                    "{name}: line {o:?} + s {d:?} on [{s0}, {s1}]"
+                );
+                lines += 1;
+                if searched.is_empty() {
+                    skipped += usize::from(surely_misses(&solid, o, d, s0, s1));
+                }
+            }
+            // The check means something only if lines were skipped (few for
+            // a flat end, which has nothing under its face to skip).
+            println!("{name}: {skipped} of {lines} lines skipped");
+            assert!(skipped > 0, "{name}: no line skipped");
+        }
+    }
+
+    /// The bound itself: a line under the tip misses for certain; one that
+    /// touches, or passes closer than the margin, is left to the search.
+    #[test]
+    fn req_sim_03_a_line_under_the_tip_surely_misses_and_a_touching_one_does_not() {
+        let v = tool(ToolShape::VBit {
+            included_angle: Degrees(90.0),
+            tip_diameter: Millimetres(0.0),
+        });
+        let level = |w: f64| ([-10.0, 0.3, w], [1.0, 0.0, 0.0]);
+        let (o, d) = level(-0.5);
+        assert!(surely_misses(&v, o, d, 5.0, 15.0));
+        // At w = 0.31 the 90 degree V reaches out to 0.31: the line, 0.3
+        // from the axis at its closest, goes in.
+        let (o, d) = level(0.31);
+        assert!(!surely_misses(&v, o, d, 5.0, 15.0));
+        assert!(!spans_on(&v, o, d, 5.0, 15.0, 0.1, false).is_empty());
+        // Just under, but inside the margin: not certain, so searched.
+        let (o, d) = level(0.3 - 1e-12);
+        assert!(!surely_misses(&v, o, d, 5.0, 15.0));
+        // Well under: certain.
+        let (o, d) = level(0.3 - 1e-6);
+        assert!(surely_misses(&v, o, d, 5.0, 15.0));
     }
 
     #[test]

@@ -904,6 +904,102 @@ mod tests {
         assert_eq!(empty.pack().unpack(), empty);
     }
 
+    /// A V-bit finishing of a carving, as the owner's project and the test
+    /// piece of issue #382 have: a 60 degree V-bit with a 0.1 mm tip, passes
+    /// along X a hundredth of a radian apart round a relief, on a stock
+    /// already roughed close to it.
+    fn carving_finishing() -> (DexelStock, ToolSolid, Vec<Pose>) {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(22.0),
+            length: Millimetres(12.0),
+            x_start: Millimetres(-6.0),
+        };
+        let mut d = DexelStock::from_stock(&stock, None, 0.1).unwrap();
+        let tool = |shape, diameter| {
+            let t = openchuck_types::tool::Tool {
+                shape,
+                diameter: Millimetres(diameter),
+                flute_length: Millimetres(10.0),
+                overall_length: Millimetres(40.0),
+                shank_diameter: Millimetres(3.0),
+                flute_count: 2,
+                material: None,
+                centre_cutting: None,
+            };
+            ToolSolid::new(&t.profile().unwrap())
+        };
+        let relief = |x: f64, a: f64| 9.0 + 0.4 * (2.0 * x).sin() * (5.0 * a).cos();
+        let pose = |x: f64, a: f64, lift: f64| {
+            let axis = Vec3::new(0.0, a.sin(), a.cos());
+            let r = relief(x, a) + lift;
+            Pose {
+                tip: Point3::new(x, r * axis.y, r * axis.z),
+                axis,
+            }
+        };
+        let passes = |step: f64, count: usize, along: f64, lift: f64| -> Vec<Pose> {
+            let mut poses = Vec::new();
+            for k in 0..count {
+                let a = -0.3 + k as f64 * step;
+                for i in 0..=((10.0 / along) as usize) {
+                    // Back and forth, as a raster finishing goes.
+                    let t = i as f64 * along;
+                    let x = if k % 2 == 0 { -5.0 + t } else { 5.0 - t };
+                    poses.push(pose(x, a, lift));
+                }
+            }
+            poses
+        };
+        let ball = tool(openchuck_types::tool::ToolShape::BallEnd, 3.0);
+        d.cut(&ball, &passes(0.1, 7, 0.1, 0.3));
+        let vbit = tool(
+            openchuck_types::tool::ToolShape::VBit {
+                included_angle: openchuck_types::units::Degrees(60.0),
+                tip_diameter: Millimetres(0.1),
+            },
+            3.0,
+        );
+        (d, vbit, passes(0.01, 60, 0.05, 0.0))
+    }
+
+    /// Skipping the lines that surely miss the tool (decision record 0332)
+    /// cuts the same stock, bit for bit, as the search alone, with the same
+    /// removed volume, at 1, 2 and 4 threads (SIM-03, NFR-06, GC-07: later
+    /// operations are made against this stock).
+    #[test]
+    fn req_sim_03_req_nfr_06_a_carving_finishing_cuts_the_same_stock_as_the_search_alone() {
+        let (start, vbit, poses) = carving_finishing();
+        let pool = |n| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(n)
+                .build()
+                .unwrap()
+        };
+        // The search alone, on one thread whose every line is searched.
+        let (searched, searched_removed) = pool(1).install(|| {
+            crate::span::SEARCH_EVERY_LINE.with(|s| s.set(true));
+            let mut d = start.clone();
+            let removed = d.cut(&vbit, &poses);
+            crate::span::SEARCH_EVERY_LINE.with(|s| s.set(false));
+            (d, removed)
+        });
+        assert!(searched_removed > 1.0, "{searched_removed}");
+        for threads in [1, 2, 4] {
+            let (d, removed) = pool(threads).install(|| {
+                let mut d = start.clone();
+                let removed = d.cut(&vbit, &poses);
+                (d, removed)
+            });
+            assert_eq!(d.state_hash(), searched.state_hash(), "{threads} threads");
+            assert_eq!(d, searched, "{threads} threads");
+            assert_eq!(
+                removed.to_bits(),
+                searched_removed.to_bits(),
+                "{threads} threads"
+            );
+        }
+    }
+
     #[test]
     fn req_op_24_the_stock_ends_are_where_its_material_is() {
         use openchuck_path::StockModel;

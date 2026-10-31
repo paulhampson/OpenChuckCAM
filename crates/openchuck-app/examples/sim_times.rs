@@ -31,10 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let usage = "usage: sim_times PROJECT|PART.stl [THREADS,...] [REPEATS]";
     let input = PathBuf::from(args.next().ok_or(usage)?);
     let counts: Vec<usize> = match args.next() {
-        Some(list) => list
-            .split(',')
-            .map(str::parse)
-            .collect::<Result<_, _>>()?,
+        Some(list) => list.split(',').map(str::parse).collect::<Result<_, _>>()?,
         None => vec![1, 2, 4],
     };
     let repeats: usize = args.next().map(|r| r.parse()).transpose()?.unwrap_or(1);
