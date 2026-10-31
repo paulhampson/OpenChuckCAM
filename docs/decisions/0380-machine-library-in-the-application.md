@@ -1,6 +1,6 @@
 # 0380: Managing machine profiles in the application (lane MACHINES)
 
-- **Status:** proposed, 31 Oct 2026, by lane MACHINES, for the owner's acceptance. The plan was approved by the coordinator session on 31 Oct 2026. The owner answered the five choices (OI-1470 to OI-1474) on 31 Oct 2026, relayed by the coordinator (decision 0049), each as recommended; items 7 to 11 record them.
+- **Status:** accepted by the project owner on 31 Oct 2026, relayed by the coordinator (decision 0049). Proposed the same day by lane MACHINES. The plan was approved by the coordinator session on 31 Oct 2026. The owner answered the five choices (OI-1470 to OI-1474) on 31 Oct 2026, relayed by the coordinator (decision 0049), each as recommended; items 7 to 11 record them.
 - **Date:** 31 Oct 2026.
 - **Branch:** `claude/lane-machines`. Issue [#335](https://github.com/paulhampson/OpenChuckCAM/issues/335) ("GUI has no way to manage machine library").
 - **Requirements:** SET-10 (new, item 7), SET-01, UI-13, TL-11, NFR-07, NFR-12, GC-07 and NFR-06. SET-02, SET-08 and COL-04 (P2) are not built.
@@ -72,6 +72,8 @@ Machine profiles are TOML files: built in (the Makera Z1, in `crates/openchuck-p
 11. **A renamed machine keeps its tool set (OI-1474; option A).** Machine tool sets are tied to a machine by name (OI-770). When a saved library profile is renamed, `tool_set_rename_question` gives the question for the same confirmation as Save, with "Also rename the tool set" ticked at first. `rename_tool_set` then rewrites that tool set's own file under the new name (`ToolLibrary::rename_tool_set` in `openchuck-project`, not in the library family). A name another tool set already holds is refused, and nothing is written. Built-in profiles cannot be renamed, so their tool sets are never touched.
 
 ## Pull requests
+
+The coordinator chose one draft pull request for both parts (31 Oct 2026); its commits split as below.
 
 1. **The model** (`openchuck-app`, and `ToolLibrary::rename_tool_set` in `openchuck-project`): items 1 to 11, with tests named by requirement. This record, SET-10 in the requirements, the verification plan and the work breakdown, and the registers.
 2. **The window** (`openchuck-ui`): a machine library window built like the tool library window:
