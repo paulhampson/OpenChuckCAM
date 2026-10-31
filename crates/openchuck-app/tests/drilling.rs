@@ -115,6 +115,7 @@ fn make(extra: &[(&str, f64)]) -> Job {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);

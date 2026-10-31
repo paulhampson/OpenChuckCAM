@@ -247,6 +247,7 @@ fn input_for<'a>(
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     }
 }
 

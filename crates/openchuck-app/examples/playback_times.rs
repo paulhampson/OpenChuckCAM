@@ -10,9 +10,13 @@
 //! surface is how long the tool stands still.
 //!
 //! ```text
-//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS [MEMORY_MB]]
-//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS [MEMORY_MB]]
+//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS [MEMORY_MB [on]]]
+//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS [MEMORY_MB [on]]]
 //! ```
+//!
+//! With `on`, playback information is made with toolpath generation
+//! (decision record 0333): the run keeps playback's checkpoints within
+//! MEMORY_MB, and preparing playback takes them from it.
 //!
 //! Given an STL file (such as the carving test piece of issue #382), it
 //! builds a project around it in a temporary folder: box stock, rotary
@@ -37,7 +41,7 @@ use carving::{carving_project, peak_mb};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: playback_times PROJECT|PART.stl [THREADS [MEMORY_MB]]";
+    let usage = "usage: playback_times PROJECT|PART.stl [THREADS [MEMORY_MB [on]]]";
     let input = PathBuf::from(args.next().ok_or(usage)?);
     let threads = match args.next() {
         Some(n) => Threads::Exactly(n.parse()?),
@@ -48,8 +52,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(mb) => mb.parse::<usize>()? * 1024 * 1024,
         None => openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY,
     };
+    let with_generation = args.next().is_some_and(|a| a == "on");
     let temporary = std::env::temp_dir().join(format!("playback-times-{}", std::process::id()));
-    let app = if input
+    let mut app = if input
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("stl"))
     {
@@ -57,9 +62,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Application::open(&input, threads)?
     };
+    if with_generation {
+        app.set_playback_with_generation(Some(memory));
+    }
     println!(
-        "threads: {threads:?}, simulation cell {} mm",
-        app.project().simulation().cell.0
+        "threads: {threads:?}, simulation cell {} mm, playback information with generation: {}",
+        app.project().simulation().cell.0,
+        if with_generation { "on" } else { "off" }
     );
 
     let started = Instant::now();
@@ -87,8 +96,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .wait()?,
     );
     println!(
-        "prepare playback: {:.1} s, {} checkpoints holding {:.0} MB, peak {:.0} MB",
+        "prepare playback: {:.1} s{}, {} checkpoints holding {:.0} MB, peak {:.0} MB",
         started.elapsed().as_secs_f64(),
+        if playback.from_the_run() {
+            " (from the run)"
+        } else {
+            ""
+        },
         playback.checkpoints(),
         playback.checkpoint_bytes() as f64 / 1e6,
         peak_mb()

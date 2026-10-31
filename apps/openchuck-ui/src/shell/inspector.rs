@@ -315,6 +315,7 @@ impl Shell {
         let focus = self.setup_section.take().or(jump_to);
         let mut edited: Vec<(Setup, Option<String>)> = Vec::new();
         let mut command = None;
+        let mut manage_machines = false;
         for part in SetupPart::ALL {
             let setup = edited
                 .last()
@@ -378,6 +379,9 @@ impl Shell {
                             let copy_id = app.project().machine_id().map(str::to_owned);
                             if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
                                 command = Some(c);
+                            }
+                            if panel.take_manage_request() {
+                                manage_machines = true;
                             }
                         }
                         SetupPart::Stock => {
@@ -467,6 +471,9 @@ impl Shell {
             .map(|(setup, key)| (Command::Replace(Item::Setup(setup)), key))
             .collect();
         commands.extend(command.map(|command| (command, self.pending_field.take())));
+        if manage_machines {
+            self.open_machine_library();
+        }
         let mut changed = false;
         for (command, key) in commands {
             let Some(app) = &mut self.app else { return };

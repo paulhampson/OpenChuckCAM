@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.0
+
+- **Breaking family release (0.30.0, OP20, decision 0368):** `openchuck_path` gains `StrategyInput::shank`, `StrategyOutput::unreached` and `shank_breaks`, and `GeneratedPath::unreached` and `shank_breaks`. No change in this crate; all family crates advance together under 0048.
+
 ## 0.29.0
 
 - **Breaking family release (0.29.0, ENDFACE stage 3, decision 0239, accepted):** `openchuck_path::PathWarning` gains `requires_acknowledgement` and `Strategy::passes_in_zones` returns `StrategyOutput`, and adaptive spacing on for a new operation changes its output (decision 0239 item 13). No change in this crate; all family crates advance together under 0048.

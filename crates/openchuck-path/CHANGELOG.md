@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.0
+
+- **Breaking (0.30.0, OP20, decision 0368; issue #413):** simultaneous finishing finishes the surfaces its drive's rays do not meet first (OP-20, now P1): `StrategyOutput` and `GeneratedPath` have the new public field `unreached: Vec<Unreached>` (the areas a strategy cannot reach, with `Unreached` and `UnreachedReason`), and `StrategyInput` the new public field `shank: Option<Shank>` (a shank wider than the cutting part, which every simultaneous pass keeps clear of the part, breaking where it would meet it; the places are `StrategyOutput::shank_breaks` and `GeneratedPath::shank_breaks`, with `ShankBreak`, and a warning); a host's struct literals add `unreached: Vec::new()` and `shank: None` (or the tool's shank). Additive: `SurfaceSource::drop_tool_above` (a drop with a known lower bound; the default ignores it) and `simultaneous::parameter::MAX_HIDDEN_LEAN` (`max_hidden_lean`, degrees, 0 to 90, default 90). Simultaneous finishing's program changes only for a part with hidden surfaces: new passes where the tool reaches them, and a warning naming the areas it does not; every other part's program, and every golden file, is unchanged.
+
 ## 0.29.0
 
 - LINKEDPASS (issue #423, decision 0390, accepted; relayed by the coordinator): helical finishing can cut rings instead of a spiral. With `helical::parameter::PASS_SHAPE` set to `RINGS`, each pass is one whole turn of A at a fixed X, evenly spaced from end to end of the part no wider than the stepover or scallop pitch, with each face's turn (decision 0297) among them, and the tool steps along the part at the start angle to the next ring, cutting on the surface, so the rings are one cut wherever the spiral would be. Adaptive spacing (decision 0239) adds rings between rings. The default is `HELIX`, for new and saved operations, so every path is unchanged unless rings are chosen. Additive API: `helical::parameter::{PASS_SHAPE, HELIX, RINGS}`.

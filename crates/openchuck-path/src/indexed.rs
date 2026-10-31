@@ -219,6 +219,8 @@ fn output(made: Made) -> Result<StrategyOutput> {
             .collect(),
         passes: made.passes,
         warnings,
+        unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 

@@ -34,12 +34,13 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::too_many_lines,
+    clippy::indexing_slicing,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic
 )]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use openchuck_app::model::{Axis, Degrees, TransformStep};
@@ -303,7 +304,7 @@ fn measure(points: &[Point3], positions: &[At], outline: &Outline, height: f64) 
             (c.z / cell).floor() as i64,
         )
     };
-    let mut grid: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
+    let mut grid: BTreeMap<(i64, i64, i64), Vec<usize>> = BTreeMap::new();
     for (i, p) in positions.iter().enumerate() {
         let c = p.tip + p.axis * (0.5 * height);
         grid.entry(key(c)).or_default().push(i);
@@ -427,6 +428,7 @@ fn main() {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let points: Vec<(u32, Vec<Point3>)> = selected
         .exact_faces()

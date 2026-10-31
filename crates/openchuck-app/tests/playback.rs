@@ -1693,3 +1693,185 @@ fn req_sim_03_a_new_project_takes_the_users_default_for_the_skip() {
     assert!(reopened.project().skip_stock_simulation());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The project of [`project`] with a second operation in the same setup,
+/// generated against the stock the first leaves (SIM-06).
+fn two_operations(name: &str) -> (PathBuf, Application) {
+    let (dir, mut app, first) = project(name);
+    let mut second = app.project().operation(first).unwrap().clone();
+    second.id = OperationId::new();
+    second.name = "Finish again".into();
+    second.parameters.insert(
+        "max_angle_step".to_owned(),
+        openchuck_app::project::ParameterValue::Number(3.0),
+    );
+    app.execute(Command::Add {
+        item: Item::Operation(second),
+        placement: Placement::End,
+    })
+    .unwrap();
+    (dir, app)
+}
+
+/// "Generate playback information with toolpath generation" (decision
+/// record 0333): the run keeps playback's checkpoints, and playback built
+/// from them shows the same stock at every move as playback prepared by
+/// simulating again; the toolpaths, the G-code, the stock and the removed
+/// volumes are the same with the setting on or off.
+#[test]
+fn req_sim_04_req_nfr_06_playback_from_the_runs_checkpoints_shows_the_same_stock() {
+    let (dir, mut app) = two_operations("stock-from-run");
+    let off = Arc::new(app.simulate().unwrap());
+    app.set_playback_with_generation(Some(DEFAULT_PLAYBACK_MEMORY));
+    assert_eq!(
+        app.playback_with_generation(),
+        Some(DEFAULT_PLAYBACK_MEMORY)
+    );
+    let on = Arc::new(app.simulate().unwrap());
+    assert_eq!(on.gcode, off.gcode);
+    assert_eq!(on.toolpath, off.toolpath);
+    let (a, b) = (
+        off.simulation.as_ref().unwrap(),
+        on.simulation.as_ref().unwrap(),
+    );
+    for (x, y) in a.setups.iter().zip(&b.setups) {
+        assert_eq!(x.stock.state_hash(), y.stock.state_hash());
+        assert_eq!(x.operations, y.operations);
+        // The removed volumes add up to what the stock lost.
+        let removed: f64 = y.operations.iter().map(|o| o.removed_volume).sum();
+        assert!((removed - (y.initial_volume - y.final_volume)).abs() < 1e-6);
+        assert!(x.checkpoints.is_empty());
+        // The start, inside the operations, and after each one.
+        assert!(
+            y.checkpoints.len() > y.operations.len(),
+            "{}",
+            y.checkpoints.len()
+        );
+    }
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let prepared_off = {
+        let t = Arc::new(Timeline::new(app.project(), Arc::clone(&off)).unwrap());
+        app.start_stock_playback(t, DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap()
+    };
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&on)).unwrap());
+    let from_run = app
+        .start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+        .wait()
+        .unwrap();
+    // Built from the run's own copies, not simulated again.
+    assert!(from_run.from_the_run());
+    assert!(!prepared_off.from_the_run());
+    let kept: usize = b.setups.iter().map(|s| s.checkpoints.len()).sum();
+    assert_eq!(from_run.checkpoints(), kept);
+    let n = t.move_count();
+    for done in (0..=n).step_by((n / 40).max(1)).chain([n]) {
+        for fraction in [0.0, 0.5] {
+            let c = Cursor { done, fraction };
+            assert_eq!(
+                from_run.stock_at(c, &context).unwrap().state_hash(),
+                prepared_off.stock_at(c, &context).unwrap().state_hash(),
+                "{c:?}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// With the setting on, the run's checkpoints never hold more than the
+/// memory it is given, the stock is the same, and playback still shows the
+/// same stock (NFR-07, decision record 0333). Turning the setting on after
+/// a run takes effect at the next run, though nothing else changed: the
+/// stocks kept for reuse have no checkpoints, so they are simulated again.
+#[test]
+fn req_nfr_07_req_sim_04_the_runs_checkpoints_keep_to_their_memory() {
+    let (dir, mut app) = two_operations("stock-from-run-memory");
+    let off = app.simulate().unwrap();
+    let stock = &off.simulation.as_ref().unwrap().setups[0].stock;
+    let packed = stock.pack().memory_bytes();
+    // The start, after each operation, the replay's two, and about three
+    // inside.
+    let memory = 8 * packed + stock.memory_bytes();
+    app.set_playback_with_generation(Some(memory));
+    let on = Arc::new(app.simulate().unwrap());
+    let setups = &on.simulation.as_ref().unwrap().setups;
+    let held: usize = setups
+        .iter()
+        .flat_map(|s| &s.checkpoints)
+        .map(|c| c.stock.memory_bytes())
+        .sum();
+    assert!(held <= memory, "{held} > {memory}");
+    assert!(!setups[0].checkpoints.is_empty());
+    assert_eq!(setups[0].stock.state_hash(), stock.state_hash());
+    let (cancel, progress) = (
+        openchuck_types::job::CancelToken::new(),
+        openchuck_types::job::NoProgress,
+    );
+    let context = openchuck_types::job::JobContext::new(&cancel, &progress);
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&on)).unwrap());
+    let play = app
+        .start_stock_playback(Arc::clone(&t), memory)
+        .wait()
+        .unwrap();
+    assert!(play.from_the_run());
+    let full = app
+        .start_stock_playback(Arc::clone(&t), DEFAULT_PLAYBACK_MEMORY)
+        .wait()
+        .unwrap();
+    let n = t.move_count();
+    for done in (0..=n).step_by((n / 9).max(1)) {
+        let c = Cursor {
+            done,
+            fraction: 0.5,
+        };
+        assert_eq!(
+            play.stock_at(c, &context).unwrap().state_hash(),
+            full.stock_at(c, &context).unwrap().state_hash(),
+            "move {done}"
+        );
+    }
+    // Off again: the next run keeps none.
+    app.set_playback_with_generation(None);
+    let again = app.simulate().unwrap();
+    assert!(
+        again
+            .simulation
+            .unwrap()
+            .setups
+            .iter()
+            .all(|s| s.checkpoints.is_empty())
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A run that does not simulate every operation (the export dialog's
+/// regenerate) caches the stocks a later operation needs without
+/// checkpoints; a simulating run with the setting on does not reuse those,
+/// so its playback still comes from the run (decision record 0333; review
+/// of pull request 420).
+#[test]
+fn req_sim_04_a_stock_cached_without_checkpoints_is_simulated_again_for_playback() {
+    let (dir, mut app) = two_operations("stock-from-run-after-regenerate");
+    app.set_playback_with_generation(Some(DEFAULT_PLAYBACK_MEMORY));
+    let plain = app.regenerate().unwrap();
+    assert!(plain.simulation.is_none());
+    let run = Arc::new(app.simulate().unwrap());
+    let setups = &run.simulation.as_ref().unwrap().setups;
+    assert!(
+        setups
+            .iter()
+            .all(|s| s.checkpoints.len() > s.operations.len())
+    );
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let play = app
+        .start_stock_playback(t, DEFAULT_PLAYBACK_MEMORY)
+        .wait()
+        .unwrap();
+    assert!(play.from_the_run());
+    let _ = std::fs::remove_dir_all(dir);
+}

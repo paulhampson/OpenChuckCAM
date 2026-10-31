@@ -123,6 +123,7 @@ impl Rig {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         };
         generate(&RotaryRoughing, &input, v, &ctx)
     }
@@ -150,6 +151,7 @@ impl Rig {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         };
         generate_in_region(&RotaryRoughing, &input, region, v, &ctx)
     }

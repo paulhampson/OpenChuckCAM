@@ -229,6 +229,8 @@ impl Strategy for HelicalFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 
@@ -263,6 +265,8 @@ impl Strategy for HelicalFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

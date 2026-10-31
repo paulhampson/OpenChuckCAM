@@ -94,6 +94,7 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>, &JobContext<'_>)) {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let token = CancelToken::new();
     let ctx = JobContext::new(&token, &NoProgress);

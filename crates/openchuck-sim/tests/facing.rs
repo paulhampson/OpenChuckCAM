@@ -77,6 +77,7 @@ fn run(strategy: &dyn Strategy, v: &BTreeMap<String, ParameterValue>) -> DexelSt
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);

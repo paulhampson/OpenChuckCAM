@@ -76,6 +76,7 @@ fn engrave(
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let mut values: BTreeMap<String, ParameterValue> = [
         (names::STEPOVER, 0.4),

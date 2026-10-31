@@ -5,6 +5,8 @@
 //! group. Cancellable, with progress, and deterministic at any thread count
 //! (slice 7 item 8; NFR-04, NFR-06).
 
+use std::sync::Arc;
+
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{PathTags, ToolpathGroup};
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
@@ -60,8 +62,10 @@ pub struct Checkpoint {
     pub group: usize,
     /// Moves of that group done.
     pub moves: usize,
-    /// The stock at that point, packed ([`DexelStock::pack`]).
-    pub stock: PackedStock,
+    /// The stock at that point, packed ([`DexelStock::pack`]); shared, so a
+    /// copy of the simulator or of its checkpoints holds the same bytes
+    /// (decision record 0333).
+    pub stock: Arc<PackedStock>,
 }
 
 /// Moves between two progress reports within a batch of poses.
@@ -100,7 +104,7 @@ impl Simulator {
         let checkpoints = vec![Checkpoint {
             group: 0,
             moves: 0,
-            stock: stock.pack(),
+            stock: Arc::new(stock.pack()),
         }];
         let checkpoint_bytes = checkpoints.iter().map(|c| c.stock.memory_bytes()).sum();
         Self {
@@ -127,6 +131,13 @@ impl Simulator {
         self
     }
 
+    /// As [`Simulator::with_checkpoint_budget`], on a simulator already in
+    /// use: a host that shares one budget among several simulators gives
+    /// each what the others have left (`None` for no limit).
+    pub fn set_checkpoint_budget(&mut self, bytes: Option<usize>) {
+        self.checkpoint_budget = bytes;
+    }
+
     /// The memory the checkpoints hold.
     pub fn checkpoint_bytes(&self) -> usize {
         self.checkpoint_bytes
@@ -144,8 +155,51 @@ impl Simulator {
         self.checkpoints.push(Checkpoint {
             group,
             moves,
-            stock,
+            stock: Arc::new(stock),
         });
+    }
+
+    /// Keeps a checkpoint every `every` moves within the groups run from now
+    /// on (`None` for none inside them), as [`Simulator::new`]'s
+    /// `checkpoint_every`: a host that learns each group's length only as it
+    /// comes spaces each one to its share of the budget (decision record
+    /// 0333). Does nothing on a simulator without checkpoints.
+    pub fn set_checkpoint_every(&mut self, every: Option<usize>) {
+        self.checkpoint_every = every.filter(|&n| n > 0);
+    }
+
+    /// A simulator that replays from `checkpoints`, kept by another one over
+    /// `groups_done` groups on the machine kinematics of `frame` (playback
+    /// from the pipeline's own simulation, decision record 0333), so that
+    /// [`Simulator::stock_at`] gives the stock at any move of those groups.
+    /// `None` unless the first checkpoint is at the start, where every
+    /// replay can begin. Its stock is the last checkpoint's; it is meant to
+    /// replay, not to run more groups.
+    pub fn from_checkpoints(
+        frame: &impl AsRotaryFrame,
+        checkpoints: Vec<Checkpoint>,
+        groups_done: usize,
+    ) -> Option<Self> {
+        let first = checkpoints.first()?;
+        if (first.group, first.moves) != (0, 0) {
+            return None;
+        }
+        let stock = checkpoints.last()?.stock.unpack();
+        let (cx, cy) = stock.cell();
+        let reach = stock.reach();
+        let checkpoint_bytes = checkpoints.iter().map(|c| c.stock.memory_bytes()).sum();
+        Some(Self {
+            frame: frame.rotary_frame(),
+            stock,
+            spacing: cx.min(cy),
+            reach,
+            checkpoint_every: None,
+            keep_checkpoints: false,
+            checkpoints,
+            checkpoint_budget: None,
+            checkpoint_bytes,
+            groups_done,
+        })
     }
 
     /// A simulator that keeps no checkpoints, for a host that only needs the

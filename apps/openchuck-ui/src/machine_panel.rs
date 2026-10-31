@@ -123,11 +123,21 @@ pub struct MachinePanel {
     chosen: usize,
     message: Option<String>,
     fields: FieldState,
+    /// "Manage machines…" was pressed: the shell opens the machine library
+    /// window (SET-10; 12.5).
+    manage: bool,
 }
 
 impl Default for MachinePanel {
     fn default() -> Self {
-        let library = default_folders().map(|f| f.machines);
+        Self::with_library(default_folders().map(|f| f.machines))
+    }
+}
+
+impl MachinePanel {
+    /// A panel on the machine library folder `library` (the user's default
+    /// folder in [`Default`]).
+    pub fn with_library(library: Option<PathBuf>) -> Self {
         let available = available_machines(library.as_deref());
         Self {
             library,
@@ -135,11 +145,17 @@ impl Default for MachinePanel {
             chosen: 0,
             message: None,
             fields: FieldState::default(),
+            manage: false,
         }
     }
 }
 
 impl MachinePanel {
+    /// Whether "Manage machines…" was pressed since last asked.
+    pub fn take_manage_request(&mut self) -> bool {
+        std::mem::take(&mut self.manage)
+    }
+
     fn refresh(&mut self) {
         self.available = available_machines(self.library.as_deref());
         self.chosen = self.chosen.min(self.available.len().saturating_sub(1));
@@ -399,28 +415,48 @@ impl MachinePanel {
         }
         ui.separator();
 
-        // Choosing a machine (SET-01).
+        // Choosing a machine (SET-01); managing them is the machine library
+        // window (SET-10; 12.5).
+        // "Manage machines…" shares the folder button's row, so the panel is
+        // no taller than before it; the row wraps when the inspector is
+        // narrower than the two buttons (280 px at the narrowest).
         ui.strong("Machine profiles");
-        match &self.library {
+        let mut manage = false;
+        match self.library.clone() {
             Some(dir) => {
-                ui.weak(format!("Library: {}", dir.display()));
+                // One line however long the path is (a Windows profile path
+                // would wrap and push the sections below it down); the whole
+                // path is in the tooltip.
+                let path = format!("Library: {}", dir.display());
+                ui.add(egui::Label::new(RichText::new(&path).color(DARK.muted)).truncate())
+                    .on_hover_text(&path);
                 if dir.is_dir() {
-                    if ui.button("Open the library folder").clicked() {
-                        self.message = open_folder(dir).err();
-                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Open the library folder").clicked() {
+                            self.message = open_folder(&dir).err();
+                        }
+                        manage = ui.button("Manage machines…").clicked();
+                    });
                 } else {
                     ui.weak("The folder does not exist yet; only built-in profiles are listed.");
-                    if ui.button("Create the library folder").clicked() {
-                        self.message = Some(match std::fs::create_dir_all(dir) {
-                            Ok(()) => format!("Created {}.", dir.display()),
-                            Err(e) => format!("{}: {e}", dir.display()),
-                        });
-                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Create the library folder").clicked() {
+                            self.message = Some(match std::fs::create_dir_all(&dir) {
+                                Ok(()) => format!("Created {}.", dir.display()),
+                                Err(e) => format!("{}: {e}", dir.display()),
+                            });
+                        }
+                        manage = ui.button("Manage machines…").clicked();
+                    });
                 }
             }
             None => {
                 ui.weak("No configuration folder was found; only built-in profiles are listed.");
+                manage = ui.button("Manage machines…").clicked();
             }
+        }
+        if manage {
+            self.manage = true;
         }
         let label = |a: &AvailableMachine| match &a.profile {
             Ok(p) => format!("{} ({})", p.name, a.source),
