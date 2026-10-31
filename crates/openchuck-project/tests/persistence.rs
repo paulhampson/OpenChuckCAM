@@ -2035,6 +2035,7 @@ fn req_prj_04_req_op_04_older_operations_keep_adaptive_spacing_off() {
         (102, "axial_finishing"),
         (103, "simultaneous_finishing"),
         (104, "rotary_roughing"),
+        (105, "indexed_finishing"),
     ];
     for (n, strategy) in strategies {
         let mut op = p.operation(op_id(n)).unwrap().clone();

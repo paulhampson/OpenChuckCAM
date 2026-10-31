@@ -208,9 +208,10 @@ fn schema_22_to_23(kind: FileKind, table: &mut toml::Table) -> Result<(), String
 }
 
 /// The strategies whose operations gained `adaptive_spacing` in schema 24.
-const ADAPTIVE_STRATEGIES: [&str; 3] = [
+const ADAPTIVE_STRATEGIES: [&str; 4] = [
     "helical_finishing",
     "axial_finishing",
+    "indexed_finishing",
     "simultaneous_finishing",
 ];
 

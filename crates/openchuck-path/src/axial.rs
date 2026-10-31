@@ -407,15 +407,15 @@ impl<'a> AlongX<'a> {
             };
             let mut out: Vec<Pass> = Vec::new();
             for (from, to, n) in pieces {
-                for pass in self.fit_span(a, (from, to), n, context)? {
+                for pass in self.fit_span((a, 0.0), (from, to), n, context)? {
                     join(&mut out, pass);
                 }
             }
             out
         } else if backwards {
-            self.fit_span(a, (x1, x0), self.seeds, context)?
+            self.fit_span((a, 0.0), (x1, x0), self.seeds, context)?
         } else {
-            self.fit_span(a, (x0, x1), self.seeds, context)?
+            self.fit_span((a, 0.0), (x0, x1), self.seeds, context)?
         };
         let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
         Ok(match self.extension {
@@ -428,7 +428,7 @@ impl<'a> AlongX<'a> {
     /// with `seeds` seeds.
     fn fit_span(
         &self,
-        a: Degrees,
+        (a, across): (Degrees, f64),
         (from, to): (f64, f64),
         seeds: usize,
         context: &JobContext<'_>,
@@ -451,6 +451,18 @@ impl<'a> AlongX<'a> {
             thin: false,
             max_dt: 1.0 / seeds as f64,
             wanted: None,
+            across,
+        };
+        // The region's candidates are developed for a tool over the axis, so
+        // a tool across it samples the whole pass.
+        let fit = if across == 0.0 {
+            fit
+        } else {
+            Fit {
+                candidates: None,
+                spacing: self.spacing.min(CONSTRAINED_SPACING),
+                ..fit
+            }
         };
         fit_region(&fit, seeds, "axial finishing", context)
     }
@@ -512,6 +524,12 @@ impl<'a> AlongX<'a> {
     /// and the stock to leave there, or `None` where the pass would find
     /// nothing to cut (adaptive spacing's measure, decision record 0239).
     pub(crate) fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        self.probe_across(x, a, 0.0)
+    }
+
+    /// [`probe`](Self::probe) with the tool's line `across` mm across the
+    /// rotary axis.
+    pub(crate) fn probe_across(&self, x: f64, a: Degrees, across: f64) -> Option<(Point3, f64)> {
         let fit = Fit {
             input: self.input,
             drop_profile: &self.grown,
@@ -530,6 +548,7 @@ impl<'a> AlongX<'a> {
             thin: false,
             max_dt: 1.0,
             wanted: None,
+            across,
         };
         fit.node(0.0).map(|n| (n.contact.contact, n.leave))
     }
@@ -542,9 +561,22 @@ impl<'a> AlongX<'a> {
         span: (f64, f64),
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
+        self.pass_over_across(a, 0.0, span, context)
+    }
+
+    /// [`pass_over`](Self::pass_over) with the tool's line `across` mm across
+    /// the rotary axis, A held at `a`: a pass indexed finishing adds beside
+    /// a position (decision record 0239).
+    pub(crate) fn pass_over_across(
+        &self,
+        a: Degrees,
+        across: f64,
+        span: (f64, f64),
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
         let h = (self.x1 - self.x0) / self.seeds as f64;
         let seeds = (((span.1 - span.0).abs() / h).ceil() as usize).max(1);
-        self.fit_span(a, span, seeds, context)
+        self.fit_span((a, across), span, seeds, context)
     }
 
     /// The distance between the points of a pass before refinement, mm.

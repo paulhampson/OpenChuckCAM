@@ -284,6 +284,7 @@ pub(crate) fn turn_passes(
         thin: false,
         max_dt: 1.0 / n as f64,
         wanted,
+        across: 0.0,
     };
     fit_region(&fit, n, "a turn at a face", context)
 }
@@ -379,6 +380,7 @@ fn passes(
             thin: false,
             max_dt: 1.0 / seeds as f64,
             wanted: None,
+            across: 0.0,
         };
 
         let passes = fit_region(&fit, seeds, "helical finishing", context)?;
@@ -620,6 +622,7 @@ fn adaptive_passes(
         thin: false,
         max_dt: 1.0,
         wanted: None,
+        across: 0.0,
     };
     let r = input.tool.cutting_radius();
     let reach = grown.cutting_radius();

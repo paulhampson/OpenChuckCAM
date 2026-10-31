@@ -243,6 +243,9 @@ pub(crate) enum Reason {
     Spacing,
     /// The samples met the height but no bound justified it.
     Unverified,
+    /// The operation's tool cannot reach the place as the operation holds
+    /// it (a vertical tool at one A, for indexed finishing).
+    Reach,
 }
 
 impl Reason {
@@ -265,6 +268,9 @@ impl Reason {
             ),
             Self::Unverified => "the samples there are within it, but the measure could not \
                                  bound the height between them"
+                .to_owned(),
+            Self::Reach => "the tool, held vertical at one of the operation's angles, cannot \
+                            reach there"
                 .to_owned(),
         }
     }
@@ -473,6 +479,12 @@ pub(crate) trait Family: Sync {
     /// The most geometry queries one [`probe`](Self::probe) makes.
     fn probe_cost(&self) -> u64 {
         1
+    }
+
+    /// Whether the operation can add a pass at `c`; where it cannot, a
+    /// place that holds too much is reported, not refined.
+    fn reachable(&self, _c: f64) -> bool {
+        true
     }
 }
 
@@ -754,6 +766,8 @@ impl Work<'_> {
             Some(Reason::Levels)
         } else if half < self.settings.min_spacing {
             Some(Reason::Spacing)
+        } else if !self.family.reachable(c_mid) {
+            Some(Reason::Reach)
         } else {
             None
         };

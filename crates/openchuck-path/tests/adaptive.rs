@@ -18,8 +18,8 @@ use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::simultaneous::parameter::PATTERN;
 use openchuck_path::{
-    AxialFinishing, GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, RotaryMapping,
-    SimultaneousFinishing, Strategy, generate,
+    AxialFinishing, GeneratedPath, HelicalFinishing, IndexedFinishing, MeshSurface, ParameterValue,
+    RotaryMapping, SimultaneousFinishing, Strategy, generate,
 };
 use openchuck_testkit::gouge::{Outline, Pose, coverage, min_clearance};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
@@ -363,4 +363,87 @@ fn req_op_05_req_op_04_simultaneous_axial_passes_are_added_until_the_allowed_exc
     assert!(after <= 0.012, "on left {after}: {:?}", on.notes);
     assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
     assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+}
+
+fn positions(count: i64) -> (&'static str, ParameterValue) {
+    ("count", ParameterValue::Integer(count))
+}
+
+/// The A of every cutting move, and whether any turns A while it cuts.
+fn cutting_angles(path: &GeneratedPath) -> (Vec<i64>, bool) {
+    let mut from = path.group.start;
+    let mut angles = Vec::new();
+    let mut turns = false;
+    for s in &path.group.segments {
+        if s.kind == MoveKind::Cutting {
+            turns |= (s.end.a.0 - from.a.0).abs() > 1e-9;
+            angles.push((s.end.a.0.rem_euclid(360.0) * 1000.0).round() as i64 % 360_000);
+        }
+        from = s.end;
+    }
+    angles.sort_unstable();
+    angles.dedup();
+    (angles, turns)
+}
+
+#[test]
+fn req_op_04_req_op_15_indexed_passes_are_added_beside_the_positions_at_their_own_a() {
+    // The owner's choice on indexed finishing (decision record 0239 item
+    // 3): passes are added at the same A, offset across the axis, so no
+    // angle is added and nothing cuts while A turns.
+    let p = cylinder();
+    let off = generated(
+        &p,
+        &IndexedFinishing,
+        &[
+            positions(4),
+            (ADAPTIVE_SPACING, ParameterValue::Flag(false)),
+        ],
+    );
+    let on = generated(&p, &IndexedFinishing, &[positions(4)]);
+    let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
+    assert!(before > 0.3, "off left {before}");
+    assert!(after <= 0.012, "on left {after}: {:?}", on.notes);
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    let (angles, turns) = cutting_angles(&on);
+    assert_eq!(angles, vec![0, 90_000, 180_000, 270_000]);
+    assert!(!turns, "no cutting move turns A");
+    assert!(pass_lengths(&on).len() > pass_lengths(&off).len());
+}
+
+#[test]
+fn req_op_04_req_nfr_12_what_a_vertical_tool_at_one_a_cannot_reach_is_said() {
+    // Two positions half a turn apart: the surface a quarter turn from both
+    // is past what a vertical tool at either A reaches, so it stays as it is
+    // and the warning says so; the result must be acknowledged.
+    let p = cylinder();
+    let on = generated(&p, &IndexedFinishing, &[positions(2)]);
+    assert_eq!(on.warnings.len(), 1, "{:?}", on.notes);
+    let warning = &on.warnings[0];
+    assert!(warning.requires_acknowledgement);
+    assert!(
+        warning.message.contains("cannot reach there"),
+        "{}",
+        warning.message
+    );
+    let (angles, turns) = cutting_angles(&on);
+    assert_eq!(angles, vec![0, 180_000]);
+    assert!(!turns);
+}
+
+#[test]
+fn req_op_04_indexed_finishing_has_the_switch_and_the_allowed_excess_only_with_it_on() {
+    let s = IndexedFinishing;
+    assert_eq!(
+        s.schema().get(ADAPTIVE_SPACING).unwrap().kind,
+        ParameterKind::Flag { default: true }
+    );
+    let (label, default, spacing) = label_and_default(&s, &BTreeMap::new());
+    assert_eq!(label, "Allowed excess");
+    assert_eq!(default, Some(0.01));
+    assert!(spacing);
+    let off = BTreeMap::from([(ADAPTIVE_SPACING.to_owned(), ParameterValue::Flag(false))]);
+    let schema = s.schema_for(&off);
+    assert!(schema.get("scallop").is_none());
+    assert!(schema.get(MIN_SPACING).is_none());
 }
