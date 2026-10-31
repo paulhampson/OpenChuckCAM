@@ -164,10 +164,11 @@ pub struct ExportPanel {
     /// 0168).
     skip_lookup: AcknowledgementLookup,
     skip_ticked: bool,
-    /// The run whose partial paths the user accepted, by its address: an
-    /// acknowledgement holds for that result only (decision record 0239
-    /// item 10).
-    partial_ticked: Option<usize>,
+    /// The run whose partial paths the user accepted: an acknowledgement
+    /// holds for that result only (decision record 0239 item 10). The run is
+    /// held, not its address, so a later run at a reused address never
+    /// matches it.
+    partial_ticked: Option<Arc<Regeneration>>,
     ticked: bool,
     /// The user's file name templates (issues 308 and 310).
     file_names: openchuck_app::FileNameTemplates,
@@ -290,17 +291,24 @@ impl ExportPanel {
 
     /// The operations whose path in the current files is partial, and the
     /// files' run (decision record 0239 item 10).
-    fn partial(&self, app: &Application) -> Option<(Vec<String>, usize)> {
+    fn partial(&self, app: &Application) -> Option<(Vec<String>, Arc<Regeneration>)> {
         let files = self.files_current(app)?;
         let partial = partial_operations(app.project(), &files.run);
-        (!partial.is_empty()).then_some((partial, Arc::as_ptr(&files.run) as usize))
+        (!partial.is_empty()).then(|| (partial, Arc::clone(&files.run)))
+    }
+
+    /// Whether the user accepted the partial paths of `run`.
+    fn partial_accepted(&self, run: &Arc<Regeneration>) -> bool {
+        self.partial_ticked
+            .as_ref()
+            .is_some_and(|t| Arc::ptr_eq(t, run))
     }
 
     /// Whether writing waits for the acknowledgement of the current files'
     /// partial paths.
     fn partial_unacknowledged(&self, app: &Application) -> bool {
         self.partial(app)
-            .is_some_and(|(_, run)| self.partial_ticked != Some(run))
+            .is_some_and(|(_, run)| !self.partial_accepted(&run))
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -620,7 +628,7 @@ impl ExportPanel {
         let folder = PathBuf::from(self.folder.trim());
         let prepared = app.prepare_output(&folder, files).map(|mut plan| {
             // Ticked for these very files, so it holds for this plan only.
-            if self.partial_ticked == Some(Arc::as_ptr(files) as usize) {
+            if self.partial_accepted(files) {
                 plan.acknowledge_partial_path();
             }
             plan
@@ -1272,7 +1280,7 @@ impl ExportPanel {
             ))
             .color(DARK.warning_box.text),
         );
-        let mut ticked = self.partial_ticked == Some(run);
+        let mut ticked = self.partial_accepted(&run);
         if ui
             .checkbox(&mut ticked, EXPORT_PARTIAL_PATH_LABEL)
             .changed()
@@ -1693,13 +1701,13 @@ mod tests {
         let reason = panel.write_blocker(&app, &checks, true).unwrap();
         assert!(reason.contains("partial path"), "{reason}");
         // Accepted for other files, it does not count.
-        panel.partial_ticked = Some(0);
+        panel.partial_ticked = Some(Arc::clone(&run));
         assert!(panel.write_blocker(&app, &checks, true).is_some());
         let posted = panel
             .files_current(&app)
             .map(|f| Arc::clone(&f.run))
             .unwrap();
-        panel.partial_ticked = Some(Arc::as_ptr(&posted) as usize);
+        panel.partial_ticked = Some(Arc::clone(&posted));
         assert_eq!(panel.write_blocker(&app, &checks, true), None);
         let outcome = panel.write(&app, &posted);
         assert_eq!(outcome.error, None);
@@ -1708,9 +1716,30 @@ mod tests {
             status.contains("is partial") && status.contains("not complete"),
             "{status}"
         );
+        // New files made after the tick ask again, even once every other
+        // holder of the accepted run is gone and its memory could be reused.
+        drop(posted);
+        app.set_parameter(
+            op,
+            "scallop",
+            Some(openchuck_app::project::ParameterValue::Number(0.0002)),
+        )
+        .unwrap();
+        let rerun = Arc::new(app.regenerate().unwrap());
+        drop(run);
+        settle(&mut panel, &ctx, &mut app, Some(&rerun));
+        let current = panel
+            .files_current(&app)
+            .map(|f| Arc::clone(&f.run))
+            .expect("files for the changed project");
+        assert!(panel.partial_ticked.is_some(), "the old tick is still held");
+        assert!(!panel.partial_accepted(&current), "it does not carry over");
+        let checks = app.export_checks(Some(&rerun), Some(&*current), None);
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("partial path"), "{reason}");
         // A new dialog asks again.
         panel.open(&app);
-        assert_eq!(panel.partial_ticked, None);
+        assert!(panel.partial_ticked.is_none());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }
