@@ -9,7 +9,9 @@ use std::path::Path;
 
 use openchuck_app::{Application, Command, Threads};
 use openchuck_project::id::{OperationId, SetupId, ToolId};
-use openchuck_project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
+use openchuck_project::{
+    Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
+};
 use openchuck_types::machine::MachineProfile;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
@@ -99,9 +101,16 @@ pub fn carving_project(
         3.0,
         0.03,
     );
+    // The finishing does not face the free end (decision 0344): its 10 mm of
+    // flute is shorter than the stock beside the end, and the test piece is
+    // the one lanes CARVEPERF, SIMPERF and SIMSPEED measured.
+    let no_end_facing = BTreeMap::from([(
+        openchuck_path::finishing::parameter::FACE_FREE_ENDS.to_owned(),
+        ParameterValue::Flag(false),
+    )]);
     let operations = [
-        ("Roughing", "rotary_roughing", ball.id),
-        ("Finishing", "axial_finishing", vbit.id),
+        ("Roughing", "rotary_roughing", ball.id, BTreeMap::new()),
+        ("Finishing", "axial_finishing", vbit.id, no_end_facing),
     ];
     for item in [Item::Setup(s), Item::Tool(ball), Item::Tool(vbit)] {
         app.execute(Command::Add {
@@ -109,7 +118,7 @@ pub fn carving_project(
             placement: Placement::End,
         })?;
     }
-    for (name, strategy, tool) in operations {
+    for (name, strategy, tool, parameters) in operations {
         app.execute(Command::Add {
             item: Item::Operation(Operation {
                 enabled: true,
@@ -126,7 +135,7 @@ pub fn carving_project(
                 restriction_options: Default::default(),
                 spindle_speed: None,
                 material: None,
-                parameters: BTreeMap::new(),
+                parameters,
             }),
             placement: Placement::End,
         })?;

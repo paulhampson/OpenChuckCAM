@@ -68,6 +68,6 @@ The owner's project is kept outside the repository. Expected from the test piece
 ## Consequences
 
 - `openchuck-sim` `span.rs`: `surely_misses` and `MISS_MARGIN` (private); `cut_spans` calls the solver with the skip on (a test-only switch turns it off on one thread). No public change.
-- `openchuck-app` examples: `sim_times` (new); `playback_times` and `sim_times` share the carving project's builder in `examples/support/carving.rs`.
+- `openchuck-app` examples: `sim_times` (new); `playback_times` and `sim_times` share the carving project's builder in `examples/support/carving.rs`. Since lane ENDFACE ([decision 0344](0344-finishing-stepdown-and-free-ends.md)) finishing faces free ends by default, and the carving project's V-bit has 10 mm of flute beside 11.5 mm of stock at the end, so the builder turns "Face free ends" off for the finishing: the test piece stays the one measured here (and by lanes CARVEPERF and SIMPERF).
 - No change to the user interface, the project file, the G-code or any document other than the registers. The speed-up applies to the pipeline's simulation, to preparing playback and to every cut-part frame's replay.
 - D2 (OI-174): put to the owner again through the coordinator with these numbers. The owner chose B with a setting (relayed, 31 Oct 2026): "Generate playback information with toolpath generation", built in a second pull request after this one (decision 0333). OI-174 stays open until it merges.
