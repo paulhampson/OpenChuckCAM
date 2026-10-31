@@ -254,9 +254,9 @@ fn build(
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: parameters
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            parameters: free_ends_off(strategy)
+                .into_iter()
+                .chain(parameters.iter().map(|(k, v)| ((*k).to_owned(), v.clone())))
                 .collect::<BTreeMap<_, _>>(),
         }));
     }
@@ -626,4 +626,15 @@ fn req_set_09_req_nfr_07_a_ramp_over_the_held_region_is_refused_naming_it() {
             && error.contains("use a plunge entry"),
         "{error}"
     );
+}
+
+/// Face free ends off for the strategies that have it: these tests are not
+/// about free ends, and a new operation faces them (decision record 0344,
+/// OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    out
 }
