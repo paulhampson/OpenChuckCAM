@@ -56,11 +56,11 @@ impl StockSurface {
         })
     }
 
-    /// Whether the surface was made with its picker: a frame made while
-    /// playback plays has none, so pointing at it finds nothing (the owner's
-    /// decision D5 on issue #382; decision record 0322).
+    /// Whether the surface was made with its picker, or has nothing to pick:
+    /// a frame made while playback plays has none, so pointing at it finds
+    /// nothing (the owner's decision D5 on issue #382; decision record 0322).
     pub fn can_pick(&self) -> bool {
-        self.picker.is_some()
+        self.picker.is_some() || self.mesh.triangles.is_empty()
     }
 
     /// First hit on the actual stock, in its workpiece frame. The triangle
@@ -515,6 +515,30 @@ mod tests {
             hits += usize::from(got.is_some());
         }
         assert!(hits > 0);
+    }
+
+    /// A cut part with no triangles has nothing to pick: a still frame of it
+    /// is complete, so the playback panel does not make it again and again
+    /// (decision record 0322 item 6; review of pull request 401).
+    #[test]
+    fn req_sim_11_req_nfr_04_an_empty_still_frame_needs_no_picker() {
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let empty = TriangleMesh {
+            vertices: Vec::new(),
+            triangles: Vec::new(),
+        };
+        let still = StockSurface::new(empty, SetupId::new(), None, None, true, &context).unwrap();
+        assert!(
+            still.can_pick(),
+            "nothing to pick, so the still frame is done"
+        );
+        assert!(
+            still
+                .pick([0.0, 0.0, 5.0], [0.0, 0.0, -1.0])
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
