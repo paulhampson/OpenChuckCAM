@@ -1437,7 +1437,7 @@ fn req_nfr_04_req_ui_16_req_sim_04_real_preparation_progress_initial_and_regener
             rig.frame(Vec::new());
             if rig.shell.play.pose().is_some()
                 && !rig.shows("Preparing simulation")
-                && !rig.shows("Preparing cut part")
+                && !rig.shows("Preparing the cut part")
             {
                 break;
             }

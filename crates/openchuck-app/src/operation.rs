@@ -555,7 +555,19 @@ pub(crate) fn generate_with_part(
         }
     });
     let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
-    let stock: &dyn StockModel = carried.unwrap_or(&analytic);
+    // Stock carried from an enabled operation before this one in its setup
+    // is what that operation left (SIM-06): a free end is faced only on it
+    // (decision record 0344).
+    let earlier = project
+        .operations()
+        .iter()
+        .take_while(|o| o.id != operation.id)
+        .any(|o| o.enabled && o.setup == operation.setup);
+    let left = carried.filter(|_| earlier).map(LeftByEarlier);
+    let stock: &dyn StockModel = match &left {
+        Some(left) => left,
+        None => carried.unwrap_or(&analytic),
+    };
     let tags = PathTags {
         operation: operation.id.to_string(),
         setup: setup.id.to_string(),
@@ -1481,6 +1493,38 @@ fn keep_out_of(
         .flatten()
         .map(|(lo, hi)| (lo - reach - HELD_CLEARANCE, hi + reach + HELD_CLEARANCE))
         .collect()
+}
+
+/// The stock an earlier operation of the setup left, which says so
+/// ([`StockModel::left_by_earlier_operations`]; decision record 0344).
+#[derive(Debug)]
+struct LeftByEarlier<'a>(&'a dyn StockModel);
+
+impl StockModel for LeftByEarlier<'_> {
+    fn contains(&self, point: openchuck_types::geometry::Point3) -> bool {
+        self.0.contains(point)
+    }
+
+    fn ray_entry(
+        &self,
+        origin: openchuck_types::geometry::Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<f64> {
+        self.0.ray_entry(origin, direction, max_distance)
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        self.0.max_radius()
+    }
+
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        self.0.x_extent()
+    }
+
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region

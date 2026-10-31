@@ -476,6 +476,7 @@ fn run(
 
     // Each face's turn: X, A at its start and the way A turns.
     let mut face_turns: Vec<(f64, f64, f64)> = Vec::new();
+    let mut held: Vec<f64> = Vec::new();
     let tracks: Vec<Track> = match pattern {
         "axial" => {
             if lead != 0.0 {
@@ -537,9 +538,21 @@ fn run(
             // as its own pass, so the spiral and its smoothed A are as
             // before.
             let grown = cutter::grow_profile(input.tool, leave)?;
-            let turns = faces::turns(input, &grown, (x0, x1), tolerance, context)?;
+            // The faces are searched over the part's whole range, as for the
+            // other helix strategies: a face beside a held band is found and
+            // noted there, while the tracks stay outside the band (decision
+            // record 0363 item 1).
+            let found = faces::turns_to_the_ends(
+                input,
+                &grown,
+                (bounds.min.x, bounds.max.x),
+                tolerance,
+                context,
+            )?;
+            held = found.held;
             let span = spiral.th1 - spiral.th0;
-            face_turns = turns
+            face_turns = found
+                .turns
                 .iter()
                 .map(|t| {
                     let th = spiral.th0 + span * (t.x - x0) / length;
@@ -608,6 +621,7 @@ fn run(
             tolerance,
             turn,
             step,
+            None,
             context,
         )?);
     }
@@ -666,6 +680,7 @@ fn run(
         ));
     }
     notes.extend(faces::note(&turned));
+    notes.extend(faces::held_note(&held));
     Ok(StrategyOutput {
         passes,
         notes,

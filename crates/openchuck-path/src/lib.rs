@@ -86,6 +86,7 @@ pub mod extend;
 mod faces;
 pub mod facing;
 pub mod field;
+pub mod finishing;
 pub mod helical;
 pub mod holes;
 pub mod indexed;

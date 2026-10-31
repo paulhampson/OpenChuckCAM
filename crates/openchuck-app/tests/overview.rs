@@ -242,7 +242,7 @@ impl Fixture {
                     restriction_options: Default::default(),
                     spindle_speed: None,
                     material: None,
-                    parameters: BTreeMap::new(),
+                    parameters: free_ends_off(strategy),
                 }),
                 placement: Placement::End,
             })
@@ -2156,4 +2156,15 @@ fn req_ui_10_req_nfr_12_g_code_written_needs_exactly_the_enabled_operations() {
         !f.overview().g_code_written(),
         "an exported operation was removed"
     );
+}
+
+/// Face free ends off for the strategies that have it: these tests are not
+/// about free ends, and a new operation faces them (decision record 0344,
+/// OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    out
 }
