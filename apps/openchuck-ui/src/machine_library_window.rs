@@ -1249,6 +1249,24 @@ impl MachineLibraryWindow {
         changes
     }
 
+    /// Opens a question without answering it, so a test can draw it.
+    pub fn start(&mut self, app: Option<&mut Application>, which: &str, arg: Option<&Path>) {
+        let act = match which {
+            "delete" => Act::AskDelete,
+            "import" => Act::Import(arg.map(Path::to_path_buf).unwrap_or_default()),
+            "confirm" => Act::AskConfirmValue(ProfileField::Travel),
+            "save copy" => Act::AskSaveToLibrary,
+            "save" => Act::Save,
+            _ => return,
+        };
+        self.act(act, app);
+    }
+
+    /// Cancel: drops the draft's changes.
+    pub fn cancel(&mut self) {
+        self.act(Act::CancelEdits, None);
+    }
+
     /// Whether the discard question is showing.
     pub fn asks_to_discard(&self) -> bool {
         matches!(self.ask, Some(Ask::Discard(_)))
