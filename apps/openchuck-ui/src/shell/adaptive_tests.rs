@@ -33,6 +33,40 @@ fn click(rig: &mut Rig, text: &str) {
     }
 }
 
+/// Clicks the check box on the row labelled `label`: the small square drawn
+/// to the right of the label.
+fn tick(rig: &mut Rig, label: &str) {
+    fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+        match shape {
+            egui::Shape::Rect(r) => out.push(r.rect),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let row = rig
+        .visible_text_rects()
+        .into_iter()
+        .find(|(text, _)| text == label)
+        .map(|(_, rect)| rect)
+        .unwrap_or_else(|| panic!("{label} is visible: {:?}", rig.texts()));
+    let mut rects = Vec::new();
+    rig.shapes().iter().for_each(|s| walk(&s.shape, &mut rects));
+    let boxed = rects
+        .into_iter()
+        .filter(|r| {
+            r.left() > row.right()
+                && (8.0..=24.0).contains(&r.width())
+                && (8.0..=24.0).contains(&r.height())
+                && (r.center().y - row.center().y).abs() < 8.0
+        })
+        .min_by(|a, b| a.left().total_cmp(&b.left()))
+        .unwrap_or_else(|| panic!("{label} has a check box"));
+    rig.click(boxed.center());
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+}
+
 #[test]
 fn req_op_04_req_ui_07_adaptive_spacing_from_a_saved_zero_asks_for_the_height_first() {
     let mut rig = Rig::cube("adaptive-zero", None);
@@ -70,7 +104,7 @@ fn req_op_04_req_ui_07_adaptive_spacing_from_a_saved_zero_asks_for_the_height_fi
     assert_eq!(before.0, Some(ParameterValue::Flag(false)));
 
     // Ticking the switch asks first; Cancel changes nothing.
-    click(&mut rig, "Adaptive spacing");
+    tick(&mut rig, "Adaptive spacing");
     assert!(rig.shows("Turn on adaptive spacing"), "{:?}", rig.texts());
     assert!(rig.shows("which meant no limit on the cusp"));
     assert_eq!(
@@ -85,7 +119,7 @@ fn req_op_04_req_ui_07_adaptive_spacing_from_a_saved_zero_asks_for_the_height_fi
     );
 
     // Turn on sets both, the suggested 0.01 mm, in one undoable step.
-    click(&mut rig, "Adaptive spacing");
+    tick(&mut rig, "Adaptive spacing");
     click(&mut rig, "Turn on");
     assert_eq!(
         value(&rig, "adaptive_spacing"),

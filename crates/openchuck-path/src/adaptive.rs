@@ -74,6 +74,15 @@ pub mod parameter {
     pub const MIN_SPACING: &str = "min_spacing";
 }
 
+/// The strategies with adaptive spacing (decision record 0239): their
+/// operations saved before it are migrated to it off (project schema 24).
+pub const STRATEGIES: [&str; 4] = [
+    "helical_finishing",
+    "axial_finishing",
+    "indexed_finishing",
+    "simultaneous_finishing",
+];
+
 /// The Allowed excess when the operation sets none and Adaptive spacing is
 /// on, mm (decision record 0239 item 4).
 pub const DEFAULT_ALLOWED_EXCESS: f64 = 0.01;
