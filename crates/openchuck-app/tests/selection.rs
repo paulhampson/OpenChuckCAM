@@ -117,10 +117,16 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             spindle_speed: None,
             material: None,
             // Not about free ends (decision record 0344, OI-1396).
-            parameters: BTreeMap::from([(
-                "face_free_ends".to_owned(),
-                openchuck_app::project::ParameterValue::Flag(false),
-            )]),
+            parameters: BTreeMap::from([
+                (
+                    "face_free_ends".to_owned(),
+                    openchuck_app::project::ParameterValue::Flag(false),
+                ),
+                (
+                    "adaptive_spacing".to_owned(),
+                    openchuck_app::project::ParameterValue::Flag(false),
+                ),
+            ]),
         }),
     ] {
         app.execute(Command::Add {
@@ -643,7 +649,9 @@ fn req_op_02_rotary_roughing_removes_stock_only_above_its_selected_region() {
     set_roles(&mut app, op, |o| {
         o.strategy = "rotary_roughing".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
     });
     let free = cuts(&app.regenerate().unwrap().toolpath.groups[0]);
     assert!(!free.is_empty());
@@ -681,6 +689,7 @@ fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
     set_roles(&mut app, op, |o| {
         o.strategy = "careless".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
         o.selections = vec![roof];
     });
     let e = app.regenerate().unwrap_err().to_string();
@@ -783,6 +792,7 @@ fn roughing_in_two_sets(
     set_roles(app, op, |o| {
         o.strategy = "rotary_roughing".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
         o.selections = vec![top, rest];
         o.parameters.insert(
             "stock_to_leave".into(),
@@ -887,6 +897,7 @@ fn req_op_11_req_nfr_07_a_strategy_without_leave_zones_other_than_roughing_is_st
     set_roles(&mut app, op, |o| {
         o.strategy = "simultaneous_finishing".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
     });
     assert!(
         !app.strategies()
@@ -1100,6 +1111,7 @@ fn req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_one
     set_roles(&mut app, op, |o| {
         o.strategy = "edge_following".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
         o.selections = vec![id];
     });
     let result = app.regenerate().unwrap();
@@ -1128,12 +1140,17 @@ fn req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_one
             "face_free_ends".to_owned(),
             openchuck_app::project::ParameterValue::Flag(false),
         );
+        o.parameters.insert(
+            "adaptive_spacing".to_owned(),
+            openchuck_app::project::ParameterValue::Flag(false),
+        );
     });
     let e = app.regenerate().unwrap_err().to_string();
     assert!(e.contains("'Front edge'") && e.contains("edges"), "{e}");
     set_roles(&mut app, op, |o| {
         o.strategy = "edge_following".into();
         o.parameters.remove("face_free_ends");
+        o.parameters.remove("adaptive_spacing");
         o.selections = Vec::new();
         o.boundary = Some(id);
     });

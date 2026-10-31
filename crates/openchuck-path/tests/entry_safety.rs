@@ -348,5 +348,10 @@ fn req_op_12_req_nfr_07_unsuccessful_adaptive_attempts_are_bounded() {
         budget, 0,
         "even an inconclusive certificate consumes an attempt"
     );
-    assert!(error.to_string().contains("budget"));
+    assert!(
+        error
+            .to_string()
+            .contains("the clearance check reached its limit of 100000 checks for one entry"),
+        "{error}"
+    );
 }

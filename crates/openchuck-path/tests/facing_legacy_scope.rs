@@ -74,6 +74,7 @@ fn fixture(test: impl FnOnce(&StrategyInput<'_>, &FacingSetup<'_>, &JobContext<'
         entry_safety: None,
         facing: Some(&setup),
         keep_out: &[],
+        shank: None,
     };
     let token = CancelToken::new();
     test(&input, &setup, &JobContext::new(&token, &NoProgress));

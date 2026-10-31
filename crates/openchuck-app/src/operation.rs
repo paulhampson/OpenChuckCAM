@@ -20,9 +20,9 @@ use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
     CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
-    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy,
-    StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following, generate,
-    generate_in_region, generate_in_zones, pencil, swarf,
+    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, Shank, StockModel,
+    Strategy, StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following,
+    generate, generate_in_region, generate_in_zones, pencil, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
 use openchuck_project::{
@@ -306,6 +306,22 @@ pub fn generate_operation_with(
     )
 }
 
+/// The tool's shank where it is wider than the cutting part, for the
+/// strategies that keep it clear of the part (OP-20; decision 0368): a
+/// cylinder of the shank's radius from the flute length upwards. `None`
+/// when the shank is no wider, as the drops already take the tool above its
+/// cutting part as a cylinder of the cutting radius.
+fn shank_of(
+    profile: &openchuck_types::tool::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> Option<Shank> {
+    let radius = 0.5 * tool.shank_diameter.0;
+    (radius > profile.cutting_radius() + 1e-9).then_some(Shank {
+        radius,
+        height: tool.flute_length.0.max(profile.top()),
+    })
+}
+
 /// As [`generate_operation_on`], with the setup's part already placed when
 /// `placed` is given (the tests hand in a B-rep built without the kernel),
 /// and the edge options when `edges` is given (otherwise the project's).
@@ -340,6 +356,11 @@ pub(crate) fn generate_with_part(
         .next()
     {
         return Err(missing(operation, &refusal.text));
+    }
+    // A back-and-forth ramp that cannot be used on this part or with this
+    // tool: the same check the inspector and the overview read (#291).
+    if let Some(reason) = crate::ramp_entry::refusal(project, operation) {
+        return Err(missing(operation, &reason));
     }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
@@ -573,20 +594,12 @@ pub(crate) fn generate_with_part(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
-    let reversing = matches!(
-        operation.parameters.get(names::RAMP_BACK_AND_FORTH),
-        Some(openchuck_project::ParameterValue::Flag(true))
-    ) && matches!(operation.parameters.get(names::ENTRY), Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
-    let entry_geometry = if reversing && placed.brep.is_none() {
+    // A STEP part, or a shank wider than the cutter, was refused above
+    // (`ramp_entry::refusal`).
+    let entry_geometry = if crate::ramp_entry::wanted(operation) && placed.brep.is_none() {
         use openchuck_types::tool::profile::{
             ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
         };
-        if snapshot.tool.shank_diameter.0 > 2.0 * profile.cutting_radius() {
-            return Err(missing(
-                operation,
-                "back-and-forth ramp cannot certify this larger shank with a convex complete-tool envelope",
-            ));
-        }
         let mut segments = profile
             .pieces()
             .iter()
@@ -630,6 +643,7 @@ pub(crate) fn generate_with_part(
         entry_safety: entry_safety.as_ref(),
         facing: facing_setup.as_ref(),
         keep_out: &keep_out,
+        shank: shank_of(&profile, &snapshot.tool),
     };
     let resolved = parameter_values(project, operation, registry)?;
     // The values as the strategy's schema reads them (a whole number given for
@@ -1187,6 +1201,7 @@ pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
              inspector's Geometry section, or take the set out of the operation."
         ),
         parameter: None,
+        requires_acknowledgement: false,
     }
 }
 
@@ -1672,6 +1687,11 @@ mod tests {
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v))
         .collect();
+        // Adaptive spacing off unless a test asks: these are not about it,
+        // and a new operation has it on (decision record 0239).
+        if openchuck_path::adaptive::STRATEGIES.contains(&strategy) {
+            values.insert("adaptive_spacing".to_owned(), Value::Flag(false));
+        }
         for (k, v) in parameters {
             values.insert((*k).to_owned(), v.clone());
         }

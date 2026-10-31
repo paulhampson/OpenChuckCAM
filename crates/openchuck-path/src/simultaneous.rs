@@ -55,6 +55,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::adaptive::{self, Counting, Family, Interval, Pose};
 use crate::cutter::{self, Contact, ToolLine};
 use crate::error::{PathError, Result};
 use crate::faces;
@@ -66,6 +67,8 @@ use crate::section;
 use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
 
 pub use crate::helical::{CHORD_FACTOR, CONSTRAINED_SPACING};
+
+mod hidden;
 
 /// The registry name of [`SimultaneousFinishing`].
 pub const NAME: &str = "simultaneous_finishing";
@@ -85,6 +88,12 @@ pub mod parameter {
     pub const LEAD_ANGLE: &str = "lead_angle";
     /// The most the tool axis may leave its target to smooth A, degrees.
     pub const MAX_TILT: &str = "max_tilt";
+    /// The most the tool axis may lean from the surface normal on surfaces
+    /// hidden from the drive (OP-20; decision record 0368), degrees.
+    pub const MAX_HIDDEN_LEAN: &str = "max_hidden_lean";
+    /// The Allowed excess with adaptive spacing on, mm (decision record
+    /// 0239); the axial pattern only.
+    pub const SCALLOP: &str = "scallop";
 }
 
 /// How far apart the drive samples are round the axis, in degrees, where
@@ -132,6 +141,10 @@ const MAX_SAMPLES: f64 = 5.0e6;
 /// right angle, so the tool never faces away from the surface.
 const MAX_LEAD: f64 = 30.0;
 const MAX_TILT: f64 = 30.0;
+
+/// The largest lean from the normal on hidden surfaces, degrees: the tool's
+/// side (OP-20; decision record 0368).
+const MAX_HIDDEN_LEAN: f64 = 90.0;
 
 /// Simultaneous 4-axis finishing (OP-05, OP-06).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -203,7 +216,8 @@ impl Strategy for SimultaneousFinishing {
         if let ParameterKind::Number { min_exclusive, .. } = &mut step.kind {
             *min_exclusive = true;
         }
-        ParameterSchema::with_common(vec![
+        ParameterSchema::with_common(
+            vec![
             choice(
                 parameter::PATTERN,
                 "Pattern",
@@ -250,7 +264,58 @@ impl Strategy for SimultaneousFinishing {
                 Some(MAX_TILT),
                 10.0,
             ),
-        ])
+            degrees_spec(
+                parameter::MAX_HIDDEN_LEAN,
+                "Largest lean on hidden surfaces",
+                "Surfaces a straight approach from outside cannot see, such as the walls of a \
+                 slot or the side of a part facing another, are finished with their own passes \
+                 after the main one. There the tool leans from the surface normal as little as \
+                 the part lets it reach, up to this angle: 90 lets it cut a wall with its side, \
+                 0 keeps it on the normal. Anything needing more is left uncut and listed in a \
+                 warning.",
+                Some(0.0),
+                Some(MAX_HIDDEN_LEAN),
+                90.0,
+            ),
+            ParameterSpec {
+                name: parameter::SCALLOP.to_owned(),
+                label: "Allowed excess".to_owned(),
+                description: String::new(),
+                kind: ParameterKind::Number {
+                    unit: Unit::Millimetres,
+                    min: Some(0.0),
+                    min_exclusive: false,
+                    max: None,
+                    default: Some(adaptive::DEFAULT_ALLOWED_EXCESS),
+                },
+            },
+        ]
+        .into_iter()
+        .chain(adaptive::specs())
+        .collect())
+    }
+
+    fn schema_for(
+        &self,
+        values: &std::collections::BTreeMap<String, crate::params::ParameterValue>,
+    ) -> ParameterSchema {
+        // Adaptive spacing applies to the axial pattern only, and the
+        // height is used only with it on (decision record 0239 item 2).
+        let axial = matches!(
+            values.get(parameter::PATTERN),
+            Some(crate::params::ParameterValue::Text(p)) if p == "axial"
+        );
+        let mut schema = adaptive::schema_for(self.schema(), values, parameter::SCALLOP);
+        if !axial || !adaptive::is_on(values) {
+            schema.parameters.retain(|p| p.name != parameter::SCALLOP);
+        }
+        if !axial {
+            schema.parameters.retain(|p| {
+                p.name != adaptive::parameter::ADAPTIVE_SPACING
+                    && p.name != adaptive::parameter::MIN_SPACING
+            });
+        }
+        schema
     }
 
     fn honours_region(&self) -> bool {
@@ -303,6 +368,9 @@ struct Track {
     /// The zone of [`Plan::zones`] the track lies in, whose centre its drive
     /// rays aim at (OP-26).
     zone: usize,
+    /// The contour of [`Plan::contours`] the track follows instead, on a
+    /// surface hidden from the drive's rays (OP-20).
+    contour: Option<usize>,
 }
 
 impl Track {
@@ -405,10 +473,15 @@ struct Plan<'a> {
     /// The X zones and the centres their drive rays aim at (OP-26).
     zones: &'a [section::Zone],
     sense: f64,
+    /// The tool with its shank where wider than the cutting part, which the
+    /// passes on hidden surfaces keep clear of the part (OP-20).
+    body: Option<&'a RevolvedProfile>,
+    /// The passes along surfaces hidden from the drive (OP-20).
+    contours: Vec<hidden::Contour>,
 }
 
 /// What a run found worth telling the user.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct Findings {
     slope: f64,
     slope_at: Option<Point3>,
@@ -416,6 +489,12 @@ struct Findings {
     /// The most material any kept move leaves beyond the tolerance, mm.
     under: f64,
     mesh: bool,
+    /// The largest lean from the normal on a hidden surface, degrees, and
+    /// where (OP-20).
+    lean: f64,
+    lean_at: Option<(f64, f64)>,
+    /// Where a pass broke because the shank would meet the part.
+    shank_breaks: Vec<crate::assemble::ShankBreak>,
 }
 
 /// The points a move is refined into, and the most material it leaves.
@@ -423,6 +502,8 @@ struct Findings {
 struct Refined {
     points: Vec<Option<Node>>,
     under: f64,
+    /// Where the pass broke because the shank would meet the part.
+    breaks: Vec<crate::assemble::ShankBreak>,
 }
 
 fn run(
@@ -444,6 +525,13 @@ fn run(
     let mut step = parameters.number(parameter::MAX_ANGLE_STEP)?;
     let lead = parameters.number(parameter::LEAD_ANGLE)?;
     let max_tilt = parameters.number(parameter::MAX_TILT)?;
+    let max_lean = parameters.number(parameter::MAX_HIDDEN_LEAN)?;
+    // Adaptive spacing of the axial pattern (decision record 0239).
+    let adaptive = if pattern == "axial" {
+        adaptive::Settings::read(parameters, parameter::SCALLOP)?
+    } else {
+        None
+    };
 
     let bounds = input.surface.bounds();
     let (x0, x1) = outside_held(bounds.min.x, bounds.max.x, input.keep_out);
@@ -499,7 +587,13 @@ fn run(
             (0..stations as usize)
                 .map(|k| {
                     let th = th_start - TURN * k as f64 / stations;
-                    let (a, b) = if k % 2 == 0 { (x0, x1) } else { (x1, x0) };
+                    // With adaptive spacing every pass is fitted forwards
+                    // and the order is set once the passes are added.
+                    let (a, b) = if k % 2 == 0 || adaptive.is_some() {
+                        (x0, x1)
+                    } else {
+                        (x1, x0)
+                    };
                     Track {
                         x0: a,
                         x1: b,
@@ -508,6 +602,7 @@ fn run(
                         seeds,
                         samples,
                         zone: 0,
+                        contour: None,
                     }
                 })
                 .collect()
@@ -532,6 +627,7 @@ fn run(
                 seeds,
                 samples: samples as usize,
                 zone: 0,
+                contour: None,
             };
             // A whole turn at each face across the axis, where the tool's
             // side touches it (decision record 0297), cut after the spiral
@@ -574,7 +670,8 @@ fn run(
     };
 
     let grown = cutter::grow_profile(input.tool, leave)?;
-    let plan = Plan {
+    let body = hidden::body(&grown, input.shank, leave);
+    let mut plan = Plan {
         input,
         region,
         constrained,
@@ -592,10 +689,12 @@ fn run(
         outside: radius + 1.0,
         sense,
         zones: &zones,
+        body: body.as_ref(),
+        contours: Vec::new(),
     };
 
     let mut findings = Findings::default();
-    let mut passes = Vec::new();
+    let mut by_track = Vec::new();
     let count = tracks.len() as u64;
     for (k, track) in tracks.iter().enumerate() {
         context.check_cancelled()?;
@@ -606,8 +705,24 @@ fn run(
         );
         let axis = plan.axis_plan(track, lead, max_tilt, &mut findings);
         context.check_cancelled()?;
-        passes.extend(plan.track_passes(track, &axis, lead, &mut findings, context)?);
+        by_track.push(plan.track_passes(track, &axis, lead, &mut findings, context)?);
     }
+    let mut spaced = None;
+    let mut passes: Vec<Pass> = match adaptive {
+        Some(settings) => {
+            let (passes, outcome) = adaptive_passes(
+                &plan,
+                &tracks,
+                by_track,
+                (settings, max_tilt, axial_seed, radius),
+                &mut findings,
+                context,
+            )?;
+            spaced = Some((settings, outcome));
+            passes
+        }
+        None => by_track.into_iter().flatten().collect(),
+    };
     // The faces' turns keep the tool across the rotary axis: the face's
     // normal lies along the axis, which no A can follow, and the tool's side
     // meets the face whatever the tilt would be.
@@ -630,6 +745,49 @@ fn run(
         count,
         Some(count),
     );
+
+    // Surfaces the drive's rays do not meet first get passes of their own
+    // where the tool reaches them, and the rest are reported (OP-20;
+    // decision record 0368). A part with none gets nothing more.
+    context.check_cancelled()?;
+    let found = {
+        let _timing = context.time_stage("hidden surfaces");
+        plan.hidden(hidden::Settings {
+            stepover,
+            lead,
+            max_tilt,
+            max_lean,
+            x0,
+            x1,
+        })
+    };
+    plan.contours = found.contours;
+    let hidden_count = plan.contours.len() as u64;
+    let mut hidden_x = (f64::INFINITY, f64::NEG_INFINITY);
+    for k in 0..plan.contours.len() {
+        context.check_cancelled()?;
+        context.report(
+            "simultaneous finishing: surfaces hidden from the drive",
+            k as u64,
+            Some(hidden_count),
+        );
+        let Some(c) = plan.contours.get(k) else {
+            continue;
+        };
+        hidden_x = (hidden_x.0.min(c.x), hidden_x.1.max(c.x));
+        let track = Track {
+            x0: c.x,
+            x1: c.x,
+            th0: 0.0,
+            th1: 0.0,
+            seeds: (c.length() / hidden::CONTOUR_SEED).ceil().max(1.0) as usize,
+            samples: c.samples.len(),
+            zone: 0,
+            contour: Some(k),
+        };
+        let axis = contour_axis_plan(c);
+        passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+    }
 
     let mut notes = Vec::new();
     if let Some(at) = findings.slope_at
@@ -681,11 +839,479 @@ fn run(
     }
     notes.extend(faces::note(&turned));
     notes.extend(faces::held_note(&held));
+    if let Some((x, a)) = findings.lean_at {
+        let shank = if plan.body.is_some() {
+            "the shank, wider than the cutting part, is kept clear of the part, as on every pass"
+        } else {
+            "the tool above its flutes is taken as no wider than its cutting part"
+        };
+        notes.push(format!(
+            "surfaces hidden from the drive (such as the walls of a slot, an undercut, or sides \
+             of the section facing each other) between X {:.3} and {:.3} are finished with \
+             passes of their own after the main ones, the tool leaning from the surface normal \
+             as little as the part lets it reach them: up to {:.1} degrees (at X {x:.3}, \
+             A {a:.3}); {shank}; the tool holder is not checked",
+            hidden_x.0, hidden_x.1, findings.lean
+        ));
+    }
+    let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
+    let mut warnings: Vec<crate::assemble::PathWarning> = unreached_warning(
+        &found.unreached,
+        2.0 * input.tool.cutting_radius(),
+        max_lean,
+    )
+    .into_iter()
+    .chain(shank_warning(&shank_breaks))
+    .collect();
+    if let Some((settings, outcome)) = &spaced {
+        notes.push(outcome.note(settings));
+        warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
+    }
     Ok(StrategyOutput {
         passes,
         notes,
-        warnings: Vec::new(),
+        warnings,
+        unreached: found.unreached,
+        shank_breaks,
     })
+}
+
+/// The breaks for the shank as places: in X order, one for each run of
+/// breaks within [`BREAK_NEAR`] mm of X and as many degrees of A of each
+/// other (the halvings round one place find it several times).
+fn places(mut breaks: Vec<crate::assemble::ShankBreak>) -> Vec<crate::assemble::ShankBreak> {
+    breaks.sort_by(|a, b| {
+        a.x.total_cmp(&b.x)
+            .then(a.a.rem_euclid(TURN).total_cmp(&b.a.rem_euclid(TURN)))
+    });
+    let mut out: Vec<crate::assemble::ShankBreak> = Vec::new();
+    for b in breaks {
+        let close = out
+            .iter()
+            .rev()
+            .take_while(|p| b.x - p.x <= BREAK_NEAR)
+            .any(|p| {
+                let da = (b.a - p.a).rem_euclid(TURN);
+                da.min(TURN - da) <= BREAK_NEAR
+            });
+        if !close {
+            out.push(b);
+        }
+    }
+    out
+}
+
+/// How near two breaks for the shank are one place, mm along X and degrees
+/// of A.
+const BREAK_NEAR: f64 = 1.0;
+
+/// The warning for the places a pass broke because the tool's shank would
+/// meet the part (decision record 0368, the owner's answer on OI-1456).
+fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemble::PathWarning> {
+    const LISTED: usize = 5;
+    if breaks.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = breaks
+        .iter()
+        .take(LISTED)
+        .map(|b| format!("X {:.3} near A {:.0}", b.x, b.a.rem_euclid(TURN)))
+        .collect();
+    let more = breaks.len().saturating_sub(LISTED);
+    let more = if more > 0 {
+        format!("; and {more} more")
+    } else {
+        String::new()
+    };
+    let plural = if breaks.len() == 1 { "" } else { "s" };
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing breaks the path at {} place{plural} and links round them, \
+             because the tool's shank is wider than its cutting part and would touch the part \
+             there; the surface there is left uncut: {}{more}; check them in the simulation \
+             before running the program",
+            breaks.len(),
+            listed.join("; ")
+        ),
+        parameter: None,
+        requires_acknowledgement: false,
+    })
+}
+
+/// The warning for the areas the tool cannot reach (OP-20; decision record
+/// 0368): the largest five, with how many more, each with where it is, how
+/// large and why. `None` when there are none.
+fn unreached_warning(
+    areas: &[crate::assemble::Unreached],
+    diameter: f64,
+    max_lean: f64,
+) -> Option<crate::assemble::PathWarning> {
+    use crate::assemble::UnreachedReason;
+    const LISTED: usize = 5;
+    if areas.is_empty() {
+        return None;
+    }
+    let listed: Vec<String> = areas
+        .iter()
+        .take(LISTED)
+        .map(|u| {
+            let place = if u.a.1 - u.a.0 >= TURN - 1e-9 {
+                "all round".to_owned()
+            } else {
+                format!("near A {:.0}", (0.5 * (u.a.0 + u.a.1)).rem_euclid(TURN))
+            };
+            let why = match u.reason {
+                UnreachedReason::Blocked => "blocked: the part is in the way of every direction \
+                                             the tool can take across the rotary axis, so it \
+                                             would have to lean along it"
+                    .to_owned(),
+                UnreachedReason::TooNarrow => format!(
+                    "too narrow for this {diameter:.3} mm tool, or deeper than its flutes or \
+                     shank allow"
+                ),
+                UnreachedReason::NeedsLean { degrees } => format!(
+                    "needs a lean of {degrees:.0} degrees from the surface normal, more than the \
+                     largest lean on hidden surfaces ({max_lean} degrees)"
+                ),
+            };
+            format!(
+                "X {:.3} to {:.3} {place} ({:.1} mm2), {why}",
+                u.x.0, u.x.1, u.area
+            )
+        })
+        .collect();
+    let more = areas.len().saturating_sub(LISTED);
+    let more = if more > 0 {
+        format!("; and {more} smaller")
+    } else {
+        String::new()
+    };
+    let plural = if areas.len() == 1 { "" } else { "s" };
+    let lean = areas
+        .iter()
+        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
+             uncut: {}{more}; check them in the simulation before running the program",
+            areas.len(),
+            listed.join("; ")
+        ),
+        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+        requires_acknowledgement: false,
+    })
+}
+
+/// The tool-axis plan along a contour (OP-20): the reachable axis nearest
+/// the target at each sample, smoothed inside the band that still reaches,
+/// in runs between the samples the tool cannot reach.
+fn contour_axis_plan(c: &hidden::Contour) -> AxisPlan {
+    let mut plan = AxisPlan::default();
+    let mut run: Vec<(f64, f64)> = Vec::new();
+    let (mut lo, mut hi): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
+    let flush =
+        |run: &mut Vec<(f64, f64)>, lo: &mut Vec<f64>, hi: &mut Vec<f64>, plan: &mut AxisPlan| {
+            if !run.is_empty() {
+                plan.runs.push(smooth_gates(
+                    std::mem::take(run),
+                    &std::mem::take(lo),
+                    &std::mem::take(hi),
+                ));
+            }
+        };
+    for s in &c.samples {
+        match s.gate {
+            Some((best, l, h)) if !s.probe => {
+                let shift = match run.last() {
+                    Some(&(_, previous)) => near(best, previous) - best,
+                    None => 0.0,
+                };
+                run.push((s.t, best + shift));
+                lo.push(l + shift);
+                hi.push(h + shift);
+            }
+            _ => flush(&mut run, &mut lo, &mut hi, &mut plan),
+        }
+    }
+    flush(&mut run, &mut lo, &mut hi, &mut plan);
+    plan
+}
+
+impl Findings {
+    /// Takes in what another run of the plan found.
+    fn merge(&mut self, other: &Self) {
+        if other.slope > self.slope {
+            self.slope = other.slope;
+            self.slope_at = other.slope_at;
+        }
+        self.tilt = self.tilt.max(other.tilt);
+        self.under = self.under.max(other.under);
+        self.mesh |= other.mesh;
+        if other.lean_at.is_some() && (self.lean_at.is_none() || other.lean > self.lean) {
+            self.lean = other.lean;
+            self.lean_at = other.lean_at;
+        }
+        self.shank_breaks.extend_from_slice(&other.shank_breaks);
+    }
+}
+
+/// The axial pattern's passes as a family for adaptive spacing: across it,
+/// the polar angle of the drive point in degrees; along it, model X.
+struct Stations<'a> {
+    plan: Plan<'a>,
+    counters: &'a [Counting<'a>],
+    max_tilt: f64,
+    seed: f64,
+    radius: f64,
+    findings: std::sync::Mutex<Findings>,
+    pose_step: f64,
+    window: f64,
+    station: f64,
+    margin: f64,
+}
+
+impl Stations<'_> {
+    /// Whether the part is driven in zones (OP-26).
+    fn zoned(&self) -> bool {
+        self.plan.zones.len() > 1 || self.plan.zones.iter().any(|z| z.centres.is_some())
+    }
+
+    /// The zone that holds `x`, for its drive rays.
+    fn zone_of(&self, x: f64) -> usize {
+        self.plan
+            .zones
+            .iter()
+            .position(|z| x >= z.x0 && x <= z.x1)
+            .unwrap_or(0)
+    }
+}
+
+impl Family for Stations<'_> {
+    fn pose(&self, c: f64, s: f64) -> (f64, Degrees) {
+        (s, Degrees(self.plan.sense * (90.0 - c)))
+    }
+
+    fn poses(&self, _c: f64, pass: &Pass) -> Vec<Pose> {
+        adaptive::machine_poses(&self.plan.input.rotary, pass, self.pose_step, |tip, _| {
+            tip.x
+        })
+    }
+
+    fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
+        // The drive point and the tool along its facet's normal, dropped as
+        // the pattern drops it: one ray and one drop.
+        let th = 90.0 - a.0 / self.plan.sense;
+        let hit = self.plan.ray(self.zone_of(x), x, th)?;
+        let phi = polar(hit.normal.get())?;
+        let a = Degrees(self.plan.sense * (90.0 - phi));
+        let axis = self.plan.input.rotary.tool_axis(a);
+        let line = ToolLine {
+            origin: self.plan.seed_tip(hit.point, hit.normal, axis),
+            axis,
+        };
+        let contact = self
+            .plan
+            .input
+            .surface
+            .drop_tool(self.plan.drop_profile, &line)?;
+        if let Some(region) = self.plan.region
+            && !region.allows(contact.contact, contact.tip, self.plan.drop_profile, &line)
+        {
+            return None;
+        }
+        Some((contact.contact, self.plan.leave))
+    }
+
+    fn probe_cost(&self) -> u64 {
+        2
+    }
+
+    fn fit(&self, c: f64, (from, to): (f64, f64), context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let length = (to - from).abs();
+        let whole = Track {
+            x0: from,
+            x1: to,
+            th0: c,
+            th1: c,
+            seeds: (length / self.seed).ceil().max(1.0) as usize,
+            samples: (length / SAMPLE_LENGTH).ceil().max(1.0) as usize,
+            zone: 0,
+            contour: None,
+        };
+        // Cut at the zones as the pattern's own tracks are (OP-26).
+        let pieces = if self.zoned() {
+            split(&whole, self.plan.zones)
+        } else {
+            vec![whole]
+        };
+        let mut findings = Findings::default();
+        let mut passes = Vec::new();
+        for track in &pieces {
+            let axis = self
+                .plan
+                .axis_plan(track, 0.0, self.max_tilt, &mut findings);
+            passes.extend(
+                self.plan
+                    .track_passes(track, &axis, 0.0, &mut findings, context)?,
+            );
+        }
+        if let Ok(mut all) = self.findings.lock() {
+            all.merge(&findings);
+        }
+        Ok(passes)
+    }
+
+    fn width(&self, dc: f64) -> f64 {
+        self.radius * dc.to_radians().abs()
+    }
+
+    fn window(&self) -> f64 {
+        self.window
+    }
+
+    fn station_step(&self) -> f64 {
+        self.station
+    }
+
+    fn margin(&self) -> f64 {
+        self.margin
+    }
+
+    fn queries(&self) -> u64 {
+        self.counters.iter().map(Counting::count).sum()
+    }
+}
+
+/// The axial pattern's passes, `by_track` along `tracks`, with passes added
+/// between them where more than the Allowed excess is left (decision record
+/// 0239), in order round the axis, every other one backwards. `plan` is the
+/// operation's own.
+fn adaptive_passes(
+    plan: &Plan<'_>,
+    tracks: &[Track],
+    by_track: Vec<Vec<Pass>>,
+    (settings, max_tilt, seed, radius): (adaptive::Settings, f64, f64, f64),
+    findings: &mut Findings,
+    context: &JobContext<'_>,
+) -> Result<(Vec<Pass>, adaptive::Outcome)> {
+    let input = plan.input;
+    // The measure and the added passes look through a counter, so their
+    // geometry queries are limited (decision record 0239 item 8).
+    let counters = vec![Counting::new(input.surface)];
+    let Some(first) = counters.first() else {
+        return Err(PathError::Strategy("no surface to finish".to_owned()));
+    };
+    let counted = StrategyInput {
+        surface: first,
+        ..*input
+    };
+    let r = input.tool.cutting_radius();
+    let reach = plan.drop_profile.cutting_radius();
+    let station = AXIAL_SEED.min(0.5 * r).max(1e-3);
+    let family = Stations {
+        plan: Plan {
+            input: &counted,
+            region: plan.region,
+            constrained: plan.constrained,
+            drop_profile: plan.drop_profile,
+            convex: plan.convex,
+            reach: plan.reach,
+            flat_bottom: plan.flat_bottom,
+            leave: plan.leave,
+            tolerance: plan.tolerance,
+            chord: plan.chord,
+            outside: plan.outside,
+            zones: plan.zones,
+            sense: plan.sense,
+            body: plan.body,
+            contours: Vec::new(),
+        },
+        counters: &counters,
+        max_tilt,
+        seed,
+        radius,
+        findings: std::sync::Mutex::new(Findings::default()),
+        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        window: 2.0 * reach + station,
+        station,
+        margin: reach,
+    };
+    // One track a station: a station's pieces in each zone (OP-26) are
+    // one pass of the family.
+    let mut stations: Vec<(f64, Vec<Pass>)> = Vec::new();
+    for (t, passes) in tracks.iter().zip(by_track) {
+        match stations.last_mut() {
+            Some((th, all)) if (*th - t.th0).abs() < 1e-12 => all.extend(passes),
+            _ => stations.push((t.th0, passes)),
+        }
+    }
+    let n = stations.len();
+    let mut own: Vec<adaptive::Track> = stations
+        .into_iter()
+        .map(|(th, passes)| adaptive::Track::new(&family, th, passes))
+        .collect();
+    // The last station's neighbour is the first, a turn on (the stations
+    // turn the drive angle downwards).
+    if let Some(first) = own.first() {
+        let (th, passes) = (first.c, first.passes.clone());
+        own.push(adaptive::Track::new(&family, th - TURN, passes));
+    }
+    let points: u64 = own
+        .iter()
+        .take(n)
+        .flat_map(|t| &t.passes)
+        .map(|p| p.points.len() as u64 + adaptive::LINK_POINTS)
+        .sum();
+    let (lo, hi) = tracks
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), t| {
+            (lo.min(t.x0).min(t.x1), hi.max(t.x0).max(t.x1))
+        });
+    let span = if lo <= hi { (lo, hi) } else { (0.0, 0.0) };
+    let intervals: Vec<Interval> = (0..n)
+        .map(|i| Interval {
+            lo: i,
+            hi: i + 1,
+            spans: vec![span],
+            level: 0,
+        })
+        .collect();
+    let outcome = adaptive::refine(
+        &family,
+        own,
+        intervals,
+        input.tool,
+        &settings,
+        &adaptive::Limits::OWNER,
+        points,
+        context,
+    )?;
+    if let Ok(added) = family.findings.lock() {
+        findings.merge(&added);
+    }
+    // In order of the drive angle, downwards, as the stations are cut.
+    let mut order: Vec<&adaptive::Track> = outcome
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != n)
+        .map(|(_, t)| t)
+        .collect();
+    order.sort_by(|p, q| q.c.total_cmp(&p.c));
+    let mut out = Vec::new();
+    for (i, track) in order.into_iter().enumerate() {
+        if i % 2 == 1 {
+            out.extend(track.passes.iter().rev().cloned().map(|mut pass| {
+                if pass.rapids.is_empty() {
+                    pass.points.reverse();
+                }
+                pass
+            }));
+        } else {
+            out.extend(track.passes.iter().cloned());
+        }
+    }
+    Ok((out, outcome))
 }
 
 /// `track` cut at the zones' boundaries, in the track's own order, each
@@ -718,6 +1344,7 @@ fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
                 seeds: share(track.seeds),
                 samples: share(track.samples),
                 zone,
+                contour: None,
             }
         })
         .collect()
@@ -781,6 +1408,22 @@ impl Plan<'_> {
             point: hit.point,
             normal,
             phi,
+            exact,
+        })
+    }
+
+    /// The drive point at `t` on `track`: on its contour where it follows
+    /// one (OP-20), else where the drive's ray meets the surface.
+    fn drive_at(&self, track: &Track, t: f64) -> Option<Drive> {
+        let Some(k) = track.contour else {
+            let (x, th) = track.at(t);
+            return self.drive(track, x, th);
+        };
+        let (point, normal, exact) = self.contours.get(k)?.drive(self, t)?;
+        Some(Drive {
+            point,
+            normal,
+            phi: polar(normal.get()).unwrap_or(0.0),
             exact,
         })
     }
@@ -888,8 +1531,7 @@ impl Plan<'_> {
     /// The tool at `t` on `track`, or `None` where there is no surface or
     /// the region forbids a cut.
     fn node(&self, track: &Track, axis: &AxisPlan, t: f64) -> Option<Node> {
-        let (x, th) = track.at(t);
-        let drive = self.drive(track, x, th)?;
+        let drive = self.drive_at(track, t)?;
         // The plan's angle is continuous along the track; keep it so, and
         // take the normal's angle as its equivalent nearest it.
         let phi = axis.phi_at(t)?;
@@ -899,11 +1541,39 @@ impl Plan<'_> {
             origin: self.seed_tip(drive.point, drive.normal, axis_dir),
             axis: axis_dir,
         };
-        let contact = self.input.surface.drop_tool(self.drop_profile, &line)?;
+        // On a hidden surface the tool is placed touching its drive point,
+        // and rests there or higher (OP-20).
+        let contact = if track.contour.is_some() {
+            self.input
+                .surface
+                .drop_tool_above(self.drop_profile, &line, 0.0)?
+        } else {
+            self.input.surface.drop_tool(self.drop_profile, &line)?
+        };
         if let Some(region) = self.region
             && !region.allows(contact.contact, contact.tip, self.drop_profile, &line)
         {
             return None;
+        }
+        // The shank, where wider than the cutting part, must not meet the
+        // part: the pass breaks there (decision record 0368, the owner's
+        // answer on OI-1456).
+        if track.contour.is_none() && self.body.is_some() && self.shank_clashes(&line, None) {
+            return None;
+        }
+        // On a hidden surface the tool must rest on its drive point, not on
+        // something in the way between the samples where its axis was
+        // found to reach, and the shank, where wider than the cutting part,
+        // must not meet the part (OP-20).
+        if track.contour.is_some() {
+            let d = drive.point - contact.tip;
+            let along = d.dot(axis_dir.get());
+            let across = (d - axis_dir.get() * along).length();
+            if hidden::to_tool(self.drop_profile, across, along) > self.tolerance
+                || self.shank_clashes(&line, Some(0.0))
+            {
+                return None;
+            }
         }
         Some(Node {
             t,
@@ -914,6 +1584,32 @@ impl Plan<'_> {
             phi,
             raised: false,
         })
+    }
+
+    /// Where the tool at `t` on `track` is lost because its shank would meet
+    /// the part: its X and A. `None` when there is no wider shank, or the
+    /// tool is lost for another reason or not at all.
+    fn shank_at(
+        &self,
+        track: &Track,
+        axis: &AxisPlan,
+        t: f64,
+    ) -> Option<crate::assemble::ShankBreak> {
+        self.body?;
+        let drive = self.drive_at(track, t)?;
+        let phi = axis.phi_at(t)?;
+        let a = Degrees(self.sense * (90.0 - phi));
+        let axis_dir = self.input.rotary.tool_axis(a);
+        let line = ToolLine {
+            origin: self.seed_tip(drive.point, drive.normal, axis_dir),
+            axis: axis_dir,
+        };
+        let floor = track.contour.map(|_| 0.0);
+        self.shank_clashes(&line, floor)
+            .then_some(crate::assemble::ShankBreak {
+                x: drive.point.x,
+                a: a.0,
+            })
     }
 
     /// Where the tip goes for the tool's point with outward normal `-n` to
@@ -979,12 +1675,23 @@ impl Plan<'_> {
     /// would leave material; `None` when there is no surface under it. A is
     /// linear in the track parameter, so the straight move reaches the same
     /// fraction of every axis.
-    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> Option<f64> {
+    ///
+    /// On a hidden surface (OP-20) a cut in is the depth inside the tool,
+    /// at the straight move's pose, of the point the drop came to rest on:
+    /// there the axis is far from the normal and changes quickly at an
+    /// edge, and the drive normal does not measure it.
+    fn deviation(&self, track: &Track, a: &Node, b: &Node, at: &Node) -> Option<f64> {
         let (line, _) = self.straight_pose(a, b, at);
         self.input
             .surface
             .drop_tool(self.drop_profile, &line)
             .map(|c| {
+                if track.contour.is_some() && c.offset > 0.0 {
+                    let d = c.contact - line.origin;
+                    let along = d.dot(line.axis.get());
+                    let across = (d - line.axis.get() * along).length();
+                    return hidden::to_tool(self.drop_profile, across, along).min(c.offset);
+                }
                 let along = line.axis.get().dot(at.normal.get()).max(0.0);
                 // A cut in is never read at less than half its depth along
                 // the axis: on a face steep along X (a blisk's blade) the drive
@@ -1069,9 +1776,9 @@ impl Plan<'_> {
             let t = a.t + (b.t - a.t) * k as f64 / n as f64;
             match self.node(track, axis, t) {
                 Some(at) => self
-                    .deviation(a, b, &at)
+                    .deviation(track, a, b, &at)
                     .is_none_or(|e| e.abs() > self.chord),
-                None => self.constrained,
+                None => self.gappy(track),
             }
         })
     }
@@ -1146,9 +1853,22 @@ impl Plan<'_> {
         out: &mut Refined,
     ) -> Result<()> {
         let t = 0.5 * (a.t + b.t);
-        match middle.unwrap_or_else(|| self.node(track, axis, t)) {
+        // On a hidden surface a test pose where the shank meets the part
+        // fails too (OP-20).
+        let clash = |q: &Node| {
+            self.body.is_some() && self.shank_clashes(&self.straight_pose(a, b, q).0, None)
+        };
+        let middle = middle.unwrap_or_else(|| self.node(track, axis, t));
+        // A middle lost because the shank would meet the part breaks the
+        // pass, as on a hidden surface (decision record 0368).
+        let shank_mid = if middle.is_none() {
+            self.shank_at(track, axis, t)
+        } else {
+            None
+        };
+        match middle {
             Some(mid) => {
-                let over = self.deviation(a, b, &mid);
+                let over = self.deviation(track, a, b, &mid);
                 let error = over.unwrap_or(0.0);
                 let jumps = self.travel(a, b) > self.reach;
                 if depth < MAX_DEPTH {
@@ -1163,12 +1883,17 @@ impl Plan<'_> {
                     // a wall between them, so the move is split (decision
                     // record 0363 item 2).
                     let quarter = |n: &Option<Node>| match n {
-                        Some(q) => self.deviation(a, b, q).is_none_or(|e| e.abs() > self.chord),
-                        None => self.constrained,
+                        Some(q) => {
+                            self.deviation(track, a, b, q)
+                                .is_none_or(|e| e.abs() > self.chord)
+                                || clash(q)
+                        }
+                        None => self.gappy(track),
                     };
                     let first = self.node(track, axis, 0.5 * (a.t + mid.t));
                     let second = self.node(track, axis, 0.5 * (mid.t + b.t));
                     if over.is_none_or(|e| e.abs() > self.chord)
+                        || clash(&mid)
                         || self.long_move_cuts(track, axis, a, b)
                         || quarter(&first)
                         || quarter(&second)
@@ -1184,6 +1909,14 @@ impl Plan<'_> {
                             out,
                         );
                     }
+                } else if clash(&mid) {
+                    // The shank still meets the part after every halving:
+                    // the pass breaks here, and the move is a link.
+                    out.breaks.push(crate::assemble::ShankBreak {
+                        x: mid.contact.contact.x,
+                        a: mid.a.0,
+                    });
+                    out.points.push(None);
                 } else if (error.abs() > self.chord || jumps) && !self.wall_move(a, b) {
                     // After every halving the tool still cuts in, or still
                     // jumps further than its radius between two points as
@@ -1197,7 +1930,11 @@ impl Plan<'_> {
                         self.refine_from(track, axis, a, &raised, depth + 1, None, out)?;
                         return self.refine_from(track, axis, &raised, b, depth + 1, None, out);
                     }
-                    if error > self.tolerance {
+                    if error > self.tolerance && track.contour.is_some() {
+                        // A pass on a hidden surface breaks where it cannot
+                        // be kept within the tolerance (OP-20).
+                        out.points.push(None);
+                    } else if error > self.tolerance {
                         return Err(PathError::Strategy(format!(
                             "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \
                              within the tolerance: it would cut {error:.4} mm into the surface; \
@@ -1213,7 +1950,8 @@ impl Plan<'_> {
                     }
                 }
             }
-            None if self.constrained && depth < MAX_DEPTH => {
+            None if (self.gappy(track) || shank_mid.is_some()) && depth < MAX_DEPTH => {
+                out.breaks.extend(shank_mid);
                 if let Some(left) = self.edge(track, axis, a, t) {
                     self.refine(track, axis, a, &left, depth + 1, out)?;
                 }
@@ -1227,10 +1965,24 @@ impl Plan<'_> {
                 }
                 return Ok(());
             }
+            // A contour's tool that cannot reach its drive point at the
+            // middle after every halving: the pass breaks there (OP-20).
+            None if track.contour.is_some() || shank_mid.is_some() => {
+                out.breaks.extend(shank_mid);
+                out.points.push(None);
+            }
             None => {}
         }
         out.points.push(Some(*b));
         Ok(())
+    }
+
+    /// Whether a node where the tool may not cut breaks the pass, rather
+    /// than meaning there is no surface under it: with a region constraint
+    /// (OI-138), and on a hidden surface, where it is a point the tool does
+    /// not reach (OP-20).
+    fn gappy(&self, track: &Track) -> bool {
+        self.constrained || track.contour.is_some()
     }
 
     fn track_passes(
@@ -1245,6 +1997,20 @@ impl Plan<'_> {
         let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
         let nodes: Vec<Option<Node>> = parallel::map_in_order(&ts, |t| self.node(track, axis, *t));
         context.check_cancelled()?;
+        // Where a seed is lost because the shank would meet the part, the
+        // pass breaks there and the break is said (decision record 0368).
+        let lost: Vec<Option<crate::assemble::ShankBreak>> = if self.body.is_some() {
+            parallel::map_in_order(&ts.iter().zip(&nodes).collect::<Vec<_>>(), |(t, n)| {
+                if n.is_none() {
+                    self.shank_at(track, axis, **t)
+                } else {
+                    None
+                }
+            })
+        } else {
+            vec![None; ts.len()]
+        };
+        let breaks = |i: usize| self.gappy(track) || lost.get(i).is_some_and(Option::is_some);
 
         let mut pieces: Vec<Vec<Node>> = Vec::new();
         let mut current: Vec<Node> = Vec::new();
@@ -1252,7 +2018,7 @@ impl Plan<'_> {
             match node {
                 Some(n) => {
                     if current.is_empty()
-                        && self.constrained
+                        && i.checked_sub(1).is_some_and(breaks)
                         && let Some(previous) = i.checked_sub(1).and_then(|p| ts.get(p))
                         && let Some(edge) = self.edge(track, axis, n, *previous)
                     {
@@ -1261,8 +2027,9 @@ impl Plan<'_> {
                     current.push(*n);
                 }
                 None => {
+                    findings.shank_breaks.extend(lost.get(i).copied().flatten());
                     if let Some(last) = current.last().copied() {
-                        if self.constrained
+                        if breaks(i)
                             && let Some(next) = ts.get(i)
                             && let Some(edge) = self.edge(track, axis, &last, *next)
                         {
@@ -1287,10 +2054,15 @@ impl Plan<'_> {
                 self.refine(track, axis, a, b, 0, &mut out).map(|()| out)
             });
             let mut points = Vec::new();
+            let mut breaks = Vec::new();
             let offset = lead * track.travel();
             let mut under = 0.0_f64;
             let mut push = |n: &Node, points: &mut Vec<CutPoint>| {
-                self.note(n, offset, findings);
+                if track.contour.is_some() {
+                    self.note_hidden(n, findings);
+                } else {
+                    self.note(n, offset, findings);
+                }
                 points.push(self.cut_point(n));
             };
             if let Some(first) = piece.first() {
@@ -1299,6 +2071,7 @@ impl Plan<'_> {
             for steps in refined {
                 let steps = steps?;
                 under = under.max(steps.under);
+                breaks.extend(steps.breaks);
                 for step in steps.points {
                     match step {
                         Some(n) => push(&n, &mut points),
@@ -1316,6 +2089,7 @@ impl Plan<'_> {
                 }
             }
             findings.under = findings.under.max(under);
+            findings.shank_breaks.extend(breaks);
             if !points.is_empty() {
                 passes.push(Pass {
                     helical_pass_start: false,
@@ -1326,6 +2100,18 @@ impl Plan<'_> {
             }
         }
         Ok(passes)
+    }
+
+    /// The lean from the normal of a tool on a hidden surface (OP-20).
+    fn note_hidden(&self, n: &Node, findings: &mut Findings) {
+        if n.raised {
+            return;
+        }
+        let lean = (n.phi - n.phi_n).abs();
+        if findings.lean_at.is_none() || lean > findings.lean {
+            findings.lean = lean;
+            findings.lean_at = Some((n.contact.contact.x, n.a.0));
+        }
     }
 
     fn note(&self, n: &Node, offset: f64, findings: &mut Findings) {
@@ -1357,13 +2143,22 @@ fn smooth_band(samples: Vec<(f64, f64)>, width: f64) -> Vec<(f64, f64)> {
     if width <= 0.0 || samples.len() < 3 {
         return samples;
     }
+    let lo: Vec<f64> = samples.iter().map(|s| s.1 - width).collect();
+    let hi: Vec<f64> = samples.iter().map(|s| s.1 + width).collect();
+    smooth_gates(samples, &lo, &hi)
+}
+
+/// [`smooth_band`] with a band of its own at each sample, `lo` to `hi`,
+/// holding its target: the angles that reach a hidden surface (OP-20).
+fn smooth_gates(samples: Vec<(f64, f64)>, lo: &[f64], hi: &[f64]) -> Vec<(f64, f64)> {
+    if samples.len() < 3 || lo.iter().zip(hi).all(|(l, h)| h - l <= 0.0) {
+        return samples;
+    }
     let xs: Vec<f64> = samples.iter().map(|s| s.0).collect();
     let ys: Vec<f64> = samples.iter().map(|s| s.1).collect();
-    let lo: Vec<f64> = ys.iter().map(|y| y - width).collect();
-    let hi: Vec<f64> = ys.iter().map(|y| y + width).collect();
-    let start = free_level(lo.iter().zip(&hi), ys.first().copied().unwrap_or(0.0));
-    let end = free_level(lo.iter().zip(&hi).rev(), ys.last().copied().unwrap_or(0.0));
-    let vertices = taut_vertices(&xs, &lo, &hi, start, end);
+    let start = free_level(lo.iter().zip(hi), ys.first().copied().unwrap_or(0.0));
+    let end = free_level(lo.iter().zip(hi).rev(), ys.last().copied().unwrap_or(0.0));
+    let vertices = taut_vertices(&xs, lo, hi, start, end);
 
     // Direction of each piece of the string; a flat piece keeps the one
     // before it (or after it, at the start).

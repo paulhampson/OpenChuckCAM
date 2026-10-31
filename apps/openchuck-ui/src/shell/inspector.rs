@@ -1091,7 +1091,18 @@ impl Shell {
         };
         // The jump has been drawn this frame.
         self.requirement_jump = None;
+        let mut ask_height = None;
         for edit in edits {
+            // Turning adaptive spacing on from a saved Scallop 0 asks for the
+            // height first (decision record 0239 item 5).
+            if edit.name == openchuck_app::path::adaptive::parameter::ADAPTIVE_SPACING
+                && !edit.reset_to_default
+                && edit.value == Some(openchuck_app::project::ParameterValue::Flag(true))
+                && app.adaptive_spacing_needs_height(id)
+            {
+                ask_height = Some(id);
+                continue;
+            }
             let result = if edit.reset_to_default {
                 app.reset_parameter(id, &edit.name)
             } else {
@@ -1099,6 +1110,12 @@ impl Shell {
             }
             .map_err(|e| form_panel::refusal(&e.user_message()));
             self.form.result(&edit.name, result);
+        }
+        if let Some(operation) = ask_height {
+            self.dialog = Some(super::Dialog::AdaptiveHeight {
+                operation,
+                height: openchuck_app::path::adaptive::DEFAULT_ALLOWED_EXCESS.to_string(),
+            });
         }
         let result = match role_edit {
             Some(GeometryEdit::Role(role, set, add)) => {

@@ -76,6 +76,8 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
     // faces free ends and would be refused (decision record 0344, OI-1396).
     // These tests are about writing programs, not facing.
     parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    // Adaptive spacing off too (decision record 0239).
+    parameters.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     Operation {
         id: OperationId::new(),
         order: OrderKey::default(),

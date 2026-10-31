@@ -19,9 +19,34 @@ pub struct OutputPlan {
     paths: Vec<PathBuf>,
     contents: Vec<Vec<u8>>,
     existing: Vec<PathBuf>,
+    /// The operations of the run whose path is partial (decision record
+    /// 0239 item 10).
+    partial: Vec<String>,
+    /// Whether the user acknowledged the partial paths of this plan's run.
+    acknowledged: bool,
 }
 
 impl OutputPlan {
+    /// The operations whose path in this plan's run is partial: adaptive
+    /// spacing met a limit or could not confirm a place, and the path made
+    /// so far is kept (decision record 0239 item 10). Writing asks for an
+    /// acknowledgement of this result first.
+    pub fn partial_operations(&self) -> &[String] {
+        &self.partial
+    }
+
+    /// Acknowledges the partial paths of this plan's run, and of no other:
+    /// a plan made for another run starts unacknowledged, so an
+    /// acknowledgement never carries over to a newer result.
+    pub fn acknowledge_partial_path(&mut self) {
+        self.acknowledged = true;
+    }
+
+    /// Whether the partial paths of this plan's run were acknowledged.
+    pub fn partial_path_acknowledged(&self) -> bool {
+        self.acknowledged
+    }
+
     /// Every full destination, in write order, including both setup sheets.
     pub fn paths(&self) -> &[PathBuf] {
         &self.paths
@@ -50,6 +75,9 @@ pub struct OutputReport {
     pub failed: Option<OutputFailure>,
     /// Destinations not attempted after a refusal or write failure.
     pub not_attempted: Vec<PathBuf>,
+    /// Operations written with a partial path, acknowledged: the result is
+    /// never called complete (decision record 0239 item 10).
+    pub partial: Vec<String>,
 }
 
 impl OutputReport {
@@ -61,8 +89,16 @@ impl OutputReport {
     /// A count of completed writes, marked incomplete when a file failed.
     pub fn summary(&self) -> String {
         let n = self.written.len();
+        let partial = if self.partial.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " The path of {} is partial, as acknowledged: it is not complete.",
+                crate::export::quoted_list(&self.partial)
+            )
+        };
         format!(
-            "Wrote {n} file{}{}",
+            "Wrote {n} file{}{}{partial}",
             if n == 1 { "" } else { "s" },
             if self.failed.is_some() {
                 "; export incomplete."
@@ -103,6 +139,7 @@ impl OutputReport {
                 reason: reason.into(),
             }),
             not_attempted: paths.iter().filter(|p| **p != path).cloned().collect(),
+            partial: Vec::new(),
         }
     }
 }
@@ -129,6 +166,7 @@ pub(crate) fn prepare(
     folder: &Path,
     run: Arc<Regeneration>,
     files: Vec<(String, Vec<u8>)>,
+    partial: Vec<String>,
 ) -> Result<OutputPlan, AppError> {
     let folder = std::path::absolute(folder).map_err(|e| io_error(folder, e))?;
     let mut paths = Vec::new();
@@ -161,6 +199,8 @@ pub(crate) fn prepare(
         paths,
         contents,
         existing,
+        partial,
+        acknowledged: false,
     })
 }
 
@@ -340,7 +380,10 @@ fn write_with(
     {
         return OutputReport::refused(&plan.paths, first.clone(), e.to_string());
     }
-    let mut report = OutputReport::default();
+    let mut report = OutputReport {
+        partial: plan.partial.clone(),
+        ..OutputReport::default()
+    };
     for (i, (path, bytes)) in plan.paths.iter().zip(&plan.contents).enumerate() {
         match writer(path, bytes, plan.existing.contains(path)) {
             Ok(()) => report.written.push(path.clone()),
@@ -376,6 +419,7 @@ mod tests {
                 ("two.nc".into(), b"two".to_vec()),
                 ("three.nc".into(), b"three".to_vec()),
             ],
+            Vec::new(),
         )
         .unwrap();
         let report = write_with(&plan, false, |path, bytes, replace| {
@@ -519,6 +563,7 @@ mod tests {
             written: vec![PathBuf::from("/out/a.nc")],
             failed: None,
             not_attempted: Vec::new(),
+            partial: Vec::new(),
         };
         assert_eq!(
             report.text(),

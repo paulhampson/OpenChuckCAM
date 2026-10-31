@@ -61,6 +61,8 @@ mod pending_pick;
 mod tree;
 
 #[cfg(test)]
+mod adaptive_tests;
+#[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
 mod pending_edit_tests;
@@ -145,6 +147,26 @@ enum Dialog {
     /// The opened project has models outside its folder: ask, each time it
     /// is opened, whether to copy them in (decision record 0307 item 5).
     CopyLinked(usize),
+    /// Adaptive spacing is being turned on for an operation saved with a
+    /// Scallop height of 0: ask for the Allowed excess first (decision
+    /// record 0239 item 5). `height` is the typed text.
+    AdaptiveHeight {
+        operation: OperationId,
+        height: String,
+    },
+}
+
+/// What the dialog that turns adaptive spacing on from a saved zero says
+/// (decision record 0239 item 5).
+pub(crate) const ADAPTIVE_HEIGHT_TEXT: &str = "This operation was saved with a Scallop height of 0, which meant no limit on the cusp. With adaptive spacing on, the same value is the Allowed excess: the most material that may stand between two passes above the finished surface and its stock to leave. 0 there asks for no excess at all, which may leave places unverified or meet the limits. 0.01 mm is suggested. Cancel leaves the operation as it is; Turn on sets both in one step you can undo.";
+
+/// The Allowed excess typed in the dialog, when it is a finite number of
+/// millimetres, at least 0.
+pub(crate) fn adaptive_height(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|h| h.is_finite() && *h >= 0.0)
 }
 
 /// The question asked on opening a project with `count` models outside its
@@ -1229,6 +1251,18 @@ impl Shell {
         }
     }
 
+    /// Turns adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, as one undoable step (decision record 0239 item 5).
+    fn enable_adaptive_spacing(&mut self, operation: OperationId, height: f64) {
+        let Some(app) = &mut self.app else { return };
+        if let Err(e) = app.enable_adaptive_spacing(operation, height) {
+            self.dialog = Some(Dialog::Error(format!(
+                "Adaptive spacing was not turned on: {}",
+                e.user_message()
+            )));
+        }
+    }
+
     /// Renames `item` as one undoable command (the F2 dialog).
     fn rename(&mut self, item: ItemRef, name: &str) {
         if let Err(e) = self.rename_checked(item, name) {
@@ -2191,6 +2225,37 @@ impl Shell {
                 if ui.button("OK").clicked() {
                     close = true;
                 }
+            }
+            Dialog::AdaptiveHeight {
+                operation,
+                mut height,
+            } => {
+                ui.heading("Turn on adaptive spacing");
+                ui.label(ADAPTIVE_HEIGHT_TEXT);
+                ui.horizontal(|ui| {
+                    ui.label("Allowed excess (mm)");
+                    ui.text_edit_singleline(&mut height);
+                });
+                let parsed = adaptive_height(&height);
+                if parsed.is_none() {
+                    ui.colored_label(DARK.error, "Enter a number of millimetres, at least 0.");
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(parsed.is_some(), egui::Button::new("Turn on"))
+                        .clicked()
+                        && let Some(h) = parsed
+                    {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.enable_adaptive_spacing(operation, h);
+                        }));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+                self.dialog = Some(Dialog::AdaptiveHeight { operation, height });
             }
         });
         if form_browse {
