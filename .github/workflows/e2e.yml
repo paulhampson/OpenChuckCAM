@@ -91,6 +91,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: steps.want.outputs.run == 'true'
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: e2e-offline
       - uses: taiki-e/install-action@v2
         if: steps.want.outputs.run == 'true'

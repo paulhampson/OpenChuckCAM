@@ -9,6 +9,11 @@ use openchuck_sim::DeviationPoint;
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
+use rayon::prelude::*;
+
+/// Triangles coloured between two looks at the cancel flag, and the share
+/// of the work one thread takes at a time.
+const CHUNK: usize = 4096;
 
 /// The stock surface drawn and picked in playback. Values are projections
 /// of the existing final comparison, never a new simulation measurement.
@@ -31,11 +36,12 @@ impl StockSurface {
         setup: SetupId,
         model: Option<ModelId>,
         samples: Option<&SurfaceSamples>,
+        picker: bool,
         context: &JobContext<'_>,
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
         let bands = samples.map(|s| s.bands(&mesh, context)).transpose()?;
-        let picker = if mesh.triangles.is_empty() {
+        let picker = if !picker || mesh.triangles.is_empty() {
             None
         } else {
             Some(MeshPicker::new(&mesh)?)
@@ -50,8 +56,16 @@ impl StockSurface {
         })
     }
 
+    /// Whether the surface was made with its picker, or has nothing to pick:
+    /// a frame made while playback plays has none, so pointing at it finds
+    /// nothing (the owner's decision D5 on issue #382; decision record 0322).
+    pub fn can_pick(&self) -> bool {
+        self.picker.is_some() || self.mesh.triangles.is_empty()
+    }
+
     /// First hit on the actual stock, in its workpiece frame. The triangle
     /// ID indexes both its drawn colour and its projected tooltip value.
+    /// None when the surface has no triangles or was made without a picker.
     pub fn pick(
         &self,
         origin: [f64; 3],
@@ -212,6 +226,11 @@ impl SurfaceSamples {
         }
     }
 
+    /// The final comparison's value nearest to each triangle of `mesh`, in
+    /// triangle order, sorted into bands. Each triangle's value depends on
+    /// that triangle alone, so the triangles are shared out over the job's
+    /// threads in fixed chunks and the values are the same at any thread
+    /// count (NFR-06).
     pub(crate) fn bands(
         &self,
         mesh: &TriangleMesh,
@@ -219,24 +238,39 @@ impl SurfaceSamples {
     ) -> Result<DeviationBands, AppError> {
         context.check_cancelled()?;
         mesh.validate()?;
-        let mut values = Vec::with_capacity(mesh.triangles.len());
-        for triangle in 0..mesh.triangles.len() {
-            if triangle % 4096 == 0 {
+        let chunks = mesh.triangles.len().div_ceil(CHUNK);
+        let chunks: Vec<Vec<Option<(f64, bool)>>> = (0..chunks)
+            .into_par_iter()
+            .map(|chunk| {
                 context.check_cancelled()?;
-            }
-            let [a, b, c] = mesh.triangle(triangle).ok_or_else(|| {
-                AppError::Playback("the stock surface has an invalid triangle".to_owned())
-            })?;
-            let point = Point3::new(
-                a.x / 3.0 + b.x / 3.0 + c.x / 3.0,
-                a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
-                a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
-            );
-            let mut best = None;
-            self.nearest(self.root, point, &mut best);
-            values.push(best.map(|b| b.2));
-        }
+                let end = ((chunk + 1) * CHUNK).min(mesh.triangles.len());
+                (chunk * CHUNK..end)
+                    .map(|triangle| self.value_of(mesh, triangle))
+                    .collect()
+            })
+            .collect::<Result<_, AppError>>()?;
+        let values: Vec<_> = chunks.into_iter().flatten().collect();
         Ok(deviation_bands(&values, self.cell))
+    }
+
+    /// The value of the sample nearest to the centroid of `triangle`, if
+    /// one is near enough.
+    fn value_of(
+        &self,
+        mesh: &TriangleMesh,
+        triangle: usize,
+    ) -> Result<Option<(f64, bool)>, AppError> {
+        let [a, b, c] = mesh.triangle(triangle).ok_or_else(|| {
+            AppError::Playback("the stock surface has an invalid triangle".to_owned())
+        })?;
+        let point = Point3::new(
+            a.x / 3.0 + b.x / 3.0 + c.x / 3.0,
+            a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
+            a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
+        );
+        let mut best = None;
+        self.nearest(self.root, point, &mut best);
+        Ok(best.map(|b| b.2))
     }
 }
 
@@ -333,6 +367,7 @@ mod tests {
             SetupId::new(),
             Some(ModelId::new()),
             Some(&samples),
+            true,
             &context,
         )
         .unwrap();
@@ -359,11 +394,151 @@ mod tests {
             SetupId::new(),
             None,
             None,
+            true,
             &context,
         )
         .unwrap();
         assert!(empty.pick([0.0; 3], [0.0, 0.0, 1.0]).unwrap().is_none());
         assert!(empty.bands.is_none());
+    }
+
+    /// Samples on a grid with ties (two samples at one point), and a stock
+    /// mesh of many chunks: triangles near the samples, on them, between
+    /// them, and some too far from any to be measured.
+    fn many_samples_and_triangles() -> (Vec<DeviationPoint>, TriangleMesh) {
+        let mut points: Vec<_> = (0..60)
+            .flat_map(|x| {
+                (0..60).map(move |y| {
+                    let mut p = sample(
+                        f64::from(x) * 0.1,
+                        f64::from((x * 7 + y * 13) % 23) * 0.01 - 0.1,
+                        (x + y) % 5 == 0,
+                        SampleOn::Part,
+                    );
+                    p.point.y = f64::from(y) * 0.1;
+                    p
+                })
+            })
+            .collect();
+        // A tie: the same point again with another value; the first wins.
+        points.push(sample(0.0, 0.33, false, SampleOn::Part));
+        let mut vertices = Vec::new();
+        let mut triangles = Vec::new();
+        for i in 0..20_000_u32 {
+            // Every tenth triangle is far from every sample.
+            let far = if i % 10 == 0 { 20.0 } else { 0.0 };
+            let x = f64::from(i % 157) * 0.041 - 0.5 + far;
+            let y = f64::from(i % 211) * 0.031 - 0.4;
+            let z = f64::from(i % 7) * 0.05;
+            let base = u32::try_from(vertices.len()).unwrap();
+            vertices.extend([
+                Point3::new(x, y, z),
+                Point3::new(x + 0.01, y, z),
+                Point3::new(x, y + 0.01, z),
+            ]);
+            triangles.push([base, base + 1, base + 2]);
+        }
+        (
+            points,
+            TriangleMesh {
+                vertices,
+                triangles,
+            },
+        )
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_06_stock_colours_are_the_same_at_any_thread_count() {
+        let (points, mesh) = many_samples_and_triangles();
+        let samples = SurfaceSamples::new(&points, 0.1);
+        // The rule, one triangle after another: the nearest sample to the
+        // triangle's centroid, as the one-thread mapping gave it.
+        let expected: Vec<_> = (0..mesh.triangles.len())
+            .map(|t| {
+                let [a, b, c] = mesh.triangle(t).unwrap();
+                let point = Point3::new(
+                    a.x / 3.0 + b.x / 3.0 + c.x / 3.0,
+                    a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
+                    a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
+                );
+                let mut best = None;
+                samples.nearest(samples.root, point, &mut best);
+                best.map(|b| b.2)
+            })
+            .collect();
+        assert!(expected.iter().any(Option::is_none) && expected.iter().any(Option::is_some));
+        let expected = deviation_bands(&expected, 0.1);
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        for threads in [1, 2, 4] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let bands = pool.install(|| samples.bands(&mesh, &context)).unwrap();
+            assert_eq!(bands, expected, "{threads} threads");
+        }
+    }
+
+    /// The owner's decision D5 on issue #382 (decision record 0322): while
+    /// playback plays, a frame is made without its picker. It has the same
+    /// mesh and colours, and pointing at it finds nothing; made still, its
+    /// picks are those of a frame with a picker.
+    #[test]
+    fn req_sim_11_req_nfr_04_a_playing_frame_has_no_picker_and_is_otherwise_the_same() {
+        let (points, mesh) = many_samples_and_triangles();
+        let samples = SurfaceSamples::new(&points, 0.1);
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let (setup, model) = (SetupId::new(), Some(ModelId::new()));
+        let still =
+            StockSurface::new(mesh.clone(), setup, model, Some(&samples), true, &context).unwrap();
+        let playing =
+            StockSurface::new(mesh.clone(), setup, model, Some(&samples), false, &context).unwrap();
+        assert!(still.can_pick() && !playing.can_pick());
+        assert_eq!((&playing.mesh, &playing.bands), (&still.mesh, &still.bands));
+        let picker = MeshPicker::new(&mesh).unwrap();
+        let mut hits = 0;
+        for i in 0..200_u32 {
+            let x = f64::from(i % 20) * 0.3 - 0.4;
+            let y = f64::from(i / 20) * 0.6 - 0.3;
+            let (origin, down) = ([x, y, 5.0], [0.0, 0.0, -1.0]);
+            assert!(playing.pick(origin, down).unwrap().is_none());
+            let expected = picker
+                .pick(Point3::new(x, y, 5.0), Vec3::new(0.0, 0.0, -1.0))
+                .unwrap();
+            let got = still.pick(origin, down).unwrap();
+            assert_eq!(
+                got.map(|h| (h.triangle, h.distance)),
+                expected.map(|h| (h.triangle, h.distance))
+            );
+            hits += usize::from(got.is_some());
+        }
+        assert!(hits > 0);
+    }
+
+    /// A cut part with no triangles has nothing to pick: a still frame of it
+    /// is complete, so the playback panel does not make it again and again
+    /// (decision record 0322 item 6; review of pull request 401).
+    #[test]
+    fn req_sim_11_req_nfr_04_an_empty_still_frame_needs_no_picker() {
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let empty = TriangleMesh {
+            vertices: Vec::new(),
+            triangles: Vec::new(),
+        };
+        let still = StockSurface::new(empty, SetupId::new(), None, None, true, &context).unwrap();
+        assert!(
+            still.can_pick(),
+            "nothing to pick, so the still frame is done"
+        );
+        assert!(
+            still
+                .pick([0.0, 0.0, 5.0], [0.0, 0.0, -1.0])
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

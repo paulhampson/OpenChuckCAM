@@ -166,6 +166,9 @@ pub struct Shell {
     edit_context: Option<egui::Context>,
     edit_guard: pending::Guard,
     app: Option<Application>,
+    /// The computer's physical memory, read once, which caps the memory for
+    /// playback checkpoints at a quarter (decision record 0322 item 5).
+    physical_memory: Option<u64>,
     /// The window title last sent to the system (#218).
     sent_title: String,
     /// The setting the inspector brings into view on its next frame: a
@@ -300,6 +303,7 @@ impl Shell {
             edit_context: None,
             edit_guard: pending::Guard::default(),
             app: None,
+            physical_memory: crate::memory::physical(),
             sent_title: String::new(),
             setting_jump: None,
             viewport: Viewport::new(viewport_available),
@@ -365,6 +369,9 @@ impl Shell {
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -722,6 +729,22 @@ impl Shell {
                 false
             }
         }
+    }
+
+    /// Sets "Memory for playback checkpoints" in MB, brought into its range
+    /// and steps (decision record 0322), for the next time the cut part is
+    /// prepared.
+    fn set_playback_memory_mb(&mut self, mb: u32) {
+        let simulate = openchuck_app::settings::SimulateSettings {
+            playback_memory_mb: mb,
+            ..self.settings.simulate
+        }
+        .clamped();
+        self.settings.simulate.playback_memory_mb = simulate.playback_memory_mb;
+        self.play.set_playback_memory(
+            crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
+        );
+        self.settings_touched();
     }
 
     /// Turns the recording of the user's actions in the log on or off, and
@@ -2020,6 +2043,37 @@ impl Shell {
                     }
                 });
                 ui.label("Keeps three periodic checkpoints and one interim checkpoint after 15 seconds without a confirmed change. Recovery never saves over your project automatically.");
+                let (least, _, most, step) = openchuck_app::settings::PLAYBACK_MEMORY_MB;
+                let mut memory = self.settings.simulate.playback_memory_mb;
+                ui.horizontal(|ui| {
+                    ui.label("Memory for playback checkpoints (MB)");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut memory)
+                                .range(least..=most)
+                                .speed(f64::from(step) / 8.0),
+                        )
+                        .changed()
+                    {
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.set_playback_memory_mb(memory);
+                        }));
+                    }
+                    let (_, cap) = crate::memory::playback_memory(
+                        self.settings.simulate.playback_memory_mb,
+                        self.physical_memory,
+                    );
+                    if let Some(cap) = cap {
+                        ui.label(format!("This computer: at most {cap} MB"));
+                    }
+                });
+                ui.label(
+                    "Simulate keeps copies of the cut part along the program so that a jump in \
+                     playback needs to replay only a short stretch. More memory gives shorter \
+                     waits after a jump; less gives longer waits. The cut part shown is the same \
+                     either way. The copies are never allowed to use more than this. A change \
+                     applies the next time the cut part is prepared.",
+                );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
