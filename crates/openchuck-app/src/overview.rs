@@ -1472,12 +1472,20 @@ impl Application {
     /// made. What a run reported about it (such as feeds the machine's
     /// limits lowered) is then still true of the settings on screen.
     pub fn operation_path_is_current(&self, operation: OperationId) -> bool {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        matches!(
-            (keys.iter().find(|(id, _)| *id == operation), record.generated.get(&operation)),
-            (Some((_, key)), Some(made)) if key.chained == made.key.chained
-        )
+        // Asked every frame while the operation is inspected: the keys are
+        // kept per change of the project, and the record is read in place,
+        // not copied with every path warning it holds (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
+            return false;
+        };
+        self.record
+            .with(|s| {
+                s.generated
+                    .get(&operation)
+                    .is_some_and(|made| key.chained == made.key.chained)
+            })
+            .unwrap_or(false)
     }
 
     /// The settings of `operation` its current path's warnings name (the
@@ -1486,24 +1494,28 @@ impl Application {
     /// Empty when the operation is not up to date or its path has no
     /// warning that names one.
     pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        let (Some((_, key)), Some(made)) = (
-            keys.iter().find(|(id, _)| *id == operation),
-            record.generated.get(&operation),
-        ) else {
+        // Asked every frame, as `operation_path_is_current` is (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
             return Vec::new();
         };
-        if key.chained != made.key.chained {
-            return Vec::new();
-        }
-        let mut names: Vec<String> = Vec::new();
-        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        names
+        self.record
+            .with(|s| {
+                let Some(made) = s.generated.get(&operation) else {
+                    return Vec::new();
+                };
+                if key.chained != made.key.chained {
+                    return Vec::new();
+                }
+                let mut names: Vec<String> = Vec::new();
+                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                    if !names.contains(name) {
+                        names.push(name.clone());
+                    }
+                }
+                names
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -1516,7 +1528,7 @@ fn operation_name(index: usize, name: &str) -> String {
 fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview {
     let project = app.project();
     let record = app.record.snapshot();
-    let keys_in_order = status_keys(project);
+    let keys_in_order = app.status_keys();
     let keys: BTreeMap<OperationId, StatusKey> = keys_in_order.iter().copied().collect();
     let summaries: Vec<SelectionSummary> = app.selection_summaries(&file_warnings(project, checks));
     let mut items = BTreeMap::new();

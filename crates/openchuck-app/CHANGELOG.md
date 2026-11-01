@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- LARGEPATH (#470, proposed decision 0631): the status keys of the operations and the unsaved-changes answer are kept per revision of the project (`memo.rs`, `Application::status_keys`, `is_modified`), and `operation_path_is_current` and `operation_warning_settings` read the generation record in place instead of copying it. The interface asked for them every frame; on the owner's carving an inspected operation cost about 117 ms a frame and now about 1 ms. The same answers and the same G-code; no public API change.
+
 - OP20 (issue #413, decision 0368): operations give the strategies the tool's shank where it is wider than the cutting part (`StrategyInput::shank`, from the shank diameter and the flute length), which simultaneous finishing keeps clear of the part on every pass; the strategies' unreached areas reach `Regeneration` through the generated path's warning.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): a partial path (adaptive spacing that met a limit or could not confirm a place) is listed in the export checks and written only once the output plan is acknowledged for its own run (`OutputPlan::partial_operations`, `acknowledge_partial_path`, `partial_path_acknowledged`; `partial_operations`, `partial_path_refusal`, `EXPORT_PARTIAL_PATH_LABEL`); `OutputReport` gains `partial` and says the path is not complete. `Application::adaptive_spacing_needs_height` and `enable_adaptive_spacing` (one undoable step). The command line's `regenerate` takes `--acknowledge-partial-path`.
