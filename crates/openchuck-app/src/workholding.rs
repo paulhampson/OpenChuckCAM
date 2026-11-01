@@ -1212,13 +1212,21 @@ mod tests {
         }
     }
 
+    fn one_ball_tool() -> [SetupTool; 1] {
+        [SetupTool {
+            tool: "T1 Ball".into(),
+            diameter: 4.0,
+            operation: "1 Rough".into(),
+        }]
+    }
+
     /// OP-21, decision 0202 item 3 and decision 0470: an automatic tab is
     /// compared with the tool where it is now, not at the length it was last
-    /// applied with, in the refusal when generating and in the findings.
+    /// applied with. Stored 8 mm long; the part now starts at X 12, so the
+    /// head gap is 2 mm and a 4 mm tool does not fit: refused when generating
+    /// and found by the checks.
     #[test]
-    fn req_op_21_an_automatic_tab_is_compared_at_its_resolved_length() {
-        // Stored 8 mm long; the part now starts at X 12, so the head gap is
-        // 2 mm and a 4 mm tool does not fit.
+    fn req_op_21_an_automatic_tab_that_shrank_is_refused_at_its_resolved_length() {
         let shrunk = auto_head_tab(8.0);
         let near = part(12.0, 70.0);
         let error = check_for_tool(&shrunk, Some(&stock()), &near, 4.0, "ball 4").unwrap_err();
@@ -1226,20 +1234,19 @@ mod tests {
             error.to_string().contains("2.000 mm long along X"),
             "{error}"
         );
-        let tools = [SetupTool {
-            tool: "T1 Ball".into(),
-            diameter: 4.0,
-            operation: "1 Rough".into(),
-        }];
-        let notes = narrow_findings(&shrunk, Some(&stock()), Some(&near), &tools);
+        let notes = narrow_findings(&shrunk, Some(&stock()), Some(&near), &one_ball_tool());
         assert_eq!(notes.len(), 1);
         assert!(notes[0].text.contains("2.000 mm long along X"), "{notes:?}");
-        // Stored 2 mm long; the part now starts at X 18, so the gap is 8 mm
-        // and the tool fits.
+    }
+
+    /// The other way: stored 2 mm long; the part now starts at X 18, so the
+    /// gap is 8 mm and the 4 mm tool fits.
+    #[test]
+    fn req_op_21_an_automatic_tab_that_grew_is_accepted_at_its_resolved_length() {
         let grown = auto_head_tab(2.0);
         let far = part(18.0, 70.0);
         assert!(check_for_tool(&grown, Some(&stock()), &far, 4.0, "ball 4").is_ok());
-        assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &tools).is_empty());
+        assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &one_ball_tool()).is_empty());
     }
 
     /// The reverse: a thin tab that is long enough is accepted, for a
