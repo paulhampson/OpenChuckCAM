@@ -8,7 +8,7 @@
 
 ## Evidence and recommendation
 
-[Phase-1 report](../rampbudget-phase1.md) records current-main reproduction, diagnostic counts, uninstrumented timings, options and limits. Recommend adaptive conservative subdivision plus bounded exact-input memoisation. Retain the global stock-clear start and both existing entry limits. Budget scaling and lowering the start are separate choices, not implicit fallbacks.
+[Phase-1 report](#verification-results-rampbudget-343-pr-360) records current-main reproduction, diagnostic counts, uninstrumented timings, options and limits. Recommend adaptive conservative subdivision plus bounded exact-input memoisation. Retain the global stock-clear start and both existing entry limits. Budget scaling and lowering the start are separate choices, not implicit fallbacks.
 
 ## Accepted decision
 
@@ -30,7 +30,7 @@
 
 ## Open item
 
-OI-998 now tracks owner fix feedback on #343. Direct complete-record acceptance, implementation and measured correction are recorded in the [verification report](../rampbudget-verification.md). The owner's direct acceptance amends certification scheduling under 0242; motion rules and limits remain unchanged.
+OI-998 now tracks owner fix feedback on #343. Direct complete-record acceptance, implementation and measured correction are recorded in the [verification report](#verification-results-rampbudget-343-pr-360). The owner's direct acceptance amends certification scheduling under 0242; motion rules and limits remain unchanged.
 
 ## Verification results (RAMPBUDGET, #343, PR #360)
 

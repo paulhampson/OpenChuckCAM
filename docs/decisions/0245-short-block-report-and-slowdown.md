@@ -23,7 +23,7 @@ The accepted investigation found the owner's pencil path demanded a 5.6 ms avera
 
 ## Validation and limits
 
-Requirement-first tests cover known demand/windows, Off/Report preservation, overlapping-window slowdown, geometry preservation, short runs, rapid boundaries, feed rounding, mixed rotary/G93, post overrides, invalid limits, deterministic output, migration, reporting and adjusted replay timing. Software implementation and local checks completed 26 Oct 2026. Current-run results and the 7 ms corpus analysis are recorded in [short-block verification](../short-block-verification.md).
+Requirement-first tests cover known demand/windows, Off/Report preservation, overlapping-window slowdown, geometry preservation, short runs, rapid boundaries, feed rounding, mixed rotary/G93, post overrides, invalid limits, deterministic output, migration, reporting and adjusted replay timing. Software implementation and local checks completed 26 Oct 2026. Current-run results and the 7 ms corpus analysis are recorded in [short-block verification](#verification-results-shortmove-gc-17-pr-356).
 
 Physical mitigation is pending **OI-992**. Before claiming smooth running: pass the normal static/replay/simulator gates, compare original and slowed affected paths in an attended Z1 air cut, record timing/stutter, then compare cutting behaviour and finish on representative material. Record firmware, delivery method, settings and margin; recalibrate on firmware or delivery changes. Nominal window compliance cannot guarantee smoothness against transport outages, controller acceleration/jerk constraints or feed override above the tested setting. Generated G-code remains the user's to verify (NFR-12).
 
@@ -31,7 +31,7 @@ No Merge, strategy minimum step, arc fitting, firmware change, streaming, LinuxC
 
 ## First-cut follow-up raised during implementation
 
-The owner reported underflow-like movement at the far-end first-cut tab at 100% override, without a line/file reference. [The investigation](../first-cut-tail-tab-investigation.md) found no short-block demand there in the committed program, but a 72-block A-only ring and published firmware logic that skips junction blending for those moves. This is a distinct, unconfirmed planner-stop hypothesis (OI-993), not a confirmed delivery underflow or a problem this minimum-time feature fixes. Merge remains deferred; no firmware or ring-path change is made.
+The owner reported underflow-like movement at the far-end first-cut tab at 100% override, without a line/file reference. [The investigation](#first-cut-far-end-tab-underflow-like-motion-at-100-override-oi-993-owner-report-25-oct-2026) found no short-block demand there in the committed program, but a 72-block A-only ring and published firmware logic that skips junction blending for those moves. This is a distinct, unconfirmed planner-stop hypothesis (OI-993), not a confirmed delivery underflow or a problem this minimum-time feature fixes. Merge remains deferred; no firmware or ring-path change is made.
 
 ## Verification results (SHORTMOVE, GC-17, PR #356)
 

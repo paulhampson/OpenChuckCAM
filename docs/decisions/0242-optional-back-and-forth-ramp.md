@@ -40,7 +40,7 @@ Half a diameter permits tighter spaces but adds short reversals; two diameters r
 
 ## Clearance-cost correction
 
-Accepted [0248](0248-ramp-clearance-budget.md) (RAMPBUDGET, #343; directly accepted under provisional 0247) changes certificate scheduling to conservative adaptive intervals and bounded exact-input reuse. It retains this record's motion rules, one-diameter minimum, global stock-clear start, 10,000 descending legs and 100,000-attempt entry limit. Every adaptive attempt, including inconclusive bounds and cache hits, consumes the shared budget. Protected geometry, machine constraints and the additional target checks remain independent. See [measurements and verification](../rampbudget-verification.md); the historical blisk's missing straight direction remains separate.
+Accepted [0248](0248-ramp-clearance-budget.md) (RAMPBUDGET, #343; directly accepted under provisional 0247) changes certificate scheduling to conservative adaptive intervals and bounded exact-input reuse. It retains this record's motion rules, one-diameter minimum, global stock-clear start, 10,000 descending legs and 100,000-attempt entry limit. Every adaptive attempt, including inconclusive bounds and cache hits, consumes the shared budget. Protected geometry, machine constraints and the additional target checks remain independent. See [measurements and verification](0248-ramp-clearance-budget.md#verification-results-rampbudget-343-pr-360); the historical blisk's missing straight direction remains separate.
 
 ## Verification results (ROUGHPATH, #291)
 

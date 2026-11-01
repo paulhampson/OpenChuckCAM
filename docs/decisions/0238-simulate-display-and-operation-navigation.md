@@ -25,7 +25,7 @@ OUTPUT-1's agreement, relayed by the owner: SIMUI owns Playback contents/layout,
 
 ## Verification and limitations
 
-[SIMUI verification](../simui-verification.md) records failing-first regressions, final uninstrumented timings, coverage/uncovered changed lines, rendered-pixel and picking checks, whole-dock bounds at 1366×768, 1440×900 and 1920×1080 at 100%/120%, and output-preservation comparisons after independent regeneration. It distinguishes completed checks from outstanding work; acceptance of this record does not certify unfinished verification.
+[SIMUI verification](#verification-results-simui-pr-328) records failing-first regressions, final uninstrumented timings, coverage/uncovered changed lines, rendered-pixel and picking checks, whole-dock bounds at 1366×768, 1440×900 and 1920×1080 at 100%/120%, and output-preservation comparisons after independent regeneration. It distinguishes completed checks from outstanding work; acceptance of this record does not certify unfinished verification.
 
 OI-987 stays open for owner/reference-hardware performance and visual verification, including larger models, camera angles and actual monitor/scale behaviour. Available cloud measurements use the llvmpipe CPU adapter and cannot establish owner-laptop performance. OI-988 is closed by the owner's mapping answer. Generated toolpaths, posted bytes, project contents and simulation measurements must remain unchanged by display/navigation changes.
 
