@@ -16,6 +16,8 @@ These documents are the source of truth for the project. They live in the reposi
 | [decisions/](decisions/) | Decision records for choices made after these documents were written. |
 | [ui-design/](ui-design/) | The user interface specification: layout, workflow, states, wording and visual tokens of the desktop application. Accepted with decision 0038; it ranks with the decision records (precedence 5). Rendered mockups are in `ui-design/mockups/`. |
 
+The guide for people who use the program is not here: it is [`user-docs/`](../user-docs/README.md), published on GitHub Pages ([decision 0400](decisions/0400-user-documentation-site.md)). It is written from these documents, and where it adapts one (the Z1 air-cut procedure and safe-practice checklist) the document here is the authority.
+
 ## Precedence
 
 1. `requirements.md` decides *what*. The other documents refer to its IDs.

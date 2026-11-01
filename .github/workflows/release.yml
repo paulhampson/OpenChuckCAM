@@ -10,6 +10,8 @@
 #
 # - `app-v<version>`: the archives for the three platforms (build-archives.yml, shared with the
 #   nightly build) are attached to a GitHub release, not a pre-release, for the existing tag.
+# - `app-v<version>` also builds and checks the release's user guide (job `docs`) and, after the
+#   release, adds it to the publish-only branch docs-releases (job `publish-docs`; decision 0400).
 # - `lib-v<version>`: the four library crates pass `cargo publish --dry-run`. A tag push never
 #   publishes them to crates.io. Only a manual run on a `lib-v` tag with `dry_run` unticked AND
 #   `publish_crates` ticked publishes them, with the repository secret CARGO_REGISTRY_TOKEN, which
@@ -220,7 +222,8 @@ jobs:
   # The application release: a GitHub release (not a pre-release) for the existing app-v tag.
   publish-app:
     name: Publish the application release
-    needs: [plan, gate, archives, check-archives]
+    # `docs`: a release whose user guide fails its checks is not published (decision 0400 section R).
+    needs: [plan, gate, archives, check-archives, docs]
     if: needs.plan.outputs.app == 'true' && needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -268,6 +271,137 @@ jobs:
           [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3; it is left as a draft"; exit 1; }
           gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false
           echo "Published the release $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  # The user guide for this release (decision 0400 sections R and V): built at the tag, stamped with
+  # its version, and checked by .github/actions/user-docs as the pull request check does, plus the
+  # release checks (a release-notes section for the version, the stamp, and tutorial screenshots no
+  # older than the last change to the screens). On a publishing run a failure stops the release
+  # (publish-app needs this job); on a dry run it is reported and the run goes on.
+  docs:
+    name: User guide for the release
+    needs: [plan, gate]
+    if: needs.plan.outputs.app == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build and check
+        id: guide
+        uses: ./.github/actions/user-docs
+        continue-on-error: ${{ needs.plan.outputs.publish != 'true' }}
+        with:
+          mode: release
+          version: ${{ needs.plan.outputs.version }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.guide.outcome == 'success'
+        with:
+          name: user-guide-${{ needs.plan.outputs.version }}
+          path: ${{ steps.guide.outputs.guide }}
+          if-no-files-found: error
+
+  # Adds the release's user guide to the publish-only branch docs-releases (decision 0400 section V),
+  # after the program release is published. This is the only job that writes that branch, and the
+  # only one that uses the `docs-release` environment: it holds the client ID and private key of the
+  # project's GitHub App, the ruleset's only bypass actor on docs-releases, and only app-v* tags may
+  # use it (docs/releasing.md, One-time setup for the documentation site). The token lasts an hour
+  # and can only write repository contents. A version already on the branch is never replaced.
+  # docs-site.yml then redeploys the site (it runs after every successful Release run); it only
+  # reads docs-releases, in the separate `github-pages` environment.
+  publish-docs:
+    name: Publish the release's user guide
+    needs: [plan, docs, publish-app]
+    if: needs.plan.outputs.app == 'true' && needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: docs-release
+    permissions:
+      contents: write
+    steps:
+      - name: Is the documentation release set up?
+        env:
+          CLIENT_ID: ${{ vars.DOCS_RELEASE_APP_CLIENT_ID }}
+          KEY: ${{ secrets.DOCS_RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          missing=""
+          [ -n "$CLIENT_ID" ] || missing="the variable DOCS_RELEASE_APP_CLIENT_ID"
+          [ -n "$KEY" ] || missing="${missing:+$missing and }the secret DOCS_RELEASE_APP_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=User guide not published::The docs-release environment has no $missing. The program release is published; its user guide is not. Do the one-time setup in docs/releasing.md (One-time setup for the documentation site), then re-run this job."
+            exit 1
+          fi
+      - name: Get a token from the docs release App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: user-guide-${{ needs.plan.outputs.version }}
+          path: guide
+      - name: Add the guide to docs-releases
+        id: add
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          url="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          # `--exit-code` gives 2 when the branch is absent (the first release creates it); any
+          # other failure stops the job rather than start a new branch beside an existing one.
+          set +e
+          git ls-remote --exit-code --heads "$url" docs-releases > /dev/null
+          found=$?
+          set -e
+          if [ "$found" -ne 0 ] && [ "$found" -ne 2 ]; then
+            echo "::error::Could not read the docs-releases branch (git ls-remote exit $found); nothing was published."
+            exit 1
+          fi
+          if [ "$found" -eq 0 ]; then
+            git clone --quiet --depth 1 --branch docs-releases "$url" branch
+          else
+            echo "No docs-releases branch yet: this first release creates it."
+            git init --quiet branch
+            git -C branch checkout --quiet --orphan docs-releases
+            git -C branch remote add origin "$url"
+            printf '%s\n' "# Released versions of the OpenChuckCAM user guide" "" \
+              "Built HTML only, one folder per application release, each with a MANIFEST.sha256." \
+              "Only the release workflow writes this branch (decision 0400); the source is user-docs/ on main." > branch/README.md
+          fi
+          python3 source/user-docs/tools/assemble.py add-release --built guide --branch branch --version "$VERSION"
+          cd branch
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "User guide for $TAG, built from $SHA"
+          git push --quiet origin HEAD:docs-releases
+          echo "The user guide for $TAG is on docs-releases." >> "$GITHUB_STEP_SUMMARY"
+      - name: Note the guide's manifest in the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          DIGEST: ${{ steps.add.outputs.manifest_sha256 }}
+        run: |
+          gh release view "$TAG" -R "$REPO" --json body --jq .body > notes.md
+          {
+            echo
+            echo "The user guide for this release is the folder \`v$VERSION/\` of the \`docs-releases\` branch. The SHA-256 of its \`MANIFEST.sha256\` is \`$DIGEST\`."
+          } >> notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md
 
   # The library family: a publish dry run of the four crates together (cargo resolves their
   # dependencies on each other locally). `publish-crates` below publishes them, only when asked.
