@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Writes baluster.stl, the model of TUTORIAL.md (a small turned and fluted piece):
+# Writes baluster.stl, the model of the user guide's tutorial (a small turned and fluted piece):
 #   python3 testdata/examples/baluster/generate.py testdata/examples/baluster/baluster.stl
 # Deterministic: the same script always writes the same bytes. Written for this
 # repository (lane DOCSUSER); AGPL-3.0-or-later, as the rest of the repository.

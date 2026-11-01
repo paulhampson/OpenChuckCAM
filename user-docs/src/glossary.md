@@ -10,6 +10,10 @@ The words this guide uses for machining and for the program. A page links a term
 
 The fourth axis of a rotary machine: the turning of the work about the [rotary axis](#rotary-axis). On the Makera Z1 it turns about X, and a positive A move turns the top of the chuck towards the front of the machine.
 
+## Adaptive spacing {#adaptive-spacing}
+
+A finishing setting that measures the material left between two neighbouring passes and adds passes where more than the **Allowed excess** would stand. It is on by default in new finishing operations. Where it cannot confirm the excess before it reaches its limits, it keeps the path made so far and marks it as partial.
+
 ## Air cut {#air-cut}
 
 A run of a program with no tool fitted and no material in the chuck, at reduced feed, to watch every move before anything can be damaged. See [Air cut on the Makera Z1](safety/air-cut.md).

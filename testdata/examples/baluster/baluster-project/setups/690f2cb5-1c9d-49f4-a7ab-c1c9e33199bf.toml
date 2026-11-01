@@ -1,0 +1,20 @@
+schema = 25
+id = "690f2cb5-1c9d-49f4-a7ab-c1c9e33199bf"
+order = "V"
+name = "Setup 1"
+part = "dbbf9e6f-a666-455e-b174-ced3f5afa8e4"
+material = "Hardwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 24.000000238343276
+length = 63.0
+x_start = -1.0
+
+[workholding.start]
+length = 8.0

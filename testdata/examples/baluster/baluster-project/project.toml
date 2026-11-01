@@ -1,0 +1,11 @@
+schema = 25
+name = "Baluster"
+
+[[models]]
+id = "dbbf9e6f-a666-455e-b174-ced3f5afa8e4"
+path = "models/419712af3f46aa8fa43fea3f17e544c6.stl"
+hash = "blake3:419712af3f46aa8fa43fea3f17e544c681583a620f009f62466e13887d9304ff"
+name = "baluster.stl"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"
