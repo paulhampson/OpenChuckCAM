@@ -1,6 +1,6 @@
 # 0430: The Results window gives one information line per operation for the feed limits, and its text can be copied (UI-12, NFR-12, GC-07, NFR-06; issues #431, #432, #418; lane RESULTS-MSGS)
 
-- **Status:** proposed. The owner's answers on the wording, the worst case and what is shown (1 Nov 2026) were relayed by the coordinator; the record is for the owner to accept, via the coordinator (decision 0049).
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner's answers on the wording, the worst case and what is shown (1 Nov 2026) were relayed the same way.
 - **Date:** 1 Nov 2026.
 - **Issues:** #431 (the Results text cannot be copied), #432 (many near-identical feed-limit warnings), and part 1 of #418 (the summary found notes by operation name).
 - **Requirements:** UI-12, NFR-12, GC-07, NFR-06.
