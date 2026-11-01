@@ -647,3 +647,18 @@ fn req_nfr_06_req_gc_07_round_facing_rings_are_identical_at_1_2_and_n_threads() 
 fn req_nfr_07_round_facing_refuses_an_unknown_pass_shape_by_name() {
     refused_by_name(&facing_fixture(), &Facing, &round_values(&[]));
 }
+
+#[test]
+fn req_nfr_07_roughing_rings_refuse_an_absurd_stepover_by_name() {
+    let part = Cylinder {
+        radius: 8.0,
+        length: 20.0,
+    };
+    let f = rough_fixture(&part, 12.0, &flat(6.0));
+    let v = ringed(rough_values(&[
+        (names::STEPOVER, num(0.005)),
+        (roughing::MAX_ANGLE_STEP, num(1.0)),
+    ]));
+    let e = path(&f, &RotaryRoughing, &v).unwrap_err().to_string();
+    assert!(e.contains(names::STEPOVER) && e.contains("rings"), "{e}");
+}

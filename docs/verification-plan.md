@@ -437,5 +437,5 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Selections and checks.** Roughing in rings keeps to a selected region and starts on its edge (`roughing_region.rs`); restricted round Facing in rings passes the independent completion check (`facing_legacy_scope.rs`).
 - **Off is as before.** The setting absent and Spiral give the same path for each strategy; roughing's other forms and Facing's other shapes ignore it; every golden program and the legacy Facing reference are byte-identical.
 - **Determinism.** The same path at 1, 2 and N threads for each strategy.
-- **Refusals.** An unknown pass shape is refused by name for each strategy.
+- **Refusals.** An unknown pass shape is refused by name for each strategy, and roughing in rings refuses by name a stepover that needs too many points a layer.
 - **Schema.** Each strategy offers Passes, Spiral or Rings, Spiral by default; roughing only for its continuous form around the part, Facing only for Round.
