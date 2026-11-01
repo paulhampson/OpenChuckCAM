@@ -131,6 +131,7 @@ fn blank_profile() -> MachineProfile {
             safe_z: Millimetres(FAR),
         },
         max_tool_number: 99,
+        min_clearance_radius: None,
         min_spindle_rpm: None,
         max_spindle_rpm: None,
         min_block_ms: 0.0,

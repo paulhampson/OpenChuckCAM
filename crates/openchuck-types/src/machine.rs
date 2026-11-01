@@ -205,11 +205,13 @@ pub enum ProfileField {
     SpindleToAxis,
     /// [`MachineProfile::recommended_min_safe_z`].
     RecommendedMinSafeZ,
+    /// [`MachineProfile::min_clearance_radius`].
+    MinClearanceRadius,
 }
 
 impl ProfileField {
     /// Every field, in order.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::RotaryAxis,
         Self::ASense,
         Self::RotaryOrigin,
@@ -224,6 +226,7 @@ impl ProfileField {
         Self::ToolLengthMeasurement,
         Self::SpindleToAxis,
         Self::RecommendedMinSafeZ,
+        Self::MinClearanceRadius,
     ];
 
     /// The field's name in the profile file.
@@ -243,6 +246,7 @@ impl ProfileField {
             Self::ToolLengthMeasurement => "tool_length_measurement",
             Self::SpindleToAxis => "spindle_to_axis",
             Self::RecommendedMinSafeZ => "recommended_min_safe_z",
+            Self::MinClearanceRadius => "min_clearance_radius",
         }
     }
 }
@@ -398,6 +402,12 @@ pub struct MachineProfile {
     /// given. Advice to check, never a limit (decision record 0317).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended_min_safe_z: Option<Millimetres>,
+    /// The smallest safe cylinder radius about the rotary axis that clears
+    /// the machine's chuck, jaws, headstock and tailstock, when given. A
+    /// setup may give its own (decision record 0530). Advice the setup
+    /// checks warn against, never a limit that changes the G-code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_clearance_radius: Option<Millimetres>,
     /// Where each value came from, and whether it is confirmed on the
     /// machine. A field not listed is treated as unconfirmed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -470,6 +480,7 @@ impl MachineProfile {
                 "machine.recommended_min_safe_z",
                 self.recommended_min_safe_z,
             ),
+            ("machine.min_clearance_radius", self.min_clearance_radius),
         ] {
             if let Some(v) = value {
                 require_positive(field, v.0)?;
@@ -517,7 +528,8 @@ impl MachineProfile {
     /// The mode is software policy and never a machine-confirmable field.
     /// Tool length measurement and the spindle-to-axis distance are present
     /// when the machine measures tool lengths (the distance even while it is
-    /// not known), the recommended minimum safe Z when given.
+    /// not known), the recommended minimum safe Z and the minimum clearance
+    /// radius when given.
     pub fn fields(&self) -> Vec<ProfileField> {
         let spindle = self.min_spindle_rpm.is_some() || self.max_spindle_rpm.is_some();
         let block_time = self.min_block_ms > 0.0 && self.short_block_mode != ShortBlockMode::Off;
@@ -531,6 +543,7 @@ impl MachineProfile {
                     self.automatic_tool_length
                 }
                 ProfileField::RecommendedMinSafeZ => self.recommended_min_safe_z.is_some(),
+                ProfileField::MinClearanceRadius => self.min_clearance_radius.is_some(),
                 _ => true,
             })
             .collect()
@@ -592,6 +605,7 @@ impl MachineProfile {
             automatic_tool_length: false,
             spindle_to_axis: None,
             recommended_min_safe_z: None,
+            min_clearance_radius: None,
             clearance: Clearance {
                 radius: Millimetres(40.0),
                 safe_z: Millimetres(50.0),

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking family release (0.34.0 provisional, lane CLEARANCE, issue #336; decision 0530, proposed):** no change in this crate; all family crates advance together under 0048.
+
 ## 0.31.0
 
 - **Fix (CodeRabbit on #426):** adaptive spacing panicked for a tool whose cutting radius is under 0.04 mm (diameter under 0.08 mm): the step between poses along a pass was clamped between 0.02 mm and half the radius, and those bounds crossed. On main since #422 in axial, helical and simultaneous finishing, and in this pull request's roughing. One shared `adaptive::pose_step` now keeps the lower bound at most half the radius (NFR-07); for any larger tool the step, the path and the G-code are unchanged.

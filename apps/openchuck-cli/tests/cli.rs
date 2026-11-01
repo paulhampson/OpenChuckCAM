@@ -636,6 +636,66 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
     let out = run(&args(&["report", p]));
     assert!(out.stdout.contains("machine:    Makera Z1") && out.stdout.contains("material:   oak"));
 
+    // The setup's minimum clearance warns when the safe cylinder is inside
+    // it; Clearance from stock grows the clearance to it (decision 0530).
+    let out = run(&args(&[
+        "setup",
+        p,
+        "Setup 1",
+        "--clearance",
+        "machine",
+        "--min-clearance",
+        "45",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    for words in [
+        "minimum:    clearance radius 45 mm (set for this setup)",
+        "inside the minimum clearance (radius 45.000 mm, set for this setup)",
+    ] {
+        assert!(out.stdout.contains(words), "{words}: {}", out.stdout);
+    }
+    let out = run(&args(&[
+        "setup",
+        p,
+        "Setup 1",
+        "--clearance-from-stock",
+        "5",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains(
+            "in use:     safe cylinder radius 45.000 mm, safe Z 45.000 mm (Clearance from stock, margin 5 mm)"
+        ),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        !out.stdout.contains("inside the minimum clearance"),
+        "{}",
+        out.stdout
+    );
+    for bad in [
+        ["--min-clearance", "0"],
+        ["--min-clearance", "x"],
+        ["--clearance-from-stock", "-1"],
+    ] {
+        let out = run(&args(&["setup", p, "Setup 1", bad[0], bad[1]]));
+        assert_ne!(out.code, Some(0), "{bad:?}");
+        assert!(out.stderr.contains(bad[0]), "{bad:?}: {}", out.stderr);
+    }
+    let out = run(&args(&[
+        "setup",
+        p,
+        "Setup 1",
+        "--min-clearance",
+        "machine",
+        "--clearance-from-stock",
+        "off",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!out.stdout.contains("minimum:"), "{}", out.stdout);
+    assert!(!out.stdout.contains("in use:"), "{}", out.stdout);
+
     // Bad values are refused with a clear message.
     let out = run(&args(&["setup", p, "Setup 1", "--clearance", "30,6"]));
     assert_ne!(out.code, Some(0));

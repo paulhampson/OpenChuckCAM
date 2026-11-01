@@ -631,3 +631,80 @@ fn req_set_01_req_prj_04_the_spindle_height_fields_need_project_schema_22() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The setup's clearance rules and the machine copy's minimum clearance
+/// radius survive save and load; a schema 25 project reads with neither, so
+/// its clearance is unchanged; a schema 25 file that already has one is
+/// refused (decision 0530; SET-06, PRJ-04, GC-07).
+#[test]
+fn req_set_06_req_prj_04_clearance_rules_need_project_schema_26() {
+    use openchuck_types::setup::ClearanceRules;
+    let dir = temp_dir("clearance-rules-schema");
+    let mut project = project_with(&all_stocks()[..1]);
+    let id = SetupId::from_u128(10);
+
+    // An older project: no rules, no machine minimum.
+    file::save(&project, &dir).unwrap();
+    let setup_path = std::fs::read_dir(dir.join("setups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let machine_path = dir.join(file::MACHINE_FILE);
+    let setup_text = std::fs::read_to_string(&setup_path).unwrap();
+    assert!(!setup_text.contains("clearance_rules"), "{setup_text}");
+    let old = format!("schema = {}", file::SCHEMA);
+    for path in [&setup_path, &machine_path] {
+        let text = std::fs::read_to_string(path).unwrap();
+        std::fs::write(path, text.replacen(&old, "schema = 25", 1)).unwrap();
+    }
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(
+        loaded.setup(id).unwrap().clearance_rules,
+        ClearanceRules::default()
+    );
+    assert_eq!(loaded.machine().unwrap().min_clearance_radius, None);
+
+    // Both round-trip at schema 26.
+    let mut setup = project.setup(id).unwrap().clone();
+    setup.clearance_rules = ClearanceRules {
+        min_radius: Some(Millimetres(42.0)),
+        from_stock: Some(Millimetres(5.0)),
+    };
+    project.replace(Item::Setup(setup)).unwrap();
+    let mut machine = z1();
+    machine.min_clearance_radius = Some(Millimetres(45.0));
+    project.set_machine(Some(machine)).unwrap();
+    file::save(&project, &dir).unwrap();
+    assert_eq!(file::load(&dir).unwrap(), project);
+
+    // Written by schema 26, labelled 25: refused, naming the field.
+    for (path, field) in [
+        (&setup_path, "clearance_rules"),
+        (&machine_path, "min_clearance_radius"),
+    ] {
+        file::save(&project, &dir).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        std::fs::write(path, text.replacen(&old, "schema = 25", 1)).unwrap();
+        let error = file::load(&dir).unwrap_err().to_string();
+        assert!(
+            error.contains(field) && error.contains("schema 26"),
+            "{field}: {error}"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn req_nfr_07_bad_clearance_rules_are_refused_by_the_project() {
+    use openchuck_types::setup::ClearanceRules;
+    let mut project = project_with(&all_stocks()[..1]);
+    let mut setup = project.setup(SetupId::from_u128(10)).unwrap().clone();
+    setup.clearance_rules = ClearanceRules {
+        min_radius: Some(Millimetres(-1.0)),
+        from_stock: None,
+    };
+    let error = project.replace(Item::Setup(setup)).unwrap_err().to_string();
+    assert!(error.contains("clearance_rules.min_radius"), "{error}");
+}

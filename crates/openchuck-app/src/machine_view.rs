@@ -71,6 +71,9 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
         ProfileField::RecommendedMinSafeZ => {
             "Check that the safe Z clears the chuck, the jaws and the part on your machine."
         }
+        ProfileField::MinClearanceRadius => {
+            "Measure the largest radius about the rotary axis of the chuck body, the jaws at the opening you use, the headstock and the tailstock, and add a margin."
+        }
         ProfileField::SpindleRange => {
             "Check the spindle's lowest and highest speed in the machine's documents or controller settings."
         }

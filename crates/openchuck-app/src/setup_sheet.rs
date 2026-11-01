@@ -672,7 +672,7 @@ impl SetupSheet {
             let workholding = setup
                 .workholding
                 .resolved(setup.stock.as_ref(), extent.as_ref());
-            let mut facts = setup_facts(project, setup);
+            let mut facts = setup_facts(project, setup, extent.as_ref());
             facts.extend(workholding_facts(setup, &workholding, extent.as_ref()));
             sections.push(SheetSection {
                 heading: format!("Setup: {}", setup.name),
@@ -894,7 +894,11 @@ fn used_tools(project: &Project) -> Vec<&ToolSnapshot> {
         .collect()
 }
 
-fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
+fn setup_facts(
+    project: &Project,
+    setup: &Setup,
+    extent: Option<&PartExtent>,
+) -> Vec<(String, String)> {
     let part = setup
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
@@ -934,6 +938,30 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
             "Clearance".to_string(),
             format!("radius {} mm, safe Z {} mm", mm(c.radius.0), mm(c.safe_z.0)),
         ));
+    }
+    // The clearance the program uses and the minimum it is checked against,
+    // only when the setup sets either rule, so an older sheet is unchanged
+    // (decision record 0530).
+    if !setup.clearance_rules.is_default()
+        && let Some(machine) = project.machine()
+    {
+        let e = crate::setup::effective_clearance(machine, setup, extent.map(|p| &p.bounds));
+        if let Some((minimum, source)) = e.minimum {
+            facts.push((
+                "Minimum clearance".to_string(),
+                format!("radius {} mm ({})", mm(minimum.0), source.name()),
+            ));
+        }
+        if e.from_stock {
+            facts.push((
+                "Clearance in use".to_string(),
+                format!(
+                    "radius {} mm, safe Z {} mm (Clearance from stock)",
+                    mm(e.clearance.radius.0),
+                    mm(e.clearance.safe_z.0)
+                ),
+            ));
+        }
     }
     facts
 }
@@ -1553,6 +1581,47 @@ mod tests {
         );
         assert!(
             matches!(&sheet.sections[0].body, SheetBody::Text(t) if t.starts_with("One program file was"))
+        );
+    }
+
+    /// The setup sheet names the minimum clearance and the clearance in use
+    /// only when the setup sets a clearance rule, so an older project's
+    /// sheet is unchanged (decision 0530; GC-12, GC-07).
+    #[test]
+    fn req_gc_12_req_set_06_the_sheet_gives_the_clearance_in_use_only_with_rules() {
+        use openchuck_types::setup::ClearanceRules;
+        use openchuck_types::units::Millimetres;
+        let mut project = Project::new("sheet");
+        let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+        machine.min_clearance_radius = Some(Millimetres(45.0));
+        project.set_machine(Some(machine)).unwrap();
+        let mut setup = Setup::new(openchuck_project::id::SetupId::from_u128(1), "S");
+        setup.stock = Some(openchuck_types::stock::Stock::Cylinder {
+            diameter: Millimetres(100.0),
+            length: Millimetres(20.0),
+            x_start: Millimetres(0.0),
+        });
+        let names = |facts: Vec<(String, String)>| -> Vec<String> {
+            facts.into_iter().map(|(name, _)| name).collect()
+        };
+        let plain = names(setup_facts(&project, &setup, None));
+        assert!(!plain.iter().any(|n| n.contains("lear")), "{plain:?}");
+        setup.clearance_rules = ClearanceRules {
+            min_radius: None,
+            from_stock: Some(Millimetres(5.0)),
+        };
+        let facts = setup_facts(&project, &setup, None);
+        let get = |name: &str| {
+            facts
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(get("Minimum clearance"), "radius 45.000 mm (from the machine)");
+        assert_eq!(
+            get("Clearance in use"),
+            "radius 55.000 mm, safe Z 55.000 mm (Clearance from stock)"
         );
     }
 }

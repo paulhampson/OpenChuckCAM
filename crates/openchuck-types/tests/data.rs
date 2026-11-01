@@ -191,8 +191,9 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     // No range: nothing to confirm either.
     assert!(!m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
     // The block-time pair, the software policy and the three spindle-height
-    // fields (decision 0317) are off too.
-    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 7);
+    // fields (decision 0317) and the minimum clearance radius (decision
+    // 0530) are off too.
+    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 8);
     m.max_spindle_rpm = Some(SpindleSpeed(13000.0));
     m.validate().unwrap();
     assert!(m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
@@ -453,4 +454,48 @@ fn req_gc_17_req_set_01_only_active_block_time_values_need_machine_confirmation(
             .iter()
             .all(|field| baseline.contains(field))
     );
+}
+
+/// A profile can give the smallest safe cylinder radius that clears its
+/// chuck, jaws, headstock and tailstock, with its provenance (SET-06, SET-10,
+/// UI-13; decision 0530). Unset, it is not written and not listed, so an
+/// existing profile reads and writes as before (GC-07).
+#[test]
+fn req_set_06_req_ui_13_a_profile_can_give_a_minimum_clearance_radius() {
+    use openchuck_types::machine::ProfileField;
+    let plain = MachineProfile::example_x_rotary();
+    assert_eq!(plain.min_clearance_radius, None);
+    assert!(ProfileField::ALL.contains(&ProfileField::MinClearanceRadius));
+    assert!(!plain.fields().contains(&ProfileField::MinClearanceRadius));
+    assert_eq!(
+        ProfileField::MinClearanceRadius.name(),
+        "min_clearance_radius"
+    );
+    let text = serde_json::to_string(&plain).unwrap();
+    assert!(!text.contains("min_clearance_radius"), "{text}");
+
+    let mut m = plain.clone();
+    m.min_clearance_radius = Some(Millimetres(45.0));
+    m.validate().unwrap();
+    assert!(m.fields().contains(&ProfileField::MinClearanceRadius));
+    assert!(
+        m.unconfirmed_fields()
+            .contains(&ProfileField::MinClearanceRadius)
+    );
+    let back: MachineProfile = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+    assert_eq!(back, m);
+    // A minimum above the profile's own safe cylinder is allowed: the setup
+    // checks warn about it, the profile does not refuse it (decision 0530).
+    m.min_clearance_radius = Some(Millimetres(m.clearance.radius.0 + 10.0));
+    m.validate().unwrap();
+}
+
+#[test]
+fn req_nfr_07_a_bad_minimum_clearance_radius_is_refused() {
+    for value in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut m = MachineProfile::example_x_rotary();
+        m.min_clearance_radius = Some(Millimetres(value));
+        let e = m.validate().unwrap_err().to_string();
+        assert!(e.contains("min_clearance_radius"), "{value}: {e}");
+    }
 }

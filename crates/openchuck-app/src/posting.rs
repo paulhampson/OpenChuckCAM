@@ -390,6 +390,7 @@ fn check_file(
     definition: &PostDefinition,
     machine: &openchuck_types::machine::MachineProfile,
     setup: &openchuck_project::Setup,
+    safe_z: f64,
     part: &Toolpath,
     allow_unadjusted_clamp_time: bool,
 ) -> GcodeReport {
@@ -444,7 +445,7 @@ fn check_file(
             z: machine.max_feeds.z.0,
             rotary: machine.max_feeds.rotary.0,
         },
-        safe_z: setup.clearance.unwrap_or(machine.clearance).safe_z.0,
+        safe_z,
         spindle_off_at_tool_change: options.tool_change.stop_spindle_first,
         require_work_offset: true,
         allow_inverse_time: options.feed_mode == FeedMode::G93,
@@ -743,6 +744,18 @@ pub(crate) fn post_toolpath(
                     "setup '{setup_tag}' of the toolpath is not in the project"
                 ))
             })?;
+        // The setup's effective safe Z (decision record 0530): the same one
+        // its toolpaths and links were made with, from the part bounds the
+        // run measured.
+        let part_bounds = run
+            .groups
+            .iter()
+            .find(|g| g.setup == setup.id)
+            .map(|g| g.part_bounds);
+        let safe_z = crate::setup::effective_clearance(machine, setup, part_bounds.as_ref())
+            .clearance
+            .safe_z
+            .0;
         let mut tools = BTreeMap::new();
         let mut operation_spindle = BTreeMap::new();
         for group in &groups {
@@ -804,7 +817,7 @@ pub(crate) fn post_toolpath(
                 mode: machine.short_block_mode,
             },
             a_range: machine.a_range,
-            safe_z: setup.clearance.unwrap_or(machine.clearance).safe_z.0,
+            safe_z,
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
             operation_names: operation_names.clone(),
@@ -923,6 +936,7 @@ pub(crate) fn post_toolpath(
             post.definition(),
             machine,
             setup,
+            safe_z,
             &output.verification_path,
             output.clamped_feeds > 0
                 && !(settings.0.min_block_ms > 0.0

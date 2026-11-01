@@ -1102,6 +1102,7 @@ pub(crate) fn run_checks(
                     frame: &s.frame,
                     stock: s.stock.as_ref(),
                     clearance: s.clearance.as_ref(),
+                    rules: &s.clearance_rules,
                     part: part.as_ref(),
                 })
             }
@@ -1262,6 +1263,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::PartOutsideStock => Some(SetupPart::Stock),
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
         | SetupWarningKind::AutoTabNoRoom { .. }
@@ -1830,14 +1832,26 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 // A tool too long for the safe Z on a machine that measures
                 // tool lengths (decision record 0318): once per tool of the
                 // setup's enabled operations, in the tool list's order.
-                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                // The setup's effective clearance, grown from the stock when
+                // Clearance from stock is on (decision record 0530, case a).
+                let part_bounds = s
+                    .part
+                    .and_then(|id| checks.and_then(|c| c.models.get(&id)))
+                    .and_then(|model| model.findings.as_ref().ok())
+                    .and_then(|f| f.extent)
+                    .map(|e| e.in_setup(&s.frame).bounds);
+                let effective = crate::setup::effective_clearance(m, s, part_bounds.as_ref());
+                let safe_z = effective.clearance.safe_z.0;
+                let minimum = effective.minimum.map(|(r, _)| r.0);
                 for snapshot in project.tools().iter().filter(|t| {
                     project
                         .operations()
                         .iter()
                         .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
                 }) {
-                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                    if let Some(found) =
+                        crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
+                    {
                         let text = crate::setup::spindle_height_text(
                             snapshot.controller.number,
                             &snapshot.name,
@@ -1848,7 +1862,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             at(SetupPart::Machine),
                             ItemStatus::new(
                                 ItemState::Warning,
-                                "a tool may take the spindle above the Z travel",
+                                if found.below_minimum.is_some() {
+                                    "a tool may be too long to clear the workholding"
+                                } else {
+                                    "a tool may take the spindle above the Z travel"
+                                },
                             ),
                         );
                         messages.push(Message::new(

@@ -42,7 +42,9 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 /// - 7: optional `automatic_tool_length`, `spindle_to_axis` and
 ///   `recommended_min_safe_z` for the spindle-height check (decision record
 ///   0317).
-pub const MACHINE_SCHEMA: i64 = 7;
+/// - 8: optional `min_clearance_radius`, the radius that clears the chuck,
+///   jaws, headstock and tailstock (decision record 0530).
+pub const MACHINE_SCHEMA: i64 = 8;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
 const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
@@ -52,7 +54,32 @@ const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[
     machine_4_to_5,
     machine_5_to_6,
     machine_6_to_7,
+    machine_7_to_8,
 ];
+
+/// Schema 8 adds the optional minimum clearance radius, which a schema 7
+/// file does not have, so it needs no change but its number.
+fn machine_7_to_8(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    premature_min_clearance(table, 7, 8)
+}
+
+/// Refuses a machine file of schema `schema` that already holds
+/// `min_clearance_radius`, which schema `introduced` added (decision record
+/// 0530).
+pub(crate) fn premature_min_clearance(
+    table: &toml::Table,
+    schema: i64,
+    introduced: i64,
+) -> Result<(), String> {
+    let machine = table.get("machine").and_then(toml::Value::as_table);
+    if machine.is_some_and(|m| m.contains_key("min_clearance_radius")) {
+        return Err(format!(
+            "this schema {schema} file has `min_clearance_radius`, a field schema {introduced} \
+             introduced; remove it, or set `schema = {introduced}` if the file was written for it"
+        ));
+    }
+    Ok(())
+}
 
 /// Schema 7 adds the optional spindle-height fields, which a schema 6 file
 /// does not have, so it needs no change but its number.
@@ -451,9 +478,18 @@ mod tests {
         assert_eq!(z1.name, MAKERA_Z1_NAME);
         assert_eq!(z1.rotary_axis, RotaryAxis::X);
         assert_eq!(z1.a_sense, ASense::Positive);
-        // Every field says where it came from.
+        // Every field says where it came from, but the minimum clearance
+        // radius, which the Z1 leaves blank until it is measured (decision
+        // 0530, D4; OI-1780).
+        assert_eq!(z1.min_clearance_radius, None);
+        assert!(
+            !z1.provenance
+                .contains_key(&ProfileField::MinClearanceRadius)
+        );
         for field in ProfileField::ALL {
-            assert!(z1.provenance.contains_key(&field), "{field} is not marked");
+            if field != ProfileField::MinClearanceRadius {
+                assert!(z1.provenance.contains_key(&field), "{field} is not marked");
+            }
         }
         // The owner confirmed the axis, direction, range and feed limits from
         // use of the machine, and the axis height by Makera's probing routine
@@ -795,5 +831,32 @@ mod tests {
                 proptest::prop_assert_eq!(parse_profile(Path::new("x.toml"), &written).unwrap(), profile);
             }
         }
+    }
+
+    /// A library profile's minimum clearance radius needs profile schema 8;
+    /// a schema 7 file reads with none, and one that already has it is
+    /// refused (decision 0530).
+    #[test]
+    fn req_set_06_req_set_10_the_minimum_clearance_radius_needs_profile_schema_8() {
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let text = render_profile(&z1).unwrap();
+        let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 7");
+        assert_eq!(
+            parse_profile(Path::new("z1.toml"), &old)
+                .unwrap()
+                .min_clearance_radius,
+            None
+        );
+        z1.min_clearance_radius = Some(openchuck_types::units::Millimetres(45.0));
+        let text = render_profile(&z1).unwrap();
+        assert_eq!(parse_profile(Path::new("z1.toml"), &text).unwrap(), z1);
+        let old = text.replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 7");
+        let err = parse_profile(Path::new("z1.toml"), &old)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("min_clearance_radius") && err.contains("schema 8"),
+            "{err}"
+        );
     }
 }

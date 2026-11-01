@@ -24,7 +24,7 @@ use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::machine::{Clearance, MachineProfile};
 use openchuck_types::model::{ModelFormat, ModelKind};
-use openchuck_types::setup::{SetupFrame, validate_setup};
+use openchuck_types::setup::{ClearanceRules, SetupFrame, validate_setup};
 use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
@@ -303,6 +303,11 @@ pub struct Setup {
     /// The setup's own clearance geometry; `None` uses the machine
     /// profile's (SET-06).
     pub clearance: Option<Clearance>,
+    /// The setup's minimum clearance radius and Clearance from stock; the
+    /// default sets neither and leaves the clearance as it is (decision
+    /// record 0530).
+    #[serde(default, skip_serializing_if = "ClearanceRules::is_default")]
+    pub clearance_rules: ClearanceRules,
     /// The held regions and retaining tabs (SET-09, OP-21); empty by default.
     pub workholding: Workholding,
 }
@@ -321,6 +326,7 @@ impl Setup {
             material: None,
             frame: SetupFrame::default(),
             clearance: None,
+            clearance_rules: ClearanceRules::default(),
             workholding: Workholding::default(),
         }
     }
@@ -1656,6 +1662,8 @@ impl Project {
                 }
                 let field = format!("setup {}", s.id);
                 validate_setup(&s.frame, s.stock.as_ref(), s.clearance.as_ref(), &field)?;
+                s.clearance_rules
+                    .validate(&format!("{field}.clearance_rules"))?;
                 Ok(validate_workholding(
                     &s.workholding,
                     s.stock.as_ref(),

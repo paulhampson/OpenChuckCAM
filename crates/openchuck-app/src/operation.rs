@@ -637,7 +637,7 @@ pub(crate) fn generate_with_part(
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(machine),
-        clearance: setup.clearance.unwrap_or(machine.clearance),
+        clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: entry_safety.as_ref(),
