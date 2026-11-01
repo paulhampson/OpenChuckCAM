@@ -12,8 +12,10 @@ These documents are the source of truth for the project. They live in the reposi
 | [dependencies.md](dependencies.md) | The NFR-14 record of every third-party dependency: pinned version, survey score, licence and justification, and the pin and upgrade policy. |
 | [fuzzing.md](fuzzing.md) | Every user-supplied file format with its fuzz target and corpus, and the running total of fuzz CPU hours per parser (NFR-07, decision 0107). |
 | [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) | Step-by-step instructions, checklists and results forms for G-code gates 4 (the Z1 air cut) and 5 (the first cut), with the [air-cut procedure](z1-air-cut-procedure.md) and the [safe-practice checklist](z1-safe-practice-checklist.md) they build on. Owner results and trial-specific waivers recorded; remaining evidence gaps and local verification are itemised in section 10. |
+| [templates/](templates/) | Blank templates for records: [z1-gate-results-record.md](templates/z1-gate-results-record.md), the results and review record of a run of Z1 gates 4 and 5. |
 | [open-items.md](open-items.md) | The register of open items raised by decision records and slice reviews, with their state. |
 | [decisions/](decisions/) | Decision records for choices made after these documents were written. |
+| [archive/](archive/) | Raw evidence (logs, run output, scripts) that a decision record cites, in one folder per record (`archive/<NNNN>-<name>/`, each with a README). Not a source of truth: the record's Verification section is. |
 | [ui-design/](ui-design/) | The user interface specification: layout, workflow, states, wording and visual tokens of the desktop application. Accepted with decision 0038; it ranks with the decision records (precedence 5). Rendered mockups are in `ui-design/mockups/`. |
 
 The guide for people who use the program is not here: it is [`user-docs/`](../user-docs/README.md), published on GitHub Pages ([decision 0400](decisions/0400-user-documentation-site.md)). It is written from these documents, and where it adapts one (the Z1 air-cut procedure and safe-practice checklist) the document here is the authority.

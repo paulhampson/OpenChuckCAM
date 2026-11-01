@@ -69,7 +69,7 @@ https://github.com/paulhampson/OpenChuckCAM/actions/runs/39663424881
 
 | Issue | What to check | Lane |
 | --- | --- | --- |
-| #334 | On the affected project, drag the playback point to the far right. The final cut part must appear without stepping back or another interaction. Also check Go to the final move, stepping and playing to the end, with deviation colours on/off. Retest after a new simulation and while an earlier stock surface is still being prepared. | BUG-SIMEND; cause and automated evidence in [verification](../docs/handoffs/bug-simend-verification.md) |
+| #334 | On the affected project, drag the playback point to the far right. The final cut part must appear without stepping back or another interaction. Also check Go to the final move, stepping and playing to the end, with deviation colours on/off. Retest after a new simulation and while an earlier stock surface is still being prepared. | BUG-SIMEND; cause and automated evidence in [verification](../docs/decisions/0580-simulate-display-synchronisation-fixes.md) |
 | #330 | When checkpoint preparation hits its memory bound or a cut-surface job fails, Deviation colours is disabled with the reason beside it and in its tooltip. Playback retains the error and guidance; preparation stops without automatic retry. Retained stale results remain marked stale and export stays blocked. After a successful fresh run, stock colouring and picking work normally. | BUG-SIMEND; automated tests inject the errors at the UI job boundaries rather than allocating over 1.5 GiB |
 
 The owner tests and closes these issues; the lane uses Refs, not Closes.

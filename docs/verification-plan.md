@@ -390,7 +390,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 - A safe-practice checklist for first machine trials is written in work breakdown slice 20 and reviewed by whoever operates the Makera Z1.
 - P2 groups (COL, VC, INT) have outline verification only; detailed test design waits until their designs exist.
 
-GC-17 gate-4 evidence: [results](z1-gates-4-5-test-instructions.md#10-results), PR #284 owner comment 6399134358, firmware 1.1.2/ESP32 via WiFi upload. Both parts passed at 7/10/20 ms; all eight 5/3/2/1 ms sections stuttered and failed. The measured minimum passing tested value is 7 ms, not a universal controller limit. The owner retained original K4 as a trial-specific release waiver on 25 Oct 2026; subsequent LinuxCNC replay passed. Reference-program waivers and OI-267 remain separately recorded.
+GC-17 gate-4 evidence: [results](archive/0244-z1-gates-4-5/z1-gates-4-5-results-and-review-record.md#10-results), PR #284 owner comment 6399134358, firmware 1.1.2/ESP32 via WiFi upload. Both parts passed at 7/10/20 ms; all eight 5/3/2/1 ms sections stuttered and failed. The measured minimum passing tested value is 7 ms, not a universal controller limit. The owner retained original K4 as a trial-specific release waiver on 25 Oct 2026; subsequent LinuxCNC replay passed. Reference-program waivers and OI-267 remain separately recorded.
 
 ### ROUGHPATH boundary and reversing-entry checks
 
