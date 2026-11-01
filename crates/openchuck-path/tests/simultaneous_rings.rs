@@ -321,6 +321,12 @@ fn req_nfr_07_an_unknown_pass_shape_is_refused_by_name() {
 /// Every cutting move either turns A at constant X (a ring) or moves along
 /// X with A held still (a step), and the number of separate cuts.
 fn rings_and_steps(p: &GeneratedPath, what: &str) -> usize {
+    rings_and_maybe_steps(p, what, true)
+}
+
+/// As [`rings_and_steps`]; with `need_steps` false a path with no steps
+/// (every step split away) is allowed.
+fn rings_and_maybe_steps(p: &GeneratedPath, what: &str, need_steps: bool) -> usize {
     let (mut steps, mut turning) = (0, 0);
     for (from, s) in cuts(p) {
         let dx = s.end.tip.x - from.tip.x;
@@ -341,7 +347,10 @@ fn rings_and_steps(p: &GeneratedPath, what: &str) -> usize {
             turning += 1;
         }
     }
-    assert!(steps > 0 && turning > 0, "{what}: {steps} steps, {turning}");
+    assert!(
+        (steps > 0 || !need_steps) && turning > 0,
+        "{what}: {steps} steps, {turning}"
+    );
     let mut count = 0;
     let mut cutting = false;
     for s in &p.group.segments {
@@ -395,14 +404,20 @@ fn req_op_05_req_op_06_on_a_lobed_part_steps_hold_a_and_the_tilt_stays_in_bounds
     // normal along the step; where it would lean more than the lead and
     // the tilt the step is split, never cut leaning further.
     let f = fixture(&lobed(), 41, 720);
-    for tilt in [10.0, 2.0] {
+    // With no tilt allowed a ring cannot start at the A the step held where
+    // the normal there is not that angle; it starts on its own normal and
+    // the shared services link the step to it.
+    for tilt in [10.0, 2.0, 0.0] {
         let p = path(
             &f,
             &ringed(values(1.0, &[(parameter::MAX_TILT, num(tilt))])),
         )
         .unwrap();
-        let cuts = rings_and_steps(&p, &format!("tilt {tilt}"));
-        assert!(cuts >= 1, "{cuts}");
+        let cuts = rings_and_maybe_steps(&p, &format!("tilt {tilt}"), tilt > 0.0);
+        if tilt == 0.0 {
+            // Every ring is its own cut, joined by the shared services.
+            assert!(cuts > 1, "{cuts}");
+        }
         assert!(p.notes.iter().any(|n| n.message.contains("rings")));
     }
 }

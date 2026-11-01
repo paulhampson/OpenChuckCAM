@@ -566,6 +566,26 @@ fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
         assert!(ball[0].contains(x), "{x}: {}", ball[0]);
     }
     assert!(note(ToolShape::FlatEnd).is_empty());
+    // In rings each face's ring is its turn, and the note is the same
+    // (decision record 0421).
+    let f = Fixture::new(
+        MeshSurface::new(&crankshaft()).unwrap(),
+        18.0,
+        &z1(ToolShape::BallEnd),
+    );
+    let mut rings = v.clone();
+    rings.insert(
+        parameter::PASS_SHAPE.to_owned(),
+        ParameterValue::Text("rings".to_owned()),
+    );
+    let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &rings, ctx)).unwrap();
+    let in_rings: Vec<String> = path
+        .notes
+        .iter()
+        .map(|n| n.message.clone())
+        .filter(|m| m.contains("inside corner"))
+        .collect();
+    assert_eq!(in_rings, ball);
 }
 
 #[test]
