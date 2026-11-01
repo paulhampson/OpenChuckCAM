@@ -1,6 +1,6 @@
 # 0510: Axial and indexed finishing can keep the links between passes low (OP-14, SET-06, SET-09, NFR-07, NFR-12, GC-07, NFR-06; issue #436; lane PATH-TIDY)
 
-- **Status:** proposed. The owner's choice of the option (decision 1: name, default and wording) was relayed by the coordinator on 1 Nov 2026; the record is not yet accepted (decision 0049).
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The option (name, default and wording) was the owner's choice, relayed the same way.
 - **Date:** 1 Nov 2026.
 - **Issue:** #436, "Axial strategies should have an option to reduce retraction".
 - **Builds on:** [0033](0033-slice-14-rotary-roughing.md) item 6 (links against the stock the pass starts with), [0034](0034-slice-12-baseline-finishing.md) (finishing links), [0035](0035-workholding-and-retaining-tabs.md) (held regions and tabs are part of the target and stay in the stock).
