@@ -1,6 +1,6 @@
 # 0421: Rings instead of a spiral for simultaneous finishing's spiral pattern (OP-05, OP-06, OP-11, OP-12, OP-14, OP-15, OP-20, OP-26, GC-07, NFR-06, NFR-07, NFR-12; issue #440; lane RINGS-ALL)
 
-- **Status:** proposed by lane RINGS-ALL, 1 Nov 2026, for the owner to accept. Item 3 is the owner's choice D3 (option 1 of 3), relayed by the coordinator the same day.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane RINGS-ALL the same day. Item 3 is the owner's choice D3 (option 1 of 3), relayed by the coordinator the same day.
 - **Date:** 1 Nov 2026.
 - **Issue:** #440, "Rings option for every strategy that currently cuts a spiral". Pull request 2 of the lane.
 - **Builds on:** [0390](0390-helical-finishing-in-rings.md) (helical finishing in rings), [0420](0420-rings-for-rest-roughing-and-round-facing.md) (rings for rest machining, continuous roughing and round Facing), [0036](0036-slice-13-simultaneous-finishing.md) (simultaneous finishing: the tool axis policy and the smoothing of A), [0363](0363-simultaneous-finishing-off-axis-sections-walls-and-held-ends.md) (the section-centre drive, OP-26), [0368](0368-simultaneous-finishing-of-hidden-surfaces.md) (hidden surfaces, OP-20, and the shank), [0410](0410-face-turns-round-an-off-axis-section.md) (face turns round an off-axis section's centre, lane CRANKEXCESS), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (a turn at each face across the axis).
