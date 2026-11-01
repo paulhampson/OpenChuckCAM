@@ -676,7 +676,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Length | Number | mm | Along X |
    | Diameter | Number | mm | Cylinder only |
    | Diameter at start X, Diameter at end X | Number, two rows | mm | Frustum only. Under them a derived line says which end faces the part: "Small end towards the part", or in `warning` amber "Large end towards the part" |
-   | Narrowest | Read-only | mm | The smallest diameter, compared with the tools (below) |
+   | Length vs tools | Read-only | mm | The tab's length along X, compared with the tools (below; [decision 0470](../decisions/0470-tab-length-is-checked-against-the-tool.md)) |
    | Placement | Segmented: On the axis, Around the axis | | |
    | Count | Whole number, 1 to 64 | | Around the axis only; default 2 |
    | Start angle | Number | ° | Around the axis only; default 0.00; from +Y towards +Z, evenly spaced after it (decision 0041 item 4); a hint names the angles, "0.00°, 180.00°" |
@@ -717,7 +717,7 @@ The checks that need the part and the tools run as a job on Apply and on "Check 
 | Check | Message |
 | --- | --- |
 | A tab not wholly in the head or the tail zone (OI-180) | "Tab 3 (X −1.000 to 1.000 mm) is not wholly in the head or the tail zone. Tabs lie between the held region (or the end of the stock) and the part, or between the part and the other end." |
-| A tab narrower than a tool of the setup's operations (OI-159) | "Tab 2 is 3.000 mm across at its narrowest, narrower than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab wider or use a smaller tool." |
+| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decision 0470) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
 | The part, the stock or a tool changed while checking | "The part, stock or tools changed while checking; check again." |
 | The draft changed while it was being checked | "The draft changed while it was being checked; apply it again." |
 

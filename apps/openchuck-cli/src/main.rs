@@ -1053,7 +1053,7 @@ fn run(cli: Cli) -> Result<()> {
                 edited.workholding.tabs.push(parse_tab(text)?);
             }
             let id = edited.id;
-            // Tabs outside the head and tail zones, and tabs narrower than a
+            // Tabs outside the head and tail zones, and tabs shorter along X than a
             // tool the setup uses, are refused as they are when generating
             // (OI-159, OI-180; decision 0045 item 4).
             let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
