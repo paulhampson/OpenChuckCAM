@@ -174,6 +174,25 @@ impl Rig {
         out
     }
 
+    /// The texts painted cut short with an ellipsis (`Galley::elided`). A
+    /// galley's own text is always the whole input, so only this flag tells
+    /// a cut label from a whole one.
+    pub(super) fn elided_texts(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) if t.galley.elided => out.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
     /// Every text painted with the rectangle it covers.
     pub(super) fn text_rects(&self) -> Vec<(String, egui::Rect)> {
         fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
@@ -1557,11 +1576,10 @@ fn setup_entries(window: (f32, f32), scale: f32, pane: f32) -> (Vec<egui::Rect>,
 }
 
 /// Field-row layout (specification section 8, UI-16, finding F-19 of issue
-/// 174): the entry boxes use the width the pane leaves after the 120-pixel
-/// label column, and the scroll bar never covers them, at the window sizes
+/// 174): the entry boxes use the width the pane leaves after the label column, and the scroll bar never covers them, at the window sizes
 /// and UI scales of the trial.
 #[test]
-fn req_ui_16_req_ui_07_entry_boxes_fill_the_pane_and_the_scroll_bar_never_covers_them() {
+fn req_ui_16_req_ui_07_entry_boxes_fit_the_pane_and_the_scroll_bar_never_covers_them() {
     for window in [(1366.0, 768.0), (1920.0, 700.0), (1100.0, 700.0)] {
         for scale in [1.0, 1.2] {
             for pane in [280.0, 388.0, 520.0] {
@@ -1580,13 +1598,15 @@ fn req_ui_16_req_ui_07_entry_boxes_fill_the_pane_and_the_scroll_bar_never_covers
                     let at = format!("{r:?} at {window:?} x{scale}, pane {pane}");
                     assert!(r.right() <= right - bar, "covered by the scroll bar: {at}");
                     assert!(
-                        r.left() <= left + 48.0 + width::LABEL_COLUMN + 12.0,
+                        r.left() <= left + 48.0 + width::LABEL_MAX + 12.0,
                         "pushed right of the label column: {at}"
                     );
                 }
                 let widest = texts.iter().map(|r| r.width()).fold(0.0, f32::max);
+                // A number box keeps its compact width (decision 0440); the
+                // pane's width goes to the labels first.
                 assert!(
-                    widest >= 0.4 * width,
+                    widest >= 60.0,
                     "entries {widest} wide in a pane {width} wide at {window:?} x{scale}"
                 );
             }
@@ -1599,10 +1619,10 @@ fn near(a: f32, b: f32) -> bool {
     (a - b).abs() < 0.01
 }
 
-/// Whether an entry rectangle is a text box that runs to the pane's right
-/// edge (the segmented controls and buttons do not).
+/// Whether an entry rectangle is a number or text box of the pane (the
+/// segmented controls and buttons are narrower).
 fn is_text_box(r: &egui::Rect, window_width: f32) -> bool {
-    r.width() > 60.0 && r.height() < 24.0 && r.right() >= window_width - 30.0
+    r.width() >= 100.0 && r.height() < 24.0 && r.left() >= window_width - 340.0
 }
 
 impl Rig {
@@ -1674,7 +1694,10 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
             let at = format!("scale {scale}, setup step {setup}");
             // Content never widens the pane beyond the width it was set to
             // (issues 178 and 179: it crept wider each frame).
-            assert!(near(width, width::INSPECTOR.0), "the pane's width: {at}");
+            assert!(
+                near(width, width::INSPECTOR.0),
+                "the pane's width: {at} {width}"
+            );
             let target = if setup {
                 // This fixture originally edited the cylinder stock's Length.
                 // Machine throughput controls now precede Stock, so ordinal 1
@@ -1714,11 +1737,14 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
                 .iter()
                 .filter(|r| is_text_box(r, rig.size.x))
                 .collect();
+            // Each section has the label column its labels need, so the boxes
+            // of one section share a left edge, within the column's range.
+            let pane_left = rig.size.x - width;
             for r in &wide {
-                assert!((r.left() - wide[0].left()).abs() < 0.6, "left edges: {at}");
+                let from = r.left() - pane_left;
                 assert!(
-                    (r.right() - wide[0].right()).abs() < 0.6,
-                    "right edges: {at}"
+                    (width::LABEL_MIN..=width::LABEL_MAX + 40.0).contains(&from),
+                    "left edges: {at}: {from}"
                 );
             }
             // Nothing in the pane is drawn past its right edge (issue 178:
@@ -1762,7 +1788,7 @@ fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
 
 impl Rig {
     /// Drags from `from` to `to` in small steps and lets go.
-    fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) {
+    pub(super) fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) {
         let button = |pos, pressed| Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
@@ -1802,9 +1828,10 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
     rig.settle_layout();
     assert!(near(rig.inspector_layout().0, max), "dragged to the widest");
     let (_, entries) = rig.inspector_layout();
+    // The number boxes: compact whatever the width of the pane.
     let boxes: Vec<_> = entries
         .iter()
-        .filter(|r| is_text_box(r, rig.size.x))
+        .filter(|r| is_text_box(r, rig.size.x) && (r.width() - width::NUMBER_BOX).abs() < 0.6)
         .collect();
     assert!(!boxes.is_empty());
     for r in &boxes {

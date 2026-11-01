@@ -92,3 +92,17 @@ Do 1 first, after checking the cache list (it is also the largest unknown), then
 | OI-1414 | Option 5: measure the build and listing share of `Check the test partition`, then decide whether clippy or the partition check leaves the Windows leg. |
 | OI-1415 | After each change: re-measure with the same method (per job time, last job, peak concurrent jobs, queue, cache hit) over at least 10 runs and record the result here; also count `e2e.yml` in the 20-job budget. |
 | OI-1416 | A failed scheduled full run on `main` shows only in the Actions tab; decide whether it opens an issue (`nightly-issue`). |
+
+## Outcome (1 Nov 2026)
+
+Options 1 to 4 are merged: #408 (caches, 30 Oct), #407 (nextest in `Each library alone`, 30 Oct), #409 (shards by binary, 31 Oct), #410 (light run on `main` and the nightly full run, 31 Oct), then #452 (the nightly workflow's CMake policy variable, a gap the nightly full run exposed on a cache miss). Measured from the `ci.yml` runs from 30 Oct to 1 Nov (same method as above; one run per row, so these are indications, not a controlled comparison):
+
+| | Before (25 runs, 29 to 30 Oct) | After (runs from 31 Oct) |
+| --- | --- | --- |
+| Push to `main` | same size as a pull request run: about 340 runner min, 18 to 19 jobs, 33 to 49 min | light: 5 jobs, 48 to 99 runner min (median about 62), peak 3 concurrent jobs, 26 to 69 min wall |
+| Full pull request run, runner minutes | about 340 | 300 to 410 (no clear change) |
+| Full pull request run, wall time | median about 38 min (30 to 52) | 36 to 44 min on most runs; a few 56 to 111 min under queueing when several runs overlapped |
+| Jobs held by one pull request run | 17 to 19 (peak) | 13 to 20 (peak) |
+| Scheduled full run | none | first run succeeded: 21 jobs, peak 16, 441 runner min, 57 min |
+
+Reading: the saving is in the merge, not in the pull request. A merge cost about two full runs (about 680 runner minutes) and now costs one full run and one light run (about 400), a cut of roughly 40 %, and the light run holds 3 of the 20 jobs instead of about 19, which is what frees the budget for the next pull request. The wall time of a pull request run did not fall: nextest and the shard split moved time between jobs (Windows share 1 down about 7 min, Ubuntu and macOS share 2 now last, about 2 min earlier overall; lane TABS-CHECK, [#456](https://github.com/paulhampson/OpenChuckCAM/pull/456), later re-dealt the list after the slowest tests were removed: job minutes on its own run, share 1 / share 2, Ubuntu 29.6 / 22.6 (was 42.5 / 28.1), macOS 37.3 / 32.2 (was 42.4 / 22.9), Windows 38.2 / 40.2 (was 22.2 / 40.4), so Windows is now limited by share 2 and the wall time of a run is unchanged), and runs that overlapped with others queued for 4 to 25 min. The expected cache effect (OCCT installs kept, repository cache near 8.3 GiB) is not yet measured: the owner's `gh cache list` a week after #408 is the check (OI-1410). Left open: OI-1410 (that check), OI-1414 (Option 5, not chosen), OI-1415 (keep measuring), OI-1416 (whether a failed nightly run opens an issue).

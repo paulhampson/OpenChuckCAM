@@ -501,3 +501,33 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     }
     out
 }
+
+#[test]
+fn req_nfr_12_req_gc_07_req_ui_12_the_feed_summary_matches_the_per_move_notes_by_operation_id() {
+    // Issue 432 and 418: the run holds one summary per slowed operation, keyed
+    // by id, counting exactly the per-move notes, which stay as they were.
+    let mut seen = 0;
+    for job in jobs().into_iter().filter(|j| !j.name.contains("rough")) {
+        let (dir, app) = build(&job, "summary");
+        let run = app.regenerate().unwrap();
+        for (id, limit) in &run.feed_limits {
+            let name = &app.project().operation(*id).unwrap().name;
+            let prefix = format!("operation '{name}': ");
+            let notes = run
+                .notes
+                .iter()
+                .filter(|n| {
+                    n.starts_with(&prefix) && openchuck_app::note_groups::is_feed_limit_note(n)
+                })
+                .count();
+            assert_eq!(limit.moves, notes, "{}", job.name);
+            assert!(limit.worst_feed < limit.worst_target, "{}", job.name);
+            assert!(limit.lowest <= limit.worst_feed, "{}", job.name);
+            seen += 1;
+        }
+        let again = app.regenerate().unwrap();
+        assert_eq!(again.feed_limits, run.feed_limits, "{}", job.name);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    assert!(seen > 0, "no job was slowed by the machine's feed limits");
+}

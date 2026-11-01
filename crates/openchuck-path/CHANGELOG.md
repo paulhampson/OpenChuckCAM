@@ -1,13 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.33.0
 
-- **Breaking (next minor version, set at the release merge; SWARF-FLOOR; issue #435; decision 0450, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
+- **Breaking (0.33.0, SWARF-FLOOR; issue #435; decision 0450, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
   - **Cut short lifts first.** Where the tool on a ruling would break an avoid or check set (`RegionConstraint::avoid` and `check`), the tip is lifted up the ruling by the least that keeps it off the set (the stock to leave clear of a check set), allowing for the set's sampling, before the pass is cut short; the pass is cut short only where a lift that leaves a quarter of the ruling in contact does not clear it. Before, a set under the whole face (a floor) refused the face. The strip left at the foot is not measured as material left, and the note says how far the tool was lifted.
   - **Negative tip extension.** `swarf::parameter::TIP_EXTENSION` has no minimum: a negative value starts the flank that far up the rulings, the strip is not material left, and a value that leaves nothing of a face's rulings refuses the face naming the value and the length.
   - **Notes.** Each face's note says where the tool's end is against the end of the rulings (a ball or corner radius plus the tip extension).
   - **API.** `swarf::Pose` gains `lift`; `swarf::Limits` gains `tip_lifted`, `lifted_clear_of`, `tip_up` and `end_reach` (struct literals add them).
   - **Output.** A swarf operation with an avoid or check set on Cut short that its tip broke is made differently (lifted where it was cut short or refused). Paths with no such set, and every golden file, are unchanged.
+
+## 0.32.0
+
+- **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change.
 
 ## 0.31.0
 

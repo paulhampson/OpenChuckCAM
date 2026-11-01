@@ -63,21 +63,8 @@ With the hub as an avoid set, the ball and the tapered ball were refused ("the t
 6. **Library API (decision 0048).**
    - `swarf::Pose` gains `lift`; `swarf::Limits` gains `tip_lifted`, `lifted_clear_of`, `tip_up`, `too_short` and `end_reach`.
    - The `tip_extension` parameter has no minimum.
-   - These break the library API, and the output changes (item 1), so the workspace goes to the next minor version with changelog entries, set from `main` at the release merge (0.32.0 if this lane merges first; the coordinator sequences it with lane CRANKEXCESS).
+   - These break the library API, and the output changes (item 1), so the workspace goes to 0.33.0 with changelog entries, set from `main` at the release merge (lane CRANKEXCESS took 0.32.0 first; the coordinator sequences the versions).
    - The application's `SetOptionsShown` gains `cut_short_lifts_tip`, true for swarf.
-
-### Measured after the change
-
-The example `crates/openchuck-app/examples/swarf_floor.rs` on the blisk, blades 7, 9 and 13, the hub in an avoid set on Cut short, tolerance 0.01 mm, measured by the test kit's outline:
-
-| Tool | Tip extension 0, no set: cut into the hub, mm | Tip extension 0, hub in an avoid set: most lift, cut into the hub, length not cut | Tip extension -1, no set: cut into the hub, length not cut (rulings of 1 mm or less) |
-| --- | --- | --- | --- |
-| Flat end mill, 3 mm | 0.027 to 0.299 | 0.069 to 0.388 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
-| Flat end mill, 6 mm | 0.046 to 0.587 | 0.132 to 0.759 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
-| Ball end mill, 3 mm | 1.190 to 1.499 | 1.266 to 1.629 mm; 0.000 mm; none | 0.217 to 0.572 mm; 0 to 1.92 mm |
-| Tapered ball, 0.5 mm tip, 3 degrees, 3 mm | 0.395 to 0.502 | 0.443 to 0.589 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
-
-Nothing is refused. The material left on the blades is unchanged (at most 0.088 mm, the tapered ball's own on blade 7, before and after). A uniform negative tip extension must suit the worst place on the blade, so -1 mm is not enough for the 3 mm ball, whose lift with the hub in an avoid set is 1.27 to 1.63 mm; the 1.92 mm not cut on blades 9 and 13 is the corner of the face where its rulings are 1 mm long or less.
 
 ## Alternatives considered
 
@@ -107,6 +94,21 @@ Nothing is refused. The material left on the blades is unchanged (at most 0.088 
 - **Project format:** unchanged (schema 25).
 - **Interface:** two tooltips change (Cut short on swarf's sets, and Tip extension). No layout change.
 - **OI-237** (the gate measures only the cut face) and **OI-636** (how finely a set is sampled) stay open; issue #442 follows item 3.
+
+## Verification
+
+Measured after the change with the example `crates/openchuck-app/examples/swarf_floor.rs` on the blisk, blades 7, 9 and 13, the hub in an avoid set on Cut short, tolerance 0.01 mm, measured by the test kit's outline:
+
+| Tool | Tip extension 0, no set: cut into the hub, mm | Tip extension 0, hub in an avoid set: most lift, cut into the hub, length not cut | Tip extension -1, no set: cut into the hub, length not cut (rulings of 1 mm or less) |
+| --- | --- | --- | --- |
+| Flat end mill, 3 mm | 0.027 to 0.299 | 0.069 to 0.388 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
+| Flat end mill, 6 mm | 0.046 to 0.587 | 0.132 to 0.759 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
+| Ball end mill, 3 mm | 1.190 to 1.499 | 1.266 to 1.629 mm; 0.000 mm; none | 0.217 to 0.572 mm; 0 to 1.92 mm |
+| Tapered ball, 0.5 mm tip, 3 degrees, 3 mm | 0.395 to 0.502 | 0.443 to 0.589 mm; 0.000 mm; none | 0.000 mm; 0 to 1.92 mm |
+
+Nothing is refused. The material left on the blades is unchanged (at most 0.088 mm, the tapered ball's own on blade 7, before and after). A uniform negative tip extension must suit the worst place on the blade, so -1 mm is not enough for the 3 mm ball, whose lift with the hub in an avoid set is 1.27 to 1.63 mm; the 1.92 mm not cut on blades 9 and 13 is the corner of the face where its rulings are 1 mm long or less.
+
+The swarf reference job (`testdata/projects/swarf`) has no avoid or check set: its golden programs are unchanged (`crates/openchuck-app/tests/step_pipeline.rs`, 19 of 19 kernel tests pass). After the merge the owner checks the bladed disk in the application: the hub in an avoid set on Cut short, and Tip extension negative, with a ball or tapered ball.
 
 ## Open items
 

@@ -19,8 +19,13 @@
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
-# fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
-# on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
+# fuzz smoke) and the User guide check run when it is marked ready for review. `CI required checks`
+# fails on a draft and, on a ready pull request or a push, requires every heavy job whose filter is
+# true to succeed.
+#
+# User guide (decision 0400): the `docs` job builds and checks user-docs/ on a ready pull request
+# that changes it (filter `docs`, which matches Markdown). A pull request that does not change it
+# skips the job, and `CI required checks` treats the skip as a pass, so no other pull request waits.
 name: CI
 
 on:
@@ -82,11 +87,13 @@ jobs:
       step: ${{ steps.mode.outputs.step }}
       gate3: ${{ steps.mode.outputs.gate3 }}
       linuxcnc_image: ${{ steps.mode.outputs.linuxcnc_image }}
+      # The user guide (decision 0400): straight from the filter, so empty (not due) on a schedule or a push.
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # `records`, `any` and `linuxcnc_image` match Markdown too (see the header).
+      # `records`, `any`, `linuxcnc_image` and `docs` match Markdown too (see the header).
       - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name != 'schedule'
@@ -107,6 +114,12 @@ jobs:
               - '**'
             linuxcnc_image:
               - 'docker/linuxcnc/**'
+            # The user guide and what builds or publishes it (decision 0400). Markdown counts here: the
+            # guide's pages are Markdown.
+            docs:
+              - 'user-docs/**'
+              - '.github/actions/user-docs/**'
+              - '.github/workflows/docs-site.yml'
       # The heavy jobs ignore Markdown. `some-with-excludes` (not the default `some`, where '!**/*.md'
       # would match every other file) matches a file that matches a pattern and no '!' pattern, so a
       # Markdown file never turns a heavy filter on, whatever directory it is in (decision 0249).
@@ -265,6 +278,7 @@ jobs:
       SHARD1_BINARIES: >-
         openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
         openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
+        openchuck-path::simultaneous openchuck-path::helical_faces
     steps:
       - uses: actions/checkout@v7
         with:
@@ -287,6 +301,9 @@ jobs:
       # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
       # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
       # removed), if either share is empty or if the shares do not add up to the full list.
+      # Re-dealt 1 Nov 2026 (issue #438) from run 41302204775, where share 2 had grown to 149 cpu-minutes
+      # against 90 (Ubuntu 42.5 and 28.1 min, Windows 40.4 and 22.2, macOS 42.4 and 22.9): openchuck-path::simultaneous
+      # and helical_faces moved to share 1, expected about 35 and 36 min on the slowest share.
       - name: Check the test partition
         shell: bash
         run: |
@@ -420,14 +437,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Linux leg runs on the pinned ubuntu-24.04 image: on ubuntu-latest (now Ubuntu 26.04)
-          # the worker built against OpenCASCADE crashes with SIGSEGV. The job name still reads
-          # `ubuntu-latest` (decisions 0250 and 0251, OI-1002, OI-1003).
+          # The Linux leg runs on ubuntu-latest (Ubuntu 26.04) again: the worker's SIGSEGV there was
+          # OpenCASCADE's type registry destroyed before other toolkits' statics at exit, fixed in
+          # cpp/occ_step.cpp (decision 0490, which ends decision 0251's pin; OI-1003). This leg is the
+          # pull request guard against shipping a Linux worker that crashes at exit.
           - os: ubuntu-latest
-            runner: ubuntu-24.04
           - os: windows-latest
           - os: macos-latest
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
@@ -811,6 +828,28 @@ jobs:
   #   turned it off, never because of the draft condition.
   # To make a new job required, add it to `needs:` and to the list below; to make one
   # advisory, remove it from both.
+  # The user guide (decision 0400, NFR-19): built and checked exactly as it is published
+  # (.github/actions/user-docs: the tools' tests, mdBook, check.py, lychee, the Nu HTML Checker),
+  # on a ready pull request that changes user-docs/ or what builds it. No project toolchain: the
+  # tools are cached after their first install. Part of `CI required checks` when due.
+  docs:
+    name: User guide
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The stamp names a commit and the screenshot check compares commits.
+          fetch-depth: 0
+      - uses: ./.github/actions/user-docs
+        with:
+          mode: preview
+
   required:
     name: CI required checks
     if: always()
@@ -823,6 +862,7 @@ jobs:
       - libraries-alone
       - fast-checks
       - fuzz-smoke
+      - docs
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -872,6 +912,9 @@ jobs:
           fuzz=false
           if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
+          docs=false
+          if [ "$EVENT" = pull_request ] && [ "$(out docs)" = true ]; then docs=true; fi
+          check docs "$docs"
           for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
             case "$checked" in
               *" $job "*) ;;

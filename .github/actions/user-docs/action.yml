@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Build and check the user guide in user-docs/ (decision 0400, NFR-19, NFR-12). One action, used by
+# ci.yml (the pull request check), docs-site.yml (the nightly "latest" and the Pages deploy) and
+# release.yml (a release's own copy), so the three cannot drift apart.
+#
+# It installs the pinned tools (mdBook and lychee with `cargo install --locked` from crates.io, whose
+# index records each crate's checksum, using the runner's own Rust outside the checkout so the
+# project's toolchain is not fetched; the Nu HTML Checker from the npm registry, checked against its
+# SHA-256), cached by version so only the first run pays the install. Then it runs the tools' tests,
+# builds the guide, assembles a site (latest/ beside any released versions) and runs check.py,
+# lychee (links and anchors, offline) and the Nu HTML Checker. The caller needs a checkout with full
+# history (the stamp and the screenshot check read commits).
+name: User guide
+description: Build the user guide and run its checks
+
+inputs:
+  mode:
+    description: >
+      `preview` (a pull request: the development version, stale screenshots warn), `nightly` (the
+      published "latest" for the nightly build of `nightly-date`, stale screenshots warn) or
+      `release` (the copy for `version`, with the release checks; stale screenshots fail).
+    required: true
+  version:
+    description: The release version (X.Y.Z), for `release`.
+    default: ""
+  nightly-date:
+    description: The date of the nightly build (YYYY-MM-DD), for `nightly`.
+    default: ""
+  releases:
+    description: A checkout of the docs-releases branch to assemble beside latest/, or empty.
+    default: ""
+outputs:
+  site:
+    description: The assembled site (the folder to publish to Pages).
+    value: ${{ steps.build.outputs.site }}
+  guide:
+    description: The built guide on its own (for `release`, the folder added to docs-releases).
+    value: ${{ steps.build.outputs.guide }}
+
+runs:
+  using: composite
+  steps:
+    - name: Cache the documentation tools
+      id: tools
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/docs-tools
+        key: docs-tools-mdbook-0.5.4-lychee-0.24.2-vnu-26.10.12-${{ runner.os }}
+    - name: Install mdBook, lychee and the Nu HTML Checker
+      if: steps.tools.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        # The pins (docs/dependencies.md, CI tools). Change the cache key above with them.
+        MDBOOK_VERSION: "0.5.4"
+        LYCHEE_VERSION: "0.24.2"
+        VNU_VERSION: "26.10.12"
+        # SHA-256 of https://registry.npmjs.org/vnu-jar/-/vnu-jar-26.10.12.tgz, computed when it was
+        # pinned after checking the tarball against the sha512 integrity npm publishes for it.
+        VNU_SHA256: "3925f07364f5e5a111cef54a7baefa575b22d05c70f8ced048f0616d4579b7ab"
+      run: |
+        set -euo pipefail
+        cargo install mdbook --version "$MDBOOK_VERSION" --locked --root ~/docs-tools
+        cargo install lychee --version "$LYCHEE_VERSION" --locked --root ~/docs-tools
+        curl -sSfL -o vnu.tgz "https://registry.npmjs.org/vnu-jar/-/vnu-jar-${VNU_VERSION}.tgz"
+        echo "$VNU_SHA256  vnu.tgz" | sha256sum -c -
+        tar xzf vnu.tgz
+        mkdir -p ~/docs-tools/vnu
+        cp package/build/dist/vnu.jar ~/docs-tools/vnu/vnu.jar
+    - name: Build and check the user guide
+      id: build
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        VERSION: ${{ inputs.version }}
+        NIGHTLY: ${{ inputs.nightly-date }}
+        RELEASES: ${{ inputs.releases }}
+        REPO_NAME: ${{ github.event.repository.name }}
+      run: |
+        set -euo pipefail
+        export MDBOOK=~/docs-tools/bin/mdbook
+        work="$RUNNER_TEMP/user-docs"
+        rm -rf "$work"
+        python3 -m unittest discover -s user-docs/tools/tests
+        screens=warn
+        release_failed=0
+        # A release copy needs its version and the nightly "latest" its date, or the stamp and checks are wrong.
+        [ "$MODE" != release ] || [ -n "$VERSION" ] || { echo "::error::mode release needs the input version"; exit 1; }
+        [ "$MODE" != nightly ] || [ -n "$NIGHTLY" ] || { echo "::error::mode nightly needs the input nightly-date"; exit 1; }
+        case "$MODE" in
+          preview) guide="$work/latest"; python3 user-docs/tools/build.py --out "$guide" ;;
+          nightly) guide="$work/latest"; python3 user-docs/tools/build.py --out "$guide" --nightly "$NIGHTLY" ;;
+          release)
+            guide="$work/v$VERSION"
+            python3 user-docs/tools/build.py --out "$guide" --version "$VERSION" --tag "app-v$VERSION"
+            # The release checks (stamp, release notes, screenshots) fail the step only after the site
+            # checks below have run too, so one run reports every problem, and a dry run (where the
+            # release workflow tolerates this step's failure) still exercises lychee and the Nu checker.
+            python3 user-docs/tools/check.py --site "$guide" --release "$VERSION" --screens strict || release_failed=1
+            screens=strict ;;
+          *) echo "::error::unknown mode '$MODE'"; exit 1 ;;
+        esac
+        # Under a folder named like the repository, so root-relative links (the 404 page) resolve.
+        site="$work/pages/$REPO_NAME"
+        python3 user-docs/tools/assemble.py site --latest "$guide" ${RELEASES:+--releases "$RELEASES"} \
+          --out "$site" --base "/$REPO_NAME/"
+        python3 user-docs/tools/check.py --site "$site" --screens "$screens"
+        ~/docs-tools/bin/lychee --offline --include-fragments --no-progress --root-dir "$work/pages" "$site"
+        java -jar ~/docs-tools/vnu/vnu.jar --skip-non-html --errors-only "$site/latest" "$site/index.html" "$site/versions.html" "$site/404.html"
+        {
+          echo "site=$site"
+          echo "guide=$guide"
+        } >> "$GITHUB_OUTPUT"
+        if [ "$release_failed" -ne 0 ]; then
+          echo "::error::The release checks of the user guide failed (see check.py's errors above); the site checks after them passed."
+          echo "User guide (release $VERSION): the release checks failed; the site checks passed." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+        echo "User guide ($MODE${VERSION:+ $VERSION}${NIGHTLY:+ $NIGHTLY}) built and checked." >> "$GITHUB_STEP_SUMMARY"

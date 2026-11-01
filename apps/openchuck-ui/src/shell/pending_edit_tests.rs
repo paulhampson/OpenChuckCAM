@@ -1009,7 +1009,7 @@ fn req_ui_07_req_ui_25_keep_a_workholding_field_does_not_apply_the_draft() {
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {
@@ -1363,6 +1363,11 @@ fn req_ui_07_req_ui_08_setup_field_confirmation_and_shape_choice_both_apply() {
         rig.frame(Vec::new());
     }
     type_unconfirmed(&mut rig, "Diameter", "22");
+    // The shape is a segmented control when it fits beside the label column
+    // and a drop-down list when it does not (decision 0440).
+    if !rig.visible_text_rects().iter().any(|(t, _)| t == "Box") {
+        click(&mut rig, "Cylinder");
+    }
     click(&mut rig, "Box");
     assert!(!rig.shows("Unconfirmed changes"));
     match rig.shell.app.as_ref().unwrap().project().setups()[0].stock {
@@ -1407,7 +1412,7 @@ fn req_ui_07_req_ui_25_deferred_pick_can_select_an_unapplied_held_region() {
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {
@@ -1671,7 +1676,7 @@ fn req_ui_07_req_ui_08_req_ui_25_explicit_apply_resumes_after_keeping_the_workho
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {

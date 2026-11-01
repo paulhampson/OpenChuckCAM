@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # CodeRabbit review settings. Documentation is not reviewed: docs/ and Markdown
-# files are excluded, so a pull request that changes only prose (the docs
+# files are excluded, and so are the user guide's pages and theme (user-docs/src/
+# and user-docs/theme/, decision 0400; its tools in user-docs/tools/ are code and
+# are reviewed), so a pull request that changes only prose (the docs
 # branches, docs/decision-<NNNN>-<short-title>) is skipped. Code changes are
 # reviewed as usual. CodeRabbit reads this file from the pull request's target
 # branch, so it takes effect for pull requests into main once merged.
@@ -9,3 +11,5 @@ reviews:
   path_filters:
     - "!docs/**"
     - "!**/*.md"
+    - "!user-docs/src/**"
+    - "!user-docs/theme/**"

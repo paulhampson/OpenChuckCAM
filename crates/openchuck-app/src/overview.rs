@@ -325,6 +325,13 @@ pub enum MessageAction {
     /// Select the operation and mark, in its inspector, the setting its
     /// warning names, so the user can change it (decision record 0175).
     ShowSetting(OperationId),
+    /// Open another project that has kept recovery data, so its own
+    /// recovery choices are offered there (PRJ-08; decision 0460). The index
+    /// is the front end's list of such projects for this run.
+    OpenRecovery(usize),
+    /// Find the new folder of a moved project whose recovery data was kept
+    /// (PRJ-08; decisions 0243 and 0460). Same index as `OpenRecovery`.
+    LocateRecovery(usize),
 }
 
 impl MessageAction {
@@ -338,6 +345,8 @@ impl MessageAction {
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
             Self::ShowSetting(_) => "Show setting",
+            Self::OpenRecovery(_) => "Open project",
+            Self::LocateRecovery(_) => "Locate folder",
         }
     }
 }
@@ -2442,6 +2451,18 @@ mod tests {
         assert_eq!(short_mm(26.0), "26");
         assert_eq!(short_mm(12.5), "12.5");
         assert_eq!(short_mm(0.1234), "0.123");
+    }
+
+    #[test]
+    fn req_prj_08_recovery_lines_name_their_actions_in_plain_words() {
+        // Decision 0460 item 1: another project's kept recovery data is a
+        // Messages line whose action opens that project or locates it.
+        assert_eq!(MessageAction::OpenRecovery(0).label(), "Open project");
+        assert_eq!(MessageAction::LocateRecovery(3).label(), "Locate folder");
+        assert_ne!(
+            MessageAction::OpenRecovery(1),
+            MessageAction::OpenRecovery(2)
+        );
     }
 
     #[test]

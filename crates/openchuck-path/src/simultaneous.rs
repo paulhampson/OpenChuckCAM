@@ -564,6 +564,9 @@ fn run(
 
     // Each face's turn: X, A at its start and the way A turns.
     let mut face_turns: Vec<(f64, f64, f64)> = Vec::new();
+    // Whether each face rises with X, to place the face a tool radius from
+    // its turn for the note on inside corners (decision record 0410).
+    let mut face_up: Vec<bool> = Vec::new();
     let mut held: Vec<f64> = Vec::new();
     let tracks: Vec<Track> = match pattern {
         "axial" => {
@@ -655,6 +658,7 @@ fn run(
                     (t.x, sense * (90.0 - th), rotation)
                 })
                 .collect();
+            face_up = found.turns.iter().map(|t| t.up).collect();
             vec![spiral]
         }
     };
@@ -725,10 +729,45 @@ fn run(
     };
     // The faces' turns keep the tool across the rotary axis: the face's
     // normal lies along the axis, which no A can follow, and the tool's side
-    // meets the face whatever the tilt would be.
+    // meets the face whatever the tilt would be. In a zone whose section
+    // does not surround the axis the turn goes round the section's own
+    // centre, as the spiral does there (OP-26), so that the tool's axis
+    // stays on the section's normal on its side facing the rotary axis too,
+    // where a line through the axis meets it obliquely: a flat end's bottom
+    // then lies on the section and its side on the face, into the inside
+    // corner between them (decision record 0410, issue #439).
     let turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
-    for turn in face_turns {
+    let mut corners: Vec<f64> = Vec::new();
+    for (k, turn) in face_turns.into_iter().enumerate() {
         context.check_cancelled()?;
+        if let Some(zone) = zones
+            .iter()
+            .position(|z| z.centres.is_some() && turn.0 >= z.x0 && turn.0 <= z.x1)
+        {
+            let th0 = 90.0 - sense * turn.1;
+            let track = Track {
+                x0: turn.0,
+                x1: turn.0,
+                th0,
+                th1: th0 - sense * turn.2 * TURN,
+                seeds: (TURN / step).ceil().max(1.0) as usize,
+                samples: (TURN / SAMPLE_ANGLE).ceil() as usize,
+                zone,
+                contour: None,
+            };
+            let axis = plan.axis_plan(&track, 0.0, max_tilt, &mut findings);
+            passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+            if !plan.flat_bottom {
+                let up = face_up.get(k).copied().unwrap_or(true);
+                corners.push(faces::face_of(
+                    turn.0,
+                    up,
+                    grown.cutting_radius(),
+                    tolerance,
+                ));
+            }
+            continue;
+        }
         passes.extend(crate::helical::turn_passes(
             input,
             region,
@@ -839,6 +878,7 @@ fn run(
     }
     notes.extend(faces::note(&turned));
     notes.extend(faces::held_note(&held));
+    notes.extend(faces::corner_note(&corners, input.tool.cutting_radius()));
     if let Some((x, a)) = findings.lean_at {
         let shank = if plan.body.is_some() {
             "the shank, wider than the cutting part, is kept clear of the part, as on every pass"
