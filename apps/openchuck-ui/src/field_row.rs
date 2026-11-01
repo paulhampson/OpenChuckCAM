@@ -146,6 +146,9 @@ pub struct TextRow<'a> {
     /// cannot be read is refused under the box, and the last good value is
     /// kept (UI-26; [`crate::arith`]).
     pub number: bool,
+    /// A box that is not a number (a tool number) but is as compact as one,
+    /// so a form's boxes share their edges (decision 0440).
+    pub compact: bool,
     /// Checks the interpreted entry without applying it. The departure
     /// guard checks every pending field before any command is executed.
     pub validate: Option<Validate<'a>>,
@@ -204,15 +207,11 @@ struct Needed {
     now: f32,
 }
 
-/// The key of the label column the row being drawn belongs to: the section it
-/// is in, else the window or panel (decision 0440: each section has the
-/// column its own labels need, so one long label does not narrow the boxes of
-/// every other section).
+/// The key of the label column the row being drawn belongs to: the window or
+/// panel it is in, so every row of a form has the same column (decision
+/// 0440).
 fn needed_id(ui: &egui::Ui) -> egui::Id {
-    let section = ui.data(|d| d.get_temp::<egui::Id>(egui::Id::unique("label column section")));
-    egui::Id::unique("label column")
-        .with(ui.layer_id())
-        .with(section)
+    egui::Id::unique("label column").with(ui.layer_id())
 }
 
 /// Tells the pane that a label needs `width` (the label, the reset slot and
@@ -286,13 +285,10 @@ fn label_need(ui: &egui::Ui, label: &str) -> f32 {
 }
 
 /// The width of a number box in a row with `available` points left: the
-/// compact width, or more when the text it shows (a default and where it comes
-/// from) needs more, and never more than the room.
-fn number_width(available: f32, shown: f32) -> f32 {
-    width::NUMBER_BOX
-        .max(shown.min(width::NUMBER_BOX_SOURCE))
-        .min(available)
-        .max(60.0)
+/// compact width, so the boxes of a form share their edges, and never more
+/// than the room.
+fn number_width(available: f32) -> f32 {
+    width::NUMBER_BOX.min(available).max(60.0)
 }
 
 /// The width of a drop-down list showing the widest of `texts`, in a row
@@ -416,28 +412,8 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         let box_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0 * margin.y;
         let (frame_rect, _) = ui.allocate_exact_size(
             egui::vec2(
-                if row.number || !row.unit.is_empty() {
-                    let text = if row.applied.is_empty() {
-                        row.hint.as_deref().unwrap_or_default()
-                    } else {
-                        row.applied.as_str()
-                    };
-                    let unit = if row.unit.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" {}", row.unit)
-                    };
-                    let measure = |text: &str, style: egui::TextStyle| {
-                        ui.painter()
-                            .layout_no_wrap(text.to_owned(), style.resolve(ui.style()), DARK.muted)
-                            .size()
-                            .x
-                    };
-                    let shown = measure(text, egui::TextStyle::Monospace)
-                        + measure(&unit, egui::TextStyle::Body)
-                        + 2.0 * margin.x
-                        + 2.0 * ui.spacing().item_spacing.x;
-                    number_width(ui.available_width(), shown)
+                if row.number || row.compact || !row.unit.is_empty() {
+                    number_width(ui.available_width())
                 } else {
                     ui.available_width().max(60.0)
                 },
@@ -511,9 +487,22 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 egui::StrokeKind::Inside,
             ),
         );
-        let response = match row.range {
-            Some(range) => response.on_hover_text(format!("Allowed: {range}.")),
-            None => response,
+        // What the box shows only in part is in its tooltip, on hover and on
+        // keyboard focus: the default that applies with its source (a compact
+        // box cuts a long one), then the allowed range (decision 0440).
+        let mut tooltip = Vec::new();
+        if row.applied.trim().is_empty()
+            && let Some(hint) = &row.hint
+        {
+            tooltip.push(hint.clone());
+        }
+        if let Some(range) = row.range {
+            tooltip.push(format!("Allowed: {range}."));
+        }
+        let response = if tooltip.is_empty() {
+            response
+        } else {
+            tip(response, &tooltip.join("\n"))
         };
         if row.focus {
             response.request_focus();
@@ -1001,18 +990,7 @@ pub fn section<R>(
     let open = header.is_open();
     let (_, header, body) = header.body(|ui| {
         let ctx = ui.ctx().clone();
-        let key = egui::Id::unique("label column section");
-        let outer = ui.data(|d| d.get_temp::<egui::Id>(key));
-        ui.data_mut(|d| d.insert_temp(key, id));
-        let shown = crate::pending_edits::section(&ctx, id, || body(ui));
-        ui.data_mut(|d| {
-            if let Some(o) = outer {
-                d.insert_temp(key, o);
-            } else {
-                d.remove::<egui::Id>(key);
-            }
-        });
-        shown
+        crate::pending_edits::section(&ctx, id, || body(ui))
     });
     Section {
         body: body.map(|b| b.inner),
@@ -1326,6 +1304,9 @@ mod tests {
             "{narrow:?} {wide:?}"
         );
         assert!(wide[2].width() > wide[0].width() + 100.0, "{wide:?}");
+        // The compact boxes share one width and one left edge.
+        assert!((wide[0].width() - wide[1].width()).abs() < 0.6, "{wide:?}");
+        assert!((wide[0].left() - wide[1].left()).abs() < 0.6, "{wide:?}");
     }
 
     #[test]
@@ -1335,5 +1316,56 @@ mod tests {
         let (boxes, _) = settled(200.0);
         assert!(boxes.iter().all(|b| b.width() >= 60.0), "{boxes:?}");
         assert!(boxes[0].left() <= 0.55 * 200.0 + 24.0, "{boxes:?}");
+    }
+
+    #[test]
+    fn req_ui_07_the_default_and_its_source_are_in_the_tooltip_while_the_box_has_focus() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let row = |focus| TextRow {
+            key: "speed",
+            label: "Spindle speed",
+            unit: "rpm",
+            number: true,
+            hint: Some("12000 \u{b7} from the tool's cutting data for oak".to_owned()),
+            range: Some("above 0 rpm"),
+            enabled: true,
+            focus,
+            ..TextRow::default()
+        };
+        let run = |state: &mut FieldState, row: &TextRow<'_>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(340.0, 300.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                text_row(ui, state, row);
+            });
+            output.textures_delta.clear();
+            output.shapes.iter().any(|c| {
+                fn has(shape: &egui::Shape) -> bool {
+                    match shape {
+                        egui::Shape::Text(t) => t
+                            .galley
+                            .text()
+                            .contains("from the tool's cutting data for oak"),
+                        egui::Shape::Vec(v) => v.iter().any(has),
+                        _ => false,
+                    }
+                }
+                has(&c.shape)
+            })
+        };
+        run(&mut state, &row(true));
+        let mut shown = false;
+        for _ in 0..4 {
+            shown |= run(&mut state, &row(false));
+        }
+        // The compact box cuts the hint, so the full text can only be the
+        // tooltip's.
+        assert!(shown);
     }
 }

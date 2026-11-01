@@ -1363,6 +1363,11 @@ fn req_ui_07_req_ui_08_setup_field_confirmation_and_shape_choice_both_apply() {
         rig.frame(Vec::new());
     }
     type_unconfirmed(&mut rig, "Diameter", "22");
+    // The shape is a segmented control when it fits beside the label column
+    // and a drop-down list when it does not (decision 0440).
+    if !rig.visible_text_rects().iter().any(|(t, _)| t == "Box") {
+        click(&mut rig, "Cylinder");
+    }
     click(&mut rig, "Box");
     assert!(!rig.shows("Unconfirmed changes"));
     match rig.shell.app.as_ref().unwrap().project().setups()[0].stock {

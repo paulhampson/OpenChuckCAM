@@ -99,40 +99,50 @@ fn req_ui_07_no_inspector_label_is_cut_short_at_the_default_and_wide_widths() {
 }
 
 #[test]
-fn req_ui_07_a_number_box_keeps_its_compact_width_as_the_pane_widens() {
-    let narrow = drawn(operation, width::INSPECTOR.0, "layout-compact-a");
-    let wide = drawn(operation, width::INSPECTOR.2, "layout-compact-b");
-    // The unit-carrying boxes are the compact ones: none is wider at 520
-    // than at 340 plus the few points a longer value may need.
-    let units = |d: &Drawn| -> Vec<f32> {
-        d.entries
+fn req_ui_07_every_compact_box_of_a_form_has_one_width_and_shared_edges() {
+    for pane in [width::INSPECTOR.0, width::INSPECTOR.2] {
+        let d = drawn(operation, pane, "layout-compact");
+        let on_row = |label: &str, b: &egui::Rect| {
+            d.texts
+                .iter()
+                .any(|(t, r)| t == label && (r.center().y - b.center().y).abs() < 6.0)
+        };
+        // The boxes with a unit in them, and the tool number's box.
+        let compact: Vec<egui::Rect> = d
+            .entries
             .iter()
             .filter(|b| {
-                d.texts.iter().any(|(t, r)| {
-                    (t == "mm" || t == "mm/min" || t == "\u{b0}") && b.contains(r.center())
-                })
+                on_row("Tool number", b)
+                    || d.texts.iter().any(|(t, r)| {
+                        (t == "mm" || t == "mm/min" || t == "rpm" || t == "\u{b0}" || t == "deg")
+                            && b.contains(r.center())
+                    })
             })
-            .map(|b| b.width())
-            .collect()
-    };
-    let (n, w) = (units(&narrow), units(&wide));
-    assert!(!n.is_empty() && !w.is_empty(), "{n:?} {w:?}");
-    // A number box is the compact width, or what the default it shows needs
-    // (its text and unit): never as wide as the pane gives it.
-    for width in n.iter().chain(w.iter()) {
+            .copied()
+            .collect();
+        assert!(compact.len() >= 5, "{pane}: {compact:?}");
         assert!(
-            *width <= width::NUMBER_BOX_SOURCE + 0.5,
-            "number box {width} wide: {n:?} {w:?}"
+            compact.iter().any(|b| on_row("Tool number", b)),
+            "{pane}: no tool number box"
         );
+        for b in &compact {
+            assert!(b.width() <= width::NUMBER_BOX + 0.5, "{pane}: {b:?}");
+            assert!(
+                (b.left() - compact[0].left()).abs() < 0.6,
+                "left {pane}: {compact:?}"
+            );
+            assert!(
+                (b.right() - compact[0].right()).abs() < 0.6,
+                "right {pane}: {compact:?}"
+            );
+        }
+        if pane > 450.0 {
+            assert!(
+                (compact[0].width() - width::NUMBER_BOX).abs() < 0.6,
+                "{pane}: {compact:?}"
+            );
+        }
     }
-    assert!(
-        w.iter().any(|x| (x - width::NUMBER_BOX).abs() < 0.6),
-        "no compact number box at the widest: {w:?}"
-    );
-    assert!(
-        w.iter().copied().fold(0.0, f32::max) <= n.iter().copied().fold(0.0, f32::max) + 120.0,
-        "{n:?} {w:?}"
-    );
 }
 
 #[test]

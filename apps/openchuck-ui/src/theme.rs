@@ -216,12 +216,9 @@ pub mod width {
     /// width (8): the narrower of the two applies.
     pub const LABEL_MAX: f32 = 220.0;
     pub const LABEL_SHARE: f32 = 0.55;
-    /// The width of a number box (8): wide enough for the value and the
-    /// source of a default, and no wider however wide the pane is.
+    /// The width of a number box (8): the same for every compact box of a
+    /// form, however wide the pane is.
     pub const NUMBER_BOX: f32 = 168.0;
-    /// The widest a number box grows to show a default and where it comes
-    /// from ("0.800 · from the tool's cutting data"); a longer one is cut.
-    pub const NUMBER_BOX_SOURCE: f32 = 250.0;
 }
 
 /// The family of IBM Plex Sans SemiBold, for the emphasis egui has no weight for.

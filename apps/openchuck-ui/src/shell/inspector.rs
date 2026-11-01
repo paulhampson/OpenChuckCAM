@@ -639,6 +639,7 @@ impl Shell {
                         let row = TextRow {
                             key: TOOL_NUMBER,
                             label: "Tool number",
+                            compact: true,
                             description: "The project's number for this tool, used by every \
                                           operation that uses it (TL-06). The post writes it \
                                           as T, with the H and D offsets.",
@@ -1542,6 +1543,7 @@ fn rows(
                 needs: None,
                 scroll_to: false,
                 number: !row.unit.is_empty(),
+                compact: false,
                 validate: Some(&validate),
                 preflight: Some(preflight),
             },
