@@ -37,7 +37,7 @@ No commit caused it. The last green sanitizer night was 26 Oct (run 40288012911,
 
 - Test first: the three requirement tests named above, and `step_exact`, failed on the 26.04 build before the change and pass after it (Findings).
 - In CI: `STEP kernel (ubuntu-latest)` on this pull request runs on Ubuntu 26.04 after a cold OpenCASCADE build, uninstrumented.
-- AddressSanitizer: one manual run of `nightly.yml` on `claude/lane-sanitizer` with `only: sanitizer`, authorised by the owner for this decision. The run and its result are given in the pull request.
+- AddressSanitizer: one manual run of `nightly.yml` on `claude/lane-sanitizer` with `only: sanitizer`, authorised by the owner for this decision: run 41305677193 (job 124845447902, 1 Nov 2026, commit `b10f9768`) passed in 4 min 27 s from warm caches. `--test step` 18 passed (the three tests above included), `--test stl` 14 passed, `step_exact` 2 passed; `ASAN_SYMBOLIZER_PATH` was `/usr/bin/llvm-symbolizer-22`; the other nightly jobs and the issues job were skipped.
 - **After merge:** the owner checks a new nightly pre-release Linux archive: `openchuck-step-worker` alone on a valid `.step` file exits 0, and on `testdata/step/broken/garbage.step` exits 2 (OI-1700). Issue #369 closes itself on the first green nightly (decision 0102).
 
 ## Consequences and limits
