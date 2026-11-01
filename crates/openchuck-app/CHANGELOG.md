@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.34.0 (provisional; the coordinator confirms the number at merge)
 
-- **Breaking family release (0.34.0 provisional, lane CLEARANCE, issue #336; decision 0530, proposed):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, proposed):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.
 
 ## 0.22.0
 

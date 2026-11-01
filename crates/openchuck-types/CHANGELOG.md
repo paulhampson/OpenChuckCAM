@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.34.0 (provisional; the coordinator confirms the number at merge)
 
-- **Breaking family release (0.34.0 provisional, lane CLEARANCE, issue #336; decision 0530, proposed):** `MachineProfile` gains the optional `min_clearance_radius` with `ProfileField::MinClearanceRadius` (`ALL` has 15 entries); `setup` gains `ClearanceRules`, `DEFAULT_STOCK_MARGIN`, `MinimumSource`, `EffectiveClearance` and `effective_clearance`; `SetupCheck` gains `rules`; `SetupWarningKind::ClearanceBelowMinimum` is new. With no rules set the clearance and the G-code are unchanged.
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, proposed):** `MachineProfile` gains the optional `min_clearance_radius` with `ProfileField::MinClearanceRadius` (`ALL` has 15 entries); `setup` gains `ClearanceRules`, `DEFAULT_STOCK_MARGIN`, `MinimumSource`, `EffectiveClearance` and `effective_clearance`; `SetupCheck` gains `rules`; `SetupWarningKind::ClearanceBelowMinimum` is new. With no rules set the clearance and the G-code are unchanged.
 
 ## 0.31.0
 
