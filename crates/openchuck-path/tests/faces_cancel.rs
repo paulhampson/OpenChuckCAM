@@ -252,3 +252,103 @@ fn req_ui_09_a_long_line_of_a_is_cancelled_part_way_along() {
     // The next look at the flag is after 256 samples of the line.
     assert!((100..=256).contains(&drops), "{drops} drops");
 }
+
+/// A surface that counts the tool drops made after the face search has
+/// counted its last line of A, and cancels the job at the first of them
+/// when `cancel_at_first` is set.
+#[derive(Debug)]
+struct AfterTheLines<'a> {
+    surface: &'a MeshSurface,
+    armed: &'a std::sync::atomic::AtomicBool,
+    cancel: &'a CancelToken,
+    cancel_at_first: bool,
+    after: std::sync::atomic::AtomicUsize,
+}
+
+impl openchuck_path::SurfaceSource for AfterTheLines<'_> {
+    fn bounds(&self) -> openchuck_types::geometry::Aabb {
+        self.surface.bounds()
+    }
+    fn project(
+        &self,
+        point: openchuck_types::geometry::Point3,
+    ) -> Option<openchuck_path::SurfacePoint> {
+        self.surface.project(point)
+    }
+    fn cast_ray(
+        &self,
+        origin: openchuck_types::geometry::Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<openchuck_path::RayHit> {
+        self.surface.cast_ray(origin, direction, max_distance)
+    }
+    fn tessellation(&self) -> &openchuck_types::mesh::TriangleMesh {
+        self.surface.tessellation()
+    }
+    fn drop_tool(
+        &self,
+        profile: &openchuck_types::tool::RevolvedProfile,
+        line: &openchuck_path::ToolLine,
+    ) -> Option<openchuck_path::Contact> {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.armed.load(SeqCst) {
+            let n = self.after.fetch_add(1, SeqCst) + 1;
+            if n == 1 && self.cancel_at_first {
+                self.cancel.cancel();
+            }
+        }
+        self.surface.drop_tool(profile, line)
+    }
+}
+
+/// Arms `armed` when the face search has counted all its lines of A.
+struct ArmAtTheEnd<'a>(&'a std::sync::atomic::AtomicBool);
+
+impl ProgressSink for ArmAtTheEnd<'_> {
+    fn report(&self, p: Progress) {
+        if p.stage == STAGE && Some(p.done) == p.total && p.done > 0 {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+/// The drops made after the lines of A, for a run that cancels at the first
+/// of them or not.
+fn drops_after_the_lines(cancel_at_first: bool) -> (usize, Result<(), PathError>) {
+    let mesh = MeshSurface::new(&revolve(&SHAFT, 720)).unwrap();
+    let token = CancelToken::new();
+    let armed = std::sync::atomic::AtomicBool::new(false);
+    let surface = AfterTheLines {
+        surface: &mesh,
+        armed: &armed,
+        cancel: &token,
+        cancel_at_first,
+        after: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let sink = ArmAtTheEnd(&armed);
+    let result = run_on(&surface, 42.0, &sink, &token).map(|_| ());
+    (
+        surface.after.load(std::sync::atomic::Ordering::SeqCst),
+        result,
+    )
+}
+
+#[test]
+fn req_ui_09_a_cancel_during_the_free_end_search_stops_its_remaining_lines() {
+    // The free ends of the shaft are searched for after the lines of A, one
+    // bisection per line. A cancel that arrives at the first of them stops
+    // the rest: without the check in each bisection they would all run
+    // before the final look at the flag.
+    let (whole, result) = drops_after_the_lines(false);
+    assert!(result.is_ok(), "{result:?}");
+    assert!(whole > 200, "the free-end search made only {whole} drops");
+    let (cut, result) = drops_after_the_lines(true);
+    assert!(matches!(result, Err(PathError::Cancelled)), "{result:?}");
+    // Only the bisection under way finishes (about 25 drops); the rest of
+    // the lines, over a thousand drops between them, do not run.
+    assert!(
+        cut <= 100,
+        "{cut} drops after the cancel, {whole} in a whole run"
+    );
+}
