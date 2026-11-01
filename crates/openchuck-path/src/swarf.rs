@@ -130,9 +130,6 @@ const GUARD_STEPS: u32 = 16;
 const LIFT_KEEP: f64 = 0.25;
 /// Bisections that find the least lift clear of an avoid or check surface.
 const LIFT_STEPS: u32 = 20;
-/// The most passes over a run that make the lifts of neighbouring poses
-/// agree ([`level_lifts`]).
-const LEVEL_PASSES: usize = 64;
 /// Points of the machine's motion between two poses the guards look at.
 const GATE_STEPS: usize = 4;
 /// The most the gate's own sampling may miss of the deepest cut or the
@@ -1840,24 +1837,6 @@ pub fn face_path(
         }
         Ok(Some(best))
     };
-    // The pose at `t` with the tip lifted `by` up the ruling, where that
-    // keeps the tool off the avoid and check surfaces.
-    let lift_to = |t: f64, by: f64| -> Result<Option<Pose>> {
-        let Some(r) = rule(t) else {
-            return Ok(None);
-        };
-        if by > (1.0 - LIFT_KEEP) * r.length() {
-            return Ok(None);
-        }
-        let Some(s) = shortened(face, family, &r, sign, by) else {
-            return Ok(None);
-        };
-        let mut p = placed(&s)?;
-        p.lift = by;
-        Ok(first_broken((p.tip, p.axis, p.contact, p.ruling_length))
-            .is_none()
-            .then_some(p))
-    };
     let chord = CHORD_FACTOR * settings.tolerance;
     let mut broken = vec![0.0f64; watched.len()];
     let mut uncut = [0.0f64; 2];
@@ -1936,17 +1915,7 @@ pub fn face_path(
                 i += 1;
             }
         }
-        let mut run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
-        if !guards.is_empty() {
-            level_lifts(
-                &mut run,
-                rotary,
-                guard_spacing(radius),
-                &first_broken,
-                &pose_at,
-                &lift_to,
-            )?;
-        }
+        let run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
         let pieces = if guards.is_empty() {
             vec![run]
         } else {
@@ -2308,69 +2277,6 @@ fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, P
 /// again after it with a retract. Pieces of fewer than two poses are
 /// dropped. The length along the face left uncut is added to `uncut`, the
 /// avoid surfaces' first, by the first guard broken.
-/// Makes the lifts of neighbouring poses agree where the move between them
-/// would break an avoid or check surface (decision record 0450 item 1). The
-/// surfaces are sampled `spacing` apart, so over a sloping surface the
-/// least lift at each pose climbs in steps; a tool moving from a pose with
-/// the lower lift towards one with the higher meets the next sample before
-/// its lift has risen. A move longer than the spacing is split, with the
-/// pose half way along lifted as it needs; on a shorter one the lower pose
-/// is raised to the higher lift, at most one step more than it needs. This
-/// goes on until no move between lifted poses breaks a surface, or a pose
-/// cannot be raised; a move still broken is then cut short by the guards.
-fn level_lifts(
-    run: &mut Vec<Pose>,
-    rotary: RotaryMapping,
-    spacing: f64,
-    first_broken: &dyn Fn((Point3, UnitVec3, Point3, f64)) -> Option<Protection>,
-    pose_at: &dyn Fn(f64) -> Result<Option<Pose>>,
-    lift_to: &dyn Fn(f64, f64) -> Result<Option<Pose>>,
-) -> Result<()> {
-    let mut added = 0usize;
-    for _ in 0..LEVEL_PASSES {
-        let mut changed = false;
-        let mut i = 0;
-        while let (Some(&a), Some(&b)) = (run.get(i), run.get(i + 1)) {
-            if (a.lift - b.lift).abs() <= SAME_POINT
-                || motion(&a, &b, rotary)
-                    .into_iter()
-                    .all(|position| first_broken(position).is_none())
-            {
-                i += 1;
-                continue;
-            }
-            if a.contact.distance(b.contact) > spacing
-                && added < MAX_POSES
-                && let Some(mut p) = pose_at(0.5 * (a.t + b.t))?
-            {
-                p.a = nearest_turn(p.a, a.a);
-                run.insert(i + 1, p);
-                added += 1;
-                changed = true;
-                continue;
-            }
-            let (low, high) = if a.lift < b.lift {
-                (i, b.lift)
-            } else {
-                (i + 1, a.lift)
-            };
-            if let Some(old) = run.get(low).copied()
-                && let Some(mut p) = lift_to(old.t, high)?
-                && let Some(slot) = run.get_mut(low)
-            {
-                p.a = nearest_turn(p.a, old.a);
-                *slot = p;
-                changed = true;
-            }
-            i += 1;
-        }
-        if !changed {
-            break;
-        }
-    }
-    Ok(())
-}
-
 fn guarded(
     run: &[Pose],
     guards: &[Guard],
@@ -2786,6 +2692,48 @@ fn swarf(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Decision record 0450 item 1: an avoid or check face is sampled where
+    /// its grid lines meet its trimmed edge, so the edge (where a floor is
+    /// often highest) is never further from a sample than about half the
+    /// spacing along it. A floor trimmed by a diagonal edge, from (45, 20) to
+    /// (15, 30), sampled 0.375 mm apart.
+    #[test]
+    fn req_op_02_req_op_12_an_avoid_face_is_sampled_along_its_trimmed_edge() {
+        use openchuck_types::brep::{TrimLoop, UvPoint};
+        let mut model = openchuck_testkit::ruled::floor_plane(10.0, 15.0, 45.0, 8.0, 30.0);
+        let corner = |u: f64, v: f64| UvPoint { u, v };
+        if let Some(face) = model.faces.first_mut() {
+            face.trims = vec![TrimLoop(vec![
+                corner(15.0, 8.0),
+                corner(45.0, 8.0),
+                corner(45.0, 20.0),
+                corner(15.0, 30.0),
+            ])];
+        }
+        let surface = crate::BrepSurface::new(&model).expect("the floor");
+        let faces = surface.exact_faces();
+        let face = faces.first().expect("one face").face;
+        let spacing = 0.375;
+        let samples = face_samples(face, spacing);
+        let worst = (0..=280)
+            .map(|k| {
+                let x = 16.0 + 28.0 * f64::from(k) / 280.0;
+                let edge = Point3::new(x, 20.0 + (45.0 - x) / 3.0, 10.0);
+                samples
+                    .iter()
+                    .map(|(p, _, _)| p.distance(edge))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .fold(0.0, f64::max);
+        assert!(worst <= 0.55 * spacing, "{worst}");
+        // Each sample carries the floor's normal and the grid's spacing.
+        assert!(
+            samples
+                .iter()
+                .all(|(_, n, h)| (n.z - 1.0).abs() < 1e-9 && *h <= spacing)
+        );
+    }
 
     /// Decision record 0272 item 4: when no tolerance tried clears the
     /// warning, it names a tolerance the face was made at and the cut there,

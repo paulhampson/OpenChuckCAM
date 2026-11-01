@@ -2131,6 +2131,23 @@ fn req_op_02_req_op_07_req_op_12_a_check_set_lifts_the_tool_the_stock_to_leave_c
             assert!(best_clearance(&outline, &run, *p) >= 0.5 - TOL - CHECKER_SLACK);
         }
     }
+    // A ball under the same floor in both an avoid and a check set is
+    // lifted clear of both, and the note names both.
+    let f = Fixture::brep(&limit_wall(), ball());
+    let both = RegionConstraint {
+        avoid: Some(&floor),
+        check: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &both, &leave).unwrap();
+    assert_eq!(
+        path.limits.lifted_clear_of,
+        vec![Protection::Avoid, Protection::Check]
+    );
+    assert!(
+        path.note(TOL, LIMIT)
+            .contains("to keep clear of the avoid and check surfaces")
+    );
 }
 
 #[test]
@@ -2186,6 +2203,23 @@ fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_l
     assert!(floor_cut(&f.tool, &path) <= CHECKER_SLACK);
     assert!(path.left <= TOL, "{}", path.left);
     assert!(path.poses().all(|p| p.lift == 0.0));
+    // With the tip at the other end of the rulings, the flank starts that
+    // far down from the top of the wall.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let down = generated(
+        &f,
+        &[
+            (swarf::parameter::TIP_EXTENSION, num(-1.0)),
+            (swarf::parameter::TIP_END, text("reversed")),
+        ],
+    );
+    assert!(
+        cutting_poses(&down.group)
+            .iter()
+            .all(|p| (p.tip.z - (Z1 - 1.0)).abs() < 1e-6),
+        "{:?}",
+        cutting_poses(&down.group)[0]
+    );
 }
 
 #[test]
