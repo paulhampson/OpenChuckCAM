@@ -74,7 +74,9 @@ fn main() {
     // `kernel` feature (the kernel comparison tests in openchuck-app) link too.
     if target.contains("linux") {
         // GNU ld resolves a static archive's symbols from the archives listed after it, so the
-        // dependency order (highest level first, TKernel last) is the right one here.
+        // dependency order (highest level first, TKernel last) is the right one here. It also puts
+        // TKernel's static initialisers last, so the exit order is fixed in cpp/occ_step.cpp
+        // instead: a priority initialiser builds the type registry first (decision 0490).
         for lib in LIBS {
             println!("cargo:rustc-link-lib=static={lib}");
         }

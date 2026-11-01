@@ -72,6 +72,10 @@ pub(crate) struct Turn {
     /// The X of the turn: the low side of the face, where the side of the
     /// tool touches it.
     pub(crate) x: f64,
+    /// Whether the face rises with X: the tool stands on its low side, so
+    /// the face itself is a tool radius above `x` when true, below it when
+    /// false.
+    pub(crate) up: bool,
     /// How high the tool's tip stands on top of the face, along the tool
     /// axis, on each line of A the faces were found on (`360 k / n` degrees
     /// for `n` lines); negative infinity on a line where the face is not.
@@ -454,6 +458,45 @@ pub(crate) fn held_note(held: &[f64]) -> Option<String> {
     ))
 }
 
+/// The X of the face a turn at `x` stands beside: `radius` (the dropped
+/// tool's) and the clearance [`narrow`] leaves on its low side away from `x`,
+/// towards higher X when the face rises with X (decision record 0410).
+pub(crate) fn face_of(x: f64, up: bool, radius: f64, tolerance: f64) -> f64 {
+    let d = radius + CLEAR * tolerance;
+    if up { x + d } else { x - d }
+}
+
+/// The note for faces across the axis that meet a section off the axis in
+/// an inside corner, finished by a tool with a round end of `radius`: such a
+/// tool leaves up to `radius (sqrt 2 - 1)` across a square corner, which a
+/// flat end can finish (decision record 0410, issue #439). `None` with none.
+pub(crate) fn corner_note(faces: &[f64], radius: f64) -> Option<String> {
+    let (last, rest) = faces.split_last()?;
+    // A face at X 0 found a hair below it reads 0.000, not -0.000.
+    let at = |x: &f64| format!("{:.3}", if x.abs() < 5e-4 { 0.0 } else { *x });
+    let xs = if rest.is_empty() {
+        at(last)
+    } else {
+        format!(
+            "{} and {}",
+            rest.iter().map(at).collect::<Vec<_>>().join(", "),
+            at(last)
+        )
+    };
+    let (a_face, meet, it) = if rest.is_empty() {
+        ("a face", "meets", "it")
+    } else {
+        ("faces", "meet", "them")
+    };
+    Some(format!(
+        "at X {xs} {a_face} across the rotary axis {meet} a section that does not surround the axis \
+         in an inside corner: where a corner is sharper than the tool's radius, this tool's round \
+         end (radius {radius:.3} mm) leaves up to about {:.2} mm across it; a flat end can finish \
+         {it}",
+        radius * (std::f64::consts::SQRT_2 - 1.0)
+    ))
+}
+
 /// A face found on one line of A: the X of its low side, where the side of
 /// the tool touches it, the height on top of it, whether the height rises
 /// with X, and the X either side of its jump.
@@ -531,6 +574,7 @@ fn cluster(
         if out.last().is_none() || f.x - last > gap {
             out.push(Turn {
                 x: f.x,
+                up: f.up,
                 tops: vec![f64::NEG_INFINITY; lines],
             });
         }
@@ -651,5 +695,42 @@ mod tests {
         assert_eq!(face.top_at(200.0), Some(5.0));
         assert_eq!(face.top_at(300.0), None);
         assert_eq!(low[1].top_at(300.0), Some(4.0));
+    }
+
+    #[test]
+    fn req_op_26_the_corner_note_names_the_faces_and_what_a_round_end_leaves() {
+        // Decision record 0410 item 3: one face in the singular, several
+        // listed; the amount is r (sqrt 2 - 1) of the tool's radius.
+        assert_eq!(corner_note(&[], 1.5875), None);
+        assert!(
+            corner_note(&[-1e-5, 40.0], 1.0)
+                .unwrap()
+                .starts_with("at X 0.000 and 40.000 ")
+        );
+        let one = corner_note(&[15.0], 3.0).unwrap();
+        assert!(
+            one.starts_with("at X 15.000 a face across the rotary axis meets a section"),
+            "{one}"
+        );
+        assert!(
+            one.contains("radius 3.000 mm) leaves up to about 1.24 mm"),
+            "{one}"
+        );
+        assert!(one.ends_with("a flat end can finish it"), "{one}");
+        let two = corner_note(&[10.0, 25.0], 1.5875).unwrap();
+        assert!(
+            two.starts_with("at X 10.000 and 25.000 faces across the rotary axis meet"),
+            "{two}"
+        );
+        assert!(two.contains("about 0.66 mm"), "{two}");
+        assert!(two.ends_with("a flat end can finish them"), "{two}");
+    }
+
+    #[test]
+    fn req_op_26_the_face_is_a_tool_radius_from_its_turn_on_its_high_side() {
+        // The turn stands a tenth of the tolerance clear of the face.
+        let clear = CLEAR * 0.01;
+        assert!((face_of(8.0, true, 2.0, 0.01) - (10.0 + clear)).abs() < 1e-12);
+        assert!((face_of(17.0, false, 2.0, 0.01) - (15.0 - clear)).abs() < 1e-12);
     }
 }
