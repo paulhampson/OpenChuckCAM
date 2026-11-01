@@ -5,7 +5,7 @@ AMD EPYC 9V74, 4 CPU quota, 16 GiB RAM, Rust 1.97.0, static OCCT7.8.1.
 No concurrent compilation, tests or coverage during timing.
 
 Runtime restarted after the 24 Oct owner pause. The old completed all-thread
-results remain in docs/handoffs/stepall-m-2026-10-24. All six batches below were
+results remain in docs/archive/0211-stepall-m/m3-2026-10-24-paused. All six batches below were
 rerun in one current runtime, using the same pinned executable and inputs;
 no cross-runtime sample was used in medians or thread comparisons.
 
