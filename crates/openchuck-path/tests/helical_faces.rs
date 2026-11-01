@@ -432,6 +432,26 @@ fn req_op_04_a_ball_end_leaves_only_its_corner_on_a_face() {
     shaft_faces_left_at(&job, &path, 0.0, 0.5 * DIAMETER + 0.05, "ball end");
 }
 
+#[test]
+fn req_op_05_simultaneous_rings_clean_the_faces_of_a_stepped_shaft() {
+    // Every section of the shaft surrounds the axis, so each face's ring is
+    // its turn across the axis (decision records 0297 and 0421), among the
+    // other rings in X order, and the faces are left as the spiral leaves
+    // them.
+    let job = Job::shaft(ToolShape::FlatEnd);
+    let path = job.path_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
+    shaft_faces_left_at(&job, &path, 0.0, 0.0, "simultaneous rings");
+    let r = 0.5 * DIAMETER;
+    let clear = 0.1 * TOLERANCE;
+    let turns = turns_in_place(&path);
+    for face in [10.0 - r - clear, 25.0 + r + clear] {
+        assert!(
+            turns.iter().any(|x| (x - face).abs() < 1e-5),
+            "no ring at {face}: {turns:?}"
+        );
+    }
+}
+
 /// Points on the shaft's round surfaces (r 6, 10 and 7), `step` mm apart
 /// along X and round, kept `margin` mm from each face across the axis.
 fn shaft_rounds(step: f64, margin: f64) -> Vec<Point3> {
@@ -759,6 +779,12 @@ fn req_op_03_continuous_roughing_cleans_the_crankshaft_faces() {
 #[test]
 fn req_op_05_the_simultaneous_spiral_cleans_the_crankshaft_faces() {
     crankshaft_faces_cleaned(&SimultaneousFinishing, &[]);
+}
+
+#[test]
+fn req_op_05_the_simultaneous_spiral_in_rings_cleans_the_crankshaft_faces() {
+    // Each face's turn is one of the rings (decision record 0421).
+    crankshaft_faces_cleaned_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
 }
 
 /// Runs of cutting moves that turn A by at least a whole turn without moving

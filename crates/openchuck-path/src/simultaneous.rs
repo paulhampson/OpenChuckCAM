@@ -94,6 +94,9 @@ pub mod parameter {
     /// The Allowed excess with adaptive spacing on, mm (decision record
     /// 0239); the axial pattern only.
     pub const SCALLOP: &str = "scallop";
+    /// The spiral pattern's passes: a spiral or rings, as helical
+    /// finishing's (decision records 0390 and 0421).
+    pub const PASS_SHAPE: &str = crate::helical::parameter::PASS_SHAPE;
 }
 
 /// How far apart the drive samples are round the axis, in degrees, where
@@ -289,6 +292,11 @@ impl Strategy for SimultaneousFinishing {
                     default: Some(adaptive::DEFAULT_ALLOWED_EXCESS),
                 },
             },
+            crate::helical::pass_shape_spec(
+                "Spiral pattern. Spiral: one continuous spiral that moves along the part as it \
+                 turns. Rings: one full turn at a time at a fixed place along the part, with a \
+                 short step along the part between turns, A held still while it steps.",
+            ),
         ]
         .into_iter()
         .chain(adaptive::specs())
@@ -314,6 +322,11 @@ impl Strategy for SimultaneousFinishing {
                 p.name != adaptive::parameter::ADAPTIVE_SPACING
                     && p.name != adaptive::parameter::MIN_SPACING
             });
+        } else {
+            // Only the spiral pattern cuts a spiral (decision record 0421).
+            schema
+                .parameters
+                .retain(|p| p.name != parameter::PASS_SHAPE);
         }
         schema
     }
@@ -568,6 +581,10 @@ fn run(
     // its turn for the note on inside corners (decision record 0410).
     let mut face_up: Vec<bool> = Vec::new();
     let mut held: Vec<f64> = Vec::new();
+    // In rings (decision record 0421), each face across the axis is one of
+    // the rings: its X and whether it rises with X.
+    let rings = pattern != "axial" && crate::helical::in_rings(parameters);
+    let mut ring_faces: Vec<(f64, bool)> = Vec::new();
     let tracks: Vec<Track> = match pattern {
         "axial" => {
             if lead != 0.0 {
@@ -650,16 +667,23 @@ fn run(
             )?;
             held = found.held;
             let span = spiral.th1 - spiral.th0;
-            face_turns = found
-                .turns
-                .iter()
-                .map(|t| {
-                    let th = spiral.th0 + span * (t.x - x0) / length;
-                    (t.x, sense * (90.0 - th), rotation)
-                })
-                .collect();
-            face_up = found.turns.iter().map(|t| t.up).collect();
-            vec![spiral]
+            if rings {
+                // The rings are cut below, in X order with the faces' rings
+                // among them, in place of the spiral and its face turns.
+                ring_faces = found.turns.iter().map(|t| (t.x, t.up)).collect();
+                Vec::new()
+            } else {
+                face_turns = found
+                    .turns
+                    .iter()
+                    .map(|t| {
+                        let th = spiral.th0 + span * (t.x - x0) / length;
+                        (t.x, sense * (90.0 - th), rotation)
+                    })
+                    .collect();
+                face_up = found.turns.iter().map(|t| t.up).collect();
+                vec![spiral]
+            }
         }
     };
 
@@ -736,7 +760,7 @@ fn run(
     // where a line through the axis meets it obliquely: a flat end's bottom
     // then lies on the section and its side on the face, into the inside
     // corner between them (decision record 0410, issue #439).
-    let turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
+    let mut turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
     let mut corners: Vec<f64> = Vec::new();
     for (k, turn) in face_turns.into_iter().enumerate() {
         context.check_cancelled()?;
@@ -778,6 +802,31 @@ fn run(
             None,
             context,
         )?);
+    }
+    let mut ring_note = None;
+    if rings {
+        let cut = ring_passes(
+            &plan,
+            &RingSettings {
+                range: (x0, x1),
+                stepover,
+                faces: &ring_faces,
+                start,
+                rotation,
+                lead,
+                max_tilt,
+                step,
+                axial_seed,
+                leave,
+                tolerance,
+            },
+            &mut findings,
+            context,
+        )?;
+        passes.extend(cut.passes);
+        corners.extend(cut.corners);
+        turned.extend(ring_faces.iter().map(|f| f.0));
+        ring_note = Some(cut.note);
     }
     context.report(
         "simultaneous finishing: following the surface",
@@ -876,6 +925,7 @@ fn run(
             off.join(", ")
         ));
     }
+    notes.extend(ring_note);
     notes.extend(faces::note(&turned));
     notes.extend(faces::held_note(&held));
     notes.extend(faces::corner_note(&corners, input.tool.cutting_radius()));
@@ -1356,6 +1406,180 @@ fn adaptive_passes(
 
 /// `track` cut at the zones' boundaries, in the track's own order, each
 /// piece with its zone and its share of the seeds and samples (OP-26).
+/// What the rings of the spiral pattern need (decision record 0421).
+struct RingSettings<'f> {
+    /// The X range the spiral would cover.
+    range: (f64, f64),
+    stepover: f64,
+    /// Each face across the axis: its turn's X and whether it rises with X.
+    faces: &'f [(f64, bool)],
+    /// A at the first ring, degrees.
+    start: f64,
+    /// Which way A turns, +1 or -1.
+    rotation: f64,
+    lead: f64,
+    max_tilt: f64,
+    /// The largest A step between seeded points, degrees.
+    step: f64,
+    /// The seed spacing along X of a step.
+    axial_seed: f64,
+    leave: f64,
+    tolerance: f64,
+}
+
+/// The rings' passes, the X of the faces whose inside corners a round end
+/// cannot finish (decision record 0410), and the note.
+struct RingsCut {
+    passes: Vec<Pass>,
+    corners: Vec<f64>,
+    note: String,
+}
+
+/// The spiral pattern in rings (decision records 0390 and 0421): a whole
+/// turn at each X of [`crate::helical::ring_places`], driven as the spiral
+/// is (the smoothed A within the tilt, the lead, round the section's own
+/// centre in a zone that does not surround the axis), each starting at the
+/// A the step before it held; then a step along X to the next ring with A
+/// held at the angle the ring ended at, split where that would lean the tool
+/// more than the lead and the tilt from the normal. A face's ring is its own
+/// turn, as with the spiral: round the section's centre in such a zone
+/// (decision record 0410), otherwise across the axis. Pieces that meet are
+/// one cut; the shared services link the rest (OP-14).
+fn ring_passes(
+    plan: &Plan<'_>,
+    r: &RingSettings<'_>,
+    findings: &mut Findings,
+    context: &JobContext<'_>,
+) -> Result<RingsCut> {
+    let face_xs: Vec<f64> = r.faces.iter().map(|f| f.0).collect();
+    let (xs, gap) = crate::helical::ring_places(r.range, r.stepover, &face_xs);
+    let sense = plan.sense;
+    let zone_of = |x: f64| {
+        plan.zones
+            .iter()
+            .position(|z| x >= z.x0 && x <= z.x1)
+            .unwrap_or(0)
+    };
+    // A = sense (90 - phi), so phi = 90 - sense A.
+    let phi_of = |a: f64| 90.0 - sense * a;
+    let mut passes: Vec<Pass> = Vec::new();
+    let mut corners = Vec::new();
+    let mut a = r.start;
+    let mut held: Option<f64> = None;
+    // The drive angle the step before ended at, where the next ring starts,
+    // so that the step's last point is the ring's first.
+    let mut drive: Option<f64> = None;
+    for (k, &x) in xs.iter().enumerate() {
+        context.check_cancelled()?;
+        context.report(
+            "simultaneous finishing: rings",
+            k as u64,
+            Some(xs.len() as u64),
+        );
+        let face = r.faces.iter().find(|f| (f.0 - x).abs() < 1e-9);
+        let zone = zone_of(x);
+        let off_axis = plan.zones.get(zone).is_some_and(|z| z.centres.is_some());
+        // Start where the step before held A, or at the start angle.
+        let a0 = held.map_or(a, |phi| sense * (90.0 - phi));
+        let ring_end = if face.is_some() && !off_axis {
+            crate::helical::join(
+                &mut passes,
+                crate::helical::turn_passes(
+                    plan.input,
+                    plan.region,
+                    (plan.drop_profile, r.leave, &[]),
+                    r.tolerance,
+                    (x, a0, r.rotation),
+                    r.step,
+                    None,
+                    context,
+                )?,
+            );
+            let phi = phi_of(a0 + r.rotation * TURN);
+            Some((phi, phi))
+        } else {
+            // A face's ring follows the normal, as the face's turn does;
+            // the others take the lead as the spiral does.
+            let lead = if face.is_some() { 0.0 } else { r.lead };
+            // The drive angle whose target, with the lead the way the ring
+            // travels, is the angle held: the step's, or the start angle's.
+            let travel = -sense * r.rotation;
+            let th0 = match (drive, held) {
+                (Some(th), _) => th,
+                (None, Some(_)) => phi_of(a0) - lead * travel,
+                (None, None) => phi_of(a0),
+            };
+            let track = Track {
+                x0: x,
+                x1: x,
+                th0,
+                th1: th0 - sense * r.rotation * TURN,
+                seeds: (TURN / r.step).ceil().max(1.0) as usize,
+                samples: (TURN / SAMPLE_ANGLE).ceil() as usize,
+                zone,
+                contour: None,
+            };
+            let axis = plan.axis_plan_from(&track, lead, r.max_tilt, held, findings);
+            crate::helical::join(
+                &mut passes,
+                plan.track_passes(&track, &axis, lead, findings, context)?,
+            );
+            if let Some(&(f, up)) = face
+                && !plan.flat_bottom
+            {
+                corners.push(faces::face_of(
+                    f,
+                    up,
+                    plan.drop_profile.cutting_radius(),
+                    r.tolerance,
+                ));
+            }
+            axis.phi_at(1.0).map(|phi| (phi, track.th1))
+        };
+        a = a0 + r.rotation * TURN;
+        held = ring_end.map(|e| e.0);
+        drive = ring_end.map(|e| e.1);
+        let (Some(&next), Some((phi, th))) = (xs.get(k + 1), ring_end) else {
+            continue;
+        };
+        // The step: A held at the ring's end, driven along X at the angle
+        // the ring ended at, split where the section changes zone.
+        let length = next - x;
+        let step = Track {
+            x0: x,
+            x1: next,
+            th0: th,
+            th1: th,
+            seeds: (length / r.axial_seed).ceil().max(1.0) as usize,
+            samples: (length / SAMPLE_LENGTH).ceil().max(1.0) as usize,
+            zone,
+            contour: None,
+        };
+        let pieces = if plan.zones.len() > 1 || off_axis {
+            split(&step, plan.zones)
+        } else {
+            vec![step]
+        };
+        for piece in &pieces {
+            let axis = plan.held_plan(piece, phi, r.lead.abs() + r.max_tilt, findings);
+            crate::helical::join(
+                &mut passes,
+                plan.track_passes(piece, &axis, 0.0, findings, context)?,
+            );
+        }
+    }
+    let note = format!(
+        "simultaneous finishing cut {} rings, no more than {gap:.4} mm apart, each a whole turn \
+         at one place along the part, joined by steps along it with A held still",
+        xs.len()
+    );
+    Ok(RingsCut {
+        passes,
+        corners,
+        note,
+    })
+}
+
 fn split(track: &Track, zones: &[section::Zone]) -> Vec<Track> {
     let dx = track.x1 - track.x0;
     if dx.abs() < 1e-12 {
@@ -1536,6 +1760,21 @@ impl Plan<'_> {
         max_tilt: f64,
         findings: &mut Findings,
     ) -> AxisPlan {
+        self.axis_plan_from(track, lead, max_tilt, None, findings)
+    }
+
+    /// As [`Self::axis_plan`], with the tool's angle at the start of the
+    /// track held at `pin` where that is within `max_tilt` of the target
+    /// there: a ring starts with the angle the step before it held, so the
+    /// two are one cut (decision record 0421).
+    fn axis_plan_from(
+        &self,
+        track: &Track,
+        lead: f64,
+        max_tilt: f64,
+        pin: Option<f64>,
+        findings: &mut Findings,
+    ) -> AxisPlan {
         let n = track.samples;
         let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
         let drives: Vec<Option<Drive>> = parallel::map_in_order(&ts, |t| {
@@ -1545,9 +1784,27 @@ impl Plan<'_> {
         let offset = lead * track.travel();
         let mut plan = AxisPlan::default();
         let mut run: Vec<(f64, f64)> = Vec::new();
-        let flush = |run: &mut Vec<(f64, f64)>, plan: &mut AxisPlan| {
-            if !run.is_empty() {
-                plan.runs.push(smooth_band(std::mem::take(run), max_tilt));
+        // Whether the first run starts at `t = 0` held at the pin.
+        let mut pinned = false;
+        let flush = |run: &mut Vec<(f64, f64)>, plan: &mut AxisPlan, pinned: &mut bool| {
+            if run.is_empty() {
+                return;
+            }
+            let samples = std::mem::take(run);
+            if std::mem::take(pinned) {
+                let lo: Vec<f64> = samples
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| if i == 0 { s.1 } else { s.1 - max_tilt })
+                    .collect();
+                let hi: Vec<f64> = samples
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| if i == 0 { s.1 } else { s.1 + max_tilt })
+                    .collect();
+                plan.runs.push(smooth_gates(samples, &lo, &hi));
+            } else {
+                plan.runs.push(smooth_band(samples, max_tilt));
             }
         };
         for (t, d) in ts.iter().zip(&drives) {
@@ -1555,16 +1812,57 @@ impl Plan<'_> {
                 Some(d) => {
                     findings.mesh |= !d.exact;
                     let target = d.phi + offset;
-                    let target = match run.last() {
-                        Some(&(_, previous)) => near(target, previous),
-                        None => target,
+                    let target = match (run.last(), pin) {
+                        (Some(&(_, previous)), _) => near(target, previous),
+                        (None, Some(held)) if *t == 0.0 => {
+                            let target = near(target, held);
+                            if (held - target).abs() <= max_tilt {
+                                pinned = true;
+                                held
+                            } else {
+                                target
+                            }
+                        }
+                        (None, _) => target,
                     };
                     run.push((*t, target));
                 }
-                None => flush(&mut run, &mut plan),
+                None => flush(&mut run, &mut plan, &mut pinned),
             }
         }
-        flush(&mut run, &mut plan);
+        flush(&mut run, &mut plan, &mut pinned);
+        plan
+    }
+
+    /// The tool's angle held at `phi` along `track` (a step between rings,
+    /// decision record 0421), wherever that leans the tool no more than
+    /// `limit` from the surface normal; elsewhere there is no angle, so the
+    /// step is split there and the shared services link the pieces (OP-14).
+    fn held_plan(&self, track: &Track, phi: f64, limit: f64, findings: &mut Findings) -> AxisPlan {
+        let n = track.samples;
+        let ts: Vec<f64> = (0..=n).map(|i| i as f64 / n as f64).collect();
+        let drives: Vec<Option<Drive>> = parallel::map_in_order(&ts, |t| {
+            let (x, th) = track.at(*t);
+            self.drive(track, x, th)
+        });
+        let mut plan = AxisPlan::default();
+        let mut run: Vec<(f64, f64)> = Vec::new();
+        for (t, d) in ts.iter().zip(&drives) {
+            match d {
+                Some(d) if (near(d.phi, phi) - phi).abs() <= limit + 1e-9 => {
+                    findings.mesh |= !d.exact;
+                    run.push((*t, phi));
+                }
+                _ => {
+                    if !run.is_empty() {
+                        plan.runs.push(std::mem::take(&mut run));
+                    }
+                }
+            }
+        }
+        if !run.is_empty() {
+            plan.runs.push(run);
+        }
         plan
     }
 
