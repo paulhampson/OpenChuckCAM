@@ -358,7 +358,9 @@ fn req_ui_07_req_ui_25_req_nfr_07_keep_checks_the_tab_count_range_before_changin
     ] {
         let mut rig = Rig::cube(&format!("pending-tab-count-{text}"), None);
         crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
-        rig.size = egui::vec2(1920.0, 1800.0);
+        // Tall enough for the tab editor below the clearance section, which
+        // decision 0530 lengthened by two rows.
+        rig.size = egui::vec2(1920.0, 2000.0);
         let before = rig.shell.app.as_ref().unwrap().project().clone();
         rig.shell
             .choose_setup(before.setups()[0].id, Some(super::SetupPart::Workholding));

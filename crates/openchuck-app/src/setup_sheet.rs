@@ -1618,10 +1618,10 @@ mod tests {
                 .map(|(_, v)| v.clone())
                 .unwrap()
         };
-        assert_eq!(get("Minimum clearance"), "radius 45.000 mm (from the machine)");
+        assert_eq!(get("Minimum clearance"), "radius 45 mm (from the machine)");
         assert_eq!(
             get("Clearance in use"),
-            "radius 55.000 mm, safe Z 55.000 mm (Clearance from stock)"
+            "radius 55 mm, safe Z 55 mm (Clearance from stock)"
         );
     }
 }

@@ -35,6 +35,21 @@ use openchuck_app::{
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
+/// The setup's clearance rules (decision 0530).
+#[derive(clap::Args, Debug)]
+struct ClearanceArgs {
+    /// The setup's minimum clearance radius in mm, the smallest safe
+    /// cylinder that clears its chuck, jaws, headstock and tailstock, or
+    /// `machine` to use the machine profile's (decision 0530).
+    #[arg(long, allow_hyphen_values = true)]
+    min_clearance: Option<String>,
+    /// Clearance from stock: the margin in mm added to the stock's
+    /// radius (the safe cylinder grows to it and to the minimum, and the
+    /// safe Z to at least that radius), or `off` (decision 0530).
+    #[arg(long, allow_hyphen_values = true)]
+    clearance_from_stock: Option<String>,
+}
+
 /// The workholding options of `setup` (SET-09, OP-21).
 #[derive(Debug, clap::Args)]
 struct HoldingArgs {
@@ -295,16 +310,8 @@ enum Action {
         /// the machine profile's.
         #[arg(long)]
         clearance: Option<String>,
-        /// The setup's minimum clearance radius in mm, the smallest safe
-        /// cylinder that clears its chuck, jaws, headstock and tailstock, or
-        /// `machine` to use the machine profile's (decision 0530).
-        #[arg(long, allow_hyphen_values = true)]
-        min_clearance: Option<String>,
-        /// Clearance from stock: the margin in mm added to the stock's
-        /// radius (the safe cylinder grows to it and to the minimum, and the
-        /// safe Z to at least that radius), or `off` (decision 0530).
-        #[arg(long, allow_hyphen_values = true)]
-        clearance_from_stock: Option<String>,
+        #[command(flatten)]
+        rules: Box<ClearanceArgs>,
         #[command(flatten)]
         holding: Box<HoldingArgs>,
     },
@@ -1005,10 +1012,13 @@ fn run(cli: Cli) -> Result<()> {
             work_offset,
             work_x,
             clearance,
-            min_clearance,
-            clearance_from_stock,
+            rules,
             holding,
         } => {
+            let ClearanceArgs {
+                min_clearance,
+                clearance_from_stock,
+            } = *rules;
             let HoldingArgs {
                 held_start,
                 held_end,

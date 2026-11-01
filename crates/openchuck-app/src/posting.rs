@@ -384,6 +384,8 @@ impl GcodeReport {
     }
 }
 
+// The setup's effective safe Z travels beside the setup (decision record 0530).
+#[allow(clippy::too_many_arguments)]
 fn check_file(
     text: &str,
     file: &str,
