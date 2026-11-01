@@ -1651,7 +1651,7 @@ mod tests {
 
         // A tab across the part is not in the head or the tail zone: the
         // finding is on the tab's row, and its solid fails in the view.
-        panel.draft.edit().tabs = vec![tab(-1.0, 2.0, 6.0)];
+        panel.draft.edit().tabs = vec![tab(-2.0, 4.0, 6.0)];
         assert!(
             panel
                 .finish_check(
