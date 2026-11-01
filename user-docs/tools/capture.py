@@ -138,6 +138,15 @@ def record(images, commit, date):
     return path
 
 
+def new_folder(path, option):
+    """Make the folder at `path`, which must not exist: the script never deletes a folder it did not make."""
+    path = Path(path)
+    if path.exists():
+        sys.exit(f"error: {option} {path} already exists; remove it yourself or choose a new folder")
+    path.mkdir(parents=True)
+    return path
+
+
 def _git(*args):
     return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
 
@@ -145,23 +154,24 @@ def _git(*args):
 def main():
     global WORK, OUT, HERO, ENV
     ap = argparse.ArgumentParser()
-    ap.add_argument("--work", default=str(Path(tempfile.gettempdir()) / "openchuck-tutorial"),
-                    help="scratch folder (made fresh)")
+    ap.add_argument("--work", help="scratch folder, which must not exist yet (default: a new temporary folder)")
     ap.add_argument("--out", default=str(REPO / "user-docs/src/tutorial/images"))
     ap.add_argument("--hero-out", default=str(REPO / "user-docs/src/images"))
     ap.add_argument("--ui", default=str(REPO / "target/release/openchuck-ui"))
-    ap.add_argument("--keep-project", help="copy the finished project here (without recovery files)")
+    ap.add_argument("--keep-project", help="copy the finished project to this folder, which must not exist yet (without recovery files)")
     args = ap.parse_args()
-    WORK, OUT, HERO = Path(args.work), Path(args.out), Path(args.hero_out)
+    OUT, HERO = Path(args.out), Path(args.hero_out)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import check
 
     if _git("status", "--porcelain", "--", *check.SCREEN_PATHS):
         sys.exit("error: uncommitted changes to the screens; commit them first so CAPTURED.toml names what was captured")
     commit = _git("rev-parse", "HEAD")
-    if WORK.exists():
-        shutil.rmtree(WORK)
-    (WORK / "home").mkdir(parents=True)
+    if args.keep_project and Path(args.keep_project).exists():
+        sys.exit(f"error: --keep-project {args.keep_project} already exists; remove it yourself or choose a new folder")
+    WORK = new_folder(args.work, "--work") if args.work else Path(tempfile.mkdtemp(prefix="openchuck-tutorial-"))
+    print("working in", WORK, flush=True)
+    (WORK / "home").mkdir()
     OUT.mkdir(parents=True, exist_ok=True)
     HERO.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO / "testdata/examples/baluster/baluster.stl", WORK / "baluster.stl")
@@ -333,10 +343,8 @@ def tutorial(args):
     click(19, 17, 1)                                 # File
     click(28, 146, 3)                                # Save
     if args.keep_project:
-        dest = Path(args.keep_project)
-        if dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(WORK / "Baluster", dest, ignore=shutil.ignore_patterns(".openchuck-recovery"))
+        # copytree refuses an existing folder, so nothing of the user's is replaced.
+        shutil.copytree(WORK / "Baluster", Path(args.keep_project), ignore=shutil.ignore_patterns(".openchuck-recovery"))
 
 
 if __name__ == "__main__":

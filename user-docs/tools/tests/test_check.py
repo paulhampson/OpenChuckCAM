@@ -272,6 +272,20 @@ class Screens(unittest.TestCase):
         git("commit", "-q", "-m", "ui change")
         self.assertIn("apps/openchuck-ui", check.stale_screens(d, images))
 
+    def test_req_nfr_07_capture_never_deletes_an_existing_folder(self):
+        # --work and --keep-project are the user's own paths: an existing one is refused, not removed.
+        import capture
+        d = tempfile.mkdtemp()
+        keep = os.path.join(d, "keep.txt")
+        open(keep, "w").close()
+        with self.assertRaises(SystemExit) as e:
+            capture.new_folder(d, "--work")
+        self.assertIn("already exists", str(e.exception))
+        self.assertTrue(os.path.exists(keep), "the existing folder is left as it was")
+        fresh = os.path.join(d, "new")
+        self.assertEqual(capture.new_folder(fresh, "--work"), capture.Path(fresh))
+        self.assertTrue(os.path.isdir(fresh))
+
     def test_req_nfr_19_no_tutorial_images_is_not_stale(self):
         d, git, first = self.repo()
         self.assertEqual(check.stale_screens(d, os.path.join(d, "user-docs/src/tutorial/images")), None)
