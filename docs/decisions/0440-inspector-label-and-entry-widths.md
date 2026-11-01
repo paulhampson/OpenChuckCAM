@@ -34,7 +34,7 @@ The dock's hide button is at the right end of its tab row, but the collapsed rai
 ## Known costs
 
 - In the setup inspector the machine section's long labels ("Tool length measurement") set the column for the whole form, so at the default width the Stock shape is a drop-down list and not a segmented control.
-- At 280 and 340 a label of more than about 130 points is still cut; the tooltip has the rest. At 340 this includes the setup inspector's "Tool length measurement", which sets the column and is just over the 55% share (a test found it once the cut detector read the galley's `elided` flag, not the text).
+- At 280 and 340 a label of more than about 130 points is still cut; the tooltip has the rest. At 340 this includes the setup inspector's "Tool length measurement", which sets the column and is just over the 55% share (a test found it once the cut detector read the galley's `elided` flag, not the text). The owner decided on 1 Nov 2026 (relayed) to keep the 55% share and accept this cut: the full label shows at 520 and in its tooltip.
 - A long default's source is cut in the box and read in the tooltip.
 
 ## Verification
