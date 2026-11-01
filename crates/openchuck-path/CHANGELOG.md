@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Breaking (next minor version, set at the release merge; SWARF-FLOOR; issue #435; decision 0450, proposed, the owner's decisions on OI-1620 and OI-1621 relayed by the coordinator):** swarf keeps the tool's tip off a floor.
+- **Breaking (next minor version, set at the release merge; SWARF-FLOOR; issue #435; decision 0450, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
   - **Cut short lifts first.** Where the tool on a ruling would break an avoid or check set (`RegionConstraint::avoid` and `check`), the tip is lifted up the ruling by the least that keeps it off the set (the stock to leave clear of a check set), allowing for the set's sampling, before the pass is cut short; the pass is cut short only where a lift that leaves a quarter of the ruling in contact does not clear it. Before, a set under the whole face (a floor) refused the face. The strip left at the foot is not measured as material left, and the note says how far the tool was lifted.
   - **Negative tip extension.** `swarf::parameter::TIP_EXTENSION` has no minimum: a negative value starts the flank that far up the rulings, the strip is not material left, and a value that leaves nothing of a face's rulings refuses the face naming the value and the length.
   - **Notes.** Each face's note says where the tool's end is against the end of the rulings (a ball or corner radius plus the tip extension).
