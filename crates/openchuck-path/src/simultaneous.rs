@@ -1231,7 +1231,7 @@ fn adaptive_passes(
         seed,
         radius,
         findings: std::sync::Mutex::new(Findings::default()),
-        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        pose_step: adaptive::pose_step(r, settings.height),
         window: 2.0 * reach + station,
         station,
         margin: reach,

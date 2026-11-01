@@ -834,7 +834,7 @@ fn adaptive_passes(
         rings: matches!(shape, Shape::Rings(_)),
         counters: &counters,
         rotary: input.rotary,
-        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        pose_step: adaptive::pose_step(r, settings.height),
         window: ((2.0 * reach + station_mm) / near).to_degrees().min(180.0),
         station: (station_mm / far).to_degrees().min(helix.step),
         margin: ((reach + station_mm) / near).to_degrees().min(180.0),

@@ -322,6 +322,8 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         "axial_finishing",
         "indexed_finishing",
         "simultaneous_finishing",
+        "rotary_roughing",
+        "facing",
     ]
     .contains(&job.strategy)
     {
