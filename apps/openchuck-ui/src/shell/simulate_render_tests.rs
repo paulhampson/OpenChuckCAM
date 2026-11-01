@@ -533,3 +533,88 @@ fn req_sim_11_req_sim_05_a_coloured_part_is_probed_through_the_plain_cut_part() 
         Some("Final result \u{b7} Overcut 1.020 mm")
     );
 }
+
+#[test]
+fn req_sim_11_req_sim_05_a_pinned_part_value_hides_behind_nearer_part_faces() {
+    // Decision 0520 item 5 with decision 0238 item 4: a value pinned on the
+    // coloured part is read through the plain cut part, never through the
+    // part itself. Turned to the far side, the nearer faces hide it; turned
+    // back, it shows again (review of #472).
+    let (rig, surface) = surface_fixture("simui-part-pin-hidden");
+    let ctx = egui::Context::default();
+    let mut viewport = Viewport::new(true);
+    let view = rig.shell.viewport.view().clone();
+    let model = view.meshes[0].model.unwrap();
+    viewport.set_scene(view, false);
+    viewport.set_step(Some(ViewStep::Simulate));
+    viewport.set_stock_surface(Some(Arc::clone(&surface)));
+    viewport.set_bands(Some((
+        surface.model.unwrap(),
+        surface.bands.clone().unwrap(),
+    )));
+    viewport.set_simulate_show(crate::viewport::SimulateShow {
+        model: true,
+        cut_part: true,
+        toolpath: false,
+    });
+    let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((-1.02, false))).collect();
+    viewport.set_part_bands(Some((
+        model,
+        openchuck_app::pathview::deviation_bands(&values, 0.1),
+    )));
+    viewport.set_view(StandardView::Front);
+    viewport.fit();
+    let frame = |viewport: &mut Viewport, time: f64, events| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(640.0, 480.0),
+            )),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| viewport.show(ui));
+        out.textures_delta.clear();
+        fn shows_value(shape: &egui::Shape) -> bool {
+            match shape {
+                egui::Shape::Text(t) => t.galley.text().starts_with("Final result · "),
+                egui::Shape::Vec(shapes) => shapes.iter().any(shows_value),
+                _ => false,
+            }
+        }
+        out.shapes.iter().any(|s| shows_value(&s.shape))
+    };
+    frame(&mut viewport, 0.0, Vec::new());
+    let at = viewport.last_rect.center();
+    for pressed in [true, false] {
+        frame(
+            &mut viewport,
+            0.1,
+            vec![Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            }],
+        );
+    }
+    let (triangle, _) = viewport
+        .probe_pinned
+        .expect("a value is pinned on the part");
+    assert!(triangle < 12, "pinned on the part's own triangle");
+    assert!(
+        frame(&mut viewport, 1.0, vec![Event::PointerGone]),
+        "the pinned value shows while its face is in view"
+    );
+    viewport.set_view(StandardView::Back);
+    assert!(
+        !frame(&mut viewport, 2.0, vec![Event::PointerGone]),
+        "turned to the far side, the part's nearer faces hide the pinned value"
+    );
+    viewport.set_view(StandardView::Front);
+    assert!(
+        frame(&mut viewport, 3.0, vec![Event::PointerGone]),
+        "the kept value shows again when its face is in view"
+    );
+}

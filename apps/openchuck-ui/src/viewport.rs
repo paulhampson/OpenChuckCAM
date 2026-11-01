@@ -1576,11 +1576,13 @@ impl Viewport {
         if !(0.0..=1.0).contains(&ndc[2]) {
             return;
         }
-        if self.probe_source != Some(ProbeSource::Part)
-            && let Some(stock) = &self.stock_surface
-        {
+        let on_part = self.probe_source == Some(ProbeSource::Part);
+        if on_part || self.stock_surface.is_some() {
             // Keep the pin, but do not paint its value through a nearer
             // stock face or a visible model after the camera/view changes.
+            // A value on the coloured part is read through the plain cut
+            // part (decision 0520 item 5), never through the part's own
+            // nearer faces (decision 0238 item 4).
             let (origin, direction) = self.camera.ray([ndc[0], ndc[1]], self.aspect);
             let back = rigid_inverse(&self.part_transform);
             let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
@@ -1592,11 +1594,13 @@ impl Viewport {
                 .zip(d)
                 .map(|((point, origin), direction)| (point - origin) * direction)
                 .sum();
-            if stock
-                .pick(o, d)
-                .ok()
-                .flatten()
-                .is_none_or(|hit| hit.distance + 1e-5 < distance)
+            if !on_part
+                && let Some(stock) = &self.stock_surface
+                && stock
+                    .pick(o, d)
+                    .ok()
+                    .flatten()
+                    .is_none_or(|hit| hit.distance + 1e-5 < distance)
             {
                 return;
             }

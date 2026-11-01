@@ -57,6 +57,7 @@ Section 11.5, Viewport, a new item after "The stock" (made in the same change, o
 - Choices made in the build, within the decision:
   - Until the part's job has finished (74 ms on the blisk mesh, below), the cut part keeps its colours; it then turns plain. Both states are real.
   - The cursor readout still reads the cut part; only the probe reads the part.
+  - A value pinned on the coloured part is still hidden by the part's own nearer faces (decision 0238 item 4); only the cut part's check is skipped for it (found in review of #472; test `req_sim_11_req_sim_05_a_pinned_part_value_hides_behind_nearer_part_faces`, seen failing first, 8.1 s).
   - A run made when the file already differed from its recorded hash gets no part colours: the check is against the recorded hash.
 - Tests:
   - `openchuck-app` (`tests/playback.rs`): `req_ui_11_the_part_guard_names_what_changed_since_the_run` (3.0 s; a rename and a material change are not a change), `req_ui_11_deviation_bands_refuse_a_part_file_changed_since_the_run` (3.8 s).
