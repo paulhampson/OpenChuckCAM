@@ -382,6 +382,8 @@ impl Strategy for RotaryRoughing {
             passes,
             notes: faces::note(&turns).into_iter().chain(spaced).collect(),
             warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }
@@ -532,6 +534,8 @@ pub(crate) fn face(
         passes,
         notes,
         warnings,
+        unreached: Vec::new(),
+        shank_breaks: Vec::new(),
     })
 }
 
@@ -1666,7 +1670,7 @@ impl Job<'_> {
                 // The tool's travel along a line between poses leaves no
                 // more than a tenth of the Allowed excess, as for axial
                 // finishing.
-                pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+                pose_step: adaptive::pose_step(r, settings.height),
                 window: 2.0 * grown + node,
                 station: node.min(0.5 * r).max(1e-3),
             };

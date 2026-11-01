@@ -240,6 +240,8 @@ impl Strategy for Facing {
                 passes: self.passes_in_region(input, region, parameters, context)?,
                 notes: Vec::new(),
                 warnings: Vec::new(),
+                unreached: Vec::new(),
+                shank_breaks: Vec::new(),
             }),
             None => self.output(input, parameters, context),
         }
@@ -293,6 +295,8 @@ impl Facing {
                 passes,
                 notes: Vec::new(),
                 warnings: Vec::new(),
+                unreached: Vec::new(),
+                shank_breaks: Vec::new(),
             });
         }
         let round = parameters.text(parameter::SHAPE)? == parameter::ROUND;

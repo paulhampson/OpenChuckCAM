@@ -25,6 +25,7 @@ use support::generate;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use openchuck_path::helical::parameter::PASS_SHAPE;
 use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::stock::StockModel;
@@ -246,6 +247,7 @@ fn input_for<'a>(
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     }
 }
 
@@ -281,6 +283,16 @@ impl Job {
     }
 
     fn path(&self, strategy: &dyn Strategy, extra: &[(&str, f64)]) -> GeneratedPath {
+        self.path_with(strategy, extra, &[])
+    }
+
+    /// [`Self::path`] with choices as well as numbers.
+    fn path_with(
+        &self,
+        strategy: &dyn Strategy,
+        extra: &[(&str, f64)],
+        words: &[(&str, &str)],
+    ) -> GeneratedPath {
         let tag = tags();
         let input = input_for(
             self.surface.as_ref(),
@@ -302,6 +314,9 @@ impl Job {
             values
                 .entry("stepdown".to_owned())
                 .or_insert(ParameterValue::Number(1.0));
+        }
+        for (k, w) in words {
+            values.insert((*k).to_owned(), ParameterValue::Text((*w).to_owned()));
         }
         run(|ctx| generate(strategy, &input, &values, ctx)).unwrap()
     }
@@ -367,6 +382,40 @@ fn req_op_04_helical_finishing_cleans_the_faces_across_the_axis() {
         let path = job.path(&HelicalFinishing, &[(names::STOCK_TO_LEAVE, leave)]);
         let corner = if leave > 0.0 { leave + 0.05 } else { 0.0 };
         shaft_faces_left_at(&job, &path, leave, corner, &format!("leave {leave}"));
+    }
+}
+
+#[test]
+fn req_op_04_helical_finishing_in_rings_cleans_the_faces_in_one_cut() {
+    let job = Job::shaft(ToolShape::FlatEnd);
+    for leave in [0.0, 0.3] {
+        let path = job.path_with(
+            &HelicalFinishing,
+            &[(names::STOCK_TO_LEAVE, leave)],
+            &[(PASS_SHAPE, "rings")],
+        );
+        let corner = if leave > 0.0 { leave + 0.05 } else { 0.0 };
+        shaft_faces_left_at(&job, &path, leave, corner, &format!("rings, leave {leave}"));
+        // Each face's turn is a ring among the others, joined by steps, so
+        // the whole part is one cut (decision record 0390 item 4). The tool
+        // is grown by the stock to leave.
+        let r = 0.5 * DIAMETER + leave;
+        let clear = 0.1 * TOLERANCE;
+        let turns = turns_in_place(&path);
+        for face in [10.0 - r - clear, 25.0 + r + clear] {
+            assert!(
+                turns.iter().any(|x| (x - face).abs() < 1e-5),
+                "leave {leave}: no ring at {face}: {turns:?}"
+            );
+        }
+        assert!(turns.windows(2).all(|w| w[0] < w[1]), "{turns:?}");
+        let cuts = path
+            .group
+            .segments
+            .windows(2)
+            .filter(|w| w[0].kind != MoveKind::Cutting && w[1].kind == MoveKind::Cutting)
+            .count();
+        assert_eq!(cuts, 1, "leave {leave}: {cuts} separate cuts");
     }
 }
 
@@ -583,6 +632,14 @@ fn reach(triangles: &[[Point3; 3]], p: Point3, sign: f64, tool: f64, leave: f64)
 /// helix with this tool and is only counted. `extra` sets the operation's
 /// parameters, its stock to leave among them.
 fn crankshaft_faces_cleaned(strategy: &dyn Strategy, extra: &[(&str, f64)]) {
+    crankshaft_faces_cleaned_with(strategy, extra, &[]);
+}
+
+fn crankshaft_faces_cleaned_with(
+    strategy: &dyn Strategy,
+    extra: &[(&str, f64)],
+    words: &[(&str, &str)],
+) {
     let leave = extra
         .iter()
         .find(|(k, _)| *k == names::STOCK_TO_LEAVE)
@@ -596,7 +653,7 @@ fn crankshaft_faces_cleaned(strategy: &dyn Strategy, extra: &[(&str, f64)]) {
         "the crankshaft's faces across the axis"
     );
     let radius = 0.5 * DIAMETER;
-    let path = job.path(strategy, extra);
+    let path = job.path_with(strategy, extra, words);
     // How close to the rotary axis the tool's tip comes anywhere: the lowest
     // a cut goes, on the path itself.
     let lowest = path
@@ -680,6 +737,13 @@ fn crankshaft_faces_cleaned(strategy: &dyn Strategy, extra: &[(&str, f64)]) {
 #[test]
 fn req_op_04_helical_finishing_cleans_the_crankshaft_faces() {
     crankshaft_faces_cleaned(&HelicalFinishing, &[]);
+}
+
+#[test]
+fn req_op_04_helical_finishing_in_rings_cleans_the_crankshaft_faces() {
+    // Rings at constant X reach the faces as the spiral does, with each
+    // face's turn among the rings (decision record 0390 item 4).
+    crankshaft_faces_cleaned_with(&HelicalFinishing, &[], &[(PASS_SHAPE, "rings")]);
 }
 
 #[test]

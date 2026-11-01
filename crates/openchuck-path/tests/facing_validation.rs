@@ -102,6 +102,8 @@ impl Strategy for Plain {
             passes: self.passes(i, p, c)?,
             notes: Vec::new(),
             warnings: Vec::new(),
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
     fn passes_with_notes(
@@ -119,6 +121,8 @@ impl Strategy for Plain {
                 parameter: Some("tolerance".into()),
                 requires_acknowledgement: false,
             }],
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

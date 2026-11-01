@@ -451,6 +451,17 @@ impl Track {
     }
 }
 
+/// The distance between the tool's poses along a pass, mm, for a tool of
+/// cutting radius `r` and an Allowed excess of `height`: the travel between
+/// poses leaves no more than a tenth of the Allowed excess (a ball's cusp
+/// along a pass is about step^2 / 8r), at least 0.02 mm and at most half the
+/// radius, and never above half the radius for a tool too small for 0.02 mm
+/// (NFR-07).
+pub(crate) fn pose_step(r: f64, height: f64) -> f64 {
+    let most = 0.5 * r;
+    (0.8 * r * height).sqrt().clamp(0.02_f64.min(most), most)
+}
+
 /// The poses of the tool along `pass`, each point with the machine's
 /// straight move to the next divided so neighbouring poses are no more than
 /// `step` mm apart: the moves are straight in the machine's X, Y, Z and A,
@@ -1310,6 +1321,23 @@ mod tests {
         let b = run(&Plane::new(), 2.0, SETTINGS, Limits::OWNER);
         assert_eq!(a.1, b.1);
         assert_eq!(a.0.queries, b.0.queries);
+    }
+
+    #[test]
+    fn req_nfr_07_a_tiny_tool_gets_a_pose_step_within_its_radius() {
+        // A tool with a cutting radius under 0.04 mm must not panic (NFR-07):
+        // the step is never below 0.02 mm unless the radius is too small for
+        // it, and never above half the radius.
+        for r in [0.005, 0.01, 0.039, 0.04, 2.0] {
+            for h in [0.0, 0.01, 0.5] {
+                let step = pose_step(r, h);
+                assert!(step > 0.0 && step <= 0.5 * r + 1e-12, "r {r} h {h}: {step}");
+                assert!(
+                    step >= (0.02_f64).min(0.5 * r) - 1e-12,
+                    "r {r} h {h}: {step}"
+                );
+            }
+        }
     }
 
     #[test]

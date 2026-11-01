@@ -334,6 +334,51 @@ mod tests {
     }
 
     #[test]
+    fn req_set_10_req_tl_11_a_tool_set_follows_its_renamed_machine() {
+        let dir = temp_dir("rename-set");
+        let mut lib = ToolLibrary::open(&dir).unwrap();
+        lib.save_tool(flat(1)).unwrap();
+        let mut set = ToolSet {
+            machine: "My Z1".into(),
+            entries: Vec::new(),
+        };
+        set.assign(ToolId::from_u128(1), ControllerMapping::numbered(3));
+        let path = lib.save_tool_set(set.clone()).unwrap();
+        let other = lib
+            .save_tool_set(ToolSet {
+                machine: "Shop".into(),
+                entries: Vec::new(),
+            })
+            .unwrap();
+
+        // No set names the machine: nothing is written.
+        assert_eq!(lib.rename_tool_set("Nobody", "Anything").unwrap(), None);
+        // A name another set holds, or a blank name, is refused.
+        assert!(
+            lib.rename_tool_set("my z1", "SHOP")
+                .unwrap_err()
+                .to_string()
+                .contains("a tool set for the machine \"SHOP\" already exists")
+        );
+        assert!(lib.rename_tool_set("My Z1", "  ").is_err());
+        assert!(lib.tool_set("My Z1").is_some());
+
+        // The set keeps its file and its tools under the new name.
+        assert_eq!(
+            lib.rename_tool_set("my z1", " Z1 workshop ").unwrap(),
+            Some(path.clone())
+        );
+        let lib = ToolLibrary::open(&dir).unwrap();
+        assert!(lib.tool_set("My Z1").is_none());
+        let renamed = lib.tool_set("Z1 workshop").unwrap();
+        assert_eq!(renamed.machine, "Z1 workshop");
+        assert_eq!(renamed.entries, set.entries);
+        assert!(other.exists());
+        assert_eq!(lib.tool_sets().count(), 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn req_tl_11_req_nfr_07_bad_tool_sets_give_clear_errors() {
         let one = ToolId::from_u128(1);
         let two = ToolId::from_u128(2);

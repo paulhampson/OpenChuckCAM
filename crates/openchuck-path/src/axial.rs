@@ -201,6 +201,8 @@ impl Strategy for AxialFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 
@@ -235,6 +237,8 @@ impl Strategy for AxialFinishing {
             passes,
             notes,
             warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }
@@ -806,7 +810,7 @@ fn adaptive_passes(
         // The tool's travel along a pass between poses leaves no more than
         // a tenth of the Allowed excess: a ball's along-pass cusp is about
         // step^2 / 8r.
-        pose_step: (0.8 * r * settings.height).sqrt().clamp(0.02, 0.5 * r),
+        pose_step: adaptive::pose_step(r, settings.height),
         window: 2.0 * along.grown_radius() + along.x_step(),
         station: along.x_step().min(0.5 * r).max(1e-3),
     };
