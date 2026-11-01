@@ -1,0 +1,11 @@
+schema = 25
+id = "34e3aa5e-36cc-4614-be6d-ec39cf22f5f8"
+order = "W"
+name = "Finish"
+setup = "57ad6798-2544-4dfb-90a0-caf67ec69484"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000204"
+selections = []
+
+[parameters]
+adaptive_spacing = false
