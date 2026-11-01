@@ -273,6 +273,15 @@ priority = 79
 # req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 72.458 s uninstrumented.
 # req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2: 70.961 s uninstrumented.
 # req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 71.132 s uninstrumented.
+# TABS-CHECK 1 Nov 2026 (issue #438), alone and uninstrumented on four cores:
+# since ENDFACE stage 3 a new rotary roughing operation has adaptive spacing on
+# (decision 0239 item 6), which these workholding tests do not exercise; the
+# roughing-either-direction test took 1451 s on main (0bba9b5d) and now takes
+# 94 s with the fixture's "Rough" operation setting it off. The others in
+# this binary: gcode-at-any-thread-count 101 s, default tabs gates 130 s,
+# tab follows the part offset 83 s, operations never cut a held region 61 s,
+# deviation report 59 s, tab volume 56 s, default tabs follow the owner's
+# answers 67 s. All stay listed.
 # OPCREATE2 released integration (24 Oct 2026): the existing wall determinism
 # test took 65.709 s uninstrumented in the combined UI/path run, alongside
 # tooling builds. Default still runs it; coverage excludes and long selects it.
