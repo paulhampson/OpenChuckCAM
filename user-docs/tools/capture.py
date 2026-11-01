@@ -237,14 +237,15 @@ def tutorial(args):
     click(1100, 495, 2.5)                            # Use this machine (Makera Z1)
     shot("04-machine")
     click(96, 343, 2)                                # Stock in the tree
-    click(1205, 223, 2.5)                            # Cylinder
+    click(1260, 223, 1.5)                            # Shape list
+    click(1255, 256, 2.5)                            # Cylinder
     shot("05-stock")
-    click(1225, 299, 1.5)                            # Material
-    click(1214, 460, 1.5)                            # Hardwood
+    click(1270, 299, 1.5)                            # Material
+    click(1262, 460, 1.5)                            # Hardwood
     click(96, 427, 2)                                # Workholding in the tree
-    click(1189, 451, 2)                              # Held at the start
-    fill(1260, 483, "8")                             # Grip length
-    scroll(1190, 500, 6)
+    click(1234, 451, 2)                              # Held at the start
+    fill(1282, 483, "8")                             # Grip length
+    scroll(1190, 500, 12)
     click(1323, 705, 2.5)                            # Apply
     shot("06-workholding")
 
@@ -266,7 +267,7 @@ def tutorial(args):
     fill(590, 172, "Rough")
     shot("09-add-roughing")
     click(430, 630, 3)                               # Add
-    fill(1240, 449, "1")                             # Stepdown
+    fill(1275, 449, "1")                             # Stepdown
     click(722, 99, 1.5)                              # Fit
     shot("10-roughing-settings")
     click(1081, 54, 2)                               # New operation
@@ -282,7 +283,7 @@ def tutorial(args):
     # some passes and leaves a partial path that has to be accepted before export, so the
     # tutorial turns it off. Scrolled to the end of the Inspector it is at a fixed place.
     scroll(1190, 400, 40)
-    click(1189, 513, 1.5)                            # Adaptive spacing off
+    click(1222, 513, 1.5)                            # Adaptive spacing off
     shot("12b-adaptive-spacing-off")
 
     # 6. Generate.
@@ -322,13 +323,13 @@ def tutorial(args):
     click(668, 99, 1)                                # Iso view
     click(722, 99, 1.5)                              # Fit
     scroll(640, 290, 6, down=False)                  # zoom in
-    click(1042, 135, 4)                              # Deviation colours
+    click(1036, 135, 4)                              # Deviation colours
     click(1004, 477, 2)                              # fold the dock
     scroll(640, 330, 2, down=False)
     scroll(640, 330, 3)
     shot("hero-2-deviation")
     click(285, 707, 1.5)                             # unfold the dock
-    click(1042, 135, 1)                              # Deviation colours off
+    click(1036, 135, 1)                              # Deviation colours off
 
     # 8. Post and export.
     click(1303, 746, 3)                              # Post and export...
