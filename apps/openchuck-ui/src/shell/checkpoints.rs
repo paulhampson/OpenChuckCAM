@@ -831,6 +831,20 @@ mod tests {
     }
 
     #[test]
+    fn req_prj_08_folder_names_leave_out_the_windows_verbatim_prefix() {
+        // Decision 0460 item 3: the user's folder, not `\\?\` (decision 0114).
+        assert_eq!(
+            shown(Path::new(r"\\?\C:\Projects\Part")),
+            r"C:\Projects\Part"
+        );
+        assert_eq!(
+            shown(Path::new(r"\\?\UNC\server\share\Part")),
+            r"\\server\share\Part"
+        );
+        assert_eq!(shown(Path::new("/home/user/Part")), "/home/user/Part");
+    }
+
+    #[test]
     fn req_prj_08_late_folder_inspection_cannot_attach_a_writer_to_the_wrong_project() {
         let root = super::super::frame_tests::temp("checkpoint-obsolete-inspection");
         let old = root.join("old");

@@ -52,6 +52,9 @@ Tests named after PRJ-08 and NFR-07, written from this record. They use generate
   - equivalent path forms (`.`, `..`, a trailing separator; on Windows also the `\\?\` form and a different letter case) name the same project;
   - a copied folder offers nothing and keeps the copied data set aside;
   - a moved project is located from its Messages line, and a failed lookup keeps the dialog.
+  - another project's damaged recovery files are one line, and opening that project reports them without an offer and keeps them;
+  - a Keep saved that cannot be written reports the failure and keeps the requested project open;
+  - folder names leave out Windows' `\\?\` prefix.
 - The existing recovery tests now open the project whose recovery they offer. The test that recovered one project over another project's unsaved edits is replaced: an offer for the opened project waits while that project has unsaved edits.
 
 Native Windows behaviour (Explorer copies, double-click opening, the `\\?\` and drive-letter case forms) needs the owner's check on a Windows build: OI-1640.

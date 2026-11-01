@@ -362,8 +362,9 @@ fn req_prj_08_a_moved_project_is_located_from_its_messages_line() {
     rig.shell.recovery.locate.as_mut().unwrap().path = after.display().to_string();
     rig.frame(Vec::new());
     click_exact(&mut rig, "Locate");
+    // The dialog closes when the lookup starts; the line changes when it ends.
     until(&mut rig, "the lookup", |r| {
-        r.shell.recovery.locate.is_none()
+        r.shell.recovery.locate.is_none() && !r.shell.recovery.reading()
     });
     assert!(rig.shows("Moved checkpoint"));
     assert!(rig.shows("Open project"));
@@ -381,4 +382,85 @@ fn copy_tree(from: &Path, to: &Path) {
             std::fs::copy(item.path(), target).unwrap();
         }
     }
+}
+
+/// A project with no unexpected session left, but a damaged recovery file.
+fn damaged_only(folder: &Path, config: &Path, name: &str) {
+    crashed(folder, config, name);
+    let mut store = Store::open(folder).unwrap();
+    store.close(1).unwrap();
+    drop(store);
+    std::fs::write(
+        folder.join(".openchuck-recovery").join("damaged.part"),
+        "partial",
+    )
+    .unwrap();
+    let catalog = Catalog::read(folder).unwrap();
+    assert!(!catalog.recovery_needed && !catalog.problems.is_empty());
+}
+
+#[test]
+fn req_prj_08_req_nfr_07_damaged_recovery_files_are_reported_without_an_offer() {
+    let root = temp("open-recovery-damaged");
+    let config = root.join("config");
+    let (a, b) = (root.join("a"), root.join("b"));
+    damaged_only(&a, &config, "Alpha");
+    file::save(&Project::new("Bravo saved"), &b).unwrap();
+    // Another project's damaged files: one line, whose action opens it.
+    let mut rig = launch(&root, &config, Some(b.clone()));
+    until(&mut rig, "discovery and the writer", |r| {
+        !r.shell.recovery.elsewhere.is_empty() && writer_ready(r)
+    });
+    assert!(rig.shows("are damaged"));
+    assert!(rig.shows("Open project"));
+    assert!(rig.shell.recovery.review.is_none());
+    // Opening it reports the damaged file, preserved, and offers nothing.
+    rig.shell.open(a.clone());
+    until(&mut rig, "Alpha's writer", |r| {
+        writer_ready(r) && r.shell.recovery.problem.is_some()
+    });
+    assert!(rig.shell.recovery.review.is_none());
+    assert!(
+        rig.shell
+            .recovery
+            .problem
+            .as_ref()
+            .unwrap()
+            .contains("damaged.part")
+    );
+    assert!(a.join(".openchuck-recovery").join("damaged.part").is_file());
+    assert_eq!(location(&rig), a.canonicalize().unwrap());
+}
+
+#[test]
+fn req_prj_08_req_nfr_07_a_failed_keep_saved_still_keeps_the_requested_project() {
+    let root = temp("open-recovery-keep-fails");
+    let config = root.join("config");
+    let b = root.join("b");
+    crashed(&b, &config, "Bravo");
+    // Recovery writing fails here: the writer cannot replace its ignore file.
+    let ignore = b.join(".openchuck-recovery/.gitignore");
+    std::fs::remove_file(&ignore).unwrap();
+    std::fs::create_dir(&ignore).unwrap();
+    let mut rig = launch(&root, &config, Some(b.clone()));
+    until(&mut rig, "the offer", |r| {
+        r.shows("Recover project changes")
+    });
+    click(&mut rig, "Keep saved project");
+    until(&mut rig, "the failure", |r| {
+        r.shell.recovery.review.is_none()
+    });
+    assert!(
+        rig.shell
+            .recovery
+            .problem
+            .as_ref()
+            .is_some_and(|p| p.contains("Recovery checkpoint failed"))
+    );
+    assert_eq!(location(&rig), b.canonicalize().unwrap());
+    assert_eq!(
+        rig.shell.app.as_ref().unwrap().project().name(),
+        "Bravo saved"
+    );
+    assert_eq!(Catalog::read(&b).unwrap().snapshots.len(), 1);
 }
