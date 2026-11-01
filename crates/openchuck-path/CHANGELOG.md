@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change. The workspace minor version is set at this lane's release merge (the coordinator's instruction).
+
 ## 0.31.0
 
 - **Fix (CodeRabbit on #426):** adaptive spacing panicked for a tool whose cutting radius is under 0.04 mm (diameter under 0.08 mm): the step between poses along a pass was clamped between 0.02 mm and half the radius, and those bounds crossed. On main since #422 in axial, helical and simultaneous finishing, and in this pull request's roughing. One shared `adaptive::pose_step` now keeps the lower bound at most half the radius (NFR-07); for any larger tool the step, the path and the G-code are unchanged.
