@@ -30,6 +30,9 @@ const GROUP_HINT: &str = "The same note for consecutive moves, with values withi
      other. Open it to see each move.";
 const NOTE: Color32 = DARK.warning;
 
+/// The identity of the read-only plain-text box in the Results window.
+const PLAIN_TEXT_BOX: &str = "results plain text box";
+
 /// What Copy all says when pointed at (issue 431).
 const COPY_ALL_TIP: &str = "Copies every line of the results, and the build information, \
      as plain text for a bug report.";
@@ -870,6 +873,7 @@ impl RunPanel {
                                 let mut shown = text.as_str();
                                 ui.add(
                                     egui::TextEdit::multiline(&mut shown)
+                                        .id(egui::Id::new(PLAIN_TEXT_BOX))
                                         .desired_rows(6)
                                         .desired_width(f32::INFINITY)
                                         .font(egui::TextStyle::Monospace),
@@ -1013,22 +1017,24 @@ mod tests {
         let name = project.operation(operation).unwrap().name.clone();
         drop(app);
         std::fs::remove_dir_all(dir).unwrap();
-        let notes: Vec<String> = (0..moves)
-            .map(|_| feed_note(&name, 999.1, 1000.0))
-            .collect();
+        (feed_run(operation, &name, moves), project, name)
+    }
+
+    /// The run the pipeline makes for `moves` slowed moves of `operation`.
+    fn feed_run(operation: OperationId, name: &str, moves: usize) -> Regeneration {
+        let notes: Vec<String> = (0..moves).map(|_| feed_note(name, 999.1, 1000.0)).collect();
         let bare: Vec<String> = notes
             .iter()
             .map(|n| n.split_once("': ").unwrap().1.to_owned())
             .collect();
-        let run = Regeneration {
+        Regeneration {
             feed_limits: openchuck_app::note_groups::feed_limit_of(&bare)
                 .map(|l| (operation, l))
                 .into_iter()
                 .collect(),
             notes,
             ..Regeneration::default()
-        };
-        (run, project, name)
+        }
     }
 
     #[test]
@@ -1103,6 +1109,159 @@ mod tests {
         assert!(text.contains(&lines[0].text));
         assert!(text.contains("Warning: operation 'X': a note\n"));
         assert!(text.ends_with("\nBuild\nv1\n"));
+    }
+
+    /// The Results window drawn frame by frame, with what it put on the
+    /// clipboard.
+    struct Frames {
+        ctx: egui::Context,
+        panel: RunPanel,
+        app: Application,
+        shapes: Vec<egui::epaint::ClippedShape>,
+        copied: Vec<String>,
+        _dir: std::path::PathBuf,
+    }
+
+    impl Frames {
+        fn new(tag: &str) -> Self {
+            let (dir, app, operation, _) =
+                crate::testing::cube_project(&format!("results-frames-{tag}"));
+            let name = app.project().operation(operation).unwrap().name.clone();
+            let run = feed_run(operation, &name, 4);
+            let ctx = egui::Context::default();
+            crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+            let panel = RunPanel {
+                last: Some(Arc::new(run)),
+                show_results: true,
+                ..RunPanel::default()
+            };
+            let mut frames = Self {
+                ctx,
+                panel,
+                app,
+                shapes: Vec::new(),
+                copied: Vec::new(),
+                _dir: dir,
+            };
+            for _ in 0..3 {
+                frames.frame(Vec::new());
+            }
+            frames
+        }
+
+        fn frame(&mut self, events: Vec<egui::Event>) {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1000.0, 800.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut output = self.ctx.run_ui(input, |ui| {
+                self.panel.results_window(ui.ctx(), &self.app);
+            });
+            output.textures_delta.clear();
+            for command in output.platform_output.commands {
+                if let egui::OutputCommand::CopyText(text) = command {
+                    self.copied.push(text);
+                }
+            }
+            self.shapes = output.shapes;
+        }
+
+        fn centre_of(&self, needle: &str) -> egui::Pos2 {
+            fn walk(shape: &egui::Shape, needle: &str) -> Option<egui::Pos2> {
+                match shape {
+                    egui::Shape::Text(t) if t.galley.text().contains(needle) => {
+                        Some(t.pos + t.galley.rect.center().to_vec2())
+                    }
+                    egui::Shape::Vec(v) => v.iter().find_map(|s| walk(s, needle)),
+                    _ => None,
+                }
+            }
+            self.shapes
+                .iter()
+                .find_map(|s| walk(&s.shape, needle))
+                .unwrap_or_else(|| panic!("{needle} is not on screen"))
+        }
+
+        fn shows(&self, needle: &str) -> bool {
+            fn has(shape: &egui::Shape, needle: &str) -> bool {
+                match shape {
+                    egui::Shape::Text(t) => t.galley.text().contains(needle),
+                    egui::Shape::Vec(v) => v.iter().any(|s| has(s, needle)),
+                    _ => false,
+                }
+            }
+            self.shapes.iter().any(|s| has(&s.shape, needle))
+        }
+
+        fn click(&mut self, at: egui::Pos2) {
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            self.frame(vec![egui::Event::PointerMoved(at)]);
+            self.frame(vec![button(true)]);
+            self.frame(vec![button(false)]);
+        }
+
+        fn tab(&mut self) {
+            let key = |pressed| egui::Event::Key {
+                key: egui::Key::Tab,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            };
+            self.frame(vec![key(true), key(false)]);
+        }
+    }
+
+    impl Drop for Frames {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self._dir);
+        }
+    }
+
+    #[test]
+    fn req_ui_12_copy_all_puts_the_lines_shown_and_the_build_information_on_the_clipboard() {
+        let mut frames = Frames::new("copy");
+        assert!(frames.shows("4 moves during"));
+        let at = frames.centre_of("Copy all");
+        frames.click(at);
+        assert_eq!(frames.copied.len(), 1, "one click, one copy");
+        let text = &frames.copied[0];
+        assert!(text.contains("4 moves during"), "{text}");
+        assert!(text.contains("operation(s)"), "{text}");
+        assert!(
+            text.contains(openchuck_buildinfo::current_text().trim_end()),
+            "{text}"
+        );
+        // The per-move notes are not in the copied text (decision 0430).
+        assert!(!text.contains("contact feed is"), "{text}");
+    }
+
+    #[test]
+    fn req_ui_12_req_ui_14_the_plain_text_box_opens_and_the_keyboard_reaches_it() {
+        let mut frames = Frames::new("keys");
+        assert!(!frames.shows("Build"), "the plain text starts closed");
+        let at = frames.centre_of("Results as plain text");
+        frames.click(at);
+        assert!(frames.shows("operation(s)") && frames.shows("4 moves during"));
+        let id = egui::Id::new(PLAIN_TEXT_BOX);
+        let mut reached = false;
+        for _ in 0..12 {
+            frames.tab();
+            if frames.ctx.memory(|m| m.has_focus(id)) {
+                reached = true;
+                break;
+            }
+        }
+        assert!(reached, "Tab reaches the plain text box");
     }
 
     #[test]
