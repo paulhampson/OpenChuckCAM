@@ -199,30 +199,67 @@ fn req_op_14_req_nfr_07_links_that_cannot_be_lowered_retract_and_are_said() {
     );
 }
 
+/// The links between cuts as (X where the last cut ended, X where the next
+/// begins, the highest the tool's tip went from the axis between them).
+fn links(path: &GeneratedPath) -> Vec<(f64, f64, f64)> {
+    let mut out = Vec::new();
+    let mut last_cut: Option<f64> = None;
+    let mut top = 0.0_f64;
+    let mut prev = path.group.start;
+    let mut moved = false;
+    for s in &path.group.segments {
+        if s.kind == MoveKind::Cutting {
+            if moved && let Some(from) = last_cut {
+                out.push((from, prev.tip.x, top));
+            }
+            last_cut = Some(s.end.tip.x);
+            top = 0.0;
+            moved = false;
+        } else {
+            top = top.max(s.end.tip.y.hypot(s.end.tip.z));
+            moved = true;
+        }
+        prev = s.end;
+    }
+    out
+}
+
 #[test]
-fn req_set_09_low_links_stay_out_of_the_held_region() {
+fn req_set_09_low_links_do_not_cross_a_held_region() {
+    // A held interval inside the part splits every pass in two; the link
+    // between the two pieces crosses it and must retract (SET-09), while the
+    // links at the ends of the passes still stay low.
     let f = fixture();
-    let keep = [(8.0, 12.0)];
+    let keep = [(9.0, 11.0)];
     let mut input = f.input();
     input.keep_out = &keep;
     let path = axial_in(&input, &values(&[low()]));
-    let (lo, hi) = (keep[0].0, keep[0].1);
-    // The option is active: links away from the held range are lowered.
-    let top = link_radii(&path).into_iter().fold(0.0_f64, f64::max);
-    assert!(top > 0.0);
-    for s in &path.group.segments {
-        if s.kind != MoveKind::Cutting {
-            let r = s.end.tip.y.hypot(s.end.tip.z);
-            // Below the stock's top a move may not be inside the held X range.
-            if r < PART + 1.0 - 1e-6 {
-                assert!(
-                    !(s.end.tip.x > lo + 1e-9 && s.end.tip.x < hi - 1e-9),
-                    "move at x {} radius {r}",
-                    s.end.tip.x
-                );
-            }
-        }
+    let clearance = PART + 6.0;
+    let crossing = |from: f64, to: f64| from.min(to) < keep[0].1 && from.max(to) > keep[0].0;
+    let all = links(&path);
+    let (across, elsewhere): (Vec<_>, Vec<_>) =
+        all.iter().partition(|&&(from, to, _)| crossing(from, to));
+    assert!(
+        !across.is_empty(),
+        "no link crosses the held region: {all:?}"
+    );
+    for (from, to, top) in &across {
+        assert!(
+            (top - clearance).abs() < 1e-6,
+            "link from x {from} to {to} crossing the held region went only to {top}"
+        );
     }
+    assert!(
+        elsewhere.iter().any(|&(_, _, top)| top < clearance - 1.0),
+        "no other link was lowered: {elsewhere:?}"
+    );
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("could not be lowered")),
+        "{:?}",
+        path.notes
+    );
 }
 
 #[test]
