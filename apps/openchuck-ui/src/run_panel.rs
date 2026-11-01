@@ -331,7 +331,13 @@ pub struct RunPanel {
     last: Option<Arc<Regeneration>>,
     last_error: Option<String>,
     last_seconds: f64,
-    show_results: bool,
+    /// Whether the last run failed (not cancelled): one error in the Results
+    /// tab (issue 475).
+    failed: bool,
+    /// The last run's lines by level: errors, warnings, information.
+    counts: LevelCounts,
+    /// A failed run asks the shell to show the Results tab.
+    wants_tab: bool,
     adding: Option<AddOperation>,
     deferred_add: Option<(crate::pending_edits::Ticket, (bool, bool, bool))>,
     /// The New operation dialog asked for the tool library (decision record
@@ -403,6 +409,7 @@ impl RunPanel {
 
     fn begin(&mut self, handle: JobHandle<Regeneration>, simulate: bool) {
         self.last_error = None;
+        self.failed = false;
         self.progress = None;
         self.job = Some(RunningJob {
             handle,
@@ -458,7 +465,7 @@ impl RunPanel {
                 match result {
                     Ok(run) => {
                         let run = Arc::new(run);
-                        self.last = Some(Arc::clone(&run));
+                        self.record_run(Arc::clone(&run));
                         Some((run, id))
                     }
                     Err(e) if e.is_cancelled() => {
@@ -467,8 +474,7 @@ impl RunPanel {
                         None
                     }
                     Err(e) => {
-                        self.last_error = Some(e.to_string());
-                        self.show_results = true;
+                        self.record_failure(e.to_string());
                         None
                     }
                 }
@@ -498,9 +504,10 @@ impl RunPanel {
         Some(text)
     }
 
-    /// Whether the results window or the add-operation dialog is open.
+    /// Whether the add-operation dialog is open. The Results are a tab of the
+    /// dock, not a window (issue 475).
     pub fn has_window(&self) -> bool {
-        self.show_results || self.adding.is_some()
+        self.adding.is_some()
     }
 
     /// Whether the add-operation dialog is open.
@@ -510,9 +517,36 @@ impl RunPanel {
         self.adding.is_some()
     }
 
-    /// Opens the results window on the latest run.
-    pub fn show_results(&mut self) {
-        self.show_results = true;
+    /// Keeps `run` as the latest run and counts its lines by level.
+    pub(crate) fn record_run(&mut self, run: Arc<Regeneration>) {
+        let mut counts = LevelCounts::default();
+        for line in result_lines(&run, &run.project) {
+            counts.add(line.severity);
+        }
+        self.counts = counts;
+        self.last = Some(run);
+        self.failed = false;
+        self.last_error = None;
+    }
+
+    /// Keeps a failed run's error, and asks for the Results tab.
+    pub(crate) fn record_failure(&mut self, message: String) {
+        self.last_error = Some(message);
+        self.failed = true;
+        self.wants_tab = true;
+    }
+
+    /// Whether a failed run has asked for the Results tab since the last
+    /// call.
+    pub fn take_results_request(&mut self) -> bool {
+        std::mem::take(&mut self.wants_tab)
+    }
+
+    /// The number on the Results tab: the warnings and errors of the latest
+    /// run, a group once, and one more for a failed run. Information is not
+    /// counted, and the tab's filters do not change it (owner, 1 Nov 2026).
+    pub fn results_count(&self) -> usize {
+        self.counts.errors + self.counts.warnings + usize::from(self.failed)
     }
 
     /// Opens the add-operation dialog (11.4): the setup and tool of the
@@ -795,102 +829,212 @@ impl RunPanel {
         (added, error)
     }
 
-    /// Draws the results window.
-    pub fn results_window(&mut self, ctx: &egui::Context, app: &Application) {
-        if !self.show_results {
-            return;
+    /// Draws the Results tab of the dock: the summary and Copy all, the level
+    /// chips, then the lines in one scroll area, so a short dock reaches
+    /// everything (UI-12, UI-16; issue 475). Copy all and the plain-text box
+    /// hold every line whatever the chips show (NFR-12).
+    pub fn results_tab(&mut self, ui: &mut egui::Ui, app: &Application, filter: &mut LevelFilter) {
+        let lines = self
+            .last
+            .as_ref()
+            .map(|run| result_lines(run, app.project()))
+            .unwrap_or_default();
+        let mut counts = LevelCounts::default();
+        for line in &lines {
+            counts.add(line.severity);
         }
-        let mut open = true;
-        egui::Window::new("Results")
-            .open(&mut open)
-            .default_width(520.0)
-            .show(ctx, |ui| {
-                if let Some(error) = &self.last_error {
-                    ui.colored_label(PROBLEM, error);
+        counts.errors += usize::from(self.failed);
+        let summary = self.last.as_ref().map(|run| {
+            format!(
+                "{} operation(s), {} moves, {:.1} s to generate",
+                run.toolpath.groups.len(),
+                run.toolpath
+                    .groups
+                    .iter()
+                    .map(|g| g.segments.len())
+                    .sum::<usize>(),
+                self.last_seconds
+            )
+        });
+        let text = summary
+            .as_ref()
+            .map(|summary| results_text(&lines, summary, openchuck_buildinfo::current_text()));
+        ui.horizontal_wrapped(|ui| {
+            if let Some(summary) = &summary {
+                ui.label(summary);
+            }
+            if let Some(text) = &text
+                && ui.button("Copy all").on_hover_text(COPY_ALL_TIP).clicked()
+            {
+                ui.ctx().copy_text(text.clone());
+            }
+            for severity in [Severity::Problem, Severity::Warning, Severity::Info] {
+                let (name, colour) = level_name(severity);
+                let on = filter.shows(severity);
+                let label = RichText::new(format!("{name} {}", counts.get(severity)))
+                    .color(if on { colour } else { DARK.muted });
+                if ui
+                    .selectable_label(on, label)
+                    .on_hover_text(format!(
+                        "Show or hide {}. Copy all and the plain text always hold every line.",
+                        name.to_lowercase()
+                    ))
+                    .clicked()
+                {
+                    filter.toggle(severity);
+                }
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("results")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if let Some(error) = &self.last_error
+                    && (!self.failed || filter.errors)
+                {
+                    ui.add(egui::Label::new(RichText::new(error).color(PROBLEM)).selectable(true));
                     ui.separator();
                 }
-                match &self.last {
-                    None => {
-                        ui.label("Nothing has been generated yet.");
-                    }
-                    Some(run) => {
-                        if *run.project != *app.project() {
-                            ui.colored_label(
-                                NOTE,
-                                "The project has changed since this run. Generate again.",
-                            );
-                        }
-                        let summary = format!(
-                            "{} operation(s), {} moves, {:.1} s to generate",
-                            run.toolpath.groups.len(),
-                            run.toolpath
-                                .groups
-                                .iter()
-                                .map(|g| g.segments.len())
-                                .sum::<usize>(),
-                            self.last_seconds
-                        );
-                        ui.label(&summary);
-                        let lines = result_lines(run, app.project());
-                        let text =
-                            results_text(&lines, &summary, openchuck_buildinfo::current_text());
-                        if ui.button("Copy all").on_hover_text(COPY_ALL_TIP).clicked() {
-                            ui.ctx().copy_text(text.clone());
-                        }
-                        egui::ScrollArea::vertical()
-                            .max_height(360.0)
-                            .show(ui, |ui| {
-                                for (index, line) in lines.iter().enumerate() {
-                                    let colour = |text: RichText| match line.severity {
-                                        Severity::Info => text,
-                                        Severity::Warning => text.color(NOTE),
-                                        Severity::Problem => text.color(PROBLEM),
-                                    };
-                                    // Text in the window can be selected and
-                                    // copied (issue 431).
-                                    let label = |text: &str| {
-                                        egui::Label::new(colour(RichText::new(text)))
-                                            .selectable(true)
-                                    };
-                                    if line.moves.is_empty() {
-                                        ui.add(label(&line.text));
-                                        continue;
-                                    }
-                                    // A group opens on its moves, one line
-                                    // each; it starts closed (issue 255).
-                                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
-                                        .id_salt(("result group", index))
-                                        .default_open(false)
-                                        .show(ui, |ui| {
-                                            for note in &line.moves {
-                                                ui.add(label(note));
-                                            }
-                                        })
-                                        .header_response
-                                        .on_hover_text(GROUP_HINT);
-                                }
-                            });
-                        // The same text in a box that selects and copies with
-                        // the keyboard alone (select all, then copy).
-                        egui::CollapsingHeader::new("Results as plain text")
-                            .id_salt("results plain text")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                let mut shown = text.as_str();
-                                ui.add(
-                                    egui::TextEdit::multiline(&mut shown)
-                                        .id(egui::Id::unique(PLAIN_TEXT_BOX))
-                                        .desired_rows(6)
-                                        .desired_width(f32::INFINITY)
-                                        .font(egui::TextStyle::Monospace),
-                                );
-                            });
-                        ui.separator();
-                        ui.weak(openchuck_app::VERIFY_GCODE_NOTICE);
-                    }
+                let Some(run) = &self.last else {
+                    ui.label("Nothing has been generated yet.");
+                    return;
+                };
+                if *run.project != *app.project() {
+                    ui.colored_label(
+                        NOTE,
+                        "The project has changed since this run. Generate again.",
+                    );
                 }
+                let mut shown = 0;
+                for (index, line) in lines.iter().enumerate() {
+                    if !filter.shows(line.severity) {
+                        continue;
+                    }
+                    shown += 1;
+                    let colour = |text: RichText| match line.severity {
+                        Severity::Info => text,
+                        Severity::Warning => text.color(NOTE),
+                        Severity::Problem => text.color(PROBLEM),
+                    };
+                    // Text in the tab can be selected and copied (issue 431).
+                    let label =
+                        |text: &str| egui::Label::new(colour(RichText::new(text))).selectable(true);
+                    if line.moves.is_empty() {
+                        ui.add(label(&line.text));
+                        continue;
+                    }
+                    // A group opens on its moves, one line each; it starts
+                    // closed (issue 255).
+                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
+                        .id_salt(("result group", index))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for note in &line.moves {
+                                ui.add(label(note));
+                            }
+                        })
+                        .header_response
+                        .on_hover_text(GROUP_HINT);
+                }
+                if shown == 0 && !lines.is_empty() {
+                    ui.weak("No lines at this level.");
+                }
+                // The same text in a box that selects and copies with the
+                // keyboard alone (select all, then copy).
+                if let Some(text) = &text {
+                    egui::CollapsingHeader::new("Results as plain text")
+                        .id_salt("results plain text")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let mut shown = text.as_str();
+                            ui.add(
+                                egui::TextEdit::multiline(&mut shown)
+                                    .id(egui::Id::unique(PLAIN_TEXT_BOX))
+                                    .desired_rows(6)
+                                    .desired_width(f32::INFINITY)
+                                    .font(egui::TextStyle::Monospace),
+                            );
+                        });
+                }
+                ui.separator();
+                ui.weak(openchuck_app::VERIFY_GCODE_NOTICE);
             });
-        self.show_results = open;
+    }
+}
+
+/// Which levels the Results tab shows (the chips), as in Messages. Session
+/// only (decision 0630).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LevelFilter {
+    /// Errors.
+    pub errors: bool,
+    /// Warnings.
+    pub warnings: bool,
+    /// Information.
+    pub information: bool,
+}
+
+impl Default for LevelFilter {
+    fn default() -> Self {
+        Self {
+            errors: true,
+            warnings: true,
+            information: true,
+        }
+    }
+}
+
+impl LevelFilter {
+    fn shows(&self, severity: Severity) -> bool {
+        match severity {
+            Severity::Problem => self.errors,
+            Severity::Warning => self.warnings,
+            Severity::Info => self.information,
+        }
+    }
+
+    fn toggle(&mut self, severity: Severity) {
+        let on = match severity {
+            Severity::Problem => &mut self.errors,
+            Severity::Warning => &mut self.warnings,
+            Severity::Info => &mut self.information,
+        };
+        *on = !*on;
+    }
+}
+
+/// Lines by level.
+#[derive(Debug, Clone, Copy, Default)]
+struct LevelCounts {
+    errors: usize,
+    warnings: usize,
+    information: usize,
+}
+
+impl LevelCounts {
+    fn add(&mut self, severity: Severity) {
+        match severity {
+            Severity::Problem => self.errors += 1,
+            Severity::Warning => self.warnings += 1,
+            Severity::Info => self.information += 1,
+        }
+    }
+
+    fn get(&self, severity: Severity) -> usize {
+        match severity {
+            Severity::Problem => self.errors,
+            Severity::Warning => self.warnings,
+            Severity::Info => self.information,
+        }
+    }
+}
+
+/// A chip's name (as in Messages) and colour.
+fn level_name(severity: Severity) -> (&'static str, Color32) {
+    match severity {
+        Severity::Problem => ("Errors", DARK.error),
+        Severity::Warning => ("Warnings", DARK.warning),
+        Severity::Info => ("Information", DARK.accent),
     }
 }
 
@@ -1135,6 +1279,9 @@ mod tests {
         app: Application,
         shapes: Vec<egui::epaint::ClippedShape>,
         copied: Vec<String>,
+        filter: LevelFilter,
+        size: egui::Vec2,
+        clock: f64,
         _dir: std::path::PathBuf,
     }
 
@@ -1146,17 +1293,26 @@ mod tests {
             let run = feed_run(operation, &name, 4);
             let ctx = egui::Context::default();
             crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
-            let panel = RunPanel {
-                last: Some(Arc::new(run)),
-                show_results: true,
-                ..RunPanel::default()
-            };
+            let mut panel = RunPanel::default();
+            panel.record_run(Arc::new(run));
+            Self::with(ctx, panel, app, dir)
+        }
+
+        fn with(
+            ctx: egui::Context,
+            panel: RunPanel,
+            app: Application,
+            dir: std::path::PathBuf,
+        ) -> Self {
             let mut frames = Self {
                 ctx,
                 panel,
                 app,
                 shapes: Vec::new(),
                 copied: Vec::new(),
+                filter: LevelFilter::default(),
+                size: egui::vec2(1000.0, 800.0),
+                clock: 0.0,
                 _dir: dir,
             };
             for _ in 0..3 {
@@ -1165,17 +1321,29 @@ mod tests {
             frames
         }
 
+        /// A run whose notes are `notes` (each its own warning line).
+        fn with_notes(tag: &str, notes: &[&str]) -> Self {
+            let (dir, app, _, _) = crate::testing::cube_project(&format!("results-frames-{tag}"));
+            let ctx = egui::Context::default();
+            crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+            let mut panel = RunPanel::default();
+            panel.record_run(Arc::new(Regeneration {
+                notes: notes.iter().map(|n| (*n).to_owned()).collect(),
+                ..Regeneration::default()
+            }));
+            Self::with(ctx, panel, app, dir)
+        }
+
         fn frame(&mut self, events: Vec<egui::Event>) {
+            self.clock += 0.05;
             let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(1000.0, 800.0),
-                )),
+                time: Some(self.clock),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
                 events,
                 ..Default::default()
             };
             let mut output = self.ctx.run_ui(input, |ui| {
-                self.panel.results_window(ui.ctx(), &self.app);
+                self.panel.results_tab(ui, &self.app, &mut self.filter);
             });
             output.textures_delta.clear();
             for command in output.platform_output.commands {
@@ -1278,6 +1446,144 @@ mod tests {
             }
         }
         assert!(reached, "Tab reaches the plain text box");
+    }
+
+    const WARNING_A: &str = "alpha: a note about one move";
+    const WARNING_B: &str = "bravo: a note about another thing";
+
+    #[test]
+    fn req_ui_12_the_label_count_is_warnings_and_errors_with_a_group_once() {
+        // Owner answer (d), 1 Nov 2026: n = warning and error lines of the
+        // latest run, plus one for a failed run; a grouped line once;
+        // information not counted; none gives no number.
+        let mut panel = RunPanel::default();
+        assert_eq!(panel.results_count(), 0, "no run yet");
+        let (mut run, project, _) = limited_run("count-info", 6);
+        run.project = project.into();
+        panel.record_run(Arc::new(run));
+        assert_eq!(panel.results_count(), 0, "information is not counted");
+        let mut notes: Vec<String> = (2..=4)
+            .map(|m| {
+                format!(
+                    "operation 'Roughing': move {m}: a plunge is steeper than 972.9 mm/min, \
+                     not 1000.0"
+                )
+            })
+            .collect();
+        notes.push(WARNING_B.to_owned());
+        panel.record_run(Arc::new(Regeneration {
+            notes,
+            ..Regeneration::default()
+        }));
+        assert_eq!(panel.results_count(), 2, "a group is one line");
+        panel.record_failure("the engine stopped".to_owned());
+        assert_eq!(panel.results_count(), 3, "a failed run adds one");
+    }
+
+    #[test]
+    fn req_ui_12_a_cancelled_run_is_not_a_failure_and_a_failure_asks_for_the_tab() {
+        let mut panel = RunPanel::default();
+        panel.record_failure("the engine stopped".to_owned());
+        assert!(
+            panel.take_results_request(),
+            "a failed run asks for the tab"
+        );
+        assert!(!panel.take_results_request(), "once");
+        assert_eq!(panel.results_count(), 1);
+        panel.record_run(Arc::new(Regeneration::default()));
+        assert_eq!(panel.results_count(), 0, "a later run clears the failure");
+    }
+
+    #[test]
+    fn req_ui_12_the_chips_filter_the_lines_and_keep_unfiltered_counts() {
+        let mut frames = Frames::with_notes("chips", &[WARNING_A, WARNING_B]);
+        assert!(
+            frames.shows("Warnings 2") && frames.shows("Errors 0") && frames.shows("Information 0")
+        );
+        assert!(frames.shows(WARNING_A) && frames.shows(WARNING_B));
+        let at = frames.centre_of("Warnings 2");
+        frames.click(at);
+        assert!(!frames.shows(WARNING_A), "the warning lines are hidden");
+        assert!(frames.shows("Warnings 2"), "the count is unfiltered");
+        assert!(frames.shows("No lines at this level."));
+        assert_eq!(
+            frames.filter,
+            LevelFilter {
+                warnings: false,
+                ..LevelFilter::default()
+            }
+        );
+    }
+
+    #[test]
+    fn req_ui_12_req_nfr_12_copy_all_holds_every_line_whatever_the_filter() {
+        let mut frames = Frames::with_notes("chips-copy", &[WARNING_A, WARNING_B]);
+        let at = frames.centre_of("Warnings 2");
+        frames.click(at);
+        let at = frames.centre_of("Copy all");
+        frames.click(at);
+        let text = frames.copied.last().expect("copied");
+        assert!(
+            text.contains(WARNING_A) && text.contains(WARNING_B),
+            "{text}"
+        );
+        assert!(text.contains(openchuck_buildinfo::current_text().trim_end()));
+    }
+
+    #[test]
+    fn req_ui_16_req_ui_12_the_tab_is_usable_in_a_short_dock() {
+        // The dock is at least 120 pt high and the tab strip takes some of it.
+        let mut frames = Frames::with_notes("short", &[WARNING_A, WARNING_B]);
+        frames.size = egui::vec2(380.0, 90.0);
+        for _ in 0..3 {
+            frames.frame(Vec::new());
+        }
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, frames.size);
+        let copy = frames.centre_of("Copy all");
+        assert!(screen.contains(copy), "Copy all is on screen at {copy:?}");
+        // The rest scrolls: the notice is reached by scrolling the wheel.
+        let notice = openchuck_app::VERIFY_GCODE_NOTICE;
+        let mut reached = frames.shows(&notice[..20]);
+        for _ in 0..30 {
+            if reached {
+                break;
+            }
+            frames.frame(vec![
+                egui::Event::PointerMoved(egui::pos2(100.0, frames.size.y - 6.0)),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
+                    delta: egui::vec2(0.0, -60.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            reached = frames.shows(&notice[..20]);
+        }
+        assert!(reached, "the verify notice is reachable by scrolling");
+    }
+
+    #[test]
+    fn req_ui_12_a_new_panel_says_nothing_is_generated_and_a_cancel_is_shown_unfiltered() {
+        let (dir, app, _, _) = crate::testing::cube_project("results-frames-empty");
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let panel = RunPanel {
+            last_error: Some("Cancelled. Nothing was kept from that run.".to_owned()),
+            ..RunPanel::default()
+        };
+        let mut frames = Frames::with(ctx, panel, app, dir);
+        assert!(frames.shows("Nothing has been generated yet."));
+        assert!(frames.shows("Cancelled. Nothing was kept"));
+        assert!(!frames.shows("Copy all"), "nothing to copy yet");
+        // A cancel is not an error line: the Errors chip does not hide it,
+        // and it does not count.
+        frames.filter.errors = false;
+        frames.frame(Vec::new());
+        assert!(frames.shows("Cancelled. Nothing was kept"));
+        assert!(frames.shows("Errors 0"));
+        assert_eq!(frames.panel.results_count(), 0);
     }
 
     #[test]

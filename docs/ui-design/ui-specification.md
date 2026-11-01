@@ -63,7 +63,7 @@ Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
 | Viewport | the rest | The 3D view and at most five overlays (section 7.2) |
 | Legend strip | 36 high, optional | A legend in a strip under the view on Model and Setup, where there are no paths |
-| Dock | 260 high (120 to half the window) | Tabs: Messages, Selection sets, Jobs; Setup checks on Setup; Playback on Simulate (section 9) |
+| Dock | 260 high (120 to half the window) | Tabs: Messages, Jobs, Results; Setup checks on Setup; Playback on Simulate (section 9; Selection sets are in the inspector) |
 | Inspector | 340 wide (280 to 520) | The selected item (section 8) |
 | Footer | 48 high | Status on the left; display settings and the step's actions on the right, primary right-most (section 10) |
 
@@ -326,7 +326,13 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
+**Tabs:** Messages, Jobs and Results, on every step (Results once a project is open). Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
+
+**Results** *(UI-12, UI-16; decision 0630, replacing the Results window of decision 0430)*:
+
+- The tab sits after Jobs and has no menu entry. Its label is "Results (n)", n being the warning and error lines of the latest run, one more for a failed run, a grouped line once; information is not counted and the chips do not change it. A failed run selects the tab and opens the dock.
+- A wrapping top row holds the summary line, "Copy all" and the chips Errors, Warnings and Information with their counts (all on, kept for the session only). Below it one scroll area holds the error of a failed run, the changed-project line, the lines (a group opens on its moves), "Results as plain text" and the verify-G-code notice, so a dock 120 pt high reaches everything.
+- The chips filter the lines. Copy all and the plain-text box hold every line and the build information whatever the chips show. When the chips hide every line the tab says "No lines at this level.".
 
 **Messages** *(UI-12)*:
 

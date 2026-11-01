@@ -19,6 +19,7 @@ pub(super) enum DockTab {
     Messages,
     Jobs,
     SetupChecks,
+    Results,
     Playback,
 }
 
@@ -28,6 +29,7 @@ impl DockTab {
             Self::Messages => "Messages",
             Self::Jobs => "Jobs",
             Self::SetupChecks => "Setup checks",
+            Self::Results => "Results",
             Self::Playback => "Playback",
         }
     }
@@ -48,6 +50,11 @@ impl Shell {
     /// The tabs this step offers.
     pub(super) fn tabs(&self) -> Vec<DockTab> {
         let mut tabs = vec![DockTab::Messages, DockTab::Jobs];
+        // Results follow Jobs on every step, once a project is open (issue
+        // 475).
+        if self.app.is_some() {
+            tabs.push(DockTab::Results);
+        }
         match self.step {
             Step::Setup => tabs.insert(0, DockTab::SetupChecks),
             Step::Simulate => tabs.push(DockTab::Playback),
@@ -60,6 +67,15 @@ impl Shell {
     /// the status bar, issue 201).
     pub(super) fn show_jobs(&mut self) {
         self.dock_tab = DockTab::Jobs;
+        if self.collapsed(super::frame::Region::Dock) {
+            self.toggle_region(super::frame::Region::Dock);
+        }
+    }
+
+    /// Opens the Results tab, opening the dock if it was collapsed (a failed
+    /// run, issue 475).
+    pub(super) fn show_results_tab(&mut self) {
+        self.dock_tab = DockTab::Results;
         if self.collapsed(super::frame::Region::Dock) {
             self.toggle_region(super::frame::Region::Dock);
         }
@@ -98,7 +114,13 @@ impl Shell {
                         text.push_str(&format!(" ({n})"));
                     }
                 }
-                _ => {}
+                DockTab::Results => {
+                    let n = self.run.results_count();
+                    if n > 0 {
+                        text.push_str(&format!(" ({n})"));
+                    }
+                }
+                DockTab::Playback => {}
             }
             if ui.selectable_label(self.dock_tab == tab, text).clicked() {
                 self.dock_tab = tab;
@@ -134,7 +156,15 @@ impl Shell {
             DockTab::Messages => self.messages_tab(ui),
             DockTab::Jobs => self.jobs_tab(ui),
             DockTab::SetupChecks => self.checks_tab(ui),
+            DockTab::Results => self.results_tab(ui),
             DockTab::Playback => self.playback_tab(ui),
+        }
+    }
+
+    /// Results: the latest run's lines, with the level chips (issue 475).
+    fn results_tab(&mut self, ui: &mut egui::Ui) {
+        if let Some(app) = &self.app {
+            self.run.results_tab(ui, app, &mut self.result_filter);
         }
     }
 

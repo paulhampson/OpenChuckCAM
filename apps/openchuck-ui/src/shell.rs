@@ -43,7 +43,7 @@ use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
-use crate::run_panel::RunPanel;
+use crate::run_panel::{LevelFilter, RunPanel};
 use crate::selection_panel::SelectionPanel;
 use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
 use crate::viewport::Viewport;
@@ -284,6 +284,9 @@ pub struct Shell {
     /// The dock's tab, and the message severities shown.
     dock_tab: DockTab,
     message_filter: [bool; 3],
+    /// Which levels the Results tab shows: errors, warnings, information
+    /// (session only, like `message_filter`; issue 475).
+    result_filter: LevelFilter,
     /// The message the disabled primary action points at.
     highlight: Option<usize>,
     /// Panels collapsed by the small-window rule, not by the user.
@@ -377,6 +380,7 @@ impl Shell {
             settings_problem: problem,
             dock_tab: DockTab::Messages,
             message_filter: [true; 3],
+            result_filter: LevelFilter::default(),
             highlight: None,
             auto_collapsed: frame::AutoCollapse::default(),
             reset: None,
@@ -1336,13 +1340,6 @@ impl Shell {
         self.dialog = Some(dialog);
     }
 
-    fn show_results(&mut self) {
-        if self.defer(Self::show_results) {
-            return;
-        }
-        self.run.show_results();
-    }
-
     /// Carries out a message's action link (specification section 9).
     fn message_action(&mut self, action: MessageAction) {
         if self.defer(move |s| s.message_action(action)) {
@@ -1582,9 +1579,12 @@ impl Shell {
         let mut error = None;
         let mut regenerated = false;
         let mut added = None;
+        let mut results_tab = false;
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
-            if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+            let polled = self.run.poll(&self.jobs, ctx);
+            results_tab = self.run.take_results_request();
+            if let Some((run, job)) = polled {
                 regenerated = true;
                 self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
@@ -1594,7 +1594,6 @@ impl Shell {
             let (new, problem) = self.run.add_dialog(ctx, app);
             added = new;
             error = problem;
-            self.run.results_window(ctx, app);
             let outcome = self
                 .export
                 .frame(ctx, app, self.run.last(), self.run.last_error());
@@ -1628,6 +1627,9 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+        }
+        if results_tab {
+            self.show_results_tab();
         }
         if regenerated {
             self.rebuild_scene(false);
@@ -2841,7 +2843,7 @@ mod tests {
         // Every panel draws: the operation's, the selections', the results,
         // the add-operation dialog and the playback controls.
         shell.selected = Some(Selection::Operation(op));
-        shell.run.show_results();
+        shell.show_results_tab();
         shell.run.begin_add(shell.app.as_ref().unwrap(), None, None);
         frame(&mut shell, &ctx);
         shell.selected = Some(Selection::Picking);
@@ -2902,6 +2904,8 @@ mod dock_buttons_tests;
 mod inspector_layout_tests;
 #[cfg(test)]
 mod numbox_tests;
+#[cfg(test)]
+mod results_tab_tests;
 
 #[cfg(test)]
 mod new_project_tests;
