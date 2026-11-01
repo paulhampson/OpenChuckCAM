@@ -234,12 +234,11 @@ fn req_ui_14_the_keys_are_left_to_a_text_field_that_has_the_keyboard() {
 fn req_ui_14_the_keys_are_left_to_any_dialog_or_window_in_front_of_the_view() {
     // Each way a dialog or window can be open, and how it is opened.
     type Open = fn(&mut Shell);
-    let cases: [(&str, Open); 4] = [
+    let cases: [(&str, Open); 3] = [
         ("an error dialog", |s| {
             s.dialog = Some(Dialog::Error("Something failed.".to_owned()));
         }),
         ("the export dialog", Shell::open_export),
-        ("the results window", |s| s.run.show_results()),
         ("the add-operation dialog", |s| {
             if let Some(app) = &s.app {
                 s.run.begin_add(app, None, None);

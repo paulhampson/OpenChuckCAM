@@ -837,14 +837,6 @@ impl Shell {
                     self.run.cancel();
                     ui.close();
                 }
-                ui.separator();
-                if ui
-                    .add_enabled(open, egui::Button::new("Results…"))
-                    .clicked()
-                {
-                    self.show_results();
-                    ui.close();
-                }
             });
             ui.menu_button("Tools", |ui| {
                 // The tool library opens with or without a project (12.1).
