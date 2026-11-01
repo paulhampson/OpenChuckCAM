@@ -1,6 +1,6 @@
 # 0490: OpenCASCADE's type registry is built first on Linux, the STEP kernel's Linux leg returns to ubuntu-latest, and a nightly job can be run alone (lane SANITIZER; issue #369; OI-1003)
 
-- **Status:** proposed (1 Nov 2026). The project owner chose option A for the fix and option A (both proofs) for its verification on 1 Nov 2026, relayed by the coordinator (decision 0049); the record itself awaits the owner's acceptance.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner chose option A for the fix and option A (both proofs) for its verification the same day, relayed the same way.
 - **Date:** 1 Nov 2026.
 - **Lane:** SANITIZER, `claude/lane-sanitizer`.
 - **Issue:** #369 (Nightly: the AddressSanitizer run failed, every night since 27 Oct 2026).
