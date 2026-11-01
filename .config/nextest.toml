@@ -258,6 +258,11 @@ priority = 79
 # a minute uninstrumented in the contended four-test run. Default still runs
 # them; coverage excludes and nightly long selects them.
 # req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 117.339 s.
+# TABS-CHECK 1 Nov 2026 (issue #438), alone and uninstrumented on four cores: the
+# same test took 606 s on main because a new rotary roughing operation has
+# adaptive spacing on (decision 0239 item 6), which the held-region fixture
+# did not turn off for roughing; with it off the test takes 53 s. The binary's
+# other tests are 51 to 89 s. All stay listed.
 # req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 128.797 s.
 # req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 93.617 s.
 # req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 95.625 s.
