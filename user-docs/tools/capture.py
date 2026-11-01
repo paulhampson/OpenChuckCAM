@@ -210,32 +210,34 @@ def main():
 
 def tutorial(args):
     # 1. A new project.
-    click(497, 185)                                  # New project...
-    click(645, 367, 0.5)                             # Parent folder
+    click(497, 185, 2)                               # New project...
+    click(645, 363, 0.5)                             # Parent folder
     type_text(str(WORK))
     click(645, 405, 0.5)                             # Project name
     key("ctrl+a")
     type_text("Baluster")
     shot("01-new-project")
-    click(521, 454, 3)                               # OK
+    click(521, 458, 3)                               # OK
     shot("02-project-created")
 
     # 2. Import the model.
     click(501, 185, 2)                               # Import model...
-    click(562, 205, 0.5)                             # path field
+    click(562, 194, 0.5)                             # path field
     type_text(str(WORK / "baluster.stl"))
     key("Return")
-    click(796, 205, 5)                               # Check and preview
+    click(796, 194, 5)                               # Check and preview
     shot("03-import-model")
-    click(849, 614, 4)                               # Add to project
+    scroll(680, 400, 3)                              # down to the mesh check and the copy option
+    shot("03b-import-check")
+    click(849, 626, 4)                               # Add to project
 
     # 3. Setup: machine, stock, holding.
-    click(1299, 746, 3)                              # Continue to setup
-    click(1211, 54, 2)                               # Add setup
-    click(1100, 504, 2)                              # Use this machine (Makera Z1)
+    click(1290, 746, 3)                              # Continue to setup
+    click(1181, 54, 2.5)                             # Add setup
+    click(1100, 495, 2.5)                            # Use this machine (Makera Z1)
     shot("04-machine")
     click(96, 343, 2)                                # Stock in the tree
-    click(1205, 223, 2)                              # Cylinder
+    click(1205, 223, 2.5)                            # Cylinder
     shot("05-stock")
     click(1225, 299, 1.5)                            # Material
     click(1214, 460, 1.5)                            # Hardwood
@@ -248,13 +250,13 @@ def tutorial(args):
 
     # 4. Tools.
     click(1288, 746, 3)                              # Continue to operations
-    click(1181, 54, 2)                               # Tool library...
-    click(226, 86, 0.5)
+    click(1181, 54, 2.5)                             # Tool library...
+    click(226, 90, 0.5)
     type_text("3.175")
-    click(177, 458, 1.5)                             # Z1 O-flute 3.175x25
+    click(177, 464, 1.5)                             # Z1 O-flute 3.175x25
     shot("07-tool-library")
     click(1219, 708, 2)                              # Add to project
-    click(165, 356, 1.5)                             # Z1 ball 3.175x22
+    click(165, 374, 1.5)                             # Z1 ball 3.175x22
     click(1219, 708, 2)
     shot("08-tools-in-project")
     click(1141, 708, 2)                              # Close
@@ -265,7 +267,7 @@ def tutorial(args):
     shot("09-add-roughing")
     click(430, 630, 3)                               # Add
     fill(1240, 449, "1")                             # Stepdown
-    click(716, 99, 1.5)                              # Fit
+    click(722, 99, 1.5)                              # Fit
     shot("10-roughing-settings")
     click(1081, 54, 2)                               # New operation
     click(680, 224, 1.5)                             # Strategy list
@@ -276,59 +278,60 @@ def tutorial(args):
     fill(590, 172, "Finish")
     click(430, 630, 3)                               # Add
     shot("12-finishing-settings")
+    # Adaptive spacing is on by default. On this piece it cannot confirm the spacing between
+    # some passes and leaves a partial path that has to be accepted before export, so the
+    # tutorial turns it off. Scrolled to the end of the Inspector it is at a fixed place.
+    scroll(1190, 400, 40)
+    click(1189, 513, 1.5)                            # Adaptive spacing off
+    shot("12b-adaptive-spacing-off")
 
     # 6. Generate.
     click(1301, 746, 5)                              # Generate stale (2)
-    wait_green([(113, 551), (113, 579)], 300, "the toolpaths")
-    click(571, 99)                                   # Front view
-    click(716, 99, 1.5)                              # Fit
+    wait_green([(113, 551), (113, 579)], 600, "the toolpaths")
+    click(577, 99)                                   # Front view
+    click(722, 99, 1.5)                              # Fit
     click(90, 579, 1.5)                              # hide the Finish path
     shot("13-generated")
     click(90, 579, 1)                                # show it again
 
-    # Hero 1 (README): the finishing path in a large 3D view. The side panels and
-    # the dock are folded away to give the view the whole window, then restored.
+    # Hero 1 (README and home page): the finishing path in a large 3D view.
     click(90, 551, 1)                                # hide the Rough path
-    click(244, 92, 1)                                # fold the project panel
-    click(1347, 92, 1)                               # fold the Inspector
-    click(1321, 477, 1.5)                            # fold the dock
-    click(662, 99, 1)                                # Iso view
-    click(475, 99, 2)                                # Fit
+    click(1004, 477, 1.5)                            # fold the dock
+    click(668, 99, 1)                                # Iso view
+    click(722, 99, 2)                                # Fit
     scroll(690, 420, 3, down=False)                  # zoom in
     shot("hero-1-toolpaths")
-    click(13, 92, 1)                                 # unfold the project panel
-    click(1352, 92, 1)                               # unfold the Inspector
     click(285, 707, 1.5)                             # unfold the dock
     click(90, 551, 1)                                # show the Rough path again
 
     # 7. Simulate.
     click(1297, 746, 5)                              # Continue to simulate
-    pause(100)                                       # the cut part of the whole program
-    click(279, 99, 1)                                # Shaded
-    click(768, 99, 1)                                # Show
-    click(846, 354, 1)                               # Cut part display: Solid
-    key("Escape")
+    pause(60)                                        # the cut part of the whole program
+    click(299, 99, 1)                                # Shaded
+    click(722, 99, 1.5)                              # Fit
     scroll(640, 290, 6, down=False)                  # zoom in
     click(429, 520, 10)                              # next operation: after roughing
     shot("15-after-roughing")
-    click(535, 618, 1)                               # speed 10 000x
+    click(540, 634, 1)                               # speed 10 000x
     click(355, 520, 1)                               # play
-    pause(25)
+    pause(30)
     shot("14-simulate-final")
 
-    # Hero 2 (README): the cut part coloured by deviation from the model.
-    scroll(1190, 300, 8, down=False)                 # Inspector back to its top
-    click(1042, 135, 2)                              # Deviation colours
-    click(662, 99, 1)                                # Iso view
+    # Hero 2 (README and home page): the cut part coloured by deviation from the model.
+    scroll(1190, 300, 6, down=False)                 # Inspector back to its top
+    click(668, 99, 1)                                # Iso view
+    click(722, 99, 1.5)                              # Fit
+    scroll(640, 290, 6, down=False)                  # zoom in
+    click(1042, 135, 4)                              # Deviation colours
     click(1004, 477, 2)                              # fold the dock
-    scroll(640, 290, 2, down=False)                  # zoom in a little
+    scroll(640, 330, 2, down=False)
+    scroll(640, 330, 3)
     shot("hero-2-deviation")
-    click(1042, 135, 1)                              # Deviation colours off
     click(285, 707, 1.5)                             # unfold the dock
+    click(1042, 135, 1)                              # Deviation colours off
 
     # 8. Post and export.
-    click(1275, 746, 3)                              # Continue to post and export
-    click(1301, 746, 3)                              # Post and export...
+    click(1303, 746, 3)                              # Post and export...
     click(420, 465, 0.5)                             # Output folder
     type_text(str(WORK / "output"))
     key("Return")
