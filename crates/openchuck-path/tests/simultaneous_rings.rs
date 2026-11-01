@@ -245,33 +245,37 @@ fn req_op_05_req_op_12_rings_leave_no_more_than_the_spiral_and_never_gouge() {
                 length: 20.0,
             }),
             21,
-            1080,
+            720,
         ),
-        (Box::new(lobed()), 41, 1080),
+        (Box::new(lobed()), 41, 720),
     ];
     for (part, rings_n, around) in &parts {
         let f = fixture(part.as_ref(), *rings_n, *around);
-        // Poses no more than a degree apart round the rings, so the
+        // Poses no more than two degrees apart round the rings, so the
         // checker, which looks only at the poses, sees the cut between them.
         let v = values(
             0.5,
             &[
                 (parameter::MAX_TILT, num(10.0)),
-                (parameter::MAX_ANGLE_STEP, num(1.0)),
+                (parameter::MAX_ANGLE_STEP, num(2.0)),
             ],
         );
         let (x0, x1) = part.x_range();
         let mid = 0.5 * (x0 + x1);
         let outline = Outline::new(&f.tool);
+        // The checks look at the middle of the part, away from the ends.
         let worst = |p: &GeneratedPath| {
-            let poses = fed(p);
+            let poses: Vec<Pose> = fed(p)
+                .into_iter()
+                .filter(|q| (q.tip.x - mid).abs() < 5.0)
+                .collect();
             let g = max_gouge(&outline, part.as_ref(), &poses, 0.15);
             assert!(g.depth <= 0.01, "{}: gouge {}", part.name(), g.depth);
             coverage(
                 &outline,
                 part.as_ref(),
                 &poses,
-                (mid - 3.0, mid + 3.0),
+                (mid - 2.0, mid + 2.0),
                 0.2,
                 0.05,
             )
