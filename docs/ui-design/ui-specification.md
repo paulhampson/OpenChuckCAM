@@ -170,6 +170,7 @@ A disabled operation's name is struck through and muted. It is skipped everywher
 | Up to date | Filled green circle | Operations | Generated, and nothing it reads has changed since (decision 0030) |
 | Stale | Amber diamond | Operations | Something it reads changed; its toolpath and the stock after it are out of date |
 | Running | Blue ring with a gap, the percentage, a cancel button, and a 3-pixel progress bar under the row | Operations, import, scene | A job is working on it |
+| Finalising | Blue circle, left half filled | Operations | Its toolpath, link and checks are done in a run that has not ended; it counts as up to date only when the run is committed, and returns to stale if the run is cancelled or fails (decision 0620) |
 | Error | Red triangle | Operations, selection sets, models | It cannot be used. The tooltip and inspector say why and how to fix it (decision 0032 item 7, decision 0037 item 8) |
 | Warning | Amber triangle outline | Models, setups, machine | It can be used, with a caveat (a mesh finding, an unconfirmed machine value) |
 | Off | Grey ring, name struck through | Operations | Disabled by the user |
