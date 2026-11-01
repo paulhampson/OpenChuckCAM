@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- OpenChuckCAM user guide: the page template (decision 0400). It replaces mdBook's own theme completely.
+     The @@...@@ placeholders and the latest-banner markers are filled in by user-docs/tools/build.py. -->
+<html lang="{{ language }}" dir="{{ text_direction }}">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  {{#if is_print }}<meta name="robots" content="noindex">{{/if}}
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ description }}">
+  <meta name="docs-version" content="@@DOCS_VERSION@@">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="{{ path_to_root }}style.css">
+  <script>
+    // The reader's theme choice, if any, is kept in localStorage (not a cookie). Without one, the page follows the system.
+    try { var t = localStorage.getItem('oc-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+    const path_to_root = "{{ path_to_root }}";
+    {{#if search_js}}window.path_to_searchindex_js = "{{ resource "searchindex.js" }}";{{/if}}
+  </script>
+</head>
+<body{{#if is_index}} class="home"{{/if}}>
+  <a class="skip" href="#content">Skip to the content</a>
+  {{#unless is_index}}<!--latest-banner--><div class="banner" role="note">This is the documentation for the nightly build, the development version built from main. It may describe features that are not in a release yet. <span data-newest-release></span></div><!--/latest-banner-->{{/unless}}
+  <header class="site-header">
+    <a class="site-title" href="{{ path_to_root }}index.html">OpenChuckCAM <span>User guide</span></a>
+    <div class="tools">
+      <span class="version-switch"><a class="version-link" href="{{ path_to_root }}../versions.html">@@VERSION_LABEL@@</a></span>
+      {{#if print_enable}}<a href="{{ path_to_root }}print.html">Print the guide</a>{{/if}}
+      <button class="theme-toggle" type="button" hidden>Dark theme</button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Contents">
+      <details open>
+        <summary>Contents</summary>
+        {{#if search_enabled}}
+        <div class="search hidden" id="mdbook-search-wrapper">
+          <button type="button" id="mdbook-search-toggle" hidden>Search</button>
+          <form id="mdbook-searchbar-outer" role="search" onsubmit="return false">
+            <label for="mdbook-searchbar">Search the guide</label>
+            <input type="search" id="mdbook-searchbar" name="searchbar" autocomplete="off" aria-controls="mdbook-searchresults-outer" aria-describedby="mdbook-searchresults-header">
+          </form>
+          <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+            <div id="mdbook-searchresults-header" class="searchresults-header" aria-live="polite"></div>
+            <ul id="mdbook-searchresults"></ul>
+          </div>
+        </div>
+        {{/if}}
+        {{#toc}}{{/toc}}
+      </details>
+    </nav>
+    <div class="content">
+      <main id="content">
+        <div id="mdbook-content">
+{{{ content }}}
+        </div>
+        {{#unless is_print}}
+        <nav class="pager" aria-label="Previous and next page">
+          {{#if previous}}<a class="prev" rel="prev" href="{{ path_to_root }}{{previous.link}}"><span>Previous</span>{{previous.title}}</a>{{/if}}
+          {{#if next}}<a class="next" rel="next" href="{{ path_to_root }}{{next.link}}"><span>Next</span>{{next.title}}</a>{{/if}}
+        </nav>
+        {{/unless}}
+      </main>
+      <footer class="site-footer">
+        <p class="notice">@@GCODE_NOTICE@@</p>
+        <p class="stamp">@@STAMP@@ Licensed AGPL-3.0-or-later.</p>
+      </footer>
+    </div>
+  </div>
+  <script>
+    // On a narrow screen the contents start folded; without JavaScript they stay open.
+    if (matchMedia('(max-width: 900px)').matches) document.querySelector('.sidebar details').open = false;
+    (function () {
+      var b = document.querySelector('.theme-toggle'), root = document.documentElement;
+      function dark() { return root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; }
+      function label() { b.textContent = dark() ? 'Light theme' : 'Dark theme'; }
+      b.hidden = false; label();
+      b.addEventListener('click', function () {
+        root.dataset.theme = dark() ? 'light' : 'dark';
+        try { localStorage.setItem('oc-theme', root.dataset.theme); } catch (e) {}
+        label();
+      });
+    })();
+  </script>
+  <script src="{{ path_to_root }}versions.js"></script>
+  {{#if search_js}}
+  <script src="{{ resource "elasticlunr.min.js" }}"></script>
+  <script src="{{ resource "mark.min.js" }}"></script>
+  <script src="{{ resource "searcher.js" }}"></script>
+  <script>
+    // mdBook's search script expects a toggle button and loads its index when the box is shown.
+    // The box is always visible here, so the first focus presses the (hidden) toggle once.
+    (function () {
+      var bar = document.getElementById('mdbook-searchbar'), t = document.getElementById('mdbook-search-toggle'), done = false;
+      bar.addEventListener('focus', function () { if (!done) { done = true; t.click(); bar.focus(); } });
+    })();
+  </script>
+  {{/if}}
+  {{#if is_print}}<script>window.addEventListener('load', function () { window.setTimeout(window.print, 100); });</script>{{/if}}
+</body>
+</html>
