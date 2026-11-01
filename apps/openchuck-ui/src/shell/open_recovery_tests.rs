@@ -545,3 +545,46 @@ fn req_prj_08_keep_saved_after_a_failed_open_leaves_the_open_project_and_its_wri
     assert!(!alpha.recovery_needed, "Keep saved dismissed Alpha's offer");
     assert_eq!(alpha.snapshots.len(), 1, "and kept its checkpoint");
 }
+
+#[test]
+fn req_prj_08_a_cancelled_open_from_a_recovery_line_leaves_no_folder_for_a_later_open() {
+    let root = temp("open-recovery-hint-cancel");
+    let config = root.join("config");
+    let (a, b) = (root.join("a"), root.join("b"));
+    crashed(&a, &config, "Alpha");
+    file::save(&Project::new("Bravo saved"), &b).unwrap();
+    let mut rig = launch(&root, &config, Some(b.clone()));
+    until(&mut rig, "discovery and the writer", |r| {
+        !r.shell.recovery.elsewhere.is_empty() && writer_ready(r)
+    });
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(openchuck_app::Command::RenameProject("Bravo edited".into()))
+        .unwrap();
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    // Open project from Alpha's line asks about Bravo's unsaved changes...
+    click(&mut rig, "Open project");
+    rig.frame(Vec::new());
+    assert!(matches!(rig.shell.dialog, Some(super::Dialog::Unsaved(_))));
+    // ...and the user cancels.
+    click_exact(&mut rig, "Cancel");
+    rig.frame(Vec::new());
+    assert!(rig.shell.dialog.is_none());
+    // A later ordinary Open starts empty, not on Alpha's folder.
+    let ctx = rig.ctx.clone();
+    rig.shell.request(super::Next::Open, &ctx);
+    rig.frame(Vec::new());
+    click_exact(&mut rig, "Discard changes");
+    rig.frame(Vec::new());
+    match &rig.shell.dialog {
+        Some(super::Dialog::Folder { create, folder, .. }) => {
+            assert!(!create);
+            assert!(folder.is_empty(), "stale recovery folder {folder:?}");
+        }
+        other => panic!("expected the Open dialog, got {other:?}"),
+    }
+}

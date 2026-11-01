@@ -2103,6 +2103,8 @@ impl Shell {
                         action = Some(Box::new(move |s: &mut Self| {
                             if s.save() {
                                 s.proceed(next, &ctx);
+                            } else {
+                                s.open_hint = None;
                             }
                         }));
                     }
@@ -2113,6 +2115,9 @@ impl Shell {
                     }
                     if ui.button("Cancel").clicked() {
                         close = true;
+                        // A recovery line's folder belongs to that request
+                        // only, never to a later Open (decision 0460).
+                        action = Some(Box::new(|s: &mut Self| s.open_hint = None));
                     }
                 });
             }
