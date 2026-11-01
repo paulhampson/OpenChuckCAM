@@ -63,7 +63,7 @@ With the hub as an avoid set, the ball and the tapered ball were refused ("the t
 6. **Library API (decision 0048).**
    - `swarf::Pose` gains `lift`; `swarf::Limits` gains `tip_lifted`, `lifted_clear_of`, `tip_up`, `too_short` and `end_reach`.
    - The `tip_extension` parameter has no minimum.
-   - These break the library API, and the output changes (item 1), so the workspace goes to 0.32.0 with changelog entries. The coordinator sequences the version with the other lanes.
+   - These break the library API, and the output changes (item 1), so the workspace goes to the next minor version with changelog entries, set from `main` at the release merge (0.32.0 if this lane merges first; the coordinator sequences it with lane CRANKEXCESS).
    - The application's `SetOptionsShown` gains `cut_short_lifts_tip`, true for swarf.
 
 ### Measured after the change
