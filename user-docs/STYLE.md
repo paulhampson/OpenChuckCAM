@@ -56,7 +56,7 @@ Also avoid: asides that comment on how easy something is ("simply", "just", "of 
   ```
 
 - Number figures within a page. Say in the caption what to look at.
-- Screenshots show the real program, taken with `user-docs/tools/capture.py` at 1366 x 768 (decision 0400 section G), and only the repository's example models or generated ones. Never show a private project.
+- Screenshots show the real program, taken with `user-docs/tools/capture.py` at 1366 x 768 (decision 0400 section G), and only the repository's example models or generated ones. Never show a private project. The script records the commit in `src/tutorial/images/CAPTURED.toml`; see `user-docs/README.md`, Taking the screenshots.
 - A diagram is inline SVG drawn with `currentColor`, so it works in the light and the dark theme, with a `<title>` and `<desc>`.
 
 ## Versions

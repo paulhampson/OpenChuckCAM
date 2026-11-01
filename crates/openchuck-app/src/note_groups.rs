@@ -226,7 +226,7 @@ impl Run {
 }
 
 /// What the machine's feed limits did to an operation's feed in its last
-/// run, read from the run's notes (FIRSTRUN item 5; NFR-12).
+/// run, read from the run's notes (FIRSTRUN item 5; NFR-12; issue 432).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FeedLimit {
     /// How many moves were slowed.
@@ -235,6 +235,33 @@ pub struct FeedLimit {
     pub lowest: f64,
     /// The feed the operation asked for, in mm/min.
     pub programmed: f64,
+    /// The feed asked for on the move that lost the most (target minus
+    /// result; the first such move on a tie), in mm/min.
+    pub worst_target: f64,
+    /// The feed that move was cut to, in mm/min.
+    pub worst_feed: f64,
+}
+
+/// The start of the note the engine writes for a move its feed limits slow.
+const FEED_NOTE: &str = "the machine's feed limits slow";
+
+/// What a feed-limit note says, as (feed the move got, feed asked for), in
+/// mm/min; `None` for any other note. The note may or may not have its
+/// operation's name in front: only the engine's own wording is read, so a
+/// number in the name is not taken for a feed.
+fn read_feed_note(note: &str) -> Option<(f64, f64)> {
+    let (_, found) = values(note.get(note.find(FEED_NOTE)?..)?);
+    match found.as_slice() {
+        [(effective, _), (programmed, _)] => Some((*effective, *programmed)),
+        _ => None,
+    }
+}
+
+/// Whether `note` is one the feed-limit summary reads, so the Results window
+/// may leave it out in favour of the summary. A note this cannot read is
+/// not one, and stays in the list (NFR-12).
+pub fn is_feed_limit_note(note: &str) -> bool {
+    read_feed_note(note).is_some()
 }
 
 impl FeedLimit {
@@ -254,32 +281,60 @@ impl FeedLimit {
             self.programmed
         )
     }
+
+    /// The one informational line the Results window shows for the operation
+    /// called `operation` (issue 432). Only the move that lost the most is
+    /// given; the per-move notes stay in the run's notes.
+    pub fn describe_for(&self, operation: &str) -> String {
+        let (moves, was) = if self.moves == 1 {
+            ("1 move".to_owned(), "was")
+        } else {
+            (format!("{} moves", self.moves), "were")
+        };
+        let case = if self.moves == 1 {
+            "The target was"
+        } else {
+            "In the worst case the target was"
+        };
+        format!(
+            "{moves} during '{operation}' {was} limited by the machine's feed limits. \
+             {case} {:.1} mm/min, but the move was reduced to {:.1} mm/min to stay within \
+             the machine's capabilities.",
+            self.worst_target, self.worst_feed
+        )
+    }
 }
 
-/// The feed-limit notes of `operation` in `notes`, as one summary; `None`
-/// when none slowed it. The notes are read, never changed (GC-07).
-pub fn feed_limit_summary(notes: &[String], operation: &str) -> Option<FeedLimit> {
-    let start = format!("operation '{operation}': move ");
+/// The feed-limit summary of one operation's path notes (the engine's own
+/// wording, before the operation's name is put in front); `None` when none
+/// slowed it. The notes are read, never changed (GC-07). The caller holds
+/// the operation's id, so a rename or a shared name cannot mix operations
+/// up (issue 418).
+pub fn feed_limit_of<S: AsRef<str>>(messages: &[S]) -> Option<FeedLimit> {
     let mut found: Option<FeedLimit> = None;
-    for note in notes {
-        if !note.starts_with(&start) || !note.contains("the machine's feed limits slow") {
-            continue;
-        }
-        let Some(parsed) = parse(note) else { continue };
-        let [(effective, _), (programmed, _)] = parsed.values.as_slice() else {
+    for message in messages {
+        let message = message.as_ref();
+        let Some((effective, programmed)) = read_feed_note(message) else {
             continue;
         };
         found = Some(match found {
             None => FeedLimit {
                 moves: 1,
-                lowest: *effective,
-                programmed: *programmed,
+                lowest: effective,
+                programmed,
+                worst_target: programmed,
+                worst_feed: effective,
             },
-            Some(f) => FeedLimit {
-                moves: f.moves + 1,
-                lowest: f.lowest.min(*effective),
-                programmed: f.programmed,
-            },
+            Some(f) => {
+                let bigger = programmed - effective > f.worst_target - f.worst_feed;
+                FeedLimit {
+                    moves: f.moves + 1,
+                    lowest: f.lowest.min(effective),
+                    programmed: f.programmed,
+                    worst_target: if bigger { programmed } else { f.worst_target },
+                    worst_feed: if bigger { effective } else { f.worst_feed },
+                }
+            }
         });
     }
     found
@@ -427,32 +482,81 @@ mod tests {
         assert!(groups.iter().zip(&notes).all(|(g, n)| g.text == *n));
     }
 
+    fn engine_note(effective: f64, target: f64) -> String {
+        format!(
+            "the machine's feed limits slow this move: the contact feed is {effective:.1} \
+             mm/min, not {target:.1}"
+        )
+    }
+
     #[test]
     fn req_nfr_12_req_op_11_the_feed_summary_names_the_lowest_effective_feed() {
         // FIRSTRUN item 5: the inspector says what the machine's limits did
         // to the feed the user typed, from the notes of the last run.
-        let mut notes = feed(2..=4, 972.9);
-        notes.push(
-            "operation 'Roughing': move 9: the machine's feed limits slow this move: the \
-             contact feed is 673.4 mm/min, not 1000.0"
-                .to_owned(),
-        );
-        notes.push(
-            "operation 'Finishing': move 1: the machine's feed limits slow this move: the \
-             contact feed is 100.0 mm/min, not 500.0"
-                .to_owned(),
-        );
-        let s = feed_limit_summary(&notes, "Roughing").unwrap();
+        let mut notes = vec![
+            engine_note(972.9, 1000.0),
+            engine_note(972.9, 1000.0),
+            engine_note(972.9, 1000.0),
+        ];
+        notes.push(engine_note(673.4, 1000.0));
+        notes.push("a note about something else".to_owned());
+        let s = feed_limit_of(&notes).unwrap();
         assert_eq!(s.moves, 4);
         assert!((s.lowest - 673.4).abs() < 1e-9);
         assert!((s.programmed - 1000.0).abs() < 1e-9);
-        assert_eq!(feed_limit_summary(&notes, "Other"), None);
-        assert_eq!(feed_limit_summary(&[], "Roughing"), None);
+        assert_eq!(feed_limit_of::<String>(&[]), None);
+        assert_eq!(feed_limit_of(&["rapid cut".to_owned()]), None);
         let line = s.describe();
         assert!(
             line.contains("4 moves") && line.contains("673 mm/min"),
             "{line}"
         );
         assert!(line.contains("1000 mm/min set here"), "{line}");
+    }
+
+    #[test]
+    fn req_nfr_12_req_ui_12_the_worst_case_is_the_greatest_delta_first_on_a_tie() {
+        // Issue 432 (owner's decision): the worst move is the one that lost
+        // the most, not the one with the lowest result. Here 1000 -> 900
+        // loses 100, while 300 -> 250 loses 50 but has the lowest result.
+        let notes = [
+            engine_note(250.0, 300.0),
+            engine_note(900.0, 1000.0),
+            engine_note(800.0, 900.0),
+        ];
+        let s = feed_limit_of(&notes).unwrap();
+        assert_eq!(s.moves, 3);
+        assert_eq!((s.worst_target, s.worst_feed), (1000.0, 900.0));
+        assert!((s.lowest - 250.0).abs() < 1e-9);
+        // Equal deltas: the first move wins.
+        let tie = [engine_note(900.0, 1000.0), engine_note(400.0, 500.0)];
+        let t = feed_limit_of(&tie).unwrap();
+        assert_eq!((t.worst_target, t.worst_feed), (1000.0, 900.0));
+        // The same notes in the same order always give the same summary.
+        assert_eq!(feed_limit_of(&notes), feed_limit_of(&notes));
+    }
+
+    #[test]
+    fn req_ui_12_the_results_line_is_one_plain_sentence_per_operation() {
+        let many = FeedLimit {
+            moves: 6,
+            lowest: 999.1,
+            programmed: 1000.0,
+            worst_target: 1000.0,
+            worst_feed: 999.1,
+        };
+        assert_eq!(
+            many.describe_for("Roughing"),
+            "6 moves during 'Roughing' were limited by the machine's feed limits. In the \
+             worst case the target was 1000.0 mm/min, but the move was reduced to 999.1 \
+             mm/min to stay within the machine's capabilities."
+        );
+        let one = FeedLimit { moves: 1, ..many };
+        let line = one.describe_for("Finishing");
+        assert!(
+            line.starts_with("1 move during 'Finishing' was limited"),
+            "{line}"
+        );
+        assert!(line.contains("The target was 1000.0 mm/min"), "{line}");
     }
 }

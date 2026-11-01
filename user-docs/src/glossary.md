@@ -4,7 +4,7 @@
 
 The words this guide uses for machining and for the program. A page links a term here the first time it uses it.
 
-<p class="letter-index">A · C · F · G · H · M · O · P · R · S · T</p>
+<p class="letter-index">A · C · F · G · H · M · O · P · R · S · T · W</p>
 
 ## A axis {#a-axis}
 
@@ -114,8 +114,16 @@ A support that holds the far end of long work on a rotary machine. The program k
 
 How far a toolpath may stray from the model. The program's default is 0.01 mm.
 
+## Tool library {#tool-library}
+
+The list of cutters the program knows. Each tool has a diameter, a shape and cutting data (a spindle speed and feeds) for each [material](#material). The default tools cannot be edited; you can copy one and change the copy.
+
 ## Toolpath {#toolpath}
 
 The path the cutter follows, with the angle of A at every point, worked out by an operation.
+
+## Work offset {#work-offset}
+
+The register in the machine's controller that stores where the part's zero is, such as G54. You set it on the machine; the program writes its moves relative to it.
 
 </div>
