@@ -43,10 +43,10 @@ pub mod parameter {
 }
 
 impl Strategy for IndexedFinishing {
-    /// Exact contacts on a STEP part: measured within the limits of OI-835
-    /// (decision 0277).
-    fn exact_contact(&self) -> bool {
-        true
+    /// Exact contacts on a STEP part for a ball-end tool, on by default:
+    /// measured within the limits of OI-835 (decision 0277).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Ball)
     }
 
     fn name(&self) -> &str {
@@ -62,72 +62,74 @@ impl Strategy for IndexedFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        let mut schema = ParameterSchema::with_common(vec![
-            ParameterSpec {
-                name: parameter::ANGLES.to_owned(),
-                label: "Angles".to_owned(),
-                description: "The A positions to cut at, in degrees, in the order to cut \
+        crate::contact::with_switch(crate::contact::ExactContact::Ball, {
+            let mut schema = ParameterSchema::with_common(vec![
+                ParameterSpec {
+                    name: parameter::ANGLES.to_owned(),
+                    label: "Angles".to_owned(),
+                    description: "The A positions to cut at, in degrees, in the order to cut \
                               them, separated by commas. Empty to use the count instead."
-                    .to_owned(),
-                kind: ParameterKind::AngleList {
-                    default: String::new(),
+                        .to_owned(),
+                    kind: ParameterKind::AngleList {
+                        default: String::new(),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::COUNT.to_owned(),
-                label: "Count".to_owned(),
-                description: "How many equally spaced positions to cut at when no angles \
+                ParameterSpec {
+                    name: parameter::COUNT.to_owned(),
+                    label: "Count".to_owned(),
+                    description: "How many equally spaced positions to cut at when no angles \
                               are listed."
-                    .to_owned(),
-                kind: ParameterKind::Integer {
-                    min: 1,
-                    max: MAX_ANGLES as i64,
-                    default: Some(4),
+                        .to_owned(),
+                    kind: ParameterKind::Integer {
+                        min: 1,
+                        max: MAX_ANGLES as i64,
+                        default: Some(4),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::START_ANGLE.to_owned(),
-                label: "Start angle".to_owned(),
-                description: "A of the first equally spaced position.".to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: None,
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A of the first equally spaced position.".to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-        ]);
-        // The positions, not a stepover, set where the passes are; the common
-        // stepover is not used, so it gets a default.
-        if let Some(spec) = schema
-            .parameters
-            .iter_mut()
-            .find(|p| p.name == names::STEPOVER)
-        {
-            spec.description = "Not used: the angles set where the passes are.".to_owned();
-            if let ParameterKind::Number { default, .. } = &mut spec.kind {
-                *default = Some(1.0);
+            ]);
+            // The positions, not a stepover, set where the passes are; the common
+            // stepover is not used, so it gets a default.
+            if let Some(spec) = schema
+                .parameters
+                .iter_mut()
+                .find(|p| p.name == names::STEPOVER)
+            {
+                spec.description = "Not used: the angles set where the passes are.".to_owned();
+                if let ParameterKind::Number { default, .. } = &mut spec.kind {
+                    *default = Some(1.0);
+                }
             }
-        }
-        let own = super::axial::AxialFinishing.schema();
-        for name in [
-            axial_parameter::DIRECTION,
-            axial_parameter::MAX_X_STEP,
-            crate::extend::parameter::EXTEND,
-            crate::extend::parameter::EXTEND_DISTANCE,
-            crate::finishing::parameter::FINISH_ALLOWANCE,
-            crate::finishing::parameter::FINISHING_LAYERS,
-            crate::finishing::parameter::STEPDOWN,
-            axial_parameter::SCALLOP,
-            adaptive::parameter::ADAPTIVE_SPACING,
-            adaptive::parameter::MIN_SPACING,
-        ] {
-            if let Some(spec) = own.get(name) {
-                schema.parameters.push(spec.clone());
+            let own = super::axial::AxialFinishing.schema();
+            for name in [
+                axial_parameter::DIRECTION,
+                axial_parameter::MAX_X_STEP,
+                crate::extend::parameter::EXTEND,
+                crate::extend::parameter::EXTEND_DISTANCE,
+                crate::finishing::parameter::FINISH_ALLOWANCE,
+                crate::finishing::parameter::FINISHING_LAYERS,
+                crate::finishing::parameter::STEPDOWN,
+                axial_parameter::SCALLOP,
+                adaptive::parameter::ADAPTIVE_SPACING,
+                adaptive::parameter::MIN_SPACING,
+            ] {
+                if let Some(spec) = own.get(name) {
+                    schema.parameters.push(spec.clone());
+                }
             }
-        }
-        schema
+            schema
+        })
     }
 
     fn schema_for(

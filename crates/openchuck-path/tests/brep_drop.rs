@@ -431,10 +431,33 @@ fn req_nfr_07_exact_ball_drop_refuses_what_it_cannot_answer() {
     assert!(openchuck_path::ball_radius(&flat).is_none());
     let line = radial_line(15.0, 30.0);
     assert!(surface.drop_ball(&flat, &line).is_none());
+    // A tool with no exact drop at all, a bull nose (OI-1350), drops on the
+    // tessellation; a flat end takes the outline drop on a surface with
+    // exact drops (decision 0500).
+    let bull = ToolProfile {
+        segments: vec![
+            ProfileSegment::Line {
+                to: ProfilePoint::new(0.7, 0.0),
+            },
+            ProfileSegment::Arc {
+                to: ProfilePoint::new(1.0, 0.3),
+                centre: ProfilePoint::new(0.7, 0.3),
+            },
+            ProfileSegment::Line {
+                to: ProfilePoint::new(1.0, 4.0),
+            },
+        ],
+    }
+    .validate()
+    .unwrap();
     let mesh_only = BrepSurface::new(&model).unwrap();
     assert_eq!(
+        surface.drop_tool(&bull, &line),
+        mesh_only.drop_tool(&bull, &line)
+    );
+    assert_eq!(
         surface.drop_tool(&flat, &line),
-        mesh_only.drop_tool(&flat, &line)
+        surface.drop_exact(&flat, &line).map(|d| d.contact)
     );
 }
 

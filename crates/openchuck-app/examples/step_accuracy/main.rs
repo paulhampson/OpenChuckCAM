@@ -1265,7 +1265,14 @@ impl Form<'_> {
     /// The surface `strategy` drops on in this form.
     fn surface_for(&self, strategy: &dyn Strategy) -> &dyn SurfaceSource {
         match self {
-            Self::Brep(_, Some(exact), _) if strategy.exact_contact() => exact.as_ref(),
+            // Form (d) is what the application makes by default: exact
+            // contacts where the strategy's setting is on for a new
+            // operation (decisions 0277 and 0500).
+            Self::Brep(_, Some(exact), _)
+                if strategy.exact_contact().is_some_and(|k| k.default_on()) =>
+            {
+                exact.as_ref()
+            }
             _ => self.surface(),
         }
     }

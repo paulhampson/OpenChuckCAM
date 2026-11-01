@@ -544,6 +544,12 @@ struct Site {
 }
 
 impl Strategy for PencilFinishing {
+    /// Exact contacts on a STEP part for every tool with an exact drop,
+    /// off by default: over the limits of OI-835 (decisions 0338, 0500).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Outline)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -557,37 +563,39 @@ impl Strategy for PencilFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(vec![
-            rest::min_remaining_spec(),
-            ParameterSpec {
-                name: pencil_parameter::CREASE_ANGLE.to_owned(),
-                label: "Crease angle".to_owned(),
-                description: "The smallest turn between two faces that counts as an inside \
+        crate::contact::with_switch(crate::contact::ExactContact::Outline, {
+            ParameterSchema::with_common(vec![
+                rest::min_remaining_spec(),
+                ParameterSpec {
+                    name: pencil_parameter::CREASE_ANGLE.to_owned(),
+                    label: "Crease angle".to_owned(),
+                    description: "The smallest turn between two faces that counts as an inside \
                               corner to pencil. Smoother joins are left alone."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: Some(180.0),
-                    default: Some(30.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: Some(180.0),
+                        default: Some(30.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: pencil_parameter::MAX_STEP.to_owned(),
-                label: "Largest step".to_owned(),
-                description: "The furthest apart, along the crease, that points of the path \
+                ParameterSpec {
+                    name: pencil_parameter::MAX_STEP.to_owned(),
+                    label: "Largest step".to_owned(),
+                    description: "The furthest apart, along the crease, that points of the path \
                               are."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Millimetres,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: None,
-                    default: Some(0.5),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Millimetres,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: None,
+                        default: Some(0.5),
+                    },
                 },
-            },
-        ])
+            ])
+        })
     }
 
     fn needs_earlier_operations(&self) -> bool {

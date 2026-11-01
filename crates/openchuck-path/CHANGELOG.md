@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.0
+
+- **Breaking (0.37.0, STEPALL-CLOSE; issue #351; decision 0500, proposed):** Exact STEP surface contact as a per-operation setting. New module `contact`: `ExactContact` (`Ball`, `Outline`; `supports`, `default_on`), `with_switch`, `is_on`, `exact_drops`, `parameter::EXACT_CONTACT` (`exact_contact`), `BALL_STRATEGIES`, `OUTLINE_STRATEGIES`. `Strategy::exact_contact` returns `Option<ExactContact>` (was `bool`; a strategy that returned `true` returns `Some(ExactContact::Ball)`). Helical, indexed, rest and simultaneous finishing have the flag in their schemas, on by default (the exact ball drop of decision 0277); axial finishing and pencil clean-up have it off by default (the outline drop of decision 0338), right after Tolerance. `BrepSurface::with_exact_drops(true)` now drops every tool with an exact drop (`has_exact_drop`) through `drop_exact`, not only a ball; a host asks for it only where `contact::exact_drops` says so. The strategies do not read the flag; their paths for given surfaces are unchanged.
+
 ## 0.32.0
 
 - **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change.

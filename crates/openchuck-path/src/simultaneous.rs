@@ -185,10 +185,10 @@ fn choice(name: &str, label: &str, description: &str, options: &[&str]) -> Param
 }
 
 impl Strategy for SimultaneousFinishing {
-    /// Exact contacts on a STEP part: measured within the limits of OI-835
-    /// (decision 0277).
-    fn exact_contact(&self) -> bool {
-        true
+    /// Exact contacts on a STEP part for a ball-end tool, on by default:
+    /// measured within the limits of OI-835 (decision 0277).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Ball)
     }
 
     fn name(&self) -> &str {
@@ -204,19 +204,20 @@ impl Strategy for SimultaneousFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        let mut step = degrees_spec(
-            parameter::MAX_ANGLE_STEP,
-            "Largest angle step",
-            "The most the path turns round the axis between two seeded points; points are \
+        crate::contact::with_switch(crate::contact::ExactContact::Ball, {
+            let mut step = degrees_spec(
+                parameter::MAX_ANGLE_STEP,
+                "Largest angle step",
+                "The most the path turns round the axis between two seeded points; points are \
              added where the surface needs them.",
-            Some(0.0),
-            Some(90.0),
-            5.0,
-        );
-        if let ParameterKind::Number { min_exclusive, .. } = &mut step.kind {
-            *min_exclusive = true;
-        }
-        ParameterSchema::with_common(
+                Some(0.0),
+                Some(90.0),
+                5.0,
+            );
+            if let ParameterKind::Number { min_exclusive, .. } = &mut step.kind {
+                *min_exclusive = true;
+            }
+            ParameterSchema::with_common(
             vec![
             choice(
                 parameter::PATTERN,
@@ -293,6 +294,7 @@ impl Strategy for SimultaneousFinishing {
         .into_iter()
         .chain(adaptive::specs())
         .collect())
+        })
     }
 
     fn schema_for(

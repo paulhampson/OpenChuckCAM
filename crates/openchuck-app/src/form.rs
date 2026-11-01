@@ -11,10 +11,11 @@
 
 use std::collections::BTreeMap;
 
+use openchuck_path::contact::parameter::EXACT_CONTACT;
 use openchuck_path::params::{ParameterKind, ParameterSchema, names};
 use openchuck_path::{ParameterValue as PathValue, Registry};
 use openchuck_project::id::OperationId;
-use openchuck_project::{ParameterValue, Project};
+use openchuck_project::{Operation, ParameterValue, Project};
 
 use crate::AppError;
 use crate::operation::parameter_values;
@@ -236,9 +237,14 @@ pub fn parameter_form(
     ) && !matches!(op.parameters.get(names::ENTRY),Some(ParameterValue::Text(style)) if style=="ramp");
     let ramp_refusal = crate::ramp_entry::refusal(project, op);
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
+    // Exact STEP surface contact means something only on a STEP part
+    // (decision record 0500): it is not shown for a mesh part.
+    let on_step = crate::operation::on_step_part(project, op);
+    let contact_problem = exact_contact_problem(project, registry, op);
     let fields = schema
         .parameters
         .iter()
+        .filter(|spec| on_step || spec.name != EXACT_CONTACT)
         .map(|spec| {
             let set = op.parameters.get(&spec.name).cloned();
             let (kind, default) = match &spec.kind {
@@ -313,9 +319,11 @@ pub fn parameter_form(
                 set,
                 value,
                 source,
-                problem: (spec.name == names::RAMP_BACK_AND_FORTH)
-                    .then(|| ramp_refusal.clone())
-                    .flatten(),
+                problem: match spec.name.as_str() {
+                    names::RAMP_BACK_AND_FORTH => ramp_refusal.clone(),
+                    EXACT_CONTACT => contact_problem.clone(),
+                    _ => None,
+                },
             }
         })
         .collect();
@@ -324,6 +332,34 @@ pub fn parameter_form(
         strategy: op.strategy.clone(),
         fields,
         notes,
+    })
+}
+
+/// Why Exact STEP surface contact does not apply to `operation`'s tool, in
+/// plain words, when it does not (decision record 0500, NFR-07): the tool
+/// then drops on the tessellation whatever the setting. `None` when it
+/// applies, or when the strategy has no such setting or the tool is unknown.
+fn exact_contact_problem(project: &Project, registry: &Registry, op: &Operation) -> Option<String> {
+    use openchuck_path::contact::ExactContact;
+    let kind = registry.get(&op.strategy).ok()?.exact_contact()?;
+    let profile = project
+        .tools()
+        .iter()
+        .find(|t| Some(t.id) == op.tool)?
+        .tool
+        .profile()
+        .ok()?;
+    if kind.supports(&profile) {
+        return None;
+    }
+    Some(match kind {
+        ExactContact::Ball => "This tool drops on the tessellation whatever this setting: in \
+                               this strategy the exact contact is built for ball-end tools only."
+            .to_owned(),
+        _ => "This tool drops on the tessellation whatever this setting: the exact contact is \
+              not built for its shape (a bull nose, a flat end with stock to leave, a sharp \
+              V-bit or a concave profile)."
+            .to_owned(),
     })
 }
 

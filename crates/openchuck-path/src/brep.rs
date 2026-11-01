@@ -2206,20 +2206,21 @@ impl BrepSurface {
         })
     }
 
-    /// This source with ball drops onto the exact faces (`true`) or onto the
+    /// This source with drops onto the exact faces (`true`) or onto the
     /// tessellation (`false`, the default): [`SurfaceSource::drop_tool`]
-    /// then answers with [`drop_ball`](Self::drop_ball) for a ball and the
-    /// tessellation for any other tool (lane STEPALL-X2, decision 0277). A
-    /// host sets it for the operations whose strategy takes exact contacts
-    /// ([`Strategy::exact_contact`](crate::strategy::Strategy::exact_contact)),
-    /// on every surface of the operation alike.
+    /// then answers with [`drop_exact`](Self::drop_exact) for a tool that has
+    /// an exact drop ([`has_exact_drop`]) and the tessellation for any other
+    /// (decisions 0277, 0338 and 0500). A host sets it where the operation's
+    /// Exact STEP surface contact is on and applies to its tool
+    /// ([`contact::exact_drops`](crate::contact::exact_drops)), on every
+    /// surface of the operation alike.
     #[must_use]
     pub fn with_exact_drops(mut self, exact: bool) -> Self {
         self.exact_drops = exact;
         self
     }
 
-    /// Whether ball drops use the exact faces.
+    /// Whether drops use the exact faces.
     pub fn exact_drops(&self) -> bool {
         self.exact_drops
     }
@@ -2354,7 +2355,8 @@ impl BrepSurface {
     /// at, which is never below the contact. `None` for a tool without an
     /// exact drop, or when a face has none; the caller then drops onto the
     /// tessellation. The outline drop is several times slower than a drop on
-    /// the tessellation, so no strategy uses it yet (OI-1351).
+    /// the tessellation, so it is off by default where a strategy offers it
+    /// (OI-1351, decision 0500).
     pub fn drop_exact(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
         if ball_radius(profile).is_some() {
             return self.drop_ball(profile, line);
@@ -2494,9 +2496,8 @@ pub struct ExactDrop {
 /// axis: the flat end, the tapered ball (also grown for stock to leave), and
 /// a V-bit or chamfer with a flat at the tip (decision 0338). A bull nose, a
 /// flat end grown for stock to leave, a sharp V-bit and a concave profile
-/// have none (OI-1350). [`SurfaceSource::drop_tool`] still drops only a ball
-/// on the exact faces: the outline drop is not adopted by any strategy yet
-/// (OI-1351).
+/// have none (OI-1350). [`SurfaceSource::drop_tool`] uses it on a surface
+/// with exact drops (decision 0500).
 pub fn has_exact_drop(profile: &RevolvedProfile) -> bool {
     ball_radius(profile).is_some() || outline::Outline::new(profile).is_some()
 }
@@ -2715,13 +2716,13 @@ impl SurfaceSource for BrepSurface {
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
-        // A ball drops onto the exact faces when the host asked for it
-        // (decision 0277); any other tool, or a face without an exact drop,
-        // drops onto the tessellation (OI-81). The outline drop of decision
-        // 0338 is not adopted here: it is asked for by `drop_exact` only
-        // (OI-1351).
+        // A tool with an exact drop drops onto the exact faces when the host
+        // asked for it (decisions 0277, 0338 and 0500): the host asks only
+        // where the operation's Exact STEP surface contact is on and applies
+        // to the tool (`contact::exact_drops`). Any other tool, or a face
+        // without an exact drop, drops onto the tessellation (OI-81, OI-1350).
         if self.exact_drops
-            && let Some(d) = self.drop_ball(profile, line)
+            && let Some(d) = self.drop_exact(profile, line)
         {
             return Some(d.contact);
         }

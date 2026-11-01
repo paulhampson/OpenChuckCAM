@@ -2145,3 +2145,73 @@ fn req_prj_04_req_op_04_older_roughing_and_facing_operations_keep_adaptive_spaci
         "{err}"
     );
 }
+
+#[test]
+fn req_op_27_req_prj_04_req_gc_07_older_operations_keep_their_surface_contact() {
+    // Schema 27 (decision record 0500): the operations of the strategies
+    // that drop the tool on a STEP part gain Exact STEP surface contact. An
+    // older operation is given the contact it already machined with: on for
+    // helical, indexed, rest and simultaneous finishing (the exact ball drop
+    // of decision 0277), off for axial finishing and pencil clean-up; other
+    // strategies gain nothing.
+    let mut p = sample();
+    let strategies = [
+        (101, "helical_finishing", Some(true)),
+        (102, "indexed_finishing", Some(true)),
+        (103, "rest_machining", Some(true)),
+        (104, "simultaneous_finishing", Some(true)),
+        (105, "axial_finishing", Some(false)),
+        (106, "pencil_finishing", Some(false)),
+        (107, "rotary_roughing", None),
+    ];
+    for (n, _, _) in strategies {
+        if p.operation(op_id(n)).is_none() {
+            let mut extra = p.operation(op_id(101)).unwrap().clone();
+            extra.id = op_id(n);
+            p.insert(Item::Operation(extra), Placement::End).unwrap();
+        }
+    }
+    for (n, strategy, _) in strategies {
+        let mut op = p.operation(op_id(n)).unwrap().clone();
+        op.strategy = strategy.into();
+        p.replace(Item::Operation(op)).unwrap();
+    }
+    let dir = temp_dir_saved(&p, "contact-current");
+    for older in [24, 26] {
+        let at = copy_tree_with(&read_tree(&dir), &format!("contact-{older}"), |_, text| {
+            text.replacen(&current(), &format!("schema = {older}\n"), 1)
+        });
+        let opened = file::load(&at).unwrap();
+        for (n, strategy, want) in strategies {
+            let flag = opened
+                .operation(op_id(n))
+                .unwrap()
+                .parameters
+                .get("exact_contact")
+                .cloned();
+            assert_eq!(
+                flag,
+                want.map(ParameterValue::Flag),
+                "schema {older}, {strategy}"
+            );
+        }
+    }
+    // A current file keeps what it holds: no setting written means none set.
+    assert_eq!(file::load(&dir).unwrap(), p);
+
+    // An older file that already holds the setting is refused, naming it.
+    let mut early = p.clone();
+    let mut op = early.operation(op_id(105)).unwrap().clone();
+    op.parameters
+        .insert("exact_contact".into(), ParameterValue::Flag(true));
+    early.replace(Item::Operation(op)).unwrap();
+    let saved = temp_dir_saved(&early, "contact-early");
+    let at_26 = copy_tree_with(&read_tree(&saved), "contact-early-26", |_, text| {
+        text.replacen(&current(), "schema = 26\n", 1)
+    });
+    let err = file::load(&at_26).unwrap_err().to_string();
+    assert!(
+        err.contains("`exact_contact`") && err.contains("schema 27"),
+        "{err}"
+    );
+}
