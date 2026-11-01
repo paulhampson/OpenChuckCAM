@@ -40,6 +40,8 @@ Generated G-code is the user's to verify before running it on a machine (NFR-12)
 
 ## Each application release
 
+**The release notes come first.** The section for the new version on `user-docs/src/release-notes.md` (a `## <version>` heading, newest first, above *Development version*) is written in a pull request to `main` and merged before the tag is pushed. The project owner writes it, or asks a lane to draft it for the owner to check; there is no placeholder section, because the check below exists to stop a release whose notes were never written. A dry run before that pull request merges reports the section as missing, which is expected.
+
 Before pushing the tag `app-v<version>`, the project owner ticks these items and records them in the release's verification report (verification plan section 9, Records). The release workflow checks the items marked *(checked)* and refuses to publish if they fail ([decision 0400](decisions/0400-user-documentation-site.md), section R).
 
 - [ ] The Makera Z1 air cut has been run, or the release notes say which Z1 values are unconfirmed ([decision 0106](decisions/0106-air-cut-is-a-manual-release-step.md)).
@@ -50,7 +52,7 @@ Before pushing the tag `app-v<version>`, the project owner ticks these items and
 - [ ] The user guide builds with no broken link or anchor, valid HTML and no request to another site. *(checked)*
 - [ ] The footer of every page of the guide names this version and tag. *(checked)*
 
-Then push the tag. The run builds the archives and the user guide, checks both, publishes the release, and then adds the guide to the `docs-releases` branch as `v<version>/` (job `publish-docs`), which redeploys the site with the new version in its version list. A dry run (`workflow_dispatch` with `dry_run` ticked) does all of this except publishing, and reports the guide's problems as warnings.
+Then push the tag. The run builds the archives and the user guide, checks both, publishes the release, and then adds the guide to the `docs-releases` branch as `v<version>/` (job `publish-docs`), which redeploys the site with the new version in its version list. A dry run (`workflow_dispatch` with `dry_run` ticked) does all of this except publishing. It runs every check of the guide, the release checks included, and reports their failures without stopping the run; a real release refuses to publish on any of them.
 
 ### If the documentation did not publish
 
