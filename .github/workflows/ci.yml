@@ -278,6 +278,7 @@ jobs:
       SHARD1_BINARIES: >-
         openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
         openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
+        openchuck-path::simultaneous openchuck-path::helical_faces
     steps:
       - uses: actions/checkout@v7
         with:
@@ -300,6 +301,9 @@ jobs:
       # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
       # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
       # removed), if either share is empty or if the shares do not add up to the full list.
+      # Re-dealt 1 Nov 2026 (issue #438) from run 41302204775, where share 2 had grown to 149 cpu-minutes
+      # against 90 (Ubuntu 42.5 and 28.1 min, Windows 40.4 and 22.2, macOS 42.4 and 22.9): openchuck-path::simultaneous
+      # and helical_faces moved to share 1, expected about 35 and 36 min on the slowest share.
       - name: Check the test partition
         shell: bash
         run: |

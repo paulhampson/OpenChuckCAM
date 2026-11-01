@@ -673,6 +673,7 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     // Adaptive spacing off too: not what this checks, and a new operation
     // has it on (decision record 0239).
     if [
+        "rotary_roughing",
         "helical_finishing",
         "axial_finishing",
         "indexed_finishing",
