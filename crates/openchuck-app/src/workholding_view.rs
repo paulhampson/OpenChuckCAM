@@ -416,11 +416,12 @@ pub fn no_default_line(
     }
 }
 
-/// The read-only Narrowest line of a tab compared with the tools of the
-/// setup's operations (11.7 item 4), and whether it is a warning: "3.000 mm,
-/// narrower than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough".
+/// The read-only line of a tab's length along X compared with the tools of
+/// the setup's operations (11.7 item 4; decision 0470), and whether it is a
+/// warning: "3.000 mm, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1
+/// Rough". The name is kept from when the line compared the diameter.
 pub fn narrowest_line(tab: &Tab, tools: &[crate::workholding::SetupTool]) -> (String, bool) {
-    let d = narrowest(tab);
+    let d = tab.length.0;
     let widest = tools
         .iter()
         .filter(|t| t.diameter > d + 1e-9)
@@ -428,14 +429,16 @@ pub fn narrowest_line(tab: &Tab, tools: &[crate::workholding::SetupTool]) -> (St
     match widest {
         Some(t) => (
             format!(
-                "{d:.3} mm, narrower than the tool {} ({:.3} mm) of {}",
+                "{d:.3} mm, shorter than the tool {} ({:.3} mm) of {}",
                 t.tool, t.diameter, t.operation
             ),
             true,
         ),
         None if tools.is_empty() => (format!("{d:.3} mm"), false),
         None => (
-            format!("{d:.3} mm, as wide as every tool of the setup's operations or wider"),
+            format!(
+                "{d:.3} mm, as long as every tool of the setup's operations is wide, or longer"
+            ),
             false,
         ),
     }

@@ -1232,8 +1232,8 @@ impl WorkholdingPanel {
         let (line, warning) = narrowest_line(&tab, tools);
         field_row::read_only_row(
             ui,
-            "Narrowest",
-            "The smallest diameter, compared with the tools of the setup's operations.",
+            "Length vs tools",
+            "The tab's length along X, compared with the width of the tools of the setup's operations.",
             RichText::new(line).color(if warning { NOTE } else { DARK.text }),
         );
         let around = matches!(tab.layout, TabLayout::AroundAxis { .. });
@@ -1423,7 +1423,7 @@ impl WorkholdingPanel {
     }
 
     /// Starts checking the draft against the part and the tools: tabs outside
-    /// the head and tail zones, and tabs narrower than a tool the setup uses,
+    /// the head and tail zones, and tabs shorter along X than a tool is wide the setup uses,
     /// are refused when stored, as they are when generating (OI-159, OI-180).
     fn start_check(&mut self, app: &Application, setup: &Setup, apply: bool) {
         self.message = None;
@@ -1693,7 +1693,7 @@ mod tests {
         );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("changed while"), "{message}");
-        // A tab narrower than the 4 mm tool is refused, naming the operation
+        // A tab shorter than the 4 mm tool is refused, naming the operation
         // by its number.
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 3.0)];
         assert!(
@@ -1707,9 +1707,12 @@ mod tests {
                 .is_none()
         );
         let message = &panel.findings[0].text;
-        assert!(message.contains("narrower than the tool"), "{message}");
+        assert!(message.contains("shorter than the tool"), "{message}");
         assert!(message.contains("of 1 Finish"), "{message}");
-        assert!(message.starts_with("Tab 1 is 3.000 mm across"), "{message}");
+        assert!(
+            message.starts_with("Tab 1 is 1.000 mm long along X"),
+            "{message}"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1772,7 +1775,7 @@ mod tests {
             panel.refused = true;
             panel.findings = vec![WorkholdingFinding {
                 tab: Some(1),
-                text: "Tab 2 is narrower than the 4 mm tool of 1 Rough".to_owned(),
+                text: "Tab 2 is shorter than the 4 mm tool of 1 Rough".to_owned(),
             }];
         };
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 4.0), tab(4.0, 1.0, 2.0)];
@@ -1880,13 +1883,13 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_25_a_tab_row_says_its_zone_its_facing_and_its_narrowest_against_the_tools() {
+    fn req_ui_25_a_tab_row_says_its_zone_its_facing_and_its_length_against_the_tools() {
         let (dir, app, _, setup_id) = cube_project("workholding-rows");
         let setup = app.project().setup(setup_id).unwrap().clone();
         let mut panel = WorkholdingPanel::new(&setup);
         let ctx = egui::Context::default();
         settle(&mut panel, &ctx, &app, &setup);
-        // A 3 mm tab in the head zone, narrower than the 4 mm tool, as a
+        // A 1.5 mm long tab in the head zone, shorter than the 4 mm tool, as a
         // frustum with its large end on the part.
         panel.draft.edit().tabs = vec![Tab {
             auto: None,
@@ -1901,7 +1904,7 @@ mod tests {
         assert!(text.contains("Tab 1 \u{b7} Frustum"), "{text}");
         assert!(text.contains("Head"), "{text}");
         assert!(text.contains("Large end towards the part"), "{text}");
-        assert!(text.contains("narrower than the tool"), "{text}");
+        assert!(text.contains("shorter than the tool"), "{text}");
         assert!(text.contains("of 1 Finish"), "{text}");
         // A reach note names the operation under the tab it reaches.
         let context = Context {

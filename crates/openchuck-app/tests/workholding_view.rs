@@ -835,11 +835,11 @@ fn req_ui_25_a_frustum_tab_and_a_held_region_with_its_own_diameter_are_described
     );
 }
 
-/// A collapsed tab row names its zone, and the Narrowest line compares the
+/// A collapsed tab row names its zone, and the length line compares the
 /// tab with the tools of the setup's operations, naming the operation by its
 /// number (interface specification 11.7; OI-334 c and i).
 #[test]
-fn req_ui_25_a_tab_names_its_zone_and_its_narrowest_against_the_tools() {
+fn req_ui_25_a_tab_names_its_zone_and_its_length_against_the_tools() {
     use openchuck_app::workholding::SetupTool;
     use openchuck_app::workholding_view::{Zone, narrowest_line, tab_zone};
     let part = openchuck_app::setup::PartExtent {
@@ -877,11 +877,12 @@ fn req_ui_25_a_tab_names_its_zone_and_its_narrowest_against_the_tools() {
     assert!(warning);
     assert_eq!(
         line,
-        "4.000 mm, narrower than the tool T2 Flat \u{d8}6 (6.000 mm) of 2 Finish"
+        "3.000 mm, shorter than the tool T2 Flat \u{d8}6 (6.000 mm) of 2 Finish"
     );
-    let (line, warning) = narrowest_line(&cylinder_tab(-12.0, 3.0, 8.0), &tools);
+    // A wide tab that is too short warns; a thin one that is long enough does not.
+    let (line, warning) = narrowest_line(&cylinder_tab(-12.0, 8.0, 1.0), &tools);
     assert!(!warning, "{line}");
-    assert_eq!(narrowest_line(&head, &[]).0, "4.000 mm");
+    assert_eq!(narrowest_line(&head, &[]).0, "3.000 mm");
 }
 
 /// A new tab's diameter is rounded to the 3 places its field shows; its
