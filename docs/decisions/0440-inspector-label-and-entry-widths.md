@@ -1,6 +1,6 @@
 # 0440: Inspector label and entry widths; the dock's show button (lane UI-LAYOUT)
 
-- **Status:** proposed (1 Nov 2026), revised the same day after the owner saw screenshots of the first build. The owner chose option A of the three below (relayed by the coordinator session, session_01CFw3bzew7zizFQ91L5tvT7), but did not accept this record yet and asked for the three changes in items 2, 3 and 6 (relayed). Not accepted: only the owner accepts a record (decision 0049).
+- **Status:** accepted (1 Nov 2026) by the project owner, who saw the revised screenshots, including the setup inspector's Stock shape becoming a drop-down list at the default width. The acceptance was relayed to this lane by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7), as decision 0049 allows. Proposed on 1 Nov 2026 and revised the same day after the owner asked for the changes in items 2, 3 and 6 (the default's source stays in the box and the tooltip carries the whole text).
 - **Date:** 1 Nov 2026.
 - **Lane/issues:** UI-LAYOUT, [#433](https://github.com/paulhampson/OpenChuckCAM/issues/433) (the dock's show and hide buttons are on opposite sides) and [#434](https://github.com/paulhampson/OpenChuckCAM/issues/434) (inspector labels cut short while the entry boxes are wide).
 - **Requirements:** UI-07, UI-14, UI-16, UI-19, UI-26.
