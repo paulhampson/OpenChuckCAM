@@ -10,6 +10,17 @@
 # Tutorial
 
 - [Your first project](tutorial/index.md)
+  - [1. Create a project](tutorial/01-create-project.md)
+  - [2. Import the model](tutorial/02-import-model.md)
+  - [3. Choose the machine](tutorial/03-machine.md)
+  - [4. Set up the stock](tutorial/04-stock.md)
+  - [5. Hold the work](tutorial/05-hold.md)
+  - [6. Choose the tools](tutorial/06-tools.md)
+  - [7. Add the operations](tutorial/07-operations.md)
+  - [8. Generate the toolpaths](tutorial/08-generate.md)
+  - [9. Simulate and read the results](tutorial/09-simulate.md)
+  - [10. Post and export](tutorial/10-export.md)
+  - [Before you run anything](tutorial/11-verify.md)
 
 # Concepts
 

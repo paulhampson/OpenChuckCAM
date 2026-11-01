@@ -17,6 +17,10 @@ on:
         description: 'The id of a job to treat as failed in the issues job, to try the issue flow (for example fuzz); a later normal run closes the issue. Empty for none'
         type: string
         default: ''
+      only:
+        description: 'The id of the one job to run (fuzz, step-mutations, sanitizer, long-tests or beta), to prove a fix without the whole night; empty runs every job. The issues job gives a skipped job no issue action (decision 0490)'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -24,6 +28,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # CMake 4 rejects OpenCASCADE 7.8.1's cmake_minimum_required (decision 0003). The `step-mutations`
+  # and `sanitizer` jobs build OpenCASCADE when its cache misses (issue 451); a job-level `env:`
+  # adds to this block, so the sanitizer job's CXXFLAGS do not replace it.
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   # Each target's corpus is kept between nights in the Actions cache, so the hours add up on what
@@ -32,6 +40,7 @@ jobs:
   # docs/fuzzing.md (decision 0107). `-timeout=10` makes a hang on one input a failure (NFR-07).
   fuzz:
     name: Fuzz ${{ matrix.target }} (1 hour)
+    if: (!inputs.only) || inputs.only == 'fuzz'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -131,6 +140,7 @@ jobs:
   # importer; the application process must never crash, hang or panic. The kernel build is cached.
   step-mutations:
     name: STEP mutation run through the importer
+    if: (!inputs.only) || inputs.only == 'step-mutations'
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
@@ -181,6 +191,7 @@ jobs:
   # binary; the open item is to find why and fix it at the source, then turn the check back on.
   sanitizer:
     name: AddressSanitizer on the STEP wrapper
+    if: (!inputs.only) || inputs.only == 'sanitizer'
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
@@ -194,6 +205,19 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install nightly --profile minimal -c rust-src
+      # Without a symbolizer a report gives only addresses (issue 369); with it, function names.
+      - name: Point AddressSanitizer at llvm-symbolizer
+        run: |
+          set -euo pipefail
+          sym=$(command -v llvm-symbolizer || true)
+          [ -n "$sym" ] || sym=$(compgen -G '/usr/bin/llvm-symbolizer-*' | sort -V | tail -n 1 || true)
+          if [ -z "$sym" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends llvm
+            sym=$(command -v llvm-symbolizer)
+          fi
+          "$sym" --version | head -n 1
+          echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
       # The job's CXXFLAGS instrument OpenCASCADE itself, so it has its own cached install.
       - uses: ./.github/actions/occt
         with:
@@ -216,6 +240,7 @@ jobs:
 
   long-tests:
     name: Long-running tests (uninstrumented)
+    if: (!inputs.only) || inputs.only == 'long-tests'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -231,6 +256,7 @@ jobs:
 
   beta:
     name: Beta toolchain (${{ matrix.os }})
+    if: (!inputs.only) || inputs.only == 'beta'
     strategy:
       fail-fast: false
       matrix:

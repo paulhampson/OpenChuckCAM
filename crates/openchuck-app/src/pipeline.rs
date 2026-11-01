@@ -107,6 +107,11 @@ pub struct Regeneration {
     pub gcode: Vec<(String, String)>,
     /// Notes about the toolpaths, each naming its operation, in order.
     pub notes: Vec<String>,
+    /// What the machine's feed limits did to each operation's feed, by
+    /// operation, in machining order; only operations they slowed appear
+    /// (issue 432). Read from the same notes as `notes`, which are unchanged
+    /// (GC-07), and keyed by the operation's id, not its name (issue 418).
+    pub feed_limits: Vec<(OperationId, crate::note_groups::FeedLimit)>,
     /// What the G-code checks found for each file in `gcode` (GC-08, GC-11).
     pub reports: Vec<crate::posting::GcodeReport>,
     /// Controller short-block diagnostics from the selected post (GC-17).
@@ -350,6 +355,9 @@ pub(crate) fn regenerate(
             regeneration
                 .notes
                 .push(format!("operation '{}': {note}", operation.name));
+        }
+        if let Some(limit) = crate::note_groups::feed_limit_of(&path.notes) {
+            regeneration.feed_limits.push((operation.id, limit));
         }
         if stocked {
             let mut index = setups.iter().position(|s| s.id == operation.setup);
