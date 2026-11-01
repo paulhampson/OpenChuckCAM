@@ -888,6 +888,9 @@ impl RunPanel {
         egui::ScrollArea::vertical()
             .id_salt("results")
             .auto_shrink([false, false])
+            // The default 64 pt minimum would push the viewport past a
+            // short dock and clip the end of the content (review of #480).
+            .min_scrolled_height(0.0)
             .show(ui, |ui| {
                 if let Some(error) = &self.last_error
                     && (!self.failed || filter.errors)
@@ -1381,6 +1384,34 @@ mod tests {
             self.shapes.iter().any(|s| has(&s.shape, needle))
         }
 
+        /// Whether the end of the text holding `needle` is drawn inside the
+        /// screen and inside its own clip rectangle (a scroll area's edge):
+        /// scrolled to the end, the last line is on show and not cut off.
+        fn readable(&self, needle: &str) -> bool {
+            fn walk(
+                shape: &egui::Shape,
+                clip: egui::Rect,
+                screen: egui::Rect,
+                needle: &str,
+            ) -> bool {
+                match shape {
+                    egui::Shape::Text(t) if t.galley.text().contains(needle) => {
+                        let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                        let slack = egui::Vec2::splat(0.5);
+                        rect.bottom() <= screen.bottom() + slack.y
+                            && rect.bottom() <= clip.bottom() + slack.y
+                            && rect.bottom() > clip.top()
+                    }
+                    egui::Shape::Vec(v) => v.iter().any(|s| walk(s, clip, screen, needle)),
+                    _ => false,
+                }
+            }
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, self.size);
+            self.shapes
+                .iter()
+                .any(|s| walk(&s.shape, s.clip_rect, screen, needle))
+        }
+
         fn click(&mut self, at: egui::Pos2) {
             let button = |pressed| egui::Event::PointerButton {
                 pos: at,
@@ -1543,7 +1574,7 @@ mod tests {
         assert!(screen.contains(copy), "Copy all is on screen at {copy:?}");
         // The rest scrolls: the notice is reached by scrolling the wheel.
         let notice = openchuck_app::VERIFY_GCODE_NOTICE;
-        let mut reached = frames.shows(&notice[..20]);
+        let mut reached = frames.readable(&notice[..20]);
         for _ in 0..30 {
             if reached {
                 break;
@@ -1559,9 +1590,12 @@ mod tests {
                 },
             ]);
             std::thread::sleep(std::time::Duration::from_millis(5));
-            reached = frames.shows(&notice[..20]);
+            reached = frames.readable(&notice[..20]);
         }
-        assert!(reached, "the verify notice is reachable by scrolling");
+        assert!(
+            reached,
+            "the verify notice is readable at the end of the scroll"
+        );
     }
 
     #[test]

@@ -124,7 +124,7 @@ impl Shell {
             }
             if ui.selectable_label(self.dock_tab == tab, text).clicked() {
                 self.dock_tab = tab;
-                if self.settings.dock.collapsed {
+                if self.collapsed(super::frame::Region::Dock) {
                     self.toggle_region(super::frame::Region::Dock);
                 }
             }

@@ -136,3 +136,25 @@ fn req_ui_12_the_results_window_is_gone_so_shortcuts_are_not_held_back() {
     rig.frame(Vec::new());
     assert!(!rig.shell.window_open(), "Results is a tab, not a window");
 }
+
+#[test]
+fn req_ui_12_req_ui_16_clicking_the_tab_opens_a_dock_the_small_window_rule_collapsed() {
+    // Review of #480: the tab click checked only the saved setting, so on
+    // a small window the dock stayed closed.
+    let mut rig = Rig::cube("results-tab-small", None);
+    rig.size = egui::vec2(1300.0, 700.0);
+    rig.settle();
+    assert!(
+        !rig.shell.settings.dock.collapsed,
+        "not collapsed by the user"
+    );
+    assert!(
+        rig.shell.collapsed(Region::Dock),
+        "collapsed by the window size"
+    );
+    let at = centre(&rig, "Results");
+    rig.click(at);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.dock_tab, DockTab::Results);
+    assert!(!rig.shell.collapsed(Region::Dock));
+}
