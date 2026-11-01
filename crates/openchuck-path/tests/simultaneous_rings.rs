@@ -406,3 +406,24 @@ fn req_op_05_req_op_06_on_a_lobed_part_steps_hold_a_and_the_tilt_stays_in_bounds
         assert!(p.notes.iter().any(|n| n.message.contains("rings")));
     }
 }
+
+#[test]
+fn req_nfr_07_rings_refuse_an_absurd_stepover_by_name() {
+    // The count of points is checked before any ring is placed, so a
+    // stepover too fine to cut is refused by name, never counted out
+    // (review of #447).
+    let f = fixture(
+        &Cylinder {
+            radius: 15.0,
+            length: 10.0,
+        },
+        3,
+        360,
+    );
+    for stepover in [1e-20, f64::MIN_POSITIVE] {
+        let e = path(&f, &ringed(values(stepover, &[])))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(names::STEPOVER), "{stepover}: {e}");
+    }
+}
