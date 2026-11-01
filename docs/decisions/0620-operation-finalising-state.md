@@ -1,6 +1,6 @@
 # 0620: An operation whose own steps are done in a run that has not ended shows "Finalising", not stale (lane STATUSICON; issue #474)
 
-- **Status:** proposed. The owner chose the state's name and icon (option 1) and agreed the UI-11 amendment on 1 Nov 2026, relayed by the coordinator (decision 0049); the record as a whole is not yet accepted.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner chose the state's name and icon (option 1) and agreed the UI-11 amendment the same day, relayed the same way.
 - **Date:** 1 Nov 2026.
 - **Lane:** STATUSICON, `claude/lane-statusicon`.
 - **Issue:** #474.
