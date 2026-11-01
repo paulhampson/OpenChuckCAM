@@ -86,10 +86,10 @@ pub mod parameter {
 }
 
 impl Strategy for HelicalFinishing {
-    /// Exact contacts on a STEP part: measured within the limits of OI-835
-    /// (decision 0277).
-    fn exact_contact(&self) -> bool {
-        true
+    /// Exact contacts on a STEP part for a ball-end tool, on by default:
+    /// measured within the limits of OI-835 (decision 0277).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Ball)
     }
 
     fn name(&self) -> &str {
@@ -105,79 +105,83 @@ impl Strategy for HelicalFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(
-            vec![
-                ParameterSpec {
-                    name: parameter::ROTATION.to_owned(),
-                    label: "Rotation".to_owned(),
-                    description: "Which way A turns as X increases along the helix.".to_owned(),
-                    kind: ParameterKind::Choice {
-                        options: vec!["positive".to_owned(), "negative".to_owned()],
-                        default: "positive".to_owned(),
+        crate::contact::with_switch(crate::contact::ExactContact::Ball, {
+            ParameterSchema::with_common(
+                vec![
+                    ParameterSpec {
+                        name: parameter::ROTATION.to_owned(),
+                        label: "Rotation".to_owned(),
+                        description: "Which way A turns as X increases along the helix.".to_owned(),
+                        kind: ParameterKind::Choice {
+                            options: vec!["positive".to_owned(), "negative".to_owned()],
+                            default: "positive".to_owned(),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::START_ANGLE.to_owned(),
-                    label: "Start angle".to_owned(),
-                    description: "A at the lowest X of the part, where the helix starts."
-                        .to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Degrees,
-                        min: None,
-                        min_exclusive: false,
-                        max: None,
-                        default: Some(0.0),
+                    ParameterSpec {
+                        name: parameter::START_ANGLE.to_owned(),
+                        label: "Start angle".to_owned(),
+                        description: "A at the lowest X of the part, where the helix starts."
+                            .to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Degrees,
+                            min: None,
+                            min_exclusive: false,
+                            max: None,
+                            default: Some(0.0),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::MAX_ANGLE_STEP.to_owned(),
-                    label: "Largest angle step".to_owned(),
-                    description: "The most A may turn between two points of the path; points are \
+                    ParameterSpec {
+                        name: parameter::MAX_ANGLE_STEP.to_owned(),
+                        label: "Largest angle step".to_owned(),
+                        description:
+                            "The most A may turn between two points of the path; points are \
                               added where the surface needs them."
-                        .to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Degrees,
-                        min: Some(0.0),
-                        min_exclusive: true,
-                        max: Some(90.0),
-                        default: Some(5.0),
+                                .to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Degrees,
+                            min: Some(0.0),
+                            min_exclusive: true,
+                            max: Some(90.0),
+                            default: Some(5.0),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::SCALLOP.to_owned(),
-                    label: "Scallop height".to_owned(),
-                    description: "The largest cusp between turns, for ball-end and bull-nose \
+                    ParameterSpec {
+                        name: parameter::SCALLOP.to_owned(),
+                        label: "Scallop height".to_owned(),
+                        description: "The largest cusp between turns, for ball-end and bull-nose \
                               tools. The pitch is the smaller of this and the stepover \
                               allows. 0 turns it off."
-                        .to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Millimetres,
-                        min: Some(0.0),
-                        min_exclusive: false,
-                        max: None,
-                        default: Some(0.0),
+                            .to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Millimetres,
+                            min: Some(0.0),
+                            min_exclusive: false,
+                            max: None,
+                            default: Some(0.0),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::PASS_SHAPE.to_owned(),
-                    label: "Passes".to_owned(),
-                    description: "Spiral: one continuous spiral that moves along the part as it \
+                    ParameterSpec {
+                        name: parameter::PASS_SHAPE.to_owned(),
+                        label: "Passes".to_owned(),
+                        description:
+                            "Spiral: one continuous spiral that moves along the part as it \
                               turns. Rings: one full turn at a time at a fixed place along the \
                               part, with a short step along the part between turns, at the \
                               start angle."
-                        .to_owned(),
-                    kind: ParameterKind::Choice {
-                        options: vec![parameter::HELIX.to_owned(), parameter::RINGS.to_owned()],
-                        default: parameter::HELIX.to_owned(),
+                                .to_owned(),
+                        kind: ParameterKind::Choice {
+                            options: vec![parameter::HELIX.to_owned(), parameter::RINGS.to_owned()],
+                            default: parameter::HELIX.to_owned(),
+                        },
                     },
-                },
-            ]
-            .into_iter()
-            .chain(crate::extend::specs(false))
-            .chain(crate::finishing::specs(true, true))
-            .chain(adaptive::specs())
-            .collect(),
-        )
+                ]
+                .into_iter()
+                .chain(crate::extend::specs(false))
+                .chain(crate::finishing::specs(true, true))
+                .chain(adaptive::specs())
+                .collect(),
+            )
+        })
     }
 
     fn schema_for(

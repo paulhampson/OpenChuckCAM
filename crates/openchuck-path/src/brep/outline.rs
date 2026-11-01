@@ -48,7 +48,9 @@
 //! **Cost.** On the blisk the outline drop costs about 200 to 230 us a drop
 //! against 8 to 50 us on the tessellation (decision 0338): many cells near
 //! the contact must be bounded where a flat end rests along a line of a face
-//! or against a trim. No strategy uses it yet (OI-1351).
+//! or against a trim. Axial finishing and pencil clean-up use it only when
+//! the operation turns Exact STEP surface contact on, off by default
+//! (OI-1351, decision 0500).
 //!
 //! **Where the highest contact can be.** Inside a face, the lift is
 //! greatest where the tool's surface is tangent to the face (the face's

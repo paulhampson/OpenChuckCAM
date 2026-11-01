@@ -217,15 +217,19 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         StrategyGroup::Finishing
     }
 
-    /// Whether a host machines a STEP part with this strategy on exact
-    /// contacts: the ball dropped onto the exact faces, and the region,
-    /// avoid, check and stock-to-leave sets as exact faces too
-    /// ([`BrepSurface::with_exact_drops`](crate::BrepSurface::with_exact_drops);
-    /// decision 0277). False, the default, keeps the drop on the import's
-    /// tessellation. A strategy turns it on only once it is measured within
-    /// the generation-time limits of OI-835.
-    fn exact_contact(&self) -> bool {
-        false
+    /// Which tools a host may drop onto a STEP part's exact faces for this
+    /// strategy when the operation's Exact STEP surface contact
+    /// ([`contact::parameter::EXACT_CONTACT`](crate::contact::parameter::EXACT_CONTACT))
+    /// is on: the surface then answers with
+    /// [`BrepSurface::with_exact_drops`](crate::BrepSurface::with_exact_drops)
+    /// for a tool the kind supports, and the region, avoid, check and
+    /// stock-to-leave sets are exact faces too (decisions 0277 and 0500).
+    /// `None`, the default, keeps every drop on the import's tessellation and
+    /// the strategy has no such setting. A strategy that returns a kind adds
+    /// the setting to its schema with
+    /// [`contact::with_switch`](crate::contact::with_switch).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        None
     }
 
     /// The parameters, including the common ones

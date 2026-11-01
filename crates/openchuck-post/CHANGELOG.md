@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.0
+
+- **Family release (0.37.0, STEPALL-CLOSE; issue #351; decision 0500, proposed):** `openchuck-path`'s `Strategy::exact_contact` returns the kind of Exact STEP surface contact a strategy offers, a breaking change; no change to this crate.
+
 ## 0.32.0
 
 - **Family release (0.32.0, CRANKEXCESS; issue #439; decision 0410, accepted):** simultaneous finishing's turn at a face beside a section off the rotary axis goes round that section's own centre, which changes `openchuck-path`'s output for such parts, so the family moves together. No change in this crate.

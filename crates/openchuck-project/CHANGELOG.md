@@ -9,6 +9,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Project schema 27 (STEPALL-CLOSE, issue #351; decision 0500, proposed): helical, indexed, rest and simultaneous finishing operations saved before it open with `exact_contact = true`, axial finishing and pencil clean-up ones with `exact_contact = false`, the contact each already machined with; a schema 26 file that already holds the setting is refused, naming it. Schema 26 is lane CLEARANCE's (decision 0530); its step on this branch changes nothing until the two meet.
+
 - Project schema 25 (ENDFACE stage 3, second pull request; OI-1453; decision 0239): rotary roughing and Facing operations saved before it open with an explicit `adaptive_spacing = false`, so they machine as before; a schema 24 roughing or Facing operation that already holds the switch is refused, naming it.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): project schema 24. The 23 to 24 step writes `adaptive_spacing = false` into each saved helical, axial and simultaneous finishing operation, so it machines as before; a schema 23 file that already holds the switch is refused, naming it.

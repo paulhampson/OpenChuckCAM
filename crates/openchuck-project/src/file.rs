@@ -125,7 +125,15 @@ use openchuck_types::workholding::Workholding;
 ///   along the axis (OI-1453); an older operation of those strategies is
 ///   migrated to an explicit `adaptive_spacing = false`, so it machines as
 ///   before (decision record 0239).
-pub const SCHEMA: i64 = 25;
+/// - 26: held by lane CLEARANCE (decision record 0530); until it merges this
+///   step changes nothing.
+/// - 27: helical, indexed, rest, simultaneous and axial finishing and pencil
+///   clean-up gain the per-operation `exact_contact` setting, Exact STEP
+///   surface contact; an older operation of those strategies is given the
+///   contact it machined with, on for the first four and off for axial
+///   finishing and pencil clean-up, so it machines as before (decision
+///   record 0500).
+pub const SCHEMA: i64 = 27;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -164,7 +172,65 @@ const MIGRATIONS: &[Migration] = &[
     schema_22_to_23,
     schema_23_to_24,
     schema_24_to_25,
+    schema_25_to_26,
+    schema_26_to_27,
 ];
+
+/// The strategies whose operations gained `exact_contact` in schema 27 on,
+/// as they machined: the exact ball drop of decision record 0277.
+const EXACT_BALL_STRATEGIES: [&str; 4] = [
+    "helical_finishing",
+    "indexed_finishing",
+    "rest_machining",
+    "simultaneous_finishing",
+];
+
+/// The strategies whose operations gained `exact_contact` in schema 27 off,
+/// as they machined: on the tessellation (decision record 0338).
+const EXACT_OUTLINE_STRATEGIES: [&str; 2] = ["axial_finishing", "pencil_finishing"];
+
+/// Schema 26 is held by lane CLEARANCE (decision record 0530), whose step
+/// replaces this one when the two branches meet; it changes nothing.
+#[allow(clippy::unnecessary_wraps)]
+fn schema_25_to_26(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 27 (decision record 0500): an operation of a strategy that offers
+/// Exact STEP surface contact, saved before it, is given the contact it
+/// machined with, so it machines as it did: on for the strategies that took
+/// the exact ball drop (decision record 0277), off for axial finishing and
+/// pencil clean-up. An older file that already holds the setting was not
+/// written by any version that knew it, so it is refused rather than guessed
+/// at.
+fn schema_26_to_27(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let strategy = table.get("strategy").and_then(toml::Value::as_str);
+    let value = match strategy {
+        Some(s) if EXACT_BALL_STRATEGIES.contains(&s) => Some(true),
+        Some(s) if EXACT_OUTLINE_STRATEGIES.contains(&s) => Some(false),
+        _ => None,
+    };
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("exact_contact") {
+        return Err(
+            "this schema 26 file has the parameter `exact_contact`, which schema 27 \
+             introduced; remove it, or set `schema = 27` if the file was written for schema 27"
+                .to_owned(),
+        );
+    }
+    if let Some(on) = value {
+        parameters.insert("exact_contact".to_owned(), toml::Value::Boolean(on));
+    }
+    Ok(())
+}
 
 /// The strategies whose operations gained `adaptive_spacing` in schema 25:
 /// rotary roughing's lines along the axis and flat Facing (OI-1453).

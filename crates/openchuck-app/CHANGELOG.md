@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- STEPALL-CLOSE (issue #351; decision 0500, proposed): an operation drops its tool on a STEP part's exact faces where its Exact STEP surface contact is on and applies to the tool (`openchuck_path::contact::exact_drops`): by default as before (ball ends in helical, indexed, rest and simultaneous finishing), and, when turned on, ball, tapered-ball and flat-end tools in axial finishing and pencil clean-up. The operation's note names the surface and why (the setting off, a tool shape without an exact drop, a flat end where stock is left). The parameter form hides the row on a mesh part and says under it when the tool cannot take it.
+
 - OP20 (issue #413, decision 0368): operations give the strategies the tool's shank where it is wider than the cutting part (`StrategyInput::shank`, from the shank diameter and the flute length), which simultaneous finishing keeps clear of the part on every pass; the strategies' unreached areas reach `Regeneration` through the generated path's warning.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): a partial path (adaptive spacing that met a limit or could not confirm a place) is listed in the export checks and written only once the output plan is acknowledged for its own run (`OutputPlan::partial_operations`, `acknowledge_partial_path`, `partial_path_acknowledged`; `partial_operations`, `partial_path_refusal`, `EXPORT_PARTIAL_PATH_LABEL`); `OutputReport` gains `partial` and says the path is not complete. `Application::adaptive_spacing_needs_height` and `enable_adaptive_spacing` (one undoable step). The command line's `regenerate` takes `--acknowledge-partial-path`.

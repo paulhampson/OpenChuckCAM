@@ -76,6 +76,12 @@ pub mod parameter {
 const MAX_SEEDS: f64 = 5.0e6;
 
 impl Strategy for AxialFinishing {
+    /// Exact contacts on a STEP part for every tool with an exact drop,
+    /// off by default: over the limits of OI-835 (decisions 0338, 0500).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Outline)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -89,67 +95,70 @@ impl Strategy for AxialFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(
-            vec![
-                ParameterSpec {
-                    name: parameter::DIRECTION.to_owned(),
-                    label: "Direction".to_owned(),
-                    description: "Zig-zag alternates the direction of each pass along X; climb \
+        crate::contact::with_switch(crate::contact::ExactContact::Outline, {
+            ParameterSchema::with_common(
+                vec![
+                    ParameterSpec {
+                        name: parameter::DIRECTION.to_owned(),
+                        label: "Direction".to_owned(),
+                        description:
+                            "Zig-zag alternates the direction of each pass along X; climb \
                               cuts every pass the same way."
-                        .to_owned(),
-                    kind: ParameterKind::Choice {
-                        options: vec!["zigzag".to_owned(), "climb".to_owned()],
-                        default: "zigzag".to_owned(),
+                                .to_owned(),
+                        kind: ParameterKind::Choice {
+                            options: vec!["zigzag".to_owned(), "climb".to_owned()],
+                            default: "zigzag".to_owned(),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::START_ANGLE.to_owned(),
-                    label: "Start angle".to_owned(),
-                    description: "A of the first pass.".to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Degrees,
-                        min: None,
-                        min_exclusive: false,
-                        max: None,
-                        default: Some(0.0),
+                    ParameterSpec {
+                        name: parameter::START_ANGLE.to_owned(),
+                        label: "Start angle".to_owned(),
+                        description: "A of the first pass.".to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Degrees,
+                            min: None,
+                            min_exclusive: false,
+                            max: None,
+                            default: Some(0.0),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::SCALLOP.to_owned(),
-                    label: "Scallop height".to_owned(),
-                    description: "The largest cusp between passes, for ball-end and bull-nose \
+                    ParameterSpec {
+                        name: parameter::SCALLOP.to_owned(),
+                        label: "Scallop height".to_owned(),
+                        description: "The largest cusp between passes, for ball-end and bull-nose \
                               tools. The passes are as close as the smaller of this and the \
                               stepover needs. 0 turns it off."
-                        .to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Millimetres,
-                        min: Some(0.0),
-                        min_exclusive: false,
-                        max: None,
-                        default: Some(0.0),
+                            .to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Millimetres,
+                            min: Some(0.0),
+                            min_exclusive: false,
+                            max: None,
+                            default: Some(0.0),
+                        },
                     },
-                },
-                ParameterSpec {
-                    name: parameter::MAX_X_STEP.to_owned(),
-                    label: "Largest step along X".to_owned(),
-                    description: "The most X may advance between two points of a pass; points \
+                    ParameterSpec {
+                        name: parameter::MAX_X_STEP.to_owned(),
+                        label: "Largest step along X".to_owned(),
+                        description: "The most X may advance between two points of a pass; points \
                               are added where the surface needs them."
-                        .to_owned(),
-                    kind: ParameterKind::Number {
-                        unit: Unit::Millimetres,
-                        min: Some(0.0),
-                        min_exclusive: true,
-                        max: None,
-                        default: Some(1.0),
+                            .to_owned(),
+                        kind: ParameterKind::Number {
+                            unit: Unit::Millimetres,
+                            min: Some(0.0),
+                            min_exclusive: true,
+                            max: None,
+                            default: Some(1.0),
+                        },
                     },
-                },
-            ]
-            .into_iter()
-            .chain(crate::extend::specs(false))
-            .chain(crate::finishing::specs(true, true))
-            .chain(adaptive::specs())
-            .collect(),
-        )
+                ]
+                .into_iter()
+                .chain(crate::extend::specs(false))
+                .chain(crate::finishing::specs(true, true))
+                .chain(adaptive::specs())
+                .collect(),
+            )
+        })
     }
 
     fn schema_for(
