@@ -164,6 +164,9 @@ class Pins(unittest.TestCase):
         p = write(d, "w.yml", "env:\n  VNU_SHA256: UNVERIFIED\n")
         self.assertEqual(len(check.unverified_pins([p])), 1)
 
+    def test_req_nfr_19_the_shared_action_holding_the_pins_is_scanned(self):
+        self.assertIn(os.path.join(check.REPO, ".github", "actions", "user-docs", "action.yml"), check.WORKFLOWS)
+
     def test_req_nfr_19_verified_pins_pass(self):
         d = tempfile.mkdtemp()
         p = write(d, "w.yml", "env:\n  VNU_SHA256: 3925f07364f5e5a111cef54a7baefa575b22d05c70f8ced048f0616d4579b7ab\n")

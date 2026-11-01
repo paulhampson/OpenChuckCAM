@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # The OpenChuckCAM user guide (decision 0400). Built with mdBook (pinned in
-# .github/workflows/docs-site.yml) through user-docs/tools/build.py, which finishes the pages.
+# .github/actions/user-docs/action.yml) through user-docs/tools/build.py, which finishes the pages.
 # The theme in theme/ replaces mdBook's own completely; no preprocessor or plugin is used.
 [book]
 title = "OpenChuckCAM user guide"

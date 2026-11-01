@@ -41,23 +41,26 @@ def release_versions(names):
     return sort_versions([n[1:] for n in names if n.startswith("v") and VERSION.match(n[1:])])
 
 
-def _newest_text(newest):
+def _newest_text(newest, to_site):
+    """The banner's sentence; `to_site` is the relative path from the page to the site root."""
     if newest is None:
         return "There is no release yet."
     return (f'See the documentation for the newest release, '
-            f'<a href="../v{html.escape(newest)}/">{html.escape(newest)}</a>.')
+            f'<a href="{to_site}v{html.escape(newest)}/">{html.escape(newest)}</a>.')
 
 
 def _fill_latest(folder, newest):
+    site = os.path.dirname(os.path.abspath(folder))
     for root, _, files in os.walk(folder):
         for name in files:
             if name.endswith(".html"):
                 path = os.path.join(root, name)
+                to_site = os.path.relpath(site, os.path.dirname(os.path.abspath(path))).replace(os.sep, "/") + "/"
                 with open(path, encoding="utf-8") as f:
                     text = f.read()
                 if NEWEST_PLACEHOLDER in text:
                     with open(path, "w", encoding="utf-8") as f:
-                        f.write(text.replace(NEWEST_PLACEHOLDER, _newest_text(newest)))
+                        f.write(text.replace(NEWEST_PLACEHOLDER, _newest_text(newest, to_site)))
 
 
 PAGE = """<!DOCTYPE html>

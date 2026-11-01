@@ -85,13 +85,22 @@ jobs:
         if: steps.nightly.outputs.publish == 'true'
         run: |
           # The publish-only branch; it does not exist until the first application release.
-          if git ls-remote --exit-code --heads origin docs-releases > /dev/null; then
+          # `--exit-code` gives 2 when the branch is absent; any other failure (network,
+          # authentication) stops the deploy rather than publish a site without its releases.
+          set +e
+          git ls-remote --exit-code --heads origin docs-releases > /dev/null
+          found=$?
+          set -e
+          if [ "$found" -eq 0 ]; then
             git fetch --depth 1 origin docs-releases
             git worktree add --detach "$RUNNER_TEMP/releases" FETCH_HEAD
             echo "dir=$RUNNER_TEMP/releases" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$found" -eq 2 ]; then
             echo "No docs-releases branch yet: the site has the nightly build only."
             echo "dir=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not read the docs-releases branch (git ls-remote exit $found); nothing is deployed."
+            exit 1
           fi
       - name: Build and check
         id: guide

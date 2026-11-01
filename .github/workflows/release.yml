@@ -360,7 +360,17 @@ jobs:
         run: |
           set -euo pipefail
           url="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
-          if git ls-remote --exit-code --heads "$url" docs-releases > /dev/null; then
+          # `--exit-code` gives 2 when the branch is absent (the first release creates it); any
+          # other failure stops the job rather than start a new branch beside an existing one.
+          set +e
+          git ls-remote --exit-code --heads "$url" docs-releases > /dev/null
+          found=$?
+          set -e
+          if [ "$found" -ne 0 ] && [ "$found" -ne 2 ]; then
+            echo "::error::Could not read the docs-releases branch (git ls-remote exit $found); nothing was published."
+            exit 1
+          fi
+          if [ "$found" -eq 0 ]; then
             git clone --quiet --depth 1 --branch docs-releases "$url" branch
           else
             echo "No docs-releases branch yet: this first release creates it."

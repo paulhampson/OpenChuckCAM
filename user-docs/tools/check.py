@@ -22,7 +22,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 SRC = os.path.join(REPO, "user-docs", "src")
 IMAGES = os.path.join(SRC, "tutorial", "images")
+# Where the documentation tools are pinned and used: an UNVERIFIED pin in any of them fails the check.
 WORKFLOWS = [os.path.join(REPO, ".github", "workflows", n) for n in ("docs-site.yml", "release.yml")]
+WORKFLOWS.append(os.path.join(REPO, ".github", "actions", "user-docs", "action.yml"))
 
 # The folders whose changes can change what the tutorial screenshots show (decision 0400 section G).
 SCREEN_PATHS = ["apps/openchuck-ui", "crates/openchuck-viewport", "crates/openchuck-app/src"]

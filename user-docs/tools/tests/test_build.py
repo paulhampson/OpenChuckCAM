@@ -32,6 +32,16 @@ class Navigation(unittest.TestCase):
         self.assertIn('<a href="../tutorial/index.html" aria-current="page">', html)
         self.assertEqual(html.count("aria-current"), 1)
 
+    def test_req_nfr_19_part_titles_are_not_nested_list_items(self):
+        # mdBook 0.5.4 writes each part title as an li inside another li, which is not valid HTML.
+        nav = ('<nav class="sidebar" aria-label="Contents"><ol class="chapter">'
+               '<li class="chapter-item expanded "><li class="part-title">Start here</li></li>'
+               '<li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="start/install.html">Install</a></span></li>'
+               '</ol></nav>')
+        html = build.fix_nav(nav, "index.html")
+        self.assertIn('<li class="part-title">Start here</li><li class="chapter-item', html)
+        self.assertNotIn("</li></li>", html)
+
     def test_req_nfr_19_a_page_at_the_root_keeps_root_links(self):
         html = build.fix_nav(NAV, "index.html")
         self.assertIn('href="index.html" aria-current="page"', html)

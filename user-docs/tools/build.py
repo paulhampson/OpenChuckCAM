@@ -5,7 +5,7 @@
 
 Without --version it builds the development version: with --nightly DATE the published "latest"
 (the nightly build of that date), without it a preview. MDBOOK names the mdBook binary
-(default `mdbook`, pinned in .github/workflows/docs-site.yml). After mdBook it:
+(default `mdbook`, pinned in .github/actions/user-docs/action.yml). After mdBook it:
 - makes the contents list work without JavaScript (links relative to the page, the current page
   marked), because mdBook's {{#toc}} writes links relative to the site root;
 - fills in the version, the footer stamp and the program's own G-code notice (NFR-12);
@@ -33,10 +33,12 @@ import check  # noqa: E402
 _NAV = re.compile(r'(<nav class="sidebar".*?</nav>)', re.S)
 _HREF = re.compile(r'<a href="([^"#:]+\.html)">')
 _BANNER = re.compile(r"<!--latest-banner-->.*?<!--/latest-banner-->", re.S)
+# mdBook 0.5.4 writes a part title as an li inside another li, which is not valid HTML.
+_PART = re.compile(r'<li class="chapter-item[^"]*"><li class="part-title">(.*?)</li></li>', re.S)
 
 
 def fix_nav(text, rel):
-    """Make the contents' links relative to the page at `rel` and mark the current page."""
+    """Make the contents' links relative to the page at `rel`, mark the current page, and un-nest part titles."""
     prefix = "../" * rel.count("/")
 
     def nav(m):
@@ -44,7 +46,7 @@ def fix_nav(text, rel):
             target = a.group(1)
             current = ' aria-current="page"' if target == rel else ""
             return f'<a href="{prefix}{target}"{current}>'
-        return _HREF.sub(link, m.group(1))
+        return _PART.sub(r'<li class="part-title">\1</li>', _HREF.sub(link, m.group(1)))
 
     return _NAV.sub(nav, text, count=1)
 
@@ -106,6 +108,11 @@ def build(out, version=None, tag=None, nightly=None):
             text = fill(fix_nav(text, rel), version, tag, commit, date, notice, nightly)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
+    # mdBook's contents frame for readers without JavaScript; this theme puts the contents in each
+    # page instead, so nothing links to it, and mdBook writes it without a <title>.
+    toc = os.path.join(out, "toc.html")
+    if os.path.exists(toc):
+        os.remove(toc)
     os.makedirs(os.path.join(out, "fonts"), exist_ok=True)
     for name in FONT_FILES:
         shutil.copyfile(os.path.join(FONTS, name), os.path.join(out, "fonts", name))

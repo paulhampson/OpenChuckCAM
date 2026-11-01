@@ -84,6 +84,9 @@ runs:
         rm -rf "$work"
         python3 -m unittest discover -s user-docs/tools/tests
         screens=warn
+        # A release copy needs its version and the nightly "latest" its date, or the stamp and checks are wrong.
+        [ "$MODE" != release ] || [ -n "$VERSION" ] || { echo "::error::mode release needs the input version"; exit 1; }
+        [ "$MODE" != nightly ] || [ -n "$NIGHTLY" ] || { echo "::error::mode nightly needs the input nightly-date"; exit 1; }
         case "$MODE" in
           preview) guide="$work/latest"; python3 user-docs/tools/build.py --out "$guide" ;;
           nightly) guide="$work/latest"; python3 user-docs/tools/build.py --out "$guide" --nightly "$NIGHTLY" ;;

@@ -33,7 +33,7 @@ def read(root, rel):
 def built(version):
     d = tempfile.mkdtemp()
     write(d, "index.html", f'<html><meta name="docs-version" content="{version}"><p>{BANNER}</p></html>')
-    write(d, "tutorial/index.html", "<html>tutorial</html>")
+    write(d, "tutorial/index.html", f"<html>tutorial<p>{BANNER}</p></html>")
     return d
 
 
@@ -121,6 +121,12 @@ class Assemble(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(out, "v0.30.0/tutorial/index.html")))
         self.assertIn("0.31.0", read(out, "latest/index.html"))
         self.assertNotIn(BANNER, read(out, "latest/index.html"))
+
+    def test_req_nfr_19_the_newest_release_link_resolves_from_nested_pages(self):
+        out = tempfile.mkdtemp()
+        assemble.assemble(built("latest"), self.releases("0.31.0"), out)
+        self.assertIn('href="../v0.31.0/"', read(out, "latest/index.html"))
+        self.assertIn('href="../../v0.31.0/"', read(out, "latest/tutorial/index.html"))
 
     def test_req_nfr_19_released_folders_are_served_unchanged(self):
         releases = self.releases("0.31.0")
