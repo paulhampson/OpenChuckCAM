@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.0
+
+- **Breaking (0.32.0, SWARF-FLOOR; issue #435; decision 0450, proposed, the owner's decisions on OI-1620 and OI-1621 relayed by the coordinator):** swarf keeps the tool's tip off a floor.
+  - **Cut short lifts first.** Where the tool on a ruling would break an avoid or check set (`RegionConstraint::avoid` and `check`), the tip is lifted up the ruling by the least that keeps it off the set (the stock to leave clear of a check set), allowing for the set's sampling, before the pass is cut short; the pass is cut short only where a lift that leaves a quarter of the ruling in contact does not clear it. Before, a set under the whole face (a floor) refused the face. The strip left at the foot is not measured as material left, and the note says how far the tool was lifted.
+  - **Negative tip extension.** `swarf::parameter::TIP_EXTENSION` has no minimum: a negative value starts the flank that far up the rulings, the strip is not material left, and a value that leaves nothing of a face's rulings refuses the face naming the value and the length.
+  - **Notes.** Each face's note says where the tool's end is against the end of the rulings (a ball or corner radius plus the tip extension).
+  - **API.** `swarf::Pose` gains `lift`; `swarf::Limits` gains `tip_lifted`, `lifted_clear_of`, `tip_up` and `end_reach` (struct literals add them).
+  - **Output.** A swarf operation with an avoid or check set on Cut short that its tip broke is made differently (lifted where it was cut short or refused). Paths with no such set, and every golden file, are unchanged.
+
 ## 0.31.0
 
 - **Fix (CodeRabbit on #426):** adaptive spacing panicked for a tool whose cutting radius is under 0.04 mm (diameter under 0.08 mm): the step between poses along a pass was clamped between 0.02 mm and half the radius, and those bounds crossed. On main since #422 in axial, helical and simultaneous finishing, and in this pull request's roughing. One shared `adaptive::pose_step` now keeps the lower bound at most half the radius (NFR-07); for any larger tool the step, the path and the G-code are unchanged.

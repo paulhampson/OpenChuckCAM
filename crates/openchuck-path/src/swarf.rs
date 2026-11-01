@@ -124,6 +124,15 @@ const GUARD_GRID: usize = 33;
 /// Bisections that find where the tool comes too close to an avoid or check
 /// surface.
 const GUARD_STEPS: u32 = 16;
+/// The part of a ruling a lift clear of an avoid or check surface must leave
+/// in contact with the flank (decision record 0450 item 1): a position that
+/// needs a larger lift is cut short instead.
+const LIFT_KEEP: f64 = 0.25;
+/// Bisections that find the least lift clear of an avoid or check surface.
+const LIFT_STEPS: u32 = 20;
+/// The most passes over a run that make the lifts of neighbouring poses
+/// agree ([`level_lifts`]).
+const LEVEL_PASSES: usize = 64;
 /// Points of the machine's motion between two poses the guards look at.
 const GATE_STEPS: usize = 4;
 /// The most the gate's own sampling may miss of the deepest cut or the
@@ -505,6 +514,9 @@ pub struct Pose {
     pub needed_taper: Option<f64>,
     /// The engaged length of the ruling, in millimetres.
     pub ruling_length: f64,
+    /// How far the tip is lifted up the ruling, in millimetres, to keep
+    /// clear of the avoid and check surfaces (decision record 0450 item 1).
+    pub lift: f64,
 }
 
 /// What a face's rulings need from the tool and the operation.
@@ -586,6 +598,23 @@ pub struct Limits {
     /// The most the boundary raised the tool tip along a ruling, in
     /// millimetres.
     pub tip_raised: f64,
+    /// The most the tip is lifted up a ruling to keep clear of the avoid and
+    /// check surfaces, in millimetres (decision record 0450 item 1).
+    pub tip_lifted: f64,
+    /// The kinds of surface the tip is lifted clear of, avoid before check.
+    pub lifted_clear_of: Vec<Protection>,
+    /// How far up the rulings a negative tip extension starts the flank, in
+    /// millimetres (decision record 0450 item 2); zero otherwise.
+    pub tip_up: f64,
+    /// The length along the face, in millimetres, whose rulings are no
+    /// longer than a negative tip extension, so are not cut.
+    pub too_short: f64,
+    /// How far the tool's end reaches beyond the end of the rulings at the
+    /// tip, along the tool axis, in millimetres, before any lift: the
+    /// height of the flank's start above the tip (a ball or corner radius)
+    /// plus the tip extension. Negative when it stays short of it (decision
+    /// record 0450 item 2).
+    pub end_reach: f64,
     /// The length along the face left uncut because the tool would cut into
     /// an avoid surface there, in millimetres.
     pub avoid_uncut: f64,
@@ -625,6 +654,37 @@ impl Limits {
     /// The sentences of a face's note that say what each limit did.
     fn describe(&self) -> String {
         let mut out = String::new();
+        // Where the tool's end sits against the end of the rulings (decision
+        // record 0450 item 2), shown to the precision of the notes.
+        if self.tip_up > SAME_POINT {
+            out.push_str(&format!(
+                " The tip sits {:.3} mm up the rulings (a negative tip extension), so a strip \
+                 about {:.3} mm wide is left at that end of the face.",
+                self.tip_up, self.tip_up
+            ));
+        }
+        if self.too_short > SAME_POINT {
+            out.push_str(&format!(
+                " About {:.3} mm along the face is not cut because its rulings there are no \
+                 longer than the negative tip extension.",
+                self.too_short
+            ));
+        }
+        if self.end_reach >= 0.0005 {
+            out.push_str(&format!(
+                " The tool's end reaches {:.3} mm beyond the end of the rulings at the tip (its \
+                 corner radius and the tip extension), so it cuts into any face that meets them \
+                 there, such as a floor, unless that face is in an avoid or check set.",
+                self.end_reach
+            ));
+        } else if self.end_reach <= -0.0005 {
+            out.push_str(&format!(
+                " The tool's end stays {:.3} mm short of the end of the rulings at the tip.",
+                -self.end_reach
+            ));
+        } else {
+            out.push_str(" The tool's end is level with the end of the rulings at the tip.");
+        }
         if let Some((pass, tip)) = self.boundary {
             if pass {
                 if self.outside_boundary > SAME_POINT {
@@ -657,6 +717,18 @@ impl Limits {
                      the tool cuts each ruling up to that end.",
                 );
             }
+        }
+        if self.tip_lifted > SAME_POINT {
+            let what = match self.lifted_clear_of.as_slice() {
+                [Protection::Check] => "check surfaces",
+                [Protection::Avoid, Protection::Check] => "avoid and check surfaces",
+                _ => "avoid surfaces",
+            };
+            out.push_str(&format!(
+                " The tool is lifted up to {:.3} mm along the rulings to keep clear of the \
+                 {what}, so a strip up to about {:.3} mm wide is left at that end of the face.",
+                self.tip_lifted, self.tip_lifted
+            ));
         }
         if self.avoid_uncut > SAME_POINT {
             out.push_str(&format!(
@@ -897,6 +969,39 @@ fn ruling_over(
     })
 }
 
+/// `ruling` with its tip end moved `by` millimetres along it towards the far
+/// end (decision record 0450): the end the tip sits at is the low end of
+/// the ruling's parameter for `sign` +1, the high end for -1. `None` when
+/// that leaves nothing of it.
+fn shortened(
+    face: &dyn ParametricFace,
+    family: Family,
+    ruling: &Ruling,
+    sign: f64,
+    by: f64,
+) -> Option<Ruling> {
+    if by <= 0.0 {
+        return Some(*ruling);
+    }
+    if by >= ruling.length() - SAME_POINT {
+        return None;
+    }
+    let (tip_s, far_s, tip) = if sign > 0.0 {
+        (ruling.s.0, ruling.s.1, ruling.lo)
+    } else {
+        (ruling.s.1, ruling.s.0, ruling.hi)
+    };
+    // The ruling is straight, so the distance from its tip end grows along
+    // it: the new end is found by bisection on that distance.
+    let reached = |s: f64| {
+        face.point_normal(family.uv(ruling.t, s))
+            .is_some_and(|p| p.point.distance(tip) >= by)
+    };
+    let s = refine(far_s, tip_s, reached);
+    let (lo, hi) = if sign > 0.0 { (s, far_s) } else { (far_s, s) };
+    ruling_over(face, family, ruling.t, lo, hi)
+}
+
 /// How a containment boundary limits the rulings of a face (decision record
 /// 0176). `pass` (limit A) keeps only the rulings that lie inside it, whole,
 /// so the pass stops or splits where they leave it; `tip` (limit B) moves
@@ -1058,6 +1163,7 @@ fn pose_of(
         tilt: p.tilt,
         needed_taper: p.needed_taper,
         ruling_length: p.length,
+        lift: 0.0,
     })
 }
 
@@ -1221,7 +1327,15 @@ fn directrix_length(face: &dyn ParametricFace, family: Family, runs: &[(f64, f64
 struct Guard {
     kind: Protection,
     points: Vec<Point3>,
+    /// The surface normal at each point and the spacing of the samples
+    /// around it, for an exact face; none for a mesh's vertices.
+    around: Vec<Option<(Vec3, f64)>>,
     least: f64,
+    /// The tool's cutting radius.
+    radius: f64,
+    /// The smallest radius of the tool's rounded end (a ball, a corner or a
+    /// tapered ball's tip), or none for a flat end.
+    rounding: Option<f64>,
 }
 
 impl Guard {
@@ -1234,26 +1348,41 @@ impl Guard {
         kind: Protection,
         surface: &dyn SurfaceSource,
         settings: &Settings,
-        radius: f64,
+        tool: &RevolvedProfile,
     ) -> Self {
+        let radius = tool.cutting_radius();
+        let rounding = tool
+            .pieces()
+            .iter()
+            .filter_map(|piece| match piece {
+                ProfilePiece::Arc { radius, convex, .. } if *convex => Some(*radius),
+                _ => None,
+            })
+            .reduce(f64::min);
         let least = match kind {
             Protection::Avoid => -settings.tolerance,
             Protection::Check => settings.stock_to_leave.max(0.0) - settings.tolerance,
         };
         let faces = surface.exact_faces();
-        let points = if faces.is_empty() {
-            surface.tessellation().vertices.clone()
+        let (points, around) = if faces.is_empty() {
+            let points = surface.tessellation().vertices.clone();
+            let around = vec![None; points.len()];
+            (points, around)
         } else {
-            let spacing = (radius / 8.0).max(0.05);
+            let spacing = guard_spacing(radius);
             faces
                 .iter()
                 .flat_map(|f| face_samples(f.face, spacing))
-                .collect()
+                .map(|(p, n, h)| (p, Some((n, h))))
+                .unzip()
         };
         Self {
             kind,
             points,
+            around,
             least,
+            radius,
+            rounding,
         }
     }
 
@@ -1266,16 +1395,61 @@ impl Guard {
         reach: f64,
     ) -> bool {
         self.points.iter().any(|p| {
-            p.distance(contact) <= 0.5 * length + reach
+            p.distance(contact) <= self.within(length, reach)
                 && clearance_at(tool, tip, axis, *p) < self.least
         })
     }
+
+    /// How far from the contact on a ruling of `length` a point of the
+    /// surface may be and still be reached by the tool: half the ruling, and
+    /// `reach` (the tool radius, the tip extension, the stock to leave and a
+    /// millimetre) plus a further tool radius, since the contact is on the
+    /// near side of the tool and its far side is two radii from it (issue
+    /// #435: a floor under the far side of the tool on a short ruling).
+    fn within(&self, length: f64, reach: f64) -> f64 {
+        0.5 * length + reach + self.radius
+    }
+
+    /// Whether the tool keeps off the surface between its samples too, as a
+    /// lift aims to (decision record 0450 item 1): at each sample its
+    /// clearance is at least the tolerance beyond the limit at which it
+    /// breaks the surface, plus how much nearer the surface may come
+    /// between that sample and the next. That is the spacing times the sine
+    /// of the angle between the surface and the tool's end (a sloping
+    /// floor), plus, for a rounded end, the spacing squared over eight times
+    /// its radius (a ball over a flat floor).
+    fn kept_off(
+        &self,
+        tool: &RevolvedProfile,
+        (tip, axis, contact, length): (Point3, UnitVec3, Point3, f64),
+        reach: f64,
+        tolerance: f64,
+    ) -> bool {
+        self.points.iter().zip(&self.around).all(|(p, around)| {
+            if p.distance(contact) > self.within(length, reach) {
+                return true;
+            }
+            let between = around.map_or(0.0, |(n, h)| {
+                h * n.cross(axis.get()).length()
+                    + self
+                        .rounding
+                        .map_or(0.0, |rho| h * h / (8.0 * rho.max(SAME_POINT)))
+            });
+            clearance_at(tool, tip, axis, *p) >= self.least + tolerance + between - SAME_POINT
+        })
+    }
+}
+
+/// How far apart an avoid or check face is sampled, at most, for a tool of
+/// cutting radius `radius` (decision record 0176 item 6).
+fn guard_spacing(radius: f64) -> f64 {
+    (radius / 8.0).max(0.05)
 }
 
 /// Points of `face`, on a grid of its parameters no coarser than `spacing`
 /// on the face (measured along its middle iso-lines) and no finer than 400
 /// each way.
-fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<Point3> {
+fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<(Point3, Vec3, f64)> {
     let (lo, hi) = face.uv_bounds();
     let uv = |a: f64, b: f64| Uv {
         u: lo.u + (hi.u - lo.u) * a,
@@ -1292,16 +1466,64 @@ fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<Point3> {
             .sum::<f64>()
     };
     let count = |l: f64| ((l / spacing).ceil() as usize + 1).clamp(GUARD_GRID, 400);
-    let nu = count(length(&|a| uv(a, 0.5)));
-    let nv = count(length(&|b| uv(0.5, b)));
+    let (lu, lv) = (length(&|a| uv(a, 0.5)), length(&|b| uv(0.5, b)));
+    let (nu, nv) = (count(lu), count(lv));
+    // The spacing of the grid on the face, along its middle iso-lines.
+    let apart = (lu / (nu - 1) as f64).max(lv / (nv - 1) as f64);
     let mut points = Vec::new();
+    let mut push = |at: Uv| {
+        if let Some(p) = face.point_normal(at) {
+            points.push((p.point, p.normal.get(), apart));
+        }
+    };
+    let grid = |i: usize, j: usize| uv(i as f64 / (nu - 1) as f64, j as f64 / (nv - 1) as f64);
+    let inside: Vec<Vec<bool>> = (0..nu)
+        .map(|i| (0..nv).map(|j| face.contains(grid(i, j))).collect())
+        .collect();
+    let at = |i: usize, j: usize| {
+        inside
+            .get(i)
+            .and_then(|r| r.get(j))
+            .copied()
+            .unwrap_or(false)
+    };
     for i in 0..nu {
         for j in 0..nv {
-            let at = uv(i as f64 / (nu - 1) as f64, j as f64 / (nv - 1) as f64);
-            if face.contains(at)
-                && let Some(p) = face.point_normal(at)
-            {
-                points.push(p.point);
+            if at(i, j) {
+                push(grid(i, j));
+            }
+        }
+    }
+    // The trimmed edge of the face, where each grid line leaves it (or meets
+    // the edge of the parameter box with a point not inside by rounding):
+    // the grid alone can miss it by up to a spacing, and a floor is often
+    // highest at its edge (decision record 0450 item 1).
+    let edge = |a: Uv, b: Uv| {
+        let (mut inner, mut outer) = (a, b);
+        for _ in 0..EDGE_STEPS {
+            let mid = Uv {
+                u: 0.5 * (inner.u + outer.u),
+                v: 0.5 * (inner.v + outer.v),
+            };
+            if face.contains(mid) {
+                inner = mid;
+            } else {
+                outer = mid;
+            }
+        }
+        inner
+    };
+    for i in 0..nu {
+        for j in 0..nv {
+            for (k, l) in [(i + 1, j), (i, j + 1)] {
+                if k < nu && l < nv && at(i, j) != at(k, l) {
+                    let (a, b) = if at(i, j) {
+                        (grid(i, j), grid(k, l))
+                    } else {
+                        (grid(k, l), grid(i, j))
+                    };
+                    push(edge(a, b));
+                }
             }
         }
     }
@@ -1476,9 +1698,9 @@ pub fn face_path(
         tip: region.boundary_limits.tip,
         sign,
     };
-    let rule = |t: f64| limiter.ruling(face, family, t);
+    let bounded = |t: f64| limiter.ruling(face, family, t);
     let runs = if limiter.window().is_some() {
-        runs_of(t0, t1, |t| rule(t).is_some())
+        runs_of(t0, t1, |t| bounded(t).is_some())
     } else {
         whole.clone()
     };
@@ -1495,18 +1717,45 @@ pub fn face_path(
         0.0
     };
     let closed = closed && outside_boundary <= SAME_POINT && runs.len() == whole.len();
-    let pose_at = |t: f64| -> Result<Option<Pose>> {
-        let Some(r) = rule(t) else {
-            return Ok(None);
-        };
-        let pose = pose_of(&r, sign, &flank, settings, rotary).map_err(|e| match e {
-            PathError::Strategy(why) => fail(why),
-            other => other,
-        })?;
-        check_length(&flank, settings, &pose, number)?;
-        Ok(Some(pose))
+    // A negative tip extension starts the flank that far up the rulings
+    // (decision record 0450 item 2): the rulings are shortened at the tip
+    // end, and the tool is placed on what is left with no extension.
+    let up = (-settings.tip_extension).max(0.0);
+    let placing = Settings {
+        tip_extension: settings.tip_extension.max(0.0),
+        ..*settings
     };
-    let chord = CHORD_FACTOR * settings.tolerance;
+    let rule = |t: f64| bounded(t).and_then(|r| shortened(face, family, &r, sign, up));
+    // Rulings no longer than a negative tip extension are not cut, and the
+    // pass stops where they start; a face with none longer is refused
+    // (decision record 0450 item 2).
+    let (runs, too_short) = if up > 0.0 {
+        let kept: Vec<(f64, f64)> = runs
+            .iter()
+            .flat_map(|(lo, hi)| runs_of(*lo, *hi, |t| rule(t).is_some()))
+            .collect();
+        if kept.is_empty() {
+            let longest = runs
+                .iter()
+                .flat_map(|(lo, hi)| {
+                    (0..=EXTENT_SAMPLES)
+                        .map(move |k| lo + (hi - lo) * k as f64 / EXTENT_SAMPLES as f64)
+                })
+                .filter_map(|t| bounded(t).map(|r| r.length()))
+                .fold(0.0, f64::max);
+            return Err(fail(format!(
+                "a Tip extension of {} mm lifts the tool off the whole of the face, whose \
+                 longest ruling is {longest:.3} mm long: use a value above -{longest:.3} mm",
+                settings.tip_extension
+            )));
+        }
+        let short = (directrix_length(face, family, &runs) - directrix_length(face, family, &kept))
+            .max(0.0);
+        (kept, short)
+    } else {
+        (runs, 0.0)
+    };
+    let closed = closed && too_short <= SAME_POINT;
     let leave = settings.stock_to_leave;
     let reach = tool.cutting_radius() + settings.tip_extension.abs() + leave.abs() + 1.0;
     let radius = tool.cutting_radius();
@@ -1515,13 +1764,101 @@ pub fn face_path(
         (Protection::Check, region.check),
     ]
     .into_iter()
-    .filter_map(|(kind, surface)| surface.map(|s| Guard::new(kind, s, settings, radius)))
+    .filter_map(|(kind, surface)| surface.map(|s| Guard::new(kind, s, settings, tool)))
     .collect();
     let watched: Vec<Guard> = region
         .watch
         .iter()
-        .map(|w| Guard::new(w.protection, w.surface, settings, radius))
+        .map(|w| Guard::new(w.protection, w.surface, settings, tool))
         .collect();
+    let first_broken = |position: (Point3, UnitVec3, Point3, f64)| {
+        guards
+            .iter()
+            .find(|g| g.breaks(tool, position, reach))
+            .map(|g| g.kind)
+    };
+    let placed = |r: &Ruling| -> Result<Pose> {
+        let pose = pose_of(r, sign, &flank, &placing, rotary).map_err(|e| match e {
+            PathError::Strategy(why) => fail(why),
+            other => other,
+        })?;
+        check_length(&flank, &placing, &pose, number)?;
+        Ok(pose)
+    };
+    // Where the tool on a ruling is not kept off an avoid or check surface
+    // (the stock to leave clear of a check surface), with what the surface
+    // may come nearer between its samples allowed for, the tip is first
+    // lifted up the ruling by the least that keeps it off, found by
+    // bisection (decision record 0450 item 1). The lift aims a tolerance
+    // inside the limit at which a position breaks the surface, so the motion
+    // between two lifted poses, which passes over other samples of the
+    // surface, stays within that limit. Where even the most lift allowed
+    // does not keep the tool off it, the pose is kept as it is, and the
+    // guards cut the pass short there.
+    let off = |p: &Pose| {
+        guards.iter().all(|g| {
+            g.kept_off(
+                tool,
+                (p.tip, p.axis, p.contact, p.ruling_length),
+                reach,
+                settings.tolerance,
+            )
+        })
+    };
+    let pose_at = |t: f64| -> Result<Option<Pose>> {
+        let Some(r) = rule(t) else {
+            return Ok(None);
+        };
+        let pose = placed(&r)?;
+        if guards.is_empty() || off(&pose) {
+            return Ok(Some(pose));
+        }
+        let most = (1.0 - LIFT_KEEP) * r.length();
+        let lifted = |by: f64| -> Result<Option<Pose>> {
+            shortened(face, family, &r, sign, by)
+                .map(|s| {
+                    placed(&s).map(|mut p| {
+                        p.lift = by;
+                        p
+                    })
+                })
+                .transpose()
+        };
+        let Some(top) = lifted(most)?.filter(off) else {
+            return Ok(Some(pose));
+        };
+        let (mut low, mut high, mut best) = (0.0, most, top);
+        for _ in 0..LIFT_STEPS {
+            let mid = 0.5 * (low + high);
+            match lifted(mid)? {
+                Some(p) if off(&p) => {
+                    high = mid;
+                    best = p;
+                }
+                _ => low = mid,
+            }
+        }
+        Ok(Some(best))
+    };
+    // The pose at `t` with the tip lifted `by` up the ruling, where that
+    // keeps the tool off the avoid and check surfaces.
+    let lift_to = |t: f64, by: f64| -> Result<Option<Pose>> {
+        let Some(r) = rule(t) else {
+            return Ok(None);
+        };
+        if by > (1.0 - LIFT_KEEP) * r.length() {
+            return Ok(None);
+        }
+        let Some(s) = shortened(face, family, &r, sign, by) else {
+            return Ok(None);
+        };
+        let mut p = placed(&s)?;
+        p.lift = by;
+        Ok(first_broken((p.tip, p.axis, p.contact, p.ruling_length))
+            .is_none()
+            .then_some(p))
+    };
+    let chord = CHORD_FACTOR * settings.tolerance;
     let mut broken = vec![0.0f64; watched.len()];
     let mut uncut = [0.0f64; 2];
     let mut out_runs = Vec::new();
@@ -1555,10 +1892,19 @@ pub fn face_path(
             // ruling there by more than the chord limit beyond what the
             // pose at that ruling leaves anyway (a tilted flank never lies
             // on its ruling, and more poses do not help that), or when A
-            // turns too far in one move.
+            // turns too far in one move. Where the tool is lifted clear of
+            // an avoid or check surface, the move is split too where the
+            // surface rises between its poses: the pose half way along needs
+            // more lift than either end, and the tool there breaks the
+            // surface (decision record 0450 item 1).
+            let lifted_move = p.lift > a.lift.max(b.lift) + SAME_POINT && {
+                let (tip, axis) = between(&a, &b, 0.5, rotary);
+                first_broken((tip, axis, p.contact, p.ruling_length)).is_some()
+            };
             let split = depth < MAX_DEPTH
                 && ((b.a.0 - a.a.0).abs() > MAX_ANGLE_STEP
-                    || match rule(t) {
+                    || lifted_move
+                    || match rule(t).and_then(|r| shortened(face, family, &r, sign, p.lift)) {
                         Some(r) => {
                             let samples = along_ruling(face, family, &r, CHECK_SAMPLES);
                             let (tip, axis) = between(&a, &b, 0.5, rotary);
@@ -1590,7 +1936,17 @@ pub fn face_path(
                 i += 1;
             }
         }
-        let run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
+        let mut run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
+        if !guards.is_empty() {
+            level_lifts(
+                &mut run,
+                rotary,
+                guard_spacing(radius),
+                &first_broken,
+                &pose_at,
+                &lift_to,
+            )?;
+        }
         let pieces = if guards.is_empty() {
             vec![run]
         } else {
@@ -1656,27 +2012,36 @@ pub fn face_path(
     // Each sample with the position of the tool at its own ruling, which
     // gives the gate a close first clearance to prune the others by.
     let mut positions: Vec<(Point3, UnitVec3, Point3, f64)> = Vec::new();
-    let mut rulings: Vec<(f64, usize)> = Vec::new();
+    // Each ruling with the lift of the tool there, which the gate measures
+    // the face above: the strip below a lifted tip is left on purpose, and
+    // between two poses it is as wide as the larger of their lifts.
+    let mut rulings: Vec<(f64, usize, f64)> = Vec::new();
     for run in &out_runs {
         for (i, p) in run.iter().enumerate() {
             let base = positions.len();
             positions.push((p.tip, p.axis, p.contact, p.ruling_length));
             let Some(q) = run.get(i + 1) else {
-                rulings.push((p.t, base));
+                rulings.push((p.t, base, p.lift));
                 continue;
             };
             let n = moves_of(p, q, step);
             positions.extend(motion_in(p, q, rotary, n));
-            rulings.extend((0..n).map(|k| (p.t + (q.t - p.t) * k as f64 / n as f64, base + k)));
+            rulings.extend((0..n).map(|k| {
+                let f = k as f64 / n as f64;
+                let lift = if k == 0 { p.lift } else { p.lift.max(q.lift) };
+                (p.t + (q.t - p.t) * f, base + k, lift)
+            }));
         }
     }
-    let samples: Vec<(Point3, usize)> = parallel::map_in_order(&rulings, |(t, seed)| {
-        rule(*t).map_or_else(Vec::new, |r| {
-            along_ruling(face, family, &r, gate_count(&r, step))
-                .into_iter()
-                .map(|x| (x, *seed))
-                .collect::<Vec<_>>()
-        })
+    let samples: Vec<(Point3, usize)> = parallel::map_in_order(&rulings, |(t, seed, lift)| {
+        rule(*t)
+            .and_then(|r| shortened(face, family, &r, sign, *lift))
+            .map_or_else(Vec::new, |r| {
+                along_ruling(face, family, &r, gate_count(&r, step))
+                    .into_iter()
+                    .map(|x| (x, *seed))
+                    .collect::<Vec<_>>()
+            })
     })
     .into_iter()
     .flatten()
@@ -1732,12 +2097,40 @@ pub fn face_path(
             .iter()
             .flatten()
             .filter_map(|p| {
-                Some(tip_end(&ruling_at(face, family, p.t)?).distance(tip_end(&rule(p.t)?)))
+                Some(tip_end(&ruling_at(face, family, p.t)?).distance(tip_end(&bounded(p.t)?)))
             })
             .fold(0.0, f64::max)
     } else {
         0.0
     };
+    // How far the tool was lifted clear of the avoid and check surfaces, and
+    // which kinds it was lifted clear of: those the tool breaks unlifted.
+    let tip_lifted = out_runs
+        .iter()
+        .flatten()
+        .map(|p| p.lift)
+        .fold(0.0, f64::max);
+    let mut lifted_clear_of: Vec<Protection> = Vec::new();
+    for p in out_runs.iter().flatten().filter(|p| p.lift > 0.0) {
+        if let Some(r) = rule(p.t) {
+            let u = placed(&r)?;
+            for g in &guards {
+                if !g.kept_off(
+                    tool,
+                    (u.tip, u.axis, u.contact, u.ruling_length),
+                    reach,
+                    settings.tolerance,
+                ) && !lifted_clear_of.contains(&g.kind)
+                {
+                    lifted_clear_of.push(g.kind);
+                }
+            }
+        }
+    }
+    lifted_clear_of.sort_by_key(|k| match k {
+        Protection::Avoid => 0,
+        Protection::Check => 1,
+    });
     let max_tilt = out_runs
         .iter()
         .flatten()
@@ -1781,6 +2174,11 @@ pub fn face_path(
             boundary: limiter.window().map(|_| (limiter.pass, limiter.tip)),
             outside_boundary,
             tip_raised,
+            tip_lifted,
+            lifted_clear_of,
+            tip_up: up,
+            too_short,
+            end_reach: flank.z_start + settings.tip_extension,
             avoid_uncut,
             check_uncut,
             watched: region
@@ -1910,6 +2308,69 @@ fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, P
 /// again after it with a retract. Pieces of fewer than two poses are
 /// dropped. The length along the face left uncut is added to `uncut`, the
 /// avoid surfaces' first, by the first guard broken.
+/// Makes the lifts of neighbouring poses agree where the move between them
+/// would break an avoid or check surface (decision record 0450 item 1). The
+/// surfaces are sampled `spacing` apart, so over a sloping surface the
+/// least lift at each pose climbs in steps; a tool moving from a pose with
+/// the lower lift towards one with the higher meets the next sample before
+/// its lift has risen. A move longer than the spacing is split, with the
+/// pose half way along lifted as it needs; on a shorter one the lower pose
+/// is raised to the higher lift, at most one step more than it needs. This
+/// goes on until no move between lifted poses breaks a surface, or a pose
+/// cannot be raised; a move still broken is then cut short by the guards.
+fn level_lifts(
+    run: &mut Vec<Pose>,
+    rotary: RotaryMapping,
+    spacing: f64,
+    first_broken: &dyn Fn((Point3, UnitVec3, Point3, f64)) -> Option<Protection>,
+    pose_at: &dyn Fn(f64) -> Result<Option<Pose>>,
+    lift_to: &dyn Fn(f64, f64) -> Result<Option<Pose>>,
+) -> Result<()> {
+    let mut added = 0usize;
+    for _ in 0..LEVEL_PASSES {
+        let mut changed = false;
+        let mut i = 0;
+        while let (Some(&a), Some(&b)) = (run.get(i), run.get(i + 1)) {
+            if (a.lift - b.lift).abs() <= SAME_POINT
+                || motion(&a, &b, rotary)
+                    .into_iter()
+                    .all(|position| first_broken(position).is_none())
+            {
+                i += 1;
+                continue;
+            }
+            if a.contact.distance(b.contact) > spacing
+                && added < MAX_POSES
+                && let Some(mut p) = pose_at(0.5 * (a.t + b.t))?
+            {
+                p.a = nearest_turn(p.a, a.a);
+                run.insert(i + 1, p);
+                added += 1;
+                changed = true;
+                continue;
+            }
+            let (low, high) = if a.lift < b.lift {
+                (i, b.lift)
+            } else {
+                (i + 1, a.lift)
+            };
+            if let Some(old) = run.get(low).copied()
+                && let Some(mut p) = lift_to(old.t, high)?
+                && let Some(slot) = run.get_mut(low)
+            {
+                p.a = nearest_turn(p.a, old.a);
+                *slot = p;
+                changed = true;
+            }
+            i += 1;
+        }
+        if !changed {
+            break;
+        }
+    }
+    Ok(())
+}
+
 fn guarded(
     run: &[Pose],
     guards: &[Guard],
@@ -2080,14 +2541,27 @@ impl Strategy for Swarf {
     fn schema(&self) -> ParameterSchema {
         use parameter::*;
         let mut schema = ParameterSchema::with_common(vec![
-            number_spec(
-                TIP_EXTENSION,
-                "Tip extension",
-                "How far the tool tip reaches beyond the end of the ruling it sits at, along \
-                 the tool axis. Zero puts the start of the flank at that end.",
-                Unit::Millimetres,
-                0.0,
-            ),
+            ParameterSpec {
+                kind: ParameterKind::Number {
+                    unit: Unit::Millimetres,
+                    min: None,
+                    min_exclusive: false,
+                    max: None,
+                    default: Some(0.0),
+                },
+                ..number_spec(
+                    TIP_EXTENSION,
+                    "Tip extension",
+                    "How far the tool tip reaches beyond the end of the ruling it sits at, along \
+                     the tool axis. Zero puts the start of the flank at that end, so a ball or \
+                     corner radius reaches below it by that radius. A negative value pulls the \
+                     tool up the face instead: the flank starts that far up the rulings, and a \
+                     strip that wide is left at that end of the face. It must be above minus \
+                     the length of the rulings.",
+                    Unit::Millimetres,
+                    0.0,
+                )
+            },
             number_spec(
                 MAX_MATERIAL_LEFT,
                 "Most material left",

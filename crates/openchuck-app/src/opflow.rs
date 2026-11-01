@@ -33,6 +33,10 @@ pub struct SetOptionsShown {
     /// rather than stopping the pass: rotary roughing (decision record 0043
     /// item 3).
     pub check_lifts_tool: bool,
+    /// Cut short first lifts the tool's tip up the face it cuts, clear of
+    /// an avoid or check set, and stops the pass only where no lift clears
+    /// it: swarf (decision record 0450 item 1).
+    pub cut_short_lifts_tip: bool,
 }
 
 /// A strategy a user can choose for an operation (OP-16).
@@ -117,6 +121,7 @@ impl Application {
                 boundary: s.honours_restriction_options(),
                 avoid_and_check: s.honours_region(),
                 check_lifts_tool: name == openchuck_path::roughing::NAME,
+                cut_short_lifts_tip: name == openchuck_path::swarf::NAME,
             })
     }
 

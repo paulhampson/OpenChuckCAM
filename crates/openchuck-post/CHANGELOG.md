@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.0
+
+- **Family release (0.32.0, SWARF-FLOOR; issue #435; decision 0450, proposed, the owner's decisions relayed by the coordinator):** on swarf, Cut short lifts the tool's tip off an avoid or check set before it cuts the pass short, and Tip extension takes a negative value; `openchuck-path`'s `swarf::Pose` and `swarf::Limits` gain fields (an API break) and saved swarf operations with such a set can be made differently. No change in this crate; all family crates advance together under 0048.
+
 ## 0.31.0
 
 - **Family release (0.31.0, ENDFACE stage 3 second pull request, OI-1453; decision 0239, accepted):** adaptive spacing for rotary roughing's two axial forms and flat Facing, on for a new operation, changes their output (decision 0239 item 13, which extends decision 0048 beyond API breaks). No change in this crate; all family crates advance together under 0048.

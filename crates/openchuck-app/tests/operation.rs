@@ -1516,6 +1516,29 @@ fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself(
 }
 
 #[test]
+fn req_op_02_req_op_07_swarf_says_cut_short_lifts_the_tip_first() {
+    // Decision 0450 item 1: on swarf, Cut short lifts the tool's tip clear
+    // of an avoid or check set before it stops the pass, so the Geometry
+    // section's tooltip says so for swarf only; rotary roughing keeps its
+    // own (decision 0043 item 3).
+    let (dir, app, _op) = project("cut-short-lifts");
+    let swarf = app.strategy_set_options("swarf");
+    assert!(swarf.cut_short_lifts_tip && swarf.avoid_and_check && swarf.boundary);
+    assert!(!swarf.check_lifts_tool);
+    let roughing = app.strategy_set_options("rotary_roughing");
+    assert!(roughing.check_lifts_tool && !roughing.cut_short_lifts_tip);
+    for c in app.strategy_choices() {
+        assert_eq!(
+            app.strategy_set_options(&c.name).cut_short_lifts_tip,
+            c.name == "swarf",
+            "{}",
+            c.name
+        );
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     // Decision 0205, option B (the owner's choice, issue 223): rotary
     // roughing added with a tool starts with 10 percent of the tool's

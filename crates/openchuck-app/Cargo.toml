@@ -33,6 +33,12 @@ required-features = ["kernel-tests"]
 name = "swarf_tolerance"
 required-features = ["kernel-tests"]
 
+# How far swarf cuts into the floor below the faces it cuts, with and without
+# the floor in an avoid set (lane SWARF-FLOOR, decision record 0450).
+[[example]]
+name = "swarf_floor"
+required-features = ["kernel-tests"]
+
 # The exact face and trim queries, measured for correctness and cost (lane
 # STEPALL-X1, issue 348): it reads STEP files, so it needs the kernel.
 [[example]]
