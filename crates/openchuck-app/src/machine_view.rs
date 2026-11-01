@@ -266,6 +266,16 @@ mod tests {
     use super::*;
     use crate::setup::{Confirmation, MAKERA_Z1, Provenance, builtin};
 
+    /// The minimum clearance radius says how to measure it on the machine
+    /// (UI-13; decision 0530).
+    #[test]
+    fn req_ui_13_req_set_06_the_minimum_clearance_radius_says_how_to_confirm_it() {
+        let how = how_to_confirm(ProfileField::MinClearanceRadius);
+        for words in ["chuck", "jaws", "headstock", "tailstock", "margin"] {
+            assert!(how.contains(words), "{words}: {how}");
+        }
+    }
+
     #[test]
     fn req_ui_13_each_value_says_whether_it_is_confirmed_its_source_and_how_to_confirm() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
