@@ -214,6 +214,7 @@ pub(crate) fn regenerate(
 ) -> Result<Regeneration, AppError> {
     // Playback's checkpoints are kept only by a run that simulates every
     // operation it makes, within `playback` bytes (decision record 0333).
+    record.begin_run();
     let playback = playback.filter(|_| simulate);
     context.check_cancelled()?;
     let mut operations: Vec<&openchuck_project::Operation> =
@@ -450,6 +451,9 @@ pub(crate) fn regenerate(
             warnings: path.warnings.clone(),
             facing: path.facing.clone(),
         });
+        // Everything this operation needs of its own is done; the run is
+        // not, so it shows finalising until the run is committed (0620).
+        record.finished(project, operation.id);
         share(STAGE_GENERATE, i, 0.0, 1.0).finish();
     }
     record.working_on(None);

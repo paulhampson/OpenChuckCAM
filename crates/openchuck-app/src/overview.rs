@@ -228,6 +228,11 @@ pub enum ItemState {
     Stale,
     /// A job is working on it: a blue ring with a gap.
     Running,
+    /// Its own toolpath, link and checks are done in a run that has not
+    /// ended: a blue circle, the left half filled. It counts as up to date
+    /// only when the run is committed, and goes back to stale if the run is
+    /// cancelled, fails or is refused (decision record 0620).
+    Finalising,
     /// It can be used, with a caveat: an amber triangle outline.
     Warning,
     /// It cannot be used: a red triangle.
@@ -238,10 +243,11 @@ pub enum ItemState {
 
 impl ItemState {
     /// Every state, in the legend's order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::UpToDate,
         Self::Stale,
         Self::Running,
+        Self::Finalising,
         Self::Warning,
         Self::Error,
         Self::Off,
@@ -253,6 +259,7 @@ impl ItemState {
             Self::UpToDate => "Up to date",
             Self::Stale => "Stale",
             Self::Running => "Running",
+            Self::Finalising => "Finalising",
             Self::Warning => "Warning",
             Self::Error => "Error",
             Self::Off => "Off",
@@ -889,6 +896,13 @@ struct RecordState {
     /// end shows and posts: Simulate is complete only while they are the
     /// enabled operations (issue 260).
     last_run: Option<Vec<OperationId>>,
+    /// The operations the run in progress has finished (path, link, checks
+    /// and stock), by the chained key they were finished with. They are not
+    /// up to date until the run is committed (decision record 0620).
+    finished_in_run: BTreeMap<OperationId, Key>,
+    /// The operations a run finished but did not keep because it was
+    /// cancelled, failed or was refused, with why, to say so in their cause.
+    interrupted: BTreeMap<OperationId, (Key, String)>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -937,6 +951,17 @@ struct Failure {
     message: String,
 }
 
+impl RecordState {
+    /// The run ended without being kept: what it had finished is stale
+    /// again, for `reason`.
+    fn stop_run(&mut self, reason: &str) {
+        self.interrupted = std::mem::take(&mut self.finished_in_run)
+            .into_iter()
+            .map(|(id, key)| (id, (key, reason.to_owned())))
+            .collect();
+    }
+}
+
 impl GenerationRecord {
     fn with<T>(&self, f: impl FnOnce(&mut RecordState) -> T) -> Option<T> {
         self.0.lock().ok().map(|mut state| f(&mut state))
@@ -949,6 +974,26 @@ impl GenerationRecord {
         self.with(|s| {
             s.current = operation;
             s.activity = None;
+        });
+    }
+
+    /// A pipeline run starts: nothing of an earlier run's progress carries
+    /// over.
+    pub(crate) fn begin_run(&self) {
+        self.with(|s| {
+            s.finished_in_run.clear();
+            s.interrupted.clear();
+        });
+    }
+
+    /// The run in progress has finished `operation`: its path, link, checks
+    /// and stock. It shows finalising until the run is committed.
+    pub(crate) fn finished(&self, project: &Project, operation: OperationId) {
+        let keys = status_keys(project);
+        self.with(|s| {
+            if let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) {
+                s.finished_in_run.insert(operation, key.chained);
+            }
         });
     }
 
@@ -1001,6 +1046,8 @@ impl GenerationRecord {
             s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
             s.failure = None;
             s.current = None;
+            s.finished_in_run.clear();
+            s.interrupted.clear();
         });
     }
 
@@ -1013,13 +1060,17 @@ impl GenerationRecord {
                 let key = keys.iter().find(|(o, _)| *o == id).map(|(_, k)| k.chained);
                 (id, key)
             });
+            s.stop_run(&format!("the run stopped before it finished ({message})"));
             s.failure = Some(Failure { operation, message });
         });
     }
 
     /// A pipeline run was cancelled: nothing it did is kept.
     pub(crate) fn cancelled(&self) {
-        self.with(|s| s.current = None);
+        self.with(|s| {
+            s.current = None;
+            s.stop_run("the run was cancelled before it finished");
+        });
     }
 
     /// G-code was written from `project`'s operations.
@@ -1593,14 +1644,28 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         if !simulated && !up_to_date && first_unsimulated_unmade.is_none() {
             first_unsimulated_unmade = Some(index + 1);
         }
+        let finalising = !up_to_date
+            && matches!((key, record.finished_in_run.get(&o.id)), (Some(k), Some(f)) if k.chained == *f);
         let mut status = if up_to_date {
             ItemStatus::new(
                 ItemState::UpToDate,
                 "generated, and nothing it reads has changed since",
             )
+        } else if finalising {
+            // Made in the run in progress, which may still be cancelled,
+            // fail or be refused: not up to date yet (NFR-12).
+            ItemStatus::new(
+                ItemState::Finalising,
+                "toolpath made; the checks and final steps are still running, so it does not count as up to date yet",
+            )
         } else {
             stale.push(o.id);
+            let interrupted = match (key, record.interrupted.get(&o.id)) {
+                (Some(k), Some((then, why))) if k.chained == *then => Some(why.clone()),
+                _ => None,
+            };
             let cause = match (made, key) {
+                _ if interrupted.is_some() => interrupted.unwrap_or_default(),
                 (None, _) | (_, None) => "not generated yet".to_owned(),
                 (Some(m), Some(k)) if m.key.own != k.own => {
                     "it, or its setup, tool, model or selection sets, changed".to_owned()
@@ -2560,6 +2625,135 @@ mod tests {
         let order: Vec<_> = o.messages.iter().map(|m| m.severity).collect();
         assert_eq!(order, [Severity::Error, Severity::Warning, Severity::Info]);
         assert_eq!(o.count(Severity::Warning), 1);
+    }
+
+    /// An application with one setup and one operation, for the record tests.
+    fn one_operation_app(name: &str) -> (Application, OperationId, std::path::PathBuf) {
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                spindle_speed: None,
+                material: None,
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        (app, op, dir)
+    }
+
+    fn state_of(app: &Application, op: OperationId) -> ItemStatus {
+        let overview = app.overview(None, &JobLog::default());
+        overview.items[&ItemRef::Operation(op)].clone()
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_a_finished_operation_is_finalising_until_the_run_is_committed() {
+        // Decision 0620: finished in a run that has not ended is finalising,
+        // never up to date; the commit makes it up to date.
+        let (app, op, dir) = one_operation_app("finalising-commit");
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Finalising, "{status:?}");
+        assert!(status.cause.starts_with("Finalising: "), "{}", status.cause);
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                facing: None,
+                operation: op,
+                setup: app.project().operations()[0].setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings: Vec::new(),
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        assert_eq!(state_of(&app, op).state, ItemState::UpToDate);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_a_run_that_fails_or_is_cancelled_returns_finished_operations_to_stale()
+    {
+        let (app, op, dir) = one_operation_app("finalising-stop");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        app.record
+            .failed(app.project(), "a model file changed".into());
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Stale, "{status:?}");
+        assert!(
+            status.cause.contains("a model file changed"),
+            "{}",
+            status.cause
+        );
+
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        assert_eq!(state_of(&app, op).state, ItemState::Finalising);
+        app.record.cancelled();
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Stale, "{status:?}");
+        assert!(status.cause.contains("cancelled"), "{}", status.cause);
+
+        // A new run starts from a clean slate: nothing carries over.
+        app.record.begin_run();
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_editing_a_finalising_operation_makes_it_stale() {
+        let (mut app, op, dir) = one_operation_app("finalising-edit");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        assert_eq!(state_of(&app, op).state, ItemState::Finalising);
+        app.execute(crate::Command::SetParameter {
+            operation: op,
+            name: "tolerance".into(),
+            value: Some(openchuck_project::ParameterValue::Number(0.02)),
+        })
+        .unwrap();
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
