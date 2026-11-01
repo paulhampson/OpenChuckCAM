@@ -4,7 +4,7 @@
 
 The words this guide uses for machining and for the program. A page links a term here the first time it uses it.
 
-<p class="letter-index">A · C · F · G · H · M · O · P · R · S · T · W</p>
+<p class="letter-index">A · B · C · F · G · H · M · O · P · R · S · T · W</p>
 
 ## A axis {#a-axis}
 
@@ -17,6 +17,10 @@ A finishing setting that measures the material left between two neighbouring pas
 ## Air cut {#air-cut}
 
 A run of a program with no tool fitted and no material in the chuck, at reduced feed, to watch every move before anything can be damaged. See [Air cut on the Makera Z1](safety/air-cut.md).
+
+## Block {#block}
+
+One line of G-code that makes one move. A controller reads blocks one at a time, so many very short blocks in a row can be more than it can read at the programmed feed. See [Machine setup: short moves](how-to/short-block-settings.md).
 
 ## CAM {#cam}
 
