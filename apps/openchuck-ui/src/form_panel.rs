@@ -436,6 +436,8 @@ fn choice_label<'a>(name: &str, value: &'a str) -> &'a str {
         ("extent", "part_plus_tabs") => "Part plus tabs",
         ("layer_distribution", "full") => "Full stepdown, shorter final pass",
         ("layer_distribution", "equal") => "Equal stepdowns",
+        ("pass_shape", "helix") => "Spiral",
+        ("pass_shape", "rings") => "Rings",
         _ => value,
     }
 }
@@ -458,6 +460,13 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_op_04_helical_pass_shapes_are_shown_in_plain_words() {
+        // Decision record 0390: the choice reads Spiral or Rings.
+        assert_eq!(choice_label("pass_shape", "helix"), "Spiral");
+        assert_eq!(choice_label("pass_shape", "rings"), "Rings");
+    }
 
     #[test]
     fn req_ui_07_typed_text_is_read_by_kind() {

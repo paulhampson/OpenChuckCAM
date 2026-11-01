@@ -574,6 +574,54 @@ fn req_op_02_a_boundary_limits_x_and_angle() {
 }
 
 #[test]
+fn req_op_02_rings_are_limited_by_a_boundary_as_the_spiral_is() {
+    // Decision record 0390 item 5: a ring or a step is split where the
+    // spiral would be, and the shared services link the pieces.
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let patch = pick(&mesh, |c| {
+        (10.0 - 1e-9..20.0 + 1e-9).contains(&c.x)
+            && (-1e-6..90.0 + 1e-6).contains(&c.z.atan2(c.y).to_degrees())
+    });
+    let region = RegionConstraint {
+        boundary: Some(Window::of_mesh(&patch).unwrap()),
+        ..Default::default()
+    };
+    let mut v = values_for(&HelicalFinishing);
+    v.insert(
+        openchuck_path::helical::parameter::PASS_SHAPE.to_owned(),
+        ParameterValue::Text("rings".to_owned()),
+    );
+    // Start the rings half way round the patch, so the steps are inside it.
+    v.insert(
+        openchuck_path::helical::parameter::START_ANGLE.to_owned(),
+        ParameterValue::Number(45.0),
+    );
+    let path =
+        run(|ctx| generate_in_region(&HelicalFinishing, &f.input(), &region, &v, ctx)).unwrap();
+    let tips = cut_tips(&path);
+    assert!(!tips.is_empty());
+    for p in &tips {
+        assert!(
+            p.x > 10.0 - 0.5 - 1e-3 && p.x < 20.0 + 0.5 + 1e-3,
+            "x = {}",
+            p.x
+        );
+        let a = angle(*p);
+        assert!(a > -1.0 && a < 91.0, "angle = {a}");
+    }
+    // Each ring leaves the patch and comes back a turn later, so the cut is
+    // split at the patch's edge on every ring.
+    let starts = path
+        .group
+        .segments
+        .windows(2)
+        .filter(|w| w[0].kind != MoveKind::Cutting && w[1].kind == MoveKind::Cutting)
+        .count();
+    assert!(starts >= 10, "{starts} separate cuts");
+}
+
+#[test]
 fn req_op_02_a_region_and_an_avoid_surface_combine() {
     let mesh = cylinder();
     let f = fixture(&mesh);
