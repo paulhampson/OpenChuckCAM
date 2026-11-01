@@ -2268,6 +2268,7 @@ fn swarf(
         for run in &path.runs {
             passes.push(Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points: run
                     .iter()
                     .map(|p| CutPoint {

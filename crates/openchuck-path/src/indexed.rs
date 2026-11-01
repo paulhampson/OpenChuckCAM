@@ -113,6 +113,7 @@ impl Strategy for IndexedFinishing {
         let own = super::axial::AxialFinishing.schema();
         for name in [
             axial_parameter::DIRECTION,
+            axial_parameter::LINK_HEIGHT,
             axial_parameter::MAX_X_STEP,
             crate::extend::parameter::EXTEND,
             crate::extend::parameter::EXTEND_DISTANCE,

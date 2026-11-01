@@ -402,6 +402,7 @@ pub fn assemble_with_entry(
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut rapids: Vec<Vec<usize>> = Vec::new();
     let mut helical_starts = Vec::new();
+    let mut low_links = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -443,6 +444,7 @@ pub fn assemble_with_entry(
         stocks.push(pass.stock.clone());
         rapids.push(pass.rapids.clone());
         helical_starts.push(pass.helical_pass_start);
+        low_links.push(pass.low_link);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -478,6 +480,7 @@ pub fn assemble_with_entry(
     let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
+    let (mut asked_low, mut kept_high) = (0_usize, 0_usize);
     let mut rotary_reset_after = Vec::new();
     for (i, points) in placed.iter().enumerate() {
         context.check_cancelled()?;
@@ -493,6 +496,18 @@ pub fn assemble_with_entry(
             let local = match stocks.get(i).and_then(Option::as_ref) {
                 Some(_) if !reversing_ramp => {
                     local_link_height(&b, stock.stock, common, head, link_height)
+                }
+                // A pass without its own stock that asks for low links is
+                // linked against the setup's stock, and only where no held
+                // region lies in the way (decision 0510).
+                None if low_links.get(i).copied().unwrap_or(false) && !reversing_ramp => {
+                    asked_low += 1;
+                    let low = local_link_height(&b, input.stock, common, head, link_height)
+                        .filter(|_| !crosses_keep_out(input.keep_out, &b, head));
+                    if low.is_none() {
+                        kept_high += 1;
+                    }
+                    low
                 }
                 _ => None,
             };
@@ -558,6 +573,21 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
+    if kept_high > 0 {
+        // Said against the first segment, as a strategy's notes are
+        // (NFR-07).
+        b.notes.insert(
+            0,
+            PathNote {
+                segment: 0,
+                message: format!(
+                    "{kept_high} of {asked_low} links between passes could not be lowered \
+                     (stock, a held region or the retract height leaves no room) and retract \
+                     as usual"
+                ),
+            },
+        );
+    }
     context.report("assemble passes", total, Some(total));
     Ok(GeneratedPath {
         group: ToolpathGroup {
@@ -750,6 +780,16 @@ fn leave(
     );
     let end = b.pose(tip, b.pose.a);
     b.push(MoveKind::Linking, end, None, Some(common.plunge_feed))
+}
+
+/// True when the straight link from where the tool is to `head` lies over
+/// any of the intervals `keep_out` (SET-09), the held regions widened by
+/// the tool's radius, so it is not kept low there.
+fn crosses_keep_out(keep_out: &[(f64, f64)], b: &Builder<'_>, head: &CutPoint) -> bool {
+    let from = b.at().along;
+    let to = b.rotary.to_axis(head.tip, head.a).along;
+    let (lo, hi) = (from.min(to), from.max(to));
+    keep_out.iter().any(|&(a, c)| lo < c && hi > a)
 }
 
 /// The stock a pass sees: the setup's stock, probed along the tool axis only

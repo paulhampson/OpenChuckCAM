@@ -70,6 +70,30 @@ pub mod parameter {
     pub const SCALLOP: &str = "scallop";
     /// The furthest apart, in X, points of a pass are before refinement, mm.
     pub const MAX_X_STEP: &str = "max_x_step";
+    /// Where links between passes go (decision 0510).
+    pub const LINK_HEIGHT: &str = "link_height";
+    /// A `link_height` value: links retract to the clearance (the default).
+    pub const RETRACT: &str = "retract";
+    /// A `link_height` value: links stay low where the way is clear.
+    pub const LOW: &str = "low";
+}
+
+/// The `link_height` choice, shared with indexed finishing (decision 0510).
+pub(crate) fn link_height_spec() -> ParameterSpec {
+    ParameterSpec {
+        name: parameter::LINK_HEIGHT.to_owned(),
+        label: "Links between passes".to_owned(),
+        description: "Retract: links go up to the clearance, as set under Retract. Low: links \
+                      stay the approach distance above the stock where the whole link is clear \
+                      of the stock, held regions and part, which saves time at the ends of \
+                      passes. Any link that cannot stay low retracts as usual, and a note says \
+                      how many. Generated G-code is still yours to verify before it is run."
+            .to_owned(),
+        kind: ParameterKind::Choice {
+            options: vec![parameter::RETRACT.to_owned(), parameter::LOW.to_owned()],
+            default: parameter::RETRACT.to_owned(),
+        },
+    }
 }
 
 /// Most points one strategy run may make (NFR-07).
@@ -102,6 +126,7 @@ impl Strategy for AxialFinishing {
                         default: "zigzag".to_owned(),
                     },
                 },
+                link_height_spec(),
                 ParameterSpec {
                     name: parameter::START_ANGLE.to_owned(),
                     label: "Start angle".to_owned(),
@@ -283,6 +308,8 @@ pub(crate) struct AlongX<'a> {
     pub(crate) zigzag: bool,
     /// Past the stock's ends, when the operation asks (OP-24).
     extension: Option<Extension>,
+    /// Links between passes may stay low (`link_height` is `low`).
+    low_links: bool,
     /// How far, mm, each pass runs on past the ends of the target, so the
     /// tool can go down beside an end face (indexed finishing; decision
     /// record 0343). Zero for axial finishing, which turns at the end faces
@@ -303,6 +330,11 @@ impl<'a> AlongX<'a> {
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
         let mut x_step = parameters.number(parameter::MAX_X_STEP)?;
         let zigzag = parameters.text(parameter::DIRECTION)? == "zigzag";
+        let low_links = parameters.get(parameter::LINK_HEIGHT).is_some_and(|_| {
+            parameters
+                .text(parameter::LINK_HEIGHT)
+                .is_ok_and(|t| t == parameter::LOW)
+        });
         let label = if parameters.get(crate::indexed::parameter::ANGLES).is_some() {
             "indexed finishing"
         } else {
@@ -360,6 +392,7 @@ impl<'a> AlongX<'a> {
             radius,
             zigzag,
             extension,
+            low_links,
             beyond: 0.0,
         })
     }
@@ -422,10 +455,21 @@ impl<'a> AlongX<'a> {
             self.fit_span((a, 0.0), (x0, x1), self.seeds, context)?
         };
         let (lo, hi) = (x0 - self.beyond, x1 + self.beyond);
-        Ok(match self.extension {
+        Ok(self.marked(match self.extension {
             Some(e) => e.run_out(passes, self.input, &self.grown, self.leave, (lo, hi)),
             None => passes,
-        })
+        }))
+    }
+
+    /// `passes` marked as linkable low when the operation asks (decision
+    /// 0510).
+    fn marked(&self, mut passes: Vec<Pass>) -> Vec<Pass> {
+        if self.low_links {
+            for pass in &mut passes {
+                pass.low_link = true;
+            }
+        }
+        passes
     }
 
     /// The fit of one stretch along X at `a`, from `span.0` to `span.1`,
@@ -468,7 +512,7 @@ impl<'a> AlongX<'a> {
                 ..fit
             }
         };
-        fit_region(&fit, seeds, "axial finishing", context)
+        Ok(self.marked(fit_region(&fit, seeds, "axial finishing", context)?))
     }
 
     /// The passes at each of `angles` in order, every other one backwards

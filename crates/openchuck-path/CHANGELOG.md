@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.35.0 (provisional; the coordinator confirms the number at merge)
+
+- **Breaking (0.35.0, PATH-TIDY, issue #436, decision 0510, proposed):** axial and indexed finishing can keep the links between passes low. `Pass` has the new public field `low_link: bool`; a host's struct literals add `low_link: false` (a pass with `true` is linked against the setup's stock at the approach distance above its highest point under the tool, where that is below the retract height and clear of held regions, instead of at the retract height). Additive: `axial::parameter::{LINK_HEIGHT, RETRACT, LOW}` (`link_height`, `retract` by default or `low`, offered by axial and indexed finishing). With the default every path and golden file is unchanged; links that cannot be lowered retract as before and a path note counts them.
+
 ## 0.31.0
 
 - **Fix (CodeRabbit on #426):** adaptive spacing panicked for a tool whose cutting radius is under 0.04 mm (diameter under 0.08 mm): the step between poses along a pass was clamped between 0.02 mm and half the radius, and those bounds crossed. On main since #422 in axial, helical and simultaneous finishing, and in this pull request's roughing. One shared `adaptive::pose_step` now keeps the lower bound at most half the radius (NFR-07); for any larger tool the step, the path and the G-code are unchanged.

@@ -72,6 +72,7 @@ impl Strategy for OneRing {
             .collect();
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
