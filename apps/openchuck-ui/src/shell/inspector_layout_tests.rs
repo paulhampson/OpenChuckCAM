@@ -16,6 +16,8 @@ struct Drawn {
     left: f32,
     /// Every text in the pane with its rectangle.
     texts: Vec<(String, egui::Rect)>,
+    /// The texts in the pane drawn cut short with an ellipsis.
+    elided: Vec<String>,
     /// Every entry box in the pane.
     entries: Vec<egui::Rect>,
 }
@@ -47,6 +49,12 @@ fn drawn(select: impl FnOnce(&mut Rig), pane: f32, name: &str) -> Drawn {
             .into_iter()
             .filter(|(_, r)| r.left() >= left && r.top() > 60.0 && r.bottom() < rig.size.y - 40.0)
             .collect(),
+        elided: rig
+            .elided_texts()
+            .into_iter()
+            .filter(|(_, r)| r.left() >= left && r.top() > 60.0 && r.bottom() < rig.size.y - 40.0)
+            .map(|(t, _)| t)
+            .collect(),
         entries: rig
             .entry_rects()
             .into_iter()
@@ -65,38 +73,46 @@ fn setup(rig: &mut Rig) {
     rig.shell.choose_setup(id, None);
 }
 
-/// A label text cut short ends in an ellipsis and is not one of the
-/// buttons and menu entries that end in one by design.
+/// The labels drawn cut short with an ellipsis (the galley's `elided` flag; a
+/// galley's text is always the whole string, so its ending says nothing).
+/// A default's hint ("0.800 \u{b7} from the tool's cutting data") and the text
+/// shown in a drop-down list are cut by design and are left out.
 fn cut(d: &Drawn) -> Vec<String> {
-    d.texts
+    d.elided
         .iter()
-        .filter(|(t, r)| t.ends_with('\u{2026}') && r.width() < 160.0 && t.chars().count() > 3)
-        .filter(|(t, _)| {
-            !matches!(
-                t.as_str(),
-                "Pick\u{2026}"
-                    | "Edit tool\u{2026}"
-                    | "Save to library\u{2026}"
-                    | "From the library\u{2026}"
-                    | "Manage machines\u{2026}"
-            )
-        })
-        .map(|(t, _)| t.clone())
+        .filter(|t| !t.contains('\u{b7}') && !t.starts_with("Setup's stock material"))
+        .cloned()
         .collect()
 }
 
 #[test]
 fn req_ui_07_no_inspector_label_is_cut_short_at_the_default_and_wide_widths() {
-    for pane in [width::INSPECTOR.0, width::INSPECTOR.2] {
-        for (name, select) in [
-            ("layout-op", operation as fn(&mut Rig)),
-            ("layout-setup", setup as fn(&mut Rig)),
-        ] {
-            let d = drawn(select, pane, name);
-            assert!(!d.entries.is_empty(), "{name} {pane}: no entry boxes");
-            assert_eq!(cut(&d), Vec::<String>::new(), "{name} at {pane}");
-        }
+    // The operation inspector at the default and the widest pane, and the
+    // setup inspector at the widest. At the default width the setup
+    // inspector's longest label ("Tool length measurement") is over the 55%
+    // share and is cut, with its whole text in the tooltip: the known cost
+    // of decision 0440.
+    for (name, select, pane) in [
+        ("layout-op", operation as fn(&mut Rig), width::INSPECTOR.0),
+        ("layout-op", operation as fn(&mut Rig), width::INSPECTOR.2),
+        ("layout-setup", setup as fn(&mut Rig), width::INSPECTOR.2),
+    ] {
+        let d = drawn(select, pane, name);
+        assert!(!d.entries.is_empty(), "{name} {pane}: no entry boxes");
+        assert_eq!(cut(&d), Vec::<String>::new(), "{name} at {pane}");
     }
+}
+
+#[test]
+fn req_ui_07_the_detector_sees_the_cut_label_of_the_setup_inspector_at_the_default_width() {
+    // Proves `cut` is not blind: the label that sets the setup inspector's
+    // column is over its share at 340 and is reported.
+    let d = drawn(setup, width::INSPECTOR.0, "layout-setup-cut");
+    assert!(
+        cut(&d).iter().any(|t| t == "Tool length measurement"),
+        "{:?}",
+        d.elided
+    );
 }
 
 #[test]

@@ -1223,7 +1223,7 @@ mod tests {
         ctx: &egui::Context,
         state: &mut FieldState,
         width: f32,
-    ) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>) {
+    ) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>, Vec<String>) {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1253,9 +1253,13 @@ mod tests {
         output.textures_delta.clear();
         let mut boxes = Vec::new();
         let mut texts = Vec::new();
+        let mut elided = Vec::new();
         for clipped in &output.shapes {
             match &clipped.shape {
                 egui::Shape::Rect(r) if r.fill == DARK.field => boxes.push(r.rect),
+                egui::Shape::Text(t) if t.galley.elided => {
+                    elided.push(t.galley.text().to_string());
+                }
                 egui::Shape::Text(t) => texts.push((
                     t.galley.text().to_string(),
                     egui::Rect::from_min_size(t.pos, t.galley.size()),
@@ -1263,10 +1267,10 @@ mod tests {
                 _ => {}
             }
         }
-        (boxes, texts)
+        (boxes, texts, elided)
     }
 
-    fn settled(width: f32) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>) {
+    fn settled(width: f32) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>, Vec<String>) {
         let ctx = egui::Context::default();
         let mut state = FieldState::default();
         let mut last = form(&ctx, &mut state, width);
@@ -1278,7 +1282,8 @@ mod tests {
 
     #[test]
     fn req_ui_07_the_label_column_fits_the_widest_label_and_every_row_shares_it() {
-        let (boxes, texts) = settled(420.0);
+        let (boxes, texts, elided) = settled(420.0);
+        assert!(elided.is_empty(), "a label is cut at 420: {elided:?}");
         let long = texts
             .iter()
             .find(|(t, _)| t == "Distance past the stock")
@@ -1294,8 +1299,8 @@ mod tests {
 
     #[test]
     fn req_ui_07_a_number_box_stays_compact_and_a_text_box_fills_as_the_pane_widens() {
-        let (narrow, _) = settled(340.0);
-        let (wide, _) = settled(520.0);
+        let (narrow, _, _) = settled(340.0);
+        let (wide, _, _) = settled(520.0);
         let number = width::NUMBER_BOX;
         assert!((wide[0].width() - number).abs() < 0.6, "{wide:?}");
         assert!(narrow[0].width() <= number + 0.6, "{narrow:?}");
@@ -1313,7 +1318,12 @@ mod tests {
     fn req_ui_07_the_column_is_limited_to_its_share_of_a_narrow_pane() {
         // 200 points: the long label cannot have its width, and the boxes
         // keep their minimum.
-        let (boxes, _) = settled(200.0);
+        let (boxes, _, elided) = settled(200.0);
+        // The detector catches a cut label: at 200 the long label is cut.
+        assert!(
+            elided.iter().any(|t| t == "Distance past the stock"),
+            "{elided:?}"
+        );
         assert!(boxes.iter().all(|b| b.width() >= 60.0), "{boxes:?}");
         assert!(boxes[0].left() <= 0.55 * 200.0 + 24.0, "{boxes:?}");
     }
@@ -1345,13 +1355,17 @@ mod tests {
                 text_row(ui, state, row);
             });
             output.textures_delta.clear();
+            // The tooltip is one text holding the hint and the allowed range;
+            // the box's own hint is a different text without the range.
             output.shapes.iter().any(|c| {
                 fn has(shape: &egui::Shape) -> bool {
                     match shape {
-                        egui::Shape::Text(t) => t
-                            .galley
-                            .text()
-                            .contains("from the tool's cutting data for oak"),
+                        egui::Shape::Text(t) => {
+                            t.galley
+                                .text()
+                                .contains("from the tool's cutting data for oak")
+                                && t.galley.text().contains("Allowed: above 0 rpm.")
+                        }
                         egui::Shape::Vec(v) => v.iter().any(has),
                         _ => false,
                     }
@@ -1359,13 +1373,16 @@ mod tests {
                 has(&c.shape)
             })
         };
+        // No tooltip before the box has focus.
+        for _ in 0..3 {
+            assert!(!run(&mut state, &row(false)), "a tooltip without focus");
+        }
         run(&mut state, &row(true));
         let mut shown = false;
         for _ in 0..4 {
             shown |= run(&mut state, &row(false));
         }
-        // The compact box cuts the hint, so the full text can only be the
-        // tooltip's.
+        // With keyboard focus the tooltip has the whole hint and the range.
         assert!(shown);
     }
 }

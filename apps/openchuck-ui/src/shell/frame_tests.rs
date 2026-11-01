@@ -174,6 +174,25 @@ impl Rig {
         out
     }
 
+    /// The texts painted cut short with an ellipsis (`Galley::elided`). A
+    /// galley's own text is always the whole input, so only this flag tells
+    /// a cut label from a whole one.
+    pub(super) fn elided_texts(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) if t.galley.elided => out.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
     /// Every text painted with the rectangle it covers.
     pub(super) fn text_rects(&self) -> Vec<(String, egui::Rect)> {
         fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
