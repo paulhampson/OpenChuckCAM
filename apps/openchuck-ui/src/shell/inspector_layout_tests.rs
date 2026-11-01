@@ -78,6 +78,7 @@ fn cut(d: &Drawn) -> Vec<String> {
                     | "Edit tool\u{2026}"
                     | "Save to library\u{2026}"
                     | "From the library\u{2026}"
+                    | "Manage machines\u{2026}"
             )
         })
         .map(|(t, _)| t.clone())
