@@ -761,6 +761,12 @@ fn req_op_05_the_simultaneous_spiral_cleans_the_crankshaft_faces() {
     crankshaft_faces_cleaned(&SimultaneousFinishing, &[]);
 }
 
+#[test]
+fn req_op_05_the_simultaneous_spiral_in_rings_cleans_the_crankshaft_faces() {
+    // Each face's turn is one of the rings (decision record 0421).
+    crankshaft_faces_cleaned_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
+}
+
 /// Runs of cutting moves that turn A by at least a whole turn without moving
 /// along the axis: the turns at the faces.
 fn turns_in_place(path: &GeneratedPath) -> Vec<f64> {

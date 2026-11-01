@@ -441,6 +441,18 @@ fn z1(shape: ToolShape) -> openchuck_types::tool::Tool {
 
 #[test]
 fn req_op_26_req_op_04_a_flat_end_finishes_the_inner_corners_of_the_crankshaft() {
+    flat_end_finishes_the_inner_corners(false);
+}
+
+#[test]
+fn req_op_26_req_op_05_rings_finish_the_inner_corners_of_the_crankshaft_as_the_spiral_does() {
+    // In rings (decision record 0421) the ring at each face is the face's
+    // own turn round the pin's centre, so the corners are finished as with
+    // the spiral (issue #440, lane CRANKEXCESS's finding on #439).
+    flat_end_finishes_the_inner_corners(true);
+}
+
+fn flat_end_finishes_the_inner_corners(rings: bool) {
     // Issue #439: the face turns of decision 0297 kept the tool's line
     // through the rotary axis, which meets a pin's side facing the axis up
     // to about 60 degrees from its normal, so a flat end rode on its rim and
@@ -453,7 +465,13 @@ fn req_op_26_req_op_04_a_flat_end_finishes_the_inner_corners_of_the_crankshaft()
         18.0,
         &z1(ToolShape::FlatEnd),
     );
-    let v = values(&[(names::STEPOVER, 2.2)]);
+    let mut v = values(&[(names::STEPOVER, 2.2)]);
+    if rings {
+        v.insert(
+            parameter::PASS_SHAPE.to_owned(),
+            ParameterValue::Text("rings".to_owned()),
+        );
+    }
     let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
     let outline = Outline::new(&f.tool);
     let poses = poses_along(&path, &f.rotary, 4);
@@ -470,7 +488,8 @@ fn req_op_26_req_op_04_a_flat_end_finishes_the_inner_corners_of_the_crankshaft()
                 (m.max(*l), d.min(*l))
             });
         eprintln!(
-            "crankshaft inner corner at X {face_x}: most left {most:.4} mm, deepest {deepest:.4} mm"
+            "crankshaft inner corner at X {face_x} (rings {rings}): most left {most:.4} mm, \
+             deepest {deepest:.4} mm"
         );
         assert!(most <= 2.0 * TOLERANCE, "corner at X {face_x}: {most}");
         assert!(deepest >= -TOLERANCE, "corner at X {face_x}: {deepest}");
