@@ -20,7 +20,8 @@ pub use openchuck_types::machine::{
     RotaryAxis, ShortBlockMode,
 };
 pub use openchuck_types::setup::{
-    PartExtent, SetupFrame, SetupWarning, SetupWarningKind, WorkOffset, WorkOffsetRegister,
+    ClearanceRules, DEFAULT_STOCK_MARGIN, EffectiveClearance, MinimumSource, PartExtent,
+    SetupFrame, SetupWarning, SetupWarningKind, WorkOffset, WorkOffsetRegister,
     expected_work_offset,
 };
 pub use openchuck_types::stock::Stock;
@@ -84,6 +85,36 @@ pub fn direction_name(v: Vec3) -> &'static str {
         .map_or("?", |c| c.1)
 }
 
+/// The clearance `setup` uses on `machine` (SET-06, decision record 0530):
+/// its own or the machine's, grown from the stock when Clearance from stock
+/// is on, with the minimum it is checked against. `part_bounds` are the
+/// setup's part bounds (in the setup's frame), which bounding-box stock
+/// measures. Every consumer (toolpaths, links, the post and the checks)
+/// takes the clearance from here, so they all use the same one.
+pub fn effective_clearance(
+    machine: &MachineProfile,
+    setup: &openchuck_project::Setup,
+    part_bounds: Option<&Aabb>,
+) -> EffectiveClearance {
+    let part = part_bounds.map(|b| PartExtent {
+        bounds: *b,
+        radius: Millimetres(
+            b.min
+                .y
+                .abs()
+                .max(b.max.y.abs())
+                .hypot(b.min.z.abs().max(b.max.z.abs())),
+        ),
+    });
+    openchuck_types::setup::effective_clearance(
+        machine,
+        setup.clearance.as_ref(),
+        &setup.clearance_rules,
+        setup.stock.as_ref(),
+        part.as_ref(),
+    )
+}
+
 /// The length a tool is assumed to stick out beyond its flutes, since the
 /// tool library holds no stick-out (decision record 0318).
 pub const STICK_OUT_BEYOND_FLUTES: f64 = 5.0;
@@ -101,14 +132,22 @@ pub struct SpindleHeight {
     pub past_top: f64,
     /// The profile's recommended minimum safe Z, when the fit is under it.
     pub recommended_min: Option<f64>,
+    /// The minimum clearance radius, when the tool's highest tip is inside
+    /// it: no safe Z then clears both the workholding and the top of the Z
+    /// travel (decision record 0530).
+    pub below_minimum: Option<f64>,
 }
 
 /// Whether `tool` would take the spindle past the top of the Z travel at
-/// `safe_z` above the axis on `profile`: only on a machine that measures tool
-/// lengths and gives its spindle-to-axis distance (decision record 0318).
+/// `safe_z` above the axis on `profile` (decision record 0318), or cannot
+/// rise clear of the `minimum` clearance radius within the Z travel at all
+/// (decision record 0530): only on a machine that measures tool lengths and
+/// gives its spindle-to-axis distance. `safe_z` is the setup's effective
+/// safe Z ([`effective_clearance`]).
 pub fn spindle_height(
     profile: &MachineProfile,
     safe_z: f64,
+    minimum: Option<f64>,
     tool: &openchuck_types::tool::Tool,
 ) -> Option<SpindleHeight> {
     if !profile.automatic_tool_length {
@@ -120,10 +159,12 @@ pub fn spindle_height(
     // Millimetres to three places, as the G-code: a fit equal to the safe Z
     // within rounding passes.
     let past_top = safe_z - highest_tip;
-    if past_top <= 5e-4 {
+    let below_minimum = minimum.filter(|m| m - highest_tip > 5e-4);
+    if past_top <= 5e-4 && below_minimum.is_none() {
         return None;
     }
     Some(SpindleHeight {
+        below_minimum,
         stick_out,
         highest_tip,
         past_top,
@@ -136,13 +177,27 @@ pub fn spindle_height(
 
 /// The setup check's words for a tool of [`spindle_height`] (NFR-12).
 pub fn spindle_height_text(number: u32, name: &str, found: &SpindleHeight) -> String {
-    let mut text = format!(
-        "Tool {number} ({name}) may take the spindle above the top of the Z travel at the safe Z: \
+    let mut text = if let Some(minimum) = found.below_minimum {
+        // Lowering the safe Z would take links into the workholding, so the
+        // 0318 advice is not given (decision record 0530).
+        format!(
+            "Tool {number} ({name}) may be too long to clear the workholding within the Z travel: \
+             assuming it sticks out {:.3} mm (flute length + 5 mm), its tip can rise at most {:.3} mm \
+             above the axis, inside the minimum clearance radius of {minimum:.3} mm, so no safe Z \
+             clears both the chuck, jaws, headstock or tailstock and the top of the Z travel. \
+             Use a shorter tool, and check the clearance over the chuck and the Z travel on your \
+             machine before running.",
+            found.stick_out, found.highest_tip
+        )
+    } else {
+        format!(
+            "Tool {number} ({name}) may take the spindle above the top of the Z travel at the safe Z: \
          assuming it sticks out {:.3} mm (flute length + 5 mm), the spindle would be {:.3} mm past the top. \
          Lower the setup's safe Z and clearance to {:.3} mm or less, or use a shorter tool, \
          and check the clearance over the chuck and the Z travel on your machine before running.",
-        found.stick_out, found.past_top, found.highest_tip
-    );
+            found.stick_out, found.past_top, found.highest_tip
+        )
+    };
     if let Some(minimum) = found.recommended_min {
         text.push_str(&format!(
             " The recommended minimum is {minimum} mm. This must be checked before machining."
@@ -184,15 +239,15 @@ mod tests {
     fn req_set_06_req_nfr_12_the_spindle_height_follows_the_owners_worked_cases() {
         let z1 = z1();
         assert_eq!(z1.spindle_to_axis.map(|d| d.0), Some(73.1));
-        assert_eq!(spindle_height(&z1, 40.0, &tool(25.0)), None);
-        assert_eq!(spindle_height(&z1, 40.0, &tool(22.0)), None);
-        let long = spindle_height(&z1, 40.0, &tool(42.0)).unwrap();
+        assert_eq!(spindle_height(&z1, 40.0, None, &tool(25.0)), None);
+        assert_eq!(spindle_height(&z1, 40.0, None, &tool(22.0)), None);
+        let long = spindle_height(&z1, 40.0, None, &tool(42.0)).unwrap();
         assert!((long.stick_out - 47.0).abs() < 1e-9, "{long:?}");
         assert!((long.highest_tip - 26.1).abs() < 1e-9, "{long:?}");
         assert!((long.past_top - 13.9).abs() < 1e-9, "{long:?}");
         assert_eq!(long.recommended_min, Some(30.0));
         // At the old safe Z 50, tool 104 would have been 6.9 mm past the top.
-        let gate5 = spindle_height(&z1, 50.0, &tool(25.0)).unwrap();
+        let gate5 = spindle_height(&z1, 50.0, None, &tool(25.0)).unwrap();
         assert!((gate5.past_top - 6.9).abs() < 1e-9, "{gate5:?}");
         assert_eq!(gate5.recommended_min, None, "43.1 is above 30");
     }
@@ -203,8 +258,8 @@ mod tests {
     fn req_set_06_the_spindle_height_is_checked_at_its_boundary() {
         let z1 = z1();
         // D - S = safe Z: 73.1 - (28.1 + 5) = 40.
-        assert_eq!(spindle_height(&z1, 40.0, &tool(28.1)), None);
-        let over = spindle_height(&z1, 40.0, &tool(28.101)).unwrap();
+        assert_eq!(spindle_height(&z1, 40.0, None, &tool(28.1)), None);
+        let over = spindle_height(&z1, 40.0, None, &tool(28.101)).unwrap();
         assert!((over.past_top - 0.001).abs() < 1e-9, "{over:?}");
     }
 
@@ -214,12 +269,12 @@ mod tests {
     fn req_set_06_req_nfr_12_no_distance_or_no_measurement_gives_no_spindle_height_warning() {
         let mut unknown = z1();
         unknown.spindle_to_axis = None;
-        assert_eq!(spindle_height(&unknown, 40.0, &tool(42.0)), None);
+        assert_eq!(spindle_height(&unknown, 40.0, None, &tool(42.0)), None);
         let mut manual = z1();
         manual.automatic_tool_length = false;
-        assert_eq!(spindle_height(&manual, 40.0, &tool(42.0)), None);
+        assert_eq!(spindle_height(&manual, 40.0, None, &tool(42.0)), None);
         assert_eq!(
-            spindle_height(&MachineProfile::example_x_rotary(), 40.0, &tool(42.0)),
+            spindle_height(&MachineProfile::example_x_rotary(), 40.0, None, &tool(42.0)),
             None
         );
     }
@@ -231,7 +286,7 @@ mod tests {
     #[test]
     fn req_nfr_12_the_spindle_height_warning_says_what_to_check() {
         let z1 = z1();
-        let long = spindle_height(&z1, 40.0, &tool(42.0)).unwrap();
+        let long = spindle_height(&z1, 40.0, None, &tool(42.0)).unwrap();
         let text = spindle_height_text(7, "Z1 O-flute 3.175x42", &long);
         for words in [
             "Tool 7 (Z1 O-flute 3.175x42)",
@@ -244,7 +299,7 @@ mod tests {
         ] {
             assert!(text.contains(words), "{words}: {text}");
         }
-        let gate5 = spindle_height(&z1, 50.0, &tool(25.0)).unwrap();
+        let gate5 = spindle_height(&z1, 50.0, None, &tool(25.0)).unwrap();
         let text = spindle_height_text(1, "104", &gate5);
         assert!(!text.contains("recommended minimum"), "{text}");
     }
@@ -255,6 +310,71 @@ mod tests {
         assert!(a_direction(&profile).ends_with("faces -Y at A 90"));
         profile.a_sense = ASense::Negative;
         assert!(a_direction(&profile).ends_with("faces +Y at A 90"));
+    }
+
+    /// Case a of decision 0530: the check takes the setup's effective safe
+    /// Z, so a tool that fits at the base safe Z warns once Clearance from
+    /// stock lifts it (SET-06, NFR-12).
+    #[test]
+    fn req_set_06_req_nfr_12_the_spindle_height_uses_the_safe_z_grown_from_stock() {
+        let z1 = z1();
+        let mut setup = openchuck_project::Setup::new(SetupId::from_u128(1), "S");
+        setup.stock = Some(Stock::Cylinder {
+            diameter: Millimetres(100.0),
+            length: Millimetres(50.0),
+            x_start: Millimetres(0.0),
+        });
+        let base = effective_clearance(&z1, &setup, None);
+        assert_eq!(base.clearance, z1.clearance);
+        assert_eq!(
+            spindle_height(&z1, base.clearance.safe_z.0, None, &tool(25.0)),
+            None
+        );
+        setup.clearance_rules.from_stock = Some(DEFAULT_STOCK_MARGIN);
+        let grown = effective_clearance(&z1, &setup, None);
+        assert_eq!(grown.clearance.safe_z, Millimetres(55.0));
+        let found = spindle_height(&z1, grown.clearance.safe_z.0, None, &tool(25.0)).unwrap();
+        // 55 - 43.1
+        assert!((found.past_top - 11.9).abs() < 1e-9, "{found:?}");
+        assert_eq!(found.below_minimum, None);
+    }
+
+    /// Case b of decision 0530: a tool whose highest tip is inside the
+    /// minimum clearance radius cannot clear both the workholding and the
+    /// top of the travel; the warning says so and does not advise lowering
+    /// the safe Z below the minimum (NFR-12).
+    #[test]
+    fn req_set_06_req_nfr_12_a_tool_too_long_for_the_minimum_clearance_warns() {
+        let z1 = z1();
+        // Tool 104 reaches 43.1: clear of a 40 mm minimum, inside a 45 mm one.
+        assert_eq!(spindle_height(&z1, 40.0, Some(40.0), &tool(25.0)), None);
+        let found = spindle_height(&z1, 40.0, Some(45.0), &tool(25.0)).unwrap();
+        assert_eq!(found.below_minimum, Some(45.0));
+        assert!(found.past_top < 0.0, "{found:?}");
+        let text = spindle_height_text(1, "104", &found);
+        for words in [
+            "Tool 1 (104)",
+            "too long to clear the workholding within the Z travel",
+            "30.000 mm (flute length + 5 mm)",
+            "43.100 mm",
+            "45.000 mm",
+            "Use a shorter tool",
+            "on your machine before running",
+        ] {
+            assert!(text.contains(words), "{words}: {text}");
+        }
+        assert!(!text.contains("Lower the setup's safe Z"), "{text}");
+        // Within rounding of the minimum, it fits.
+        assert_eq!(spindle_height(&z1, 40.0, Some(43.1004), &tool(25.0)), None);
+        // The recommended-minimum line still follows decision 0318.
+        let long = spindle_height(&z1, 40.0, Some(45.0), &tool(42.0)).unwrap();
+        assert!(
+            spindle_height_text(7, "long", &long).contains("The recommended minimum is 30 mm."),
+        );
+        // Without measurement there is still no guess (decision 0318).
+        let mut manual = z1.clone();
+        manual.automatic_tool_length = false;
+        assert_eq!(spindle_height(&manual, 40.0, Some(80.0), &tool(42.0)), None);
     }
 }
 
@@ -393,6 +513,7 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::ToolLengthMeasurement => "tool length measurement",
         ProfileField::SpindleToAxis => "spindle-to-axis distance",
         ProfileField::RecommendedMinSafeZ => "recommended minimum safe Z",
+        ProfileField::MinClearanceRadius => "minimum clearance radius",
     }
 }
 
@@ -418,6 +539,7 @@ pub(crate) fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'
         automatic_tool_length,
         spindle_to_axis,
         recommended_min_safe_z,
+        min_clearance_radius,
         provenance,
     } = a;
     let checks = [
@@ -451,6 +573,10 @@ pub(crate) fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'
         (
             "recommended minimum safe Z",
             *recommended_min_safe_z == b.recommended_min_safe_z,
+        ),
+        (
+            "minimum clearance radius",
+            *min_clearance_radius == b.min_clearance_radius,
         ),
         ("which values are confirmed", *provenance == b.provenance),
     ];

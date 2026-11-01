@@ -78,6 +78,8 @@ pub mod fields {
     pub const CLEARANCE_RADIUS: &str = "clearance.radius";
     /// Safe Z above the axis.
     pub const SAFE_Z: &str = "clearance.safe_z";
+    /// The radius that clears the chuck, jaws, headstock and tailstock.
+    pub const MIN_CLEARANCE_RADIUS: &str = "min_clearance_radius";
     /// Highest tool number.
     pub const MAX_TOOL_NUMBER: &str = "max_tool_number";
     /// Lowest spindle speed.
@@ -386,6 +388,15 @@ const SPECS: &[Spec] = &[
         Some(P::Clearance),
     ),
     spec(
+        f::MIN_CLEARANCE_RADIUS,
+        "Minimum clearance radius",
+        "The smallest safe cylinder radius that clears the chuck, the jaws, the headstock and \
+         the tailstock; blank when it is not known. A setup whose clearance is inside it is \
+         warned about; nothing is refused. A setup can set its own (decision 0530).",
+        G::Clearance,
+        Some(P::MinClearanceRadius),
+    ),
+    spec(
         f::MAX_TOOL_NUMBER,
         "Highest tool number",
         "The highest tool number the controller accepts.",
@@ -485,9 +496,11 @@ fn kind_of(name: &str) -> FieldKind {
         FEED_LINEAR | FEED_Z | RAPID_LINEAR | RAPID_Z => number_kind("mm/min", Some(0.0), true),
         FEED_ROTARY | RAPID_ROTARY => number_kind("deg/min", Some(0.0), true),
         ROTARY_IN_FEED => choice(&["separate", "makera"]),
-        CLEARANCE_RADIUS | SAFE_Z | SPINDLE_TO_AXIS | RECOMMENDED_MIN_SAFE_Z => {
-            number_kind("mm", Some(0.0), true)
-        }
+        CLEARANCE_RADIUS
+        | SAFE_Z
+        | MIN_CLEARANCE_RADIUS
+        | SPINDLE_TO_AXIS
+        | RECOMMENDED_MIN_SAFE_Z => number_kind("mm", Some(0.0), true),
         MAX_TOOL_NUMBER => FieldKind::Integer {
             min: 1,
             max: crate::machine_edit::HIGHEST_TOOL_NUMBER,
@@ -573,6 +586,7 @@ fn value_of(profile: &MachineProfile, name: &str) -> Option<ParameterValue> {
         AUTOMATIC_TOOL_LENGTH => Flag(profile.automatic_tool_length),
         SPINDLE_TO_AXIS => Number(profile.spindle_to_axis?.0),
         RECOMMENDED_MIN_SAFE_Z => Number(profile.recommended_min_safe_z?.0),
+        MIN_CLEARANCE_RADIUS => Number(profile.min_clearance_radius?.0),
         _ => return None,
     })
 }
@@ -593,7 +607,11 @@ pub fn machine_form(profile: &MachineProfile) -> Vec<MachineField> {
             value: value_of(profile, s.name),
             optional: matches!(
                 s.name,
-                MIN_SPINDLE_RPM | MAX_SPINDLE_RPM | SPINDLE_TO_AXIS | RECOMMENDED_MIN_SAFE_Z
+                MIN_SPINDLE_RPM
+                    | MAX_SPINDLE_RPM
+                    | SPINDLE_TO_AXIS
+                    | RECOMMENDED_MIN_SAFE_Z
+                    | MIN_CLEARANCE_RADIUS
             ),
             provenance: s.provenance,
             applies: limited || !matches!(s.name, A_MIN | A_MAX),
@@ -790,6 +808,7 @@ pub fn set_machine_field(
         }
         CLEARANCE_RADIUS => p.clearance.radius = Millimetres(positive()?),
         SAFE_Z => p.clearance.safe_z = Millimetres(positive()?),
+        MIN_CLEARANCE_RADIUS => p.min_clearance_radius = optional_positive()?.map(Millimetres),
         MAX_TOOL_NUMBER => {
             p.max_tool_number = u32::try_from(whole(1, crate::machine_edit::HIGHEST_TOOL_NUMBER)?)
                 .unwrap_or(u32::MAX);
@@ -1001,6 +1020,41 @@ mod tests {
 
     fn text(t: &str) -> ParameterValue {
         ParameterValue::Text(t.to_owned())
+    }
+
+    /// The minimum clearance radius is an optional value of the Clearance
+    /// group: blank on the built-in Z1 (decision 0530, D4; OI-1780), set
+    /// and cleared like any optional value, marked not confirmed when it
+    /// changes, refused in plain words when it is not positive (SET-10,
+    /// UI-13, NFR-07). A value above the safe cylinder is allowed: the
+    /// setup checks warn about it (decision 0530, D2).
+    #[test]
+    fn req_set_10_req_set_06_the_minimum_clearance_radius_is_an_optional_clearance_value() {
+        let p = z1();
+        let form = machine_form(&p);
+        let field = form
+            .iter()
+            .find(|f| f.name == MIN_CLEARANCE_RADIUS)
+            .expect("in the form");
+        assert_eq!(field.label, "Minimum clearance radius");
+        assert_eq!(field.group, MachineGroup::Clearance);
+        assert!(field.optional);
+        assert_eq!(field.value, None);
+        assert_eq!(field.provenance, Some(ProfileField::MinClearanceRadius));
+        let q = set_machine_field(&p, MIN_CLEARANCE_RADIUS, Some(&num(60.0))).unwrap();
+        assert_eq!(q.min_clearance_radius, Some(Millimetres(60.0)));
+        assert!(!q.is_confirmed(ProfileField::MinClearanceRadius));
+        assert_eq!(
+            q.provenance[&ProfileField::MinClearanceRadius].source,
+            USER_CHANGED
+        );
+        let cleared = set_machine_field(&q, MIN_CLEARANCE_RADIUS, None).unwrap();
+        assert_eq!(cleared.min_clearance_radius, None);
+        for bad in [0.0, -3.0] {
+            let e = set_machine_field(&p, MIN_CLEARANCE_RADIUS, Some(&num(bad))).unwrap_err();
+            assert_eq!(e.label, "Minimum clearance radius");
+            assert!(e.to_string().contains("Minimum clearance radius"), "{e}");
+        }
     }
 
     #[test]

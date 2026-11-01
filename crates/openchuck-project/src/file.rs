@@ -39,7 +39,7 @@ use crate::model::{
 };
 use crate::order::OrderKey;
 use openchuck_types::machine::{Clearance, MachineProfile};
-use openchuck_types::setup::{SetupFrame, WorkOffset};
+use openchuck_types::setup::{ClearanceRules, SetupFrame, WorkOffset};
 use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable};
@@ -125,7 +125,11 @@ use openchuck_types::workholding::Workholding;
 ///   along the axis (OI-1453); an older operation of those strategies is
 ///   migrated to an explicit `adaptive_spacing = false`, so it machines as
 ///   before (decision record 0239).
-pub const SCHEMA: i64 = 25;
+/// - 26: a setup gains the optional `clearance_rules` (its own minimum
+///   clearance radius and Clearance from stock) and the machine copy the
+///   optional `min_clearance_radius`, each written only when set; an older
+///   file has neither, so its clearance is unchanged (decision record 0530).
+pub const SCHEMA: i64 = 26;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -164,6 +168,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_22_to_23,
     schema_23_to_24,
     schema_24_to_25,
+    schema_25_to_26,
 ];
 
 /// The strategies whose operations gained `adaptive_spacing` in schema 25:
@@ -205,6 +210,21 @@ fn schema_24_to_25(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     }
     parameters.insert("adaptive_spacing".to_owned(), toml::Value::Boolean(false));
     Ok(())
+}
+
+/// Schema 26 adds the optional setup `clearance_rules` and the machine
+/// copy's `min_clearance_radius`, which an older file does not have; one
+/// that already holds one is refused (decision record 0530).
+fn schema_25_to_26(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    match kind {
+        FileKind::Machine => crate::machines::premature_min_clearance(table, 25, 26),
+        FileKind::Setup if table.contains_key("clearance_rules") => Err(
+            "this schema 25 file has `clearance_rules`, which schema 26 introduced; remove it, \
+             or set `schema = 26` if the file was written for schema 26"
+                .to_owned(),
+        ),
+        _ => Ok(()),
+    }
 }
 
 /// Schema 22 adds the optional spindle-height fields to the machine copy,
@@ -742,6 +762,8 @@ struct SetupFile {
     stock: Option<Stock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     clearance: Option<Clearance>,
+    #[serde(default, skip_serializing_if = "ClearanceRules::is_default")]
+    clearance_rules: ClearanceRules,
     #[serde(default, skip_serializing_if = "Workholding::is_empty")]
     workholding: Workholding,
 }
@@ -960,6 +982,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             work_offset: s.frame.work_offset,
             stock: s.stock.clone(),
             clearance: s.clearance,
+            clearance_rules: s.clearance_rules,
             workholding: s.workholding.clone(),
         };
         files.insert(item_path(FileKind::Setup, &s.id), to_text(&file)?);
@@ -1246,6 +1269,7 @@ fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Proje
                     work_offset: f.work_offset,
                 },
                 clearance: f.clearance,
+                clearance_rules: f.clearance_rules,
                 workholding: f.workholding,
             })
         })

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.0 (provisional; the coordinator confirms the number at merge)
+
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, proposed):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.
+
 ## 0.22.0
 
 - GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.

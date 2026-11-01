@@ -961,6 +961,7 @@ impl Application {
                         frame: &s.frame,
                         stock: s.stock.as_ref(),
                         clearance: s.clearance.as_ref(),
+                        rules: &s.clearance_rules,
                         part: part.as_ref(),
                     }),
                     Some(setup::expected_work_offset(profile, &s.frame)),

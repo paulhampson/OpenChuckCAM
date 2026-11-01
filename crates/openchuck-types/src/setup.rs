@@ -24,7 +24,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result, require_finite};
+use crate::error::{Error, Result, require_finite, require_positive};
 use crate::geometry::{Aabb, Point3};
 use crate::kinematics::RotaryFrame;
 use crate::machine::{Clearance, MachineProfile, ProfileField, RotaryAxis};
@@ -218,6 +218,139 @@ fn corner_radius(b: &Aabb) -> Millimetres {
     Millimetres(y.hypot(z))
 }
 
+/// The margin "Clearance from stock" starts with when it is switched on
+/// (decision record 0530).
+pub const DEFAULT_STOCK_MARGIN: Millimetres = Millimetres(5.0);
+
+/// A setup's clearance rules beyond its safe cylinder and safe Z (SET-06,
+/// decision record 0530): its own minimum clearance radius, and whether the
+/// clearance grows from the stock. The default has neither, which leaves
+/// the clearance and the generated G-code unchanged (GC-07).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClearanceRules {
+    /// The smallest safe cylinder radius that clears this setup's
+    /// workholding; `None` takes the machine's
+    /// ([`MachineProfile::min_clearance_radius`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_radius: Option<Millimetres>,
+    /// "Clearance from stock": when set, the margin added to the stock's
+    /// radius; the safe cylinder grows to at least that, and to the minimum.
+    /// `None` is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_stock: Option<Millimetres>,
+}
+
+impl ClearanceRules {
+    /// Whether the rules are the default (nothing set).
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Fails unless the minimum is positive and the margin is zero or more,
+    /// both finite.
+    pub fn validate(&self, field: &str) -> Result<()> {
+        if let Some(min) = self.min_radius {
+            require_positive(&format!("{field}.min_radius"), min.0)?;
+        }
+        if let Some(margin) = self.from_stock {
+            let name = format!("{field}.from_stock");
+            require_finite(&name, margin.0)?;
+            if margin.0 < 0.0 {
+                return Err(Error::invalid(name, "the margin must be 0 mm or more"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Where a setup's minimum clearance radius comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MinimumSource {
+    /// The machine profile's.
+    Machine,
+    /// The setup's own.
+    Setup,
+}
+
+impl MinimumSource {
+    /// The words for it.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Machine => "from the machine",
+            Self::Setup => "set for this setup",
+        }
+    }
+}
+
+/// The clearance a setup uses, with the minimum it is checked against
+/// ([`effective_clearance`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EffectiveClearance {
+    /// The safe cylinder and safe Z that retracts and links use.
+    pub clearance: Clearance,
+    /// The minimum clearance radius and where it comes from, when one is
+    /// given.
+    pub minimum: Option<(Millimetres, MinimumSource)>,
+    /// Whether the clearance was grown from the stock.
+    pub from_stock: bool,
+}
+
+impl EffectiveClearance {
+    /// How far the safe cylinder is inside the minimum, when it is (to the
+    /// G-code's three places: a cylinder within 0.0005 mm of the minimum
+    /// clears it).
+    pub fn below_minimum(&self) -> Option<Millimetres> {
+        let (min, _) = self.minimum?;
+        (min.0 - self.clearance.radius.0 > 5e-4).then_some(min)
+    }
+}
+
+/// The clearance a setup uses (SET-06, decision record 0530). The base is
+/// the setup's own clearance, else the machine's. The minimum is the
+/// setup's, else the machine's. With "Clearance from stock" on, the safe
+/// cylinder radius is the largest of the base radius, the minimum and the
+/// stock's radius plus the margin (the stock's radius when it can be
+/// measured), and the safe Z is raised to at least that radius; it never
+/// lowers the clearance. With it off the base is returned unchanged, so the
+/// G-code is unchanged (GC-07). Pure and deterministic.
+pub fn effective_clearance(
+    profile: &MachineProfile,
+    own: Option<&Clearance>,
+    rules: &ClearanceRules,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> EffectiveClearance {
+    let base = own.copied().unwrap_or(profile.clearance);
+    let minimum = match (rules.min_radius, profile.min_clearance_radius) {
+        (Some(own), _) => Some((own, MinimumSource::Setup)),
+        (None, Some(machine)) => Some((machine, MinimumSource::Machine)),
+        (None, None) => None,
+    };
+    let Some(margin) = rules.from_stock else {
+        return EffectiveClearance {
+            clearance: base,
+            minimum,
+            from_stock: false,
+        };
+    };
+    let mut radius = base.radius.0;
+    if let Some((min, _)) = minimum {
+        radius = radius.max(min.0);
+    }
+    if let Some(stock) = stock.and_then(|s| s.radius(part)) {
+        radius = radius.max(stock.0 + margin.0);
+    }
+    EffectiveClearance {
+        clearance: Clearance {
+            radius: Millimetres(radius),
+            safe_z: Millimetres(base.safe_z.0.max(radius)),
+        },
+        minimum,
+        from_stock: true,
+    }
+}
+
 /// A problem found by [`check_setup`]. It is a warning: the user may have
 /// reasons, and nothing is refused (work breakdown slice 3 item 5).
 #[derive(Debug, Clone, PartialEq)]
@@ -255,6 +388,17 @@ pub enum SetupWarningKind {
     },
     /// Some of the part lies outside the stock.
     PartOutsideStock,
+    /// The safe cylinder is inside the minimum clearance radius, so links
+    /// may hit the chuck, jaws, headstock or tailstock (decision record
+    /// 0530). A warning: generation and export still run (NFR-12).
+    ClearanceBelowMinimum {
+        /// Safe cylinder radius.
+        radius: Millimetres,
+        /// The minimum clearance radius.
+        minimum: Millimetres,
+        /// Where the minimum comes from.
+        source: MinimumSource,
+    },
     /// A position is outside the machine's travel.
     OutsideTravel {
         /// What it is, in words.
@@ -362,6 +506,20 @@ impl std::fmt::Display for SetupWarning {
                  you may want to remove one",
                 x.0, x.1
             )?,
+            SetupWarningKind::ClearanceBelowMinimum {
+                radius,
+                minimum,
+                source,
+            } => write!(
+                f,
+                "the safe cylinder (radius {:.3} mm) is inside the minimum clearance (radius {:.3} mm, \
+                 {}): links may hit the chuck, jaws, headstock or tailstock. Raise the setup's \
+                 clearance or switch on Clearance from stock, and check the clearance on your \
+                 machine before running",
+                radius.0,
+                minimum.0,
+                source.name()
+            )?,
             SetupWarningKind::PartOutsideStock => {
                 f.write_str("some of the part lies outside the stock")?
             }
@@ -408,6 +566,9 @@ pub struct SetupCheck<'a> {
     pub stock: Option<&'a Stock>,
     /// The setup's own clearance; `None` uses the profile's.
     pub clearance: Option<&'a Clearance>,
+    /// The setup's minimum clearance and Clearance from stock (decision
+    /// record 0530).
+    pub rules: &'a ClearanceRules,
     /// The part as this setup places it (moved by the part offset,
     /// [`PartExtent::in_setup`]), if the setup has one and it could be read.
     pub part: Option<&'a PartExtent>,
@@ -453,7 +614,14 @@ pub fn check_setup(check: &SetupCheck<'_>) -> Vec<SetupWarning> {
         unconfirmed.dedup();
         SetupWarning { kind, unconfirmed }
     };
-    let clearance = check.clearance.copied().unwrap_or(profile.clearance);
+    let effective = effective_clearance(
+        profile,
+        check.clearance,
+        check.rules,
+        check.stock,
+        check.part,
+    );
+    let clearance = effective.clearance;
     let clearance_fields: &[ProfileField] = if check.clearance.is_some() {
         &[]
     } else {
@@ -505,6 +673,21 @@ pub fn check_setup(check: &SetupCheck<'_>) -> Vec<SetupWarning> {
         {
             warnings.push(warn(SetupWarningKind::PartOutsideStock, &[]));
         }
+    }
+
+    if let (Some(minimum), Some((_, source))) = (effective.below_minimum(), effective.minimum) {
+        let mut fields = clearance_fields.to_vec();
+        if source == MinimumSource::Machine {
+            fields.push(ProfileField::MinClearanceRadius);
+        }
+        warnings.push(warn(
+            SetupWarningKind::ClearanceBelowMinimum {
+                radius: clearance.radius,
+                minimum,
+                source,
+            },
+            &fields,
+        ));
     }
 
     // Travel: along the rotary axis, the stock (or the part) and the work
@@ -650,6 +833,7 @@ mod tests {
             frame: &frame,
             stock: Some(&stock),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: Some(&part),
         });
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -670,6 +854,7 @@ mod tests {
             frame: &frame,
             stock: Some(&stock),
             clearance: Some(&small),
+            rules: &ClearanceRules::default(),
             part: Some(&part),
         });
         let kinds: Vec<_> = warnings.iter().map(|w| &w.kind).collect();
@@ -697,6 +882,7 @@ mod tests {
             frame: &frame,
             stock: Some(&cylinder(30.0)),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: Some(&part),
         });
         assert!(
@@ -717,6 +903,7 @@ mod tests {
             frame: &frame,
             stock: Some(&cylinder(30.0)),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: Some(&part),
         });
         assert!(w[0].unconfirmed.is_empty());
@@ -744,6 +931,7 @@ mod tests {
             frame: &SetupFrame::default(),
             stock: Some(stock),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: Some(part),
         })
         .iter()
@@ -828,6 +1016,7 @@ mod tests {
             frame: &frame,
             stock: Some(&short),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: Some(&part),
         });
         assert!(
@@ -847,6 +1036,7 @@ mod tests {
             frame: &frame,
             stock: Some(&bbox),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: None,
         });
         assert_eq!(w[0].kind, SetupWarningKind::StockNeedsPart);
@@ -867,6 +1057,7 @@ mod tests {
             frame: &SetupFrame::default(),
             stock: Some(&far),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: None,
         });
         let text: Vec<String> = w.iter().map(ToString::to_string).collect();
@@ -882,6 +1073,7 @@ mod tests {
             frame: &SetupFrame::default(),
             stock: Some(&cylinder(30.0)),
             clearance: None,
+            rules: &ClearanceRules::default(),
             part: None,
         });
         assert!(w.iter().any(|w| {
@@ -912,6 +1104,7 @@ mod tests {
                 frame: &SetupFrame::default(),
                 stock: Some(&cylinder(30.0)),
                 clearance: None,
+                rules: &ClearanceRules::default(),
                 part: None,
             })
             .iter()
@@ -943,6 +1136,7 @@ mod tests {
                 frame,
                 stock: Some(&cylinder(30.0)),
                 clearance: None,
+                rules: &ClearanceRules::default(),
                 part: Some(&placed),
             })
         };
@@ -1006,5 +1200,228 @@ mod tests {
         };
         let err = validate_setup(&SetupFrame::default(), Some(&stock), None, "setup").unwrap_err();
         assert!(err.to_string().contains("SET-04"), "{err}");
+    }
+
+    fn rules(min: Option<f64>, margin: Option<f64>) -> ClearanceRules {
+        ClearanceRules {
+            min_radius: min.map(Millimetres),
+            from_stock: margin.map(Millimetres),
+        }
+    }
+
+    /// With no minimum and Clearance from stock off, the clearance is
+    /// exactly the setup's own, else the machine's, as before decision 0530
+    /// (GC-07).
+    #[test]
+    fn req_set_06_req_gc_07_default_rules_leave_the_clearance_unchanged() {
+        let profile = MachineProfile::example_x_rotary();
+        let stock = cylinder(200.0);
+        let own = Clearance {
+            radius: Millimetres(12.0),
+            safe_z: Millimetres(20.0),
+        };
+        let none = ClearanceRules::default();
+        assert!(none.is_default());
+        let e = effective_clearance(&profile, None, &none, Some(&stock), None);
+        assert_eq!(e.clearance, profile.clearance);
+        assert_eq!(e.minimum, None);
+        assert!(!e.from_stock);
+        let e = effective_clearance(&profile, Some(&own), &none, Some(&stock), None);
+        assert_eq!(e.clearance, own);
+        // A minimum alone changes nothing either: it is only checked (D2).
+        let e = effective_clearance(&profile, Some(&own), &rules(Some(90.0), None), None, None);
+        assert_eq!(e.clearance, own);
+        assert_eq!(e.below_minimum(), Some(Millimetres(90.0)));
+    }
+
+    /// The setup's own minimum replaces the machine's (decision 0530, D1).
+    #[test]
+    fn req_set_06_the_setup_minimum_replaces_the_machine_minimum() {
+        let mut profile = MachineProfile::example_x_rotary();
+        let none = ClearanceRules::default();
+        assert_eq!(
+            effective_clearance(&profile, None, &none, None, None).minimum,
+            None
+        );
+        profile.min_clearance_radius = Some(Millimetres(45.0));
+        assert_eq!(
+            effective_clearance(&profile, None, &none, None, None).minimum,
+            Some((Millimetres(45.0), MinimumSource::Machine))
+        );
+        assert_eq!(
+            effective_clearance(&profile, None, &rules(Some(30.0), None), None, None).minimum,
+            Some((Millimetres(30.0), MinimumSource::Setup))
+        );
+    }
+
+    /// Clearance from stock: the radius is the largest of the base radius,
+    /// the minimum and the stock radius plus the margin, and the safe Z is
+    /// lifted to at least that radius; it never lowers the clearance
+    /// (decision 0530, D3).
+    #[test]
+    fn req_set_06_clearance_from_stock_grows_the_safe_cylinder_and_safe_z() {
+        let mut profile = MachineProfile::example_x_rotary(); // radius 40, safe Z 50
+        // Stock radius 50 + margin 5 = 55: above the base and the safe Z.
+        let e = effective_clearance(
+            &profile,
+            None,
+            &rules(None, Some(5.0)),
+            Some(&cylinder(100.0)),
+            None,
+        );
+        assert!(e.from_stock);
+        assert_eq!(e.clearance.radius, Millimetres(55.0));
+        assert_eq!(e.clearance.safe_z, Millimetres(55.0));
+        // A small stock never lowers the base clearance.
+        let e = effective_clearance(
+            &profile,
+            None,
+            &rules(None, Some(5.0)),
+            Some(&cylinder(20.0)),
+            None,
+        );
+        assert_eq!(e.clearance, profile.clearance);
+        // The minimum wins when it is the largest; the safe Z follows.
+        profile.min_clearance_radius = Some(Millimetres(70.0));
+        let e = effective_clearance(
+            &profile,
+            None,
+            &rules(None, Some(5.0)),
+            Some(&cylinder(100.0)),
+            None,
+        );
+        assert_eq!(e.clearance.radius, Millimetres(70.0));
+        assert_eq!(e.clearance.safe_z, Millimetres(70.0));
+        assert_eq!(e.below_minimum(), None);
+        // A margin of 0 clears the stock exactly.
+        profile.min_clearance_radius = None;
+        let e = effective_clearance(
+            &profile,
+            None,
+            &rules(None, Some(0.0)),
+            Some(&cylinder(90.0)),
+            None,
+        );
+        assert_eq!(e.clearance.radius, Millimetres(45.0));
+        assert_eq!(e.clearance.safe_z, Millimetres(50.0));
+        // Bounding-box stock measures the part; without it only the
+        // minimum and the base count.
+        let bbox = Stock::OffsetBoundingBox {
+            offset: Millimetres(2.0),
+        };
+        let p = part();
+        let with = effective_clearance(
+            &profile,
+            None,
+            &rules(None, Some(5.0)),
+            Some(&bbox),
+            Some(&p),
+        );
+        let measured = bbox.radius(Some(&p)).unwrap().0 + 5.0;
+        assert_eq!(
+            with.clearance.radius.0,
+            profile.clearance.radius.0.max(measured)
+        );
+        let without =
+            effective_clearance(&profile, None, &rules(None, Some(5.0)), Some(&bbox), None);
+        assert_eq!(without.clearance, profile.clearance);
+    }
+
+    /// A safe cylinder inside the minimum warns, naming both values and
+    /// where the minimum comes from; it never refuses (decision 0530, D2;
+    /// NFR-12). A machine minimum that is not confirmed is named.
+    #[test]
+    fn req_set_06_req_nfr_12_a_clearance_inside_the_minimum_warns() {
+        let mut profile = MachineProfile::example_x_rotary();
+        profile.min_clearance_radius = Some(Millimetres(45.0));
+        let frame = SetupFrame::default();
+        let stock = cylinder(30.0);
+        let p = part();
+        let check = |rules: &ClearanceRules| {
+            check_setup(&SetupCheck {
+                profile: &profile,
+                frame: &frame,
+                stock: Some(&stock),
+                clearance: None,
+                rules,
+                part: Some(&p),
+            })
+        };
+        let w = check(&ClearanceRules::default());
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(
+            w[0].kind,
+            SetupWarningKind::ClearanceBelowMinimum {
+                radius: Millimetres(40.0),
+                minimum: Millimetres(45.0),
+                source: MinimumSource::Machine,
+            }
+        );
+        assert_eq!(
+            w[0].unconfirmed,
+            vec![ProfileField::Clearance, ProfileField::MinClearanceRadius]
+        );
+        let text = w[0].to_string();
+        for words in [
+            "radius 40.000 mm",
+            "radius 45.000 mm, from the machine",
+            "chuck",
+            "tailstock",
+            "Clearance from stock",
+            "check the clearance on your machine before running",
+        ] {
+            assert!(text.contains(words), "{words}: {text}");
+        }
+        for never in ["safe to run", "verified"] {
+            assert!(!text.contains(never), "{never}: {text}");
+        }
+        // The setup's own minimum is named as such and needs no machine value.
+        let w = check(&rules(Some(41.0), None));
+        assert!(w[0].to_string().contains("set for this setup"), "{}", w[0]);
+        assert_eq!(w[0].unconfirmed, vec![ProfileField::Clearance]);
+        // Clearance from stock clears it; so does a minimum within rounding.
+        assert!(check(&rules(None, Some(5.0))).is_empty());
+        assert!(check(&rules(Some(40.0004), None)).is_empty());
+    }
+
+    #[test]
+    fn req_nfr_07_bad_clearance_rules_are_refused() {
+        for v in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            let e = rules(Some(v), None).validate("setup").unwrap_err();
+            assert!(e.to_string().contains("setup.min_radius"), "{v}: {e}");
+        }
+        for v in [-0.1, f64::NAN, f64::INFINITY] {
+            let e = rules(None, Some(v)).validate("setup").unwrap_err();
+            assert!(e.to_string().contains("setup.from_stock"), "{v}: {e}");
+        }
+        rules(Some(1.0), Some(0.0)).validate("setup").unwrap();
+        assert_eq!(DEFAULT_STOCK_MARGIN, Millimetres(5.0));
+    }
+
+    proptest::proptest! {
+        /// Any finite rules give a clearance that never lowers the base,
+        /// encloses the minimum when growing from stock, keeps the safe Z on
+        /// or above the cylinder, and never panics (NFR-07).
+        #[test]
+        fn req_set_06_req_nfr_07_effective_clearance_never_lowers_the_base(
+            min in proptest::option::of(0.001f64..1000.0),
+            margin in proptest::option::of(0.0f64..1000.0),
+            diameter in 0.001f64..2000.0,
+        ) {
+            let mut profile = MachineProfile::example_x_rotary();
+            profile.min_clearance_radius = Some(Millimetres(33.0));
+            let r = rules(min, margin);
+            let e = effective_clearance(&profile, None, &r, Some(&cylinder(diameter)), None);
+            proptest::prop_assert!(e.clearance.radius.0 >= profile.clearance.radius.0);
+            proptest::prop_assert!(e.clearance.safe_z.0 >= profile.clearance.safe_z.0);
+            proptest::prop_assert!(e.clearance.safe_z.0 >= e.clearance.radius.0);
+            proptest::prop_assert!(e.clearance.validate("c").is_ok());
+            if margin.is_some() {
+                proptest::prop_assert!(e.below_minimum().is_none());
+                proptest::prop_assert!(e.clearance.radius.0 >= diameter / 2.0);
+            } else {
+                proptest::prop_assert_eq!(e.clearance, profile.clearance);
+            }
+        }
     }
 }

@@ -438,11 +438,18 @@ impl Shell {
                             );
                         }
                         SetupPart::WorkOffset => {
+                            // The part as this setup places it, which
+                            // bounding-box stock measures (decision 0530).
+                            let extent = setup
+                                .part
+                                .and_then(|m| self.overview.model_extent(m))
+                                .map(|e| e.in_setup(&setup.frame));
                             edited.extend(clearance_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
+                                extent.as_ref(),
                             ));
                         }
                         SetupPart::Workholding => {
@@ -1748,12 +1755,14 @@ fn stock_section(
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
 /// register, the zero position (read-only, decision 0011 item 1), the zero's
-/// X, the safe radius and the safe Z.
+/// X, the safe radius and the safe Z, the minimum clearance, Clearance from
+/// stock with its margin, and the clearance in use (decision 0530).
 fn clearance_section(
     ui: &mut egui::Ui,
     state: &mut field_row::FieldState,
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
+    part: Option<&openchuck_app::setup::PartExtent>,
 ) -> Vec<(Setup, Option<String>)> {
     let (names, current) = setup_form::registers(setup);
     let chosen_register = field_row::choice_row(
@@ -1781,6 +1790,22 @@ fn clearance_section(
     )
     .into_iter()
     .collect();
+    let from_stock = field_row::flag_row(
+        ui,
+        "Clearance from stock",
+        "Grow the safe radius to the stock's radius plus the margin, and to the minimum \
+         clearance, and lift the safe Z to at least that radius. It never lowers the \
+         clearance, and follows the stock when it changes.",
+        setup_form::clearance_from_stock(setup),
+        true,
+    );
+    if let Some(line) = setup_form::clearance_in_use(setup, machine, part) {
+        field_row::note_line(ui, &line, DARK.muted);
+    }
+    if let Some(on) = from_stock {
+        let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
+        edited.push((setup_form::with_clearance_from_stock(current, on), None));
+    }
     if let Some(register) = chosen_register {
         let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
         edited.push((setup_form::with_register(current, register), None));

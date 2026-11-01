@@ -35,6 +35,21 @@ use openchuck_app::{
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
+/// The setup's clearance rules (decision 0530).
+#[derive(clap::Args, Debug)]
+struct ClearanceArgs {
+    /// The setup's minimum clearance radius in mm, the smallest safe
+    /// cylinder that clears its chuck, jaws, headstock and tailstock, or
+    /// `machine` to use the machine profile's (decision 0530).
+    #[arg(long, allow_hyphen_values = true)]
+    min_clearance: Option<String>,
+    /// Clearance from stock: the margin in mm added to the stock's
+    /// radius (the safe cylinder grows to it and to the minimum, and the
+    /// safe Z to at least that radius), or `off` (decision 0530).
+    #[arg(long, allow_hyphen_values = true)]
+    clearance_from_stock: Option<String>,
+}
+
 /// The workholding options of `setup` (SET-09, OP-21).
 #[derive(Debug, clap::Args)]
 struct HoldingArgs {
@@ -295,6 +310,8 @@ enum Action {
         /// the machine profile's.
         #[arg(long)]
         clearance: Option<String>,
+        #[command(flatten)]
+        rules: Box<ClearanceArgs>,
         #[command(flatten)]
         holding: Box<HoldingArgs>,
     },
@@ -995,8 +1012,13 @@ fn run(cli: Cli) -> Result<()> {
             work_offset,
             work_x,
             clearance,
+            rules,
             holding,
         } => {
+            let ClearanceArgs {
+                min_clearance,
+                clearance_from_stock,
+            } = *rules;
             let HoldingArgs {
                 held_start,
                 held_end,
@@ -1039,6 +1061,14 @@ fn run(cli: Cli) -> Result<()> {
             }
             if let Some(clearance) = clearance {
                 edited.clearance = parse_clearance(&clearance)?;
+            }
+            if let Some(text) = min_clearance {
+                edited.clearance_rules.min_radius =
+                    parse_optional_mm(&text, "machine", "--min-clearance", false)?;
+            }
+            if let Some(text) = clearance_from_stock {
+                edited.clearance_rules.from_stock =
+                    parse_optional_mm(&text, "off", "--clearance-from-stock", true)?;
             }
             if let Some(text) = held_start {
                 edited.workholding.start = parse_held(&text)?;
@@ -1718,6 +1748,30 @@ fn parse_tab(text: &str) -> Result<Tab> {
     })
 }
 
+/// Reads a length in mm, or `none` (the word that leaves it unset) for
+/// `None`; `zero` allows 0 (decision 0530).
+fn parse_optional_mm(
+    text: &str,
+    none: &str,
+    option: &str,
+    zero: bool,
+) -> Result<Option<Millimetres>> {
+    if text == none {
+        return Ok(None);
+    }
+    let v = text
+        .trim()
+        .parse::<f64>()
+        .with_context(|| format!("'{text}': give {option} a length in mm, or `{none}`"))?;
+    if !v.is_finite() || v < 0.0 || (!zero && v == 0.0) {
+        anyhow::bail!(
+            "'{text}': {option} must be {} mm, or `{none}`",
+            if zero { "0 or more" } else { "more than 0" }
+        );
+    }
+    Ok(Some(Millimetres(v)))
+}
+
 /// Reads the `--clearance` option.
 fn parse_clearance(text: &str) -> Result<Option<Clearance>> {
     if text == "machine" {
@@ -1937,6 +1991,29 @@ fn print_setup(app: &Application, report: &SetupReport) {
             m.clearance.radius.0, m.clearance.safe_z.0
         ),
         (None, None) => println!("clearance:  Machine setting (no machine chosen)"),
+    }
+    if let Some(m) = app.project().machine() {
+        // The clearance the toolpaths, links and program use (decision 0530).
+        let e = openchuck_app::setup::effective_clearance(
+            m,
+            setup,
+            report.part.as_ref().map(|p| &p.bounds),
+        );
+        if let Some((minimum, source)) = e.minimum {
+            println!(
+                "minimum:    clearance radius {} mm ({})",
+                minimum.0,
+                source.name()
+            );
+        }
+        if e.from_stock {
+            println!(
+                "in use:     safe cylinder radius {:.3} mm, safe Z {:.3} mm (Clearance from stock, margin {} mm)",
+                e.clearance.radius.0,
+                e.clearance.safe_z.0,
+                setup.clearance_rules.from_stock.map_or(0.0, |m| m.0)
+            );
+        }
     }
     if let Some(e) = report.part {
         println!(

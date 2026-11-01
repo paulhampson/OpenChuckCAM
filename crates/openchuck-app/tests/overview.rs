@@ -2227,3 +2227,104 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     }
     out
 }
+
+/// The highest Z word of a program, in its own coordinates.
+fn highest_z(program: &str) -> f64 {
+    program
+        .split_whitespace()
+        .filter_map(|w| w.strip_prefix('Z'))
+        .filter_map(|v| v.parse::<f64>().ok())
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// A machine minimum clearance above the setup's safe cylinder warns in the
+/// setup checks and Messages, naming both values, and generation still runs
+/// (decision 0530, D1 and D2; NFR-12). Clearance from stock grows the
+/// clearance to the minimum, which clears the warning and lifts the
+/// program's safe Z; switched off again, the program is byte-identical to
+/// the one before (GC-07, NFR-06).
+#[test]
+fn req_set_06_req_gc_07_the_minimum_clearance_warns_and_clearance_from_stock_grows_it() {
+    let mut f = fixture("min-clearance", "cube_ascii.stl");
+    let mut machine = MachineProfile::example_x_rotary(); // radius 40, safe Z 50
+    machine.min_clearance_radius = Some(Millimetres(60.0));
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    f.add_operation("Ring", "one_ring");
+    let below = |o: &Overview| -> Vec<String> {
+        o.messages
+            .iter()
+            .filter(|m| m.text.contains("inside the minimum clearance"))
+            .map(|m| m.text.clone())
+            .collect()
+    };
+    let o = f.overview();
+    let found = below(&o);
+    assert_eq!(found.len(), 1, "{found:?}");
+    for words in [
+        "radius 40.000 mm",
+        "radius 60.000 mm, from the machine",
+        "Clearance from stock",
+        "on your machine before running",
+        "minimum clearance radius",
+    ] {
+        assert!(found[0].contains(words), "{words}: {}", found[0]);
+    }
+    assert!(
+        o.setup_checks
+            .iter()
+            .any(|c| !c.passed && c.text.contains("inside the minimum clearance"))
+    );
+    // A warning, not a refusal: the program is still written.
+    f.app
+        .set_post(Some(PostSelection::Builtin("linuxcnc".into())));
+    let before = f.app.regenerate().unwrap().gcode;
+    assert!(!before.is_empty());
+
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance_rules.from_stock = Some(openchuck_app::setup::DEFAULT_STOCK_MARGIN);
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(below(&f.overview()).is_empty());
+    let grown = f.app.regenerate().unwrap().gcode;
+    assert_ne!(grown, before);
+    let (low, high) = (highest_z(&before[0].1), highest_z(&grown[0].1));
+    assert!((high - low - 10.0).abs() < 1e-6, "{low} -> {high}");
+
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance_rules.from_stock = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert_eq!(f.app.regenerate().unwrap().gcode, before);
+}
+
+/// Case b of decision 0530 on the Makera Z1: a tool whose highest tip is
+/// inside the minimum clearance radius warns that it may be too long to
+/// clear the workholding within the Z travel, and does not advise lowering
+/// the safe Z (NFR-12).
+#[test]
+fn req_set_06_req_nfr_12_a_tool_too_long_for_the_minimum_clearance_warns_on_the_z1() {
+    let mut f = fixture("too-long-min", "cube_ascii.stl");
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    // Flute 10: the tip reaches 58.1 above the axis.
+    z1.min_clearance_radius = Some(Millimetres(60.0));
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    f.add_operation("Ring", "one_ring");
+    let o = f.overview();
+    let found: Vec<&str> = o
+        .messages
+        .iter()
+        .filter(|m| m.text.contains("too long to clear the workholding"))
+        .map(|m| m.text.as_str())
+        .collect();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("58.100 mm"), "{}", found[0]);
+    assert!(
+        !found[0].contains("Lower the setup's safe Z"),
+        "{}",
+        found[0]
+    );
+}

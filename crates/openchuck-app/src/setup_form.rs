@@ -76,6 +76,10 @@ pub enum SetupField {
     SafeRadius,
     /// The safe Z above the axis.
     SafeZ,
+    /// The setup's own minimum clearance radius (decision record 0530).
+    MinClearance,
+    /// The margin Clearance from stock adds to the stock's radius.
+    StockMargin,
 }
 
 /// One row of a setup section.
@@ -276,7 +280,7 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
     let own = setup.clearance;
     let from_machine = machine.map(|m| m.clearance);
     let hint = |v: Option<f64>| v.map(|v| format!("{} \u{b7} {MACHINE_SETTING}", mm(v)));
-    vec![
+    let mut rows = vec![
         row(
             SetupField::WorkZeroX,
             "Zero at X",
@@ -307,7 +311,66 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
                 Some("at least the safe radius"),
             )
         },
-    ]
+    ];
+    rows.push(SetupRow {
+        hint: hint(machine.and_then(|m| m.min_clearance_radius).map(|r| r.0)),
+        ..row(
+            SetupField::MinClearance,
+            "Minimum clearance",
+            "The smallest safe radius that clears the chuck, the jaws, the headstock and the \
+             tailstock used for this setup. A safe radius inside it is warned about. Empty uses \
+             the Machine setting.",
+            setup.clearance_rules.min_radius.map(|r| r.0),
+            Some("above 0 mm"),
+        )
+    });
+    if let Some(margin) = setup.clearance_rules.from_stock {
+        rows.push(row(
+            SetupField::StockMargin,
+            "Margin over stock",
+            "Clearance from stock grows the safe radius to the stock's radius plus this margin, \
+             and to the minimum clearance, and lifts the safe Z to at least that radius. It \
+             never lowers the clearance.",
+            Some(margin.0),
+            Some("0 mm or more"),
+        ));
+    }
+    rows
+}
+
+/// Whether Clearance from stock is on (decision record 0530).
+pub fn clearance_from_stock(setup: &Setup) -> bool {
+    setup.clearance_rules.from_stock.is_some()
+}
+
+/// `setup` with Clearance from stock switched on, with the default margin
+/// of 5 mm, or off (decision record 0530).
+pub fn with_clearance_from_stock(setup: &Setup, on: bool) -> Setup {
+    let mut edited = setup.clone();
+    edited.clearance_rules.from_stock = on.then_some(crate::setup::DEFAULT_STOCK_MARGIN);
+    edited
+}
+
+/// The line under the clearance rows: the safe radius and safe Z the
+/// setup's toolpaths, links and program use, and why, when Clearance from
+/// stock changes them (decision record 0530). `None` without a machine.
+pub fn clearance_in_use(
+    setup: &Setup,
+    machine: Option<&MachineProfile>,
+    part: Option<&PartExtent>,
+) -> Option<String> {
+    let machine = machine?;
+    let effective = crate::setup::effective_clearance(machine, setup, part.map(|p| &p.bounds));
+    let c = effective.clearance;
+    let mut line = format!(
+        "In use: safe radius {} mm, safe Z {} mm",
+        mm(c.radius.0),
+        mm(c.safe_z.0)
+    );
+    if effective.from_stock {
+        line.push_str(" (Clearance from stock)");
+    }
+    Some(line)
 }
 
 /// The work offset registers' names, in order, and the setup's.
@@ -423,6 +486,10 @@ pub fn apply(
             edited.clearance = None;
             return Ok(edited);
         }
+        SetupField::MinClearance if text.is_empty() => {
+            edited.clearance_rules.min_radius = None;
+            return Ok(edited);
+        }
         _ if text.is_empty() => return Err("Needs a value.".to_owned()),
         _ => {}
     }
@@ -465,6 +532,15 @@ pub fn apply(
                 return Err("Must be 0 mm or more.".to_owned());
             }
             *offset = Millimetres(v);
+        }
+        (SetupField::MinClearance, _) => {
+            edited.clearance_rules.min_radius = Some(Millimetres(positive(v)?));
+        }
+        (SetupField::StockMargin, _) => {
+            if !v.is_finite() || v < 0.0 {
+                return Err("Must be 0 mm or more.".to_owned());
+            }
+            edited.clearance_rules.from_stock = Some(Millimetres(v));
         }
         (SetupField::PartOffset, _) => edited.frame.part_offset = Millimetres(v),
         (SetupField::WorkZeroX, _) => edited.frame.work_offset.x = Millimetres(v),
@@ -615,7 +691,9 @@ mod tests {
         assert!(rows[1].hint.as_deref().unwrap().ends_with(MACHINE_SETTING));
         // Issue 189: every row that falls back to the machine says "Machine
         // setting", in the hint and in the tooltip, never "the machine's".
-        for row in &rows[1..] {
+        // The minimum clearance (row 3) has a hint only when the machine
+        // gives one; the Z1 does not (decision 0530, D4).
+        for row in &rows[1..3] {
             assert!(row.hint.as_deref().unwrap().ends_with(MACHINE_SETTING));
             assert!(
                 row.description.contains(MACHINE_SETTING),
@@ -679,5 +757,82 @@ mod tests {
         assert_eq!((diameter.0, length.0, x_start.0), (12.0, 32.0, -1.0));
         assert_eq!(StockShape::of(None), None);
         assert_eq!(StockShape::Box.name(), "Box");
+    }
+
+    /// The minimum clearance and Clearance from stock in the setup's
+    /// clearance section (decision 0530, D1 and D3): the minimum falls back
+    /// to the Machine setting; switching from stock on adds the margin row
+    /// at 5 mm, and the line under the rows gives the clearance in use.
+    #[test]
+    fn req_set_06_req_ui_07_the_minimum_and_clearance_from_stock_in_the_setup_form() {
+        let s = setup(); // stock radius 13
+        let mut z1 = crate::setup::builtin(crate::setup::MAKERA_Z1)
+            .unwrap()
+            .unwrap();
+        let labels = |s: &Setup, m: &MachineProfile| -> Vec<&'static str> {
+            clearance_rows(s, Some(m)).iter().map(|r| r.label).collect()
+        };
+        assert_eq!(
+            labels(&s, &z1),
+            ["Zero at X", "Safe radius", "Safe Z", "Minimum clearance"]
+        );
+        let rows = clearance_rows(&s, Some(&z1));
+        assert_eq!(rows[3].hint, None);
+        assert!(rows[3].description.contains(MACHINE_SETTING));
+        z1.min_clearance_radius = Some(Millimetres(45.0));
+        let rows = clearance_rows(&s, Some(&z1));
+        assert_eq!(
+            rows[3].hint.as_deref(),
+            Some("45.000 \u{b7} Machine setting")
+        );
+        // The setup's own minimum, set and cleared; refused in plain words.
+        let own = apply(&s, Some(&z1), SetupField::MinClearance, "30").unwrap();
+        assert_eq!(own.clearance_rules.min_radius, Some(Millimetres(30.0)));
+        assert_eq!(clearance_rows(&own, Some(&z1))[3].value, "30.000");
+        let back = apply(&own, Some(&z1), SetupField::MinClearance, "").unwrap();
+        assert_eq!(back.clearance_rules.min_radius, None);
+        assert_eq!(
+            apply(&s, Some(&z1), SetupField::MinClearance, "0").unwrap_err(),
+            "Must be more than 0 mm."
+        );
+        // Clearance from stock: off by default; on with a 5 mm margin.
+        assert!(!clearance_from_stock(&s));
+        assert_eq!(
+            clearance_in_use(&s, Some(&z1), None).unwrap(),
+            "In use: safe radius 40.000 mm, safe Z 40.000 mm"
+        );
+        let on = with_clearance_from_stock(&s, true);
+        assert!(clearance_from_stock(&on));
+        assert_eq!(on.clearance_rules.from_stock, Some(Millimetres(5.0)));
+        let rows = clearance_rows(&on, Some(&z1));
+        assert_eq!(rows[4].label, "Margin over stock");
+        assert_eq!(rows[4].value, "5.000");
+        // The 45 mm minimum is the largest: radius and safe Z grow to it.
+        assert_eq!(
+            clearance_in_use(&on, Some(&z1), None).unwrap(),
+            "In use: safe radius 45.000 mm, safe Z 45.000 mm (Clearance from stock)"
+        );
+        let wide = apply(&on, Some(&z1), SetupField::StockMargin, "40").unwrap();
+        assert_eq!(
+            clearance_in_use(&wide, Some(&z1), None).unwrap(),
+            "In use: safe radius 53.000 mm, safe Z 53.000 mm (Clearance from stock)"
+        );
+        for bad in ["-1", ""] {
+            assert!(
+                apply(&on, Some(&z1), SetupField::StockMargin, bad).is_err(),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            apply(&on, Some(&z1), SetupField::StockMargin, "0")
+                .unwrap()
+                .clearance_rules
+                .from_stock,
+            Some(Millimetres(0.0))
+        );
+        let off = with_clearance_from_stock(&wide, false);
+        assert_eq!(off.clearance_rules.from_stock, None);
+        assert_eq!(clearance_rows(&off, Some(&z1)).len(), 4);
+        assert_eq!(clearance_in_use(&s, None, None), None);
     }
 }
