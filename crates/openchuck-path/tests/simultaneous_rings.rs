@@ -73,7 +73,10 @@ fn fixture<P: RadialPart + ?Sized>(part: &P, rings: u32, around: u32) -> Fixture
     Fixture::new(surface, r + 1.0, &ball(6.0))
 }
 
-fn path(f: &Fixture, v: &BTreeMap<String, ParameterValue>) -> openchuck_path::Result<GeneratedPath> {
+fn path(
+    f: &Fixture,
+    v: &BTreeMap<String, ParameterValue>,
+) -> openchuck_path::Result<GeneratedPath> {
     run(|ctx| generate(&SimultaneousFinishing, &f.input(), v, ctx))
 }
 
@@ -196,14 +199,24 @@ fn req_op_05_rings_turn_whole_turns_at_constant_x_no_wider_apart_than_the_stepov
         assert!(spacing <= pitch + 1e-12);
         for (k, (x, turned)) in found.iter().enumerate() {
             assert!((x - spacing * k as f64).abs() < 1e-6, "ring {k} at {x}");
-            assert!((turned - 360.0).abs() < 1e-3, "ring {k} turned {turned}");
+            // A whole turn, to within the mesh: each end of a ring is at the
+            // smoothed normal of the facets there (720 round the part), up
+            // to a quarter degree from the nominal angle.
+            assert!(
+                (turned - 360.0).abs() <= 0.5 + 1e-9,
+                "ring {k} turned {turned}"
+            );
         }
         // A turns the Rotation way on every ring and never reverses in a
         // cut (OP-15).
         for run in cut_runs(&p) {
             assert_eq!(reversals(&run, 1e-9), 0, "pitch {pitch}");
         }
-        assert!(p.notes.iter().any(|n| n.message.contains("rings")), "{:?}", p.notes);
+        assert!(
+            p.notes.iter().any(|n| n.message.contains("rings")),
+            "{:?}",
+            p.notes
+        );
     }
 }
 
@@ -238,7 +251,15 @@ fn req_op_05_req_op_12_rings_leave_no_more_than_the_spiral_and_never_gouge() {
     ];
     for (part, rings_n, around) in &parts {
         let f = fixture(part.as_ref(), *rings_n, *around);
-        let v = values(0.5, &[(parameter::MAX_TILT, num(10.0))]);
+        // Poses no more than a degree apart round the rings, so the
+        // checker, which looks only at the poses, sees the cut between them.
+        let v = values(
+            0.5,
+            &[
+                (parameter::MAX_TILT, num(10.0)),
+                (parameter::MAX_ANGLE_STEP, num(1.0)),
+            ],
+        );
         let (x0, x1) = part.x_range();
         let mid = 0.5 * (x0 + x1);
         let outline = Outline::new(&f.tool);
@@ -246,7 +267,14 @@ fn req_op_05_req_op_12_rings_leave_no_more_than_the_spiral_and_never_gouge() {
             let poses = fed(p);
             let g = max_gouge(&outline, part.as_ref(), &poses, 0.15);
             assert!(g.depth <= 0.01, "{}: gouge {}", part.name(), g.depth);
-            coverage(&outline, part.as_ref(), &poses, (mid - 3.0, mid + 3.0), 0.2, 0.05)
+            coverage(
+                &outline,
+                part.as_ref(),
+                &poses,
+                (mid - 3.0, mid + 3.0),
+                0.2,
+                0.05,
+            )
         };
         let spiral = worst(&path(&f, &v).unwrap());
         let rings = worst(&path(&f, &ringed(v)).unwrap());
@@ -284,4 +312,93 @@ fn req_nfr_07_an_unknown_pass_shape_is_refused_by_name() {
         .unwrap_err()
         .to_string();
     assert!(e.contains(parameter::PASS_SHAPE), "{e}");
+}
+
+/// Every cutting move either turns A at constant X (a ring) or moves along
+/// X with A held still (a step), and the number of separate cuts.
+fn rings_and_steps(p: &GeneratedPath, what: &str) -> usize {
+    let (mut steps, mut turning) = (0, 0);
+    for (from, s) in cuts(p) {
+        let dx = s.end.tip.x - from.tip.x;
+        let da = s.end.a.0 - from.a.0;
+        // On a part whose surface slopes along X the tip of a ring moves a
+        // little along X with the normal (the tool sits off the contact by
+        // its radius), so a ring is told by A turning and a step by A held.
+        if da.abs() < 1e-9 {
+            if dx.abs() > 1e-9 {
+                steps += 1;
+            }
+        } else {
+            assert!(
+                dx.abs() < 0.1,
+                "{what}: a move turned A by {da} and moved {dx} along X at {:?}",
+                s.end.tip
+            );
+            turning += 1;
+        }
+    }
+    assert!(steps > 0 && turning > 0, "{what}: {steps} steps, {turning}");
+    let mut count = 0;
+    let mut cutting = false;
+    for s in &p.group.segments {
+        let now = s.kind == MoveKind::Cutting;
+        if now && !cutting {
+            count += 1;
+        }
+        cutting = now;
+    }
+    count
+}
+
+#[test]
+fn req_op_05_req_op_15_steps_hold_the_a_the_ring_ended_at_in_one_cut() {
+    // The owner's choice D3 (decision record 0421, option 1): the step
+    // holds the A the ring ended at; with nothing to split them the rings
+    // and steps are one cut, with the lead or without it.
+    let part = Cylinder {
+        radius: 15.0,
+        length: 10.0,
+    };
+    let f = fixture(&part, 3, 720);
+    for (lead, start) in [(0.0, 0.0), (5.0, 30.0), (-5.0, -45.0)] {
+        let p = path(
+            &f,
+            &ringed(values(
+                1.0,
+                &[
+                    (parameter::LEAD_ANGLE, num(lead)),
+                    (parameter::START_ANGLE, num(start)),
+                ],
+            )),
+        )
+        .unwrap();
+        let what = format!("lead {lead}");
+        assert_eq!(rings_and_steps(&p, &what), 1, "{what}");
+        // A builds up one whole turn a ring (OP-15).
+        let a: Vec<f64> = cuts(&p)
+            .iter()
+            .flat_map(|(from, s)| [from.a.0, s.end.a.0])
+            .collect();
+        let span = a.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+            - a.iter().copied().fold(f64::INFINITY, f64::min);
+        assert!((span - 11.0 * 360.0).abs() < 1.0, "{what}: {span}");
+    }
+}
+
+#[test]
+fn req_op_05_req_op_06_on_a_lobed_part_steps_hold_a_and_the_tilt_stays_in_bounds() {
+    // The section turns along X on the vase, so a held A leans from the
+    // normal along the step; where it would lean more than the lead and
+    // the tilt the step is split, never cut leaning further.
+    let f = fixture(&lobed(), 41, 720);
+    for tilt in [10.0, 2.0] {
+        let p = path(
+            &f,
+            &ringed(values(1.0, &[(parameter::MAX_TILT, num(tilt))])),
+        )
+        .unwrap();
+        let cuts = rings_and_steps(&p, &format!("tilt {tilt}"));
+        assert!(cuts >= 1, "{cuts}");
+        assert!(p.notes.iter().any(|n| n.message.contains("rings")));
+    }
 }

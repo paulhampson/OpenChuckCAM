@@ -441,3 +441,13 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Determinism.** The same path at 1, 2 and N threads for each strategy.
 - **Refusals.** An unknown pass shape is refused by name for each strategy, and roughing in rings refuses by name a stepover that needs too many points a layer.
 - **Schema.** Each strategy offers Passes, Spiral or Rings, Spiral by default; roughing only for its continuous form around the part, Facing only for Round.
+
+**Simultaneous finishing's spiral pattern** ([decision 0421](decisions/0421-rings-for-the-simultaneous-spiral.md), proposed). OP-05, OP-06, OP-11, OP-12, OP-14, OP-15, OP-26, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/simultaneous_rings.rs` unless named:
+
+- **Shape.** On a cylinder at two stepovers and both rotations, whole turns (to within the mesh's facets) at X no wider apart than the stepover from end to end, A never reversing within a cut; the steps hold A still, and rings and steps are one cut with a lead of 0, 5 and -5 degrees, A building up one turn a ring (OP-15). On a lobed part, at two tilts, every move either turns A or holds it.
+- **The material left,** with the test kit's independent gouge and coverage checks on a cone and a lobed part: no gouge and no more left than the spiral.
+- **The CrankShaft model.** A flat end finishes the inner corners in rings as with the spiral (`simultaneous_off_axis.rs`); the faces across the axis are cleaned in rings (`helical_faces.rs`).
+- **Off is as before.** The setting absent and Spiral give the same path; the axial pattern ignores it.
+- **Determinism.** The same path at 1, 2 and N threads.
+- **Refusals.** An unknown pass shape is refused by name.
+- **Schema.** Passes for the spiral pattern only, Spiral by default.
