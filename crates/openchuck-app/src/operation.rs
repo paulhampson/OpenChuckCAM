@@ -1689,7 +1689,9 @@ mod tests {
         .collect();
         // Adaptive spacing off unless a test asks: these are not about it,
         // and a new operation has it on (decision record 0239).
-        if openchuck_path::adaptive::STRATEGIES.contains(&strategy) {
+        if openchuck_path::adaptive::STRATEGIES.contains(&strategy)
+            || openchuck_path::adaptive::LINE_STRATEGIES.contains(&strategy)
+        {
             values.insert("adaptive_spacing".to_owned(), Value::Flag(false));
         }
         for (k, v) in parameters {

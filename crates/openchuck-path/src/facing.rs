@@ -27,7 +27,7 @@ use crate::params::{
     ParameterKind, ParameterSchema, ParameterSpec, ParameterValue, Parameters, Unit,
 };
 use crate::roughing::parameter as roughing;
-use crate::strategy::{Pass, Strategy, StrategyGroup, StrategyInput};
+use crate::strategy::{Pass, Strategy, StrategyGroup, StrategyInput, StrategyOutput};
 use std::collections::BTreeMap;
 
 /// The registry name of [`Facing`].
@@ -137,6 +137,8 @@ impl Strategy for Facing {
         parameters.extend(new_specs());
         parameters.extend(borrowed);
         parameters.extend(crate::extend::specs(true));
+        parameters.extend(crate::adaptive::specs());
+        parameters.push(crate::adaptive::allowed_excess_spec());
         ParameterSchema::with_common(parameters)
     }
 
@@ -210,7 +212,9 @@ impl Strategy for Facing {
                 }
             }
         }
-        schema
+        // Adaptive spacing for the flat shape's lines along the axis only
+        // (decision record 0239 item 2; OI-1453).
+        crate::adaptive::schema_for_lines(schema, values, shape == parameter::FLAT)
     }
 
     fn passes(
@@ -219,6 +223,54 @@ impl Strategy for Facing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
+        self.output(input, parameters, context).map(|o| o.passes)
+    }
+
+    /// The passes, with flat Facing's adaptive spacing note and warning
+    /// (decision record 0239; OI-1453).
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&crate::region::RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        match region {
+            Some(region) => Ok(StrategyOutput {
+                passes: self.passes_in_region(input, region, parameters, context)?,
+                notes: Vec::new(),
+                warnings: Vec::new(),
+                unreached: Vec::new(),
+                shank_breaks: Vec::new(),
+            }),
+            None => self.output(input, parameters, context),
+        }
+    }
+
+    fn validate_path(
+        &self,
+        input: &StrategyInput<'_>,
+        parameters: &Parameters,
+        path: &crate::GeneratedPath,
+        context: &JobContext<'_>,
+    ) -> Result<()> {
+        if !needs_verification(parameters)? {
+            return Ok(());
+        }
+        let setup = validation::input(input, context)?;
+        self.validate_group(setup, parameters, &path.group, context)
+    }
+}
+
+impl Facing {
+    /// Facing's passes, with flat Facing's adaptive spacing note and
+    /// warning (decision record 0239; OI-1453).
+    fn output(
+        &self,
+        input: &StrategyInput<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
         if matches!(
             parameters.text(parameter::SHAPE)?,
             parameter::END | parameter::BOX
@@ -229,19 +281,23 @@ impl Strategy for Facing {
             {
                 return Err(crate::error::PathError::Strategy("Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.".into()));
             }
-            return if parameters.text(parameter::SHAPE)? == parameter::END {
-                Ok(
-                    end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?
-                        .passes,
-                )
+            let passes = if parameters.text(parameter::SHAPE)? == parameter::END {
+                end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?.passes
             } else {
-                Ok(plan::plan_box_sides(
+                plan::plan_box_sides(
                     setup,
                     &plan::BoxFacingParameters::read(parameters)?,
                     context,
                 )?
-                .passes)
+                .passes
             };
+            return Ok(StrategyOutput {
+                passes,
+                notes: Vec::new(),
+                warnings: Vec::new(),
+                unreached: Vec::new(),
+                shank_breaks: Vec::new(),
+            });
         }
         let round = parameters.text(parameter::SHAPE)? == parameter::ROUND;
         let size = parameters.number(parameter::SIZE)?;
@@ -277,22 +333,6 @@ impl Strategy for Facing {
         crate::roughing::face(input, parameters, round, level, scope.as_ref(), context)
     }
 
-    fn validate_path(
-        &self,
-        input: &StrategyInput<'_>,
-        parameters: &Parameters,
-        path: &crate::GeneratedPath,
-        context: &JobContext<'_>,
-    ) -> Result<()> {
-        if !needs_verification(parameters)? {
-            return Ok(());
-        }
-        let setup = validation::input(input, context)?;
-        self.validate_group(setup, parameters, &path.group, context)
-    }
-}
-
-impl Facing {
     /// Recheck actual assembled or connected nominal motion using the SAME
     /// whole setup and resolved settings retained with generation. This is
     /// independent of candidate pass counts. It does not certify post words,

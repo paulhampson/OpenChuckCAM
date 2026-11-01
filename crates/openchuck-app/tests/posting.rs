@@ -756,7 +756,11 @@ fn req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp() {
     let mut operation = app.project().operation(op).unwrap().clone();
     operation.strategy = "rotary_roughing".into();
     operation.parameters.remove("face_free_ends");
-    operation.parameters.remove("adaptive_spacing");
+    // Not about adaptive spacing, which a new operation of the indexed form
+    // has on (decision record 0239; OI-1453).
+    operation
+        .parameters
+        .insert("adaptive_spacing".into(), ParameterValue::Flag(false));
     operation
         .parameters
         .insert("form".into(), ParameterValue::Text("indexed".into()));

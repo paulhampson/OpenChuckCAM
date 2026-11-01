@@ -39,6 +39,7 @@ mod graphics;
 mod import_panel;
 mod label_layout;
 mod logging;
+mod machine_library_window;
 mod machine_panel;
 mod memory;
 mod model_panel;

@@ -523,6 +523,54 @@ impl ToolLibrary {
         Ok(path)
     }
 
+    /// Renames the machine that a tool set belongs to, from `old` to `new`
+    /// (names matched without regard to case), rewriting the set's own file
+    /// (TL-11; a renamed machine profile keeps its tool set, OI-1474,
+    /// decision 0380). Returns the file, or `None` when no set names `old`.
+    /// Fails, writing nothing, if `new` is blank or another set already
+    /// names it.
+    pub fn rename_tool_set(
+        &mut self,
+        old: &str,
+        new: &str,
+    ) -> Result<Option<PathBuf>, ProjectError> {
+        let Some(i) = self
+            .sets
+            .iter()
+            .position(|(_, s)| s.machine.trim().eq_ignore_ascii_case(old.trim()))
+        else {
+            return Ok(None);
+        };
+        let Some((path, set)) = self.sets.get(i) else {
+            return Ok(None);
+        };
+        let path = path.clone();
+        let bad = |reason: String| ProjectError::BadFile {
+            path: path.clone(),
+            reason,
+        };
+        if self
+            .sets
+            .iter()
+            .enumerate()
+            .any(|(j, (_, s))| j != i && s.machine.trim().eq_ignore_ascii_case(new.trim()))
+        {
+            return Err(bad(format!(
+                "a tool set for the machine \"{}\" already exists",
+                new.trim()
+            )));
+        }
+        let mut renamed = set.clone();
+        renamed.machine = new.trim().to_owned();
+        renamed.validate()?;
+        let text = render_tool_set(&renamed)?;
+        write_if_changed(&path, &text)?;
+        if let Some(entry) = self.sets.get_mut(i) {
+            entry.1 = renamed;
+        }
+        Ok(Some(path))
+    }
+
     /// A file in `dir` named after `name` that no tool or tool set uses and
     /// that does not exist.
     fn free_path(&self, dir: &Path, name: &str) -> PathBuf {

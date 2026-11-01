@@ -125,6 +125,11 @@ pub struct SimulateSettings {
     /// bytes: [`PLAYBACK_MEMORY_MB`] steps (decision record 0322, the
     /// owner's decision D1 on issue #382).
     pub playback_memory_mb: u32,
+    /// "Generate playback information with toolpath generation" (decision
+    /// record 0333, the owner's decision D2): keep playback's checkpoints
+    /// while simulating, so the cut part plays at once. Unset, the
+    /// computer's default applies: on with 16 GB of memory or more.
+    pub playback_with_generation: Option<bool>,
 }
 
 /// The memory for playback checkpoints, MB of 2^20 bytes: the least, the
@@ -142,6 +147,7 @@ impl Default for SimulateSettings {
             hide_outside_window: false,
             skip_stock_simulation: false,
             playback_memory_mb: PLAYBACK_MEMORY_MB.1,
+            playback_with_generation: None,
         }
     }
 }

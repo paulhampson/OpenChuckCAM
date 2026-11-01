@@ -117,7 +117,9 @@ Pull request B moves `capture.py` to `user-docs/tools/` and has it write `CAPTUR
 
 The plan was a deploy key with write access as the ruleset's only bypass actor. GitHub's documentation (its source, `github/docs`, `data/reusables/repositories/rulesets-bypass-step.md`, read on 31 Oct 2026) lists deploy keys as bypass actors only on GitHub Enterprise Server; on github.com they are repository roles, teams, GitHub Apps and Dependabot. The owner chose a small private GitHub App, `OpenChuckCAM docs release`, with **Contents: Read and write** only, installed on this repository only, as the ruleset's only bypass actor. Its client ID (variable `DOCS_RELEASE_APP_CLIENT_ID`) and private key (secret `DOCS_RELEASE_APP_PRIVATE_KEY`) are held only in the `docs-release` environment. `publish-docs` gets a token from it with `actions/create-github-app-token` v3.3.0 (pinned by commit), limited to contents write and expiring after an hour, and pushes over HTTPS. If the variable or the secret is missing, the job fails and says which. The manifest checks of section V stay as a second line.
 
-## Owner actions (not done by this lane)
+## Owner actions
+
+The owner did steps 1 to 6 of the one-time setup by 1 Nov 2026 (reported by the merge manager session): the App, its installation, the `docs-release` environment, the `docs-releases` ruleset, the `github-pages` check and the Pages source. Step 7, the checks, follows the merge.
 
 The numbered steps are in `docs/releasing.md`, "One-time setup for the documentation site": create the GitHub App and install it on this repository; create the `docs-release` environment (tags `app-v*`, the App's client ID and private key); add the ruleset on `docs-releases` with the App as its only bypass actor; check that `github-pages` allows `main` only; switch GitHub Pages to **GitHub Actions**; and check the result with a manual deploy, a release dry run and a hand push to `docs-releases` that must be refused. No branch-protection change is needed for the pull request check (section P).
 

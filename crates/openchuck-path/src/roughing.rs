@@ -53,12 +53,15 @@
 //! between them is allowed as well; otherwise the nodes are cut as separate
 //! passes and the shared services link them.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use openchuck_types::geometry::Point3;
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::adaptive::{self, Counting, Family, Interval, Pose, Tally, Track};
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
@@ -73,9 +76,12 @@ mod facing_scope_tests;
 #[cfg(test)]
 #[path = "roughing/legacy_identity_tests.rs"]
 mod legacy_identity_tests;
+use crate::assemble::PathWarning;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
-use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
+use crate::params::{
+    ParameterKind, ParameterSchema, ParameterSpec, ParameterValue, Parameters, Unit, names,
+};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, RotaryMapping};
 use crate::strategy::{
@@ -330,7 +336,15 @@ impl Strategy for RotaryRoughing {
         ]
         .into_iter()
         .chain(crate::extend::specs(false))
+        .chain(crate::adaptive::specs())
+        .chain(std::iter::once(crate::adaptive::allowed_excess_spec()))
         .collect())
+    }
+
+    /// Adaptive spacing only for the two forms whose passes run along the
+    /// axis (decision record 0239 item 2; OI-1453).
+    fn schema_for(&self, values: &BTreeMap<String, ParameterValue>) -> ParameterSchema {
+        crate::adaptive::schema_for_lines(self.schema(), values, along_the_axis(values))
     }
 
     fn honours_region(&self) -> bool {
@@ -343,7 +357,7 @@ impl Strategy for RotaryRoughing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        rough(input, None, parameters, context).map(|(p, _)| p)
+        rough(input, None, parameters, context).map(|(p, _, _)| p)
     }
 
     fn passes_in_region(
@@ -353,7 +367,7 @@ impl Strategy for RotaryRoughing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        rough(input, Some(region), parameters, context).map(|(p, _)| p)
+        rough(input, Some(region), parameters, context).map(|(p, _, _)| p)
     }
 
     fn passes_with_notes(
@@ -363,14 +377,29 @@ impl Strategy for RotaryRoughing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        let (passes, turns) = rough(input, region, parameters, context)?;
+        let (passes, turns, (spaced, warnings)) = rough(input, region, parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns).into_iter().collect(),
-            warnings: Vec::new(),
+            notes: faces::note(&turns).into_iter().chain(spaced).collect(),
+            warnings,
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
+    }
+}
+
+/// Whether stored `values` choose a form whose passes run along the axis:
+/// indexed along its own direction, or either form turned along the length.
+fn along_the_axis(values: &BTreeMap<String, ParameterValue>) -> bool {
+    let text = |name: &str| match values.get(name) {
+        Some(ParameterValue::Text(t)) => Some(t.as_str()),
+        _ => None,
+    };
+    let indexed = text(parameter::FORM) == Some("indexed");
+    match text(parameter::DIRECTION) {
+        Some(parameter::ALONG) => true,
+        Some(parameter::AROUND) => false,
+        _ => indexed,
     }
 }
 
@@ -381,20 +410,30 @@ fn rough(
     region: Option<&RegionConstraint<'_>>,
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<f64>)> {
-    let job = Job::new(input, region, parameters, "rotary roughing")?;
+) -> Result<(Vec<Pass>, Vec<f64>, Report)> {
+    let mut job = Job::new(input, region, parameters, "rotary roughing")?;
     let indexed = parameters.text(parameter::FORM)? == "indexed";
     let around = match parameters.text(parameter::DIRECTION)? {
         parameter::ALONG => false,
         parameter::AROUND => true,
         _ => !indexed,
     };
+    // Adaptive spacing for the forms along the axis only: the switch is not
+    // in the others' schema, so it reads as off there.
+    job.spacing = adaptive::Settings::read(parameters, adaptive::parameter::ALLOWED_EXCESS)?;
+    let mut tally = None;
     match (indexed, around) {
-        (true, false) => job.indexed(parameters, context).map(|p| (p, Vec::new())),
+        (true, false) => job.indexed(parameters, context).map(|(p, t)| {
+            tally = t;
+            (p, Vec::new())
+        }),
         (true, true) => job
             .indexed_around(parameters, context)
             .map(|p| (p, Vec::new())),
-        (false, false) => job.continuous_along(context).map(|p| (p, Vec::new())),
+        (false, false) => job.continuous_along(context).map(|(p, t)| {
+            tally = t;
+            (p, Vec::new())
+        }),
         (false, true) => job.continuous(parameters, context),
     }
     .and_then(|(passes, turns)| {
@@ -414,9 +453,31 @@ fn rough(
                 )
             }))
         } else {
-            Ok((passes, turns))
+            Ok((passes, turns, report(job.spacing, tally)))
         }
     })
+}
+
+/// Adaptive spacing's note and warning.
+type Report = (Vec<String>, Vec<PathWarning>);
+
+/// The note and the warning for what adaptive spacing did, when it ran
+/// (decision record 0239 items 10 and 12).
+fn report(settings: Option<adaptive::Settings>, tally: Option<Tally>) -> Report {
+    match (settings, tally) {
+        (Some(settings), Some(tally)) => (
+            vec![tally.note(&settings)],
+            tally
+                .warning(
+                    &settings,
+                    &adaptive::Limits::OWNER,
+                    adaptive::parameter::ALLOWED_EXCESS,
+                )
+                .into_iter()
+                .collect(),
+        ),
+        _ => (Vec::new(), Vec::new()),
+    }
 }
 
 /// Facing (OP-24; decision record 0212 part B item 4): the whole stock, not
@@ -432,7 +493,7 @@ pub(crate) fn face(
     level: f64,
     scope: Option<&FacingScope>,
     context: &JobContext<'_>,
-) -> Result<Vec<Pass>> {
+) -> Result<StrategyOutput> {
     let label = "facing";
     let mut job = Job::new(input, None, parameters, label)?;
     let ends = input.stock.x_extent().ok_or_else(|| {
@@ -454,9 +515,12 @@ pub(crate) fn face(
         });
     }
     job.face = Some(level);
-    let passes = if round {
-        job.continuous(parameters, context)?.0
+    let (passes, tally) = if round {
+        (job.continuous(parameters, context)?.0, None)
     } else {
+        // Adaptive spacing for the flat face's lines along the axis only
+        // (OI-1453): the switch is not in the round shape's schema.
+        job.spacing = adaptive::Settings::read(parameters, adaptive::parameter::ALLOWED_EXCESS)?;
         job.flat(parameters, level, context)?
     };
     if passes.is_empty() {
@@ -465,7 +529,14 @@ pub(crate) fn face(
             job.min_cut
         )));
     }
-    Ok(passes)
+    let (notes, warnings) = report(job.spacing, tally);
+    Ok(StrategyOutput {
+        passes,
+        notes,
+        warnings,
+        unreached: Vec::new(),
+        shank_breaks: Vec::new(),
+    })
 }
 
 /// One cut position: model X, A (degrees) and the offset across the axis.
@@ -566,6 +637,9 @@ struct Job<'a> {
     side_reach: Option<f64>,
     /// Optional emitted-cut bounds only. The stock field retains x_range.
     face_scope: Option<FacingScope>,
+    /// Adaptive spacing of the lines along the axis, when on (decision
+    /// record 0239; OI-1453).
+    spacing: Option<adaptive::Settings>,
 }
 
 impl<'a> Job<'a> {
@@ -614,13 +688,50 @@ impl<'a> Job<'a> {
             face: None,
             side_reach: None,
             face_scope: None,
+            spacing: None,
         })
+    }
+
+    /// This job with `input` in place of its own: the same settings, for
+    /// measuring through a counter of the geometry queries.
+    fn with_input<'b>(&self, input: &'b StrategyInput<'b>) -> Job<'b>
+    where
+        'a: 'b,
+    {
+        Job {
+            input,
+            region: self.region,
+            rotary: self.rotary,
+            grown: self.grown.clone(),
+            radius: self.radius,
+            leave: self.leave,
+            stepover: self.stepover,
+            stepdown: self.stepdown,
+            chord: self.chord,
+            tolerance: self.tolerance,
+            min_cut: self.min_cut,
+            start: self.start,
+            r_top: self.r_top,
+            x_range: self.x_range,
+            extension: self.extension,
+            face: self.face,
+            side_reach: self.side_reach,
+            face_scope: self.face_scope.clone(),
+            spacing: self.spacing,
+        }
     }
 
     /// The lowest the tool's tip may go at `site`, along the tool axis, with
     /// the stock to leave, and whether the region lets the site be cut. The
     /// floor is `None` where the part is not under the tool.
     fn probe(&self, site: Site) -> (Option<f64>, bool) {
+        let (floor, allowed, _) = self.probe_part(site);
+        (floor, allowed)
+    }
+
+    /// As [`Self::probe`], with the contact on the part where the part sets
+    /// the floor (a check surface above it does not).
+    fn probe_part(&self, site: Site) -> (Option<f64>, bool, Option<Point3>) {
         let line = self.rotary.tool_line(
             openchuck_types::units::Millimetres(site.x),
             Degrees(site.a),
@@ -639,10 +750,11 @@ impl<'a> Job<'a> {
                 let touch = check.drop_tool(&self.grown, &line)?;
                 Some(self.rotary.to_axis(touch.tip, Degrees(site.a)).height + self.leave)
             });
-            return (floor, allowed);
+            return (floor, allowed, None);
         };
         let height = |tip| self.rotary.to_axis(tip, Degrees(site.a)).height + self.leave;
-        let mut floor = height(contact.tip);
+        let part = height(contact.tip);
+        let mut floor = part;
         let mut allowed = true;
         if let Some(region) = self.region {
             // A check surface keeps the tool above it rather than excluding
@@ -659,7 +771,8 @@ impl<'a> Job<'a> {
             };
             allowed = without_check.allows(contact.contact, contact.tip, &self.grown, &line);
         }
-        (Some(floor), allowed)
+        let on_part = (floor <= part).then_some(contact.contact);
+        (Some(floor), allowed, on_part)
     }
 
     /// Where `allowed` changes between neighbouring fine nodes `f` and
@@ -1126,7 +1239,7 @@ impl<'a> Job<'a> {
     /// Indexed roughing along the length: at each A position, lines along X
     /// stepping across the sector the position faces (decision record 0033
     /// item 2).
-    fn indexed(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    fn indexed(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Spaced> {
         let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;
         let index = p.number(parameter::INDEX_ANGLE)?;
@@ -1165,14 +1278,14 @@ impl<'a> Job<'a> {
                 });
             }
         }
-        self.cut_lines(&all, context)
+        self.cut_lines(&all, Some(Grouping::Positions), context)
     }
 
     /// Continuous roughing along the length (issue 246; decision record 0212
     /// part A item 2): lines along X at A positions no more than the
     /// stepover apart at the stock's radius, alternating in X so A turns
     /// between lines off the end of the last.
-    fn continuous_along(&self, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    fn continuous_along(&self, context: &JobContext<'_>) -> Result<Spaced> {
         let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;
         let lines = (std::f64::consts::TAU * self.r_top / self.stepover)
@@ -1202,7 +1315,7 @@ impl<'a> Job<'a> {
                 fine: fine as usize,
             })
             .collect();
-        self.cut_lines(&all, context)
+        self.cut_lines(&all, Some(Grouping::Around), context)
     }
 
     /// Indexed roughing around the part (issue 246; decision record 0212
@@ -1243,13 +1356,14 @@ impl<'a> Job<'a> {
                 });
             }
         }
-        self.cut_lines(&all, context)
+        self.cut_lines(&all, None, context)
+            .map(|(passes, _)| passes)
     }
 
     /// Facing on a flat: at each listed A, lines along X across the whole
     /// width of the face (the chord of the stock's circle at `level`), past
     /// its sides when the operation asks.
-    fn flat(&mut self, p: &Parameters, level: f64, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    fn flat(&mut self, p: &Parameters, level: f64, context: &JobContext<'_>) -> Result<Spaced> {
         let angles = p.angles(crate::facing::parameter::ANGLES)?;
         if angles.is_empty() {
             return Err(PathError::parameter(
@@ -1262,7 +1376,7 @@ impl<'a> Job<'a> {
                 self.side_reach = Some((self.r_top * self.r_top - level * level).max(0.).sqrt());
             }
             let lines = self.scoped_flat_lines(&angles, rectangles, level, context)?;
-            return self.cut_lines(&lines, context);
+            return self.cut_lines(&lines, Some(Grouping::Across), context);
         }
         let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;
@@ -1302,12 +1416,20 @@ impl<'a> Job<'a> {
                 });
             }
         }
-        self.cut_lines(&all, context)
+        self.cut_lines(&all, Some(Grouping::Across), context)
     }
 
     /// Cuts `lines` layer by layer, each line in the order given, with A
-    /// held along every line.
-    fn cut_lines(&self, lines: &[Line], context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    /// held along every line. With adaptive spacing on and a `grouping`,
+    /// lines are added between neighbouring lines of each layer where more
+    /// than the Allowed excess stands above the layer's target, with what
+    /// adaptive spacing did (decision record 0239; OI-1453).
+    fn cut_lines(
+        &self,
+        lines: &[Line],
+        grouping: Option<Grouping>,
+        context: &JobContext<'_>,
+    ) -> Result<(Vec<Pass>, Option<Tally>)> {
         // The floor of every line, once.
         let mut floors: Vec<Vec<Option<f64>>> = Vec::with_capacity(lines.len());
         let mut allowed: Vec<Vec<bool>> = Vec::with_capacity(lines.len());
@@ -1329,9 +1451,30 @@ impl<'a> Job<'a> {
         let levels = self.levels(bottom)?;
         let mut field = self.field(bottom)?;
 
+        // Adaptive spacing measures and fits through a counter, so its
+        // geometry queries are limited across all the layers (decision
+        // record 0239 item 8).
+        let spacing = self.spacing.zip(grouping);
+        let counter = Counting::new(self.input.surface);
+        let counted = StrategyInput {
+            surface: &counter,
+            ..*self.input
+        };
+        let measure = self.with_input(&counted);
+        let mut tally = Tally::default();
+        let mut points = 0_u64;
+        let families = spacing.map(|(_, g)| groups(lines, g)).unwrap_or_default();
+
         let mut passes = Vec::new();
         for (k, level) in levels.iter().enumerate() {
             let snapshot = PassStock(Arc::new(field.clone()));
+            // The stock as the layer started, for adaptive spacing to tell
+            // where there was material to cut. Not the stock before each
+            // family: one A position takes material another overlaps, and a
+            // ridge it leaves below the smallest cut would then be measured
+            // by neither.
+            let start = spacing.map(|_| field.clone());
+            let mut by_line: Vec<Vec<Pass>> = Vec::new();
             for (((line, line_floors), line_allowed), edges) in
                 lines.iter().zip(&floors).zip(&allowed).zip(&all_edges)
             {
@@ -1364,11 +1507,40 @@ impl<'a> Job<'a> {
                         *e > self.min_cut && line_allowed.get(i * SUB).copied().unwrap_or(false)
                     })
                     .collect();
+                let mut here = Vec::new();
                 for (first, last) in Self::runs(&active, |i| Self::joined(line_allowed, i)) {
                     let sites = self.run_points((first, last), *level, line_floors, &site, &ends);
-                    passes.push(self.pass(&sites, &snapshot));
+                    here.push(self.pass(&sites, &snapshot));
                     self.apply(&mut field, &sites);
                 }
+                if spacing.is_some() {
+                    by_line.push(here);
+                } else {
+                    passes.extend(here);
+                }
+            }
+            if let (Some(spacing), Some(start)) = (spacing, &start) {
+                points = points.saturating_add(
+                    by_line
+                        .iter()
+                        .flatten()
+                        .map(|p| p.points.len() as u64 + adaptive::LINK_POINTS)
+                        .sum(),
+                );
+                let (ordered, added) = self.space_layer(
+                    (&measure, &counter),
+                    &families,
+                    by_line,
+                    (*level, start, &snapshot),
+                    spacing,
+                    (&mut tally, &mut points),
+                    context,
+                )?;
+                for pass in &added {
+                    let sites = self.sites_of(pass);
+                    self.apply(&mut field, &sites);
+                }
+                passes.extend(ordered);
             }
             context.report(
                 "rotary roughing: layers",
@@ -1376,7 +1548,7 @@ impl<'a> Job<'a> {
                 Some(levels.len() as u64),
             );
         }
-        Ok(passes)
+        Ok((passes, spacing.map(|_| tally)))
     }
 
     /// Whether every fine node from coarse node `i` to the next may be cut.
@@ -1407,5 +1579,577 @@ impl<'a> Job<'a> {
                         .to_owned()
                 })
             })
+    }
+}
+
+/// Passes, with what adaptive spacing did when it was on.
+type Spaced = (Vec<Pass>, Option<Tally>);
+
+/// How the lines along the axis form families for adaptive spacing
+/// (decision record 0239; OI-1453).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Grouping {
+    /// Lines at one A side by side across the axis: flat Facing. Each run
+    /// of lines at the same A over the same length is a family, across it
+    /// the offset from the axis.
+    Across,
+    /// As [`Self::Across`], at A positions round the part: the indexed form.
+    /// The gap between neighbouring positions is measured too, against the
+    /// nearer outer line of the next position, and a line added there keeps
+    /// the position's own A, offset across the axis (as indexed finishing,
+    /// the owner's choice (a) on OI-1452).
+    Positions,
+    /// Lines round the part, one at each A: the continuous form along the
+    /// length. All the lines are a family, across it the angle, and the last
+    /// line's neighbour is the first, a turn on.
+    Around,
+}
+
+/// One layer, as adaptive spacing sees it.
+struct Layer<'l> {
+    /// The layer's level, along the tool axis.
+    level: f64,
+    /// The stock as the layer started.
+    start: &'l HeightStock,
+    /// The stock the layer's passes carry.
+    stock: &'l PassStock,
+}
+
+impl Job<'_> {
+    /// The passes of one layer with lines added where more than the Allowed
+    /// excess stands above the layer's target, in order across each family
+    /// (A held along each line), and the passes added. `by_line` are each
+    /// line's own passes; `measure` is this job dropping through `counter`.
+    #[allow(clippy::too_many_arguments)]
+    fn space_layer(
+        &self,
+        (measure, counter): (&Job<'_>, &Counting<'_>),
+        families: &[Vec<Member>],
+        by_line: Vec<Vec<Pass>>,
+        (level, start, stock): (f64, &HeightStock, &PassStock),
+        (settings, grouping): (adaptive::Settings, Grouping),
+        (tally, points): (&mut Tally, &mut u64),
+        context: &JobContext<'_>,
+    ) -> Result<(Vec<Pass>, Vec<Pass>)> {
+        let r = self.input.tool.cutting_radius();
+        let grown = self.grown.cutting_radius();
+        let node = self.line_spacing() / SUB as f64;
+        let mut ordered = Vec::new();
+        let mut added = Vec::new();
+        let mut by_line = by_line.into_iter();
+        let per_family: Vec<Vec<Vec<Pass>>> = families
+            .iter()
+            .map(|g| {
+                g.iter()
+                    .map(|_| by_line.next().unwrap_or_default())
+                    .collect()
+            })
+            .collect();
+        for (gi, (group, passes)) in families.iter().zip(&per_family).enumerate() {
+            let Some(first) = group.first() else {
+                continue;
+            };
+            let layer = Layer {
+                level,
+                start,
+                stock,
+            };
+            let family = LineFamily {
+                job: measure,
+                counter,
+                layer: &layer,
+                grouping,
+                a: first.a,
+                x0: first.x0,
+                step: (first.x1 - first.x0) / first.nodes.max(1) as f64,
+                nodes: first.nodes,
+                own: (
+                    group.first().map_or(0.0, |m| m.c),
+                    group.last().map_or(0.0, |m| m.c),
+                ),
+                // The tool's travel along a line between poses leaves no
+                // more than a tenth of the Allowed excess, as for axial
+                // finishing.
+                pose_step: adaptive::pose_step(r, settings.height),
+                window: 2.0 * grown + node,
+                station: node.min(0.5 * r).max(1e-3),
+            };
+            let own: Vec<Track> = group
+                .iter()
+                .zip(passes)
+                .map(|(g, p)| Track::new(&family, g.c, p.clone()))
+                .collect();
+            let n = own.len();
+            let mut tracks = own;
+            let wrap = grouping == Grouping::Around && n > 1;
+            if wrap {
+                let passes = tracks.first().map(|t| t.passes.clone()).unwrap_or_default();
+                tracks.push(Track::new(&family, first.c + 360.0, passes));
+            }
+            let spans = vec![(first.x0, first.x1)];
+            let mut intervals: Vec<Interval> = (0..if wrap { n } else { n.saturating_sub(1) })
+                .map(|i| Interval {
+                    lo: i,
+                    hi: i + 1,
+                    spans: spans.clone(),
+                    level: 0,
+                })
+                .collect();
+            // The gaps to the neighbouring positions, measured against the
+            // nearer outer line of each, as the lines of this position
+            // would see it.
+            if grouping == Grouping::Positions && n > 0 {
+                let (lo_c, hi_c) = (
+                    group.first().map_or(0.0, |m| m.c),
+                    group.last().map_or(0.0, |m| m.c),
+                );
+                let (below, above) =
+                    self.neighbours(families, &per_family, gi, first.a, (lo_c, hi_c));
+                if let Some((c, p)) = below {
+                    tracks.push(Track::new(&family, c, p));
+                    intervals.push(Interval {
+                        lo: tracks.len() - 1,
+                        hi: 0,
+                        spans: spans.clone(),
+                        level: 0,
+                    });
+                }
+                if let Some((c, p)) = above {
+                    tracks.push(Track::new(&family, c, p));
+                    intervals.push(Interval {
+                        lo: n - 1,
+                        hi: tracks.len() - 1,
+                        spans: spans.clone(),
+                        level: 0,
+                    });
+                }
+            }
+            let limits = adaptive::Limits {
+                passes: adaptive::Limits::OWNER.passes.saturating_sub(tally.added),
+                ..adaptive::Limits::OWNER
+            };
+            let outcome = adaptive::refine(
+                &family,
+                tracks,
+                intervals,
+                self.input.tool,
+                &settings,
+                &limits,
+                *points,
+                context,
+            )?;
+            tally.absorb(&outcome);
+            let own = outcome.own;
+            for track in outcome.tracks.iter().skip(own) {
+                for pass in &track.passes {
+                    *points =
+                        points.saturating_add(pass.points.len() as u64 + adaptive::LINK_POINTS);
+                    added.push(pass.clone());
+                }
+            }
+            // The wrap and the neighbours' lines are measured, not cut here.
+            let mut order: Vec<&Track> = outcome
+                .tracks
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i < n || i >= own)
+                .map(|(_, t)| t)
+                .collect();
+            order.sort_by(|p, q| p.c.total_cmp(&q.c));
+            for (i, track) in order.into_iter().enumerate() {
+                // Round the part the lines alternate in X, so A turns
+                // between them off the end of the last (decision record
+                // 0212 part A item 2); side by side they keep their own way.
+                let forward = grouping != Grouping::Around || i % 2 == 0;
+                if forwards(&track.passes) == forward {
+                    ordered.extend(track.passes.iter().cloned());
+                } else {
+                    ordered.extend(track.passes.iter().rev().cloned().map(|mut p| {
+                        p.points.reverse();
+                        p
+                    }));
+                }
+            }
+        }
+        Ok((ordered, added))
+    }
+
+    /// The nearer outer lines of the positions either side of family `gi`
+    /// at A `a`, whose own lines run from `lo_c` to `hi_c` across the axis:
+    /// each at its offset across the axis as seen from `a`, below `lo_c`
+    /// and above `hi_c`, on the near side of the axis and within the stock.
+    #[allow(clippy::type_complexity)]
+    fn neighbours(
+        &self,
+        families: &[Vec<Member>],
+        per_family: &[Vec<Vec<Pass>>],
+        gi: usize,
+        a: f64,
+        (lo_c, hi_c): (f64, f64),
+    ) -> (Option<(f64, Vec<Pass>)>, Option<(f64, Vec<Pass>)>) {
+        let count = families.len();
+        let mut below: Option<(f64, Vec<Pass>)> = None;
+        let mut above: Option<(f64, Vec<Pass>)> = None;
+        if count < 2 {
+            return (below, above);
+        }
+        let mid = families
+            .get(gi)
+            .and_then(|g| g.first())
+            .map_or(0.0, |m| 0.5 * (m.x0 + m.x1));
+        let mut seen = Vec::new();
+        for other in [(gi + count - 1) % count, (gi + 1) % count] {
+            if other == gi || seen.contains(&other) {
+                continue;
+            }
+            seen.push(other);
+            let Some(lines) = per_family.get(other) else {
+                continue;
+            };
+            for passes in [lines.first(), lines.last()].into_iter().flatten() {
+                // The line's point nearest the middle of the length, as seen
+                // from `a`.
+                let Some(point) = passes
+                    .iter()
+                    .flat_map(|p| &p.points)
+                    .min_by(|p, q| (p.tip.x - mid).abs().total_cmp(&(q.tip.x - mid).abs()))
+                else {
+                    continue;
+                };
+                let at = self.rotary.to_axis(point.tip, Degrees(a));
+                if at.height <= 0.0 || at.across.abs() >= self.r_top {
+                    continue;
+                }
+                let c = at.across;
+                if c < lo_c - 1e-6 && below.as_ref().is_none_or(|(b, _)| c > *b) {
+                    below = Some((c, passes.clone()));
+                } else if c > hi_c + 1e-6 && above.as_ref().is_none_or(|(b, _)| c < *b) {
+                    above = Some((c, passes.clone()));
+                }
+            }
+        }
+        (below, above)
+    }
+
+    /// The passes of `line` in `layer`, cut where there was material as the
+    /// layer started and the region allows: a line adaptive spacing adds.
+    fn fit_line(
+        &self,
+        line: &Line,
+        layer: &Layer<'_>,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        context.check_cancelled()?;
+        let indices: Vec<usize> = (0..=line.fine).collect();
+        let probes: Vec<(Option<f64>, bool)> =
+            parallel::map_in_order(&indices, |f| self.probe(line.site(*f as f64)));
+        let floors: Vec<Option<f64>> = probes.iter().map(|p| p.0).collect();
+        let allowed: Vec<bool> = probes.iter().map(|p| p.1).collect();
+        let edges = self.edges(&allowed, &|f: f64| line.site(f));
+        let ends = RunEnds {
+            allowed: if edges.is_empty() { &[] } else { &allowed },
+            edges: &edges,
+        };
+        let site = |f: usize| line.site(f as f64);
+        let active: Vec<bool> = (0..=line.fine / SUB)
+            .map(|i| {
+                let f = i * SUB;
+                let tip = floors
+                    .get(f)
+                    .copied()
+                    .flatten()
+                    .map_or(layer.level, |v| v.max(layer.level));
+                allowed.get(f).copied().unwrap_or(false) && self.had_material(layer, site(f), tip)
+            })
+            .collect();
+        Ok(Self::runs(&active, |i| Self::joined(&allowed, i))
+            .into_iter()
+            .map(|run| {
+                let sites = self.run_points(run, layer.level, &floors, &site, &ends);
+                self.pass(&sites, layer.stock)
+            })
+            .collect())
+    }
+
+    /// Whether more than the smallest cut stood above the tool with its tip
+    /// at `tip` at `site` as `layer` started.
+    fn had_material(&self, layer: &Layer<'_>, site: Site, tip: f64) -> bool {
+        layer.start.excess(
+            self.input.tool,
+            self.material_x(site.x),
+            site.a,
+            self.material_across(site.across),
+            tip,
+        ) > self.min_cut
+    }
+
+    /// The cut positions of `pass` and the tip's height at each.
+    fn sites_of(&self, pass: &Pass) -> Vec<(Site, f64)> {
+        pass.points
+            .iter()
+            .map(|p| {
+                let at = self.rotary.to_axis(p.tip, p.a);
+                (
+                    Site {
+                        x: at.along,
+                        a: p.a.0,
+                        across: at.across,
+                    },
+                    at.height,
+                )
+            })
+            .collect()
+    }
+}
+
+/// Whether `passes` run towards higher X.
+fn forwards(passes: &[Pass]) -> bool {
+    let first = passes.first().and_then(|p| p.points.first());
+    let last = passes.last().and_then(|p| p.points.last());
+    match (first, last) {
+        (Some(p), Some(q)) => p.tip.x <= q.tip.x,
+        _ => true,
+    }
+}
+
+/// One line of a family: its position across the family, its A, and its X
+/// range.
+#[derive(Debug, Clone, Copy)]
+struct Member {
+    c: f64,
+    a: f64,
+    x0: f64,
+    x1: f64,
+    /// Coarse nodes from `x0` to `x1`, less one: where the line tests for
+    /// material.
+    nodes: usize,
+}
+
+/// The families of `lines`, in the order the lines are given, each line in
+/// exactly one.
+fn groups(lines: &[Line], grouping: Grouping) -> Vec<Vec<Member>> {
+    let mut out: Vec<Vec<Member>> = Vec::new();
+    for line in lines {
+        let LineKind::AlongX {
+            x0,
+            length,
+            a,
+            across,
+            ..
+        } = line.kind
+        else {
+            // Only lines along the axis are spaced; any other line stands
+            // alone.
+            out.push(vec![Member {
+                c: 0.0,
+                a: 0.0,
+                x0: 0.0,
+                x1: 0.0,
+                nodes: 0,
+            }]);
+            continue;
+        };
+        let member = Member {
+            nodes: line.fine / SUB,
+            c: match grouping {
+                Grouping::Across | Grouping::Positions => across,
+                Grouping::Around => a,
+            },
+            a,
+            x0,
+            x1: x0 + length,
+        };
+        let joins = |m: &Member| match grouping {
+            Grouping::Around => true,
+            Grouping::Across | Grouping::Positions => {
+                m.a.to_bits() == a.to_bits()
+                    && m.x0.to_bits() == member.x0.to_bits()
+                    && m.x1.to_bits() == member.x1.to_bits()
+                    && m.nodes == member.nodes
+            }
+        };
+        match out.last_mut() {
+            Some(group) if group.first().is_some_and(joins) => group.push(member),
+            _ => out.push(vec![member]),
+        }
+    }
+    out
+}
+
+/// The lines of one family in one layer, for adaptive spacing: across it
+/// the offset from the axis (at one A) or the angle, along it model X.
+struct LineFamily<'f> {
+    /// The job measuring and fitting, its drops counted.
+    job: &'f Job<'f>,
+    counter: &'f Counting<'f>,
+    layer: &'f Layer<'f>,
+    grouping: Grouping,
+    /// The family's A, side by side across the axis.
+    a: f64,
+    /// The X of the family's first coarse node, the distance between nodes
+    /// and how many intervals: every line of the family, the added ones too,
+    /// tests for material at these X, so what the measure counts an added
+    /// line can cut.
+    x0: f64,
+    step: f64,
+    nodes: usize,
+    /// The offsets across the axis of the position's own lines, outermost:
+    /// a line is added only between them (indexed form).
+    own: (f64, f64),
+    pose_step: f64,
+    window: f64,
+    station: f64,
+}
+
+impl LineFamily<'_> {
+    /// Whether a line of the family at `c` would cut at a coarse node `k`:
+    /// the region allows it and material stood there above the tool.
+    fn node_cuts(&self, c: f64, k: usize) -> bool {
+        let site = self.site(self.x0 + self.step * k as f64, c);
+        let (floor, allowed) = self.job.probe(site);
+        let level = self.layer.level;
+        allowed
+            && self
+                .job
+                .had_material(self.layer, site, floor.map_or(level, |f| f.max(level)))
+    }
+
+    /// Whether a line of the family at `c` would run over `x`: it cuts at
+    /// the coarse nodes either side.
+    fn runs_over(&self, x: f64, c: f64) -> bool {
+        if self.step.is_nan() || self.step <= 0.0 {
+            return false;
+        }
+        let t = (x - self.x0) / self.step;
+        if !(t >= 0.0 && t <= self.nodes as f64) {
+            return false;
+        }
+        let k = (t.floor() as usize).min(self.nodes.saturating_sub(1));
+        self.node_cuts(c, k) && self.node_cuts(c, k + 1)
+    }
+
+    fn site(&self, x: f64, c: f64) -> Site {
+        match self.grouping {
+            Grouping::Across | Grouping::Positions => Site {
+                x,
+                a: self.a,
+                across: c,
+            },
+            Grouping::Around => Site {
+                x,
+                a: c,
+                across: 0.0,
+            },
+        }
+    }
+}
+
+impl Family for LineFamily<'_> {
+    fn pose(&self, c: f64, s: f64) -> (f64, Degrees) {
+        (s, Degrees(c))
+    }
+
+    fn at(&self, c: f64, s: f64) -> (f64, Degrees) {
+        let site = self.site(s, c);
+        (site.x, Degrees(site.a))
+    }
+
+    fn poses(&self, _c: f64, pass: &Pass) -> Vec<Pose> {
+        adaptive::machine_poses(&self.job.rotary, pass, self.pose_step, |tip, _| tip.x)
+    }
+
+    /// The operation's target under the tool at `x`, `c`: the part with its
+    /// stock to leave, where the layer's tool rests on it, and for Facing the
+    /// face, on the layer that cuts it. A roughing layer's own level above
+    /// the part is not a target: the layers below cut it again (the owner's
+    /// choice on OI-1453, 31 Oct 2026, relayed by the coordinator). Nothing
+    /// where the region excludes the site or no line of the family would run
+    /// there.
+    fn probe(&self, x: f64, c: Degrees) -> Option<(Point3, f64)> {
+        let site = self.site(x, c.0);
+        let (floor, allowed, on_part) = self.job.probe_part(site);
+        let level = self.layer.level;
+        // Facing's own face is its target too, on the layer that cuts it.
+        let face = self.job.face.is_some_and(|f| (f - level).abs() <= 1e-9);
+        let target = match (floor, on_part) {
+            (Some(f), Some(contact)) if f >= level => Some((contact, self.job.leave)),
+            _ if face => {
+                let tip = floor.map_or(level, |f| f.max(level));
+                Some((self.job.cut_point(site, tip).tip, 0.0))
+            }
+            _ => None,
+        };
+        // Only where a line here would run: elsewhere no added line could
+        // cut what is measured.
+        if !allowed || !self.runs_over(x, c.0) {
+            return None;
+        }
+        target
+    }
+
+    fn fit(&self, c: f64, span: (f64, f64), context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        // On the family's own nodes, from the one at or before the span's
+        // start to the one at or after its end.
+        let (lo, hi) = (span.0.min(span.1), span.0.max(span.1));
+        if self.step.is_nan() || self.step <= 0.0 || lo.is_nan() || hi.is_nan() {
+            return Ok(Vec::new());
+        }
+        let node = |x: f64, round: fn(f64) -> f64| {
+            (round((x - self.x0) / self.step).max(0.0) as usize).min(self.nodes)
+        };
+        let (k0, k1) = (node(lo, f64::floor), node(hi, f64::ceil));
+        if k1 <= k0 {
+            return Ok(Vec::new());
+        }
+        let x0 = self.x0 + self.step * k0 as f64;
+        let site = self.site(x0, c);
+        let line = Line {
+            kind: LineKind::AlongX {
+                x0,
+                length: self.step * (k1 - k0) as f64,
+                a: site.a,
+                across: site.across,
+                reverse: false,
+            },
+            fine: (k1 - k0) * SUB,
+        };
+        self.job.fit_line(&line, self.layer, context)
+    }
+
+    fn width(&self, dc: f64) -> f64 {
+        match self.grouping {
+            Grouping::Across | Grouping::Positions => dc.abs(),
+            Grouping::Around => self.layer.level.max(0.0) * dc.to_radians().abs(),
+        }
+    }
+
+    fn window(&self) -> f64 {
+        self.window
+    }
+
+    fn station_step(&self) -> f64 {
+        self.station
+    }
+
+    fn margin(&self) -> f64 {
+        self.job.grown.cutting_radius()
+    }
+
+    fn queries(&self) -> u64 {
+        self.counter.count()
+    }
+
+    /// Between two A positions of the indexed form a vertical tool at
+    /// either A is taken as unable to clean the surface: what is left there
+    /// is measured and said, not refined (as indexed finishing; decision
+    /// record 0239 item 3).
+    fn reachable(&self, c: f64) -> bool {
+        self.grouping != Grouping::Positions || (c >= self.own.0 - 1e-9 && c <= self.own.1 + 1e-9)
+    }
+
+    fn probe_cost(&self) -> u64 {
+        // The sample and the two nodes either side; a region's check surface
+        // and the region's own test can drop again at each.
+        if self.job.region.is_some() { 12 } else { 3 }
     }
 }
