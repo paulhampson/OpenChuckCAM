@@ -272,6 +272,20 @@ impl UserSettings {
         self.recent.truncate(RECENT_KEPT);
     }
 
+    /// Drops the recent projects whose folder is gone; whether any was
+    /// dropped. The rest keep their order. It only looks at the file system
+    /// (no network), and a folder that cannot be read counts as gone.
+    pub fn forget_missing(&mut self) -> bool {
+        let before = self.recent.len();
+        self.recent.retain(|p| p.is_dir());
+        self.recent.len() != before
+    }
+
+    /// Forgets every recent project.
+    pub fn clear_recent(&mut self) {
+        self.recent.clear();
+    }
+
     /// Whether the inspector section `section` of an item of `kind` is open;
     /// `default` when the user has not chosen.
     pub fn section_open(&self, kind: &str, section: &str, default: bool) -> bool {

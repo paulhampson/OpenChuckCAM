@@ -68,6 +68,8 @@ mod checkpoint_tests;
 mod open_recovery_tests;
 #[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};

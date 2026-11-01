@@ -19,6 +19,8 @@
 use eframe::egui::{self, output::OutputEvent};
 use openchuck_app::{Event, JobId, job_label};
 
+use std::path::PathBuf;
+
 use super::{Dialog, Shell};
 use crate::logging;
 
@@ -66,12 +68,12 @@ pub(super) fn click_text(event: &OutputEvent) -> Option<String> {
     if !matches!(info.role, Button | CheckBox | Link) {
         return None;
     }
-    let label = info
-        .label
-        .as_deref()?
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    click_line(info.label.as_deref()?)
+}
+
+/// The log text for a click on the control labelled `label`.
+fn click_line(label: &str) -> Option<String> {
+    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
     if label.is_empty() {
         return None;
     }
@@ -82,6 +84,25 @@ pub(super) fn click_text(event: &OutputEvent) -> Option<String> {
         ""
     };
     Some(format!("click: '{shown}{more}'"))
+}
+
+/// The click lines of a frame with a click on a recent project (labelled with
+/// its folder's name, which is the user's) logged as the command alone.
+pub(super) fn without_folder_names(lines: Vec<String>, folders: &[PathBuf]) -> Vec<String> {
+    let private: Vec<String> = folders
+        .iter()
+        .filter_map(|f| click_line(&super::frame::recent_label(f)))
+        .collect();
+    lines
+        .into_iter()
+        .map(|line| {
+            if private.contains(&line) {
+                "click: 'Open recent project'".to_owned()
+            } else {
+                line
+            }
+        })
+        .collect()
 }
 
 impl Recorder {
@@ -173,7 +194,8 @@ impl Shell {
         for line in lines.into_iter().flatten() {
             logging::action(&line);
         }
-        for line in ctx.output(|o| o.events.iter().filter_map(click_text).collect::<Vec<_>>()) {
+        let clicks = ctx.output(|o| o.events.iter().filter_map(click_text).collect::<Vec<_>>());
+        for line in without_folder_names(clicks, &self.settings.recent) {
             logging::action(&line);
         }
         let mut open = Vec::new();

@@ -627,6 +627,41 @@ impl Shell {
         });
     }
 
+    /// The File menu's "Open recent" submenu (issue 381; UI-15): the recent
+    /// project folders, newest first, each by its folder name with the full
+    /// path on hover, then "Clear recent list". A folder that is gone is
+    /// forgotten when the menu is drawn. A choice goes through the ordinary
+    /// Open command, so the unsaved-changes question and the recovery rules
+    /// (decision 0460) apply; the Open dialog shows the folder to confirm.
+    fn recent_menu(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.menu_button("Open recent", |ui| {
+            let recent = self.recent_projects();
+            if recent.is_empty() {
+                ui.add_enabled(false, egui::Button::new("No recent projects"));
+                return;
+            }
+            for (index, folder) in recent.iter().enumerate() {
+                let clicked = ui
+                    .push_id(index, |ui| {
+                        ui.button(recent_label(folder))
+                            .on_hover_text(super::checkpoints::shown(folder))
+                            .clicked()
+                    })
+                    .inner;
+                if clicked {
+                    self.open_recent(folder, ctx);
+                    ui.close();
+                }
+            }
+            ui.separator();
+            if ui.button("Clear recent list").clicked() {
+                self.settings.clear_recent();
+                self.settings_touched();
+                ui.close();
+            }
+        });
+    }
+
     /// The menus: File, Edit, View, Project, Tools and Help (specification
     /// section 3). Every command is here, with its key (UI-14).
     #[allow(clippy::too_many_lines)]
@@ -645,6 +680,7 @@ impl Shell {
                 if ui.add(o).clicked() {
                     self.request(Next::Open, &ctx);
                 }
+                self.recent_menu(ui, &ctx);
                 let import =
                     egui::Button::new("Import model…").shortcut_text(ctx.format_shortcut(&IMPORT));
                 if ui
@@ -1530,6 +1566,15 @@ fn view_step(step: Step) -> ViewStep {
         Step::Operations => ViewStep::Operations,
         Step::Simulate => ViewStep::Simulate,
     }
+}
+
+/// How a recent project is listed: its folder's name, or the whole path for
+/// a folder with no name (such as a drive root).
+pub(super) fn recent_label(folder: &std::path::Path) -> String {
+    folder.file_name().map_or_else(
+        || super::checkpoints::shown(folder),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 #[cfg(test)]
