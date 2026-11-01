@@ -419,7 +419,11 @@ pub fn no_default_line(
 /// The read-only line of a tab's length along X compared with the tools of
 /// the setup's operations (11.7 item 4; decision 0470), and whether it is a
 /// warning: "3.000 mm, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1
-/// Rough". The name is kept from when the line compared the diameter.
+/// Rough".
+///
+/// This is the length-against-tool line of the panel ("Length vs tools"). The
+/// name `narrowest_line` is kept from when the line compared the diameter, so
+/// the public API does not change; renaming it is OI-1660.
 pub fn narrowest_line(tab: &Tab, tools: &[crate::workholding::SetupTool]) -> (String, bool) {
     let d = tab.length.0;
     let widest = tools

@@ -3,7 +3,7 @@
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049): the owner chose option A of three (below). Amends item 6 of [decision 0035](0035-workholding-and-retaining-tabs.md) and the owner's answer on OI-159.
 - **Date:** 1 Nov 2026.
 - **Issue:** #438, "Tabs diameter is checked against tool width" (build 0.30.0).
-- **Open items:** OI-159 is closed by 0035's answer and stays closed; its register text is corrected to the new rule. No new open item. No project schema change; no library version change.
+- **Open items:** OI-159 is closed by 0035's answer and stays closed; its register text is corrected to the new rule. New OI-1660 (rename `narrowest_line`). No project schema change; no library version change.
 
 ## Context
 
