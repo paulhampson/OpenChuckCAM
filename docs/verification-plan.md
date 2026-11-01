@@ -428,7 +428,7 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Determinism.** The same path at 1, 2 and N threads.
 - **Refusals.** An unknown pass shape is refused by name; an absurd stepover is refused as for the spiral.
 
-**The other spiral strategies** ([decision 0420](decisions/0420-rings-for-rest-roughing-and-round-facing.md), proposed). OP-02, OP-03, OP-09, OP-11, OP-12, OP-14, OP-15, OP-24, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/spiral_rings.rs` unless named:
+**The other spiral strategies** ([decision 0420](decisions/0420-rings-for-rest-roughing-and-round-facing.md), accepted 1 Nov 2026, relayed). OP-02, OP-03, OP-09, OP-11, OP-12, OP-14, OP-15, OP-24, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/spiral_rings.rs` unless named:
 
 - **Shape.** Rest machining (both rotations, two start angles), continuous rotary roughing around the part (two start angles) and round Facing cut every move either at constant X turning A the set way, or along X at constant A a whole number of turns from the start angle, with rings no wider apart than the stepover; rest's rings reach both ends of the part. A never reverses within a cut (OP-15).
 - **Rest cuts only where material is left.** On a stepped shaft with clean stock over its large end, the rings cut no further onto the clean part than the spiral does.
