@@ -663,11 +663,14 @@ impl SetupSheet {
             // The held regions and tabs the toolpath was made with (SET-09,
             // OP-21; OI-918), so the stock can be loaded from the sheet.
             // The part is inspected only when something needs it: an
-            // automatic tab, or a held region on offset-stock, whose extent
-            // comes from the part.
+            // automatic tab, or a held region or Clearance from stock on
+            // offset-stock, whose extent comes from the part (decision 0530:
+            // the sheet gives the clearance the program uses).
             let held = setup.workholding.start.is_some() || setup.workholding.end.is_some();
+            let from_stock = setup.clearance_rules.from_stock.is_some();
             let needs_part = setup.workholding.tabs.iter().any(|t| t.auto.is_some())
-                || (held && matches!(setup.stock, Some(Stock::OffsetBoundingBox { .. })));
+                || ((held || from_stock)
+                    && matches!(setup.stock, Some(Stock::OffsetBoundingBox { .. })));
             let extent = if needs_part { part(setup) } else { None };
             let workholding = setup
                 .workholding
