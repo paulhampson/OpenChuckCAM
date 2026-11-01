@@ -1,4 +1,4 @@
-# 0450: Swarf lifts the tool's tip off an avoid or check set, and takes a negative tip extension (OP-02, OP-07, OP-11, OP-12, GC-07, NFR-06, NFR-07, NFR-12; issue #435; lane SWARF-FLOOR)
+# 0491: Swarf lifts the tool's tip off an avoid or check set, and takes a negative tip extension (OP-02, OP-07, OP-11, OP-12, GC-07, NFR-06, NFR-07, NFR-12; issue #435; lane SWARF-FLOOR)
 
 - **Status:** accepted (1 Nov 2026, by the project owner, relayed by the coordinator; decision 0049), including the whole-face reading of item 2 and the effect on existing swarf operations with avoid or check sets (item 1). Proposed by lane SWARF-FLOOR on 1 Nov 2026. The owner's decisions, relayed by the coordinator on 1 Nov 2026: OI-1620 option A (item 1), OI-1621 option A (item 2), OI-1622 option C (item 3, tracked as issue #442).
 - **What it amends:**
@@ -9,7 +9,7 @@
 - **Date:** 1 Nov 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-1620, OI-1621 and OI-1622 are new and closed by the owner's decisions; OI-1623 is new and closed by item 1's changes to the guard. OI-237 and OI-636 stay open.
 
-Numbering: 0450 and OI-1620 to OI-1623 were given to the lane by the coordinator and checked free across `main` and the 32 remote branches on 1 Nov 2026. No project schema number.
+Numbering: written as 0450, from a range the coordinator gave the lane; renumbered 0491 at the release merge, the next number after the highest on `main` (0490), under the owner's rule of 1 Nov 2026 that decision numbers run on with no reserved ranges. OI-1620 to OI-1623 keep their numbers. No project schema number.
 
 ## Context
 

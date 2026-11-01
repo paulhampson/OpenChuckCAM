@@ -125,7 +125,7 @@ const GUARD_GRID: usize = 33;
 /// surface.
 const GUARD_STEPS: u32 = 16;
 /// The part of a ruling a lift clear of an avoid or check surface must leave
-/// in contact with the flank (decision record 0450 item 1): a position that
+/// in contact with the flank (decision record 0491 item 1): a position that
 /// needs a larger lift is cut short instead.
 const LIFT_KEEP: f64 = 0.25;
 /// Bisections that find the least lift clear of an avoid or check surface.
@@ -512,7 +512,7 @@ pub struct Pose {
     /// The engaged length of the ruling, in millimetres.
     pub ruling_length: f64,
     /// How far the tip is lifted up the ruling, in millimetres, to keep
-    /// clear of the avoid and check surfaces (decision record 0450 item 1).
+    /// clear of the avoid and check surfaces (decision record 0491 item 1).
     pub lift: f64,
 }
 
@@ -596,12 +596,12 @@ pub struct Limits {
     /// millimetres.
     pub tip_raised: f64,
     /// The most the tip is lifted up a ruling to keep clear of the avoid and
-    /// check surfaces, in millimetres (decision record 0450 item 1).
+    /// check surfaces, in millimetres (decision record 0491 item 1).
     pub tip_lifted: f64,
     /// The kinds of surface the tip is lifted clear of, avoid before check.
     pub lifted_clear_of: Vec<Protection>,
     /// How far up the rulings a negative tip extension starts the flank, in
-    /// millimetres (decision record 0450 item 2); zero otherwise.
+    /// millimetres (decision record 0491 item 2); zero otherwise.
     pub tip_up: f64,
     /// The length along the face, in millimetres, whose rulings are no
     /// longer than a negative tip extension, so are not cut.
@@ -610,7 +610,7 @@ pub struct Limits {
     /// tip, along the tool axis, in millimetres, before any lift: the
     /// height of the flank's start above the tip (a ball or corner radius)
     /// plus the tip extension. Negative when it stays short of it (decision
-    /// record 0450 item 2).
+    /// record 0491 item 2).
     pub end_reach: f64,
     /// The length along the face left uncut because the tool would cut into
     /// an avoid surface there, in millimetres.
@@ -652,7 +652,7 @@ impl Limits {
     fn describe(&self) -> String {
         let mut out = String::new();
         // Where the tool's end sits against the end of the rulings (decision
-        // record 0450 item 2), shown to the precision of the notes.
+        // record 0491 item 2), shown to the precision of the notes.
         if self.tip_up > SAME_POINT {
             out.push_str(&format!(
                 " The tip sits {:.3} mm up the rulings (a negative tip extension), so a strip \
@@ -967,7 +967,7 @@ fn ruling_over(
 }
 
 /// `ruling` with its tip end moved `by` millimetres along it towards the far
-/// end (decision record 0450): the end the tip sits at is the low end of
+/// end (decision record 0491): the end the tip sits at is the low end of
 /// the ruling's parameter for `sign` +1, the high end for -1. `None` when
 /// that leaves nothing of it.
 fn shortened(
@@ -1408,7 +1408,7 @@ impl Guard {
     }
 
     /// Whether the tool keeps off the surface between its samples too, as a
-    /// lift aims to (decision record 0450 item 1): at each sample its
+    /// lift aims to (decision record 0491 item 1): at each sample its
     /// clearance is at least the tolerance beyond the limit at which it
     /// breaks the surface, plus how much nearer the surface may come
     /// between that sample and the next. That is the spacing times the sine
@@ -1494,7 +1494,7 @@ fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<(Point3, Vec3, f
     // The trimmed edge of the face, where each grid line leaves it (or meets
     // the edge of the parameter box with a point not inside by rounding):
     // the grid alone can miss it by up to a spacing, and a floor is often
-    // highest at its edge (decision record 0450 item 1).
+    // highest at its edge (decision record 0491 item 1).
     let edge = |a: Uv, b: Uv| {
         let (mut inner, mut outer) = (a, b);
         for _ in 0..EDGE_STEPS {
@@ -1715,7 +1715,7 @@ pub fn face_path(
     };
     let closed = closed && outside_boundary <= SAME_POINT && runs.len() == whole.len();
     // A negative tip extension starts the flank that far up the rulings
-    // (decision record 0450 item 2): the rulings are shortened at the tip
+    // (decision record 0491 item 2): the rulings are shortened at the tip
     // end, and the tool is placed on what is left with no extension.
     let up = (-settings.tip_extension).max(0.0);
     let placing = Settings {
@@ -1725,7 +1725,7 @@ pub fn face_path(
     let rule = |t: f64| bounded(t).and_then(|r| shortened(face, family, &r, sign, up));
     // Rulings no longer than a negative tip extension are not cut, and the
     // pass stops where they start; a face with none longer is refused
-    // (decision record 0450 item 2).
+    // (decision record 0491 item 2).
     let (runs, too_short) = if up > 0.0 {
         let kept: Vec<(f64, f64)> = runs
             .iter()
@@ -1786,7 +1786,7 @@ pub fn face_path(
     // (the stock to leave clear of a check surface), with what the surface
     // may come nearer between its samples allowed for, the tip is first
     // lifted up the ruling by the least that keeps it off, found by
-    // bisection (decision record 0450 item 1). The lift aims a tolerance
+    // bisection (decision record 0491 item 1). The lift aims a tolerance
     // inside the limit at which a position breaks the surface, so the motion
     // between two lifted poses, which passes over other samples of the
     // surface, stays within that limit. Where even the most lift allowed
@@ -1875,7 +1875,7 @@ pub fn face_path(
             // an avoid or check surface, the move is split too where the
             // surface rises between its poses: the pose half way along needs
             // more lift than either end, and the tool there breaks the
-            // surface (decision record 0450 item 1).
+            // surface (decision record 0491 item 1).
             let lifted_move = p.lift > a.lift.max(b.lift) + SAME_POINT && {
                 let (tip, axis) = between(&a, &b, 0.5, rotary);
                 first_broken((tip, axis, p.contact, p.ruling_length)).is_some()
@@ -2693,7 +2693,7 @@ fn swarf(
 mod tests {
     use super::*;
 
-    /// Decision record 0450 item 1: an avoid or check face is sampled where
+    /// Decision record 0491 item 1: an avoid or check face is sampled where
     /// its grid lines meet its trimmed edge, so the edge (where a floor is
     /// often highest) is never further from a sample than about half the
     /// spacing along it. A floor trimmed by a diagonal edge, from (45, 20) to

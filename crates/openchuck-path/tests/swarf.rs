@@ -1310,7 +1310,7 @@ fn req_nfr_07_req_op_07_a_mesh_a_region_and_a_cancelled_job_are_refused_clearly(
         .unwrap();
     assert!(err.to_string().contains("not a region"), "{err}");
     // A negative tip extension is no longer refused by the schema (decision
-    // 0450 item 2): one that leaves nothing of the rulings is refused by the
+    // 0491 item 2): one that leaves nothing of the rulings is refused by the
     // strategy, in
     // `req_op_07_req_nfr_07_a_tip_extension_that_lifts_the_tool_off_the_whole_ruling_is_refused`.
     // Cancellation is an error, not a path.
@@ -1852,7 +1852,7 @@ fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_
     // with its tip at the foot only meets it, so nothing changes. A tip
     // extension of 0.5 mm would cut into it everywhere, so the tool is lifted
     // back up the rulings by the least that keeps it off the floor (decision
-    // 0450 item 1, amending decision 0176 item 4, which refused the face).
+    // 0491 item 1, amending decision 0176 item 4, which refused the face).
     let f = Fixture::brep(&limit_wall(), flat());
     let floor = BrepSurface::new(&floor_model()).unwrap();
     let avoid = RegionConstraint {
@@ -1878,11 +1878,11 @@ fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_
     assert!(floor_cut(&f.tool, &lifted) <= TOL + CHECKER_SLACK);
 }
 
-// ---- the tip clears a floor (issue #435; decision 0450) -------------------
+// ---- the tip clears a floor (issue #435; decision 0491) -------------------
 
 /// How much more than the least a lift may be: it keeps the tool off the
 /// samples of the surface by what the surface may come nearer between them
-/// (decision 0450 item 1), r / 512 for a rounded end over a flat floor with
+/// (decision 0491 item 1), r / 512 for a rounded end over a flat floor with
 /// the samples an eighth of the radius apart (OI-636; 0.006 mm for r = 3).
 const LIFT_RESOLUTION: f64 = 0.006;
 
@@ -1946,7 +1946,7 @@ fn floor_cut(tool: &RevolvedProfile, path: &swarf::FacePath) -> f64 {
 fn req_op_02_req_op_07_req_op_12_a_floor_in_an_avoid_set_lifts_a_ball_tool_instead_of_refusing() {
     // A ball tool's flank starts a radius above its tip, so with the flank
     // at the foot of the wall the ball reaches 3 mm into the floor. Before
-    // decision 0450 the floor as an avoid set refused the face ("nothing of
+    // decision 0491 the floor as an avoid set refused the face ("nothing of
     // it is left to cut", issue #435); now the tip is lifted up the rulings
     // by the least that keeps it off the floor, all along.
     let f = Fixture::brep(&limit_wall(), ball());
@@ -2154,7 +2154,7 @@ fn req_op_02_req_op_07_req_op_12_a_check_set_lifts_the_tool_the_stock_to_leave_c
 fn req_op_02_req_op_07_a_surface_the_side_of_the_tool_meets_still_cuts_the_pass_short() {
     // A lift clears what the tip end meets; a wall across the pass is met by
     // the side of the tool however far it is lifted, so the pass is still
-    // cut short there (decision 0450 item 1), and nothing is lifted.
+    // cut short there (decision 0491 item 1), and nothing is lifted.
     let f = Fixture::brep(&limit_wall(), flat());
     let end = BrepSurface::new(&cross_plane(38.0, 8.0, 20.0, Z0, Z1)).unwrap();
     let avoid = RegionConstraint {
@@ -2168,7 +2168,7 @@ fn req_op_02_req_op_07_a_surface_the_side_of_the_tool_meets_still_cuts_the_pass_
 
 #[test]
 fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_leaves_the_strip() {
-    // Decision 0450 item 2: a negative tip extension starts the flank that far
+    // Decision 0491 item 2: a negative tip extension starts the flank that far
     // up the rulings. The strip below is left on purpose: it is not material
     // left, so the default limit of 0.1 mm does not refuse a 1 mm strip.
     let f = Fixture::brep(&limit_wall(), flat());
@@ -2226,7 +2226,7 @@ fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_l
 fn req_op_07_req_nfr_07_a_tip_extension_that_lifts_the_tool_off_the_whole_face_is_refused() {
     // The rulings of the limit wall are 8 mm long: -8 mm leaves nothing of
     // the face, which is refused naming the face, the value and the length
-    // (decision 0450 item 2).
+    // (decision 0491 item 2).
     let f = Fixture::brep(&limit_wall(), flat());
     let why = refused(&f, &[(swarf::parameter::TIP_EXTENSION, num(-8.0))]);
     assert!(
@@ -2264,7 +2264,7 @@ fn req_op_07_rulings_no_longer_than_a_negative_tip_extension_are_left_uncut_and_
     // A trimmed face has short rulings at its corners (on the blisk's blades,
     // 0.016 mm). They do not refuse the face: the rulings no longer than the
     // value are not cut, the pass stops where they start, and the note says
-    // how much of the face that is (decision 0450 item 2).
+    // how much of the face that is (decision 0491 item 2).
     let f = Fixture::brep(&sloping_top_wall(), flat());
     let up = Settings {
         tip_extension: -4.0,
@@ -2295,7 +2295,7 @@ fn req_op_07_rulings_no_longer_than_a_negative_tip_extension_are_left_uncut_and_
 
 #[test]
 fn req_op_07_req_nfr_12_each_face_note_says_how_far_the_tool_end_reaches_below_the_rulings() {
-    // Decision 0450 item 2: a ball or corner radius reaches below the end of
+    // Decision 0491 item 2: a ball or corner radius reaches below the end of
     // the rulings by its radius plus the tip extension, which is where a cut
     // into a floor comes from, so every face's note says it.
     let f = Fixture::brep(&limit_wall(), ball());

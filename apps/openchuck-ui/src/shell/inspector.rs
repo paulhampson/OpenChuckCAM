@@ -1281,7 +1281,7 @@ const CUT_SHORT_LIFTS: &str = "Where the tool would touch this set, it is lifted
                                roughed.";
 
 /// Cut short's tooltip on an avoid or check set of swarf, which first lifts
-/// the tool's tip up the face clear of the set (decision record 0450 items 1
+/// the tool's tip up the face clear of the set (decision record 0491 items 1
 /// and 3).
 const CUT_SHORT_LIFTS_TIP: &str = "Where the tip of the tool would break this set, the tool is \
                                    first lifted up the face it cuts, by the least that keeps it \
@@ -1870,7 +1870,7 @@ mod cut_short_tests {
     use super::{CUT_SHORT_LIFTS, CUT_SHORT_LIFTS_TIP, OnBreak, SelectionRole, cut_short_tip};
     use openchuck_app::SetOptionsShown;
 
-    /// Decision record 0450 items 1 and 3: on swarf, Cut short's tooltip
+    /// Decision record 0491 items 1 and 3: on swarf, Cut short's tooltip
     /// says the tip is lifted first, that a strip is left, and that a wall
     /// at an end of the face can be put in an avoid set; rotary roughing's
     /// check sets keep theirs, and every other choice and strategy the

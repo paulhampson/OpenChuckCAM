@@ -35,7 +35,7 @@ pub struct SetOptionsShown {
     pub check_lifts_tool: bool,
     /// Cut short first lifts the tool's tip up the face it cuts, clear of
     /// an avoid or check set, and stops the pass only where no lift clears
-    /// it: swarf (decision record 0450 item 1).
+    /// it: swarf (decision record 0491 item 1).
     pub cut_short_lifts_tip: bool,
 }
 

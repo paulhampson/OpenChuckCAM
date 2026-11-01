@@ -2584,7 +2584,7 @@ mod tests {
         );
     }
 
-    /// The fixture of the swarf floor (decision 0450, issue #435): the flat
+    /// The fixture of the swarf floor (decision 0491, issue #435): the flat
     /// wall of [`swarf_limits_fixture`] (face 0) and the floor at its foot
     /// (face 1, `z = FOOT`, facing +Z), cut by a flat end mill.
     fn swarf_floor_fixture(parameters: &[(&str, Value)]) -> Fixture {
@@ -2622,8 +2622,8 @@ mod tests {
     fn req_op_02_req_op_07_req_op_12_swarf_lifts_the_tool_clear_of_a_floor_in_an_avoid_set() {
         // A tip extension of 0.5 mm reaches into the floor; with the floor in
         // an avoid set on Cut short the tool is lifted back off it, the whole
-        // wall is still cut, and the note says so (decision 0450 item 1).
-        // Before decision 0450 the face was refused (issue #435).
+        // wall is still cut, and the note says so (decision 0491 item 1).
+        // Before decision 0491 the face was refused (issue #435).
         let reach = [(swarf::parameter::TIP_EXTENSION, Value::Number(0.5))];
         let plain = swarf_floor_fixture(&reach).run().unwrap();
         assert!(
@@ -2652,7 +2652,7 @@ mod tests {
             path.notes
         );
         // A negative tip extension is taken through the application and
-        // pulls the tool up the wall (decision 0450 item 2).
+        // pulls the tool up the wall (decision 0491 item 2).
         let up = swarf_floor_fixture(&[(swarf::parameter::TIP_EXTENSION, Value::Number(-1.0))])
             .run()
             .unwrap();

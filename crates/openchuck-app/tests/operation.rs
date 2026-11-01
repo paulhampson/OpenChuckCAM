@@ -1517,7 +1517,7 @@ fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself(
 
 #[test]
 fn req_op_02_req_op_07_swarf_says_cut_short_lifts_the_tip_first() {
-    // Decision 0450 item 1: on swarf, Cut short lifts the tool's tip clear
+    // Decision 0491 item 1: on swarf, Cut short lifts the tool's tip clear
     // of an avoid or check set before it stops the pass, so the Geometry
     // section's tooltip says so for swarf only; rotary roughing keeps its
     // own (decision 0043 item 3).

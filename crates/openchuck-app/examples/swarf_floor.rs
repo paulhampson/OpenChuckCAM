@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Measures how far swarf cuts into the floor below the faces it cuts (lane
-//! SWARF-FLOOR; issue #435; decision record 0450). It changes nothing: it
+//! SWARF-FLOOR; issue #435; decision record 0491). It changes nothing: it
 //! reads a STEP part, places it on the rotary axis as `swarf_tolerance` does,
 //! runs swarf on the chosen faces with several tools and tip extensions, with
 //! and without the floor faces in an avoid set on Cut short, and measures the
