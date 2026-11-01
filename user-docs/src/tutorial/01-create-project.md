@@ -21,6 +21,6 @@ The program creates the folder and opens the empty project.
   <figcaption><b>Figure 2.</b> The empty project on the Model step. The row of steps runs along the top.</figcaption>
 </figure>
 
-The row of steps along the top is the order you work in. The marks beside each step show whether it is ready. At this point the program notes that the project has no machine yet; you add one in [step 3](03-machine.md).
+The row of four steps along the top is the order you work in. The marks beside each step show whether it is ready, and **G-code not written** says that nothing has been posted yet. At this point the program notes in **Messages** that the project has no machine; you add one in [step 3](03-machine.md).
 
-The program does not save by itself: use **File > Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) as you go. Edits in a form are applied when you press <kbd>Enter</kbd> or leave the field.
+The program does not save by itself: use **File > Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) as you go. The window title says when there are changes you have not saved. Edits in a form are applied when you press <kbd>Enter</kbd> or leave the field.

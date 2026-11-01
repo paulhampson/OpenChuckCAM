@@ -349,6 +349,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 - Licence and advisory reports are clean or have recorded decisions (NFR-10, NFR-14), and each spike in section 7 has a written result.
 - The warning that G-code must be verified before use is present and checked (NFR-12).
 - The user documentation for the release is current: the release workflow's documentation check passes and the documentation items of the application release checklist (`docs/releasing.md`) are ticked in the verification report ([decision 0400](decisions/0400-user-documentation-site.md), section R).
+- The release notes were drafted by a lane from the changelogs, merged pull requests and closed issues, and reviewed and edited by the owner before publication (`docs/releasing.md`, owner's choice of 1 Nov 2026).
 - A verification report is issued (below) and the plan has been reviewed against what actually happened.
 
 **Defect severity.**

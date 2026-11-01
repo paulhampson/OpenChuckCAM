@@ -4,15 +4,23 @@
 
 The words this guide uses for machining and for the program. A page links a term here the first time it uses it.
 
-<p class="letter-index">A · C · F · G · H · M · O · P · R · S · T · W</p>
+<p class="letter-index">A · B · C · F · G · H · M · O · P · R · S · T · W</p>
 
 ## A axis {#a-axis}
 
 The fourth axis of a rotary machine: the turning of the work about the [rotary axis](#rotary-axis). On the Makera Z1 it turns about X, and a positive A move turns the top of the chuck towards the front of the machine.
 
+## Adaptive spacing {#adaptive-spacing}
+
+A finishing setting that measures the material left between two neighbouring passes and adds passes where more than the **Allowed excess** would stand. It is on by default in new finishing operations. Where it cannot confirm the excess before it reaches its limits, it keeps the path made so far and marks it as partial.
+
 ## Air cut {#air-cut}
 
 A run of a program with no tool fitted and no material in the chuck, at reduced feed, to watch every move before anything can be damaged. See [Air cut on the Makera Z1](safety/air-cut.md).
+
+## Block {#block}
+
+One line of G-code that makes one move. A controller reads blocks one at a time, so many very short blocks in a row can be more than it can read at the programmed feed. See [Machine setup: short moves](how-to/short-block-settings.md).
 
 ## CAM {#cam}
 
