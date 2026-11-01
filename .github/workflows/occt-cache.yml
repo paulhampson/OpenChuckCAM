@@ -44,13 +44,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Seeds the cache the STEP kernel job reads, so it runs on the same pinned image
-          # (decision 0251, OI-1003); the cache key carries the image.
+          # Seeds the cache the STEP kernel job reads, on the same image (ubuntu-latest again since
+          # decision 0490 ended decision 0251's pin); the cache key carries the image.
           - os: ubuntu-latest
-            runner: ubuntu-24.04
           - os: windows-latest
           - os: macos-latest
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7

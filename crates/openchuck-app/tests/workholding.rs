@@ -227,7 +227,12 @@ fn build_with_mesh(
             operation(
                 "Rough",
                 "rotary_roughing",
-                vec![("stock_to_leave", ParameterValue::Number(0.5))],
+                // Adaptive spacing off: not what these check (decision
+                // 0239), and a new roughing operation has it on.
+                vec![
+                    ("stock_to_leave", ParameterValue::Number(0.5)),
+                    ("adaptive_spacing", ParameterValue::Flag(false)),
+                ],
             ),
         );
     }
