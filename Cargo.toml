@@ -78,8 +78,13 @@ cavalier_contours = "=0.9.0"
 # Geometry queries behind our own types (decision records 0002 and 0015); no
 # `spade` (triangulation), which the pathing core does not use.
 parry3d-f64 = { version = "=0.31.1", default-features = false, features = ["std", "alloc", "dim3", "f64"] }
-eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+# `clipboard` links the operating system clipboard (arboard), so copy and paste reach other
+# programs (decision 0600, issue #431). It is a default feature, so it must be named here.
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11", "clipboard"] }
 egui = { version = "=0.37.0", default-features = false, features = ["monochrome_emoji_fonts"] }
+# Dev-dependency of openchuck-ui only, for its OS clipboard test (decision 0600). No features: the
+# test must get the clipboard backend only through the eframe line above, or it would pass on its own.
+egui-winit = { version = "=0.37.0", default-features = false }
 wgpu = "=30.0.1"
 # Native open and save dialogs, `openchuck-ui` only (decision record 0029 item 15, OI-127).
 rfd = "=0.17.2"

@@ -24,5 +24,10 @@ log.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
 
+# The OS clipboard test (decision 0600) uses the backend eframe hands copied text to. It adds no
+# features of its own, so it sees the clipboard only if the eframe workspace line enables it.
+[dev-dependencies]
+egui-winit.workspace = true
+
 [lints]
 workspace = true
