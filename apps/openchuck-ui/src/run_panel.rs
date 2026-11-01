@@ -30,6 +30,10 @@ const GROUP_HINT: &str = "The same note for consecutive moves, with values withi
      other. Open it to see each move.";
 const NOTE: Color32 = DARK.warning;
 
+/// What Copy all says when pointed at (issue 431).
+const COPY_ALL_TIP: &str = "Copies every line of the results, and the build information, \
+     as plain text for a bug report.";
+
 /// How serious a line of the results is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -89,9 +93,29 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             ),
         ));
     }
+    // What the machine's feed limits did is one line per operation, and
+    // information, not a warning (issue 432). The per-move notes it replaces
+    // stay in the run's notes; only an operation that has such a line has
+    // its feed-limit notes left out, so an unread note is never hidden
+    // (NFR-12).
+    let mut summarised = Vec::new();
+    for (id, limit) in &run.feed_limits {
+        let operation = name(*id);
+        out.push(line(Severity::Info, limit.describe_for(&operation)));
+        summarised.push(format!("operation '{operation}': "));
+    }
+    let shown: Vec<String> = run
+        .notes
+        .iter()
+        .filter(|n| {
+            !(openchuck_app::note_groups::is_feed_limit_note(n)
+                && summarised.iter().any(|p| n.starts_with(p.as_str())))
+        })
+        .cloned()
+        .collect();
     // Repeated notes about consecutive moves are one line each (issue 255;
     // decision record 0218).
-    for group in openchuck_app::note_groups::group_notes(&run.notes) {
+    for group in openchuck_app::note_groups::group_notes(&shown) {
         out.push(ResultLine {
             severity: Severity::Warning,
             text: group.text,
@@ -183,6 +207,35 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             }
         }
     }
+    out
+}
+
+/// The results as plain text for a bug report: the summary line, every line
+/// of the window (a grouped line followed by the moves it holds), then the
+/// build information, so one paste says what ran and on which build (issue
+/// 431; NFR-12). What the window leaves out is left out here too.
+pub fn results_text(lines: &[ResultLine], summary: &str, build: &str) -> String {
+    let mut out = String::new();
+    out.push_str(summary);
+    out.push('\n');
+    for line in lines {
+        let tag = match line.severity {
+            Severity::Info => "",
+            Severity::Warning => "Warning: ",
+            Severity::Problem => "Problem: ",
+        };
+        out.push_str(tag);
+        out.push_str(&line.text);
+        out.push('\n');
+        for note in &line.moves {
+            out.push_str("    ");
+            out.push_str(note);
+            out.push('\n');
+        }
+    }
+    out.push('\n');
+    out.push_str(build.trim_end());
+    out.push('\n');
     out
 }
 
@@ -758,7 +811,7 @@ impl RunPanel {
                                 "The project has changed since this run. Generate again.",
                             );
                         }
-                        ui.label(format!(
+                        let summary = format!(
                             "{} operation(s), {} moves, {:.1} s to generate",
                             run.toolpath.groups.len(),
                             run.toolpath
@@ -767,20 +820,31 @@ impl RunPanel {
                                 .map(|g| g.segments.len())
                                 .sum::<usize>(),
                             self.last_seconds
-                        ));
+                        );
+                        ui.label(&summary);
+                        let lines = result_lines(run, app.project());
+                        let text =
+                            results_text(&lines, &summary, openchuck_buildinfo::current_text());
+                        if ui.button("Copy all").on_hover_text(COPY_ALL_TIP).clicked() {
+                            ui.ctx().copy_text(text.clone());
+                        }
                         egui::ScrollArea::vertical()
                             .max_height(360.0)
                             .show(ui, |ui| {
-                                for (index, line) in
-                                    result_lines(run, app.project()).into_iter().enumerate()
-                                {
+                                for (index, line) in lines.iter().enumerate() {
                                     let colour = |text: RichText| match line.severity {
                                         Severity::Info => text,
                                         Severity::Warning => text.color(NOTE),
                                         Severity::Problem => text.color(PROBLEM),
                                     };
+                                    // Text in the window can be selected and
+                                    // copied (issue 431).
+                                    let label = |text: &str| {
+                                        egui::Label::new(colour(RichText::new(text)))
+                                            .selectable(true)
+                                    };
                                     if line.moves.is_empty() {
-                                        ui.label(colour(RichText::new(&line.text)));
+                                        ui.add(label(&line.text));
                                         continue;
                                     }
                                     // A group opens on its moves, one line
@@ -790,12 +854,26 @@ impl RunPanel {
                                         .default_open(false)
                                         .show(ui, |ui| {
                                             for note in &line.moves {
-                                                ui.label(colour(RichText::new(note)));
+                                                ui.add(label(note));
                                             }
                                         })
                                         .header_response
                                         .on_hover_text(GROUP_HINT);
                                 }
+                            });
+                        // The same text in a box that selects and copies with
+                        // the keyboard alone (select all, then copy).
+                        egui::CollapsingHeader::new("Results as plain text")
+                            .id_salt("results plain text")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                let mut shown = text.as_str();
+                                ui.add(
+                                    egui::TextEdit::multiline(&mut shown)
+                                        .desired_rows(6)
+                                        .desired_width(f32::INFINITY)
+                                        .font(egui::TextStyle::Monospace),
+                                );
                             });
                         ui.separator();
                         ui.weak(openchuck_app::VERIFY_GCODE_NOTICE);
@@ -917,6 +995,114 @@ mod tests {
         assert!(lines[0].text.contains("moves 2 to 4 (3 moves)"));
         assert_eq!(lines[0].moves, notes);
         assert_eq!(lines[0].severity, Severity::Warning);
+    }
+
+    fn feed_note(operation: &str, effective: f64, target: f64) -> String {
+        format!(
+            "operation '{operation}': the machine's feed limits slow this move: the contact \
+             feed is {effective:.1} mm/min, not {target:.1}"
+        )
+    }
+
+    /// A run of `moves` feed-limited moves of the cube project's operation,
+    /// the way the pipeline makes it (notes plus the summary by id).
+    fn limited_run(tag: &str, moves: usize) -> (Regeneration, Project, String) {
+        let (dir, app, operation, _) =
+            crate::testing::cube_project(&format!("results-feed-info-{tag}"));
+        let project = app.project().clone();
+        let name = project.operation(operation).unwrap().name.clone();
+        drop(app);
+        std::fs::remove_dir_all(dir).unwrap();
+        let notes: Vec<String> = (0..moves)
+            .map(|_| feed_note(&name, 999.1, 1000.0))
+            .collect();
+        let bare: Vec<String> = notes
+            .iter()
+            .map(|n| n.split_once("': ").unwrap().1.to_owned())
+            .collect();
+        let run = Regeneration {
+            feed_limits: openchuck_app::note_groups::feed_limit_of(&bare)
+                .map(|l| (operation, l))
+                .into_iter()
+                .collect(),
+            notes,
+            ..Regeneration::default()
+        };
+        (run, project, name)
+    }
+
+    #[test]
+    fn req_ui_12_req_nfr_12_many_feed_limited_moves_are_one_information_line_per_operation() {
+        // Issue 432: six near-identical warnings become one informational
+        // sentence; the per-move notes stay in the run's notes (GC-07).
+        let (run, project, name) = limited_run("six", 6);
+        let lines = result_lines(&run, &project);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0].severity, Severity::Info);
+        assert!(lines[0].moves.is_empty());
+        assert_eq!(
+            lines[0].text,
+            format!(
+                "6 moves during '{name}' were limited by the machine's feed limits. In the \
+                 worst case the target was 1000.0 mm/min, but the move was reduced to 999.1 \
+                 mm/min to stay within the machine's capabilities."
+            )
+        );
+        assert_eq!(run.notes.len(), 6, "the run's notes are not changed");
+    }
+
+    #[test]
+    fn req_nfr_12_a_real_warning_is_never_merged_into_the_feed_summary() {
+        let (mut run, project, name) = limited_run("three", 3);
+        let rapid =
+            format!("operation '{name}': move 9 is a rapid that removes 0.100 mm3 of material");
+        run.notes.push(rapid.clone());
+        // A feed-limit note of an operation with no summary stays a warning too.
+        let unsummarised = feed_note("Other", 500.0, 600.0);
+        run.notes.push(unsummarised.clone());
+        let lines = result_lines(&run, &project);
+        assert_eq!(lines[0].severity, Severity::Info);
+        let warnings: Vec<&str> = lines
+            .iter()
+            .filter(|l| l.severity == Severity::Warning)
+            .map(|l| l.text.as_str())
+            .collect();
+        assert_eq!(warnings, [rapid.as_str(), unsummarised.as_str()]);
+    }
+
+    #[test]
+    fn req_nfr_12_the_summary_is_named_from_the_operation_id_not_the_notes() {
+        // Issue 418: after a rename the line carries the current name.
+        let (run, mut project, _) = limited_run("rename", 2);
+        let id = run.feed_limits[0].0;
+        let mut operation = project.operation(id).unwrap().clone();
+        operation.name = "Renamed".to_owned();
+        project
+            .replace(openchuck_app::project::Item::Operation(operation))
+            .unwrap();
+        let lines = result_lines(&run, &project);
+        assert!(
+            lines[0]
+                .text
+                .starts_with("2 moves during 'Renamed' were limited")
+        );
+    }
+
+    #[test]
+    fn req_ui_12_copy_text_has_every_line_the_window_shows_and_the_build_information() {
+        let (run, project, _) = limited_run("copy", 2);
+        let mut run = run;
+        run.notes.push("operation 'X': a note".to_owned());
+        let lines = result_lines(&run, &project);
+        let text = results_text(
+            &lines,
+            "1 operation(s), 5 moves, 0.1 s to generate",
+            "Build\nv1\n",
+        );
+        assert!(text.starts_with("1 operation(s), 5 moves, 0.1 s to generate\n"));
+        assert!(text.contains(&lines[0].text));
+        assert!(text.contains("Warning: operation 'X': a note\n"));
+        assert!(text.ends_with("\nBuild\nv1\n"));
     }
 
     #[test]
