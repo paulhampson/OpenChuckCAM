@@ -387,3 +387,188 @@ fn req_op_26_req_nfr_06_off_axis_sections_are_identical_at_1_2_and_n_threads() {
     .unwrap();
     assert_eq!(runs.len(), 4);
 }
+
+/// The crankshaft's inside corners where a web's face across the axis meets
+/// a pin (`stl/crankshaft.stl`): the face's X, the pin, and the side of the
+/// face the pin lies on. They are on the pin's side facing the rotary axis:
+/// elsewhere the pin runs into the web's round end (decision record 0410).
+const CRANK_CORNERS: [(f64, Pin, f64); 4] = [
+    (10.0, CRANK_PINS[0], -1.0),
+    (15.0, CRANK_PINS[1], 1.0),
+    (25.0, CRANK_PINS[1], -1.0),
+    (30.0, CRANK_PINS[2], 1.0),
+];
+
+/// Points within `band` mm of the inside corner at `face_x` beside `pin`,
+/// on the pin and on the face, over the 40 degrees of the pin facing the
+/// rotary axis, kept 0.02 mm off the corner line itself. The web joins its
+/// two round ends by a waist about 7 mm wide round the axis, so the face
+/// beside the pin is narrow: 40 degrees keeps the points on it.
+fn inner_corner(face_x: f64, pin: &Pin, side: f64, band: f64) -> Vec<Point3> {
+    let mut out = Vec::new();
+    // Away from the axis is the direction of the pin's centre from it.
+    let away = pin.centre.1.atan2(pin.centre.0);
+    let steps = 12;
+    for i in 0..=24 {
+        let t = away + std::f64::consts::PI + (f64::from(i) / 24.0 - 0.5).to_radians() * 40.0;
+        let (s, c) = t.sin_cos();
+        for j in 1..=steps {
+            let d = 0.02 + (band - 0.02) * f64::from(j - 1) / f64::from(steps - 1);
+            // On the pin, `d` along X from the face.
+            out.push(Point3::new(
+                face_x + side * d,
+                pin.centre.0 + pin.radius * c,
+                pin.centre.1 + pin.radius * s,
+            ));
+            // On the face, `d` out from the pin.
+            out.push(Point3::new(
+                face_x,
+                pin.centre.0 + (pin.radius + d) * c,
+                pin.centre.1 + (pin.radius + d) * s,
+            ));
+        }
+    }
+    out
+}
+
+/// The Z1 3.175 mm tool with the owner's 25 mm flutes.
+fn z1(shape: ToolShape) -> openchuck_types::tool::Tool {
+    openchuck_types::tool::Tool {
+        flute_length: openchuck_types::units::Millimetres(25.0),
+        ..tool(shape, DIAMETER)
+    }
+}
+
+#[test]
+fn req_op_26_req_op_04_a_flat_end_finishes_the_inner_corners_of_the_crankshaft() {
+    // Issue #439: the face turns of decision 0297 kept the tool's line
+    // through the rotary axis, which meets a pin's side facing the axis up
+    // to about 60 degrees from its normal, so a flat end rode on its rim and
+    // left 0.3 to 1.2 mm in these corners. Turned round the pin's own
+    // centre (decision record 0410) its side lies on the face and its
+    // bottom on the pin, at any stepover: here the coarse 2.2 mm the owner's
+    // operation took from its tool's cutting data.
+    let f = Fixture::new(
+        MeshSurface::new(&crankshaft()).unwrap(),
+        18.0,
+        &z1(ToolShape::FlatEnd),
+    );
+    let v = values(&[(names::STEPOVER, 2.2)]);
+    let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    let outline = Outline::new(&f.tool);
+    let poses = poses_along(&path, &f.rotary, 4);
+    for (face_x, pin, side) in &CRANK_CORNERS {
+        let left = left_on(
+            &outline,
+            &poses,
+            &inner_corner(*face_x, pin, *side, 0.5),
+            2.0,
+        );
+        let (most, deepest) = left
+            .iter()
+            .fold((f64::NEG_INFINITY, f64::INFINITY), |(m, d), l| {
+                (m.max(*l), d.min(*l))
+            });
+        eprintln!(
+            "crankshaft inner corner at X {face_x}: most left {most:.4} mm, deepest {deepest:.4} mm"
+        );
+        assert!(most <= 2.0 * TOLERANCE, "corner at X {face_x}: {most}");
+        assert!(deepest >= -TOLERANCE, "corner at X {face_x}: {deepest}");
+    }
+}
+
+#[test]
+fn req_op_26_req_op_04_face_turns_in_an_off_axis_zone_go_round_the_section_centre() {
+    // Each face turn beside a pin is a pass at one X round the whole turn;
+    // its tool lines pass through the pin's own centre, as the spiral's do
+    // there (decision record 0410), not through the rotary axis.
+    let f = Fixture::new(
+        MeshSurface::new(&crankshaft()).unwrap(),
+        18.0,
+        &z1(ToolShape::FlatEnd),
+    );
+    let v = values(&[(names::STEPOVER, 2.2)]);
+    let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    let r = 0.5 * DIAMETER;
+    for (face_x, pin, side) in &CRANK_CORNERS {
+        // The face turn's X: the tool's side on the face.
+        let x = face_x + side * r;
+        let cuts: Vec<_> = path
+            .group
+            .segments
+            .iter()
+            .filter(|s| s.kind == MoveKind::Cutting && (s.end.tip.x - x).abs() < 0.05)
+            .collect();
+        let turned: f64 = cuts
+            .windows(2)
+            .map(|w| (w[1].end.a.0 - w[0].end.a.0).abs())
+            .sum();
+        assert!(
+            turned >= 359.0,
+            "face at X {face_x}: {turned} degrees at X {x}"
+        );
+        let mut worst = 0.0_f64;
+        for s in &cuts {
+            // Distance across X from the pin's centre line to the tool line.
+            let a = s.end.axis.get();
+            let d = Vec3::new(0.0, pin.centre.0 - s.end.tip.y, pin.centre.1 - s.end.tip.z);
+            let off = (d - a * d.dot(a)).length();
+            worst = worst.max(off);
+        }
+        eprintln!(
+            "face turn at X {x:.3}: {} cuts, tool line within {worst:.4} mm of the pin's centre",
+            cuts.len()
+        );
+        assert!(worst <= 0.1, "face at X {face_x}: {worst}");
+    }
+}
+
+#[test]
+fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
+    // A ball cannot reach into a corner sharper than its radius: it leaves
+    // up to r (sqrt 2 - 1) across a square corner. The note says so in plain
+    // words and that a flat end can finish it (decision record 0410).
+    let v = values(&[(names::STEPOVER, 1.0)]);
+    let note = |shape: ToolShape| {
+        let f = Fixture::new(MeshSurface::new(&crankshaft()).unwrap(), 18.0, &z1(shape));
+        let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+        path.notes
+            .iter()
+            .map(|n| n.message.clone())
+            .filter(|m| m.contains("inside corner"))
+            .collect::<Vec<_>>()
+    };
+    let ball = note(ToolShape::BallEnd);
+    assert_eq!(ball.len(), 1, "{ball:?}");
+    let expected = format!("{:.2} mm", 0.5 * DIAMETER * (2.0_f64.sqrt() - 1.0));
+    assert!(ball[0].contains(&expected), "{}", ball[0]);
+    assert!(ball[0].contains("a flat end can finish"), "{}", ball[0]);
+    for x in ["10.000", "15.000", "25.000", "30.000"] {
+        assert!(ball[0].contains(x), "{x}: {}", ball[0]);
+    }
+    assert!(note(ToolShape::FlatEnd).is_empty());
+}
+
+#[test]
+fn req_op_26_no_corner_note_where_every_section_surrounds_the_axis() {
+    // A stepped shaft on the axis has inside corners at its shoulder, but
+    // its turns stay through the axis, as before, and no note is made.
+    let shaft = openchuck_testkit::parts::revolve(
+        &[(0.0, 5.0), (10.0, 5.0), (10.0, 8.0), (20.0, 8.0)],
+        180,
+    );
+    let f = Fixture::new(
+        MeshSurface::new(&shaft).unwrap(),
+        18.0,
+        &z1(ToolShape::BallEnd),
+    );
+    let v = values(&[(names::STEPOVER, 1.0)]);
+    let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    assert!(
+        path.notes
+            .iter()
+            .all(|n| !n.message.contains("inside corner")),
+        "{:?}",
+        path.notes
+    );
+}
