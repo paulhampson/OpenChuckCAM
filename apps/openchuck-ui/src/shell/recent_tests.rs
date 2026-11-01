@@ -111,16 +111,72 @@ fn req_prj_08_open_recent_asks_about_unsaved_changes_first() {
 }
 
 /// A click on a recent project is logged as the command, never the user's
-/// folder name (NFR-18).
+/// folder name (NFR-18); only that click, so a folder named like another
+/// command never changes how that command is logged.
 #[test]
 fn req_nfr_18_a_recent_project_click_does_not_log_the_folder_name() {
-    let folders = vec![PathBuf::from("/home/someone/private-bracket")];
-    let lines = vec![
-        "click: 'private-bracket'".to_owned(),
-        "click: 'Undo'".to_owned(),
-    ];
+    let folder = PathBuf::from("/home/someone/Save");
+    let lines = vec!["click: 'Save'".to_owned(), "click: 'Undo'".to_owned()];
+    // No recent project was chosen this frame: nothing is replaced.
     assert_eq!(
-        super::actions::without_folder_names(lines, &folders),
+        super::actions::without_folder_name(lines.clone(), None),
+        lines
+    );
+    // One was: its line, and only that one, is the command alone.
+    assert_eq!(
+        super::actions::without_folder_name(lines, Some(&folder)),
         ["click: 'Open recent project'", "click: 'Undo'"]
     );
+}
+
+/// Through the real widgets: with a recent folder named File, the File menu
+/// button is still logged as File, and choosing that recent entry is logged
+/// without its name (NFR-18, decision 0157).
+#[test]
+fn req_nfr_18_a_recent_folder_named_file_does_not_rename_the_file_menu_in_the_log() {
+    let root = temp("recent-log-save");
+    let folder = root.join("File");
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut rig = Rig::cube("recent-log-save-open", None);
+    rig.shell.settings.recent = vec![folder.canonicalize().unwrap()];
+    // The File menu button: an ordinary click, logged as File.
+    click(&mut rig, "File");
+    rig.frame(Vec::new());
+    assert!(
+        rig.shell
+            .logged_clicks
+            .contains(&"click: 'File'".to_owned()),
+        "{:?}",
+        rig.shell.logged_clicks
+    );
+    assert!(
+        !rig.shell
+            .logged_clicks
+            .iter()
+            .any(|l| l.contains("Open recent project")),
+        "{:?}",
+        rig.shell.logged_clicks
+    );
+    // Choosing the recent entry named File (the submenu opens to the right
+    // of the File menu, so it is the right-most "File") is logged without
+    // its name.
+    // The File menu is still open from the click above.
+    click(&mut rig, "Open recent");
+    rig.frame(Vec::new());
+    rig.shell.logged_clicks.clear();
+    let at = rig
+        .visible_text_rects()
+        .iter()
+        .filter(|(s, _)| s == "File")
+        .max_by(|a, b| a.1.center().x.total_cmp(&b.1.center().x))
+        .map(|(_, rect)| rect.center())
+        .unwrap();
+    rig.click(at);
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.logged_clicks,
+        ["click: 'Open recent project'"],
+        "the recent entry is logged as the command alone"
+    );
+    std::fs::remove_dir_all(root).ok();
 }

@@ -19,7 +19,7 @@
 use eframe::egui::{self, output::OutputEvent};
 use openchuck_app::{Event, JobId, job_label};
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::{Dialog, Shell};
 use crate::logging;
@@ -86,17 +86,21 @@ fn click_line(label: &str) -> Option<String> {
     Some(format!("click: '{shown}{more}'"))
 }
 
-/// The click lines of a frame with a click on a recent project (labelled with
-/// its folder's name, which is the user's) logged as the command alone.
-pub(super) fn without_folder_names(lines: Vec<String>, folders: &[PathBuf]) -> Vec<String> {
-    let private: Vec<String> = folders
-        .iter()
-        .filter_map(|f| click_line(&super::frame::recent_label(f)))
-        .collect();
+/// The click lines of a frame in which the user chose the recent project
+/// `chosen` (its widget is labelled with the folder's name, which is the
+/// user's): that click is logged as the command alone. Only the frame's
+/// recent-project choice is replaced, so a folder named like another command
+/// never changes how that command is logged (NFR-18, decision 0157).
+pub(super) fn without_folder_name(lines: Vec<String>, chosen: Option<&Path>) -> Vec<String> {
+    let Some(private) = chosen.and_then(|f| click_line(&super::frame::recent_label(f))) else {
+        return lines;
+    };
+    let mut replaced = false;
     lines
         .into_iter()
         .map(|line| {
-            if private.contains(&line) {
+            if !replaced && line == private {
+                replaced = true;
                 "click: 'Open recent project'".to_owned()
             } else {
                 line
@@ -188,14 +192,18 @@ impl Shell {
             .app
             .as_mut()
             .map(openchuck_app::Application::drain_actions);
+        let chosen = self.recent_clicked.take();
+        let clicks = ctx.output(|o| o.events.iter().filter_map(click_text).collect::<Vec<_>>());
+        let clicks = without_folder_name(clicks, chosen.as_deref());
+        #[cfg(test)]
+        self.logged_clicks.extend(clicks.iter().cloned());
         if !logging::recording() {
             return;
         }
         for line in lines.into_iter().flatten() {
             logging::action(&line);
         }
-        let clicks = ctx.output(|o| o.events.iter().filter_map(click_text).collect::<Vec<_>>());
-        for line in without_folder_names(clicks, &self.settings.recent) {
+        for line in clicks {
             logging::action(&line);
         }
         let mut open = Vec::new();

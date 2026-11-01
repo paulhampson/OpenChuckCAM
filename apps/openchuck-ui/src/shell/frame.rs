@@ -649,6 +649,7 @@ impl Shell {
                     })
                     .inner;
                 if clicked {
+                    self.recent_clicked = Some(folder.clone());
                     self.open_recent(folder, ctx);
                     ui.close();
                 }
