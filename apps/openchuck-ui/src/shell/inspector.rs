@@ -646,6 +646,7 @@ impl Shell {
                         let row = TextRow {
                             key: TOOL_NUMBER,
                             label: "Tool number",
+                            compact: true,
                             description: "The project's number for this tool, used by every \
                                           operation that uses it (TL-06). The post writes it \
                                           as T, with the H and D offsets.",
@@ -1292,7 +1293,7 @@ fn set_options(
     shown: SetOptionsShown,
 ) -> Option<GeometryEdit> {
     let mut edit = None;
-    let indent = crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x;
+    let indent = crate::field_row::label_column(ui) + ui.spacing().item_spacing.x;
     let options = &operation.restriction_options;
     let name = |id: &SelectionSetId| {
         summaries
@@ -1435,7 +1436,7 @@ fn geometry(
         ui.horizontal_wrapped(|ui| {
             let (rect, _) = ui.allocate_exact_size(
                 egui::vec2(
-                    crate::theme::width::LABEL_COLUMN,
+                    crate::field_row::label_column(ui),
                     ui.spacing().interact_size.y,
                 ),
                 egui::Sense::hover(),
@@ -1502,7 +1503,7 @@ fn geometry(
         // (decision record 0209 item 10).
         for refusal in notes.refusals.iter().filter(|r| r.role == role) {
             ui.horizontal_wrapped(|ui| {
-                ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                ui.add_space(crate::field_row::label_column(ui) + ui.spacing().item_spacing.x);
                 marks::mark(ui, ItemState::Warning, "Warning");
                 ui.label(RichText::new(&refusal.text).color(DARK.warning));
             });
@@ -1515,7 +1516,7 @@ fn geometry(
             let quoted = format!("'{}'", s.name);
             for note in reach.iter().filter(|n| n.contains(&quoted)) {
                 ui.horizontal_wrapped(|ui| {
-                    ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                    ui.add_space(crate::field_row::label_column(ui) + ui.spacing().item_spacing.x);
                     marks::mark(ui, ItemState::Warning, "Warning");
                     ui.label(RichText::new(note).color(DARK.warning));
                     if ui.link("Show in view").clicked() {
@@ -1580,6 +1581,7 @@ fn rows(
                 needs: None,
                 scroll_to: false,
                 number: !row.unit.is_empty(),
+                compact: false,
                 validate: Some(&validate),
                 preflight: Some(preflight),
             },
@@ -1664,7 +1666,7 @@ fn material_pick(
     }
     let mut picked = None;
     ui.horizontal(|ui| {
-        ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        ui.add_space(crate::field_row::label_column(ui) + ui.spacing().item_spacing.x);
         egui::ComboBox::from_id_salt(("setup material pick", setup.id))
             .selected_text("Pick\u{2026}")
             .show_ui(ui, |ui| {
