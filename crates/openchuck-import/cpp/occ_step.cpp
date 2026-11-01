@@ -75,6 +75,21 @@
 
 namespace {
 
+// Exit order (decision 0490, amending decision 0003's exit crash). OpenCASCADE keeps its type registry in a
+// function-local static in Standard_Type.cxx (TKernel), and C++ destroys statics in the reverse order of
+// their construction. Namespace-scope statics of other toolkits hold the last handles to type descriptors,
+// for example `types` in StepAP214_Protocol.cxx (TKDESTEP): if the registry is built after them it is
+// destroyed before them, and ~Standard_Type then erases itself from the freed registry (a use-after-free
+// that segfaulted the worker at every exit on the Ubuntu 26.04 build, issue 369, OI-1003). On ELF, GCC and
+// Clang run initialisers with a priority before every default-priority one, whatever the link order, so
+// building the registry here makes it outlive all of them. macOS and Windows link TKernel first instead.
+#if defined(__ELF__) && (defined(__GNUC__) || defined(__clang__))
+struct TypeRegistryFirst {
+  TypeRegistryFirst() { (void)STANDARD_TYPE(Standard_Transient); }
+};
+__attribute__((init_priority(101))) TypeRegistryFirst type_registry_first;
+#endif
+
 struct Result {
   std::string json;
   std::string error;

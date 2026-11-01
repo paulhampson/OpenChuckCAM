@@ -437,14 +437,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Linux leg runs on the pinned ubuntu-24.04 image: on ubuntu-latest (now Ubuntu 26.04)
-          # the worker built against OpenCASCADE crashes with SIGSEGV. The job name still reads
-          # `ubuntu-latest` (decisions 0250 and 0251, OI-1002, OI-1003).
+          # The Linux leg runs on ubuntu-latest (Ubuntu 26.04) again: the worker's SIGSEGV there was
+          # OpenCASCADE's type registry destroyed before other toolkits' statics at exit, fixed in
+          # cpp/occ_step.cpp (decision 0490, which ends decision 0251's pin; OI-1003). This leg is the
+          # pull request guard against shipping a Linux worker that crashes at exit.
           - os: ubuntu-latest
-            runner: ubuntu-24.04
           - os: windows-latest
           - os: macos-latest
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
