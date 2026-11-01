@@ -15,7 +15,7 @@ Numbering: the coordinator gave lane Z1AXIS records 0317 to 0321 and OI-1290 to 
 
 ## Context
 
-Gate 4 (step P8, [gate 4 and 5 instructions](../z1-gates-4-5-test-instructions.md) section 10) recorded the axis height as "−48.6 (after probing routine)". The G54 machine coordinates, the tool or probe and the tool length offset were not recorded. The built-in Z1 profile held a placeholder: machine Z −55, from the chuck centre 45 mm above a bed taken at the bottom of the Z travel. Its default safe Z was 50 mm above the axis, radius 45.
+Gate 4 (step P8, [gate 4 and 5 instructions](../z1-gates-4-5-test-instructions.md); results in its [archived section 10](../archive/0244-z1-gates-4-5/z1-gates-4-5-results-and-review-record.md)) recorded the axis height as "−48.6 (after probing routine)". The G54 machine coordinates, the tool or probe and the tool length offset were not recorded. The built-in Z1 profile held a placeholder: machine Z −55, from the chuck centre 45 mm above a bed taken at the bottom of the Z travel. Its default safe Z was 50 mm above the axis, radius 45.
 
 What the axis height does in the software (measured by changing it, lane Z1AXIS):
 
