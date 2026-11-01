@@ -2454,6 +2454,18 @@ mod tests {
     }
 
     #[test]
+    fn req_prj_08_recovery_lines_name_their_actions_in_plain_words() {
+        // Decision 0460 item 1: another project's kept recovery data is a
+        // Messages line whose action opens that project or locates it.
+        assert_eq!(MessageAction::OpenRecovery(0).label(), "Open project");
+        assert_eq!(MessageAction::LocateRecovery(3).label(), "Locate folder");
+        assert_ne!(
+            MessageAction::OpenRecovery(1),
+            MessageAction::OpenRecovery(2)
+        );
+    }
+
+    #[test]
     fn req_ui_12_messages_are_plain_sentences() {
         assert_eq!(
             sentence("the setup has no stock"),

@@ -44,6 +44,7 @@ Tests named after PRJ-08 and NFR-07, written from this record. They use generate
   - data from before the record is still offered;
   - damaged records never hide recovery or crash;
   - an original whose recovery was restarted makes the other folder the owner.
+- `openchuck-app`, `overview.rs`: the recovery lines' actions are named "Open project" and "Locate folder".
 - `openchuck-ui`, `shell/open_recovery_tests.rs`:
   - two crashed projects: opening each offers only its own checkpoints;
   - Keep saved keeps the requested project open;
