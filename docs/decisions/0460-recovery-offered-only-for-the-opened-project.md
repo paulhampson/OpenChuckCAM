@@ -2,6 +2,7 @@
 
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049), including the limitation in item 4 (a copy made by an older build). Item 1 is the owner's own choice (D1, option A of three), also relayed by the coordinator. It amends [0243](0243-project-recovery-checkpoints.md) items 7 and 8 and UI specification section 13.1, which this change edits to match.
 - **Date:** 1 Nov 2026.
+- **Amended:** 1 Nov 2026, agreed by the owner, relayed by the coordinator (decision 0049). Reason: review of #446, which found that a crashed project whose saved files cannot be loaded could no longer reach its valid checkpoints. Item 2 gains its last four sentences, the Verification list gains one test, and UI specification 13.1 gains one sentence.
 - **Issue:** #429, "User is asked about recovery files when opening a completely different project" (build 0.30.0, Windows). The owner's comment: choosing to keep the saved file then opened the project the recovery belonged to, not the one asked for.
 - **Builds on:** [0243](0243-project-recovery-checkpoints.md) (recovery checkpoints, accepted), [0114](0114-slice-22-conformance-report.md) (plain words), [0233](0233-unconfirmed-edits-before-leaving-a-form.md) (pending-edit guard), [0302](0302-first-run-rough-edges.md) item 4 (the unsaved marker; unchanged).
 - **Open items:** new OI-1640, native verification of this change on Windows. OI-989 (native verification of CHECKPOINT) stays open. No project schema change, no recovery format change and no library version change.
