@@ -873,7 +873,7 @@ impl RunPanel {
                                 let mut shown = text.as_str();
                                 ui.add(
                                     egui::TextEdit::multiline(&mut shown)
-                                        .id(egui::Id::new(PLAIN_TEXT_BOX))
+                                        .id(egui::Id::unique(PLAIN_TEXT_BOX))
                                         .desired_rows(6)
                                         .desired_width(f32::INFINITY)
                                         .font(egui::TextStyle::Monospace),
@@ -1252,7 +1252,7 @@ mod tests {
         let at = frames.centre_of("Results as plain text");
         frames.click(at);
         assert!(frames.shows("operation(s)") && frames.shows("4 moves during"));
-        let id = egui::Id::new(PLAIN_TEXT_BOX);
+        let id = egui::Id::unique(PLAIN_TEXT_BOX);
         let mut reached = false;
         for _ in 0..12 {
             frames.tab();
