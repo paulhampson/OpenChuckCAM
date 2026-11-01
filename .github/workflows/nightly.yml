@@ -24,6 +24,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # CMake 4 rejects OpenCASCADE 7.8.1's cmake_minimum_required (decision 0003). The `step-mutations`
+  # and `sanitizer` jobs build OpenCASCADE when its cache misses (issue 451); a job-level `env:`
+  # adds to this block, so the sanitizer job's CXXFLAGS do not replace it.
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   # Each target's corpus is kept between nights in the Actions cache, so the hours add up on what
