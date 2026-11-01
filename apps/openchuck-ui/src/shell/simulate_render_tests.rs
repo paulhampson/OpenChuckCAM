@@ -477,3 +477,59 @@ fn paint_and_read(device: &wgpu::Device, queue: &wgpu::Queue, renderer: &Rendere
         .map(|p| [p[0], p[1], p[2], p[3]])
         .collect()
 }
+
+#[test]
+fn req_sim_11_req_sim_05_a_coloured_part_is_probed_through_the_plain_cut_part() {
+    // Decision 0520 item 4: with the part coloured, the pointer reads the
+    // part's triangle; the cut part drawn plain in front of it is not probed.
+    let (rig, surface) = surface_fixture("simui-part-probe");
+    let ctx = egui::Context::default();
+    let mut viewport = Viewport::new(true);
+    let view = rig.shell.viewport.view().clone();
+    let model = view.meshes[0].model.unwrap();
+    viewport.set_scene(view, false);
+    viewport.set_step(Some(ViewStep::Simulate));
+    viewport.set_stock_surface(Some(Arc::clone(&surface)));
+    viewport.set_bands(Some((
+        surface.model.unwrap(),
+        surface.bands.clone().unwrap(),
+    )));
+    viewport.set_simulate_show(crate::viewport::SimulateShow {
+        model: true,
+        cut_part: true,
+        toolpath: false,
+    });
+    let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((-1.02, false))).collect();
+    viewport.set_part_bands(Some((
+        model,
+        openchuck_app::pathview::deviation_bands(&values, 0.1),
+    )));
+    viewport.set_view(StandardView::Front);
+    viewport.fit();
+    let frame = |viewport: &mut Viewport, time: f64, events| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(640.0, 480.0),
+            )),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| viewport.show(ui));
+        out.textures_delta.clear();
+    };
+    frame(&mut viewport, 0.0, Vec::new());
+    let at = viewport.last_rect.center();
+    frame(&mut viewport, 0.1, vec![Event::PointerMoved(at)]);
+    frame(&mut viewport, 0.5, vec![Event::PointerMoved(at)]);
+    let triangle = viewport.probe_hover.expect("the part is probed");
+    assert!(
+        triangle < 12,
+        "the part's own triangle, not the cut surface's"
+    );
+    assert_eq!(
+        viewport.probe_text(triangle).as_deref(),
+        Some("Final result \u{b7} Overcut 1.020 mm")
+    );
+}

@@ -397,8 +397,9 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     }
     let held = workholding_entries(viewport.view()).len() as f32
         + f32::from(u8::from(viewport.legend_set.is_some()));
-    if step == ViewStep::Simulate && viewport.bands().is_some() {
-        let height = 74.0 + held * ROW;
+    if step == ViewStep::Simulate && (viewport.scale_bands().is_some() || viewport.part_changed()) {
+        let notes = scale_note_height(&ui.painter_at(rect), viewport);
+        let height = scale_held_top(viewport, notes) + 4.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
             pos2(
                 rect.left() + MARGIN,
@@ -665,11 +666,31 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }
-    if let (Some(r), Some(bands)) = (b.scale, viewport.bands()) {
+    if let Some(r) = b.scale {
         frame(&painter, r);
-        colour_scale(&painter, r, bands.tolerance, &viewport.band_filter);
+        let notes = scale_notes(&painter, viewport);
+        let note_height = notes.iter().map(|(g, _)| g.size().y).sum::<f32>();
+        let held_top = scale_held_top(viewport, note_height);
+        if let Some(bands) = viewport.scale_bands() {
+            // What the colours are on, then the scale (NFR-15; decision 0520).
+            painter.text(
+                r.left_top() + vec2(8.0, 6.0),
+                egui::Align2::LEFT_TOP,
+                viewport.scale_title(),
+                egui::FontId::proportional(12.0),
+                roles::OVERLAY_TEXT,
+            );
+            let scale = Rect::from_min_max(r.min + vec2(0.0, SCALE_TITLE), r.max);
+            colour_scale(&painter, scale, bands.tolerance, &viewport.band_filter);
+        }
+        let mut y = r.top() + held_top - note_height;
+        for (galley, colour) in notes {
+            let height = galley.size().y;
+            painter.galley(pos2(r.left() + 8.0, y), galley, colour);
+            y += height;
+        }
         for (i, entry) in workholding_entries(viewport.view()).into_iter().enumerate() {
-            let y = r.top() + 74.0 + ROW * i as f32 - 4.0;
+            let y = r.top() + held_top + ROW * i as f32;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
             swatch_for(&painter, swatch, entry, true);
             let name = match entry {
@@ -686,7 +707,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         }
         if let Some((name, rgb)) = &viewport.legend_set {
             let i = workholding_entries(viewport.view()).len() as f32;
-            let y = r.top() + 74.0 + ROW * i - 4.0;
+            let y = r.top() + held_top + ROW * i;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
             set_swatch(&painter, swatch, *rgb);
             let label = format!("Selection set “{name}”");
@@ -702,6 +723,57 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         );
         frame(&painter, chip);
         painter.galley(chip.min + vec2(8.0, 4.0), galley, roles::OVERLAY_TEXT);
+    }
+}
+
+/// The height of the colour scale's title line (decision 0520).
+const SCALE_TITLE: f32 = 18.0;
+/// The width the scale box's notes wrap at.
+const SCALE_NOTE_WIDTH: f32 = 220.0;
+
+/// The notes under the scale's own lines, laid out, with their colours.
+fn scale_notes(
+    painter: &egui::Painter,
+    viewport: &Viewport,
+) -> Vec<(std::sync::Arc<egui::Galley>, Color32)> {
+    viewport
+        .scale_notes()
+        .into_iter()
+        .map(|text| {
+            let colour = if text == crate::viewport::PART_CHANGED_NOTE {
+                roles::OVERLAY_TEXT
+            } else {
+                roles::OVERLAY_MUTED
+            };
+            (
+                painter.layout(
+                    text.to_owned(),
+                    egui::FontId::proportional(11.0),
+                    colour,
+                    SCALE_NOTE_WIDTH,
+                ),
+                colour,
+            )
+        })
+        .collect()
+}
+
+/// The height the scale box's notes take.
+fn scale_note_height(painter: &egui::Painter, viewport: &Viewport) -> f32 {
+    scale_notes(painter, viewport)
+        .iter()
+        .map(|(g, _)| g.size().y)
+        .sum()
+}
+
+/// Where the rows under the scale begin in its box, given the height of its
+/// notes: after the title and the scale's lines when there are bands, else
+/// at the top.
+fn scale_held_top(viewport: &Viewport, notes: f32) -> f32 {
+    if viewport.scale_bands().is_some() {
+        70.0 + SCALE_TITLE + notes
+    } else {
+        6.0 + notes
     }
 }
 

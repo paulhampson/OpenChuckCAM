@@ -68,6 +68,11 @@ pub enum AppError {
     /// Playback cannot be set up as asked (SIM-02, SIM-04).
     #[error("playback: {0}")]
     Playback(String),
+    /// The part's model file is not the one the simulation was made with, so
+    /// its deviation colours cannot be given to the file's triangles
+    /// (decision 0520). The text names the model.
+    #[error("the part '{0}' has changed since this simulation")]
+    PartChanged(String),
     /// A selection cannot be made or changed as asked (UI-04, UI-05).
     #[error("selection '{name}': {reason}")]
     Selection {

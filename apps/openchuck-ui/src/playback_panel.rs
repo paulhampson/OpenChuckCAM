@@ -212,6 +212,42 @@ struct StockState {
     error: Option<String>,
 }
 
+/// The job measuring the part for a run and one of its setups.
+type PartJob = (
+    Arc<Regeneration>,
+    SetupId,
+    JobHandle<(ModelId, DeviationBands)>,
+);
+
+/// The part's own deviation colours on Simulate (SIM-05, decision 0520): the
+/// measuring job, what it found for each setup of the run (kept, so going
+/// back to a setup costs nothing), and what the viewport has been given.
+#[derive(Default)]
+struct PartColours {
+    /// The job running, for a run and one of its setups.
+    job: Option<PartJob>,
+    /// The run `done` belongs to.
+    run: Option<Arc<Regeneration>>,
+    /// What the job found for each setup: the part's bands, or `None` when
+    /// the model file is no longer the one the run was made with.
+    done: Vec<(SetupId, Option<(ModelId, DeviationBands)>)>,
+    /// What the viewport shows, and for which run (its address; the run is
+    /// kept alive in `run`), so a frame sends it only a change.
+    pushed: (usize, PartShown),
+}
+
+/// What the viewport is told about the part's colours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PartShown {
+    /// The part as it is.
+    #[default]
+    Plain,
+    /// The part as it is, with the note that it has changed.
+    Changed,
+    /// The part coloured by the values found for this setup.
+    Bands(SetupId),
+}
+
 /// What the cut-part bar under the position bar shows (decision record
 /// 0322; the owner's decision D3 on issue #382): where the cut part on screen
 /// is, how far it is behind the play head while playing, and the progress of
@@ -333,6 +369,8 @@ pub struct PlaybackPanel {
     tool_group: Option<usize>,
     tool_dirty: bool,
     stock: StockState,
+    /// The part's own colours (decision 0520).
+    part: PartColours,
     bands_on: bool,
     bands_surface: Option<Arc<StockSurface>>,
     /// The deviation job running, with the setup it is for.
@@ -387,6 +425,7 @@ impl Default for PlaybackPanel {
             tool_group: None,
             tool_dirty: false,
             stock: StockState::default(),
+            part: PartColours::default(),
             bands_on: false,
             bands_surface: None,
             bands_job: None,
@@ -577,6 +616,9 @@ impl PlaybackPanel {
         if let Some((_, job)) = &self.bands_job {
             job.cancel();
         }
+        if let Some((.., job)) = &self.part.job {
+            job.cancel();
+        }
         if let Some(job) = &self.stock.prepare {
             job.cancel();
         }
@@ -745,6 +787,8 @@ impl PlaybackPanel {
                 viewport.set_layer(layer, Scene::default());
             }
             viewport.set_bands(None);
+            viewport.set_part_bands(None);
+            viewport.set_part_changed(false);
             viewport.set_part_turn(0.0);
             viewport.set_tool_readout(None);
         }
@@ -1081,6 +1125,7 @@ impl PlaybackPanel {
         if self.colour_by != by {
             self.colour_by = by;
             self.show_bands(viewport);
+            self.show_part_bands(viewport);
         }
     }
 
@@ -1108,6 +1153,7 @@ impl PlaybackPanel {
         if self.band_filter != *filter {
             self.band_filter = filter.clone();
             self.show_bands(viewport);
+            self.show_part_bands(viewport);
         }
     }
 
@@ -1126,6 +1172,146 @@ impl PlaybackPanel {
         )));
     }
 
+    /// Gives the viewport the part's colours again, after the colour choice
+    /// or the band filter changed (SIM-15).
+    fn show_part_bands(&mut self, viewport: &mut Viewport) {
+        let (_, shown) = self.part.pushed;
+        self.part.pushed = (0, PartShown::Plain);
+        if let PartShown::Bands(_) = shown {
+            self.push_part(viewport, shown);
+        }
+    }
+
+    /// The part's own measured colours on Simulate (SIM-05; decision 0520),
+    /// for the setup the playback is in. They are made by a job off the
+    /// interface thread, once for each run and setup, and shown only while
+    /// the deviation colours are on, the part is ticked and the cut part has
+    /// not failed (decision 0330: no colours anywhere then). A part that has
+    /// changed since the run is drawn plain with a note, never with the old
+    /// values (UI-11). Returns true while the job runs.
+    fn update_part_colours(
+        &mut self,
+        app: &Application,
+        viewport: &mut Viewport,
+        setup: Option<SetupId>,
+    ) -> bool {
+        let run = self
+            .run
+            .clone()
+            .filter(|run| run.simulation.is_some())
+            .filter(|_| {
+                self.bands_on && self.stock.error.is_none() && viewport.simulate_show().model
+            });
+        let (Some(run), Some(setup)) = (run, setup) else {
+            if let Some((.., job)) = self.part.job.take() {
+                job.cancel();
+            }
+            self.push_part(viewport, PartShown::Plain);
+            return false;
+        };
+        if !self
+            .part
+            .run
+            .as_ref()
+            .is_some_and(|known| Arc::ptr_eq(known, &run))
+        {
+            if let Some((.., job)) = self.part.job.take() {
+                job.cancel();
+            }
+            self.part.done.clear();
+            self.part.run = Some(Arc::clone(&run));
+        }
+        // The job on a setup the playback has left is not wanted now.
+        if self
+            .part
+            .job
+            .as_ref()
+            .is_some_and(|(_, for_setup, _)| *for_setup != setup)
+            && let Some((.., job)) = self.part.job.take()
+        {
+            job.cancel();
+        }
+        if openchuck_app::stockplay::part_changed_since(app.project(), &run, setup) {
+            if let Some((.., job)) = self.part.job.take() {
+                job.cancel();
+            }
+            self.push_part(viewport, PartShown::Changed);
+            return false;
+        }
+        let mut busy = false;
+        if let Some((.., job)) = &self.part.job {
+            match job.try_result() {
+                None => busy = true,
+                Some(result) => {
+                    self.part.job = None;
+                    match result {
+                        Ok(found) => self.part.done.push((setup, Some(found))),
+                        // The file is not the run's: no colours for it.
+                        Err(openchuck_app::AppError::PartChanged(_)) => {
+                            self.part.done.push((setup, None));
+                        }
+                        Err(e) if e.is_cancelled() => {}
+                        Err(e) => {
+                            self.error = Some(e.to_string());
+                            self.bands_on = false;
+                        }
+                    }
+                }
+            }
+        }
+        let found = self.part.done.iter().find(|(id, _)| *id == setup);
+        match found {
+            Some((_, Some(_))) => self.push_part(viewport, PartShown::Bands(setup)),
+            Some((_, None)) => self.push_part(viewport, PartShown::Changed),
+            None => {
+                self.push_part(viewport, PartShown::Plain);
+                if self.part.job.is_none() && self.bands_on {
+                    self.part.job = Some((
+                        Arc::clone(&run),
+                        setup,
+                        app.start_deviation_bands(Arc::clone(&run), setup),
+                    ));
+                    busy = true;
+                }
+            }
+        }
+        busy
+    }
+
+    /// Tells the viewport how the part is drawn, when that is not what it
+    /// has been told for this run.
+    fn push_part(&mut self, viewport: &mut Viewport, shown: PartShown) {
+        let run = self
+            .part
+            .run
+            .as_ref()
+            .map_or(0, |r| Arc::as_ptr(r) as usize);
+        let key = (run, shown);
+        if self.part.pushed == key {
+            return;
+        }
+        self.part.pushed = key;
+        match shown {
+            PartShown::Plain | PartShown::Changed => {
+                viewport.set_part_bands(None);
+                viewport.set_part_changed(shown == PartShown::Changed);
+            }
+            PartShown::Bands(setup) => {
+                if let Some((_, Some((model, bands)))) =
+                    self.part.done.iter().find(|(id, _)| *id == setup)
+                {
+                    viewport.colour_by = self.colour_by;
+                    viewport.band_filter = self.band_filter.clone();
+                    viewport.set_part_bands(Some((
+                        *model,
+                        shown_bands(bands, self.colour_by, &self.band_filter),
+                    )));
+                    viewport.set_part_changed(false);
+                }
+            }
+        }
+    }
+
     fn update_bands(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
         if viewport.step() == crate::viewport::ViewStep::Simulate {
             if let Some((_, job)) = self.bands_job.take() {
@@ -1137,6 +1323,7 @@ impl PlaybackPanel {
                 .zip(self.pose())
                 .and_then(|(run, pose)| run.groups.get(pose.group).map(|g| g.setup));
             self.bands_setup = self.bands_on.then_some(setup).flatten();
+            let busy = self.update_part_colours(app, viewport, setup);
             let surface = self
                 .stock
                 .surface
@@ -1159,8 +1346,13 @@ impl PlaybackPanel {
                 self.bands_model = None;
                 viewport.set_bands(None);
             }
-            return false;
+            return busy;
         }
+        // Off Simulate the part's own colours are not drawn.
+        if let Some((.., job)) = self.part.job.take() {
+            job.cancel();
+        }
+        self.push_part(viewport, PartShown::Plain);
         if self.bands_surface.take().is_some() {
             self.bands = None;
             self.bands_model = None;
@@ -2704,6 +2896,273 @@ mod tests {
         panel.bands_on = false;
         panel.frame(&app, &mut viewport, 0.0);
         assert!(panel.bands_job.is_none() && panel.bands_setup.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A prepared run on Simulate with only the Part ticked, so no cut part
+    /// is made, and the deviation colours on.
+    fn part_only(name: &str) -> (Application, PlaybackPanel, Viewport, std::path::PathBuf) {
+        let (app, mut panel, mut viewport, dir) = prepared(name);
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: false,
+        });
+        panel.bands_on = true;
+        (app, panel, viewport, dir)
+    }
+
+    /// Decision 0520: the part is coloured by the values measured on its own
+    /// triangles (decisions 0108, 0194), by a job, and the cut part keeps its
+    /// own projected values beside them.
+    #[test]
+    fn req_sim_05_the_part_is_coloured_by_its_own_measured_values() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-own");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let setup = app.project().setups()[0].id;
+        let run = Arc::clone(panel.run.as_ref().unwrap());
+        let (model, measured) = app
+            .start_deviation_bands(Arc::clone(&run), setup)
+            .wait()
+            .unwrap();
+        let shown = shown_bands(&measured, ColourBy::default(), &BandFilter::default());
+        assert_eq!(viewport.part_bands(), Some(&shown));
+        assert!(viewport.part_coloured() && !viewport.part_changed());
+        let _ = model;
+        // One value for each of the cube's twelve triangles: the part's
+        // own, not the cut surface's projected values.
+        assert_eq!(shown.values.len(), 12);
+        assert!(viewport.bands().is_none(), "no cut part is asked for");
+        // The job ran once: another frame does not start another.
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.part.job.is_none());
+        // Ticking Cut part prepares it and gives it its projected values,
+        // while the part keeps its own.
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: true,
+            toolpath: false,
+        });
+        settle_panel(&app, &mut panel, &mut viewport);
+        let cut = viewport.bands().expect("the cut part is coloured too");
+        assert!(
+            cut.values.len() > 100,
+            "the cut surface has its own triangles"
+        );
+        assert_eq!(viewport.part_bands(), Some(&shown));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Decision 0520, items 1 and 2 of its colours: with the part and the
+    /// cut part shown, the cut part is drawn plain at the stock's own
+    /// translucency, even in Solid, so the coloured part shows through.
+    #[test]
+    fn req_sim_05_with_part_and_cut_part_shown_the_cut_part_is_plain_and_translucent() {
+        let (app, mut panel, mut viewport, dir) = prepared("panel-cut-plain");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: true,
+            toolpath: false,
+        });
+        panel.bands_on = true;
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(viewport.part_coloured() && viewport.bands().is_some());
+        for solid in [false, true] {
+            viewport.set_cut_part_solid(solid);
+            let stock = viewport.layer(Layer::Stock).unwrap();
+            assert_eq!(
+                stock.meshes.len(),
+                1,
+                "one plain mesh, no bands (solid={solid})"
+            );
+            let mesh = &stock.meshes[0];
+            assert!(mesh.translucent, "solid={solid}");
+            assert_eq!(mesh.colour, [0.85, 0.72, 0.45, 0.30], "solid={solid}");
+            assert!(mesh.hatch.is_none());
+        }
+        // With the part unticked the cut part carries the colours again, as
+        // it did before.
+        viewport.set_simulate_show(SimulateShow {
+            model: false,
+            cut_part: true,
+            toolpath: false,
+        });
+        panel.frame(&app, &mut viewport, 0.0);
+        let stock = viewport.layer(Layer::Stock).unwrap();
+        assert!(!viewport.part_coloured());
+        assert!(
+            stock.meshes.len() > 1 || stock.meshes[0].colour != [0.85, 0.72, 0.45, 0.30],
+            "the cut part is coloured by its bands"
+        );
+        assert!(stock.meshes.iter().all(|m| !m.translucent), "solid is kept");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Decision 0330 and 0520: when the cut part could not be prepared the
+    /// deviation colours are off everywhere, the part's included.
+    #[test]
+    fn req_sim_05_no_colours_anywhere_when_cut_part_preparation_failed() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-no-colours");
+        panel.stock.error = Some("the cut part could not be prepared".to_owned());
+        for _ in 0..3 {
+            panel.frame(&app, &mut viewport, 0.0);
+        }
+        assert!(panel.part.job.is_none(), "no measuring is started");
+        assert!(viewport.part_bands().is_none() && viewport.bands().is_none());
+        assert!(!viewport.part_changed());
+        // Colours already shown go with the failure.
+        panel.stock.error = None;
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(viewport.part_bands().is_some());
+        panel.stock.error = Some("the cut part could not be prepared".to_owned());
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(viewport.part_bands().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// SIM-15 on the part: the colour choice and the band filter leave out
+    /// the bands and values they hide, as on the cut part.
+    #[test]
+    fn req_sim_15_band_filters_apply_to_the_part() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-filter");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let all = viewport.part_bands().unwrap().bands.len();
+        assert!(all > 0);
+        panel.set_colour_by(ColourBy::Overcut, &mut viewport);
+        let shown = viewport.part_bands().unwrap();
+        assert!(
+            shown
+                .bands
+                .iter()
+                .all(|(b, _)| matches!(b, DeviationBand::Overcut | DeviationBand::Unmeasured))
+        );
+        panel.set_colour_by(ColourBy::Deviation, &mut viewport);
+        assert_eq!(viewport.part_bands().unwrap().bands.len(), all);
+        let filter = BandFilter {
+            to: Some(-100.0),
+            ..BandFilter::default()
+        };
+        panel.set_band_filter(&filter, &mut viewport);
+        let kept: usize = viewport
+            .part_bands()
+            .unwrap()
+            .bands
+            .iter()
+            .map(|(_, t)| t.len())
+            .sum();
+        assert_eq!(kept, 0, "a filter that shows no value leaves none coloured");
+        assert!(viewport.part_bands().unwrap().values.len() == 12);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// UI-11, decision 0520 item 7: a change to the toolpath or the settings
+    /// leaves the part's colours as they are.
+    #[test]
+    fn req_ui_11_a_stale_toolpath_keeps_the_part_colours() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-stale-colours");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let before = viewport.part_bands().cloned().unwrap();
+        let mut app = app;
+        let operation = app.project().operations()[0].id;
+        app.set_parameter(
+            operation,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.6)),
+        )
+        .unwrap();
+        assert!(!openchuck_app::run_is_current(
+            app.project(),
+            panel.run.as_ref().unwrap()
+        ));
+        for _ in 0..3 {
+            panel.frame(&app, &mut viewport, 0.0);
+        }
+        assert_eq!(viewport.part_bands(), Some(&before));
+        assert!(!viewport.part_changed());
+        assert!(panel.part.job.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// UI-11, decision 0520 item 7: a part that changed since the run is
+    /// drawn plain with the note, whichever way it changed, and the colours
+    /// come back with the old part.
+    #[test]
+    fn req_ui_11_a_changed_part_is_drawn_plain_with_the_note() {
+        use openchuck_app::{Command, project::Item};
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-changed");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let mut app = app;
+        assert!(viewport.part_bands().is_some());
+        let model = app.project().models()[0].id;
+        let setup = app.project().setups()[0].id;
+        let changes: Vec<Command> = vec![
+            // Reimported: another file hash.
+            Command::Replace(Item::Model({
+                let mut m = app.project().models()[0].clone();
+                m.hash = openchuck_app::project::ContentHash::of_bytes(b"another file");
+                m
+            })),
+            // Placed another way.
+            Command::SetModelTransform {
+                model,
+                transform: vec![
+                    openchuck_app::model::TransformStep::CentreOnRotaryAxis,
+                    openchuck_app::model::TransformStep::Translate {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                ],
+            },
+            // Read in other units.
+            Command::SetModelUnits {
+                model,
+                units: Some(openchuck_app::model::LengthUnit::Inch),
+            },
+            // The setup's placement.
+            Command::Replace(Item::Setup({
+                let mut s = app.project().setup(setup).unwrap().clone();
+                s.frame.part_offset = openchuck_app::setup::Millimetres(2.0);
+                s
+            })),
+        ];
+        for change in changes {
+            app.execute(change).unwrap();
+            panel.frame(&app, &mut viewport, 0.0);
+            assert!(viewport.part_bands().is_none(), "the part is plain");
+            assert!(viewport.part_changed(), "the note is on");
+            assert!(panel.part.job.is_none(), "no colours are made for it");
+            app.undo().unwrap();
+            panel.frame(&app, &mut viewport, 0.0);
+            assert!(
+                viewport.part_bands().is_some(),
+                "the old part's colours return"
+            );
+            assert!(!viewport.part_changed());
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// UI-11, decision 0520 item 7: the job reads the model file, so a file
+    /// edited behind the application gets no colours either.
+    #[test]
+    fn req_ui_11_a_part_file_edited_behind_the_application_is_drawn_plain_with_the_note() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-file");
+        let file = dir.join("models/cube.stl");
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, text.replacen("solid cube", "solid cube two", 1)).unwrap();
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(viewport.part_bands().is_none());
+        assert!(viewport.part_changed());
+        assert!(panel.error.is_none(), "this is the note, not an error");
+        assert!(panel.bands_on, "the colours stay on for the cut part");
+        // It is not measured again every frame.
+        for _ in 0..3 {
+            assert!(!panel.frame(&app, &mut viewport, 0.0));
+        }
+        assert!(panel.part.job.is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 
