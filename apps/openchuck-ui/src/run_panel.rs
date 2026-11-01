@@ -105,7 +105,13 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
     for (id, limit) in &run.feed_limits {
         let operation = name(*id);
         out.push(line(Severity::Info, limit.describe_for(&operation)));
-        summarised.push(format!("operation '{operation}': "));
+        // The notes carry the name the operation had when the run was made,
+        // which the run's own project snapshot still holds.
+        let made_as = run
+            .project
+            .operation(*id)
+            .map_or(operation, |o| o.name.clone());
+        summarised.push(format!("operation '{made_as}': "));
     }
     let shown: Vec<String> = run
         .notes
@@ -1078,8 +1084,11 @@ mod tests {
 
     #[test]
     fn req_nfr_12_the_summary_is_named_from_the_operation_id_not_the_notes() {
-        // Issue 418: after a rename the line carries the current name.
-        let (run, mut project, _) = limited_run("rename", 2);
+        // Issue 418: after a rename the line carries the current name, and
+        // the per-move notes, which keep the name the run was made under,
+        // are still left out (CodeRabbit on pull request 443).
+        let (mut run, mut project, _) = limited_run("rename", 2);
+        run.project = Arc::new(project.clone());
         let id = run.feed_limits[0].0;
         let mut operation = project.operation(id).unwrap().clone();
         operation.name = "Renamed".to_owned();
@@ -1087,11 +1096,18 @@ mod tests {
             .replace(openchuck_app::project::Item::Operation(operation))
             .unwrap();
         let lines = result_lines(&run, &project);
+        assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
             lines[0]
                 .text
                 .starts_with("2 moves during 'Renamed' were limited")
         );
+        assert_eq!(lines[0].severity, Severity::Info);
+        // A removed operation: the line says so, and the notes stay out.
+        let removed = Project::new("removed");
+        let lines = result_lines(&run, &removed);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].text.contains("(removed operation)"));
     }
 
     #[test]
