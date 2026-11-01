@@ -661,4 +661,41 @@ fn req_nfr_07_roughing_rings_refuse_an_absurd_stepover_by_name() {
     ]));
     let e = path(&f, &RotaryRoughing, &v).unwrap_err().to_string();
     assert!(e.contains(names::STEPOVER) && e.contains("rings"), "{e}");
+    // A stepover so small that the count of rings passes any integer is
+    // refused by name before anything is made for it, not a crash (review
+    // of #447).
+    for stepover in [1e-20, f64::MIN_POSITIVE] {
+        let v = ringed(rough_values(&[(names::STEPOVER, num(stepover))]));
+        let e = path(&f, &RotaryRoughing, &v).unwrap_err().to_string();
+        assert!(e.contains(names::STEPOVER), "{stepover}: {e}");
+        let v = ringed(round_values(&[(names::STEPOVER, num(stepover))]));
+        let e = path(&facing_fixture(), &Facing, &v)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(names::STEPOVER), "round Facing {stepover}: {e}");
+    }
+}
+
+#[test]
+fn req_nfr_07_every_ring_entry_point_refuses_an_absurd_stepover_by_name() {
+    // Each strategy that places rings checks its count of points before it
+    // places them, so a stepover too fine to cut is refused by name, never
+    // counted out (review of #447). Roughing and round Facing are above.
+    use openchuck_path::HelicalFinishing;
+    let rest = shaft(15.0);
+    let part = Cylinder {
+        radius: 15.0,
+        length: 20.0,
+    };
+    let surface = MeshSurface::new(&part.mesh(3, 360)).unwrap();
+    let helical = Fixture::new(surface, 16.0, &ball(6.0));
+    for stepover in [1e-20, f64::MIN_POSITIVE] {
+        let v = ringed(rest_values(&[(names::STEPOVER, num(stepover))]));
+        let e = path(&rest, &RestMachining, &v).unwrap_err().to_string();
+        assert!(e.contains(names::STEPOVER), "rest {stepover}: {e}");
+        let e = path(&helical, &HelicalFinishing, &v)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(names::STEPOVER), "helical {stepover}: {e}");
+    }
 }

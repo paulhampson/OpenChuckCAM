@@ -1200,11 +1200,22 @@ impl<'a> Job<'a> {
         context: &JobContext<'_>,
     ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
         let face_xs: Vec<f64> = face_turns.iter().map(|t| t.x).collect();
+        let along = self.line_spacing();
+        // The nodes a layer needs, estimated before any ring is placed, so
+        // that a stepover too fine to cut is refused by name rather than
+        // counted out (NFR-07): a whole turn a ring, the rings at each gap,
+        // each end and each face, and a step a gap at least one node long.
+        let length = x1 - x0;
+        let gaps = (length / self.stepover).ceil().max(1.0);
+        let rings = gaps + 1.0 + face_xs.len() as f64;
+        let estimate = rings * per_turn + gaps * ((length / gaps) / along).ceil().max(1.0);
+        if !estimate.is_finite() || estimate > MAX_NODES {
+            return Err(too_many_rings(length, self.stepover, estimate));
+        }
         let (xs, gap) = crate::helical::ring_places((x0, x1), self.stepover, &face_xs);
         // Each piece of path, in coarse nodes from its first: a ring, then a
         // step to the next ring.
         let around = per_turn as usize;
-        let along = self.line_spacing();
         let mut pieces: Vec<(usize, Piece<'_>)> = Vec::with_capacity(2 * xs.len());
         let mut coarse = 0_usize;
         for (k, &x) in xs.iter().enumerate() {
@@ -1227,15 +1238,7 @@ impl<'a> Job<'a> {
             }
         }
         if coarse as f64 > MAX_NODES {
-            return Err(PathError::Parameter {
-                name: names::STEPOVER.to_owned(),
-                reason: format!(
-                    "{:.3} mm of length in rings at {} mm needs {coarse} points per layer; \
-                     increase the stepover or the largest angle step",
-                    x1 - x0,
-                    self.stepover
-                ),
-            });
+            return Err(too_many_rings(length, self.stepover, coarse as f64));
         }
         let place = |f: f64| -> (Site, Option<&faces::Turn>) {
             let c = f / SUB as f64;
@@ -1728,6 +1731,18 @@ impl<'a> Job<'a> {
                         .to_owned()
                 })
             })
+    }
+}
+
+/// The refusal of a layer in rings that needs more than [`MAX_NODES`]
+/// points: `nodes` for `length` mm at `stepover` (NFR-07).
+fn too_many_rings(length: f64, stepover: f64, nodes: f64) -> PathError {
+    PathError::Parameter {
+        name: names::STEPOVER.to_owned(),
+        reason: format!(
+            "{length:.3} mm of length in rings at {stepover} mm needs {nodes:.0} points per \
+             layer; increase the stepover or the largest angle step"
+        ),
     }
 }
 
