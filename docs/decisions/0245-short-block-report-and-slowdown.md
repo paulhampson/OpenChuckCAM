@@ -39,7 +39,7 @@ Verification notes moved from `docs/short-block-verification.md` and `docs/first
 
 ### Configuring a machine
 
-The user-facing guidance (the Minimum block time, Block window and mode fields, the `machine.toml` keys `min_block_ms`, `block_window` and `short_block_mode`, post overrides under `[options]`, the Z1 default of Report / 7 ms / 32, and how to calibrate) moves to the user guide's machine-setup page (lane DOCSUSER, `user-docs/`). The text it was written from is in the git history of this section (commit "DOCS-TIDY: fold SHORTMOVE and first-cut notes into 0245"); until the page exists, the fields and their meaning are in [decision 0222](0222-short-moves-minimum-block-time.md) and the Implementation section above.
+The user-facing guidance (the Minimum block time, Block window and mode fields, the `machine.toml` keys `min_block_ms`, `block_window` and `short_block_mode`, post overrides under `[options]`, the Z1 default of Report / 7 ms / 32, and how to calibrate) is in the user guide, page "Machine setup: short moves" (`user-docs/src/how-to/short-block-settings.md`). The text it was written from is in the git history of this section (commit "DOCS-TIDY: fold SHORTMOVE and first-cut notes into 0245"). Where the page is not yet on `main`, the fields and their meaning are in [decision 0222](0222-short-moves-minimum-block-time.md) and the Implementation section above.
 
 ### Evidence and corpus analysis
 
