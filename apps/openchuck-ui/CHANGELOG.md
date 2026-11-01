@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- STEPALL-CLOSE (issue #351; decision 0500, proposed): the operation inspector shows *Exact STEP surface contact* in *Pattern and tolerance*, after *Tolerance*, for helical, indexed, rest, simultaneous and axial finishing and pencil clean-up on a STEP part, with a warning line under it when the tool cannot take it.
+- STEPALL-CLOSE (issue #351; decision 0500, accepted): the operation inspector shows *Exact STEP surface contact* in *Pattern and tolerance*, after *Tolerance*, for helical, indexed, rest, simultaneous and axial finishing and pencil clean-up on a STEP part, with a warning line under it when the tool cannot take it.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.
 

@@ -2,7 +2,7 @@
 
 ## 0.37.0
 
-- **Family release (0.37.0, STEPALL-CLOSE; issue #351; decision 0500, proposed):** `openchuck-path`'s `Strategy::exact_contact` returns the kind of Exact STEP surface contact a strategy offers, a breaking change; no change to this crate.
+- **Family release (0.37.0, STEPALL-CLOSE; issue #351; decision 0500, accepted):** `openchuck-path`'s `Strategy::exact_contact` returns the kind of Exact STEP surface contact a strategy offers, a breaking change; no change to this crate.
 
 ## 0.32.0
 
