@@ -1,6 +1,6 @@
 # 0520: Simulate shows the deviation colours on the part model as well as on the cut part (SIM-05, UI-05, UI-11, UI-12, NFR-15; issue #430; lane VIEW-OVERLAYS)
 
-- **Status:** proposed. The owner's answers to questions 1 to 3 (1 Nov 2026) were relayed by the coordinator (decision 0049); the record itself waits for the owner's acceptance.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner's answers to questions 1 to 3 (1 Nov 2026) were relayed the same way; the specification entry below was accepted with the record.
 - **Date:** 1 Nov 2026.
 - **Issue:** #430 ("Deviation colours should show on the part model").
 - **Requirements:** SIM-05, SIM-15, UI-05, UI-11, NFR-12, NFR-15. No requirement changes.
@@ -26,9 +26,9 @@ The comparison already measures on the part. Its samples lie on the target's tri
    - The part itself changed since the run: the part is drawn plain, and the colour scale box says "Deviation colours are not shown on the part: it has changed since this simulation." The cut part keeps its colours under the banner. "Changed" means the setup's part reference differs from the run's in content hash, units or transform; or the setup names another part or places it differently on the machine (its frame); or the model file read for the colours does not match the run's recorded hash. A reimport or replacement already marks the run out of date, because the pipeline's key includes the part reference with its recorded hash (`cache.rs` `operation_key`). Only a file edited outside the application under an unchanged recorded hash escapes that key, and opening the project reports it (PRJ-02); the file check covers it here.
 8. **Cost.** The part's bands are made by a job, off the interface thread, once per run and setup, and kept while the run is shown. The timings are in "As built". OI-1760 covers the check on the reference hardware, as OI-987 does for the cut part.
 
-## Specification entry proposed
+## Specification entry
 
-Section 11.5, Viewport, a new item after "The stock":
+Section 11.5, Viewport, a new item after "The stock" (made in the same change, on the owner's acceptance):
 
 - **The part** *(SIM-05; decision 0520)*. With "Deviation colours" on and Part shown, the part is coloured by its own measured final result (the band of each triangle's worst counted sample); with Cut part shown too, the cut part is drawn plain at 30% over it. The colour scale box names what it colours ("Part · final result", "Cut part · nearest target sample") and, while only the cut part is shown, adds "Tick Part to see these colours on the part model." The probe on the part reads "Final result · …". After a change to the toolpath or the settings the colours stay under the stale banner; after a change to the part itself (reimport, replacement, placement) the part is drawn plain and the scale box says "Deviation colours are not shown on the part: it has changed since this simulation." When the cut part cannot be prepared nothing is coloured (#330).
 
@@ -45,7 +45,7 @@ Section 11.5, Viewport, a new item after "The stock":
 
 - `apps/openchuck-ui`: the part's bands kept apart from the cut part's in the viewport; the cut part drawn plain while the part is coloured; the colour scale box's title and lines; the probe text; the part bands job and its cache in the playback panel.
 - `crates/openchuck-app`: a check that the setup's part has changed since a run, and the file-hash check in `start_deviation_bands`. Additive; no library-family change, no schema change.
-- Specification 11.5 gets the entry above when the record is accepted.
+- Specification 11.5 has the entry above (accepted with the record).
 
 ## As built
 
