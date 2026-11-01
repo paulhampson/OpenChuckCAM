@@ -1001,7 +1001,7 @@ impl Application {
             // A tab shorter along X than a tool is wide that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            notes.extend(workholding::narrow_tab_notes(project, s));
+            notes.extend(workholding::narrow_tab_notes(project, s, part.as_ref()));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),

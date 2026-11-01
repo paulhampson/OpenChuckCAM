@@ -273,8 +273,9 @@ pub fn operation_label(
 pub(crate) fn narrow_tab_notes(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
+    part: Option<&PartExtent>,
 ) -> Vec<String> {
-    narrow_tab_findings(project, setup)
+    narrow_tab_findings(project, setup, part)
         .into_iter()
         .map(|f| f.text)
         .collect()
@@ -321,10 +322,29 @@ pub fn setup_tools(
 fn narrow_tab_findings(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
+    part: Option<&PartExtent>,
 ) -> Vec<WorkholdingFinding> {
-    setup_tools(project, setup.id)
-        .into_iter()
-        .filter_map(|t| narrow_tab_note(&setup.workholding, t.diameter, &t.tool, &t.operation))
+    narrow_findings(
+        &setup.workholding,
+        setup.stock.as_ref(),
+        part,
+        &setup_tools(project, setup.id),
+    )
+}
+
+/// The first note for each tool of `tools` that a tab of `workholding` is too
+/// short for, with the tabs where they are (automatic ones resolved against
+/// the stock and the part; decision 0202 item 3).
+fn narrow_findings(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+    tools: &[SetupTool],
+) -> Vec<WorkholdingFinding> {
+    let resolved = workholding.resolved(stock, part);
+    tools
+        .iter()
+        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation))
         .collect()
 }
 
@@ -371,7 +391,7 @@ pub(crate) fn findings_of(
                 },
             })
             .collect();
-    found.extend(narrow_tab_findings(project, setup));
+    found.extend(narrow_tab_findings(project, setup, extent.as_ref()));
     Ok(found)
 }
 
@@ -431,7 +451,11 @@ pub fn check_for_tool(
             x.0, x.1
         )));
     }
-    for (i, tab) in workholding.tabs.iter().enumerate() {
+    // An automatic tab keeps its last-applied length when the part moves
+    // (decision 0202 item 3): compare the length it has now, as the target
+    // is built from it.
+    let resolved = workholding.resolved(stock, Some(part));
+    for (i, tab) in resolved.tabs.iter().enumerate() {
         let d = tab.length.0;
         if d < tool_diameter - 1e-9 {
             return Err(refuse(format!(
@@ -1167,6 +1191,55 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("across"), "{text}");
+    }
+
+    fn auto_head_tab(stored_length: f64) -> Workholding {
+        Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(10.0),
+                diameter: None,
+            }),
+            tabs: vec![Tab {
+                auto: Some(TabEnd::Head),
+                x_start: Millimetres(10.0),
+                length: Millimetres(stored_length),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(8.0),
+                },
+                layout: TabLayout::OnAxis,
+            }],
+            ..Workholding::default()
+        }
+    }
+
+    /// OP-21, decision 0202 item 3 and decision 0470: an automatic tab is
+    /// compared with the tool where it is now, not at the length it was last
+    /// applied with, in the refusal when generating and in the findings.
+    #[test]
+    fn req_op_21_an_automatic_tab_is_compared_at_its_resolved_length() {
+        // Stored 8 mm long; the part now starts at X 12, so the head gap is
+        // 2 mm and a 4 mm tool does not fit.
+        let shrunk = auto_head_tab(8.0);
+        let near = part(12.0, 70.0);
+        let error = check_for_tool(&shrunk, Some(&stock()), &near, 4.0, "ball 4").unwrap_err();
+        assert!(
+            error.to_string().contains("2.000 mm long along X"),
+            "{error}"
+        );
+        let tools = [SetupTool {
+            tool: "T1 Ball".into(),
+            diameter: 4.0,
+            operation: "1 Rough".into(),
+        }];
+        let notes = narrow_findings(&shrunk, Some(&stock()), Some(&near), &tools);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].text.contains("2.000 mm long along X"), "{notes:?}");
+        // Stored 2 mm long; the part now starts at X 18, so the gap is 8 mm
+        // and the tool fits.
+        let grown = auto_head_tab(2.0);
+        let far = part(18.0, 70.0);
+        assert!(check_for_tool(&grown, Some(&stock()), &far, 4.0, "ball 4").is_ok());
+        assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &tools).is_empty());
     }
 
     /// The reverse: a thin tab that is long enough is accepted, for a

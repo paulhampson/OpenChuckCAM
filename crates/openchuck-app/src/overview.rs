@@ -1132,7 +1132,11 @@ pub(crate) fn run_checks(
                 unconfirmed: Vec::new(),
             }),
         );
-        notes.extend(crate::workholding::narrow_tab_notes(project, s));
+        notes.extend(crate::workholding::narrow_tab_notes(
+            project,
+            s,
+            part.as_ref(),
+        ));
         let unbuildable = match (&part, s.workholding.is_empty()) {
             (Some(part), false) => {
                 crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), part)
