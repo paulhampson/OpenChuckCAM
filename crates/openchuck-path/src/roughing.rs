@@ -965,6 +965,7 @@ impl<'a> Job<'a> {
     fn pass(&self, sites: &[(Site, f64)], stock: &PassStock) -> Pass {
         Pass {
             helical_pass_start: false,
+            low_link: false,
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
             rapids: Vec::new(),

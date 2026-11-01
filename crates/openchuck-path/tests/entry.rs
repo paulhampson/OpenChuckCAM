@@ -85,6 +85,7 @@ impl Strategy for Line {
             .collect();
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -999,6 +1000,7 @@ fn clear_helices(fixture: &Fixture, height: f64) -> Vec<Pass> {
         .into_iter()
         .map(|start| Pass {
             helical_pass_start: true,
+            low_link: false,
             points: (0..=6)
                 .map(|i| {
                     let a = Degrees(f64::from(i) * 120.0);
@@ -1170,6 +1172,7 @@ fn req_op_11_req_op_14_req_op_15_a_reset_boundary_is_recorded_once_across_motion
     };
     let pass = |points: Vec<CutPoint>, rapids: Vec<usize>| Pass {
         helical_pass_start: true,
+        low_link: false,
         points,
         stock: None,
         rapids,

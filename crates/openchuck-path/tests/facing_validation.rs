@@ -67,6 +67,7 @@ impl Strategy for Plain {
     ) -> Result<Vec<Pass>> {
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points: [-8., -4., 0., 4., 8.]
                 .into_iter()
                 .map(|x| {

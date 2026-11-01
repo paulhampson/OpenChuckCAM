@@ -71,6 +71,13 @@ pub struct Pass {
     /// fragment separated by a gap. Shared assembly may mark the existing
     /// clear transition for a nonmoving controller reset (decision 0247).
     pub helical_pass_start: bool,
+    /// The link from the pass before this one may stay low: the approach
+    /// distance above the highest stock under the tool along the whole
+    /// link, where that is below the retract height, instead of going up to
+    /// it (OP-14; axial and indexed finishing with `link_height` set to
+    /// `low`; decision 0510). A pass that carries its own `stock` is linked
+    /// that way already. False links at the retract height.
+    pub low_link: bool,
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
     /// The material when this pass starts, if the strategy tracks it. Passes
@@ -675,6 +682,7 @@ fn keep_clear(
         for points in pieces {
             kept.push(Pass {
                 helical_pass_start: helical_start_pending,
+                low_link: pass.low_link,
                 points,
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
@@ -842,6 +850,7 @@ mod tests {
     fn pass(xs: &[f64]) -> Pass {
         Pass {
             helical_pass_start: false,
+            low_link: false,
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),
