@@ -194,13 +194,136 @@ pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Respo
     response
 }
 
+/// What the labels of the pane drawn in one frame needed: the widest of this
+/// frame and of the one before, so that a row drawn first knows what a row
+/// drawn later asks for (decision 0440).
+#[derive(Clone, Copy, Default)]
+struct Needed {
+    pass: u64,
+    last: f32,
+    now: f32,
+}
+
+/// The key of the label column the row being drawn belongs to: the section it
+/// is in, else the window or panel (decision 0440: each section has the
+/// column its own labels need, so one long label does not narrow the boxes of
+/// every other section).
+fn needed_id(ui: &egui::Ui) -> egui::Id {
+    let section = ui.data(|d| d.get_temp::<egui::Id>(egui::Id::unique("label column section")));
+    egui::Id::unique("label column")
+        .with(ui.layer_id())
+        .with(section)
+}
+
+/// Tells the pane that a label needs `width` (the label, the reset slot and
+/// the gap after them).
+pub fn need_label_width(ui: &egui::Ui, width: f32) {
+    let pass = ui.ctx().cumulative_pass_nr();
+    let id = needed_id(ui);
+    let grown = ui.data_mut(|d| {
+        let n = d.get_temp_mut_or_default::<Needed>(id);
+        if n.pass != pass {
+            n.last = n.now;
+            n.now = 0.0;
+            n.pass = pass;
+        }
+        n.now = n.now.max(width);
+        width > n.last + 0.5
+    });
+    // A label wider than the column the pane was drawn with: draw the frame
+    // again with the new column, so the form never shows the old one.
+    if grown {
+        ui.ctx().request_discard("label column grew");
+    }
+}
+
+/// The width of the label column of the row being drawn: as wide as the
+/// widest label of the pane needs, not narrower than `width::LABEL_MIN`, and
+/// not wider than the smaller of `width::LABEL_MAX` and `width::LABEL_SHARE`
+/// of the room the row has (specification section 8; decision 0440). Every
+/// row of the pane has the same column, so the boxes line up.
+pub fn label_column(ui: &egui::Ui) -> f32 {
+    let pass = ui.ctx().cumulative_pass_nr();
+    let id = needed_id(ui);
+    let needed = ui
+        .data(|d| d.get_temp::<Needed>(id))
+        .map_or(0.0, |n| if n.pass == pass { n.last } else { n.now });
+    let most = width::LABEL_MAX.min(width::LABEL_SHARE * ui.available_width());
+    let column = needed.min(most).max(width::LABEL_MIN);
+    #[cfg(test)]
+    ui.data_mut(|d| d.insert_temp(egui::Id::unique("last label column"), column));
+    column
+}
+
+/// The label column the last row drew with (for tests that click just
+/// after it).
+#[cfg(test)]
+pub(crate) fn last_label_column(ctx: &egui::Context) -> f32 {
+    ctx.data(|d| d.get_temp(egui::Id::unique("last label column")))
+        .unwrap_or(width::LABEL_MIN)
+}
+
+/// A row of the form: a horizontal layout one point narrower than the room,
+/// so a row never ends past the pane's edge by the rounding of a fractional
+/// label column and holds the pane open (decision 0440).
+fn form_row<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.scope(|ui| {
+        ui.set_max_width((ui.available_width() - 1.0).max(0.0));
+        ui.horizontal(add).inner
+    })
+    .inner
+}
+
+/// The width a label needs in the label column, with the reset slot and the
+/// gap before the value.
+fn label_need(ui: &egui::Ui, label: &str) -> f32 {
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        DARK.muted,
+    );
+    galley.size().x + ui.spacing().interact_size.y + 6.0
+}
+
+/// The width of a number box in a row with `available` points left: the
+/// compact width, or more when the text it shows (a default and where it comes
+/// from) needs more, and never more than the room.
+fn number_width(available: f32, shown: f32) -> f32 {
+    width::NUMBER_BOX
+        .max(shown.min(width::NUMBER_BOX_SOURCE))
+        .min(available)
+        .max(60.0)
+}
+
+/// The width of a drop-down list showing the widest of `texts`, in a row
+/// with `available` points left.
+fn list_width(ui: &egui::Ui, texts: &[&str], available: f32) -> f32 {
+    let widest = texts
+        .iter()
+        .map(|t| {
+            ui.painter()
+                .layout_no_wrap(
+                    (*t).to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    (widest + 2.0 * ui.spacing().button_padding.x + ui.spacing().icon_width + 8.0)
+        .max(80.0)
+        .min(available.max(80.0))
+}
+
 /// The label column: the label with its tooltip at the left, and ↺ in a slot
 /// at its right end. The slot is reserved whether or not ↺ is shown, so
 /// showing or hiding it never moves the label or the value (issue 243).
 /// Returns true when ↺ was clicked.
 fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
     let height = ui.spacing().interact_size.y;
-    let size = egui::vec2(width::LABEL_COLUMN, height);
+    need_label_width(ui, label_need(ui, label));
+    let size = egui::vec2(label_column(ui), height);
     // Allocated and drawn in one step, so the cell is where the cursor is and
     // the value follows it directly.
     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
@@ -240,21 +363,30 @@ fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) ->
     button.clicked()
 }
 
+/// The label, cut with "…" when the column is too narrow for it; a cut label
+/// is also given as the tooltip, so the whole of it can be read (UI-14).
 fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
     let response = ui.add(
         egui::Label::new(RichText::new(label).color(DARK.muted))
             .truncate()
             .sense(egui::Sense::hover()),
     );
-    if !description.is_empty() {
-        response.on_hover_text(description);
+    let cut =
+        response.rect.width() + 0.5 < label_need(ui, label) - ui.spacing().interact_size.y - 6.0;
+    let text = match (cut, description.is_empty()) {
+        (true, true) => label.to_owned(),
+        (true, false) => format!("{label}: {description}"),
+        (false, _) => description.to_owned(),
+    };
+    if !text.is_empty() {
+        response.on_hover_text(text);
     }
 }
 
 /// The reason in red under the value, indented past the label column.
 fn reason_line(ui: &mut egui::Ui, reason: &str, colour: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
-        ui.add_space(width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
         ui.label(RichText::new(reason).color(colour));
     });
 }
@@ -270,7 +402,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     if row.scroll_to {
         ui.scroll_to_cursor(Some(egui::Align::Center));
     }
-    ui.horizontal(|ui| {
+    form_row(ui, |ui| {
         if label_cell(ui, row.label, row.description, row.reset && row.enabled) {
             outcome = Outcome::Reset;
         }
@@ -283,7 +415,34 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         let margin = egui::vec2(6.0, 2.0);
         let box_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0 * margin.y;
         let (frame_rect, _) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width().max(60.0), box_height),
+            egui::vec2(
+                if row.number || !row.unit.is_empty() {
+                    let text = if row.applied.is_empty() {
+                        row.hint.as_deref().unwrap_or_default()
+                    } else {
+                        row.applied.as_str()
+                    };
+                    let unit = if row.unit.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", row.unit)
+                    };
+                    let measure = |text: &str, style: egui::TextStyle| {
+                        ui.painter()
+                            .layout_no_wrap(text.to_owned(), style.resolve(ui.style()), DARK.muted)
+                            .size()
+                            .x
+                    };
+                    let shown = measure(text, egui::TextStyle::Monospace)
+                        + measure(&unit, egui::TextStyle::Body)
+                        + 2.0 * margin.x
+                        + 2.0 * ui.spacing().item_spacing.x;
+                    number_width(ui.available_width(), shown)
+                } else {
+                    ui.available_width().max(60.0)
+                },
+                box_height,
+            ),
             egui::Sense::hover(),
         );
         let background = ui.painter().add(egui::Shape::Noop);
@@ -495,7 +654,7 @@ pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
 /// (decision record 0175).
 pub fn warning_line(ui: &mut egui::Ui, text: &str) {
     ui.horizontal_wrapped(|ui| {
-        ui.add_space(width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
         crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
         ui.label(RichText::new(text).color(DARK.warning));
     });
@@ -586,11 +745,16 @@ pub fn read_only_row(
     description: &str,
     value: impl Into<egui::WidgetText>,
 ) -> egui::Response {
-    ui.horizontal(|ui| {
+    form_row(ui, |ui| {
         label_cell(ui, label, description, false);
-        ui.add(egui::Label::new(value).wrap())
+        // A point narrower than the room, so wrapped text never runs to the
+        // pane's edge and holds the pane open.
+        ui.scope(|ui| {
+            ui.set_max_width((ui.available_width() - 2.0).max(40.0));
+            ui.add(egui::Label::new(value).wrap())
+        })
+        .inner
     })
-    .inner
 }
 
 /// A derived line under a row, indented past the label column ("Small end
@@ -608,17 +772,14 @@ pub fn flag_row(
     enabled: bool,
 ) -> Option<bool> {
     let mut on = value;
-    let changed = ui
-        .horizontal(|ui| {
-            label_cell(ui, label, description, false);
-            let response = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on));
-            response.widget_info(|| {
-                egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, label)
-            });
-            crate::pending_edits::track(ui, &response, label, None);
-            response.changed()
-        })
-        .inner;
+    let changed = form_row(ui, |ui| {
+        label_cell(ui, label, description, false);
+        let response = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on));
+        response
+            .widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, label));
+        crate::pending_edits::track(ui, &response, label, None);
+        response.changed()
+    });
     changed.then_some(on)
 }
 
@@ -687,9 +848,10 @@ pub fn choice_row(
     current: Option<usize>,
     enabled: bool,
 ) -> Option<usize> {
-    ui.horizontal(|ui| {
+    form_row(ui, |ui| {
         label_cell(ui, label, description, false);
-        if (2..=4).contains(&options.len()) && segmented_width(ui, options) <= ui.available_width()
+        if (2..=4).contains(&options.len())
+            && segmented_width(ui, options) + 2.0 <= ui.available_width()
         {
             segmented(ui, options, current, enabled)
         } else {
@@ -701,7 +863,11 @@ pub fn choice_row(
             ui.add_enabled_ui(enabled, |ui| {
                 let response = egui::ComboBox::from_id_salt(("choice", key))
                     .selected_text(shown)
-                    .width(ui.available_width().max(80.0))
+                    .width(list_width(
+                        ui,
+                        &[options, &[shown]].concat(),
+                        ui.available_width(),
+                    ))
                     .show_ui(ui, |ui| {
                         for (i, option) in options.iter().enumerate() {
                             if ui.selectable_label(current == Some(i), *option).clicked()
@@ -716,7 +882,6 @@ pub fn choice_row(
             chosen
         }
     })
-    .inner
 }
 
 /// A row of a drop-down list whose closed box shows `shown`, which may be
@@ -730,12 +895,16 @@ pub fn list_row(
     (options, current): (&[&str], Option<usize>),
     shown: &str,
 ) -> Option<usize> {
-    ui.horizontal(|ui| {
+    form_row(ui, |ui| {
         label_cell(ui, label, description, false);
         let mut chosen = None;
         let response = egui::ComboBox::from_id_salt(("list", key))
             .selected_text(shown)
-            .width(ui.available_width().max(80.0))
+            .width(list_width(
+                ui,
+                &[options, &[shown]].concat(),
+                ui.available_width(),
+            ))
             .truncate()
             .show_ui(ui, |ui| {
                 for (i, option) in options.iter().enumerate() {
@@ -751,7 +920,6 @@ pub fn list_row(
         crate::pending_edits::track(ui, &response, label, None);
         chosen
     })
-    .inner
 }
 
 /// The decimal places a quantity is shown with (14.3): positions and lengths
@@ -833,7 +1001,18 @@ pub fn section<R>(
     let open = header.is_open();
     let (_, header, body) = header.body(|ui| {
         let ctx = ui.ctx().clone();
-        crate::pending_edits::section(&ctx, id, || body(ui))
+        let key = egui::Id::unique("label column section");
+        let outer = ui.data(|d| d.get_temp::<egui::Id>(key));
+        ui.data_mut(|d| d.insert_temp(key, id));
+        let shown = crate::pending_edits::section(&ctx, id, || body(ui));
+        ui.data_mut(|d| {
+            if let Some(o) = outer {
+                d.insert_temp(key, o);
+            } else {
+                d.remove::<egui::Id>(key);
+            }
+        });
+        shown
     });
     Section {
         body: body.map(|b| b.inner),
@@ -1057,5 +1236,104 @@ mod tests {
             vec![egui::Event::Text("1".into())],
         );
         assert_eq!(state.typed("stepover"), Some("0.50071"));
+    }
+
+    /// One frame of a form of three rows at a pane `width`: a long-labelled
+    /// number row, a short-labelled number row and a text row. Returns the
+    /// boxes (the field fill) and the texts with their rectangles.
+    fn form(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        width: f32,
+    ) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, 300.0),
+            )),
+            ..Default::default()
+        };
+        let rows = [
+            ("long", "Distance past the stock", "mm", true),
+            ("short", "Tolerance", "mm", true),
+            ("name", "Name", "", false),
+        ];
+        let mut output = ctx.run_ui(input, |ui| {
+            for (key, label, unit, number) in rows {
+                let row = TextRow {
+                    key,
+                    label,
+                    unit,
+                    number,
+                    applied: "0.400".to_owned(),
+                    enabled: true,
+                    ..TextRow::default()
+                };
+                text_row(ui, state, &row);
+            }
+        });
+        output.textures_delta.clear();
+        let mut boxes = Vec::new();
+        let mut texts = Vec::new();
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::Shape::Rect(r) if r.fill == DARK.field => boxes.push(r.rect),
+                egui::Shape::Text(t) => texts.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                _ => {}
+            }
+        }
+        (boxes, texts)
+    }
+
+    fn settled(width: f32) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>) {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let mut last = form(&ctx, &mut state, width);
+        for _ in 0..4 {
+            last = form(&ctx, &mut state, width);
+        }
+        last
+    }
+
+    #[test]
+    fn req_ui_07_the_label_column_fits_the_widest_label_and_every_row_shares_it() {
+        let (boxes, texts) = settled(420.0);
+        let long = texts
+            .iter()
+            .find(|(t, _)| t == "Distance past the stock")
+            .unwrap();
+        assert_eq!(boxes.len(), 3, "{boxes:?}");
+        let lefts: Vec<f32> = boxes.iter().map(|b| b.left()).collect();
+        assert!(
+            lefts.iter().all(|l| (l - lefts[0]).abs() < 0.6),
+            "{lefts:?}"
+        );
+        assert!(lefts[0] >= long.1.right() + 4.0, "{lefts:?} {:?}", long.1);
+    }
+
+    #[test]
+    fn req_ui_07_a_number_box_stays_compact_and_a_text_box_fills_as_the_pane_widens() {
+        let (narrow, _) = settled(340.0);
+        let (wide, _) = settled(520.0);
+        let number = width::NUMBER_BOX;
+        assert!((wide[0].width() - number).abs() < 0.6, "{wide:?}");
+        assert!(narrow[0].width() <= number + 0.6, "{narrow:?}");
+        assert!(
+            wide[2].width() > narrow[2].width() + 100.0,
+            "{narrow:?} {wide:?}"
+        );
+        assert!(wide[2].width() > wide[0].width() + 100.0, "{wide:?}");
+    }
+
+    #[test]
+    fn req_ui_07_the_column_is_limited_to_its_share_of_a_narrow_pane() {
+        // 200 points: the long label cannot have its width, and the boxes
+        // keep their minimum.
+        let (boxes, _) = settled(200.0);
+        assert!(boxes.iter().all(|b| b.width() >= 60.0), "{boxes:?}");
+        assert!(boxes[0].left() <= 0.55 * 200.0 + 24.0, "{boxes:?}");
     }
 }

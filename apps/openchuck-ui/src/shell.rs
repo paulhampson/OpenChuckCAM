@@ -2699,6 +2699,10 @@ mod frame_tests;
 mod strategy_picker_tests;
 
 #[cfg(test)]
+mod dock_buttons_tests;
+#[cfg(test)]
+mod inspector_layout_tests;
+#[cfg(test)]
 mod numbox_tests;
 
 #[cfg(test)]

@@ -2091,7 +2091,7 @@ mod tests {
             .unwrap()
             .1;
         let at = egui::pos2(
-            label.left() + crate::theme::width::LABEL_COLUMN + 9.0,
+            label.left() + crate::field_row::last_label_column(&ctx) + 9.0,
             label.center().y,
         );
         let button = |pressed| egui::Event::PointerButton {

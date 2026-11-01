@@ -509,15 +509,19 @@ impl Shell {
                 .exact_size(RAIL)
                 .resizable(false)
                 .show(ui, |ui| {
+                    // The show button is at the right end, where the hide
+                    // button of the open dock is (issue 433).
                     ui.horizontal_centered(|ui| {
-                        if ui
-                            .small_button("\u{23f6}")
-                            .on_hover_text("Open the dock (Ctrl 3)")
-                            .clicked()
-                        {
-                            self.toggle_region(Region::Dock);
-                        }
                         self.dock_tabs(ui);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .small_button("\u{23f6}")
+                                .on_hover_text("Open the dock (Ctrl 3)")
+                                .clicked()
+                            {
+                                self.toggle_region(Region::Dock);
+                            }
+                        });
                     });
                 });
             return;
