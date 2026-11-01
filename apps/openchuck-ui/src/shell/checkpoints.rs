@@ -45,6 +45,7 @@ fn shown(folder: &Path) -> String {
 enum Read {
     Startup(Discovery),
     Attached(u64, Candidate),
+    Unopened(Key, Candidate),
     Located(Box<Locate>, Result<Candidate, String>),
     Restored(Result<jobs::Recovered, String>),
 }
@@ -54,11 +55,22 @@ enum Choice {
     Keep,
     Discard,
 }
+/// The open request an offer belongs to; a later open drops it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Key {
+    /// The project opened, as open number `0`.
+    Opened(u64),
+    /// The requested project's saved files could not be loaded (open number
+    /// `0`, failed request `1`): its valid checkpoints are still offered, and
+    /// the project that stays open keeps its writer (decision 0460 item 2).
+    Unopened(u64, u64),
+}
+
 /// The recovery choices of the project being opened.
 pub(super) struct Review {
     pub(super) candidate: Candidate,
     /// The open this offer belongs to; a later open drops it.
-    attachment: u64,
+    key: Key,
     selected: Option<String>,
     confirm_discard: bool,
 }
@@ -74,7 +86,7 @@ pub(super) struct State {
     config: Option<PathBuf>,
     readers: Vec<Receiver<Read>>,
     /// The opened project's recovery choices, waiting for a free frame.
-    offer: Option<(u64, Candidate)>,
+    offer: Option<(Key, Candidate)>,
     pub(super) review: Option<Review>,
     review_session: Option<Session>,
     review_folder: Option<PathBuf>,
@@ -85,6 +97,8 @@ pub(super) struct State {
     active_folder: Option<PathBuf>,
     pending_attach: Option<PathBuf>,
     attachment: u64,
+    /// Requests whose saved project could not be loaded.
+    failed: u64,
     /// Canonical folder of the opened project, once inspected.
     opened: Option<PathBuf>,
     /// Other projects with kept recovery data, from startup discovery.
@@ -160,6 +174,40 @@ impl State {
 
     fn inspect(&mut self, folder: PathBuf) {
         let attachment = self.attachment;
+        self.read_folder(folder, move |candidate| {
+            Read::Attached(attachment, candidate)
+        });
+    }
+
+    /// The requested project's saved files could not be loaded. Its recovery
+    /// data is still inspected and offered for this request only; the
+    /// project that is open, if any, stays open with its writer.
+    pub(super) fn open_failed(&mut self, folder: &Path) {
+        if self.config.is_none() {
+            return;
+        }
+        self.failed = self.failed.saturating_add(1);
+        let key = Key::Unopened(self.attachment, self.failed);
+        self.offer = None;
+        self.read_folder(folder.to_owned(), move |candidate| {
+            Read::Unopened(key, candidate)
+        });
+    }
+
+    fn current(&self, key: Key) -> bool {
+        match key {
+            Key::Opened(attachment) => attachment == self.attachment,
+            Key::Unopened(attachment, failed) => {
+                attachment == self.attachment && failed == self.failed
+            }
+        }
+    }
+
+    fn read_folder(
+        &mut self,
+        folder: PathBuf,
+        read: impl FnOnce(Candidate) -> Read + Send + 'static,
+    ) {
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let canonical = folder.canonicalize().unwrap_or(folder);
@@ -171,15 +219,12 @@ impl State {
                 .as_ref()
                 .and_then(|c| c.project_id.clone())
                 .unwrap_or_default();
-            let _ = tx.send(Read::Attached(
-                attachment,
-                Candidate {
-                    folder: canonical,
-                    catalog,
-                    problem,
-                    project_id,
-                },
-            ));
+            let _ = tx.send(read(Candidate {
+                folder: canonical,
+                catalog,
+                problem,
+                project_id,
+            }));
         });
         self.readers.push(rx);
     }
@@ -253,9 +298,9 @@ impl State {
             self.review_folder = None;
         }
         if let Some(review) = self.install_review.take()
-            && review.attachment == self.attachment
+            && self.current(review.key)
         {
-            self.offer = Some((review.attachment, review.candidate));
+            self.offer = Some((review.key, review.candidate));
         }
     }
 
@@ -268,7 +313,7 @@ impl State {
     /// Put a shown offer back, waiting for a free frame (tests).
     #[cfg(test)]
     pub(super) fn offer_again(&mut self, review: Review) {
-        self.offer = Some((review.attachment, review.candidate));
+        self.offer = Some((review.key, review.candidate));
     }
 
     /// The folder of another project's Messages line.
@@ -335,7 +380,7 @@ impl State {
         let Some(review) = &self.review else {
             return;
         };
-        if review.attachment != self.attachment {
+        if !self.current(review.key) {
             self.review = None;
             return;
         }
@@ -416,7 +461,7 @@ impl State {
                 } else if catalog.is_some_and(|c| c.live) {
                     self.problem=Some("Another application instance owns this project's checkpoints. Recovery writing is unavailable here.".into());
                 } else if catalog.is_some_and(|c| c.recovery_needed) {
-                    self.offer = Some((attachment, candidate));
+                    self.offer = Some((Key::Opened(attachment), candidate));
                 } else if self.active.is_none()
                     && self
                         .review
@@ -429,6 +474,20 @@ impl State {
                         self.problem = Some(problems.join("\n"));
                     }
                     self.start(candidate.folder, minutes);
+                }
+            }
+            Read::Unopened(key, candidate) => {
+                // Only this request's own valid checkpoints; nothing starts
+                // writing, and the open project is left as it is.
+                if self.current(key)
+                    && candidate.problem.is_none()
+                    && candidate
+                        .catalog
+                        .as_ref()
+                        .is_some_and(|c| c.recovery_needed && !c.live)
+                {
+                    self.forget_elsewhere(&candidate.folder);
+                    self.offer = Some((key, candidate));
                 }
             }
             Read::Located(mut locate, result) => match result {
@@ -448,10 +507,7 @@ impl State {
             },
             Read::Restored(result) => {
                 self.choice = None;
-                let current = self
-                    .review
-                    .as_ref()
-                    .is_some_and(|r| r.attachment == self.attachment);
+                let current = self.review.as_ref().is_some_and(|r| self.current(r.key));
                 match result {
                     Ok(recovered) if current => {
                         self.install_review = self.review.take();
@@ -488,8 +544,10 @@ impl State {
                     let review = self.review.take();
                     let session = self.review_session.take();
                     self.review_folder = None;
+                    // A project whose saved files could not be loaded is
+                    // not open: its answer is stored, nothing else changes.
                     if let Some(review) = review
-                        && review.attachment == self.attachment
+                        && review.key == Key::Opened(self.attachment)
                         && self.active.is_none()
                     {
                         self.active = session;
@@ -541,12 +599,12 @@ impl State {
             && self.locate.is_none()
             && !self.awaiting_install
             && allow_offer
-            && let Some((attachment, candidate)) = self.offer.take()
-            && attachment == self.attachment
+            && let Some((key, candidate)) = self.offer.take()
+            && self.current(key)
         {
             self.review = Some(Review {
                 candidate,
-                attachment,
+                key,
                 selected: None,
                 confirm_discard: false,
             });

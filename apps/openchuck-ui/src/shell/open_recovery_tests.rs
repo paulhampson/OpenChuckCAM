@@ -464,3 +464,84 @@ fn req_prj_08_req_nfr_07_a_failed_keep_saved_still_keeps_the_requested_project()
     );
     assert_eq!(Catalog::read(&b).unwrap().snapshots.len(), 1);
 }
+
+/// Damage the saved project so that it cannot be loaded.
+fn damage_saved(folder: &Path) {
+    std::fs::write(folder.join("project.toml"), "name = [").unwrap();
+    assert!(openchuck_app::Application::open(folder, openchuck_app::Threads::Exactly(1)).is_err());
+}
+
+#[test]
+fn req_prj_08_req_nfr_07_damaged_saved_project_can_recover_valid_checkpoint() {
+    let root = temp("open-recovery-damaged-saved");
+    let config = root.join("config");
+    let a = root.join("a");
+    crashed(&a, &config, "Alpha");
+    damage_saved(&a);
+    let a = a.canonicalize().unwrap();
+    let mut rig = launch(&root, &config, None);
+    rig.shell.open(a.clone());
+    // The load error is said first; the offer waits behind it.
+    assert!(matches!(rig.shell.dialog, Some(super::Dialog::Error(_))));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    click_exact(&mut rig, "OK");
+    until(&mut rig, "the offer", |r| {
+        r.shows("Recover project changes")
+    });
+    assert_eq!(offered_folder(&rig), Some(a.clone()));
+    assert_eq!(offered_names(&rig), vec!["Alpha checkpoint".to_owned()]);
+    click(&mut rig, "Alpha checkpoint");
+    click(&mut rig, "Recover selected");
+    until(&mut rig, "the recovered project", |r| {
+        r.shell
+            .app
+            .as_ref()
+            .is_some_and(|app| app.project().name() == "Alpha checkpoint")
+    });
+    let app = rig.shell.app.as_ref().unwrap();
+    assert!(app.is_modified(), "recovered into unsaved memory");
+    assert_eq!(location(&rig), a);
+    // Saved files change only on Save.
+    assert_eq!(
+        std::fs::read_to_string(a.join("project.toml")).unwrap(),
+        "name = ["
+    );
+    assert!(rig.shell.save());
+    assert_eq!(file::load(&a).unwrap().name(), "Alpha checkpoint");
+}
+
+#[test]
+fn req_prj_08_keep_saved_after_a_failed_open_leaves_the_open_project_and_its_writer() {
+    let root = temp("open-recovery-damaged-keep");
+    let config = root.join("config");
+    let (a, b) = (root.join("a"), root.join("b"));
+    crashed(&a, &config, "Alpha");
+    damage_saved(&a);
+    file::save(&Project::new("Bravo saved"), &b).unwrap();
+    let mut rig = launch(&root, &config, Some(b.clone()));
+    until(&mut rig, "Bravo's writer", writer_ready);
+    rig.shell.open(a.clone());
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    click_exact(&mut rig, "OK");
+    until(&mut rig, "Alpha's offer", |r| {
+        r.shows("Recover project changes")
+    });
+    assert!(
+        writer_ready(&rig),
+        "Bravo keeps its writer while Alpha is offered"
+    );
+    click(&mut rig, "Keep saved project");
+    until(&mut rig, "the answer", |r| {
+        r.shell.recovery.review.is_none()
+    });
+    for _ in 0..10 {
+        rig.frame(Vec::new());
+    }
+    assert_eq!(location(&rig), b.canonicalize().unwrap());
+    assert!(writer_ready(&rig));
+    let alpha = Catalog::read(&a).unwrap();
+    assert!(!alpha.recovery_needed, "Keep saved dismissed Alpha's offer");
+    assert_eq!(alpha.snapshots.len(), 1, "and kept its checkpoint");
+}

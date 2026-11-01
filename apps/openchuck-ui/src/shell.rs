@@ -477,6 +477,9 @@ impl Shell {
                 self.dialog = Some(Dialog::Error(format!(
                     "The project could not be opened: {e}"
                 )));
+                // Its valid recovery checkpoints stay reachable for this
+                // request (PRJ-08, NFR-07; decision 0460 item 2).
+                self.recovery.open_failed(&folder);
             }
         }
     }
