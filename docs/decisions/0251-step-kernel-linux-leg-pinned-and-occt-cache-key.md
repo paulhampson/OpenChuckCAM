@@ -1,6 +1,6 @@
 # 0251: Pin the Linux leg of the STEP kernel job to ubuntu-24.04 and put the runner image in the OpenCASCADE cache key
 
-- **Status:** proposed (27 Oct 2026). The project owner instructed the task on 27 Oct 2026; the owner has not yet accepted this record. It amends [decision 0250](0250-ui-smoke-linux-leg-pinned-to-ubuntu-24-04.md) (same cause, second job) and [decision 0039](0039-occt-install-cache.md) (the cache key); it changes no job name, no test and no Rust code.
+- **Status:** proposed (27 Oct 2026). The project owner instructed the task on 27 Oct 2026; the owner has not yet accepted this record. It amends [decision 0250](0250-ui-smoke-linux-leg-pinned-to-ubuntu-24-04.md) (same cause, second job) and [decision 0039](0039-occt-install-cache.md) (the cache key); it changes no job name, no test and no Rust code. *Amended by [decision 0490](0490-opencascade-type-registry-built-first-on-linux.md) (1 Nov 2026): the cause of the 26.04 SIGSEGV is found (OpenCASCADE's type registry destroyed before `StepAP214_Protocol.cxx`'s static map at exit) and fixed in the wrapper; items 1 and 3 (the `ubuntu-24.04` pins) end, item 2 (the image in the cache key) stays; OI-1003 is closed.*
 - **Date:** 27 Oct 2026.
 - **Lane:** CIMESA2, `claude/ci-step-kernel-ubuntu-2404`.
 - **Requirements:** none directly; the job is the CI proof of IMP-02, NFR-06, NFR-07 and NFR-13 (decision 0003).
