@@ -92,4 +92,4 @@ lobed_linuxcnc.ngc: running in the LinuxCNC simulator (real time)
 replay: ok
 Report SHA-256: 6a5706af03b13f126ae2fbc58fc8fc651b0f6bc6e96b14f0c3f5d1390a11e5b4
 
-Full-stepover M4 after this correction: PASS, exit 0. See 0211-full-stepover-m4-evidence.txt for the exact command, source/fixture provenance and all output. All a/b/c library comparisons pass at 1/2/4 threads; STEP and STL application jobs have clean replay, identical bytes and library equivalence at all three counts. The unchanged tip/angular limits are retained.
+Full-stepover M4 after this correction: PASS, exit 0. See docs/archive/0211-stepall-m/0211-full-stepover-m4-evidence.txt for the exact command, source/fixture provenance and all output. All a/b/c library comparisons pass at 1/2/4 threads; STEP and STL application jobs have clean replay, identical bytes and library equivalence at all three counts. The unchanged tip/angular limits are retained.

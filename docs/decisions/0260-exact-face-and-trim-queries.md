@@ -35,7 +35,7 @@ All in `openchuck-path` (`brep.rs` and the new `brep/bound.rs`, `brep/hull.rs`, 
 
 `crates/openchuck-app/examples/step_queries.rs` (kernel; built in CI's STEP kernel job, run by hand). It uses only `ExactFace::closest`, `BrepSurface::distance` and `BrepSurface::drop_tool`, which exist before and after, so one source measures both. Sets: `on` (every tessellation vertex asked of its own trimmed face; the kernel puts vertices on the face, so over 1e-3 mm is wrong), `off` (the vertex moved 1 mm along its normal, own face), `model` (the `off` points asked of the whole part), and on every eighth `off` point a 1 mm ball dropped along the normal onto the tessellation (`mesh`) followed by decision 0211's probe (`drop`: 20 halvings of a 0.05 mm band on the ball centre's `distance`). One thread, release build. Inputs are `testdata/step/valid/` (blisk at every fourth vertex); `--compare` reads two runs answer by answer.
 
-Full output, commands, binary and input hashes: [0260-benchmark-evidence.txt](0260-benchmark-evidence.txt). Machine: Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, cloud container, nothing else running. "Before" is `main` at `33a835d` with the same example added; "after" is this branch's final source.
+Full output, commands, binary and input hashes: [docs/archive/0260-exact-face-queries/0260-benchmark-evidence.txt](../archive/0260-exact-face-queries/0260-benchmark-evidence.txt). Machine: Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, cloud container, nothing else running. "Before" is `main` at `33a835d` with the same example added; "after" is this branch's final source.
 
 **Mean time per query, µs** (corpus at every vertex, 66,351 points per set; blisk at every fourth vertex, 2,393 points per set; `mesh` and `drop` on 8,300 corpus and 300 blisk lines):
 

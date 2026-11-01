@@ -24,7 +24,7 @@ The blocker that no fixed setting clears:
 
 ## Evidence
 
-All measurements on this lane's machine: Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB, cloud container; release build of the `step_accuracy` example at source `0560e4f` (the M2 drop-error bound of decision 0255; no product source differs from `main` 33a835d); the bounded checker of decision 0255 for accuracy; `testdata/step/valid/blisk.step` as in 0211. Commands, hashes and complete output, including every timed run, are in [the evidence](0256-toolpath-mesh-evidence.txt).
+All measurements on this lane's machine: Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB, cloud container; release build of the `step_accuracy` example at source `0560e4f` (the M2 drop-error bound of decision 0255; no product source differs from `main` 33a835d); the bounded checker of decision 0255 for accuracy; `testdata/step/valid/blisk.step` as in 0211. Commands, hashes and complete output, including every timed run, are in [the evidence](../archive/0256-toolpath-mesh/0256-toolpath-mesh-evidence.txt).
 
 ### Candidate screening (bounded M2, quick stepovers, form c only)
 
