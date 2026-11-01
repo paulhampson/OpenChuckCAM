@@ -784,7 +784,9 @@ impl Strategy for PencilFinishing {
         notes.insert(
             0,
             format!(
-                "pencil clean-up: {} concave creases{from}, {} passes",
+                "pencil clean-up: {} concave creases{from}, {} passes; it follows creases \
+                 only and leaves the part's end faces as earlier operations left them: face \
+                 them with helical finishing, rest machining or Facing",
                 creases.len(),
                 passes.len()
             ),
@@ -793,6 +795,8 @@ impl Strategy for PencilFinishing {
             passes,
             notes,
             warnings: Vec::new(),
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

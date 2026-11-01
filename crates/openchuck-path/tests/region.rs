@@ -10,6 +10,7 @@
 )]
 
 mod support;
+use support::{generate, generate_in_region};
 
 use std::collections::BTreeMap;
 
@@ -17,10 +18,7 @@ use openchuck_path::params::names;
 use openchuck_path::region::{
     BoundaryLimits, Protection, RegionConstraint, WatchedSurface, Window,
 };
-use openchuck_path::{
-    GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError, generate,
-    generate_in_region,
-};
+use openchuck_path::{GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError};
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::MoveKind;
@@ -39,6 +37,16 @@ fn values() -> BTreeMap<String, ParameterValue> {
     .into_iter()
     .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
     .collect()
+}
+
+/// [`values`], with Face free ends off where the strategy has it: these
+/// tests are not about free ends (decision record 0344, OI-1396).
+fn values_for(strategy: &dyn openchuck_path::Strategy) -> BTreeMap<String, ParameterValue> {
+    let mut v = values();
+    if strategy.schema().get("face_free_ends").is_some() {
+        v.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    v
 }
 
 fn cylinder() -> TriangleMesh {
@@ -68,7 +76,15 @@ fn pick(mesh: &TriangleMesh, keep: impl Fn(Point3) -> bool) -> TriangleMesh {
 }
 
 fn run_with(f: &Fixture, region: &RegionConstraint<'_>) -> Result<GeneratedPath, PathError> {
-    run(|ctx| generate_in_region(&HelicalFinishing, &f.input(), region, &values(), ctx))
+    run(|ctx| {
+        generate_in_region(
+            &HelicalFinishing,
+            &f.input(),
+            region,
+            &values_for(&HelicalFinishing),
+            ctx,
+        )
+    })
 }
 
 /// The tips of the cutting moves.
@@ -111,7 +127,15 @@ fn req_op_02_cuts_stay_on_the_selected_region_and_reach_its_edges() {
 fn req_op_02_an_empty_constraint_changes_nothing() {
     let mesh = cylinder();
     let f = fixture(&mesh);
-    let whole = run(|ctx| generate(&HelicalFinishing, &f.input(), &values(), ctx)).unwrap();
+    let whole = run(|ctx| {
+        generate(
+            &HelicalFinishing,
+            &f.input(),
+            &values_for(&HelicalFinishing),
+            ctx,
+        )
+    })
+    .unwrap();
     let limited = run_with(&f, &RegionConstraint::default()).unwrap();
     assert_eq!(whole.group, limited.group);
 }
@@ -237,7 +261,7 @@ fn req_op_02_req_ui_09_req_int_04_cancel_stops_watched_surface_queries() {
                 &HelicalFinishing,
                 &f.input(),
                 &region,
-                &values(),
+                &values_for(&HelicalFinishing),
                 &JobContext::new(&cancel, &NoProgress),
             )
         });
@@ -253,7 +277,15 @@ fn req_op_02_a_set_that_only_warns_keeps_the_path_and_names_the_set() {
     // helix of 1 mm pitch with its tip on the 15 mm radius: about four turns.
     let mesh = cylinder();
     let f = fixture(&mesh);
-    let whole = run(|ctx| generate(&HelicalFinishing, &f.input(), &values(), ctx)).unwrap();
+    let whole = run(|ctx| {
+        generate(
+            &HelicalFinishing,
+            &f.input(),
+            &values_for(&HelicalFinishing),
+            ctx,
+        )
+    })
+    .unwrap();
     let strip =
         MeshSurface::new(&pick(&mesh, |c| (18.0 - 1e-9..22.0 + 1e-9).contains(&c.x))).unwrap();
     let expected = 4.0 * std::f64::consts::TAU * RADIUS;
@@ -357,7 +389,7 @@ fn req_op_02_a_check_set_that_only_warns_names_the_stock_to_leave() {
         watch: &watch,
         ..Default::default()
     };
-    let mut leave = values();
+    let mut leave = values_for(&HelicalFinishing);
     leave.insert(
         names::STOCK_TO_LEAVE.to_owned(),
         ParameterValue::Number(0.3),
@@ -447,7 +479,15 @@ fn req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed() {
             ..Default::default()
         };
         let path = run_with(&f, &region).unwrap();
-        let free = run(|ctx| generate(&HelicalFinishing, &f.input(), &values(), ctx)).unwrap();
+        let free = run(|ctx| {
+            generate(
+                &HelicalFinishing,
+                &f.input(),
+                &values_for(&HelicalFinishing),
+                ctx,
+            )
+        })
+        .unwrap();
         let on_patch = |path: &GeneratedPath| {
             let mut prev = path.group.start.tip;
             let mut count = 0;
@@ -534,6 +574,54 @@ fn req_op_02_a_boundary_limits_x_and_angle() {
 }
 
 #[test]
+fn req_op_02_rings_are_limited_by_a_boundary_as_the_spiral_is() {
+    // Decision record 0390 item 5: a ring or a step is split where the
+    // spiral would be, and the shared services link the pieces.
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let patch = pick(&mesh, |c| {
+        (10.0 - 1e-9..20.0 + 1e-9).contains(&c.x)
+            && (-1e-6..90.0 + 1e-6).contains(&c.z.atan2(c.y).to_degrees())
+    });
+    let region = RegionConstraint {
+        boundary: Some(Window::of_mesh(&patch).unwrap()),
+        ..Default::default()
+    };
+    let mut v = values_for(&HelicalFinishing);
+    v.insert(
+        openchuck_path::helical::parameter::PASS_SHAPE.to_owned(),
+        ParameterValue::Text("rings".to_owned()),
+    );
+    // Start the rings half way round the patch, so the steps are inside it.
+    v.insert(
+        openchuck_path::helical::parameter::START_ANGLE.to_owned(),
+        ParameterValue::Number(45.0),
+    );
+    let path =
+        run(|ctx| generate_in_region(&HelicalFinishing, &f.input(), &region, &v, ctx)).unwrap();
+    let tips = cut_tips(&path);
+    assert!(!tips.is_empty());
+    for p in &tips {
+        assert!(
+            p.x > 10.0 - 0.5 - 1e-3 && p.x < 20.0 + 0.5 + 1e-3,
+            "x = {}",
+            p.x
+        );
+        let a = angle(*p);
+        assert!(a > -1.0 && a < 91.0, "angle = {a}");
+    }
+    // Each ring leaves the patch and comes back a turn later, so the cut is
+    // split at the patch's edge on every ring.
+    let starts = path
+        .group
+        .segments
+        .windows(2)
+        .filter(|w| w[0].kind != MoveKind::Cutting && w[1].kind == MoveKind::Cutting)
+        .count();
+    assert!(starts >= 10, "{starts} separate cuts");
+}
+
+#[test]
 fn req_op_02_a_region_and_an_avoid_surface_combine() {
     let mesh = cylinder();
     let f = fixture(&mesh);
@@ -592,9 +680,11 @@ fn req_op_02_axial_indexed_and_simultaneous_finishing_take_sets_that_only_warn()
     let strategies: [&dyn Strategy; 3] =
         [&AxialFinishing, &IndexedFinishing, &SimultaneousFinishing];
     for strategy in strategies {
-        let whole = run(|ctx| generate(strategy, &f.input(), &values(), ctx)).unwrap();
-        let path =
-            run(|ctx| generate_in_region(strategy, &f.input(), &region, &values(), ctx)).unwrap();
+        let whole = run(|ctx| generate(strategy, &f.input(), &values_for(strategy), ctx)).unwrap();
+        let path = run(|ctx| {
+            generate_in_region(strategy, &f.input(), &region, &values_for(strategy), ctx)
+        })
+        .unwrap();
         let name = strategy.label();
         assert_eq!(path.group, whole.group, "{name}: the path changed");
         assert_eq!(path.warnings.len(), 1, "{name}: {:?}", path.warnings);

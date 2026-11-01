@@ -35,6 +35,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::faces;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::stock::StockModel;
@@ -310,44 +311,50 @@ impl Strategy for RestMachining {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(vec![
-            min_remaining_spec(),
-            ParameterSpec {
-                name: parameter::ROTATION.to_owned(),
-                label: "Rotation".to_owned(),
-                description: "Which way A turns as X increases along the helix.".to_owned(),
-                kind: ParameterKind::Choice {
-                    options: vec!["positive".to_owned(), "negative".to_owned()],
-                    default: "positive".to_owned(),
+        ParameterSchema::with_common(
+            vec![
+                min_remaining_spec(),
+                ParameterSpec {
+                    name: parameter::ROTATION.to_owned(),
+                    label: "Rotation".to_owned(),
+                    description: "Which way A turns as X increases along the helix.".to_owned(),
+                    kind: ParameterKind::Choice {
+                        options: vec!["positive".to_owned(), "negative".to_owned()],
+                        default: "positive".to_owned(),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::START_ANGLE.to_owned(),
-                label: "Start angle".to_owned(),
-                description: "A at the lowest X of the part, where the helix starts.".to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: None,
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A at the lowest X of the part, where the helix starts."
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::MAX_ANGLE_STEP.to_owned(),
-                label: "Largest angle step".to_owned(),
-                description: "The most A may turn between two points of the path; points are \
+                ParameterSpec {
+                    name: parameter::MAX_ANGLE_STEP.to_owned(),
+                    label: "Largest angle step".to_owned(),
+                    description: "The most A may turn between two points of the path; points are \
                               added where the surface needs them."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: Some(90.0),
-                    default: Some(2.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: Some(90.0),
+                        default: Some(2.0),
+                    },
                 },
-            },
-        ])
+            ]
+            .into_iter()
+            .chain(crate::finishing::specs(true, false))
+            .collect(),
+        )
     }
 
     fn needs_earlier_operations(&self) -> bool {
@@ -444,8 +451,37 @@ impl Strategy for RestMachining {
             thin: false,
             max_dt: 1.0 / seeds as f64,
             wanted: Some(&wanted),
+            across: 0.0,
         };
-        let passes = fit_region(&fit, seeds, "rest machining", context)?;
+        let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
+        // One whole turn at each face across the axis, where the tool's side
+        // touches it, cut where material is left, as helical finishing does
+        // (decision record 0297; issue 404).
+        let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
+        let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
+        for &x in &turns {
+            context.check_cancelled()?;
+            let at = start + sign * 360.0 * (x - x0) / stepover;
+            passes.extend(crate::helical::turn_passes(
+                input,
+                None,
+                (&grown, leave, &[]),
+                tolerance,
+                (x, at, sign),
+                step,
+                Some(&wanted),
+                context,
+            )?);
+        }
+        // The free ends, in layers down beside them (decision record 0344).
+        let free = crate::finishing::free_ends(
+            input,
+            &grown,
+            &found.free,
+            parameters,
+            (start, sign, step),
+        )?;
+        passes.extend(free.passes);
         if passes.is_empty() {
             return Err(PathError::Strategy(
                 "rest machining found material left but the tool cannot reach any of it: the \
@@ -453,7 +489,7 @@ impl Strategy for RestMachining {
                     .to_owned(),
             ));
         }
-        let notes = vec![format!(
+        let mut notes = vec![format!(
             "rest machining: {} of {} points sampled on the part have more than {} mm of \
              material left; {} passes clean them",
             map.len(),
@@ -461,10 +497,15 @@ impl Strategy for RestMachining {
             min_remaining,
             passes.len()
         )];
+        notes.extend(faces::note(&turns));
+        notes.extend(faces::held_note(&found.held));
+        notes.extend(free.notes);
         Ok(StrategyOutput {
             passes,
             notes,
-            warnings: Vec::new(),
+            warnings: free.warnings,
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 }

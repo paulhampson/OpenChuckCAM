@@ -73,6 +73,12 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
     parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(step));
     // A wide pitch keeps the programs short.
     parameters.insert("stepover".to_owned(), ParameterValue::Number(5.0));
+    // The part's free end is deeper than the tool's flutes: a new operation
+    // faces free ends and would be refused (decision record 0344, OI-1396).
+    // These tests are about writing programs, not facing.
+    parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    // Adaptive spacing off too (decision record 0239).
+    parameters.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     Operation {
         id: OperationId::new(),
         order: OrderKey::default(),
@@ -286,6 +292,7 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     run.groups[0].warnings.push(openchuck_path::PathWarning {
         message: message.to_owned(),
         parameter: Some("tolerance".to_owned()),
+        requires_acknowledgement: false,
     });
     let name = app
         .project()
@@ -984,6 +991,7 @@ fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
             reason: "The disk is full".to_owned(),
         }),
         not_attempted: vec![skipped],
+        partial: Vec::new(),
     });
     let overview = app.overview(None, &openchuck_app::JobLog::default());
     let message = overview
@@ -1390,5 +1398,81 @@ fn req_gc_07_search_finds_the_next_and_previous_line_and_wraps() {
     assert_eq!(file.find("M6", Some(hits[0]), false), hits.last().copied());
     assert_eq!(file.find("no such text anywhere", None, true), None);
     assert_eq!(file.find("", None, true), None);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_acknowledged() {
+    // Decision 0239 item 10: adaptive spacing that met a limit keeps the path
+    // made so far, says where, and export asks for an acknowledgement of
+    // that result first. It does not block the checks, an ordinary warning
+    // never counts as one, and an acknowledgement does not carry over.
+    let (dir, mut app) = project("partial", false);
+    let mut run = post(&mut app, OutputGrouping::Setup);
+    let message = "adaptive spacing could not confirm that the material left between the \
+                   passes is within the allowed excess of 0.010 mm at 1 place";
+    run.groups[0].warnings.push(openchuck_path::PathWarning {
+        message: message.to_owned(),
+        parameter: Some("scallop".to_owned()),
+        requires_acknowledgement: true,
+    });
+    let name = app
+        .project()
+        .operation(run.groups[0].operation)
+        .unwrap()
+        .name
+        .clone();
+    let checks = app.export_checks(Some(&run), None, None);
+    assert!(checks.can_write(), "{:?}", blockers(&checks));
+    let w = warnings(&checks);
+    assert!(
+        w.iter()
+            .any(|t| t.contains(&format!("'{name}' has a partial path")) && t.contains(message)),
+        "{w:?}"
+    );
+    let run = std::sync::Arc::new(run);
+    let out = folder("partial-out");
+    let mut plan = app.prepare_output(&out, &run).unwrap();
+    assert_eq!(plan.partial_operations(), std::slice::from_ref(&name));
+    assert!(!plan.partial_path_acknowledged());
+    let refused = app.write_output(&plan, false);
+    assert!(refused.written.is_empty());
+    let reason = &refused.failed.as_ref().unwrap().reason;
+    assert!(
+        reason.contains("partial") && reason.contains(&name),
+        "{reason}"
+    );
+    assert!(!out.exists(), "nothing is written");
+
+    plan.acknowledge_partial_path();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    assert!(
+        report.summary().contains("is partial"),
+        "{}",
+        report.summary()
+    );
+    assert!(
+        report.summary().contains("not complete"),
+        "{}",
+        report.summary()
+    );
+
+    // A plan made again starts unacknowledged.
+    std::fs::remove_dir_all(&out).unwrap();
+    let again = app.prepare_output(&out, &run).unwrap();
+    assert!(!again.partial_path_acknowledged());
+    assert!(!app.write_output(&again, false).failed.is_none());
+
+    // An ordinary warning is not a partial path.
+    let mut ordinary = post(&mut app, OutputGrouping::Setup);
+    ordinary.groups[0]
+        .warnings
+        .push(openchuck_path::PathWarning {
+            message: "a warning".to_owned(),
+            parameter: None,
+            requires_acknowledgement: false,
+        });
+    assert!(openchuck_app::partial_operations(app.project(), &ordinary).is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }

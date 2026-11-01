@@ -101,7 +101,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 - Each available step shows its own health after its name, by shape as well as colour: a green filled circle (good to go), an amber triangle outline (stale or needs attention) or a red filled triangle (an error to deal with, such as a missing tool or stock); its tooltip names what needs attention (decision 0173).
 - Machine values not confirmed on the machine do not change the bar (they are in the footer and on the machine row; decision 0173, OI-624). The bar stays amber until every enabled operation is simulated as it is now (OI-625).
 - **The G-code status.** After step 4 the bar says whether G-code has been written, completely, from every enabled operation as it is now and from no other (an exported operation since turned off or removed makes it "not written"): "G-code written" with a green ring round a tick, or "G-code not written" with a hollow grey circle. Its tooltip says why ("No G-code has been written in this session" or "The project has changed since G-code was last written") and that past write results are in Messages. It does not change the health, and it is not a button (decision 0282 item 5).
-- A badge at the right end of the bar shows the worst of the four as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
+- A badge at the right end of the bar shows the worst of the four as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem. A project with no machine profile reads "Needs attention" ("Choose a machine"), not "Error to fix": choosing a machine is a to-do, and Messages counts no error for it (FIRSTRUN item 1; owner's answer relayed by the coordinator).
 - Alt 1 to Alt 4 open the steps. Alt 5 opens Post and export, as Ctrl E does (decision 0282 item 4).
 
 *(UI-10)*
@@ -284,7 +284,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 **Order** (principle 3):
 
-1. **Header.** The name in an editable field, and a status chip in the words of the status mark. An operation or a setup with required values missing shows "1 value is missing" or "n values are missing" under it, with "Show first", from the moment it exists; each missing field has an amber border and, under it, the warning shape and a short sentence ("Choose a tool", "Enter feed", "Set the stock"). Nothing is red until a value is refused or the item is in error (decision 0173).
+1. **Header.** The name in an editable field, and a status chip in the words of the status mark. An operation or a setup with required values missing shows "1 value is missing" or "n values are missing" under it, with "Show first", from the moment it exists; each missing field has an amber border and, under it, the warning shape and a short sentence ("Choose a tool", "Enter feed", "Set the stock"). Nothing is red until a value is refused or the item is in error (decision 0173). An empty Stepdown, which nothing guesses, reads under its field "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library." while the lists keep the short "Enter stepdown" (FIRSTRUN item 2; owner's answer relayed by the coordinator).
 2. **Error banner,** when the item is in error. It gives what cannot be done, why, and the actions that fix it (the "Inspector: operation in error" board).
 3. **Result summary** of an operation: moves, cut length, A travel, A unwinds and programmed time, in a two-by-two (or two-by-three) grid of large numbers. Programmed time is labelled "programmed time" and is not the SIM-08 estimate (decision 0028 item 3). *(SIM-13)*
 4. **Basic and Advanced switch.** *(UI-19)* Without it, every field is shown, grouped.
@@ -322,6 +322,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - "copy stored in project";
   - the comparison with the library source, with an Update button;
   - "Create the library folder" or "Open the library folder".
+  - "Manage machines…", which opens the machine library window (12.5; SET-10).
 
 ## 9. Dock
 
@@ -364,7 +365,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - machine warnings in amber, linking to Setup;
   - a separator;
   - the step's actions, with the primary right-most (section 5; Simulate keeps its two actions in fixed places).
-- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited". Amber is kept for warnings.
+- **Save state** is in the title bar: the project name, then "· saved" or a neutral grey dot and "Edited, not saved", with the tooltip "Changes are kept in memory only. File > Save (Ctrl S) writes them to the project." Nothing saves the project by itself (FIRSTRUN item 4; owner's answer relayed by the coordinator). Amber is kept for warnings.
 
 ## 11. The steps in detail
 
@@ -481,6 +482,27 @@ Boards 3 and 3b.
 - **Footer** primary: section 5. While generation runs with an operation in error, "Continue to simulate" is disabled, with its reason in the tooltip.
 
 **Facing controls (0252, accepted).** Preserve legacy Flat/Round and add End opposite held end and Box sides. Box sides offers individual standard faces and All four, plus arbitrary-angle rows with per-face model-derived offsets or explicit overrides and Reset to part plus allowance. Show opposite-plane separation. Standard selections run in fixed model order; arbitrary rows follow their listed order with keyboard-accessible Move up/down and an explicit stable Sort by A angle action. Sorting/reordering keeps offsets attached and is one undoable confirmed edit. New box sides offers Full stepdown, shorter final pass by default or Equal stepdowns; legacy layers are unchanged. End mode labels its maximum depth Axial stepdown and shows inferred end, target X and Length to opposite model end. Extents offer Whole stock, Part and Part plus tabs; planar margin expands four edges, Round Axial margin expands both X ends around the full circumference, all defaulting to zero. Tabs are always protected. Unsupported/unreachable requests explain the reason and produce no usable partial path.
+
+**Finishing layers and free ends ([decisions 0344](../decisions/0344-finishing-stepdown-and-free-ends.md) and [0345](../decisions/0345-finishing-layers.md), accepted; the inspector entries below are proposed by lane ENDFACE for the owner to check).** The inspector of a helical, axial or indexed finishing operation (and rest machining for Face free ends and Stepdown) shows, after the strategy's own settings and before the extension past the stock:
+
+- **Face free ends** (helical, axial, rest): a checkbox, ticked for a new operation and unticked for one saved before it. Its tooltip is the parameter's description. When the operation is refused because a free end is deeper than the tool's flutes, this is the field marked in red, with the message under it.
+- **Finishing layers** (helical, axial, indexed): a checkbox, unticked by default.
+- **Stepdown** (all four): a number in mm, filled by the material preset with the hint "from the tool's cutting data for Oak", as roughing's Stepdown is (decision 0230). With Finishing layers ticked and no value, it shows "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library." With them unticked and no value, it shows no error; a free end that needs it gives the operation's warning, which names the field.
+- **Finish allowance** (helical, axial, indexed): a number in mm, 0.1 by default, shown only while Finishing layers is ticked, with an error under it when it is not less than the Stepdown.
+- The free-end warnings ("can be cut free and thrown while the rotary axis turns") and the layer and free-end notes show in Messages and on the operation as other path warnings and notes do.
+
+**Adaptive spacing ([decision 0239](../decisions/0239-adaptive-pass-spacing.md), accepted; the entries below are proposed by lane ENDFACE for the owner to check).** The inspector of a helical, axial or indexed finishing operation, of a simultaneous finishing operation with the axial pattern, of a rotary roughing operation whose passes run along the axis (the indexed form in its own direction, or either form turned along the length) and of a flat Facing operation shows:
+
+- **Adaptive spacing**: a checkbox, ticked for a new operation and unticked for one saved before it (project schema 24; 25 for rotary roughing and Facing). Its tooltip is the parameter's description. Rotary roughing with its passes around the part, and Facing's other shapes, do not show it.
+- **Scallop height / Allowed excess**: one number in mm, the same value. Unticked, it is labelled Scallop height, 0 by default, as before; ticked, it is labelled Allowed excess, 0.01 by default when the operation holds none, with the description saying that 0 asks for no excess at all. Indexed finishing, rotary roughing and Facing (which have no Scallop height) show it only while Adaptive spacing is ticked, labelled Allowed excess, and simultaneous finishing only while it is ticked on the axial pattern. For rotary roughing the excess is measured against the part with its stock to leave only: the layers above the last are not individually checked (the owner's choice on OI-1453).
+- **Smallest spacing**: a number in mm, 0.01 by default, shown only while Adaptive spacing is ticked.
+- **Turning it on from a saved 0.** Ticking Adaptive spacing on an operation that holds a Scallop height of 0 opens a dialog, "Turn on adaptive spacing", that explains that 0 meant no limit and asks for the Allowed excess, suggesting 0.01 mm and accepting a deliberate 0. Cancel changes nothing; Turn on sets the switch and the height in one step that one Undo reverses. Unticking it again keeps the height as the Scallop height.
+- **A partial path.** When adaptive spacing met a limit or could not confirm a place, the operation's warning (in Messages and on the operation) says where and why, and that the path made so far is kept and is not complete. Post and export (11.6) lists it and asks for its own tick box before writing.
+
+**Rings ([decision 0390](../decisions/0390-helical-finishing-in-rings.md), accepted; the entry below is proposed by lane LINKEDPASS for the owner to check).** The inspector of a helical finishing operation shows, in Pattern and tolerance:
+
+- **Passes**: a segmented control, Spiral or Rings, Spiral for a new operation and for one saved before it. Its tooltip is the parameter's description: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle."
+- The note "helical finishing cut n rings, s mm apart, …" shows in Messages and on the operation as other path notes do.
 
 ### 11.5 Simulate
 
@@ -610,6 +632,8 @@ shared pending-edit guard. Dismissal and project edits do not remove history;
 historical failures do not block present readiness. Full batch success shows
 "G-code written" in the step bar (section 4). The existing unattended CLI behaviour is unchanged.
 
+
+**A partial path at export ([decision 0239](../decisions/0239-adaptive-pass-spacing.md) item 10, proposed by lane ENDFACE for the owner to check).** When the files hold an operation whose path is partial, the checks list it as a warning, "Operation 'Finish' has a partial path, which must be acknowledged before the files are written: …", and the safety band below the notice shows what it is and a tick box, "I accept the partial path made for this result: it is not complete, and I will check the surface before running the program". Write G-code stays disabled until it is ticked, with the reason in its tooltip. The tick holds for the files shown only: files made again, or the dialog opened again, ask again. The export result says which operations were written with a partial path and that it is not complete.
 ### 11.7 Workholding and retaining tabs
 
 UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md); the data is decision 0041, the defaults and checks decision 0035 and its owner's answers, the wiring decision 0045). Board "Workholding and tabs" (section 20). The viewport display is section 7.5.
@@ -665,7 +689,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
 
 **The default tabs shown as defaults** (decision 0035, owner's answers; decision 0045 item 3; OI-198). The defaults are never applied silently, and the stored data stays explicit (decision 0041 item 2). So:
 
-- **When the setup has no tabs,** the section works out the default tabs (a job, as the zones are) and shows them in the tab list as dimmed rows labelled "Default tab, not added", with their shape, span and diameters, read-only. Over them, an amber Warning line: "No tabs are stored. Without tabs the part is not joined to the stock when its last support is cut." The viewport draws them as in 7.5. "Add default tabs" adds them to the draft as ordinary rows, to be applied or edited.
+- **When the setup has no tabs,** the section works out the default tabs (a job, as the zones are) and shows them in the tab list as dimmed rows labelled "Default tab, not added", with their shape, span and diameters, read-only. Over them, an amber Warning line: "No tabs are stored. Without tabs the part is not joined to the stock when its last support is cut." While a held region is stored the part stays joined to the held bar, so the line instead reads "No tabs are stored. The part stays joined to the stock at the held end. Add tabs if an operation will cut it free of the held end, so it cannot drop or shift." (FIRSTRUN item 3: a wording fix that makes the first sentence true.) The by-design grip warning reads "The chuck grips N mm of the part here (X a to b mm), so that length is never machined. Shorten the grip if it should be cut." The viewport draws them as in 7.5. "Add default tabs" adds them to the draft as ordinary rows, to be applied or edited.
 - **Add default tabs** is enabled only while the draft has no tabs and its held regions are the stored ones (the defaults fit the stored held regions). Otherwise its tooltip gives the reason: "Remove the tabs first" or "Apply the held regions first: the default tabs fit the stored ones."
 - **No default.** When there is no room in a zone, no default row is shown for it, and a line says why: "No room for a default tab at the head: the held region reaches the part." When the part ends in a point there, "The part comes to a point at X 8.000 mm, so there is no diameter to base a default tab on; add the tab by hand."
 - **After they are added,** a tab whose values all equal, to 0.001 mm, the default for its zone carries the "Default" chip, in its collapsed and expanded row. **Overriding** a default is editing it: as soon as a value differs, the chip goes. Its tooltip says "Same as the default tab for the head zone. Editing a value overrides it." A tab that once was a default but no longer matches is an ordinary tab; nothing records where it came from.
@@ -785,6 +809,40 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 - **Keyboard.** Tab visits the Licences box, Open log folder, Copy and Close in that order; the box scrolls with the arrow keys; The tooltips of Open log folder and Copy open on focus (section 16).
 - A fact the build could not find reads "unknown".
 
+### 12.5 Machine library
+
+SET-10, SET-01, UI-13, TL-11, NFR-07; [decision 0380](../decisions/0380-machine-library-in-the-application.md) (the owner's answers on OI-1470 to OI-1474).
+
+- **Opens** from Tools, "Machine library…", and from "Manage machines…" in the Machine section of the Setup inspector, on the project's machine when it has one. It opens without a project, to edit the library.
+- **Left: the machines.** New machine, Duplicate and Delete… at the top. The list has three parts:
+  - **This project:** the project's copy.
+  - **Built in:** read-only.
+  - **Library:** the profile files in the library folder. A file that cannot be read is listed in red with its reason in the tooltip.
+
+  The library folder is named at the foot.
+- **Three kinds of machine:**
+  - **Built in.** "Built in: it cannot be edited", with the primary button **Copy to edit**. The form is read-only and nothing in it can be confirmed.
+  - **A library profile** is edited as a draft: nothing is written until Save, Cancel drops the changes, and leaving it with changes (another machine, New machine, Duplicate, Close) asks "Discard the changes to this machine?" first. Beside Save it says "New: not saved yet", "Changed: not saved yet" or "Saved in the library".
+  - **The project's copy** reads "The project's copy: each change can be undone". Each change is one undoable step that keeps the copy's source, and the library is untouched.
+- **New machine** starts with the name, the rotary reference point, the travel, the feeds and rapids, and the clearance blank, each marked "Fill in before saving". Save names what is still blank. Everything else starts neutral and not confirmed. To start from the Makera Z1, choose it and Copy to edit.
+- **Duplicate and Copy to edit** make a draft named "<name> copy" (then "copy 2") with a new reference, so projects made from the original keep comparing with the original.
+- **Centre: the form.** The groups are Profile, Rotary axis, Travel, Maximum feeds, Clearance, Tools and spindle, Short moves and Spindle height. Their values are the fields of section 8, with the inspector's typed entry and sums (UI-26).
+  - A value that is refused keeps the last good value, and a line under it says why in plain words, naming both values when the rule is between two ("The safe Z (30 mm) must not be below the safe cylinder radius (40 mm).").
+  - A rotary axis about Y is shown and refused as not supported yet (SET-02).
+  - After the last value of each provenance entry, a line has its status icon (section 8; the tooltip gives where the value came from and how to confirm it) and "Confirmed on the machine" or "Not confirmed on the machine".
+  - A value the user changes becomes not confirmed.
+  - Where it is not confirmed and the machine is not built in, **Mark confirmed…** asks how it was confirmed (for example what was measured and when). The note becomes its source; it cannot be blank. The short-move mode is a software setting and has no icon.
+- **Save to library…** (the project's copy):
+  - When the copy came from a library profile, it asks whether to write over it, naming the values that change, or to save as a new profile.
+  - When it came from a built-in profile, or from none, it offers only a new profile.
+  - A new profile gets its own reference, and the project's copy then records it (one undoable step).
+- **Renaming** a saved library machine that a machine tool set names (TL-11): Save asks "The tool set for "<old>" holds this machine's tool numbers. Also rename the tool set to "<new>"?" with **Also rename the tool set** ticked at first.
+- **Delete…** (a library profile) asks first: "Delete "<name>" from the library? This cannot be undone." It adds that projects keep their own copy, and that the project's copy will then say its profile is not in the library when that is so. It cannot be undone; a built-in profile cannot be deleted.
+- **Footer.** **Import…** and **Export…** on the left (TOML profile files), Close on the right, and under them the last result or why it was refused.
+  - **Import** says, before writing anything, whether the file's machine is new, the same as one already known, or differs from it (naming the values). For one that differs the choices are Keep mine, Replace (a library profile only) and Keep both, which adds it with " (imported)" after its name.
+  - **Export** writes the machine shown, with its reference.
+- **Wording.** Values are "confirmed on the machine" or "not confirmed on the machine" (section 15). Nothing in the window speaks of the G-code (NFR-12).
+
 ## 13. Per-user settings
 
 *(UI-15)*
@@ -796,6 +854,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - recent projects;
   - recovery checkpoint interval, three minutes by default and configurable from one to fifteen whole minutes (PRJ-08; owner's CHECKPOINT policy). Settings explains that three periodic checkpoints are retained independently of a single interim checkpoint updated after fifteen seconds without a confirmed project change;
   - memory for playback checkpoints, 1,536 MB by default and configurable from 256 to 8,192 MB in steps of 256 ([decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 5, the owner's decision D1 on issue #382). Settings explains that Simulate keeps copies of the cut part along the program so a jump in playback replays only a short stretch, that more memory gives shorter waits and less longer ones, that the cut part shown is the same either way, that the copies never use more than this, and that a change applies the next time the cut part is prepared. The memory used is also capped at a quarter of the computer's physical memory, and Settings shows "This computer: at most N MB" beside the value when the cap applies (the owner's decision on OI-1315);
+  - "Generate playback information with toolpath generation", a tick box under the memory for playback checkpoints ([decision 0333](../decisions/0333-playback-information-with-generation.md), the owner's decision D2 on issue #382). On, generating keeps the copies of the cut part that playback needs while it simulates, within the memory for playback checkpoints, so the cut part plays at once; off, nothing more is held and the copies are made when the cut part is first played, as before. Unset, the computer's default applies: on with 16 GB of memory or more (a computer sold as 16 GB counts), off below and when the memory cannot be read. Settings names the default this computer gives ("On by default on this computer (32 GB)"), offers "Use this computer's default" once the user has chosen, and explains the trade-off: a little more time for each generation and the memory held while its result is shown, against the wait when the cut part is first played; the toolpaths, the G-code and the cut part are the same either way; a change applies from the next generation.
   - remembered sections;
   - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
@@ -987,6 +1046,8 @@ Known gaps in the images: the footer omits the short G-code notice of section 10
 ### Optional back-and-forth ramp
 
 The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.
+
+**Refusals the user can act on (#291, lane RAMPERRORS; [decision 0312](../decisions/0312-plain-back-and-forth-ramp-refusals.md), accepted).** Every refusal of the back-and-forth ramp says, in the words of section 15, what is wrong, where the user changes it (the step, the inspector section and the field, for example "In the Setup step, under Work offset and clearance, set Safe Z to at least 36.000 mm", or "In the operation's Entry, links and retract settings, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix") and what to try, with no internal names. What is known before Generate (the setup's part is a STEP file, on which the clearance cannot yet be checked; the tool's shank is wider than its cutter) is one check, read in three places as the STEP set refusals are (decision 0209 item 10): an amber warning line under the Back-and-forth ramp field in the Entry, links and retract section; the operation in error in the operations list, with the line in Messages and a Show link; and generation, which refuses with the same words. With the ramp off, or another entry chosen, nothing is shown. The refusals that only the moves can show (the pass has no straight line to ramp along; the ramp would start above the safe height; a run would cut into the part, reach a held region or tab, or go beyond the machine's travel or A range; too many runs or too small a descent per run; the check limit for one entry) appear when the operation is generated, each naming the field to change. The corridor refusal keeps the approved first sentence (decision 0242 item 3) and then names the cause and the fix (0312 item 2).
 
 ### Short-move command demand (GC-17, decisions 0222 and 0244)
 

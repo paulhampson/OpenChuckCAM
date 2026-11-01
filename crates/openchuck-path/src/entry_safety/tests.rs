@@ -171,7 +171,7 @@ fn req_nfr_04_req_nfr_07_cancellation_during_query_and_cached_check_returns_no_c
         let mut session = SweepSession::new(proof);
         assert!(matches!(
             session.verify(pose(0.0), pose(1.0), 0.0, 0.01, &mut 1, &ctx),
-            Err(PathError::Cancelled)
+            Err(Refused::Error(PathError::Cancelled))
         ));
         assert_eq!(
             counts.queries.load(Ordering::Relaxed),
@@ -196,7 +196,7 @@ fn req_nfr_04_req_nfr_07_cancellation_during_query_and_cached_check_returns_no_c
         let ctx = JobContext::new(&cancel, &counts);
         assert!(matches!(
             session.verify(pose(0.0), pose(1.0), 0.0, 0.01, &mut 1, &ctx),
-            Err(PathError::Cancelled)
+            Err(Refused::Error(PathError::Cancelled))
         ));
         assert_eq!(counts.hits.load(Ordering::Relaxed), 1);
     });
@@ -316,4 +316,44 @@ fn req_op_12_req_nfr_04_memo_preserves_certificates_and_budget_at_lower_query_co
             "RAMPBUDGET 10000 clear identical sweeps cached={cached:?} fresh_query_per_sweep={fresh:?}"
         );
     });
+}
+
+/// Every reason a ramp move is refused says, in plain words, where the user
+/// changes it, and uses none of the internal language of decisions 0242 and
+/// 0248 (#291; NFR-07; specification section 15, decision 0114).
+#[test]
+fn req_nfr_07_every_ramp_clearance_refusal_names_where_to_change_it() {
+    for blocked in [
+        Blocked::Target,
+        Blocked::Protected,
+        Blocked::Travel,
+        Blocked::ALimit,
+        Blocked::Precision,
+        Blocked::Budget,
+        Blocked::Shape,
+        Blocked::Unchecked,
+    ] {
+        let text = format!("{}. {}", blocked.cause(), blocked.fix());
+        assert!(
+            text.contains("Entry, links and retract settings")
+                && text.contains("Back-and-forth ramp"),
+            "{text}"
+        );
+        for jargon in [
+            "whole-target",
+            "certif",
+            "envelope",
+            "sweep",
+            "budget",
+            "verified",
+            "OP-",
+            "NFR",
+            "0242",
+        ] {
+            assert!(!text.contains(jargon), "{jargon} in {text}");
+        }
+    }
+    assert!(Blocked::Protected.fix().contains("Workholding and tabs"));
+    assert!(Blocked::Travel.fix().contains("Travel and maximum feeds"));
+    assert!(Blocked::ALimit.fix().contains("A range"));
 }

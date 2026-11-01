@@ -293,6 +293,32 @@ fn req_ui_15_req_nfr_07_the_playback_checkpoint_memory_is_personal_and_bounded()
     let _ = std::fs::remove_dir_all(config);
 }
 
+/// "Generate playback information with toolpath generation" (decision
+/// record 0333) is the user's, kept on this computer: unset, the computer's
+/// default applies (the front end decides it from the computer's memory),
+/// and a file written before the setting existed reads it unset.
+#[test]
+fn req_ui_15_req_sim_04_playback_with_generation_is_personal_and_defaults_to_the_computer() {
+    let config = folder("playback-with-generation");
+    let file = SettingsFile::in_folder(&config);
+    assert_eq!(
+        UserSettings::default().simulate.playback_with_generation,
+        None
+    );
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(file.file(), "[interface.simulate]\nshow_cut_part = true\n").unwrap();
+    assert_eq!(file.load().settings.simulate.playback_with_generation, None);
+    for choice in [Some(true), Some(false), None] {
+        let mut settings = UserSettings::default();
+        settings.simulate.playback_with_generation = choice;
+        file.save(&settings).unwrap();
+        let loaded = file.load();
+        assert!(loaded.problem.is_none(), "{choice:?}");
+        assert_eq!(loaded.settings.simulate.playback_with_generation, choice);
+    }
+    let _ = std::fs::remove_dir_all(config);
+}
+
 /// Issues 308 and 310: the file name templates are the user's, kept on this
 /// computer across projects, never in a project, with defaults that give the
 /// names written before templates existed.

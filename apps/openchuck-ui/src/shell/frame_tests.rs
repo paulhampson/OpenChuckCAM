@@ -1179,6 +1179,69 @@ fn req_ui_15_req_nfr_07_settings_sets_the_memory_for_playback_checkpoints() {
     assert!(!rig.shows("This computer: at most"));
 }
 
+/// The owner's decision D2 with a setting (decision record 0333):
+/// "Generate playback information with toolpath generation" is in Settings,
+/// says which default this computer gives, is the user's to change and to
+/// reset, is kept in the settings, and gives the application the memory for
+/// playback checkpoints when on and none when off.
+#[test]
+fn req_ui_15_req_sim_04_settings_sets_playback_information_with_generation() {
+    let config = temp("frame-playback-generation");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-playback-generation", Some(file.clone()));
+    rig.dirs.push(config);
+    const MIB: usize = 1024 * 1024;
+    let given = |rig: &Rig| rig.shell.app.as_ref().unwrap().playback_with_generation();
+    // 32 GB, as the owner's computers: on by default, with the memory.
+    rig.shell.physical_memory = Some(32 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(2_048);
+    assert_eq!(rig.shell.settings.simulate.playback_with_generation, None);
+    assert_eq!(given(&rig), Some(2_048 * MIB));
+    rig.shell.dialog = Some(Dialog::Settings);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Generate playback information with toolpath generation"));
+    assert!(rig.shows("On by default on this computer (32 GB)"));
+    assert!(!rig.shows("Use this computer's default"));
+    // The user turns it off in the dialog: the application keeps none.
+    super::checkpoint_tests::click(&mut rig, "Generate playback information");
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.settings.simulate.playback_with_generation,
+        Some(false)
+    );
+    assert_eq!(given(&rig), None);
+    rig.frame(Vec::new());
+    assert!(rig.shows("Use this computer's default"));
+    rig.shell.save_settings();
+    assert_eq!(
+        file.load().settings.simulate.playback_with_generation,
+        Some(false)
+    );
+    // Back to the default, from the dialog.
+    super::checkpoint_tests::click(&mut rig, "Use this computer's default");
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.settings.simulate.playback_with_generation, None);
+    assert_eq!(given(&rig), Some(2_048 * MIB));
+    // 8 GB: off by default, and Settings says so; the user may turn it on,
+    // with the memory capped at a quarter of the computer.
+    rig.shell.physical_memory = Some(8 * 1024 * MIB as u64);
+    rig.shell.set_playback_memory_mb(2_048);
+    assert_eq!(given(&rig), None);
+    rig.frame(Vec::new());
+    assert!(rig.shows("Off by default on this computer (8 GB)"));
+    rig.shell.set_playback_with_generation(Some(true));
+    assert_eq!(given(&rig), Some(2_048 * MIB));
+    rig.shell.set_playback_memory_mb(4_096);
+    assert_eq!(given(&rig), Some(2_048 * MIB));
+    // Memory that cannot be read: off by default.
+    rig.shell.physical_memory = None;
+    rig.shell.set_playback_with_generation(None);
+    assert_eq!(given(&rig), None);
+    rig.frame(Vec::new());
+    assert!(rig.shows("Off by default: this computer's memory could not be read"));
+}
+
 /// A project with a model and no setup, which is what File, New project and
 /// an import give (decision record 0144).
 fn no_setup_rig(name: &str, with_model: bool) -> Rig {

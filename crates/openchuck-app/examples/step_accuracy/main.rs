@@ -1186,10 +1186,17 @@ fn project(
             // The tool's cutting data for the setup's material (decision 0196).
             spindle_speed: None,
             material: None,
-            parameters: op
-                .parameters
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            // Face free ends off, as the measured project was saved before
+            // it (decision record 0344): the measures are of the strategies.
+            parameters: ["helical_finishing", "axial_finishing", "rest_machining"]
+                .contains(&op.strategy)
+                .then(|| ("face_free_ends".to_owned(), ParameterValue::Flag(false)))
+                .into_iter()
+                .chain(
+                    op.parameters
+                        .iter()
+                        .map(|(k, v)| ((*k).to_owned(), v.clone())),
+                )
                 .collect(),
         }));
     }
@@ -1573,6 +1580,7 @@ impl Job<'_> {
                 max_feeds: self.machine.max_feeds,
                 tags: &tags,
                 keep_out: &[],
+                shank: None,
                 entry_safety: None,
                 facing: None,
             };

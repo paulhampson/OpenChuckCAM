@@ -63,6 +63,7 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>)) {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     test(&input);
 }
@@ -110,6 +111,13 @@ fn req_op_24_req_gc_07_legacy_defaults_match_pre_scope_ir_and_diagnostics() {
                 .install(|| generate(&legacy::LegacyFacing, input, &values, &ctx))
                 .unwrap();
             let expected = bytes(&reference);
+            // Adaptive spacing is on for a new flat Facing operation (decision
+            // record 0239 items 6 and 13; OI-1453), which changes the output
+            // on purpose; an operation saved before it is migrated to an
+            // explicit off (project schema 25), and with it off the output is
+            // the reference's.
+            let mut values = values.clone();
+            values.insert("adaptive_spacing".into(), ParameterValue::Flag(false));
             for threads in [1, 2, 4] {
                 let pool = rayon::ThreadPoolBuilder::new()
                     .num_threads(threads)
@@ -287,7 +295,7 @@ mod legacy {
         let passes = if round {
             job.continuous(parameters, context)?.0
         } else {
-            job.flat(parameters, level, context)?
+            job.flat(parameters, level, context)?.0
         };
         if passes.is_empty() {
             return Err(crate::PathError::Strategy(format!(

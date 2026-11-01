@@ -61,6 +61,8 @@ mod pending_pick;
 mod tree;
 
 #[cfg(test)]
+mod adaptive_tests;
+#[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
 mod pending_edit_tests;
@@ -145,6 +147,26 @@ enum Dialog {
     /// The opened project has models outside its folder: ask, each time it
     /// is opened, whether to copy them in (decision record 0307 item 5).
     CopyLinked(usize),
+    /// Adaptive spacing is being turned on for an operation saved with a
+    /// Scallop height of 0: ask for the Allowed excess first (decision
+    /// record 0239 item 5). `height` is the typed text.
+    AdaptiveHeight {
+        operation: OperationId,
+        height: String,
+    },
+}
+
+/// What the dialog that turns adaptive spacing on from a saved zero says
+/// (decision record 0239 item 5).
+pub(crate) const ADAPTIVE_HEIGHT_TEXT: &str = "This operation was saved with a Scallop height of 0, which meant no limit on the cusp. With adaptive spacing on, the same value is the Allowed excess: the most material that may stand between two passes above the finished surface and its stock to leave. 0 there asks for no excess at all, which may leave places unverified or meet the limits. 0.01 mm is suggested. Cancel leaves the operation as it is; Turn on sets both in one step you can undo.";
+
+/// The Allowed excess typed in the dialog, when it is a finite number of
+/// millimetres, at least 0.
+pub(crate) fn adaptive_height(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|h| h.is_finite() && *h >= 0.0)
 }
 
 /// The question asked on opening a project with `count` models outside its
@@ -207,6 +229,8 @@ pub struct Shell {
     model_panel: Option<ModelPanel>,
     /// The machine panel, with the profiles found when it was opened.
     machine_panel: Option<MachinePanel>,
+    /// The machine library window (SET-10; specification 12.5).
+    machine_library: crate::machine_library_window::MachineLibraryWindow,
     /// The chosen setup's workholding and tabs (SET-09, OP-21).
     workholding_panel: Option<WorkholdingPanel>,
     /// Typed text and refused values in the inspector's fields.
@@ -322,6 +346,7 @@ impl Shell {
             import: None,
             model_panel: None,
             machine_panel: None,
+            machine_library: crate::machine_library_window::MachineLibraryWindow::new(None, None),
             workholding_panel: None,
             form: FormState::default(),
             pending_field: None,
@@ -372,6 +397,7 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
         self.viewport
             .set_simulate_show(crate::viewport::SimulateShow {
                 model: simulate.show_model,
@@ -561,6 +587,7 @@ impl Shell {
             self.dialog = Some(Dialog::CopyLinked(linked));
         }
         self.app = Some(app);
+        self.apply_playback_with_generation();
         self.overview_dirty = true;
         self.rebuild_scene(true);
     }
@@ -744,6 +771,42 @@ impl Shell {
         self.play.set_playback_memory(
             crate::memory::playback_memory(simulate.playback_memory_mb, self.physical_memory).0,
         );
+        self.apply_playback_with_generation();
+        self.settings_touched();
+    }
+
+    /// Whether playback information is made with toolpath generation: the
+    /// user's choice, or this computer's default (decision record 0333).
+    fn playback_with_generation_on(&self) -> bool {
+        self.settings
+            .simulate
+            .playback_with_generation
+            .unwrap_or_else(|| {
+                crate::memory::playback_with_generation_default(self.physical_memory)
+            })
+    }
+
+    /// Gives the application the memory for playback's checkpoints while it
+    /// simulates, or none when "Generate playback information with toolpath
+    /// generation" is off (decision record 0333).
+    fn apply_playback_with_generation(&mut self) {
+        let memory = self.playback_with_generation_on().then(|| {
+            crate::memory::playback_memory(
+                self.settings.simulate.playback_memory_mb,
+                self.physical_memory,
+            )
+            .0
+        });
+        if let Some(app) = &mut self.app {
+            app.set_playback_with_generation(memory);
+        }
+    }
+
+    /// Sets "Generate playback information with toolpath generation": the
+    /// user's choice, or `None` for this computer's default.
+    fn set_playback_with_generation(&mut self, choice: Option<bool>) {
+        self.settings.simulate.playback_with_generation = choice;
+        self.apply_playback_with_generation();
         self.settings_touched();
     }
 
@@ -848,6 +911,19 @@ impl Shell {
         if self.app.is_some() && self.import.is_none() {
             self.import = Some(ImportSession::blank());
         }
+    }
+
+    /// Opens the machine library window (SET-10; specification 12.5), on
+    /// the project's machine when it has one.
+    pub(super) fn open_machine_library(&mut self) {
+        if self.defer(|s| s.open_machine_library()) {
+            return;
+        }
+        let project = self
+            .app
+            .as_ref()
+            .is_some_and(|a| a.project().machine().is_some());
+        self.machine_library.open(project);
     }
 
     /// Opens the tool library window (specification 12.1) for `purpose`,
@@ -1101,10 +1177,12 @@ impl Shell {
                 i.consume_shortcut(&LATER),
             )
         });
-        // The tool library window is a floating window, so these keys would
-        // otherwise act on the selected operation behind it.
+        // The tool and machine library windows are floating windows, so
+        // these keys would otherwise act on the selected operation behind
+        // them.
+        let library_open = self.tool_library.is_open() || self.machine_library.is_open();
         if let Some(Selection::Operation(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             let action = if duplicate {
                 Some(TreeAction::Duplicate(id))
@@ -1123,7 +1201,7 @@ impl Shell {
         }
         if delete
             && let Some(Selection::Set(id)) = self.selected
-            && !self.tool_library.is_open()
+            && !library_open
         {
             self.tree_action(TreeAction::DeleteSet(id));
         }
@@ -1188,6 +1266,18 @@ impl Shell {
         };
         if let Some(name) = name {
             self.dialog = Some(Dialog::Rename { item, name });
+        }
+    }
+
+    /// Turns adaptive spacing on for `operation` with the Allowed excess
+    /// `height`, as one undoable step (decision record 0239 item 5).
+    fn enable_adaptive_spacing(&mut self, operation: OperationId, height: f64) {
+        let Some(app) = &mut self.app else { return };
+        if let Err(e) = app.enable_adaptive_spacing(operation, height) {
+            self.dialog = Some(Dialog::Error(format!(
+                "Adaptive spacing was not turned on: {}",
+                e.user_message()
+            )));
         }
     }
 
@@ -1539,6 +1629,18 @@ impl Shell {
         if let Some(status) = library.status {
             self.status = status;
         }
+        // The machine library window also works with or without a project
+        // (SET-10; 12.5). A change to the project's copy is an undoable
+        // command it executes itself; the machine panel then lists the
+        // library again.
+        if self.machine_library.is_open() {
+            if let Some(status) = self.machine_library.frame(ctx, self.app.as_mut()) {
+                self.status = status;
+            }
+            if !self.machine_library.is_open() {
+                self.machine_panel = None;
+            }
+        }
         if let Some(tool) = library.for_new_operation {
             self.run.set_adding_tool(tool);
         }
@@ -1743,6 +1845,7 @@ impl Shell {
             || self.run.has_window()
             || self.import.is_some()
             || self.tool_library.is_open()
+            || self.machine_library.is_open()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -2074,6 +2177,46 @@ impl Shell {
                      either way. The copies are never allowed to use more than this. A change \
                      applies the next time the cut part is prepared.",
                 );
+                let mut with_generation = self.playback_with_generation_on();
+                if ui
+                    .checkbox(
+                        &mut with_generation,
+                        "Generate playback information with toolpath generation",
+                    )
+                    .changed()
+                {
+                    action = Some(Box::new(move |s: &mut Self| {
+                        s.set_playback_with_generation(Some(with_generation));
+                    }));
+                }
+                ui.horizontal(|ui| {
+                    let default =
+                        crate::memory::playback_with_generation_default(self.physical_memory);
+                    let state = if default { "On" } else { "Off" };
+                    ui.label(match crate::memory::gigabytes(self.physical_memory) {
+                        Some(gb) => format!("{state} by default on this computer ({gb} GB)"),
+                        None => format!(
+                            "{state} by default: this computer's memory could not be read"
+                        ),
+                    });
+                    if self.settings.simulate.playback_with_generation.is_some()
+                        && ui.button("Use this computer's default").clicked()
+                    {
+                        action = Some(Box::new(|s: &mut Self| {
+                            s.set_playback_with_generation(None);
+                        }));
+                    }
+                });
+                ui.label(
+                    "On: generating also keeps the copies of the cut part that playback \
+                     needs, so the cut part plays at once. Each generation takes a little \
+                     longer (about a tenth of the simulation's time) and holds up to the \
+                     memory for playback checkpoints above while its result is shown. Off: \
+                     nothing more is held, and the copies are made when the cut part is first \
+                     played, which takes about as long as the simulation. The toolpaths, the \
+                     G-code and the cut part are the same either way. A change applies from \
+                     the next generation.",
+                );
                 let mut skip = self.settings.simulate.skip_stock_simulation;
                 if ui
                     .checkbox(&mut skip, "Skip the stock simulation in new projects")
@@ -2113,6 +2256,37 @@ impl Shell {
                 if ui.button("OK").clicked() {
                     close = true;
                 }
+            }
+            Dialog::AdaptiveHeight {
+                operation,
+                mut height,
+            } => {
+                ui.heading("Turn on adaptive spacing");
+                ui.label(ADAPTIVE_HEIGHT_TEXT);
+                ui.horizontal(|ui| {
+                    ui.label("Allowed excess (mm)");
+                    ui.text_edit_singleline(&mut height);
+                });
+                let parsed = adaptive_height(&height);
+                if parsed.is_none() {
+                    ui.colored_label(DARK.error, "Enter a number of millimetres, at least 0.");
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(parsed.is_some(), egui::Button::new("Turn on"))
+                        .clicked()
+                        && let Some(h) = parsed
+                    {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.enable_adaptive_spacing(operation, h);
+                        }));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+                self.dialog = Some(Dialog::AdaptiveHeight { operation, height });
             }
         });
         if form_browse {
@@ -2714,6 +2888,8 @@ mod simulate_tests;
 #[cfg(test)]
 mod smoke_tests;
 
+#[cfg(test)]
+mod machine_library_tests;
 #[cfg(test)]
 mod tool_library_tests;
 

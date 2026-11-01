@@ -108,17 +108,82 @@ pub(crate) fn turns(
     tolerance: f64,
     context: &JobContext<'_>,
 ) -> Result<Vec<Turn>> {
+    find(input, profile, range, false, tolerance, context).map(|f| f.turns)
+}
+
+/// The faces a finishing search found: the turns to make, and the X of the
+/// turns not made because they lie inside a `keep_out` interval, where the
+/// tool would reach over a gripped length (SET-09).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Faces {
+    pub(crate) turns: Vec<Turn>,
+    pub(crate) held: Vec<f64>,
+    /// The part's free ends: end faces with nothing of the target past them
+    /// within the tool's reach, outside the keep-out (decision record 0344).
+    pub(crate) free: Vec<FreeEnd>,
+}
+
+/// Where along a line of A the drop finds nothing to stand on: the sample
+/// interval, and whether the target starts there (with rising X) or ends.
+type Gap = (usize, bool);
+
+/// A free end of the part: an end face with nothing of the target past it,
+/// so a drop there finds nothing to stand on (decision record 0344).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct FreeEnd {
+    /// The X of the tool's axis for a turn beside the face: where the side
+    /// of the tool (grown by the stock to leave) is a tenth of the tolerance
+    /// clear of it.
+    pub(crate) x: f64,
+    /// The X of the face itself.
+    pub(crate) face: f64,
+    /// Whether the face looks along +X (the part's far end) rather than -X.
+    pub(crate) far: bool,
+}
+
+/// As [`turns`], for a finishing helix over the target's own range: the
+/// search also runs on past each end of `range` by the tool's radius, so a
+/// face whose turn lies beyond the target's end (the part's end face beside
+/// a tab shorter than the tool's radius) gets its turn too (issue 404). The
+/// samples inside `range` are those [`turns`] takes, so the faces found
+/// there are the same.
+pub(crate) fn turns_to_the_ends(
+    input: &StrategyInput<'_>,
+    profile: &RevolvedProfile,
+    range: (f64, f64),
+    tolerance: f64,
+    context: &JobContext<'_>,
+) -> Result<Faces> {
+    find(input, profile, range, true, tolerance, context)
+}
+
+fn find(
+    input: &StrategyInput<'_>,
+    profile: &RevolvedProfile,
+    range: (f64, f64),
+    beyond: bool,
+    tolerance: f64,
+    context: &JobContext<'_>,
+) -> Result<Faces> {
     let (x0, x1) = range;
     let radius = profile.cutting_radius();
     if !(x1 > x0 && radius > 0.0 && tolerance > 0.0) {
-        return Ok(Vec::new());
+        return Ok(Faces {
+            turns: Vec::new(),
+            held: Vec::new(),
+            free: Vec::new(),
+        });
     }
     let bounds = input.surface.bounds();
     let reach = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
         .into_iter()
         .fold(0.0_f64, |r, v| r.max(v.abs()));
     if !reach.is_finite() || reach <= 0.0 {
-        return Ok(Vec::new());
+        return Ok(Faces {
+            turns: Vec::new(),
+            held: Vec::new(),
+            free: Vec::new(),
+        });
     }
     // X samples no further apart than half the tool's radius (and 0.5 mm):
     // a thin web shows both its faces in different intervals (the tool rides
@@ -138,13 +203,42 @@ pub(crate) fn turns(
         let contact = input.surface.drop_tool(profile, &line)?;
         Some(input.rotary.to_axis(contact.tip, Degrees(a)).height)
     };
-    let at = |i: usize| x0 + (x1 - x0) * i as f64 / samples as f64;
+    // Past each end, whole samples of the same spacing covering the tool's
+    // radius, the clearance and one interval more, so the jump where the
+    // side leaves the end face lies inside the samples.
+    let step = (x1 - x0) / samples as f64;
+    let extra = if beyond {
+        ((radius + CLEAR * tolerance) / step).ceil() as usize + 1
+    } else {
+        0
+    };
+    let low = x0 - extra as f64 * step;
+    let samples = samples + 2 * extra;
+    let at = |i: usize| {
+        if i < extra {
+            x0 - (extra - i) as f64 * step
+        } else {
+            x0 + (x1 - x0) * (i - extra) as f64 / (samples - 2 * extra) as f64
+        }
+    };
     // The faces on one line of A, given the brackets of faces already found
     // on another: where one lies inside a jump and still holds the jump, it
     // is taken without bisecting again.
-    let line = |k: usize, known: &[Found]| -> Vec<Found> {
+    // The faces on one line of A, and where along it the drop finds nothing
+    // to stand on: each interval whose one end has a height and the other
+    // none, with whether the target starts there (rising X) or ends.
+    let line = |k: usize, known: &[Found]| -> (Vec<Found>, Vec<Gap>) {
         let a = 360.0 * k as f64 / angles as f64;
         let heights: Vec<Option<f64>> = (0..=samples).map(|i| height(at(i), a)).collect();
+        let gaps: Vec<Gap> = heights
+            .windows(2)
+            .enumerate()
+            .filter_map(|(i, w)| match w {
+                [Some(_), None] => Some((i, false)),
+                [None, Some(_)] => Some((i, true)),
+                _ => None,
+            })
+            .collect();
         // The change of height over each interval, where both ends have one.
         let change = |i: usize| match (heights.get(i), heights.get(i + 1)) {
             (Some(Some(lo)), Some(Some(hi))) => Some(hi - lo),
@@ -187,14 +281,15 @@ pub(crate) fn turns(
                 out.push(face);
             }
         }
-        out
+        (out, gaps)
     };
     context.report("finding faces across the axis", 0, Some(angles as u64));
-    let first = line(0, &[]);
+    let (first, first_gaps) = line(0, &[]);
     let rest: Vec<usize> = (1..angles).collect();
-    let found: Vec<Vec<Found>> = std::iter::once(first.clone())
-        .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
-        .collect();
+    let (found, gaps): (Vec<Vec<Found>>, Vec<Vec<Gap>>) =
+        std::iter::once((first.clone(), first_gaps))
+            .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
+            .unzip();
     context.check_cancelled()?;
     let mut ups: Vec<(Found, usize)> = Vec::new();
     let mut downs: Vec<(Found, usize)> = Vec::new();
@@ -223,9 +318,10 @@ pub(crate) fn turns(
         }
         same
     });
-    turns.retain(|t| {
-        (x0..=x1).contains(&t.x) && !input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&t.x))
-    });
+    turns.retain(|t| (low..=x1 + extra as f64 * step).contains(&t.x));
+    let held_at = |x: f64| input.keep_out.iter().any(|&(a, b)| (a..=b).contains(&x));
+    let held: Vec<f64> = turns.iter().map(|t| t.x).filter(|&x| held_at(x)).collect();
+    turns.retain(|t| !held_at(t.x));
     if turns.len() > MAX_TURNS {
         return Err(PathError::Strategy(format!(
             "the part has {} faces across the rotary axis; the most this strategy turns at is \
@@ -233,7 +329,76 @@ pub(crate) fn turns(
             turns.len()
         )));
     }
-    Ok(turns)
+    // The free ends, for a finishing search only: where on every line of A
+    // the drop finds the target on one side of an X and nothing on the
+    // other, the end of a body with nothing past it within the tool's reach.
+    // The edge is narrowed on each line by bisection to `WIDTH`; the face is
+    // one grown tool radius inside the outermost edge over the lines. One
+    // inside a keep-out interval is the held region's own end, or within its
+    // reach: it is left out.
+    let mut free = Vec::new();
+    if extra > 0 {
+        let clear = CLEAR * tolerance;
+        let first_line = gaps.first().cloned().unwrap_or_default();
+        for &(i, starts) in &first_line {
+            // The same change on every line, within one sample.
+            let on_lines: Option<Vec<(usize, usize)>> = gaps
+                .iter()
+                .enumerate()
+                .map(|(k, g)| {
+                    g.iter()
+                        .find(|&&(j, s)| s == starts && j.abs_diff(i) <= 1)
+                        .map(|&(j, _)| (k, j))
+                })
+                .collect();
+            let Some(on_lines) = on_lines else { continue };
+            // The part's own end, not a tab's or a held region's: the part
+            // is under the tool just inside the edge.
+            let on_part = |x: f64, a: f64| {
+                let line = input
+                    .rotary
+                    .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+                input.surface.drop_on_part(profile, &line).is_some()
+            };
+            let edges: Vec<f64> = parallel::map_in_order(&on_lines, |&(k, j)| {
+                let a = 360.0 * k as f64 / angles as f64;
+                let (mut inside, mut outside) = if starts {
+                    (at(j + 1), at(j))
+                } else {
+                    (at(j), at(j + 1))
+                };
+                while (outside - inside).abs() > WIDTH {
+                    let m = 0.5 * (inside + outside);
+                    if height(m, a).is_some() {
+                        inside = m;
+                    } else {
+                        outside = m;
+                    }
+                }
+                inside
+            });
+            // Checked on the first line, just inside its own edge.
+            let Some(&own) = edges.first() else { continue };
+            if !on_part(if starts { own + WIDTH } else { own - WIDTH }, 0.0) {
+                continue;
+            }
+            let pick = if starts { f64::min } else { f64::max };
+            let Some(outer) = edges.into_iter().reduce(pick) else {
+                continue;
+            };
+            let far = !starts;
+            let (x, face) = if far {
+                (outer + clear, outer - radius)
+            } else {
+                (outer - clear, outer + radius)
+            };
+            if !held_at(x) {
+                free.push(FreeEnd { x, face, far });
+            }
+        }
+        context.check_cancelled()?;
+    }
+    Ok(Faces { turns, held, free })
 }
 
 /// The note an operation carries when it turned at faces across the axis:
@@ -260,6 +425,32 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
         "the part has {count} across the rotary axis: the tool turns once round the axis \
          without moving along it at X {xs}, where its side touches {each}, so the face keeps \
          only the stock to leave"
+    ))
+}
+
+/// The note an operation carries when a held region kept it from turning at
+/// faces across the axis: where, and that those faces keep what earlier
+/// operations left (decision record 0343). `None` with none.
+pub(crate) fn held_note(held: &[f64]) -> Option<String> {
+    let (last, rest) = held.split_last()?;
+    let at = |x: &f64| format!("{x:.3}");
+    let xs = if rest.is_empty() {
+        at(last)
+    } else {
+        format!(
+            "{} and {}",
+            rest.iter().map(at).collect::<Vec<_>>().join(", "),
+            at(last)
+        )
+    };
+    let (faces, keeps) = if rest.is_empty() {
+        ("a face", "that face keeps")
+    } else {
+        ("faces", "those faces keep")
+    };
+    Some(format!(
+        "the tool does not turn at {faces} across the rotary axis at X {xs}: there it would \
+         reach over the gripped length of the stock, so {keeps} what earlier operations left"
     ))
 }
 
@@ -389,6 +580,23 @@ mod tests {
             "the part has 3 faces across the rotary axis: the tool turns once round the axis \
              without moving along it at X 1.000, 2.000 and 3.500, where its side touches each, \
              so the face keeps only the stock to leave"
+        );
+    }
+
+    #[test]
+    fn req_set_09_the_held_note_says_which_faces_keep_their_material() {
+        assert_eq!(held_note(&[]), None);
+        assert_eq!(
+            held_note(&[31.5886]).unwrap(),
+            "the tool does not turn at a face across the rotary axis at X 31.589: there it \
+             would reach over the gripped length of the stock, so that face keeps what earlier \
+             operations left"
+        );
+        assert_eq!(
+            held_note(&[1.0, 2.5]).unwrap(),
+            "the tool does not turn at faces across the rotary axis at X 1.000 and 2.500: there \
+             it would reach over the gripped length of the stock, so those faces keep what \
+             earlier operations left"
         );
     }
 

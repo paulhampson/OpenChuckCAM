@@ -107,6 +107,7 @@ impl Fixture {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         }
     }
 }
@@ -206,6 +207,27 @@ fn req_op_09_brep_no_false_creases_between_the_facets_of_a_fillet() {
             assert!(c.tip.x < 13.0, "a pass on the fillet at {:?}", c.tip);
         }
     }
+}
+
+#[test]
+fn req_op_04_req_op_09_pencil_says_it_leaves_the_end_faces() {
+    // Pencil clean-up follows concave creases only, so it never faces the
+    // part's end faces; its note says so and names what does (issue 404,
+    // decision record 0343).
+    let model = shouldered_shaft(4);
+    let f = Fixture::new(&model);
+    let out = pencil(
+        &f,
+        &PencilFinishing::on_brep(&model).unwrap(),
+        &[(pencil_parameter::CREASE_ANGLE, 20.0)],
+    )
+    .unwrap();
+    assert!(
+        out.notes.iter().any(|n| n.contains("end faces")
+            && n.contains("helical finishing, rest machining or Facing")),
+        "{:?}",
+        out.notes
+    );
 }
 
 // ---- the cut -----------------------------------------------------------------

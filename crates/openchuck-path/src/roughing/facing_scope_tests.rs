@@ -12,6 +12,19 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::{Tool, ToolShape};
 use openchuck_types::units::Millimetres;
 
+/// [`super::face`]'s passes: these tests are about the scope, not adaptive
+/// spacing, which their parameters turn off.
+fn face(
+    input: &StrategyInput<'_>,
+    parameters: &Parameters,
+    round: bool,
+    level: f64,
+    scope: Option<&FacingScope>,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    super::face(input, parameters, round, level, scope, context).map(|o| o.passes)
+}
+
 fn parameters(round: bool) -> Parameters {
     parameters_with(round, &[])
 }
@@ -32,6 +45,7 @@ fn parameters_with(round: bool, extra: &[(&str, ParameterValue)]) -> Parameters 
         ParameterValue::Text(if round { "round" } else { "flat" }.into()),
     );
     values.insert("angles".into(), ParameterValue::Text("0,90".into()));
+    values.insert("adaptive_spacing".into(), ParameterValue::Flag(false));
     for (name, value) in extra {
         values.insert((*name).into(), value.clone());
     }
@@ -94,6 +108,7 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>, &JobContext<'_>)) {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let token = CancelToken::new();
     let ctx = JobContext::new(&token, &NoProgress);

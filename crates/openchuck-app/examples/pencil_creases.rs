@@ -186,6 +186,7 @@ fn main() {
         entry_safety: None,
         facing: None,
         keep_out: &[],
+        shank: None,
     };
     let values: BTreeMap<String, ParameterValue> = [
         ("feed", 500.0),

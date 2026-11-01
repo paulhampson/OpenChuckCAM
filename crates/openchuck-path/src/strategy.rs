@@ -20,7 +20,9 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, PathNote, PathWarning, assemble_with_entry};
+use crate::assemble::{
+    GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, assemble_with_entry,
+};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -96,6 +98,13 @@ pub struct StrategyOutput {
     /// Warnings about the whole toolpath: the path is made, but the user
     /// must see these before using it (decision record 0175).
     pub warnings: Vec<PathWarning>,
+    /// Surfaces the strategy found it could not reach with the tool, for a
+    /// host to show (OP-20; decision record 0368). Each is also said in a
+    /// warning.
+    pub unreached: Vec<Unreached>,
+    /// Places where the strategy broke a pass because the tool's shank would
+    /// meet the part (decision record 0368). Each is also said in a warning.
+    pub shank_breaks: Vec<ShankBreak>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -133,6 +142,23 @@ pub struct StrategyInput<'a> {
     /// path whose entry, exit or link at feed still would is refused. Empty
     /// for a setup with no held region.
     pub keep_out: &'a [(f64, f64)],
+    /// The tool's shank where it is wider than the cutting part, for the
+    /// strategies that keep it clear of the part (simultaneous finishing of
+    /// hidden surfaces, OP-20; decision record 0368). `None` when the shank
+    /// is no wider than the cutting part, or the host does not give it: the
+    /// tool above its cutting part is then taken as a cylinder of its
+    /// cutting radius, as every drop takes it.
+    pub shank: Option<Shank>,
+}
+
+/// A tool's shank wider than its cutting part: a cylinder of `radius` from
+/// `height` above the tip upwards (the flute length), in millimetres.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shank {
+    /// The shank's radius.
+    pub radius: f64,
+    /// Where the shank starts, above the tool's tip.
+    pub height: f64,
 }
 
 impl std::fmt::Debug for StrategyInput<'_> {
@@ -311,6 +337,8 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
             passes,
             notes: Vec::new(),
             warnings: Vec::new(),
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         })
     }
 
@@ -321,9 +349,10 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         false
     }
 
-    /// As [`passes_in_region`](Self::passes_in_region), or as
-    /// [`passes`](Self::passes) without a region, leaving each of `zones` its
-    /// own stock to leave. The default refuses.
+    /// As [`passes_with_notes`](Self::passes_with_notes), leaving each of
+    /// `zones` its own stock to leave, with the notes and warnings the
+    /// strategy gives, so a warning that must be acknowledged reaches the
+    /// host on this route too (decision record 0239). The default refuses.
     fn passes_in_zones(
         &self,
         _input: &StrategyInput<'_>,
@@ -331,7 +360,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         _zones: &[LeaveZone<'_>],
         _parameters: &Parameters,
         _context: &JobContext<'_>,
-    ) -> Result<Vec<Pass>> {
+    ) -> Result<StrategyOutput> {
         Err(PathError::Strategy(format!(
             "the strategy '{}' cannot leave different stock on different selections",
             self.name()
@@ -445,19 +474,22 @@ fn generate_with(
         .map_or(&[][..], |r| r.watch);
     let operation_leave = common.stock_to_leave.0;
     context.check_cancelled()?;
-    let mut warnings = Vec::new();
-    let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
-        let output = strategy.passes_with_notes(input, region, &parameters, context)?;
-        warnings = output.warnings;
-        (output.passes, output.notes)
+    let output = if zones.is_empty() {
+        strategy.passes_with_notes(input, region, &parameters, context)?
     } else {
         let most = zones
             .iter()
             .fold(common.stock_to_leave.0, |m, z| m.max(z.leave));
         common.stock_to_leave = openchuck_types::units::Millimetres(most);
-        let passes = strategy.passes_in_zones(input, region, zones, &parameters, context)?;
-        (passes, Vec::new())
+        strategy.passes_in_zones(input, region, zones, &parameters, context)?
     };
+    let StrategyOutput {
+        passes,
+        notes,
+        mut warnings,
+        unreached,
+        shank_breaks,
+    } = output;
     context.check_cancelled()?;
     warnings.extend(crate::region::watched_warnings(
         &passes,
@@ -483,6 +515,8 @@ fn generate_with(
         .chain(notes)
         .collect();
     path.warnings = warnings;
+    path.unreached = unreached;
+    path.shank_breaks = shank_breaks;
     if !notes.is_empty() {
         let mut notes: Vec<PathNote> = notes
             .into_iter()
@@ -986,6 +1020,8 @@ mod tests {
             },
             notes: Vec::new(),
             warnings: Vec::new(),
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
         }
     }
 

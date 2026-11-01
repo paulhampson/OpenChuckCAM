@@ -111,7 +111,21 @@ use openchuck_types::workholding::Workholding;
 ///   record 0307 item 4).
 /// - 22: the machine copy gains the optional `automatic_tool_length`,
 ///   `spindle_to_axis` and `recommended_min_safe_z` (decision record 0317).
-pub const SCHEMA: i64 = 22;
+/// - 23: helical finishing, axial finishing and rest machining gain the
+///   per-operation `face_free_ends` switch, on for a new operation; an
+///   older operation of those strategies is migrated to an explicit
+///   `face_free_ends = false`, so it machines as before (decision record
+///   0344).
+/// - 24: the operations that can space their passes adaptively gain the
+///   per-operation `adaptive_spacing` switch, on for a new operation; an
+///   older operation of those strategies is migrated to an explicit
+///   `adaptive_spacing = false`, so it machines as before (decision record
+///   0239).
+/// - 25: rotary roughing and Facing gain the same switch for their lines
+///   along the axis (OI-1453); an older operation of those strategies is
+///   migrated to an explicit `adaptive_spacing = false`, so it machines as
+///   before (decision record 0239).
+pub const SCHEMA: i64 = 25;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -147,7 +161,51 @@ const MIGRATIONS: &[Migration] = &[
     schema_19_to_20,
     schema_20_to_21,
     schema_21_to_22,
+    schema_22_to_23,
+    schema_23_to_24,
+    schema_24_to_25,
 ];
+
+/// The strategies whose operations gained `adaptive_spacing` in schema 25:
+/// rotary roughing's lines along the axis and flat Facing (OI-1453).
+const LINE_STRATEGIES: [&str; 2] = ["rotary_roughing", "facing"];
+
+/// Schema 25 (decision record 0239; OI-1453): an operation of rotary
+/// roughing or Facing saved before it is given an explicit
+/// `adaptive_spacing = false`, so it machines as it did; a new operation
+/// takes the strategy's default, on, where its form cuts along the axis. An
+/// older such operation that already holds the switch was not written by any
+/// version that knew it, so it is refused rather than guessed at; the
+/// finishing strategies have held it since schema 24 and are left as they
+/// are.
+fn schema_24_to_25(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let lines = table
+        .get("strategy")
+        .and_then(toml::Value::as_str)
+        .is_some_and(|s| LINE_STRATEGIES.contains(&s));
+    if !lines {
+        return Ok(());
+    }
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("adaptive_spacing") {
+        return Err(
+            "this schema 24 file has the parameter `adaptive_spacing` on a rotary roughing or \
+             Facing operation, which schema 25 introduced; remove it, or set `schema = 25` if \
+             the file was written for schema 25"
+                .to_owned(),
+        );
+    }
+    parameters.insert("adaptive_spacing".to_owned(), toml::Value::Boolean(false));
+    Ok(())
+}
 
 /// Schema 22 adds the optional spindle-height fields to the machine copy,
 /// which an older file does not have; one that already holds one is refused
@@ -155,6 +213,83 @@ const MIGRATIONS: &[Migration] = &[
 fn schema_21_to_22(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Machine {
         crate::machines::premature_spindle_height(table, 21, 22)?;
+    }
+    Ok(())
+}
+
+/// The strategies whose operations gained `face_free_ends` in schema 23.
+const FREE_END_STRATEGIES: [&str; 3] = ["helical_finishing", "axial_finishing", "rest_machining"];
+
+/// Schema 23 (decision record 0344): an operation of helical finishing,
+/// axial finishing or rest machining saved before it is given an explicit
+/// `face_free_ends = false`, so it machines as it did; a new operation takes
+/// the strategy's default, on. An older file that already holds the switch
+/// was not written by any version that knew it, so it is refused rather than
+/// guessed at.
+fn schema_22_to_23(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let finishing = table
+        .get("strategy")
+        .and_then(toml::Value::as_str)
+        .is_some_and(|s| FREE_END_STRATEGIES.contains(&s));
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("face_free_ends") {
+        return Err(
+            "this schema 22 file has the parameter `face_free_ends`, which schema 23 \
+             introduced; remove it, or set `schema = 23` if the file was written for schema 23"
+                .to_owned(),
+        );
+    }
+    if finishing {
+        parameters.insert("face_free_ends".to_owned(), toml::Value::Boolean(false));
+    }
+    Ok(())
+}
+
+/// The strategies whose operations gained `adaptive_spacing` in schema 24.
+const ADAPTIVE_STRATEGIES: [&str; 4] = [
+    "helical_finishing",
+    "axial_finishing",
+    "indexed_finishing",
+    "simultaneous_finishing",
+];
+
+/// Schema 24 (decision record 0239): an operation of a strategy that can
+/// space its passes adaptively, saved before it, is given an explicit
+/// `adaptive_spacing = false`, so it machines as it did; a new operation
+/// takes the strategy's default, on. An older file that already holds the
+/// switch was not written by any version that knew it, so it is refused
+/// rather than guessed at.
+fn schema_23_to_24(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind != FileKind::Operation {
+        return Ok(());
+    }
+    let adaptive = table
+        .get("strategy")
+        .and_then(toml::Value::as_str)
+        .is_some_and(|s| ADAPTIVE_STRATEGIES.contains(&s));
+    let parameters = table
+        .entry("parameters")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let Some(parameters) = parameters.as_table_mut() else {
+        return Err("an operation's `parameters` must be a table".to_owned());
+    };
+    if parameters.contains_key("adaptive_spacing") {
+        return Err(
+            "this schema 23 file has the parameter `adaptive_spacing`, which schema 24 \
+             introduced; remove it, or set `schema = 24` if the file was written for schema 24"
+                .to_owned(),
+        );
+    }
+    if adaptive {
+        parameters.insert("adaptive_spacing".to_owned(), toml::Value::Boolean(false));
     }
     Ok(())
 }

@@ -150,6 +150,7 @@ impl Rig {
             entry_safety: None,
             facing: None,
             keep_out: &[],
+            shank: None,
         };
         generate(strategy, &input, v, &ctx)
     }

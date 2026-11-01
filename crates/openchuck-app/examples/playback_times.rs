@@ -10,9 +10,13 @@
 //! surface is how long the tool stands still.
 //!
 //! ```text
-//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS [MEMORY_MB]]
-//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS [MEMORY_MB]]
+//! cargo run --release -p openchuck-app --example playback_times -- PROJECT [THREADS [MEMORY_MB [on]]]
+//! cargo run --release -p openchuck-app --example playback_times -- PART.stl [THREADS [MEMORY_MB [on]]]
 //! ```
+//!
+//! With `on`, playback information is made with toolpath generation
+//! (decision record 0333): the run keeps playback's checkpoints within
+//! MEMORY_MB, and preparing playback takes them from it.
 //!
 //! Given an STL file (such as the carving test piece of issue #382), it
 //! builds a project around it in a temporary folder: box stock, rotary
@@ -22,143 +26,22 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::unwrap_used)]
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use openchuck_app::playback::{Cursor, Timeline};
-use openchuck_app::{Application, Command, Threads};
-use openchuck_project::id::{OperationId, SetupId, ToolId};
-use openchuck_project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
+use openchuck_app::{Application, Threads};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
-use openchuck_types::machine::MachineProfile;
-use openchuck_types::stock::Stock;
-use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
-use openchuck_types::transform::TransformStep;
-use openchuck_types::units::{Degrees, FeedRate, Millimetres, SpindleSpeed};
 
-/// The peak resident memory of this process so far, in MB (Linux).
-fn peak_mb() -> f64 {
-    let read = || -> Option<f64> {
-        let status = std::fs::read_to_string("/proc/self/status").ok()?;
-        let line = status.lines().find(|l| l.starts_with("VmHWM:"))?;
-        let kb: f64 = line.split_whitespace().nth(1)?.parse().ok()?;
-        Some(kb / 1024.0)
-    };
-    read().unwrap_or(f64::NAN)
-}
+#[path = "support/carving.rs"]
+mod carving;
 
-fn tool(name: &str, shape: ToolShape, diameter: f64, stepover: f64) -> ToolSnapshot {
-    let mut cutting_data = BTreeMap::new();
-    cutting_data.insert(
-        "oak".to_owned(),
-        CuttingData {
-            spindle_speed: SpindleSpeed(12000.0),
-            feed_per_tooth: Millimetres(0.02),
-            plunge_feed: FeedRate(150.0),
-            stepover: Millimetres(stepover),
-            stepdown: Millimetres(1.0),
-        },
-    );
-    ToolSnapshot {
-        id: ToolId::new(),
-        order: OrderKey::default(),
-        name: name.into(),
-        tool: Tool {
-            shape,
-            diameter: Millimetres(diameter),
-            flute_length: Millimetres(10.0),
-            overall_length: Millimetres(40.0),
-            shank_diameter: Millimetres(diameter.max(3.0)),
-            flute_count: 2,
-            material: None,
-            centre_cutting: None,
-        },
-        controller: ControllerMapping {
-            number: 1,
-            length_offset: None,
-            diameter_offset: None,
-        },
-        cutting_data,
-    }
-}
-
-/// A project around `stl` in `dir`: the carving set-up described above.
-fn carving_project(
-    stl: &Path,
-    dir: &Path,
-    threads: Threads,
-) -> Result<Application, Box<dyn std::error::Error>> {
-    let _ = std::fs::remove_dir_all(dir);
-    let mut app = Application::create(dir, "carving", threads)?;
-    std::fs::create_dir_all(dir.join("models"))?;
-    std::fs::copy(stl, dir.join("models/part.stl"))?;
-    let (model, _) = app.add_model(&dir.join("models/part.stl"), None)?;
-    app.execute(Command::SetModelTransform {
-        model,
-        transform: vec![TransformStep::CentreOnRotaryAxis],
-    })?;
-    app.execute(Command::SetMachine(Some(Box::new(
-        MachineProfile::example_x_rotary(),
-    ))))?;
-    let setup = SetupId::new();
-    let mut s = Setup::new(setup, "Setup 1");
-    s.part = Some(model);
-    s.material = Some("oak".into());
-    s.stock = Some(Stock::Cylinder {
-        diameter: Millimetres(28.0),
-        length: Millimetres(34.0),
-        x_start: Millimetres(-2.0),
-    });
-    let ball = tool("3 mm ball", ToolShape::BallEnd, 3.0, 1.0);
-    let vbit = tool(
-        "60 degree V-bit",
-        ToolShape::VBit {
-            included_angle: Degrees(60.0),
-            tip_diameter: Millimetres(0.1),
-        },
-        3.0,
-        0.03,
-    );
-    let operations = [
-        ("Roughing", "rotary_roughing", ball.id),
-        ("Finishing", "axial_finishing", vbit.id),
-    ];
-    for item in [Item::Setup(s), Item::Tool(ball), Item::Tool(vbit)] {
-        app.execute(Command::Add {
-            item,
-            placement: Placement::End,
-        })?;
-    }
-    for (name, strategy, tool) in operations {
-        app.execute(Command::Add {
-            item: Item::Operation(Operation {
-                enabled: true,
-                id: OperationId::new(),
-                order: OrderKey::default(),
-                name: name.into(),
-                setup,
-                strategy: strategy.into(),
-                tool: Some(tool),
-                selections: Vec::new(),
-                boundary: None,
-                avoid: Vec::new(),
-                check: Vec::new(),
-                restriction_options: Default::default(),
-                spindle_speed: None,
-                material: None,
-                parameters: BTreeMap::new(),
-            }),
-            placement: Placement::End,
-        })?;
-    }
-    Ok(app)
-}
+use carving::{carving_project, peak_mb};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: playback_times PROJECT|PART.stl [THREADS [MEMORY_MB]]";
+    let usage = "usage: playback_times PROJECT|PART.stl [THREADS [MEMORY_MB [on]]]";
     let input = PathBuf::from(args.next().ok_or(usage)?);
     let threads = match args.next() {
         Some(n) => Threads::Exactly(n.parse()?),
@@ -169,8 +52,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(mb) => mb.parse::<usize>()? * 1024 * 1024,
         None => openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY,
     };
+    let with_generation = args.next().is_some_and(|a| a == "on");
     let temporary = std::env::temp_dir().join(format!("playback-times-{}", std::process::id()));
-    let app = if input
+    let mut app = if input
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("stl"))
     {
@@ -178,9 +62,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Application::open(&input, threads)?
     };
+    if with_generation {
+        app.set_playback_with_generation(Some(memory));
+    }
     println!(
-        "threads: {threads:?}, simulation cell {} mm",
-        app.project().simulation().cell.0
+        "threads: {threads:?}, simulation cell {} mm, playback information with generation: {}",
+        app.project().simulation().cell.0,
+        if with_generation { "on" } else { "off" }
     );
 
     let started = Instant::now();
@@ -208,8 +96,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .wait()?,
     );
     println!(
-        "prepare playback: {:.1} s, {} checkpoints holding {:.0} MB, peak {:.0} MB",
+        "prepare playback: {:.1} s{}, {} checkpoints holding {:.0} MB, peak {:.0} MB",
         started.elapsed().as_secs_f64(),
+        if playback.from_the_run() {
+            " (from the run)"
+        } else {
+            ""
+        },
         playback.checkpoints(),
         playback.checkpoint_bytes() as f64 / 1e6,
         peak_mb()

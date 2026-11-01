@@ -399,7 +399,7 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
 /// The fields of two profiles that differ, in the user's words. The
 /// destructuring is exhaustive, so a field added to the profile fails to
 /// build here until it is compared.
-fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str> {
+pub(crate) fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str> {
     let MachineProfile {
         name,
         rotary_axis,

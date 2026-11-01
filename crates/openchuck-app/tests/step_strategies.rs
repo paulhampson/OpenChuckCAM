@@ -185,9 +185,9 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application, ContentHash) {
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: parameters
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+            parameters: free_ends_off(strategy)
+                .into_iter()
+                .chain(parameters.iter().map(|(k, v)| ((*k).to_owned(), v.clone())))
                 .collect(),
         }));
     }
@@ -687,5 +687,29 @@ fn walk(dir: &Path) -> Vec<(PathBuf, String)> {
         }
     }
     out.sort();
+    out
+}
+
+/// Face free ends off for the strategies that have it: these tests check the
+/// strategies against the exact surface, not free ends, and their parts in
+/// bar stock are deeper than the test tool's flutes, which a new operation
+/// facing free ends would refuse (decision record 0344, OI-1396).
+fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
+    let mut out = BTreeMap::new();
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&strategy) {
+        out.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+        "simultaneous_finishing",
+    ]
+    .contains(&strategy)
+    {
+        out.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
     out
 }

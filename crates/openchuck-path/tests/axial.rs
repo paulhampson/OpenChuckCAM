@@ -9,14 +9,13 @@
 )]
 
 mod support;
+use support::generate;
 
 use std::collections::BTreeMap;
 
 use openchuck_path::axial::parameter;
 use openchuck_path::params::names;
-use openchuck_path::{
-    AxialFinishing, GeneratedPath, MeshSurface, ParameterValue, Strategy, generate,
-};
+use openchuck_path::{AxialFinishing, GeneratedPath, MeshSurface, ParameterValue, Strategy};
 use openchuck_testkit::gouge::{Outline, Pose, coverage, max_gouge};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
 use openchuck_types::ir::{MoveKind, ToolPose};
@@ -191,7 +190,15 @@ fn req_op_04_req_op_11_scallop_sets_the_pass_count_for_ball_and_warns_for_flat()
     // and the stepover alone sets the passes (not an error).
     let flat = tool(ToolShape::FlatEnd, 6.0);
     let g = fixture(&part, 3, 720, &flat);
-    let with_scallop = values(1.0, &[(parameter::SCALLOP, num(h))]);
+    // Adaptive spacing off: the Scallop height as before (decision record
+    // 0239).
+    let with_scallop = values(
+        1.0,
+        &[
+            (parameter::SCALLOP, num(h)),
+            ("adaptive_spacing", ParameterValue::Flag(false)),
+        ],
+    );
     let path = axial(&g, &with_scallop);
     assert_eq!(
         passes(&path).len(),

@@ -315,6 +315,7 @@ impl Shell {
         let focus = self.setup_section.take().or(jump_to);
         let mut edited: Vec<(Setup, Option<String>)> = Vec::new();
         let mut command = None;
+        let mut manage_machines = false;
         for part in SetupPart::ALL {
             let setup = edited
                 .last()
@@ -378,6 +379,9 @@ impl Shell {
                             let copy_id = app.project().machine_id().map(str::to_owned);
                             if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
                                 command = Some(c);
+                            }
+                            if panel.take_manage_request() {
+                                manage_machines = true;
                             }
                         }
                         SetupPart::Stock => {
@@ -467,6 +471,9 @@ impl Shell {
             .map(|(setup, key)| (Command::Replace(Item::Setup(setup)), key))
             .collect();
         commands.extend(command.map(|command| (command, self.pending_field.take())));
+        if manage_machines {
+            self.open_machine_library();
+        }
         let mut changed = false;
         for (command, key) in commands {
             let Some(app) = &mut self.app else { return };
@@ -1050,6 +1057,17 @@ impl Shell {
                 .setting_jump
                 .take_if(|(op, _)| *op == id)
                 .map(|(_, name)| name),
+            // What the machine's feed limits did to the feed in the last run,
+            // while that run's path is still the operation's current one.
+            feed_note: self
+                .run
+                .last()
+                .filter(|_| app.operation_path_is_current(id))
+                .and_then(|run| {
+                    let name = &app.project().operation(id)?.name;
+                    openchuck_app::note_groups::feed_limit_summary(&run.notes, name)
+                })
+                .map(|limit| limit.describe()),
         };
         let edits = match app.parameter_form(id) {
             Ok(form) => {
@@ -1081,7 +1099,18 @@ impl Shell {
         };
         // The jump has been drawn this frame.
         self.requirement_jump = None;
+        let mut ask_height = None;
         for edit in edits {
+            // Turning adaptive spacing on from a saved Scallop 0 asks for the
+            // height first (decision record 0239 item 5).
+            if edit.name == openchuck_app::path::adaptive::parameter::ADAPTIVE_SPACING
+                && !edit.reset_to_default
+                && edit.value == Some(openchuck_app::project::ParameterValue::Flag(true))
+                && app.adaptive_spacing_needs_height(id)
+            {
+                ask_height = Some(id);
+                continue;
+            }
             let result = if edit.reset_to_default {
                 app.reset_parameter(id, &edit.name)
             } else {
@@ -1089,6 +1118,12 @@ impl Shell {
             }
             .map_err(|e| form_panel::refusal(&e.user_message()));
             self.form.result(&edit.name, result);
+        }
+        if let Some(operation) = ask_height {
+            self.dialog = Some(super::Dialog::AdaptiveHeight {
+                operation,
+                height: openchuck_app::path::adaptive::DEFAULT_ALLOWED_EXCESS.to_string(),
+            });
         }
         let result = match role_edit {
             Some(GeometryEdit::Role(role, set, add)) => {

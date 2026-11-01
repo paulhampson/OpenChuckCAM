@@ -308,6 +308,27 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         .iter()
         .map(|(k, v)| ((*k).to_owned(), v.clone()))
         .collect();
+    // The reference parts' free ends are not part of what these jobs check,
+    // and their goldens predate Face free ends: off, as a saved operation is
+    // migrated (decision record 0344).
+    let mut parameters = parameters;
+    if ["helical_finishing", "axial_finishing", "rest_machining"].contains(&job.strategy) {
+        parameters.insert("face_free_ends".to_owned(), ParameterValue::Flag(false));
+    }
+    // Adaptive spacing off too: not what this checks, and a new operation
+    // has it on (decision record 0239).
+    if [
+        "helical_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+        "simultaneous_finishing",
+        "rotary_roughing",
+        "facing",
+    ]
+    .contains(&job.strategy)
+    {
+        parameters.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
+    }
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),

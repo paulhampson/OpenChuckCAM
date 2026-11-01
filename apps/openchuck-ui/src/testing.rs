@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use openchuck_app::model::TransformStep;
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
-use openchuck_app::project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
+use openchuck_app::project::{
+    Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
+};
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
 use openchuck_app::tools::{
     ControllerMapping, CuttingData, FeedRate, SpindleSpeed, Tool, ToolShape,
@@ -19,7 +21,7 @@ use openchuck_app::{Application, Command, PostSelection, Threads};
 
 /// A project with the corpus cube centred on the rotary axis, the example
 /// machine, an oak cylinder of stock, a 4 mm ball tool and one helical
-/// finishing operation, with the LinuxCNC post chosen.
+/// finishing operation (Face free ends off), with the LinuxCNC post chosen.
 pub fn cube_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) {
     let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -98,7 +100,12 @@ pub fn cube_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) 
             restriction_options: Default::default(),
             spindle_speed: None,
             material: None,
-            parameters: BTreeMap::new(),
+            // Not about free ends (decision 0344): the stock past the
+            // cube's ends would otherwise be faced, with its warning.
+            parameters: BTreeMap::from([
+                ("face_free_ends".to_owned(), ParameterValue::Flag(false)),
+                ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+            ]),
         }),
     ] {
         app.execute(Command::Add {
