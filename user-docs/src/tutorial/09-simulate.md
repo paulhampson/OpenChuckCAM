@@ -31,11 +31,11 @@ Tick **Deviation colours** at the top of the Inspector to see where the material
 
 <figure>
   <img src="../images/hero-2-deviation.png" width="1366" height="768"
-       alt="The cut part in 3D, coloured by deviation. Most of the surface is grey. Light blue rings mark the shoulder, the collar, the cove and the end of the ball finial, where material is left. The legend at the lower left explains the colours.">
-  <figcaption><b>Figure 3.</b> The cut part coloured by deviation. The blue rings are material left on the faces that look along the axis: the shoulder, the collar and the end of the finial.</figcaption>
+       alt="The cut part in 3D, coloured by deviation. Most of the surface is grey. Light blue rings mark the inside corners at the shoulder, the collar and the cove, and the end of the ball finial, where material is left. The legend at the lower left explains the colours.">
+  <figcaption><b>Figure 3.</b> The cut part coloured by deviation. The blue rings are material left in inside corners that the 3.175 mm ball tool cannot reach.</figcaption>
 </figure>
 
-In this run helical finishing leaves material on those faces. Check the faces of your own parts the same way, and add an operation for any faces that matter. See the [known limitations](../start/limitations.md).
+The most material left in this run, 0.924 mm, is at the inside corner where the plain end meets the shoulder. A ball tool has a round end of 1.6 mm radius, so it cannot cut a sharper corner than that, as the strategy's description warns. A smaller tool in a later operation, such as **Rest machining** or **Pencil clean-up**, reaches into corners like these. Check the corners of your own parts the same way.
 
 > [!WARNING]
 > Treat the simulation as a check on the toolpaths, not a guarantee. It does not model the chuck, the holder or the machine, and it cannot show whether your tool, speed and feed will cut well.
