@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.0
+
+- **Family release (0.32.0, CRANKEXCESS; issue #439; decision 0410, accepted):** simultaneous finishing's turn at a face beside a section off the rotary axis goes round that section's own centre, which changes `openchuck-path`'s output for such parts, so the family moves together. No change in this crate.
+
 ## 0.31.0
 
 - **Family release (0.31.0, ENDFACE stage 3 second pull request, OI-1453; decision 0239, accepted):** adaptive spacing for rotary roughing's two axial forms and flat Facing, on for a new operation, changes their output (decision 0239 item 13, which extends decision 0048 beyond API breaks). No change in this crate; all family crates advance together under 0048.

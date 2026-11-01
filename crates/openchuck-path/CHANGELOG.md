@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.32.0
 
-- **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change. The workspace minor version is set at this lane's release merge (the coordinator's instruction).
+- **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change.
 
 ## 0.31.0
 
