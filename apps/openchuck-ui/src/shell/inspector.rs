@@ -1064,10 +1064,13 @@ impl Shell {
                 .last()
                 .filter(|_| app.operation_path_is_current(id))
                 .and_then(|run| {
-                    let name = &app.project().operation(id)?.name;
-                    openchuck_app::note_groups::feed_limit_summary(&run.notes, name)
+                    // By the operation's id, not its name, so a rename or a
+                    // shared name cannot mix operations up (issue 418).
+                    run.feed_limits
+                        .iter()
+                        .find(|(operation, _)| *operation == id)
                 })
-                .map(|limit| limit.describe()),
+                .map(|(_, limit)| limit.describe()),
         };
         let edits = match app.parameter_form(id) {
             Ok(form) => {

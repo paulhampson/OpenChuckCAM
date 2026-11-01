@@ -65,6 +65,8 @@ mod adaptive_tests;
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
+mod open_recovery_tests;
+#[cfg(test)]
 mod pending_edit_tests;
 
 use dock::DockTab;
@@ -186,6 +188,9 @@ pub struct Shell {
     recovery: checkpoints::State,
     recovery_project: Option<(Application, Vec<String>, bool)>,
     edit_context: Option<egui::Context>,
+    /// The folder the next Open dialog starts with: a recovery line's
+    /// project (decision 0460).
+    open_hint: Option<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -325,6 +330,7 @@ impl Shell {
             ),
             recovery_project: None,
             edit_context: None,
+            open_hint: None,
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),
@@ -471,6 +477,9 @@ impl Shell {
                 self.dialog = Some(Dialog::Error(format!(
                     "The project could not be opened: {e}"
                 )));
+                // Its valid recovery checkpoints stay reachable for this
+                // request (PRJ-08, NFR-07; decision 0460 item 2).
+                self.recovery.open_failed(&folder);
             }
         }
     }
@@ -647,6 +656,9 @@ impl Shell {
                         None,
                     ));
                 }
+                for message in self.recovery.messages() {
+                    self.overview.push(message);
+                }
                 self.overview_dirty = false;
             }
             return;
@@ -699,6 +711,9 @@ impl Shell {
             }
             if let Some(problem) = &self.recovery.problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            }
+            for message in self.recovery.messages() {
+                overview.push(message);
             }
             self.overview = overview;
             self.overview_dirty = false;
@@ -875,9 +890,10 @@ impl Shell {
         }
         match next {
             Next::New | Next::Open => {
+                let hint = self.open_hint.take().filter(|_| next == Next::Open);
                 self.dialog = Some(Dialog::Folder {
                     create: next == Next::New,
-                    folder: String::new(),
+                    folder: hint.unwrap_or_default(),
                     name: "Untitled".to_owned(),
                 });
             }
@@ -1357,6 +1373,9 @@ impl Shell {
                 self.choose_setup(setup, Some(SetupPart::Workholding));
             }
             MessageAction::Generate => self.generate(false),
+            MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
+                self.recovery_action(action);
+            }
             MessageAction::ShowSetting(op) => {
                 self.show_item(ItemRef::Operation(op));
                 self.setting_jump = self
@@ -2084,6 +2103,8 @@ impl Shell {
                         action = Some(Box::new(move |s: &mut Self| {
                             if s.save() {
                                 s.proceed(next, &ctx);
+                            } else {
+                                s.open_hint = None;
                             }
                         }));
                     }
@@ -2094,6 +2115,9 @@ impl Shell {
                     }
                     if ui.button("Cancel").clicked() {
                         close = true;
+                        // A recovery line's folder belongs to that request
+                        // only, never to a later Open (decision 0460).
+                        action = Some(Box::new(|s: &mut Self| s.open_hint = None));
                     }
                 });
             }

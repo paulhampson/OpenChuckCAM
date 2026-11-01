@@ -48,6 +48,16 @@ class Navigation(unittest.TestCase):
         self.assertIn('href="tutorial/index.html"', html)
 
 
+class Procedures(unittest.TestCase):
+    """STYLE.md: a procedure interrupted by a figure goes on with its own numbers."""
+
+    def test_req_nfr_19_a_resumed_list_keeps_its_number(self):
+        # The theme numbers steps with a CSS counter, which ignores the start attribute.
+        html = build.fix_lists('<ol>\n<li>a</li>\n</ol>\n<figure></figure>\n<ol start="3">\n<li>c</li>\n</ol>')
+        self.assertIn('<ol start="3" style="counter-reset: step 2">', html)
+        self.assertIn("<ol>\n<li>a</li>", html, "a list from 1 is left alone")
+
+
 TEMPLATE = ('<meta name="docs-version" content="@@DOCS_VERSION@@">'
             '<a class="version">@@VERSION_LABEL@@</a>'
             '<!--latest-banner--><div class="banner">development <span data-newest-release></span></div><!--/latest-banner-->'
