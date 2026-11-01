@@ -248,6 +248,30 @@ class Screens(unittest.TestCase):
         open(os.path.join(images, "01.png"), "wb").close()
         self.assertIn("CAPTURED.toml", check.stale_screens(d, images))
 
+    def test_req_nfr_19_a_capture_commit_not_in_the_history_is_stale(self):
+        # A commit from another branch, or one missing from a shallow clone, cannot show the
+        # screenshots are current: the check reports them stale and does not crash.
+        d, git, first = self.repo()
+        unknown = "0123456789abcdef0123456789abcdef01234567"
+        images = write(d, "user-docs/src/tutorial/images/CAPTURED.toml", f'captured_at = "{unknown}"\n')
+        stale = check.stale_screens(d, os.path.dirname(images))
+        self.assertIn(unknown[:12], stale)
+        self.assertIn("not in this checkout's history", stale)
+
+    def test_req_nfr_19_the_capture_record_is_what_the_check_reads(self):
+        # capture.py writes CAPTURED.toml; check.py must find the commit it names.
+        import capture
+        d, git, first = self.repo()
+        images = os.path.join(d, "user-docs/src/tutorial/images")
+        os.makedirs(images)
+        open(os.path.join(images, "01.png"), "wb").close()
+        capture.record(images, first, "2026-11-01")
+        self.assertEqual(check.stale_screens(d, images), None)
+        write(d, "apps/openchuck-ui/src/main.rs", "fn main() { }\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "ui change")
+        self.assertIn("apps/openchuck-ui", check.stale_screens(d, images))
+
     def test_req_nfr_19_no_tutorial_images_is_not_stale(self):
         d, git, first = self.repo()
         self.assertEqual(check.stale_screens(d, os.path.join(d, "user-docs/src/tutorial/images")), None)
