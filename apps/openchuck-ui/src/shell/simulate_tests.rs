@@ -1822,6 +1822,11 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         .filter(|n| n.contains(openchuck_app::simulation::ENCLOSED_WORDS))
         .collect();
     assert_eq!(warnings.len(), 1, "{:?}", run.notes);
+    // In the Messages panel too, as a warning on the setup.
+    assert!(rig.shell.overview.messages.iter().any(|m| {
+        m.severity == openchuck_app::overview::Severity::Warning
+            && m.text.contains(openchuck_app::simulation::ENCLOSED_WORDS)
+    }));
     let colour = at(&rig, "Deviation colours");
     rig.click(colour);
     let deadline = Instant::now() + Duration::from_secs(120);

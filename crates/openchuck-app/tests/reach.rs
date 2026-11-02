@@ -319,3 +319,40 @@ fn req_sim_05_req_nfr_12_a_necked_tool_leaves_the_leftover_unclassified() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_sim_05_req_nfr_12_enclosed_material_is_a_warning_in_messages_while_the_simulation_is_current()
+ {
+    // Issue 478: the owner asked for a message. The warning is in the
+    // Messages panel on the setup, once, for as long as the simulation it
+    // was found in is current; a change that makes it stale takes it away.
+    use openchuck_app::overview::{ItemRef, Severity};
+    let (dir, mut app) = project("messages", &tube_stl(8.0, 4.0, 20.0), 20.0, 20.0);
+    let setup = app.project().setups()[0].id;
+    let warnings = |app: &Application| -> Vec<_> {
+        app.overview(None, &openchuck_app::JobLog::default())
+            .messages
+            .into_iter()
+            .filter(|m| m.text.contains(ENCLOSED))
+            .collect()
+    };
+    assert!(warnings(&app).is_empty(), "nothing before a simulation");
+    app.simulate().unwrap();
+    let found = warnings(&app);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].severity, Severity::Warning);
+    assert_eq!(found[0].source, Some(ItemRef::Setup(setup)));
+    // Generating without a simulation keeps it while nothing changed.
+    app.regenerate().unwrap();
+    assert_eq!(warnings(&app).len(), 1);
+    // Another stock makes the simulation stale: the warning goes.
+    let mut changed = app.project().setups()[0].clone();
+    changed.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(19.0),
+        length: Millimetres(24.0),
+        x_start: Millimetres(-2.0),
+    });
+    app.execute(Command::Replace(Item::Setup(changed))).unwrap();
+    assert!(warnings(&app).is_empty(), "stale: not shown");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
