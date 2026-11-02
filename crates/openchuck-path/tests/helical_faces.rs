@@ -1213,8 +1213,10 @@ fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
     assert!(
         text.contains("X 0.000")
             && text.contains(
-                "Required. Enter the depth of each layer, or add cutting data \
-                              for this tool and material in the tool library."
+                "Set Stepdown to the depth of each layer, or add cutting data for \
+                 this tool and material in the tool library and then choose Update \
+                 from library in the operation's tool section: the project keeps its \
+                 own copy of the tool, so a change in the library reaches it only then."
             ),
         "{text}"
     );
