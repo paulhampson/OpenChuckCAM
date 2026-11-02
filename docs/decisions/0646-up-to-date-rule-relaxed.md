@@ -1,6 +1,6 @@
 # 0646: Relax "Require branches to be up to date"; the merge queue is not available here (NFR-06; supersedes in part decision 0498; amends decision 0055 items 4 and 5; lane MERGEQUEUE)
 
-- **Status:** proposed by lane MERGEQUEUE on 2 Nov 2026, at the coordinator's instruction recording the owner's decision of the same day. Only the project owner accepts it. Drafted as 0646; renumbered at release under the owner's numbering rule (main's highest decision plus one).
+- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), after reading it in full. Proposed by lane MERGEQUEUE the same day, at the coordinator's instruction recording the owner's decision. Drafted as 0646; renumbered at release under the owner's numbering rule (main's highest decision plus one).
 - **Date:** 2 Nov 2026.
 - **Builds on:** [0498](0498-merge-queue.md) (accepted; this record supersedes its enablement steps), [0055](0055-push-discipline-and-draft-pull-requests.md) (push discipline, update from `main` only when released), [0052](0052-ci-speed-up.md) (`CI required checks`), [0358](0358-ci-time-where-it-goes-and-what-to-change.md) (the light run on `main`).
 - **Open items:** OI-1999 (reworded), OI-2001 (deferred), OI-2010 (new).
