@@ -4,6 +4,10 @@
 
 - **Breaking (0.35.0, PATH-TIDY, issue #436, decision 0496, accepted):** axial and indexed finishing can keep the links between passes low. `Pass` has the new public field `low_link: bool`; a host's struct literals add `low_link: false` (a pass with `true` is linked against the setup's stock at the approach distance above its highest point under the tool, where that is below the retract height and clear of held regions, instead of at the retract height). Additive: `axial::parameter::{LINK_HEIGHT, RETRACT, LOW}` (`link_height`, `retract` by default or `low`, offered by axial and indexed finishing). With the default every path and golden file is unchanged; links that cannot be lowered retract as before and a path note counts them.
 
+## 0.34.0
+
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.
+
 ## 0.33.0
 
 - **Breaking (0.33.0, SWARF-FLOOR; issue #435; decision 0491, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
