@@ -4,6 +4,8 @@ All notable changes to `openchuck-sim` are recorded here.
 
 ## Unreleased
 
+- SIMVIS (#478, proposed decision 0633): `classify_reach` with `ReachOptions`, `ReachClass` and `Reach` tells a counted part sample's material left as enclosed (no tool across the rotary axis reaches it), open or undecided; `triangle_worst` (the sample each triangle is coloured by) and `sample_areas` (the surface each sample stands for). Additive only; `triangle_values` now uses `triangle_worst`, with the same results.
+
 - SIMPERF (#382, accepted decision 0322): `Simulator::stock_at_from` replays from a kept stock, `with_checkpoint_budget` and `checkpoint_bytes` bound the checkpoints' memory, checkpoints hold a `PackedStock` (`DexelStock::pack`, the same stock bit for bit), and a jump reports its replay against one total.
 
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
