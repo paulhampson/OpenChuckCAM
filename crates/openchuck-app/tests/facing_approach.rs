@@ -6,7 +6,12 @@
 //!
 //! The G-code these tests produce is not checked on a machine: generated
 //! G-code is the user's to verify before it is run (NFR-12).
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::float_cmp,
+    clippy::panic
+)]
 
 use std::path::{Path, PathBuf};
 
