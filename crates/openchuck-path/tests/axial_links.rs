@@ -292,3 +292,81 @@ fn req_gc_07_low_links_are_identical_at_1_2_and_n_threads() {
             .unwrap();
     assert_eq!(runs.len(), 4);
 }
+
+#[test]
+fn req_op_14_every_pass_of_the_operation_is_linkable_low_including_finishing_layers() {
+    // Finishing layers (decision 0345) are made after the fitted passes; the
+    // choice has to reach them too, or links to them retract unannounced.
+    use openchuck_path::finishing::parameter::{FACE_FREE_ENDS, FINISHING_LAYERS, STEPDOWN};
+    let f = fixture();
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        let mut v = values(&[
+            low(),
+            (FINISHING_LAYERS, ParameterValue::Flag(true)),
+            (STEPDOWN, num(0.5)),
+        ]);
+        if strategy.name() == AxialFinishing.name() {
+            // The part's free ends need a longer flute than the fixture's.
+            v.insert(FACE_FREE_ENDS.to_owned(), ParameterValue::Flag(false));
+        }
+        if strategy.name() == IndexedFinishing.name() {
+            v.insert(
+                openchuck_path::indexed::parameter::COUNT.to_owned(),
+                ParameterValue::Integer(3),
+            );
+        }
+        let parameters = strategy.resolve_parameters(&v).unwrap();
+        let passes = run(|ctx| strategy.passes(&f.input(), &parameters, ctx)).unwrap();
+        let without = {
+            let mut off = v.clone();
+            off.insert(FINISHING_LAYERS.to_owned(), ParameterValue::Flag(false));
+            let parameters = strategy.resolve_parameters(&off).unwrap();
+            run(|ctx| strategy.passes(&f.input(), &parameters, ctx))
+                .unwrap()
+                .len()
+        };
+        assert!(
+            passes.len() > without,
+            "{}: no layers made",
+            strategy.name()
+        );
+        assert!(
+            passes.iter().all(|p| p.low_link),
+            "{}: a pass is not linkable low",
+            strategy.name()
+        );
+    }
+}
+
+#[test]
+fn req_op_14_req_nfr_07_links_a_reversing_ramp_keeps_high_are_counted() {
+    // A back-and-forth ramp entry is linked at the retract height (decision
+    // 0341); a request to keep links low is then not honoured, and the note
+    // says so rather than saying nothing.
+    let f = fixture();
+    let machine = support::machine();
+    let safety = openchuck_path::entry_safety::EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &f.surface,
+        protected: &[],
+        body: &f.tool,
+        machine: &machine,
+    };
+    let mut input = f.input();
+    input.entry_safety = Some(&safety);
+    let path = axial_in(
+        &input,
+        &values(&[
+            low(),
+            ("entry", text("ramp")),
+            ("ramp_back_and_forth", ParameterValue::Flag(true)),
+        ]),
+    );
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("could not be lowered")),
+        "{:?}",
+        path.notes
+    );
+}

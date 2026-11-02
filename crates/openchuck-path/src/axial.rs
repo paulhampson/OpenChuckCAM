@@ -464,12 +464,20 @@ impl<'a> AlongX<'a> {
     /// `passes` marked as linkable low when the operation asks (decision
     /// 0496).
     fn marked(&self, mut passes: Vec<Pass>) -> Vec<Pass> {
+        self.mark_low_links(&mut passes);
+        passes
+    }
+
+    /// Marks every one of `passes` linkable low when the operation asks. The
+    /// strategies call it on their complete pass list, after the turns at
+    /// faces, the finishing layers and the free ends are in it (decision
+    /// 0496).
+    pub(crate) fn mark_low_links(&self, passes: &mut [Pass]) {
         if self.low_links {
-            for pass in &mut passes {
+            for pass in passes {
                 pass.low_link = true;
             }
         }
-        passes
     }
 
     /// The fit of one stretch along X at `a`, from `span.0` to `span.1`,
@@ -742,6 +750,7 @@ fn passes(
         (start, 1.0, TURN_STEP),
     )?;
     passes.extend(free.passes);
+    along.mark_low_links(&mut passes);
     let mut warnings = free.warnings;
     let mut spaced_note = None;
     if let Some((settings, outcome)) = &spaced {

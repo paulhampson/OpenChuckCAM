@@ -312,7 +312,8 @@ fn passes(
     };
     // Finishing layers above them, when on; each layer keeps the pass's A
     // (decision record 0345).
-    let (passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    along.mark_low_links(&mut passes);
     Ok(Made {
         passes,
         range: along.range(),
