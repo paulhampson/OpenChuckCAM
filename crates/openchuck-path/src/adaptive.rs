@@ -859,19 +859,30 @@ impl Work<'_> {
             let n = (((to - from).abs() / step).ceil() as usize).clamp(1, 1_000_000);
             at.extend((0..=n).map(|k| from + (to - from) * k as f64 / n as f64));
         }
-        // The most queries the stations can make is charged before they are
+        // The most queries a station can make is charged before it is
         // measured, so where the limit is met does not depend on the order
-        // the threads measure them in (decision record 0239 item 8).
-        let most = (at.len() as u64)
-            .saturating_mul((MOST_SAMPLES - 1) as u64)
-            .saturating_mul(self.family.probe_cost());
-        if self.family.queries().saturating_add(most) > self.limits.queries {
-            self.stopped = Some(Reason::Queries);
-            self.give_up(interval, Reason::Queries);
-            return Ok(Vec::new());
+        // the threads measure them in (decision record 0239 item 8). The
+        // stations are measured in runs whose most fits what is left of the
+        // limit, each charged with what the runs before it really made: a
+        // station makes far fewer than its most, so charging the whole
+        // interval's most at once met the limit with most of it unused
+        // (issue #462).
+        let per_station = ((MOST_SAMPLES - 1) as u64).saturating_mul(self.family.probe_cost());
+        let mut stations = Vec::with_capacity(at.len());
+        while stations.len() < at.len() {
+            let left = self.limits.queries.saturating_sub(self.family.queries());
+            let fits = usize::try_from(left / per_station.max(1)).unwrap_or(usize::MAX);
+            let run = at.get(stations.len()..).unwrap_or(&[]);
+            let Some(run) = run.get(..fits.min(run.len())).filter(|r| !r.is_empty()) else {
+                self.stopped = Some(Reason::Queries);
+                self.give_up(interval, Reason::Queries);
+                return Ok(Vec::new());
+            };
+            context.check_cancelled()?;
+            stations.extend(crate::parallel::map_each_in_order(run, |&s| {
+                self.station(lo, hi, s)
+            }));
         }
-        context.check_cancelled()?;
-        let stations = crate::parallel::map_each_in_order(&at, |&s| self.station(lo, hi, s));
         let h = self.settings.height;
         let mut high = Vec::new();
         let mut unsure = Vec::new();
@@ -1016,10 +1027,14 @@ impl Work<'_> {
         // Evenly spaced samples, doubled while the bound between them is
         // above the Allowed excess and the samples are not, up to
         // `MOST_SAMPLES`.
+        // Doubling keeps the samples it has: sample k of n is sample 2k of
+        // 2n, the same position exactly, so a station makes at most
+        // `MOST_SAMPLES - 1` probes, as it is charged (decision record 0239
+        // item 8).
         let h = self.settings.height;
         let mut n = SAMPLES;
+        let mut values: Vec<Option<f64>> = (1..n).map(|j| sample(j as f64 / n as f64)).collect();
         loop {
-            let values: Vec<Option<f64>> = (1..n).map(|j| sample(j as f64 / n as f64)).collect();
             let excess = values.iter().flatten().copied().reduce(f64::max);
             let bound = sloped_bound(&values);
             let settled = bound <= h + EPS || n >= MOST_SAMPLES;
@@ -1027,6 +1042,15 @@ impl Work<'_> {
                 return Station { s, excess, bound };
             }
             n *= 2;
+            values = (1..n)
+                .map(|j| {
+                    if j % 2 == 0 {
+                        values.get(j / 2 - 1).copied().flatten()
+                    } else {
+                        sample(j as f64 / n as f64)
+                    }
+                })
+                .collect();
         }
     }
 }
@@ -1074,6 +1098,13 @@ mod tests {
     struct Plane {
         queries: AtomicU64,
         length: f64,
+        /// Instead of the plane, material of 0.009 mm over the target
+        /// across the first part of each interval, up to this position
+        /// across the family, and none past it: every sample is within an
+        /// Allowed excess of 0.01 mm, but beside the step the bound between
+        /// samples never is, so each station doubles its samples to the
+        /// most.
+        step: Option<f64>,
     }
 
     impl Plane {
@@ -1081,6 +1112,7 @@ mod tests {
             Self {
                 queries: AtomicU64::new(0),
                 length: 10.0,
+                step: None,
             }
         }
 
@@ -1124,6 +1156,12 @@ mod tests {
 
         fn probe(&self, x: f64, a: Degrees) -> Option<(Point3, f64)> {
             self.queries.fetch_add(1, Ordering::Relaxed);
+            if let Some(edge) = self.step {
+                // A contact far below every pose is measured as UNREACHED;
+                // the stock to leave there sets the material over it.
+                let left = if a.0 < edge { 0.009 } else { 0.0 };
+                return Some((Point3::new(x, a.0, -5.0e3), UNREACHED - left));
+            }
             Some((Point3::new(x, a.0, 0.0), 0.0))
         }
 
@@ -1313,6 +1351,65 @@ mod tests {
                 warning.message
             );
         }
+    }
+
+    #[test]
+    fn req_op_04_req_nfr_07_a_limit_the_work_fits_within_is_not_met() {
+        // Issue #462: the measuring of an interval was refused whole when
+        // the most its stations could make would pass the limit, though
+        // they make far fewer. With the limit set to what the whole work
+        // makes and the most of one more station, since each is charged
+        // its most before it is measured (decision record 0239 item 8), the
+        // work is done and nothing is reported.
+        let (free, cs) = run(&Plane::new(), 2.0, SETTINGS, Limits::OWNER);
+        assert!(free.places.is_empty(), "{:?}", free.places);
+        let one = MOST_SAMPLES as u64 - 1;
+        let limits = Limits {
+            queries: free.queries + one,
+            ..Limits::OWNER
+        };
+        let (tight, tight_cs) = run(&Plane::new(), 2.0, SETTINGS, limits);
+        assert!(tight.places.is_empty(), "{:?}", tight.places);
+        assert_eq!(tight_cs, cs);
+        assert_eq!(tight.queries, free.queries);
+        // Half of it, and the limit is met and said.
+        let short = Limits {
+            queries: free.queries / 2,
+            ..Limits::OWNER
+        };
+        let (cut, _) = run(&Plane::new(), 2.0, SETTINGS, short);
+        assert!(cut.places.iter().any(|p| p.reason == Reason::Queries));
+    }
+
+    #[test]
+    fn req_op_04_req_nfr_07_measuring_makes_no_more_queries_than_it_charges() {
+        // Each station is charged at most MOST_SAMPLES - 1 drops (decision
+        // record 0239 item 8). Doubling the samples keeps the ones it has,
+        // so a station that doubles to the most makes exactly that many,
+        // and a limit of exactly that is not passed.
+        let plane = Plane {
+            length: 0.0,
+            step: Some(0.45),
+            ..Plane::new()
+        };
+        let stations = 2;
+        let most = stations * (MOST_SAMPLES as u64 - 1);
+        let limits = Limits {
+            queries: most,
+            ..Limits::OWNER
+        };
+        let (outcome, cs) = run(&plane, 1.0, SETTINGS, limits);
+        assert_eq!(outcome.queries, most);
+        assert_eq!(cs, vec![0.0, 1.0]);
+        assert!(
+            outcome
+                .places
+                .iter()
+                .all(|p| p.reason == Reason::Unverified),
+            "{:?}",
+            outcome.places
+        );
+        assert!(!outcome.places.is_empty());
     }
 
     #[test]
