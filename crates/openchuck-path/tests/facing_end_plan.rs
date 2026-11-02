@@ -1265,5 +1265,10 @@ fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() 
     )
     .unwrap_err()
     .to_string();
-    assert!(error.contains("too short"), "{error}");
+    // With the flute-depth limit (decision 0642) the depth refusal names the
+    // flutes first; either way the operation refuses with a reason.
+    assert!(
+        error.contains("too short") || error.contains("mm of flute"),
+        "{error}"
+    );
 }
