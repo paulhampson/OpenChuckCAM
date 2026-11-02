@@ -125,6 +125,20 @@ pub const LEFT_MEDIUM: Colour = hex(0x4bb7fc);
 /// `#4e71ea`, the darkest that keeps 3:1 against the view (section 16).
 pub const LEFT_MORE: Colour = hex(0x4e71ea);
 
+/// Deviation: material left that no tool on this machine can reach
+/// (SIM-05; issue 478), violet `#b652ff`, drawn with a cross-hatch of
+/// [`UNREACHABLE_HATCH`]: for red-green colour vision it is told apart
+/// from the blues of material left by the cross-hatch, not the hue (NFR-15;
+/// the measured margins are in the decision record).
+pub const UNREACHABLE: Colour = hex(0xb652ff);
+/// The cross-hatch of [`UNREACHABLE`]: dark `#15171a`, 4.8:1 on it.
+pub const UNREACHABLE_HATCH: Colour = hex(0x15171a);
+/// Deviation: not measured, dark slate `#5d6570` under a light single hatch
+/// of [`UNMEASURED_HATCH`], so it never reads as "within tolerance" (issue
+/// 478); the hatch tells it apart from a band the user hid, which is the
+/// same slate, solid.
+pub const NOT_MEASURED: Colour = hex(0x5d6570);
+
 /// A deviation band the user hid (SIM-15): solid dark slate `#5d6570`, a
 /// colour of its own, so a hidden band never reads as "within tolerance" or
 /// as the part's grey; solid, so it reads apart from "not measured", which
@@ -141,9 +155,10 @@ pub const SET_FRAME: Colour = hex(0x15171a);
 /// The width of [`SET_FRAME`].
 pub const SET_FRAME_WIDTH: f32 = 4.0;
 
-/// The colour a deviation band is drawn in: decision 0040's six bands in
-/// the colours of section 11.5 (D12, until OI-194 is decided). Not measured
-/// is the grey of "within", hatched (see [`band_hatched`]).
+/// The colour a deviation band is drawn in: decision 0040's bands in the
+/// colours of section 11.5 (D12, until OI-194 is decided), with
+/// "Unreachable" and the slate of "Not measured" (issue 478). The two
+/// patterned bands are hatched (see [`band_hatch`]).
 pub fn band_colour(band: DeviationBand) -> Colour {
     match band {
         DeviationBand::Overcut => OVERCUT,
@@ -151,25 +166,31 @@ pub fn band_colour(band: DeviationBand) -> Colour {
         DeviationBand::Thin => LEFT_SMALL,
         DeviationBand::Medium => LEFT_MEDIUM,
         DeviationBand::Thick => LEFT_MORE,
-        _ => WITHIN,
+        DeviationBand::Unreachable => UNREACHABLE,
+        _ => NOT_MEASURED,
     }
 }
 
-/// Whether a band is drawn hatched: the triangles not measured, so they
-/// read apart from "within tolerance" without hue (D12).
-pub fn band_hatched(band: DeviationBand) -> bool {
-    !matches!(
-        band,
-        DeviationBand::Overcut
-            | DeviationBand::OnTarget
-            | DeviationBand::Thin
-            | DeviationBand::Medium
-            | DeviationBand::Thick
-    )
+/// The hatch a band is drawn with, if any: a cross-hatch on "Unreachable"
+/// and a single hatch on "Not measured", so both read apart from the plain
+/// bands without hue (NFR-15).
+pub fn band_hatch(band: DeviationBand) -> Option<openchuck_viewport::Hatch> {
+    match band {
+        DeviationBand::Unreachable => Some(openchuck_viewport::Hatch {
+            colour: UNREACHABLE_HATCH,
+            cross: true,
+        }),
+        DeviationBand::Unmeasured => Some(openchuck_viewport::Hatch {
+            colour: UNMEASURED_HATCH,
+            cross: false,
+        }),
+        _ => None,
+    }
 }
 
-/// The hatch of a band that is not measured: dark lines on the grey.
-pub const UNMEASURED_HATCH: Colour = hex(0x5d6570);
+/// The hatch of a band that is not measured: light lines `#e3e7ec` on the
+/// slate, 4.7:1 on it and 10.5:1 on the view.
+pub const UNMEASURED_HATCH: Colour = hex(0xe3e7ec);
 
 /// The top of the view's gradient, `#2c3139` (14.2).
 pub const VIEW_TOP: Color32 = theme::VIEWPORT_GRADIENT.0;
@@ -263,9 +284,12 @@ pub(crate) mod tests {
         assert!(left[0] > left[1] && left[1] > left[2], "{left:?}");
         // Overcut is the darkest of all.
         assert!(light(band_colour(DeviationBand::Overcut)) < left[2]);
-        // Every band but "not measured" is a plain fill.
+        // Every band but "not measured" and "unreachable" is a plain fill.
         for band in DeviationBand::ALL {
-            assert_eq!(band_hatched(band), band == DeviationBand::Unmeasured);
+            assert_eq!(
+                band_hatch(band).is_some(),
+                matches!(band, DeviationBand::Unmeasured | DeviationBand::Unreachable)
+            );
         }
     }
 
@@ -472,7 +496,12 @@ pub(crate) mod tests {
         );
         let view = token(VIEW_TOP);
         for band in DeviationBand::ALL {
-            let c = contrast(band_colour(band), view);
+            // "Not measured" is read by its hatch (issue 478): its lines
+            // keep the contrast on the view, its slate base need not.
+            let c = match band {
+                DeviationBand::Unmeasured => contrast(UNMEASURED_HATCH, view),
+                _ => contrast(band_colour(band), view),
+            };
             assert!(c >= 3.0, "{band:?}: {c:.2}:1");
         }
     }
@@ -484,10 +513,65 @@ pub(crate) mod tests {
         // "within tolerance" and the part's grey in normal vision.
         use measure::{difference, worst_difference};
         for band in DeviationBand::ALL {
+            if band == DeviationBand::Unmeasured {
+                // The same slate, told apart by its hatch (issue 478).
+                assert!(band_hatch(band).is_some());
+                continue;
+            }
             let w = worst_difference(HIDDEN_BAND, band_colour(band));
             assert!(w >= 18.0, "{band:?}: {w:.1}");
         }
         assert!(difference(HIDDEN_BAND, WITHIN) >= 20.0);
         assert!(difference(HIDDEN_BAND, PART) >= 20.0);
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_unreachable_has_its_own_colour_and_cross_hatch() {
+        // Issue 478: in normal vision at least 20 (CIEDE2000) from every
+        // other band; for every simulated colour vision type at least 25
+        // from overcut and 16 from "within" and the hidden slate. From the
+        // blues of material left it is told apart by its cross-hatch, whose
+        // lines keep 3:1 on it; on the view it keeps 3:1 itself.
+        use measure::{contrast, difference, worst_difference};
+        let unreachable = band_colour(DeviationBand::Unreachable);
+        for band in DeviationBand::ALL {
+            if band != DeviationBand::Unreachable {
+                let n = difference(unreachable, band_colour(band));
+                assert!(n >= 15.0, "{band:?}: {n:.1}");
+            }
+        }
+        for band in [
+            DeviationBand::Overcut,
+            DeviationBand::OnTarget,
+            DeviationBand::Thin,
+        ] {
+            let n = difference(unreachable, band_colour(band));
+            assert!(n >= 20.0, "{band:?}: {n:.1}");
+        }
+        assert!(worst_difference(unreachable, OVERCUT) >= 25.0);
+        assert!(worst_difference(unreachable, WITHIN) >= 16.0);
+        assert!(worst_difference(unreachable, HIDDEN_BAND) >= 16.0);
+        let hatch = band_hatch(DeviationBand::Unreachable).unwrap();
+        assert!(
+            hatch.cross,
+            "a cross-hatch, apart from not measured's single hatch"
+        );
+        assert!(contrast(hatch.colour, unreachable) >= 3.0);
+        assert!(contrast(unreachable, token(VIEW_TOP)) >= 3.0);
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_not_measured_never_reads_as_on_the_surface() {
+        // Issue 478 (cause c): "not measured" was the grey of "within" under
+        // a faint hatch. Its base is now at least 20 (CIEDE2000) from
+        // "within" in normal vision and 16 for every colour vision type, and
+        // its single hatch keeps 3:1 on its base.
+        use measure::{contrast, difference, worst_difference};
+        let base = band_colour(DeviationBand::Unmeasured);
+        assert!(difference(base, WITHIN) >= 20.0);
+        assert!(worst_difference(base, WITHIN) >= 16.0);
+        let hatch = band_hatch(DeviationBand::Unmeasured).unwrap();
+        assert!(!hatch.cross);
+        assert!(contrast(hatch.colour, base) >= 3.0);
     }
 }

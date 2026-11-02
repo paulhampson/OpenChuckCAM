@@ -1973,7 +1973,9 @@ impl PlaybackPanel {
 /// triangle's value is kept whole, for the probe.
 pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) -> DeviationBands {
     let mut shown = bands.clone();
-    shown.bands.retain(|(band, _)| by.shows(*band));
+    shown.bands.retain(|(band, _)| {
+        by.shows(*band) && !(filter.hide_unreachable && *band == DeviationBand::Unreachable)
+    });
     if filter.hides_any() {
         for (_, triangles) in &mut shown.bands {
             triangles.retain(|t| {

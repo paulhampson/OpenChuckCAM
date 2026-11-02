@@ -889,6 +889,9 @@ struct RecordState {
     /// end shows and posts: Simulate is complete only while they are the
     /// enabled operations (issue 260).
     last_run: Option<Vec<OperationId>>,
+    /// Each setup's warning about material no tool can reach, from the last
+    /// simulation of it (issue 478); shown while that simulation is current.
+    enclosed: BTreeMap<SetupId, String>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -999,6 +1002,18 @@ impl GenerationRecord {
                 }
             }
             s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
+            // Material no tool can reach, by setup (issue 478): a simulated
+            // run replaces what its setups said before.
+            for setup in run.simulation.iter().flat_map(|r| r.setups.iter()) {
+                match setup.reach.as_ref().and_then(|r| r.enclosed.as_ref()) {
+                    Some(summary) => {
+                        s.enclosed.insert(setup.id, summary.warning(&setup.setup));
+                    }
+                    None => {
+                        s.enclosed.remove(&setup.id);
+                    }
+                }
+            }
             s.failure = None;
             s.current = None;
         });
@@ -1789,6 +1804,31 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     for s in project.setups() {
         let setup = ItemRef::Setup(s.id);
         let at = |part| ItemRef::SetupPart(s.id, part);
+        // Material no tool can reach, while the simulation that found it is
+        // current for every enabled operation of the setup (issue 478;
+        // NFR-12): a warning in Messages, on the setup.
+        if let Some(text) = record.enclosed.get(&s.id) {
+            let mut operations = project
+                .operations()
+                .iter()
+                .filter(|o| o.setup == s.id && o.enabled)
+                .peekable();
+            let current = operations.peek().is_some()
+                && operations.all(|o| {
+                    matches!(
+                        (keys.get(&o.id), record.simulated.get(&o.id)),
+                        (Some(k), Some(simulated)) if k.chained == *simulated
+                    )
+                });
+            if current {
+                messages.push(Message::new(
+                    Severity::Warning,
+                    text.clone(),
+                    Some((setup, s.name.clone())),
+                    Some(MessageAction::ReviewSetup(s.id)),
+                ));
+            }
+        }
         match project.machine() {
             None => {
                 let text = "The project has no machine profile, so the setup is not checked. Choose one in the setup's machine section.";

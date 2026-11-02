@@ -44,7 +44,7 @@ pub(crate) fn cut_part_scene(
     solid: bool,
 ) -> Scene {
     let mut scene = Scene::default();
-    let mut add = |mesh: &TriangleMesh, mut colour: Colour, hatched: bool| {
+    let mut add = |mesh: &TriangleMesh, mut colour: Colour, hatch: Option<Hatch>| {
         // The mapped palette has narrow contrast margins (0216). Keep its
         // translucent fill near opaque; plain stock retains today's glass.
         colour[3] = if solid {
@@ -58,12 +58,7 @@ pub(crate) fn cut_part_scene(
         if let Some(item) = scene.meshes.last_mut() {
             item.slot = Slot::Part;
             item.translucent = !solid;
-            if hatched {
-                item.hatch = Some(Hatch {
-                    colour: roles::UNMEASURED_HATCH,
-                    cross: false,
-                });
-            }
+            item.hatch = hatch;
         }
     };
     if let Some(bands) = bands {
@@ -79,20 +74,33 @@ pub(crate) fn cut_part_scene(
             add(
                 &triangles_mesh(&surface.mesh, &hidden),
                 roles::HIDDEN_BAND,
-                false,
+                None,
             );
         }
         for (band, set) in &bands.bands {
             add(
                 &triangles_mesh(&surface.mesh, set),
                 band_colour(*band),
-                roles::band_hatched(*band),
+                roles::band_hatch(*band),
             );
         }
     } else {
-        add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], false);
+        add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], None);
     }
     scene
+}
+
+/// " · unreachable (enclosed)" for a triangle in that band, for the probe
+/// (decision 0633), else nothing.
+fn unreachable_words(bands: &DeviationBands, triangle: u32) -> &'static str {
+    let unreachable = bands.bands.iter().any(|(band, set)| {
+        *band == openchuck_app::pathview::DeviationBand::Unreachable && set.contains(&triangle)
+    });
+    if unreachable {
+        " \u{b7} unreachable (enclosed)"
+    } else {
+        ""
+    }
 }
 
 /// Degrees of orbit per pixel dragged.
@@ -402,13 +410,10 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                 for (band, triangles) in &bands.bands {
                     let part = triangles_mesh(&mesh.mesh, triangles);
                     scene.add_mesh(&part, &[], band_colour(*band), roles::FEATURE_EDGES);
-                    if roles::band_hatched(*band)
+                    if let Some(hatch) = roles::band_hatch(*band)
                         && let Some(added) = scene.meshes.last_mut()
                     {
-                        added.hatch = Some(Hatch {
-                            colour: roles::UNMEASURED_HATCH,
-                            cross: false,
-                        });
+                        added.hatch = Some(hatch);
                     }
                 }
             }
@@ -1561,15 +1566,19 @@ impl Viewport {
             let (_, bands) = self.part_bands.as_ref()?;
             let value = bands.values.get(triangle as usize).copied().flatten();
             let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
-            return Some(format!("Final result · {text}"));
+            return Some(format!(
+                "Final result · {text}{}",
+                unreachable_words(bands, triangle)
+            ));
         }
         let (_, bands) = self.bands.as_ref()?;
         let value = bands.values.get(triangle as usize).copied().flatten();
         let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
+        let unreachable = unreachable_words(bands, triangle);
         Some(if self.stock_surface.is_some() {
-            format!("Final result · {text} (nearest target sample)")
+            format!("Final result · {text} (nearest target sample){unreachable}")
         } else {
-            text
+            format!("{text}{unreachable}")
         })
     }
 
@@ -2588,6 +2597,43 @@ pub(crate) mod tests {
         });
         assert_eq!(viewport.probe_pinned, None);
         assert_eq!(viewport.probe_hover, None);
+    }
+
+    /// Issue 478 (decision 0633, OI-1987): the colour scale's legend has a
+    /// row for material no tool can reach, and the probe names it; "Not
+    /// measured" is drawn as it is on the part.
+    #[test]
+    fn req_sim_05_req_nfr_15_the_legend_and_the_probe_name_unreachable_material() {
+        let view = cube_scene("unreachable-legend");
+        let model = view.meshes[0].model.unwrap();
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_view(StandardView::Top);
+        viewport.set_step(Some(ViewStep::Simulate));
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: false,
+        });
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((3.0, true))).collect();
+        let bands = openchuck_app::pathview::deviation_bands_with(&values, &[true; 12], 0.1);
+        viewport.set_part_bands(Some((model, bands)));
+        let texts = painted_texts(&mut viewport, &ctx);
+        assert!(
+            texts.iter().any(|t| t == "Unreachable (enclosed)"),
+            "{texts:?}"
+        );
+        assert!(texts.iter().any(|t| t == "Not measured"), "{texts:?}");
+        // Clear of the colour scale's box, which its legend rows make taller.
+        let middle = pos2(230.0, 160.0);
+        frame_at(&mut viewport, &ctx, pos2(220.0, 160.0), false, 0.0);
+        frame_at(&mut viewport, &ctx, middle, false, 0.1);
+        frame_at(&mut viewport, &ctx, middle, false, 0.2 + PROBE_PAUSE);
+        let t = viewport.probe_hover.expect("the part is under the pointer");
+        let text = viewport.probe_text(t).unwrap();
+        assert!(text.ends_with(" \u{b7} unreachable (enclosed)"), "{text}");
+        assert!(text.starts_with("Final result \u{b7} "), "{text}");
     }
 
     /// Decision 0492 item 3 and UI-11: the colour scale says what it colours.

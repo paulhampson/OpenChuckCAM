@@ -44,6 +44,18 @@ impl Rig {
         rig
     }
 
+    /// The tube project open (a bore no tool can reach; issue 478), its
+    /// scene built and its checks done.
+    pub(super) fn tube(name: &str) -> Self {
+        let (dir, app, _, _) = crate::testing::tube_project(name);
+        app.save().unwrap();
+        drop(app);
+        let shell = Shell::with_settings(false, Some(dir.clone()), None);
+        let mut rig = Self::new(shell, vec![dir]);
+        rig.settle();
+        rig
+    }
+
     /// The cube project open, its scene built and its checks done.
     pub(super) fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
         let (dir, app, _, _) = cube_project(name);

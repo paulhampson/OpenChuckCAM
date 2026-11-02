@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SIMVIS (#478, proposed decision 0633): Simulate draws material no tool can reach (enclosed across the rotary axis, such as a bore along it) as "Unreachable (enclosed)", violet `#b652ff` under a dark cross-hatch, on the cut part and the part; "Not measured" is slate under a light hatch instead of the grey of "within"; the colour scale lists both; the probe adds "· unreachable (enclosed)"; the results inspector shows "Unreachable (enclosed)" and "Left, not classified", an "of which unreachable" row under each histogram row that has any, and a "Show unreachable (enclosed)" tick box. The run's warning about it is in Results and in Messages, on the setup.
+
 - ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.
 
 - FIRSTRUN (accepted decision 0302): a project with no machine reads "Needs attention", not "Error to fix"; an empty Stepdown says "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library."; the "No tabs are stored" line is true when a held region joins the part and the grip warning is in plain words; the title bar says "Edited, not saved" with a tooltip; under Cutting feed a line says what the machine's feed limits did in the last run. Nothing written changes.

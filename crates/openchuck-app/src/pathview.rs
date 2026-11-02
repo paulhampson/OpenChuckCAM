@@ -546,18 +546,22 @@ pub enum DeviationBand {
     Medium,
     /// More than a millimetre left, or the search reached its limit.
     Thick,
+    /// Material left that no tool on this machine can reach: closed off from
+    /// the outside across the rotary axis (SIM-05; issue 478).
+    Unreachable,
     /// No sample (a degenerate triangle).
     Unmeasured,
 }
 
 impl DeviationBand {
     /// Every band, in the order of a legend.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Overcut,
         Self::OnTarget,
         Self::Thin,
         Self::Medium,
         Self::Thick,
+        Self::Unreachable,
         Self::Unmeasured,
     ];
 
@@ -569,6 +573,7 @@ impl DeviationBand {
             Self::Thin => "Up to 0.25 mm left",
             Self::Medium => "0.25 to 1 mm left",
             Self::Thick => "More than 1 mm left",
+            Self::Unreachable => "Unreachable (enclosed)",
             Self::Unmeasured => "Not measured",
         }
     }
@@ -592,10 +597,25 @@ pub struct DeviationBands {
 /// `openchuck_sim::triangle_values`): `values[i]` is triangle `i`'s value in
 /// millimetres (positive for material left) and whether it is only a bound.
 pub fn deviation_bands(values: &[Option<(f64, bool)>], tolerance: f64) -> DeviationBands {
-    let mut sets: [TriangleSet; 6] = Default::default();
+    deviation_bands_with(values, &[], tolerance)
+}
+
+/// [`deviation_bands`], with the triangles whose material left no tool can
+/// reach: `unreachable[i]` for triangle `i` (none past its end). Such a
+/// triangle with material left beyond the tolerance is
+/// [`DeviationBand::Unreachable`] whatever its value; the value is kept for
+/// the probe.
+pub fn deviation_bands_with(
+    values: &[Option<(f64, bool)>],
+    unreachable: &[bool],
+    tolerance: f64,
+) -> DeviationBands {
+    let mut sets: [TriangleSet; 7] = Default::default();
     for (i, value) in values.iter().enumerate() {
+        let enclosed = unreachable.get(i).copied().unwrap_or(false);
         let band = match value {
             None => DeviationBand::Unmeasured,
+            Some((v, _)) if enclosed && *v > tolerance => DeviationBand::Unreachable,
             Some((v, bound)) => {
                 if *v < -tolerance {
                     DeviationBand::Overcut

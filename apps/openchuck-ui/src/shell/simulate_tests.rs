@@ -23,7 +23,12 @@ mod rendering;
 
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
-    let mut rig = Rig::cube(name, None);
+    simulate(Rig::cube(name, None))
+}
+
+/// `rig`'s project generated with a simulation, open on Simulate with its
+/// playback ready.
+fn simulate(mut rig: Rig) -> Rig {
     rig.shell.generate(true);
     let deadline = Instant::now() + Duration::from_secs(120);
     while rig.shell.run.last().is_none_or(|r| r.simulation.is_none()) {
@@ -1902,4 +1907,64 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     assert!(rig.shell.results.range_error.is_none());
     rig.frame(Vec::new());
     assert!(!rig.shows("Some bands are hidden."));
+}
+
+#[test]
+fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be_hidden() {
+    // Issue 478: a tube whose bore lies on the rotary axis leaves the bore
+    // full of stock. The run warns once; the cut part's faces over the bore
+    // are coloured Unreachable (not Not measured); the inspector counts it;
+    // and its own "Show" tick box hides it, saying so, while the counts stay
+    // those of the whole part.
+    let mut rig = simulate(Rig::tube("sim-bore"));
+    let run = rig.shell.run.last().unwrap().clone();
+    let warnings: Vec<_> = run
+        .notes
+        .iter()
+        .filter(|n| n.contains(openchuck_app::simulation::ENCLOSED_WORDS))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{:?}", run.notes);
+    // In the Messages panel too, as a warning on the setup.
+    assert!(rig.shell.overview.messages.iter().any(|m| {
+        m.severity == openchuck_app::overview::Severity::Warning
+            && m.text.contains(openchuck_app::simulation::ENCLOSED_WORDS)
+    }));
+    let colour = at(&rig, "Deviation colours");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let unreachable = |rig: &Rig| {
+        rig.shell.viewport.bands().map_or(0, |b| {
+            b.bands
+                .iter()
+                .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
+                .map(|(_, t)| t.len())
+                .sum::<usize>()
+        })
+    };
+    assert!(
+        unreachable(&rig) > 0,
+        "the faces over the bore are coloured"
+    );
+    assert!(rig.shows("Unreachable (enclosed)"));
+    let summary = crate::results_panel::summarise(&run);
+    assert!(summary[0].unreachable_samples.is_some_and(|n| n > 0));
+    assert!(!rig.shows(crate::results_panel::SOME_HIDDEN));
+    let tick = at(&rig, "Show unreachable (enclosed)");
+    rig.click(tick);
+    rig.frame(Vec::new());
+    assert!(rig.shell.results.filter.hide_unreachable);
+    assert_eq!(unreachable(&rig), 0, "hidden on the cut part");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Some bands are hidden."), "the inspector says so");
+    assert_eq!(
+        crate::results_panel::summarise(&run),
+        summary,
+        "the counts stay"
+    );
 }

@@ -693,6 +693,9 @@ pub struct DeviationTarget {
     ranges: Vec<std::ops::Range<usize>>,
     /// The model's surface, for the samples on the solids.
     model: Option<openchuck_path::MeshSurface>,
+    /// The model's triangles turned degenerate above, as they were, so its
+    /// closed body can be given back ([`DeviationTarget::bodies`]).
+    covered: Vec<(usize, [u32; 3])>,
 }
 
 impl std::fmt::Debug for DeviationTarget {
@@ -715,7 +718,30 @@ impl DeviationTarget {
             solids: Vec::new(),
             ranges: Vec::new(),
             model: None,
+            covered: Vec::new(),
         }
+    }
+
+    /// The closed bodies whose union the target's surface bounds: the
+    /// model, whole, then each held region and tab (for the reach of the
+    /// material left, issue 478).
+    pub fn bodies(&self) -> Vec<TriangleMesh> {
+        let mut model = TriangleMesh {
+            vertices: self.mesh.vertices.clone(),
+            triangles: self
+                .mesh
+                .triangles
+                .get(..self.model_triangles)
+                .map_or_else(Vec::new, <[_]>::to_vec),
+        };
+        for (t, original) in &self.covered {
+            if let Some(slot) = model.triangles.get_mut(*t) {
+                *slot = *original;
+            }
+        }
+        std::iter::once(model)
+            .chain(self.solids.iter().map(|s| s.mesh(TARGET_SEGMENTS)))
+            .collect()
     }
 
     /// The target over `model` (whose surface is `model_surface`) and
@@ -746,6 +772,7 @@ impl DeviationTarget {
             solids,
             ranges,
             model: Some(model_surface),
+            covered: Vec::new(),
         };
         for t in 0..target.mesh.triangles.len() {
             let Some([a, b, c]) = target.mesh.triangle(t) else {
@@ -762,8 +789,12 @@ impl DeviationTarget {
             if target.covered(t, centroid, normal)
                 && let Some(slot) = target.mesh.triangles.get_mut(t)
             {
+                let original = *slot;
                 let v = slot[0];
                 *slot = [v, v, v];
+                if t < model_triangles {
+                    target.covered.push((t, original));
+                }
             }
         }
         target
@@ -1142,6 +1173,63 @@ mod tests {
                 .get(t)
                 .is_some_and(|[a, b, c]| a == b && b == c)
         }));
+    }
+
+    #[test]
+    fn req_sim_05_the_reach_bodies_give_back_the_whole_part_under_a_tab() {
+        // Issue 478: the part's triangles under a tab take no samples, so the
+        // target turns them degenerate; the closed bodies the reach of the
+        // material left is cast against must still be the whole part, and
+        // each held region and tab.
+        let mesh = openchuck_testkit::parts::revolve(&[(10.0, 20.0), (60.0, 20.0)], 24);
+        let boxed = Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(0.0, -21.0, -20.0),
+                max: Point3::new(60.0, 21.0, 20.0),
+            },
+        };
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(5.0),
+                diameter: None,
+            }),
+            end: None,
+            tabs: vec![Tab {
+                x_start: Millimetres(5.0),
+                length: Millimetres(5.0),
+                // Wide enough to cover the centres of the end face's fan.
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(30.0),
+                },
+                layout: TabLayout::OnAxis,
+                auto: None,
+            }],
+        };
+        let extent = openchuck_geom::part_extent(&mesh).unwrap();
+        let solids = solids(&w, Some(&boxed), &extent).unwrap();
+        let count = solids.len();
+        let surface = openchuck_path::MeshSurface::new(&mesh).unwrap();
+        let target = DeviationTarget::new(&mesh, surface, solids);
+        let covered = (0..mesh.triangles.len())
+            .filter(|&t| {
+                target
+                    .mesh
+                    .triangles
+                    .get(t)
+                    .is_some_and(|[a, b, c]| a == b && b == c)
+            })
+            .count();
+        assert!(covered > 0, "the end face under the tab takes no samples");
+        let bodies = target.bodies();
+        assert_eq!(bodies.len(), 1 + count);
+        assert_eq!(bodies[0].triangles, mesh.triangles);
+        for body in &bodies {
+            body.validate().unwrap();
+        }
+        // The part alone has one body, itself.
+        let alone = DeviationTarget::part_only(mesh.clone()).bodies();
+        assert_eq!(alone.len(), 1);
+        assert_eq!(alone[0].triangles, mesh.triangles);
     }
 
     #[test]
