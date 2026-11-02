@@ -1,6 +1,6 @@
 # 0641: End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low (OP-14, OP-24, SET-06, SET-09, NFR-05, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
 
-- **Status:** proposed by lane FACEAPPROACH on 2 Nov 2026. Item 3 is the owner's decision D1 (option iii), relayed by the coordinator (decision 0049) on 2 Nov 2026. Items 1 and 2 fix defects and needed no choice (the coordinator, 2 Nov 2026). The record awaits the owner's acceptance.
+- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged. Proposed by lane FACEAPPROACH the same day; item 3 is the owner's decision D1 (option iii), relayed by the coordinator; items 1 and 2 fix defects and needed no choice (the coordinator, 2 Nov 2026).
 - **Date:** 2 Nov 2026.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499), "Facing: the toolpath starts from the safe Z instead of just above the top of the material".
 - **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End and Box facing, their completion proofs and the written-motion budget), [0496](0496-low-links-between-finishing-passes.md) (Links between passes), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (the clearance in use), [0033](0033-slice-14-rotary-roughing.md) item 6 (low links against stock), [0048](0048-pre-1-0-api-changes.md) (pre-release API changes).
