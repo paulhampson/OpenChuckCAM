@@ -17,6 +17,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, UNIX_EPOCH};
 
+/// How often the Open recent menu polls for the folder check's answer.
+const RECENT_POLL: Duration = Duration::from_millis(50);
+/// How soon the menu asks again whether the recent folders exist.
+const RECENT_RECHECK: Duration = Duration::from_secs(5);
+
 // Keep the calendar display bounded and avoid platform-dependent SystemTime
 // overflow from untrusted metadata. The raw timestamp and snapshot stay intact.
 fn capture_time(milliseconds: u64) -> String {
@@ -31,7 +36,7 @@ fn capture_time(milliseconds: u64) -> String {
 
 /// A folder as the user knows it: Windows' canonical `\\?\` prefix is an
 /// implementation detail, not part of the name they chose (decision 0114).
-fn shown(folder: &Path) -> String {
+pub(super) fn shown(folder: &Path) -> String {
     let text = folder.display().to_string();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
@@ -790,6 +795,57 @@ impl Shell {
                 Effect::Resume(next) => self.proceed(next, ctx),
             }
         }
+    }
+
+    /// The recent projects, newest first. Whether their folders still exist
+    /// is asked on another thread (a folder on a dead network share can
+    /// take long to answer, and the window must not wait for it): the last
+    /// known list is returned now, and a folder that turns out to be gone is
+    /// forgotten when the answer arrives (issue 381; CodeRabbit on pull
+    /// request 479).
+    pub(super) fn recent_projects(&mut self, ctx: &egui::Context) -> Vec<PathBuf> {
+        let answer = self.recent_check.as_ref().map(Receiver::try_recv);
+        match answer {
+            Some(Ok((checked, existing))) => {
+                self.recent_check = None;
+                if self.settings.forget_missing_in(&checked, &existing) {
+                    self.settings_touched();
+                }
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) => ctx.request_repaint_after(RECENT_POLL),
+            Some(Err(mpsc::TryRecvError::Disconnected)) => self.recent_check = None,
+            None => {
+                let due = self
+                    .recent_checked_at
+                    .is_none_or(|at| at.elapsed() >= RECENT_RECHECK);
+                if due && !self.settings.recent.is_empty() {
+                    self.recent_checked_at = Some(std::time::Instant::now());
+                    let folders = self.settings.recent.clone();
+                    let (tx, rx) = mpsc::channel();
+                    #[cfg(test)]
+                    let gate = self.recent_gate.clone();
+                    std::thread::spawn(move || {
+                        #[cfg(test)]
+                        if let Some(gate) = gate {
+                            drop(gate.lock());
+                        }
+                        let existing = openchuck_app::settings::existing_folders(&folders);
+                        let _ = tx.send((folders, existing));
+                    });
+                    self.recent_check = Some(rx);
+                    ctx.request_repaint_after(RECENT_POLL);
+                }
+            }
+        }
+        self.settings.recent.clone()
+    }
+
+    /// Opens a recent project through the ordinary Open command: the
+    /// unsaved-changes question first, then the Open dialog on that folder
+    /// (the same route as a recovery line, decision 0460).
+    pub(super) fn open_recent(&mut self, folder: &Path, ctx: &egui::Context) {
+        self.open_hint = Some(shown(folder));
+        self.request(Next::Open, ctx);
     }
 
     /// A recovery line's action: open that project through the ordinary
