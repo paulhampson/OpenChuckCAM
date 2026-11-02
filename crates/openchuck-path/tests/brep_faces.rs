@@ -14,6 +14,7 @@
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
+use openchuck_path::brep::SEARCH_TOLERANCE;
 use openchuck_path::{BrepSurface, ExactFace, ParametricFace, SurfaceSource, ToolLine, Uv};
 use openchuck_types::brep::{
     BSplinePatch, BrepFace, BrepModel, FaceId, Frame, Surface, TrimLoop, UvPoint,
@@ -1022,6 +1023,35 @@ fn req_imp_02_answers_are_deterministic() {
     assert_eq!(sphere.ray_hits(o, d, 100.0), sphere.ray_hits(o, d, 100.0));
 }
 
+#[test]
+fn req_imp_02_closest_beside_a_closed_bspline_seam_is_within_the_search_tolerance() {
+    // Issue #467: the sphere patch's u = 0 and u = 1 edges meet at +X, and a
+    // B-spline face carries no period, so a point 0.0027 mm off that seam is
+    // answered on the u = 0 edge, 9e-8 mm further than the sphere's own
+    // nearest point: within the search's tolerance (decision record 0260),
+    // never further. On the seam itself, and off it, the answer is exact.
+    let (c, r) = (p3(1.0, 2.0, -3.0), 18.0);
+    let sphere = exact(&patch_face(0, sphere_patch(c, r), sphere_sample(c, r)));
+    for qy in [1.997_284_164_910_329_7, 2.0, 1.99, 2.01] {
+        let q = p3(38.568_016_006_474_1, qy, 0.0);
+        let want = ((q - c).length() - r).abs();
+        let got = sphere.closest(q).unwrap();
+        assert!(
+            (got.distance - want).abs() <= SEARCH_TOLERANCE,
+            "qy {qy}: {} against {want}",
+            got.distance
+        );
+        assert!(
+            got.distance >= want - 1e-12,
+            "qy {qy}: nearer than the sphere"
+        );
+        assert!(
+            (got.point.point.distance(q) - got.distance).abs() < 1e-9,
+            "qy {qy}: the point is not at the distance given"
+        );
+    }
+}
+
 // ---- properties ---------------------------------------------------------------------
 
 proptest! {
@@ -1050,9 +1080,11 @@ proptest! {
             let got = f.closest(q).unwrap().distance;
             prop_assert!(got <= sampled_min(f, q, 60) + 1e-9);
         }
-        // Exact for the sphere.
+        // The closed form for the sphere, within the search's tolerance:
+        // the patch closes on itself at +X without a period, so beside that
+        // seam the answer may lie on the patch's edge (issue #467).
         let got = sphere.closest(q).unwrap().distance;
-        prop_assert!((got - ((q - c).length() - r).abs()).abs() < 1e-8);
+        prop_assert!((got - ((q - c).length() - r).abs()).abs() <= SEARCH_TOLERANCE);
     }
 
     #[test]

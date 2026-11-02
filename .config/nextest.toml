@@ -221,6 +221,10 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# PATHBUGS 2 Nov 2026 (issue #462): the tutorial piece's helical finishing with adaptive
+# spacing on, 123.607 s uninstrumented alone on four cores. Default runs it; coverage excludes
+# it and the nightly long run selects it. Found unlisted in the same run: held_region's
+# simultaneous finishing beside a held start with tabs, 78.678 s alone, the same on main 484e4b2.
 # OP20 (decision 0368, 31 Oct 2026, 4 vCPU), alone on one test thread,
 # uninstrumented: blades without a hub 79.3 s, the keyway's walls 69.3 s, a
 # shank wider than the cutter (every pass checked, OI-1456) 105.4 s.
@@ -317,6 +321,8 @@ priority = 79
 #     64.2 s  openchuck-path::brep_outline_drop req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | (binary_id(=openchuck-app::adaptive_example) & test(=req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_op_05_simultaneous_finishing_beside_a_held_start_with_tabs_generates))
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
   | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
@@ -399,6 +405,8 @@ default-filter = '''not (
 )'''
 
 [profile.long]
+# PATHBUGS 2 Nov 2026: the tutorial piece with adaptive spacing, 123.607 s, and held_region's
+# simultaneous finishing beside a held start, 78.678 s (see the coverage profile).
 # SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
 # Existing app both-direction roughing regression: 92.703 s, also above.
 # Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
@@ -406,6 +414,8 @@ default-filter = '''not (
 # TABS-CHECK 1 Nov 2026: the sixteen tests added to the coverage profile above (times there).
 default-filter = '''
     test(~finest_setting_is_within)
+  | (binary_id(=openchuck-app::adaptive_example) & test(=req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing))
+  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_op_05_simultaneous_finishing_beside_a_held_start_with_tabs_generates))
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
   | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))

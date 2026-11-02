@@ -203,9 +203,11 @@ pub(crate) fn free_ends(
             out.warnings.push(PathWarning {
                 message: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
-                     keeps what earlier operations left. Stepdown: Required. Enter the depth \
-                     of each layer, or add cutting data for this tool and material in the \
-                     tool library."
+                     keeps what earlier operations left. Set Stepdown to the depth of each \
+                     layer, or add cutting data for this tool and material in the tool \
+                     library and then choose Update from library in the operation's tool \
+                     section: the project keeps its own copy of the tool, so a change in the \
+                     library reaches it only then."
                 ),
                 parameter: Some(parameter::STEPDOWN.to_owned()),
                 requires_acknowledgement: false,

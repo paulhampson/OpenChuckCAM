@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (lane PATHBUGS; the coordinator assigns the minor version at release, decision 0239 item 13)
+
+- **Changed output with adaptive spacing on (PATHBUGS, issues #462 and #467; decision 0632, proposed):** helical finishing of the tutorial's turned piece with its defaults now gives a complete path, not a partial one to acknowledge.
+  - **The query limit is charged station by station** (implements decision 0239 item 8). An interval's stations are measured in runs whose most fits what is left of the 1,000,000 limit, each charged after the real count of the runs before it; before, the whole interval's most was charged at once, about nine times what it makes, and the limit was met with half of it unused. Doubling a station's samples keeps the ones it has, so a station makes at most the 63 drops it is charged (it could make 116); the values measured are unchanged.
+  - **A place the measure cannot bound is refined where a pass fits** (the owner's choice on OI-1510, amending decision 0239 item 11): it gets a pass halfway, as where too much is found, and is reported as unverified only where no pass can be added. Beside a step in the material left (a flute's edge, a part's end edge) the bound between samples never settled. The note says passes were added where more than the Allowed excess "was left or could not be ruled out".
+  - Off, every path is byte-identical; saved operations keep their settings. No API change.
+- **Changed wording (OI-1800):** a free end with no Stepdown says "Set Stepdown to the depth of each layer, or add cutting data for this tool and material in the tool library and then choose Update from library in the operation's tool section: the project keeps its own copy of the tool, so a change in the library reaches it only then."
+- **Tests (#467):** the B-spline closest-point property is held to `brep::SEARCH_TOLERANCE`, the search's stated tolerance; beside the seam of a patch closed on itself without a period the answer may lie on the patch's edge, 8.9e-8 mm off at the saved input (OI-1985).
 ## 0.33.0
 
 - **Breaking (0.33.0, SWARF-FLOOR; issue #435; decision 0491, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
