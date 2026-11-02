@@ -2,11 +2,11 @@
 
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
 
+- RINGS-ALL pull request 2 (issue #440, decision 0497, accepted, relayed by the coordinator): simultaneous finishing's spiral pattern can cut rings with the same **Passes** setting. Each ring is driven as the spiral is (the smoothed A within the tilt, the lead the way it travels, round the section's own centre where the section does not surround the axis); a face's ring is its own turn (decision 0410 round an off-axis section's centre); the step between rings holds the A the ring ended at and the next ring starts there, so they are one cut, split where holding A would lean the tool beyond the lead and the tilt. Spiral is the default, so every path is unchanged unless rings are chosen; no version bump. Additive API: `simultaneous::parameter::PASS_SHAPE`.
 - **Breaking (0.35.0, PATH-TIDY, issue #436, decision 0496, accepted):** axial and indexed finishing can keep the links between passes low. `Pass` has the new public field `low_link: bool`; a host's struct literals add `low_link: false` (a pass with `true` is linked against the setup's stock at the approach distance above its highest point under the tool, where that is below the retract height and clear of held regions, instead of at the retract height). Additive: `axial::parameter::{LINK_HEIGHT, RETRACT, LOW}` (`link_height`, `retract` by default or `low`, offered by axial and indexed finishing). With the default every path and golden file is unchanged; links that cannot be lowered retract as before and a path note counts them.
 
 ## 0.34.0
 
-- RINGS-ALL pull request 2 (issue #440, decision 0497, accepted, relayed by the coordinator): simultaneous finishing's spiral pattern can cut rings with the same **Passes** setting. Each ring is driven as the spiral is (the smoothed A within the tilt, the lead the way it travels, round the section's own centre where the section does not surround the axis); a face's ring is its own turn (decision 0410 round an off-axis section's centre); the step between rings holds the A the ring ended at and the next ring starts there, so they are one cut, split where holding A would lean the tool beyond the lead and the tilt. Spiral is the default, so every path is unchanged unless rings are chosen; no version bump. Additive API: `simultaneous::parameter::PASS_SHAPE`.
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.
 
 ## 0.33.0
