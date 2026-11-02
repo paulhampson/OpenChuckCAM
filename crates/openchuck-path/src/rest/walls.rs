@@ -40,6 +40,7 @@
 //! [`parallel::map_in_order`], so the result is the same at any thread
 //! count (GC-07, NFR-06).
 
+use std::collections::BTreeMap;
 use std::f64::consts::FRAC_PI_2;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -74,6 +75,10 @@ const VISIBLE_GAP: f64 = 0.1;
 /// [`MIN_SPLIT`], are in separate areas.
 const SPLIT: f64 = 4.0;
 const MIN_SPLIT: f64 = 0.5;
+
+/// The size of a cell of the reach check, millimetres along X and round
+/// the axis: one drop answers for the samples of a cell.
+const REACH_CELL: f64 = 0.25;
 
 /// Most places of the tool one wall sample asks for across its patch.
 const PATCH_STEPS: f64 = 64.0;
@@ -285,20 +290,55 @@ impl Walls<'_> {
                 .iter()
                 .any(|&(a, b)| x > a + widest && x < b - widest)
         };
-        let reasons: Vec<Option<UnreachedReason>> = parallel::map_in_order(samples, |s| {
+        // One representative per small cell of the surface, of one kind of
+        // place: the report is of areas, and a drop per sample would cost
+        // as many drops as the map has samples (millions on a finely
+        // tessellated part). Every sample of a cell takes its
+        // representative's answer; the cells are in a fixed order.
+        let mut cells: BTreeMap<(i64, i64, i8), Vec<usize>> = BTreeMap::new();
+        for (i, s) in samples.iter().enumerate() {
             if gripped(s.point.x) {
-                None
-            } else {
-                self.why(input, s, outside)
+                continue;
             }
+            cells.entry(self.cell(s)).or_default().push(i);
+        }
+        let groups: Vec<Vec<usize>> = cells.into_values().collect();
+        let reasons: Vec<Option<UnreachedReason>> = parallel::map_in_order(&groups, |g| {
+            g.first()
+                .and_then(|&i| samples.get(i))
+                .and_then(|s| self.why(input, s, outside))
         });
         context.check_cancelled()?;
-        let found: Vec<(Sample, UnreachedReason)> = samples
+        let found: Vec<(Sample, UnreachedReason)> = groups
             .iter()
             .zip(reasons)
-            .filter_map(|(s, r)| r.map(|r| (*s, r)))
+            .filter_map(|(g, r)| r.map(|r| (g, r)))
+            .flat_map(|(g, r)| {
+                g.iter()
+                    .filter_map(move |&i| samples.get(i).map(|s| (*s, r)))
+            })
             .collect();
         Ok(group(found, spacing))
+    }
+
+    /// The cell of the reach check a sample falls in: [`REACH_CELL`] along
+    /// X and round the axis at its radius, and the kind of place it is (a
+    /// wall facing either way, a surface round the axis, and the rest), so
+    /// a cell at a wall's foot does not mix the floor with the wall.
+    fn cell(&self, s: &Sample) -> (i64, i64, i8) {
+        let p = s.point;
+        let around = p.z.atan2(p.y).rem_euclid(std::f64::consts::TAU) * p.y.hypot(p.z);
+        let kind = match self.place(s) {
+            Place::Round { .. } => 0,
+            Place::Wall { side, .. } if side > 0.0 => 1,
+            Place::Wall { .. } => 2,
+            Place::FacesAxis => 3,
+            Place::OnAxis => 4,
+            Place::Unmodelled => 5,
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let key = |v: f64| (v / REACH_CELL).floor() as i64;
+        (key(p.x), key(around), kind)
     }
 
     /// Why no place of the tool reaches the sample; `None` when one does,
