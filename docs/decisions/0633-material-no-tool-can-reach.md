@@ -1,6 +1,6 @@
 # 0633: Material no tool can reach: told apart from the material left, warned once per setup, and visible on the cut part (lane SIMVIS; issue #478)
 
-- **Status:** proposed 1 Nov 2026 by lane SIMVIS. The plan was approved by the coordinator, and the owner's answers below (Q1 to Q5) and the SIM-05 amendment were relayed by the coordinator on 1 Nov 2026. Only the owner accepts this record (decision 0049); the final shades (item 5) await the owner's look at a screenshot.
+- **Status:** Accepted (2 Nov 2026, by the project owner, relayed by the coordinator; decision 0049), after reading the record in full and seeing the screenshots of the tube stand-in. Proposed 1 Nov 2026 by lane SIMVIS; the owner's answers below (Q1 to Q5) and the SIM-05 amendment were relayed by the coordinator on 1 Nov 2026. The owner's later request to highlight only the area affected, not whole triangles, is new work, not a change to this record.
 - **Date:** 1 Nov 2026.
 - **Lane:** SIMVIS, `claude/lane-simvis`, from `main` `17e1492`.
 - **Issue:** #478 (Simulate: the results report 27% of the part at 1 mm to 3 mm or more of material left, but it is not visible on the cut part).
