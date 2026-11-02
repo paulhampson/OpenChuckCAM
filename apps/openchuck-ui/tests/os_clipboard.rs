@@ -15,8 +15,8 @@
 //! `egui-winit` dev-dependency has no features of its own, so the test sees the backend
 //! only when the shipped `eframe` line enables it.
 //!
-//! Linux needs a display server: with neither `DISPLAY` nor `WAYLAND_DISPLAY` the test
-//! says it is skipped, unless `OPENCHUCK_REQUIRE_DISPLAY` is set (the UI smoke job runs it
+//! Linux needs an X11 display (X11 or XWayland): without `DISPLAY` the test says it is
+//! skipped, unless `OPENCHUCK_REQUIRE_DISPLAY` is set (the UI smoke job runs it
 //! under Xvfb with that set), when it fails. Windows and macOS runners have a clipboard.
 //! Copy, paste and the no-clipboard case run in one test, one after the other, because the clipboard is shared
 //! by every process on the machine.
@@ -32,18 +32,24 @@ fn clipboard() -> Clipboard {
     unsafe { Clipboard::new(None) }
 }
 
-/// Whether this machine has a clipboard to test against; on Linux, a display server.
+/// Whether this machine has a clipboard to test against; on Linux, an X11 display.
+///
+/// The test passes no display handle, so on Linux it reaches only `arboard`, not the
+/// `smithay-clipboard` backend the application uses on Wayland through its window. A
+/// Wayland session whose compositor lacks the data-control protocol would leave `arboard`
+/// on the in-process string and fail the round-trip although the application copies, so
+/// only `DISPLAY` (X11 or XWayland) counts here.
 fn has_clipboard() -> bool {
     if !cfg!(target_os = "linux") {
         return true;
     }
     let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
-    if set("DISPLAY") || set("WAYLAND_DISPLAY") {
+    if set("DISPLAY") {
         return true;
     }
     assert!(
         !set("OPENCHUCK_REQUIRE_DISPLAY"),
-        "OPENCHUCK_REQUIRE_DISPLAY is set but there is no DISPLAY or WAYLAND_DISPLAY"
+        "OPENCHUCK_REQUIRE_DISPLAY is set but there is no X11 DISPLAY"
     );
     false
 }
@@ -56,13 +62,13 @@ fn marker(what: &str) -> String {
 #[test]
 fn req_ui_12_req_nfr_16_req_nfr_07_copied_text_reaches_other_programs_and_pasted_text_arrives() {
     if !has_clipboard() {
-        // NFR-07: with no display server the backend cannot connect and falls back to the
+        // NFR-07: with no X11 display the backend cannot connect and falls back to the
         // in-process string; neither call may panic.
         let mut clipboard = clipboard();
         clipboard.set_text(marker("no display"));
         let _ = clipboard.get();
         println!(
-            "skipped: no display server, so no clipboard (set OPENCHUCK_REQUIRE_DISPLAY to fail instead)"
+            "skipped: no X11 display, so no clipboard to test (set OPENCHUCK_REQUIRE_DISPLAY to fail instead)"
         );
         return;
     }
