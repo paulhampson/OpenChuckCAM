@@ -401,7 +401,7 @@ jobs:
         run: |
           if [ -z "$OPENCHUCK_REQUIRE_ADAPTER" ]; then unset OPENCHUCK_REQUIRE_ADAPTER; fi
           cargo test --locked -p openchuck-viewport --test render -- --nocapture
-      # UI-12, NFR-16 (decision 0600, issue #431): copied text reaches the operating system's
+      # UI-12, NFR-16 (decision 0493, issue #431): copied text reaches the operating system's
       # clipboard and pasted text arrives. Linux needs a display, so it runs under Xvfb here;
       # OPENCHUCK_REQUIRE_DISPLAY makes it fail rather than skip if there is none.
       - name: Operating-system clipboard test

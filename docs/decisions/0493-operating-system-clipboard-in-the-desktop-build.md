@@ -1,6 +1,6 @@
-# 0600: The desktop build links the operating system's clipboard (UI-12, NFR-16, NFR-07; issue #431; lane RESULTS-COPY)
+# 0493: The desktop build links the operating system's clipboard (UI-12, NFR-16, NFR-07; issue #431; lane RESULTS-COPY)
 
-- **Status:** proposed (1 Nov 2026). The owner chose the fix, eframe's `clipboard` feature rather than calling `arboard` from `openchuck-ui` for the Copy buttons only, on 1 Nov 2026, relayed by the coordinator (decision 0049); the record itself waits for the owner's acceptance.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner chose the fix, eframe's `clipboard` feature rather than calling `arboard` from `openchuck-ui` for the Copy buttons only, the same day, also relayed.
 - **Date:** 1 Nov 2026.
 - **Issues:** #431 (the Results text cannot be copied), and its comment on the About window (OI-1580).
 - **Requirements:** UI-12 (the Results window's Copy all and copyable lines), NFR-16 (the About window's Copy), NFR-07 (no crash where there is no clipboard).

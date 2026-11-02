@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The desktop build links the operating system's clipboard (UI-12, NFR-16, NFR-07;
-//! decision 0600, issue #431).
+//! decision 0493, issue #431).
 //!
 //! egui hands copied text (`OutputCommand::CopyText`, from Copy all, the About window's
 //! Copy, Copy paths and Ctrl+C on selected text) to eframe, which passes it to
@@ -76,7 +76,7 @@ fn req_ui_12_req_nfr_16_req_nfr_07_copied_text_reaches_other_programs_and_pasted
         other.get().as_deref(),
         Some(copied.as_str()),
         "text the application copies must be on the operating system's clipboard \
-         (eframe's `clipboard` feature, decision 0600)"
+         (eframe's `clipboard` feature, decision 0493)"
     );
 
     // Paste: another program writes, a new application clipboard reads, as Ctrl+V does.
