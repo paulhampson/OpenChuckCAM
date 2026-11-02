@@ -681,7 +681,13 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 roles::OVERLAY_TEXT,
             );
             let scale = Rect::from_min_max(r.min + vec2(0.0, SCALE_TITLE), r.max);
-            colour_scale(&painter, scale, bands.tolerance, &viewport.band_filter);
+            colour_scale(
+                &painter,
+                scale,
+                bands.tolerance,
+                &viewport.band_filter,
+                unreachable_row(viewport),
+            );
         }
         let mut y = r.top() + held_top - note_height;
         for (galley, colour) in notes {
@@ -771,10 +777,29 @@ fn scale_note_height(painter: &egui::Painter, viewport: &Viewport) -> f32 {
 /// at the top.
 fn scale_held_top(viewport: &Viewport, notes: f32) -> f32 {
     if viewport.scale_bands().is_some() {
-        70.0 + SCALE_TITLE + notes
+        let row = if unreachable_row(viewport) {
+            UNREACHABLE_ROW
+        } else {
+            0.0
+        };
+        70.0 + row + SCALE_TITLE + notes
     } else {
         6.0 + notes
     }
+}
+
+/// The height of the legend's "Unreachable (enclosed)" row (issue 478).
+const UNREACHABLE_ROW: f32 = 16.0;
+
+/// Whether the legend lists "Unreachable (enclosed)": while the colours
+/// shown hold it, or its tick box hides it (then dimmed).
+fn unreachable_row(viewport: &Viewport) -> bool {
+    viewport.band_filter.hide_unreachable
+        || viewport.scale_bands().is_some_and(|b| {
+            b.bands
+                .iter()
+                .any(|(band, set)| *band == DeviationBand::Unreachable && !set.is_empty())
+        })
 }
 
 /// The bands of the colour scale in order, with the labels at its ends
@@ -800,7 +825,13 @@ fn on_target_cell() -> usize {
 /// "not measured" swatch and the band of "on the surface". A band the band
 /// filter hides is dimmed, one it shows in part is dimmed in its lower half,
 /// and while anything is hidden the box says so (SIM-15; decision 0163).
-fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandFilter) {
+fn colour_scale(
+    painter: &egui::Painter,
+    r: Rect,
+    tolerance: f64,
+    filter: &BandFilter,
+    unreachable: bool,
+) {
     let bar = Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(r.width() - 16.0, 10.0));
     let step = bar.width() / SCALE.len() as f32;
     for (i, band) in SCALE.iter().enumerate() {
@@ -845,23 +876,47 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandF
         font.clone(),
         roles::OVERLAY_TEXT,
     );
-    let unmeasured = Rect::from_min_size(r.left_top() + vec2(8.0, 38.0), vec2(14.0, 10.0));
-    painter.rect_filled(unmeasured, 0.0, to_color32(roles::WITHIN));
-    hatch(
-        painter,
-        unmeasured,
-        to_color32(roles::UNMEASURED_HATCH),
-        false,
-    );
+    // The two patterned bands, as the part draws them (decision 0633):
+    // "Not measured", then "Unreachable (enclosed)", dimmed when its own
+    // tick box hides it.
+    let swatch = |y: f32, band: DeviationBand| {
+        let at = Rect::from_min_size(r.left_top() + vec2(8.0, y), vec2(14.0, 10.0));
+        let dim = if filter.band_shown(band, tolerance) == Shown::Hidden {
+            HIDDEN_OPACITY
+        } else {
+            1.0
+        };
+        painter.rect_filled(
+            at,
+            0.0,
+            to_color32(roles::band_colour(band)).gamma_multiply(dim),
+        );
+        if let Some(h) = roles::band_hatch(band) {
+            hatch(
+                painter,
+                at,
+                to_color32(h.colour).gamma_multiply(dim),
+                h.cross,
+            );
+        }
+        painter.text(
+            at.right_center() + vec2(8.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            band.name(),
+            egui::FontId::proportional(11.0),
+            roles::OVERLAY_TEXT,
+        );
+        at
+    };
+    let unmeasured = swatch(38.0, DeviationBand::Unmeasured);
+    let row = if unreachable {
+        swatch(38.0 + UNREACHABLE_ROW, DeviationBand::Unreachable);
+        UNREACHABLE_ROW
+    } else {
+        0.0
+    };
     painter.text(
-        unmeasured.right_center() + vec2(8.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        "Not measured",
-        font.clone(),
-        roles::OVERLAY_TEXT,
-    );
-    painter.text(
-        r.left_top() + vec2(8.0, 52.0),
+        r.left_top() + vec2(8.0, 52.0 + row),
         egui::Align2::LEFT_TOP,
         format!("On the surface: within {tolerance:.3} mm"),
         font.clone(),
