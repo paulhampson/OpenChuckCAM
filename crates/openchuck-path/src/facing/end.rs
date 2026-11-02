@@ -170,6 +170,22 @@ pub fn plan_end(
     // reserves cutting accuracy inside tolerance, not another allowance.
     let cutting_x = target.x + sign * source_error;
     if !cutting_x.is_finite() || cutting_x < stock_x.0 || cutting_x > stock_x.1 {
+        // The stock ends at (or inside) the part's end: nothing is past it to
+        // face (issue #471, the owner's note N2), said in the user's words.
+        let (part_end, stock_end) = match end {
+            FacingEnd::Far => (part_x.1, stock_x.1),
+            FacingEnd::Start => (part_x.0, stock_x.0),
+        };
+        if part_end.is_finite()
+            && stock_end.is_finite()
+            && sign * (stock_end - part_end) <= parameters.tolerance
+        {
+            return Err(refuse(&format!(
+                "the stock ends at the part's end at X {part_end:.3}: there is no stock past \
+                 this end to face. If the real blank is longer, set the stock's length to \
+                 match it"
+            )));
+        }
         return Err(refuse("the target end plane is outside supplied stock"));
     }
     let coverage = parameters.extent.planar(

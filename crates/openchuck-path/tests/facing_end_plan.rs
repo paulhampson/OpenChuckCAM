@@ -890,3 +890,56 @@ fn req_op_24_req_nfr_05_source_error_does_not_change_nominal_end_coordinate_or_l
         assert!((plan.axial_planes.last().unwrap() - cut_x).abs() < 1e-12);
     }
 }
+
+#[test]
+fn req_op_24_facing_an_end_flush_with_the_stock_says_there_is_nothing_past_it() {
+    // Issue #471 (the owner's note N2): the stock ends at the part's far end,
+    // so there is nothing past it to face. The refusal says so in the user's
+    // words, and how to set the stock if the real blank is longer.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let text = plan_end(&setup, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face")
+            && text.contains("If the real blank is longer, set the stock's length to match it"),
+        "{text}"
+    );
+    // The same at the start end, when the far end is the held one.
+    let flush_start = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(10., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let start = FacingSetup {
+        stock: &flush_start,
+        held: [None, Some((55., 60.))],
+        ..setup
+    };
+    let text = plan_end(&start, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 10.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+}

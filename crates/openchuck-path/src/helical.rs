@@ -512,6 +512,10 @@ fn passes(
             .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
+            .chain(crate::finishing::across_axis_note(
+                region,
+                "Helical finishing",
+            ))
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);
