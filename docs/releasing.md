@@ -5,6 +5,7 @@ Two kinds of release, each started by a tag: the library family on crates.io (`l
 - [The library family on crates.io](#the-library-family-on-cratesio)
 - [Each application release](#each-application-release)
 - [One-time setup for the documentation site](#one-time-setup-for-the-documentation-site)
+- [Merge queue](#merge-queue)
 
 ## The library family on crates.io
 
@@ -142,3 +143,26 @@ The guide appears after the next Nightly build that publishes the `nightly` pre-
 3. Try to push to `docs-releases` yourself, for example `git push origin HEAD:docs-releases` from any clone. GitHub must refuse it, naming the ruleset. If it is accepted, the ruleset is not working: check that it is **Active** and that only the App is in its bypass list, then remove the branch you created (set the ruleset to **Disabled** for that, and back to **Active** after).
 
 The first application release then creates `docs-releases` with its own folder, and the site lists the version.
+
+## Merge queue
+
+How pull requests merge ([decision 0498](decisions/0498-merge-queue.md), accepted; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) items 4 and 5). Without the queue, the ruleset's "Require branches to be up to date" makes every merge turn the other pull requests behind, and each must merge `main`, push and wait for a full CI run.
+
+**Entering the queue.** A pull request joins the queue when it is ready for review (not a draft), its required checks pass and the owner (or the Merge Manager, when delegated) chooses **Merge when ready** or **Add to merge queue**. A draft cannot be queued: `CI required checks` fails on a draft by design (decision 0055 item 1). A lane does not merge `main` to catch up; the queue builds on the current `main`.
+
+**What the queue builds.** For each entry GitHub makes a temporary branch (`gh-readonly-queue/main/...`) holding `main`, the entries ahead and the pull request squashed, and starts a `merge_group` run of `ci.yml`. It runs the same jobs as a ready pull request run, with the path filters applied to the group's diff against its base sha, so a Markdown-only entry stays cheap. `CI required checks` must pass on that commit; `main` then moves to it. A failing entry is removed and the entries behind it are rebuilt. A `merge_group` run has no pull request, so it has no draft flag and is never cancelled by a pull request run (separate concurrency group).
+
+**Owner steps, in this order** (Settings, Rules, Rulesets, "Main branch protection"; GitHub's [merge queue documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges/configuring-pull-request-merges/managing-a-merge-queue) is the reference). Merge this pull request first, so that `ci.yml` and `cla.yml` already run on `merge_group` when the queue is switched on.
+
+1. **Enable the queue.** Tick **Require merge queue**. Merge method **Squash**, build concurrency 1 to start (raise it once the first runs are clean), minimum and maximum group size 1, "Only merge non-failing pull requests" (**ALLGREEN**), a status-check timeout longer than the slowest CI run (60 minutes).
+2. **Required checks.** Keep **Require status checks** with `CI required checks`. **Remove `CodeRabbit`** from that list: it reports on the pull request head and, as far as we know, never on a queue commit, so the queue would wait for it until it timed out. *Not verified* against GitHub's documentation (the author of this section could not read it); if CodeRabbit does report on queue commits it may stay. The first queued pull request settles it.
+3. **The strict rule.** "Require branches to be up to date": the queue tests every entry on the latest `main`, which is what the rule asks for. Leave the box as it is if the ruleset editor allows it, or clear it if the editor reports a conflict. This is the owner's call. *Not verified* either; check it on the first queued pull request.
+4. **Process rule.** The rule that no pull request merges without a CodeRabbit review of its final head is now a process rule for the Merge Manager only; GitHub no longer enforces it (if step 2 removed the check).
+
+**First-run checks** (OI-2001; a queue cannot be run from a branch, so nothing here is tested yet), in order:
+
+1. Queue a trivial Markdown-only (docs) pull request.
+2. Expect a `merge_group` run of `CI` on a `gh-readonly-queue/main/...` branch: `Detect changes` lists the filters, the heavy jobs are skipped, `CI required checks` reports success on the queue commit, and nothing waits on `CodeRabbit`.
+3. Check the squash commit on `main`: it has the sha of the queue commit, one commit for the pull request, authored as the contributor (the CLA's commit-author rule).
+4. Queue a small code pull request: the heavy jobs, the fuzz smoke and `cargo semver-checks` run on the queue commit.
+5. Note that the push to `main` after a queue merge runs the full matrix until OI-1999 is settled.
