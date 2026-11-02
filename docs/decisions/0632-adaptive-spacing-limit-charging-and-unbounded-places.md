@@ -1,6 +1,6 @@
 # 0632: Adaptive spacing charges its query limit station by station, and refines a place it cannot bound (OP-03, OP-04, OP-05, GC-07, NFR-06, NFR-07, NFR-12; issues #462 and #467; lane PATHBUGS)
 
-- **Status:** proposed (2 Nov 2026) by lane PATHBUGS. Item 2 is the owner's choice (option B1 on OI-1510, 2 Nov 2026), relayed by the coordinator (decision 0049); item 4 is the owner's decision on OI-1800, relayed the same day. Item 1 implements decision 0239 item 8 as written (the coordinator's answer). Only the owner accepts this record.
+- **Status:** accepted by the project owner on 2 Nov 2026, unchanged, relayed by the coordinator (decision 0049) after reading it in full. Proposed the same day by lane PATHBUGS. Item 2 is the owner's choice B1 on OI-1510 and item 4 the owner's decision on OI-1800, both relayed by the coordinator; item 1 implements decision 0239 item 8 as written (the coordinator's answer).
 - **Date:** 2 Nov 2026.
 - **Issues:** #462 (helical finishing with adaptive spacing on, the default, ends with a partial path on the tutorial's turned piece), #467 (a proptest of the B-spline closest point missed its tolerance on macOS).
 - **Amends:** [0239](0239-adaptive-pass-spacing.md) items 8 and 11 (adaptive pass spacing); [0344](0344-finishing-stepdown-and-free-ends.md) item 2 (the wording of a free end's missing Stepdown).
