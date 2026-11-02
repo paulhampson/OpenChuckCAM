@@ -76,6 +76,11 @@ const VISIBLE_GAP: f64 = 0.1;
 const SPLIT: f64 = 4.0;
 const MIN_SPLIT: f64 = 0.5;
 
+/// How far, in millimetres, a sample may lie beyond the end of a held
+/// region and still count as on it: rounding in the host's widening and
+/// in the region's faces.
+const GRIP_SLACK: f64 = 1e-6;
+
 /// The size of a cell of the reach check, millimetres along X and round
 /// the axis: one drop answers for the samples of a cell.
 const REACH_CELL: f64 = 0.25;
@@ -276,19 +281,23 @@ impl Walls<'_> {
         // sample inside the interval shrunk by them is under the grip, which
         // holds it by design and the simulation does not count (decision
         // record 0194).
+        // The radius is the tool's own, not grown by the stock to leave, as
+        // the host widens by it. The held region's own faces lie on the
+        // shrunk interval's ends, and the samples on them are of the
+        // workholding, not the part, so the ends count as under the grip.
         let widest = HELD_CLEARANCE
-            + self
-                .grown
+            + input
+                .tool
                 .pieces()
                 .iter()
                 .map(|p| p.end().radius.0)
-                .fold(self.grown.cutting_radius(), f64::max)
+                .fold(input.tool.cutting_radius(), f64::max)
                 .max(input.shank.map_or(0.0, |s| s.radius));
         let gripped = |x: f64| {
             input
                 .keep_out
                 .iter()
-                .any(|&(a, b)| x > a + widest && x < b - widest)
+                .any(|&(a, b)| x >= a + widest - GRIP_SLACK && x <= b - widest + GRIP_SLACK)
         };
         // One representative per small cell of the surface, of one kind of
         // place: the report is of areas, and a drop per sample would cost
