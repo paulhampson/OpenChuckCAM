@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.0
+
+- **Family release (0.33.0, SWARF-FLOOR; issue #435; decision 0491, accepted, relayed by the coordinator):** on swarf, Cut short lifts the tool's tip off an avoid or check set before it cuts the pass short, and Tip extension takes a negative value; `openchuck-path`'s `swarf::Pose` and `swarf::Limits` gain fields (an API break) and saved swarf operations with such a set can be made differently. No change in this crate; all family crates advance together under 0048.
+
 ## 0.32.0
 
 - **Family release (0.32.0, CRANKEXCESS; issue #439; decision 0410, accepted):** simultaneous finishing's turn at a face beside a section off the rotary axis goes round that section's own centre, which changes `openchuck-path`'s output for such parts, so the family moves together. No change in this crate.
