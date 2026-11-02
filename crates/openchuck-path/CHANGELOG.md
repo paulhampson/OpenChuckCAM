@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (lane FACEAPPROACH; the coordinator assigns the minor version)
+
+- **Breaking (FACEAPPROACH, issue #499, decision 0640, proposed):** End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low.
+  - **API.** `facing::end::EndFacingParameters` gains `approach` (the operation's approach distance); struct literals add it. `EndFacingParameters::read` fills it from `approach_distance`.
+  - **Air point.** Where each End band starts and ends, the complete tool is the approach distance (never less than a quarter of the tolerance) from the stock's end face and any protection beyond it, not a quarter of the tolerance.
+  - **Bands.** End bands reach an eighth of the tolerance past the requested top and bottom edges, and the band spacing is at most the flute length less twice that, so neighbouring bands overlap by at least as much; a tab-limited band is not carried further.
+  - **Links.** Facing's schema gains `link_height` (Links between passes, Retract by default, or Low), shown for End and Box; Low sets `Pass::low_link` on every End and Box pass (decision 0496's rule). A saved operation without it is unchanged.
+  - **Output.** Every End facing path changes (air points and band heights). Box, Flat and Round paths are unchanged unless Low is chosen. No golden file changes.
+
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
 
 - **Breaking (0.35.0, PATH-TIDY, issue #436, decision 0496, accepted):** axial and indexed finishing can keep the links between passes low. `Pass` has the new public field `low_link: bool`; a host's struct literals add `low_link: false` (a pass with `true` is linked against the setup's stock at the approach distance above its highest point under the tool, where that is below the retract height and clear of held regions, instead of at the retract height). Additive: `axial::parameter::{LINK_HEIGHT, RETRACT, LOW}` (`link_height`, `retract` by default or `low`, offered by axial and indexed finishing). With the default every path and golden file is unchanged; links that cannot be lowered retract as before and a path note counts them.
