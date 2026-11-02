@@ -68,6 +68,8 @@ mod checkpoint_tests;
 mod open_recovery_tests;
 #[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -102,6 +104,10 @@ const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
+
+/// The answer to a check of which recent folders exist: the list that was
+/// looked at, and the folders among them that exist.
+type RecentCheck = std::sync::mpsc::Receiver<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)>;
 
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +197,19 @@ pub struct Shell {
     /// The folder the next Open dialog starts with: a recovery line's
     /// project (decision 0460).
     open_hint: Option<String>,
+    /// The recent project chosen in this frame, so the action log can leave
+    /// its folder name out (NFR-18).
+    recent_clicked: Option<std::path::PathBuf>,
+    /// The running check of which recent folders exist, and when it last
+    /// started (the check is off the UI thread; issue 381).
+    recent_check: Option<RecentCheck>,
+    recent_checked_at: Option<std::time::Instant>,
+    /// Held by a test to keep the check from answering.
+    #[cfg(test)]
+    recent_gate: Option<std::sync::Arc<std::sync::Mutex<()>>>,
+    /// The click lines the action log was given (tests).
+    #[cfg(test)]
+    logged_clicks: Vec<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -331,6 +350,13 @@ impl Shell {
             recovery_project: None,
             edit_context: None,
             open_hint: None,
+            recent_clicked: None,
+            recent_check: None,
+            recent_checked_at: None,
+            #[cfg(test)]
+            recent_gate: None,
+            #[cfg(test)]
+            logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),
