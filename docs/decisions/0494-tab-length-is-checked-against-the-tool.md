@@ -1,4 +1,4 @@
-# 0470: A tab's length along X, not its diameter, is checked against the tool (OP-21, SET-09, NFR-07; issue #438; lane TABS-CHECK)
+# 0494: A tab's length along X, not its diameter, is checked against the tool (OP-21, SET-09, NFR-07; issue #438; lane TABS-CHECK)
 
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049): the owner chose option A of three (below). Amends item 6 of [decision 0035](0035-workholding-and-retaining-tabs.md) and the owner's answer on OI-159.
 - **Date:** 1 Nov 2026.

@@ -590,7 +590,7 @@ fn req_op_21_a_tab_outside_the_end_zones_or_narrower_than_the_tool_is_refused() 
     let error = b.app.regenerate().unwrap_err().to_string();
     assert!(error.contains("head or the tail zone"), "{error}");
     std::fs::remove_dir_all(&b.dir).unwrap();
-    // Tab 1 is 8 mm long along X, shorter than a 9 mm tool (decision 0470);
+    // Tab 1 is 8 mm long along X, shorter than a 9 mm tool (decision 0494);
     // its diameter (10 mm at the narrow end) does not matter.
     let b = build("narrow", workholding(), 1, 9.0);
     let error = b.app.regenerate().unwrap_err().to_string();

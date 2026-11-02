@@ -1621,7 +1621,7 @@ mod tests {
         let mut panel = WorkholdingPanel::new(&setup);
         // The cube spans X about -5 to 5 in stock from -7 to 7, so the head
         // zone is 2 mm long and cannot hold a tab as long as the 4 mm tool is
-        // wide (decision 0470): the valid draft is a 1 mm grip alone.
+        // wide (decision 0494): the valid draft is a 1 mm grip alone.
         panel.draft.edit().start = Some(HeldRegion {
             length: Millimetres(1.0),
             diameter: None,

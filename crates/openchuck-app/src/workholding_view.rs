@@ -417,7 +417,7 @@ pub fn no_default_line(
 }
 
 /// The read-only line of a tab's length along X compared with the tools of
-/// the setup's operations (11.7 item 4; decision 0470), and whether it is a
+/// the setup's operations (11.7 item 4; decision 0494), and whether it is a
 /// warning: "3.000 mm, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1
 /// Rough".
 ///

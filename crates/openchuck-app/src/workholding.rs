@@ -7,7 +7,7 @@
 //! each tab), which join the model's surface as the composite target of every
 //! operation, the simulation and the deviation report; checks what needs the
 //! part and the tool (tabs only in the head and tail zones, a tab not
-//! shorter along X than the tool is wide, decision 0470); computes the default tabs of decision 0035
+//! shorter along X than the tool is wide, decision 0494); computes the default tabs of decision 0035
 //! (OI-158); and builds the deviation target.
 //!
 //! Positions are model X, which is the rotary axis; angles about the axis run
@@ -213,7 +213,7 @@ pub fn selection_reach_notes(
 
 /// The note for the first tab shorter along X than a tool of `tool_diameter`
 /// is wide, naming the tool and the operation that uses it, or `None`
-/// (OI-159; decision 0470; interface specification 11.7).
+/// (OI-159; decision 0494; interface specification 11.7).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
@@ -1169,7 +1169,7 @@ mod tests {
         }
     }
 
-    /// OP-21, decision 0470 (amends 0035 item 6): the tab's length along X is
+    /// OP-21, decision 0494 (amends 0035 item 6): the tab's length along X is
     /// compared with the tool's diameter, not the tab's diameter. A wide tab
     /// that is shorter than the tool is refused.
     #[test]
@@ -1220,7 +1220,7 @@ mod tests {
         }]
     }
 
-    /// OP-21, decision 0202 item 3 and decision 0470: an automatic tab is
+    /// OP-21, decision 0202 item 3 and decision 0494: an automatic tab is
     /// compared with the tool where it is now, not at the length it was last
     /// applied with. Stored 8 mm long; the part now starts at X 12, so the
     /// head gap is 2 mm and a 4 mm tool does not fit: refused when generating
