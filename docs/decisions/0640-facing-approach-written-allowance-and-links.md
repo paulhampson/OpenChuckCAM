@@ -62,7 +62,7 @@ The export refusal had a measurable cause. The lowest band sat exactly on the co
 - **Not in this record.** These were reported on #499 and are left open:
   - End facing reaches 35 mm below the stock top with 25 mm of flute. The owner's expectation is to turn A through 180° at the flute limit (OI-2001).
   - The Facing cutter-sweep overlay is drawn in the Cut colour, at the tip and at the flute top of every fed move, and only when the last run's project equals the current one. This is what made the Operations view look different with Rough enabled and disabled (OI-2002).
-  - Box facing refuses on the Baluster with an unfinished strip near the held end. This is a separate issue, created by the coordinator.
+  - Box facing refuses on the Baluster with an unfinished strip near the held end: issue #500. It has a different cause: nothing covers X 0 to 9.4 next to the held region.
 
 ## Verification
 
