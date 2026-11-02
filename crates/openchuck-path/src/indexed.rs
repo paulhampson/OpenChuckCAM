@@ -113,6 +113,7 @@ impl Strategy for IndexedFinishing {
         let own = super::axial::AxialFinishing.schema();
         for name in [
             axial_parameter::DIRECTION,
+            axial_parameter::LINK_HEIGHT,
             axial_parameter::MAX_X_STEP,
             crate::extend::parameter::EXTEND,
             crate::extend::parameter::EXTEND_DISTANCE,
@@ -311,7 +312,8 @@ fn passes(
     };
     // Finishing layers above them, when on; each layer keeps the pass's A
     // (decision record 0345).
-    let (passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    along.mark_low_links(&mut passes);
     Ok(Made {
         passes,
         range: along.range(),
