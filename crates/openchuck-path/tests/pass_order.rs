@@ -90,7 +90,7 @@ fn both(strategy: &dyn Strategy) -> (GeneratedPath, GeneratedPath) {
         keep_out: &keep_out,
         ..f.input()
     };
-    let mut get = |o: &str| run(|ctx| generate(strategy, &input, &values(o), ctx)).unwrap();
+    let get = |o: &str| run(|ctx| generate(strategy, &input, &values(o), ctx)).unwrap();
     (get(order::AFTER_MAIN), get(order::BY_REGION))
 }
 
@@ -148,4 +148,47 @@ fn req_gc_07_req_nfr_06_by_region_is_identical_at_1_2_and_n_threads() {
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
+}
+
+/// How far the cuts' X centres travel from one cut to the next.
+fn sweep(path: &GeneratedPath) -> f64 {
+    let centres: Vec<f64> = cuts(path)
+        .iter()
+        .map(|c| {
+            let (lo, hi) = c
+                .iter()
+                .fold((i64::MAX, i64::MIN), |(l, h), p| (l.min(p[0]), h.max(p[0])));
+            0.5 * (lo + hi) as f64 * 1e-4
+        })
+        .collect();
+    centres.windows(2).map(|w| (w[1] - w[0]).abs()).sum()
+}
+
+#[test]
+fn req_op_14_req_sim_08_the_crankshaft_extra_passes_are_cut_beside_their_region() {
+    // The owner's choice (decision record 0639): by region the tool goes
+    // back along the part less, and the estimated time is at most one per
+    // cent longer.
+    for strategy in [
+        &SimultaneousFinishing as &dyn Strategy,
+        &HelicalFinishing as &dyn Strategy,
+    ] {
+        let (after, by_region) = both(strategy);
+        let (s0, s1) = (sweep(&after), sweep(&by_region));
+        let (t0, t1) = (duration(&after), duration(&by_region));
+        eprintln!(
+            "{}: X sweep {s0:.1} -> {s1:.1} mm, time {t0:.1} -> {t1:.1} s",
+            strategy.name()
+        );
+        assert!(s1 < 0.8 * s0, "{s0} {s1}");
+        assert!(t1 <= 1.01 * t0, "{t0} {t1}");
+        // The user is told, and the old order says nothing new.
+        let told = |p: &GeneratedPath| {
+            p.notes
+                .iter()
+                .any(|n| n.message.contains("pass order by region"))
+        };
+        assert!(told(&by_region), "{:?}", by_region.notes);
+        assert!(!told(&after));
+    }
 }

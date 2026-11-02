@@ -837,14 +837,17 @@ fn run(
         }
         area = Some(c.area);
     }
-    let passes = crate::order::arrange(
+    let arranged = crate::order::arrange(
         parameters.text(crate::order::PARAMETER)?,
         passes,
         groups,
-        crate::order::Rates::of(&input.max_feeds),
+        crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+        parameters.number(names::FEED)?,
     );
+    let passes = arranged.passes;
 
     let mut notes = Vec::new();
+    notes.extend(arranged.note);
     if let Some(at) = findings.slope_at
         && findings.slope > 0.05
     {

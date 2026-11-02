@@ -5,23 +5,29 @@
 //! A strategy that cuts extra passes after its main ones (the turns at faces
 //! across the rotary axis, decision record 0297, and the contours on surfaces
 //! hidden from the drive, decision record 0368) gives them here as groups.
-//! With [`BY_REGION`] each group is cut where it costs the least travel
-//! between passes, beside the main passes of its own region, instead of
-//! after all of them; with [`AFTER_MAIN`] they are cut after the main passes,
-//! as before.
+//! With [`BY_REGION`] each group is cut beside the main passes of its own
+//! region along X, instead of after all of them, so the tool does not go
+//! back along the part for them; with [`AFTER_MAIN`] they are cut after the
+//! main passes, as before.
 //!
 //! What may not change is fixed by the strategy, not here: the main passes
 //! keep their order, and every pass keeps its points, its direction and its
 //! way round (OP-15, no reversal in a cut). A group moves as one, so a turn
-//! split into pieces, or the contours of one hidden area, stay together.
-//! Every link is still made and checked by the shared assembly (OP-14,
-//! SET-09). The cost of a place is the time of the links that it changes,
-//! from the machine's rapid rates along X and in A, moving together, A the
-//! short way round, as the assembly fits each pass by whole turns to the
-//! one before. The number of links does not change, so neither does the
-//! time to leave, retract and enter. The order chosen is kept only when its
-//! links take less time in all than those of the old order, so the
-//! estimated time is never longer (SIM-08).
+//! split into pieces, or the contours of one hidden area, stay together, and
+//! never goes before the first main pass. Every link is still made and
+//! checked by the shared assembly (OP-14, SET-09).
+//!
+//! A group goes where the links it changes travel least along X, A the short
+//! way round deciding a tie (the assembly fits each pass by whole turns to
+//! the one before). The number of links does not change, so neither does the
+//! time to leave, retract and enter: only the travel between passes does.
+//! The new order is kept only when its links travel less along X in all, and
+//! take no more than one hundredth of the operation's estimated time longer
+//! than before (the owner's choice, decision record 0639; SIM-08): the
+//! links' travel from the machine's rapid rates along X and in A, moving
+//! together, and the estimate from the cutting at the programmed feed plus
+//! each link out to the clearance radius and back. Otherwise the order is
+//! as before.
 //!
 //! Deterministic (GC-07, NFR-06): the groups are placed one after another
 //! in the order given, and a tie goes to the earliest place.
@@ -57,20 +63,27 @@ pub fn spec() -> ParameterSpec {
     }
 }
 
-/// The machine's rapid rates, for the cost of a link.
+/// The machine's rapid rates and the clearance radius, for the cost of a
+/// link.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Rates {
     /// Along X, mm per minute.
     x: f64,
     /// In A, degrees per minute.
     a: f64,
+    /// Towards and away from the axis (the machine's Z), mm per minute.
+    z: f64,
+    /// The fastest A may turn while cutting, degrees per minute.
+    turning: f64,
+    /// The radius links retract to, mm (SET-06).
+    clearance: f64,
 }
 
 impl Rates {
     /// The rapid rates of `feeds`. A rate that is not positive and finite
     /// counts as so slow that any move along that axis costs the most
     /// (NFR-07): the order then avoids it, and never divides by zero.
-    pub(crate) fn of(feeds: &MaxFeeds) -> Self {
+    pub(crate) fn of(feeds: &MaxFeeds, clearance: f64) -> Self {
         let rate = |r: f64| {
             if r.is_finite() && r > 0.0 {
                 r
@@ -81,6 +94,13 @@ impl Rates {
         Self {
             x: rate(feeds.rapid_linear.0),
             a: rate(feeds.rapid_rotary.0),
+            z: rate(feeds.rapid_z.0),
+            turning: rate(feeds.rotary.0),
+            clearance: if clearance.is_finite() {
+                clearance
+            } else {
+                0.0
+            },
         }
     }
 
@@ -92,11 +112,13 @@ impl Rates {
     }
 }
 
-/// Where a pass starts or ends: its tip's X and its A.
+/// Where a pass starts or ends: its tip's X, its A and its distance from
+/// the rotary axis.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct End {
     x: f64,
     a: f64,
+    r: f64,
 }
 
 /// The first and last of a run of passes that have points.
@@ -106,42 +128,114 @@ fn ends(passes: &[Pass]) -> Option<(End, End)> {
     let end = |c: &crate::strategy::CutPoint| End {
         x: c.tip.x,
         a: c.a.0,
+        r: c.tip.y.hypot(c.tip.z),
     };
     Some((end(first), end(last)))
 }
 
-/// The time of the links between consecutive blocks.
-fn links(blocks: &[Vec<Pass>], rates: Rates) -> f64 {
+/// Millimetres along X that count as much as one degree of A when two
+/// places travel the same along X: a tie-break only.
+const TIE: f64 = 1e-4;
+
+/// How much longer the links may take in all, as a share of the cutting
+/// time (the owner's choice: one per cent, decision record 0639).
+const ALLOWANCE: f64 = 0.01;
+
+impl End {
+    /// The travel along X from `self` to `q`, with A as the tie-break.
+    fn travel(self, q: End) -> f64 {
+        let turn = (q.a - self.a).rem_euclid(360.0);
+        (q.x - self.x).abs() + TIE * turn.min(360.0 - turn)
+    }
+}
+
+/// The sum of `cost` over the links between consecutive blocks.
+fn total(blocks: &[Vec<Pass>], cost: impl Fn(End, End) -> f64) -> f64 {
     let ends: Vec<(End, End)> = blocks.iter().filter_map(|b| ends(b)).collect();
     ends.windows(2)
         .map(|w| match w {
-            [(_, p), (q, _)] => rates.link(*p, *q),
+            [(_, p), (q, _)] => cost(*p, *q),
             _ => 0.0,
         })
         .sum()
 }
 
+/// The estimated minutes of `blocks`, no more than the assembled path
+/// takes: each cut at `feed` or as fast as A may turn, whichever is slower,
+/// and each link between passes out to the clearance radius, across and
+/// back in, at the rapid rates. It is the base of the allowance only, so
+/// the allowance is never more than one hundredth of the real time.
+fn estimate(blocks: &[Vec<Pass>], rates: Rates, feed: f64) -> f64 {
+    let passes: Vec<Vec<Pass>> = blocks.iter().flatten().map(|p| vec![p.clone()]).collect();
+    let radial = |p: End, q: End| {
+        ((rates.clearance - p.r).max(0.0) + (rates.clearance - q.r).max(0.0)) / rates.z
+    };
+    cutting(blocks, rates, feed) + total(&passes, |p, q| radial(p, q) + rates.link(p, q))
+}
+
+/// Minutes to cut `blocks`: each move at `feed` mm per minute along the
+/// tips or at the fastest A may turn, whichever is slower; a feed that is
+/// not positive and finite counts as no time (NFR-07).
+fn cutting(blocks: &[Vec<Pass>], rates: Rates, feed: f64) -> f64 {
+    let feed = if feed.is_finite() && feed > 0.0 {
+        feed
+    } else {
+        f64::INFINITY
+    };
+    blocks
+        .iter()
+        .flatten()
+        .map(|p| {
+            p.points
+                .windows(2)
+                .map(|w| match w {
+                    [a, b] => {
+                        ((b.tip - a.tip).length() / feed).max((b.a.0 - a.a.0).abs() / rates.turning)
+                    }
+                    _ => 0.0,
+                })
+                .sum::<f64>()
+        })
+        .sum()
+}
+
+/// The passes in their order, and what the order did, for the user.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Arranged {
+    /// The passes, in cutting order.
+    pub passes: Vec<Pass>,
+    /// A note saying what cutting by region did or why it did not, when it
+    /// was asked for and there was something to move.
+    pub note: Option<String>,
+}
+
 /// `main` then `groups`, in the order `order` (the parameter's value) asks
-/// for. `after_main` (and any value but `by_region`) keeps them as given.
+/// for, the cutting at `feed` mm per minute. `after_main` (and any value
+/// but `by_region`) keeps them as given, with no note.
 pub(crate) fn arrange(
     order: &str,
     main: Vec<Pass>,
     groups: Vec<Vec<Pass>>,
     rates: Rates,
-) -> Vec<Pass> {
+    feed: f64,
+) -> Arranged {
     if order == BY_REGION {
-        by_region(main, groups, rates)
+        by_region(main, groups, rates, feed)
     } else {
-        main.into_iter()
-            .chain(groups.into_iter().flatten())
-            .collect()
+        Arranged {
+            passes: main
+                .into_iter()
+                .chain(groups.into_iter().flatten())
+                .collect(),
+            note: None,
+        }
     }
 }
 
 /// Each group placed after the main pass (or group already placed) where
-/// its links cost the least, never before the first main pass; kept as
-/// given unless that saves time in all.
-fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates) -> Vec<Pass> {
+/// its links travel least along X, never before the first main pass; kept
+/// as given unless that travels less in all within the time allowed.
+fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -> Arranged {
     let mut old: Vec<Vec<Pass>> = main.into_iter().map(|p| vec![p]).collect();
     // A main pass with no points cannot anchor a group: it keeps its place
     // and the groups go round it.
@@ -156,11 +250,12 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates) -> Vec<Pass>
         };
         let mut best: Option<(f64, usize)> = None;
         for at in first + 1..=placed.len() {
-            let prev = placed[..at].iter().rev().find_map(|b| ends(b)).map(|e| e.1);
-            let next = placed[at..].iter().find_map(|b| ends(b)).map(|e| e.0);
+            let (before, after) = placed.split_at(at);
+            let prev = before.iter().rev().find_map(|b| ends(b)).map(|e| e.1);
+            let next = after.iter().find_map(|b| ends(b)).map(|e| e.0);
             let cost = match (prev, next) {
-                (Some(p), Some(n)) => rates.link(p, s) + rates.link(f, n) - rates.link(p, n),
-                (Some(p), None) => rates.link(p, s),
+                (Some(p), Some(n)) => p.travel(s) + f.travel(n) - p.travel(n),
+                (Some(p), None) => p.travel(s),
                 _ => continue,
             };
             if best.is_none_or(|(c, _)| cost < c) {
@@ -171,12 +266,34 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates) -> Vec<Pass>
         moved |= at != placed.len();
         placed.insert(at, group);
     }
-    let chosen = if moved && links(&placed, rates) < links(&old, rates) {
-        placed
+    let time = |b: &[Vec<Pass>]| total(b, |p, q| rates.link(p, q));
+    let x = |b: &[Vec<Pass>]| total(b, |p, q| (q.x - p.x).abs());
+    let (x0, x1) = (x(&old), x(&placed));
+    let longer = 60.0 * (time(&placed) - time(&old));
+    let allowed = 60.0 * ALLOWANCE * estimate(&old, rates, feed);
+    let (chosen, note) = if !moved || x1 >= x0 {
+        (old, None)
+    } else if longer <= allowed {
+        let note = format!(
+            "the turns at faces across the rotary axis and the passes on surfaces hidden from \
+             the drive are cut beside the passes of their region (pass order by region): the \
+             tool travels {x1:.1} mm along the part between passes instead of {x0:.1} mm, and \
+             the moves between passes take about {longer:+.1} s"
+        );
+        (placed, Some(note))
     } else {
-        old
+        let note = format!(
+            "the turns at faces across the rotary axis and the passes on surfaces hidden from \
+             the drive are cut after the main passes, although the pass order is by region: \
+             beside their region the moves between passes would take about {longer:.1} s \
+             longer, more than one hundredth of the operation's estimated time ({allowed:.1} s)"
+        );
+        (old, Some(note))
     };
-    chosen.into_iter().flatten().collect()
+    Arranged {
+        passes: chosen.into_iter().flatten().collect(),
+        note,
+    }
 }
 
 #[cfg(test)]
@@ -217,8 +334,21 @@ mod tests {
         pass(x, x, a, a + 360.0)
     }
 
+    fn arrange_passes(
+        order: &str,
+        main: Vec<Pass>,
+        groups: Vec<Vec<Pass>>,
+        rates: Rates,
+        feed: f64,
+    ) -> Vec<Pass> {
+        arrange(order, main, groups, rates, feed).passes
+    }
+
+    /// A finishing feed, mm per minute.
+    const FEED: f64 = 600.0;
+
     fn rates() -> Rates {
-        Rates::of(&MachineProfile::example_x_rotary().max_feeds)
+        Rates::of(&MachineProfile::example_x_rotary().max_feeds, 20.0)
     }
 
     fn label(p: &Pass) -> (f64, f64) {
@@ -230,14 +360,14 @@ mod tests {
     fn req_gc_07_after_main_keeps_the_order_as_given() {
         let main = vec![pass(0.0, 10.0, 0.0, 3600.0), pass(10.0, 20.0, 0.0, 3600.0)];
         let groups = vec![vec![turn(5.0, 0.0)], vec![turn(15.0, 0.0)]];
-        let out = arrange(AFTER_MAIN, main.clone(), groups.clone(), rates());
+        let out = arrange_passes(AFTER_MAIN, main.clone(), groups.clone(), rates(), FEED);
         let expected: Vec<Pass> = main
             .into_iter()
             .chain(groups.into_iter().flatten())
             .collect();
         assert_eq!(out, expected);
         // An unknown value is not a reason to change a saved operation.
-        let unknown = arrange("other", expected.clone(), Vec::new(), rates());
+        let unknown = arrange_passes("other", expected.clone(), Vec::new(), rates(), FEED);
         assert_eq!(unknown, expected);
     }
 
@@ -251,7 +381,7 @@ mod tests {
             pass(20.0, 30.0, 0.0, 3600.0),
         ];
         let groups = vec![vec![turn(10.0, 0.0)], vec![turn(20.0, 0.0)]];
-        let out = arrange(BY_REGION, main, groups, rates());
+        let out = arrange_passes(BY_REGION, main, groups, rates(), FEED);
         let xs: Vec<(f64, f64)> = out.iter().map(label).collect();
         assert_eq!(
             xs,
@@ -280,7 +410,7 @@ mod tests {
             ],
             vec![turn(10.0, 15.0)],
         ];
-        let out = arrange(BY_REGION, main.clone(), groups.clone(), rates());
+        let out = arrange_passes(BY_REGION, main.clone(), groups.clone(), rates(), FEED);
         // Every pass is there once, unchanged (none reversed).
         assert_eq!(out.len(), 6);
         for p in main.iter().chain(groups.iter().flatten()) {
@@ -305,7 +435,7 @@ mod tests {
         // anywhere else costs more.
         let main = vec![pass(0.0, 10.0, 0.0, 3600.0), pass(10.0, 20.0, 0.0, 3600.0)];
         let groups = vec![vec![turn(20.0, 0.0)]];
-        let out = arrange(BY_REGION, main.clone(), groups.clone(), rates());
+        let out = arrange_passes(BY_REGION, main.clone(), groups.clone(), rates(), FEED);
         let expected: Vec<Pass> = main
             .into_iter()
             .chain(groups.into_iter().flatten())
@@ -314,9 +444,10 @@ mod tests {
     }
 
     #[test]
-    fn req_sim_08_the_links_never_take_longer_than_after_the_main_passes() {
+    fn req_sim_08_the_links_never_travel_further_nor_take_much_longer() {
         // Deterministic pseudo-random layouts, A included: whatever the
-        // places chosen, the links in all never take longer than before.
+        // places chosen, the links travel no further along X in all, and
+        // take no longer than one hundredth of the cutting time more.
         let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
         let mut next = move || {
             seed ^= seed << 13;
@@ -325,6 +456,7 @@ mod tests {
             (seed >> 11) as f64 / (1_u64 << 53) as f64
         };
         let r = rates();
+        let mut changed = 0;
         for _ in 0..200 {
             let main: Vec<Pass> = (0..5)
                 .map(|k| {
@@ -342,10 +474,54 @@ mod tests {
                 .map(|p| vec![p])
                 .chain(groups.iter().cloned())
                 .collect();
-            let out = arrange(BY_REGION, main, groups, r);
+            let out = arrange_passes(BY_REGION, main, groups, r, FEED);
             let after: Vec<Vec<Pass>> = out.into_iter().map(|p| vec![p]).collect();
-            assert!(links(&after, r) <= links(&before, r) + 1e-12);
+            let x = |b: &[Vec<Pass>]| total(b, |p, q| (q.x - p.x).abs());
+            let time = |b: &[Vec<Pass>]| total(b, |p, q| r.link(p, q));
+            assert!(x(&after) <= x(&before) + 1e-12);
+            assert!(time(&after) <= time(&before) + ALLOWANCE * estimate(&before, r, FEED) + 1e-12);
+            changed += usize::from(after != before);
         }
+        assert!(changed > 50, "{changed}");
+    }
+
+    #[test]
+    fn req_sim_08_a_place_that_costs_more_than_the_allowance_is_not_taken() {
+        // The turn belongs between the two passes along X, but there it
+        // would need A to turn half a turn twice; at a fast feed the cutting
+        // time is short, so the allowance does not cover it.
+        let main = vec![pass(0.0, 10.0, 0.0, 0.0), pass(10.0, 20.0, 0.0, 0.0)];
+        let groups = vec![vec![pass(10.0, 10.0, 180.0, 180.0)]];
+        let kept = arrange_passes(BY_REGION, main.clone(), groups.clone(), rates(), 1.0e6);
+        let expected: Vec<Pass> = main
+            .iter()
+            .cloned()
+            .chain(groups.iter().flatten().cloned())
+            .collect();
+        assert_eq!(kept, expected);
+        // At a slow feed the same move is within it.
+        let moved = arrange_passes(BY_REGION, main.clone(), groups.clone(), rates(), 1.0);
+        assert_eq!(moved[1], groups[0][0]);
+    }
+
+    #[test]
+    fn req_sim_08_the_note_says_what_the_order_did() {
+        let main = vec![pass(0.0, 10.0, 0.0, 0.0), pass(10.0, 20.0, 0.0, 0.0)];
+        let near = vec![vec![pass(10.0, 10.0, 0.0, 0.0)]];
+        let after = arrange(AFTER_MAIN, main.clone(), near.clone(), rates(), FEED);
+        assert_eq!(after.note, None);
+        let moved = arrange(BY_REGION, main.clone(), near, rates(), FEED);
+        let note = moved.note.unwrap();
+        assert!(
+            note.contains("travels 0.0 mm along the part between passes instead of 10.0 mm"),
+            "{note}"
+        );
+        let far = vec![vec![pass(10.0, 10.0, 180.0, 180.0)]];
+        let kept = arrange(BY_REGION, main.clone(), far, rates(), 1.0e6);
+        let note = kept.note.unwrap();
+        assert!(note.contains("are cut after the main passes"), "{note}");
+        let last = vec![vec![pass(20.0, 20.0, 0.0, 0.0)]];
+        assert_eq!(arrange(BY_REGION, main, last, rates(), FEED).note, None);
     }
 
     #[test]
@@ -355,18 +531,44 @@ mod tests {
         let mut feeds = MachineProfile::example_x_rotary().max_feeds;
         feeds.rapid_linear.0 = 0.0;
         feeds.rapid_rotary.0 = f64::NAN;
-        let out = arrange(BY_REGION, main, groups, Rates::of(&feeds));
+        let out = arrange_passes(
+            BY_REGION,
+            main,
+            groups,
+            Rates::of(&feeds, f64::NAN),
+            f64::NAN,
+        );
         assert_eq!(out.len(), 4);
-        let out = arrange(BY_REGION, Vec::new(), vec![vec![turn(5.0, 0.0)]], rates());
+        let out = arrange_passes(
+            BY_REGION,
+            Vec::new(),
+            vec![vec![turn(5.0, 0.0)]],
+            rates(),
+            FEED,
+        );
         assert_eq!(out.len(), 1);
     }
 
     #[test]
     fn req_op_15_a_is_measured_the_short_way_round() {
         let r = rates();
-        let p = End { x: 0.0, a: 10.0 };
-        let q = End { x: 0.0, a: 3950.0 }; // 350 degrees on, 20 back
-        let back = End { x: 0.0, a: -10.0 };
+        let p = End {
+            x: 0.0,
+            a: 10.0,
+            r: 0.0,
+        };
+        let q = End {
+            x: 0.0,
+            a: 3950.0,
+            r: 0.0,
+        }; // 350 degrees on, 20 back
+        let back = End {
+            x: 0.0,
+            a: -10.0,
+            r: 0.0,
+        };
         assert!((r.link(p, q) - r.link(p, back)).abs() < 1e-12);
+        assert!((p.travel(q) - p.travel(back)).abs() < 1e-12);
+        assert!((p.travel(back) - 20.0 * TIE).abs() < 1e-12);
     }
 }

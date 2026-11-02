@@ -479,6 +479,7 @@ fn passes(
         // the helix is as before (decision record 0297), cut after the helix
         // or beside its region (decision record 0639). Rings already have
         // them in order.
+        let mut order_note = None;
         if !rings {
             let mut groups = Vec::with_capacity(turns.len());
             for &x in &turns {
@@ -495,12 +496,15 @@ fn passes(
                     context,
                 )?);
             }
-            passes = crate::order::arrange(
+            let arranged = crate::order::arrange(
                 parameters.text(crate::order::PARAMETER)?,
                 passes,
                 groups,
-                crate::order::Rates::of(&input.max_feeds),
+                crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+                parameters.number(names::FEED)?,
             );
+            passes = arranged.passes;
+            order_note = arranged.note;
         }
         // Finishing layers above the passes made so far, when on (decision
         // record 0345).
@@ -517,6 +521,7 @@ fn passes(
         let notes = ring_note
             .into_iter()
             .chain(faces::note(&turns))
+            .chain(order_note)
             .chain(faces::held_note(&found.held))
             .chain(spaced_note)
             .chain(layered)
