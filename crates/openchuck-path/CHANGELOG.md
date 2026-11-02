@@ -2,7 +2,7 @@
 
 ## Unreleased (VIEW-OVERLAYS; the version is assigned at release)
 
-- **Breaking (VIEW-OVERLAYS; issue #416; decision 0633, proposed):** an unreached area carries its surface points.
+- **Breaking (VIEW-OVERLAYS; issue #416; decision 0637, proposed):** an unreached area carries its surface points.
   - **API.** `Unreached` gains `points`: the surface points the strategy sampled and could not reach, in its order, taken evenly to at most the new `MAX_UNREACHED_POINTS` (4,096) per area (struct literals add it).
   - **Output.** Toolpaths, warnings and the other fields of `Unreached` are unchanged.
 

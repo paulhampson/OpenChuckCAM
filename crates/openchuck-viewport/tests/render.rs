@@ -22,8 +22,8 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_viewport::camera::{IDENTITY, multiply, place, rigid_inverse, rotation_x};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, DisplayMode, Frame, Hatch, Layer, LayerStats, LineStyle, Outline, Projection, Renderer,
-    Scene, Slot, StandardView,
+    Camera, DisplayMode, Frame, Hatch, HatchKind, Layer, LayerStats, LineStyle, Outline,
+    Projection, Renderer, Scene, Slot, StandardView,
 };
 
 const SIZE: u32 = 64;
@@ -780,7 +780,11 @@ fn req_ui_25_req_nfr_15_a_hatch_is_drawn_on_the_screen_whatever_the_zoom() {
         scene.add_mesh(&block([-40.0; 3], [40.0; 3]), &[], RED, BLACK);
         scene.meshes[0].hatch = Some(Hatch {
             colour: BLUE,
-            cross,
+            kind: if cross {
+                HatchKind::Cross
+            } else {
+                HatchKind::Single
+            },
         });
         scene.meshes[0].translucent = translucent;
         let mut fit = Scene::default();
@@ -802,7 +806,7 @@ fn req_ui_25_req_nfr_15_a_hatch_is_drawn_on_the_screen_whatever_the_zoom() {
     scene.add_mesh(&block([-40.0; 3], [40.0; 3]), &[], RED, BLACK);
     scene.meshes[0].hatch = Some(Hatch {
         colour: BLUE,
-        cross: false,
+        kind: HatchKind::Single,
     });
     let mut fit = Scene::default();
     fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
@@ -820,7 +824,7 @@ fn req_ui_25_req_nfr_15_a_hatch_is_drawn_on_the_screen_whatever_the_zoom() {
     avoid.add_mesh(&some(&block, &[4, 5]), &[], [1.0, 0.0, 0.0, 0.2], BLACK);
     avoid.meshes[0].hatch = Some(Hatch {
         colour: BLUE,
-        cross: false,
+        kind: HatchKind::Single,
     });
     let pixels = render_over(&device, &queue, &part, Some(&avoid), &front(&fit, 1.0));
     let share = blue_pixels(&pixels) as f64 / pixels.len() as f64;
@@ -848,8 +852,8 @@ fn req_ui_25_the_focus_layer_draws_over_the_scene() {
     assert!(blue_pixels(&pixels) > 100, "{}", blue_pixels(&pixels));
     // The fill is the scene's own, not drawn again by the focus layer.
     assert!(pixels.iter().filter(|p| p[0] > 60 && p[1] < 30).count() > 500);
-    assert_eq!(Layer::ALL.len(), 7);
-    assert_eq!(Layer::Focus.index(), 6);
+    assert_eq!(Layer::ALL.len(), 8);
+    assert_eq!(Layer::Focus.index(), 7);
     assert_eq!(Layer::Trace.index() + 1, Layer::Paths.index());
 }
 
@@ -941,9 +945,10 @@ fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
     let stats = renderer.layer_stats(Layer::Paths);
     assert_eq!(stats.line_draws, 1, "{stats:?}");
     // One vertex buffer and one uniform buffer for the whole path: four
-    // points of 16 bytes per run, and 160 bytes of uniforms.
+    // points of 16 bytes per run, and 192 bytes of uniforms (160 before the
+    // dot pattern of decision 0637 added two vectors).
     assert_eq!(stats.buffers, 2, "{stats:?}");
-    assert_eq!(stats.bytes, 30 * 4 * 16 + 160, "{stats:?}");
+    assert_eq!(stats.bytes, 30 * 4 * 16 + 192, "{stats:?}");
     renderer.prepare(&device, &queue, &f);
     assert_eq!(renderer.uniform_writes(), 1);
     // A second look is a second draw, whatever the number of runs.
@@ -960,7 +965,7 @@ fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
     renderer.set_layer(&device, Layer::Stock, &fit);
     let stock = renderer.layer_stats(Layer::Stock);
     assert_eq!((stock.meshes, stock.line_draws, stock.buffers), (1, 0, 4));
-    assert_eq!(stock.bytes, 8 * 12 + 12 * 3 * 4 + 2 * 160, "{stock:?}");
+    assert_eq!(stock.bytes, 8 * 12 + 12 * 3 * 4 + 2 * 192, "{stock:?}");
 
     // The picture is the one drawn run by run: every run keeps its own dash
     // pattern. Half the runs in another layer are drawn as other draws.
@@ -1022,4 +1027,67 @@ fn draw_with(
 ) -> Vec<[u8; 4]> {
     renderer.prepare(device, queue, frame);
     paint_and_read(device, queue, renderer)
+}
+
+/// The share of the pixels that are `colour` (within a few steps).
+fn share_of(pixels: &[[u8; 4]], colour: [f32; 4]) -> f64 {
+    let want = colour.map(|c| (c * 255.0).round() as i32);
+    let n = pixels
+        .iter()
+        .filter(|p| (0..3).all(|k| (i32::from(p[k]) - want[k]).abs() <= 3))
+        .count();
+    n as f64 / pixels.len() as f64
+}
+
+/// Decision 0637 item 4: dots are drawn over what lies beneath, in two
+/// tones, on the screen, at a fixed spacing whatever the zoom or the pixel
+/// density; where there is no dot, what lies beneath shows through.
+#[test]
+fn req_nfr_15_a_dot_pattern_is_drawn_in_two_tones_over_what_lies_beneath() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+    let block = block([-40.0; 3], [40.0; 3]);
+    let mut fit = Scene::default();
+    fit.add_mesh(&openchuck_viewport_block(20.0), &[], RED, BLACK);
+    let mut part = Scene::default();
+    part.add_mesh(&block, &[], RED, BLACK);
+    // The front face (triangles 4 and 5) carries the dots, over the part's
+    // own face; the dots' fill is transparent.
+    let dots = |zoom: f64, density: f32| {
+        let mut marked = Scene::default();
+        marked.add_mesh(&some(&block, &[4, 5]), &[], [0.0, 0.0, 0.0, 0.0], BLACK);
+        marked.meshes[0].hatch = Some(Hatch {
+            colour: BLUE,
+            kind: HatchKind::Dots { ring: GREEN },
+        });
+        let mut f = front(&fit, zoom);
+        f.pixels_per_point = density;
+        let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], &f);
+        (
+            share_of(&pixels, BLUE),
+            share_of(&pixels, GREEN),
+            share_of(&pixels, RED),
+        )
+    };
+    // A dot of radius 3.5 with a core of 2 on a 12 by 12 cell: the core is
+    // 12 pixels of 144 (8 %), the ring 20 (14 %).
+    let (core, ring, red) = dots(1.0, 1.0);
+    assert!((0.06..0.11).contains(&core), "core {core}");
+    assert!((0.10..0.19).contains(&ring), "ring {ring}");
+    assert!(red > 0.65, "the part shows between the dots: {red}");
+    // The same share at another zoom.
+    let (core_far, ring_far, _) = dots(0.5, 1.0);
+    assert!((core_far - core).abs() < 0.03 && (ring_far - ring).abs() < 0.05);
+    // At twice the pixel density the dots are as far apart in logical pixels,
+    // so the same share.
+    let (core_dense, ring_dense, _) = dots(1.0, 2.0);
+    assert!((core_dense - core).abs() < 0.04, "{core_dense}");
+    assert!((ring_dense - ring).abs() < 0.07, "{ring_dense}");
+}
+
+/// A cube of half-size `h` about the origin.
+fn openchuck_viewport_block(h: f64) -> TriangleMesh {
+    block([-h; 3], [h; 3])
 }

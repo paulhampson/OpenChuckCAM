@@ -57,6 +57,7 @@ mod theme;
 mod tool_library_window;
 mod tool_panel;
 mod toolbar;
+mod unreached_view;
 mod viewport;
 mod viewport_overlays;
 mod viewport_toolbar;

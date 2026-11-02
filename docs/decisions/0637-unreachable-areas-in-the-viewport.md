@@ -1,11 +1,11 @@
-# 0633: The viewport marks the surfaces simultaneous finishing cannot reach, and Messages goes to each (OP-20, UI-11, UI-12, NFR-12, NFR-15; issue #416; lane VIEW-OVERLAYS)
+# 0637: The viewport marks the surfaces simultaneous finishing cannot reach, and Messages goes to each (OP-20, UI-11, UI-12, NFR-12, NFR-15; issue #416; lane VIEW-OVERLAYS)
 
 - **Status:** proposed. The owner's answers to questions 1 to 4 (1 Nov 2026) were relayed by the coordinator (decision 0049); the record waits for the owner's acceptance. Its number is provisional: under the owner's numbering rule (1 Nov 2026) it takes the next free number after `main`'s highest when it is released.
 - **Date:** 2 Nov 2026.
 - **Issue:** #416 (OI-1451).
 - **Requirements:** OP-20, UI-11, UI-12, SIM-05, NFR-06, NFR-12, NFR-15, GC-07. No requirement changes.
 - **What it amends:** [decision 0368](0368-simultaneous-finishing-of-hidden-surfaces.md) item 6 (the unreached areas as structured data; the viewport left to a later lane) and its open item 2; the interface specification ([decision 0038](0038-ui-specification-and-requirements.md)), sections 11.4 and 11.5 and the Show menu. It builds on [decision 0216](0216-selection-set-colours-and-deviation-scale.md) (the colours, hatches and outlines already taken), [decision 0238](0238-simulate-display-and-operation-navigation.md) item 3 (the Show menu) and [decision 0492](0492-deviation-colours-on-the-part-model.md) (the part's deviation colours, which the areas lie over).
-- **Open items:** OI-1451 closes when this is built. OI-1457 (walls square to the axis under an overhang are not reported) stays open and is a known limit here: what the strategy does not report is not marked.
+- **Open items:** OI-1451 closes when this is built. OI-1991 (new): whether Show in view animates its turn while the application has no reduced-motion setting. OI-1457 (walls square to the axis under an overhang are not reported) stays open and is a known limit here: what the strategy does not report is not marked.
 - **Library:** `openchuck-path` changes (a new field on a public struct), so the library family takes the next minor version at release (decision 0048; provisionally 0.36.0, the Merge Manager assigns it).
 
 ## Context
@@ -24,7 +24,7 @@ An area is given as an X range by an A range. That box also takes in surfaces th
 
 ## Specification entries proposed
 
-- **11.4, Viewport,** and **11.5, Viewport:** "**Unreachable areas** *(OP-20; decision 0633)*. The surfaces an operation could not reach are dotted (two-tone dots) with a numbered marker each, in the warning's order, while its toolpath is shown and its result is current; the legend names them 'Unreachable (operation name)'."
+- **11.4, Viewport,** and **11.5, Viewport:** "**Unreachable areas** *(OP-20; decision 0637)*. The surfaces an operation could not reach are dotted (two-tone dots) with a numbered marker each, in the warning's order, while its toolpath is shown and its result is current; the legend names them 'Unreachable (operation name)'."
 - **The Show menu:** "Unreachable areas", on by default.
 - **12, Messages:** "A warning listing unreachable areas offers 'Show in view N' for each: the view turns to the area and frames it; the part and the playback do not move."
 
@@ -44,4 +44,23 @@ An area is given as an X range by an A range. That box also takes in surfaces th
 
 ## As built
 
-To be completed with the build.
+Built on `claude/lane-view-overlays-416`. Where the build chose something the items above leave open, it is said here.
+
+- **Points (item 1).** `Unreached::points` is sampled evenly by a stride of `ceil(n / 4096)`, so an area keeps its points in the strategy's order. Test: `req_op_20_unreached_areas_carry_their_surface_points` (openchuck-path), with the NFR-06 thread test unchanged.
+- **Matching (item 2).** Each point is taken to the nearest triangle within a fixed 0.5 mm (`openchuck_app::unreached::MATCH_TOLERANCE`), found through a uniform grid ordered by cell (no hash), ties to the lower index. A point near no triangle marks nothing and is counted. 0.5 mm is used in place of "one sample spacing": it is of the order of the strategy's spacing and well above a STEP part's tessellation deflection. On the dovetail fixture with the part offset by 3 mm, every point lands on the scene's mesh and no lip outside is marked (`req_op_20_areas_map_to_the_triangles_they_lie_on`, `req_op_20_the_areas_of_a_run_lie_on_the_part_the_view_draws`). The job is refused with `PartChanged` when the model's file is not the run's, and then no areas are drawn, as for the colours of decision 0492. The marker is the area's point nearest the mean of its points.
+- **When (item 3).** An operation's areas are drawn on Operations and Simulate while the Toolpaths choice and the operation's eye are on and its path is current (`Application::operation_unreached` is empty for a path edited or failed since the run). The tick "Unreachable areas" is in the Show menu only, on by default, and is kept for the session only, like "Held regions and tabs". Messages finds the warning by its start, "simultaneous finishing cannot reach "; a test pins that against the strategy's real warning.
+- **Look (item 4).** `openchuck_viewport::HatchKind::Dots { ring }` beside `Single` and `Cross`, drawn in a new layer `Areas` between the tool and the overlay, over whatever the part shows. The dots are 12 px apart in rows staggered by half a spacing; the core is 4 px across, the ring 7 px (logical pixels, so 14.4, 4.8 and 8.4 physical pixels at 120%). The colours are a core of `#0c0e12` and a ring of `#ffffff`, 19.3:1 against each other. A dot reads by the better of its two tones on each ground; the worst case is the hidden-band slate at 3.28:1:
+
+  | Ground | Core contrast, normal / worst simulated | Ring contrast, normal / worst | Core ΔE00, normal / worst |
+  | --- | --- | --- | --- |
+  | Overcut | 4.96 / 3.73 | 3.90 / 3.36 | 48.1 / 38.5 |
+  | Within tolerance (and not measured) | 7.33 / 7.29 | 2.64 / 2.61 | 50.7 / 50.5 |
+  | Up to 0.25 mm | 16.92 / 16.47 | 1.14 / 1.10 | 91.9 / 89.5 |
+  | 0.25 to 1 mm | 8.72 / 8.09 | 2.22 / 1.98 | 61.2 / 58.1 |
+  | More than 1 mm | 4.48 / 4.25 | 4.31 / 3.85 | 42.4 / 42.0 |
+  | Part grey | 10.41 / 10.35 | 1.86 / 1.83 | 64.8 / 64.5 |
+  | Hidden-band slate | 3.28 / 3.25 | 5.90 / 5.80 | 27.9 / 27.7 |
+
+  Contrast does not depend on scale. Tests: `req_nfr_15_unreachable_dots_read_on_every_band_and_the_part` (roles) and `req_nfr_15_a_dot_pattern_is_drawn_in_two_tones_over_what_lies_beneath` (render, at two zooms and pixel density 2). Markers and the legend row "Unreachable (operation name)" are drawn at 12 points or more.
+- **Show in view (item 5).** Messages offers "Show in view N" under the warning for each listed area. It goes to Operations, selects the operation, and looks along the tool's direction at the middle of the A range (an area all round is looked at from its marker's side), framing its X range, and pulses the marker. The part and the playback do not move. When the operation is in another setup, the scene is rebuilt for it first; a request waiting for the job is dropped if the result goes stale. The view keeps a camera history of 32 steps, recorded by Fit, the standard views and Show in view, and the View menu gets "Previous view" to step back (no shortcut). This menu entry is not in the specification; it is proposed with the entries above. **The turn is instant.** The 0.3 s orbit is built and tested, but no setting for reduced motion exists, so it is not turned on (OI-1991).
+- **Not run:** the coverage check (the instrumented build did not fit the container's disk).
