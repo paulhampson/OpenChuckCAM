@@ -504,6 +504,14 @@ Boards 3 and 3b.
 - **Passes**: a segmented control, Spiral or Rings, Spiral for a new operation and for one saved before it. Its tooltip is the parameter's description: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle."
 - The note "helical finishing cut n rings, s mm apart, …" shows in Messages and on the operation as other path notes do.
 
+**Rings for the other spiral strategies ([decision 0420](../decisions/0420-rings-for-rest-roughing-and-round-facing.md), accepted 1 Nov 2026, relayed).** The same **Passes** control, with the same words, Spiral for a new operation and for one saved before it, is in Pattern and tolerance for rest machining, for rotary roughing when the form is continuous and the cut direction is around the part (or usual for the form), and for Facing when the shape is Round. It is not shown for the other forms and shapes, which do not cut a spiral. Each tooltip is that strategy's parameter description:
+
+- Rest machining: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle. Either way only the places with material left are cut."
+- Rotary roughing: "Continuous form around the part. Spiral: each layer is one continuous spiral that moves along the part as it turns. Rings: each layer is cut one full turn at a time at a fixed place along the part, with a short step along the part between turns."
+- Facing: "Round: Spiral turns each layer down in one continuous spiral that moves along the stock as it turns. Rings cuts each layer one full turn at a time at a fixed place along the stock, with a short step along it between turns."
+
+The note saying the rings were cut and how far apart shows in Messages and on the operation as other path notes do.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.

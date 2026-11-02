@@ -17,6 +17,6 @@ For the Makera Z1 the project keeps a [safe-practice checklist](../safety/checkl
 
 ## What next
 
-- Open the finished project (**File > Open project**) in `testdata/examples/baluster/baluster-project` and change something: try **Indexed finishing** or a smaller stepover and see the result in the simulation.
+- Open the finished project (**File > Open project**) in `testdata/examples/baluster/baluster-project` and change something: try **Indexed finishing**, **Rings** instead of **Spiral**, or a smaller stepover, and see the result in the simulation.
 - Read the [known limitations](../start/limitations.md) before relying on any strategy.
 - If something is wrong or unclear, please [open an issue](https://github.com/paulhampson/OpenChuckCAM/issues).
