@@ -57,7 +57,7 @@ pub(crate) fn connect(
     }
     let options = ConnectionOptions {
         machine,
-        clearance: setup.clearance.unwrap_or(machine.clearance),
+        clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         enclosing_radius,
         required_start_a: None,
     };
