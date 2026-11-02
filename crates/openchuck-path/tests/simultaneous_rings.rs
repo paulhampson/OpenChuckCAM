@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Rings in place of the simultaneous spiral (issue #440; decision records
-//! 0390, 0420 and 0421; OP-05, OP-06, OP-11, OP-12, OP-14, OP-15, OP-26,
+//! 0390, 0420 and 0497; OP-05, OP-06, OP-11, OP-12, OP-14, OP-15, OP-26,
 //! GC-07, NFR-06, NFR-07).
 //!
 //! With **Passes** set to **Rings**, the spiral pattern cuts one whole turn
@@ -365,7 +365,7 @@ fn rings_and_maybe_steps(p: &GeneratedPath, what: &str, need_steps: bool) -> usi
 
 #[test]
 fn req_op_05_req_op_15_steps_hold_the_a_the_ring_ended_at_in_one_cut() {
-    // The owner's choice D3 (decision record 0421, option 1): the step
+    // The owner's choice D3 (decision record 0497, option 1): the step
     // holds the A the ring ended at; with nothing to split them the rings
     // and steps are one cut, with the lead or without it.
     let part = Cylinder {

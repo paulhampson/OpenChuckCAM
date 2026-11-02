@@ -446,7 +446,7 @@ fn req_op_26_req_op_04_a_flat_end_finishes_the_inner_corners_of_the_crankshaft()
 
 #[test]
 fn req_op_26_req_op_05_rings_finish_the_inner_corners_of_the_crankshaft_as_the_spiral_does() {
-    // In rings (decision record 0421) the ring at each face is the face's
+    // In rings (decision record 0497) the ring at each face is the face's
     // own turn round the pin's centre, so the corners are finished as with
     // the spiral (issue #440, lane CRANKEXCESS's finding on #439).
     flat_end_finishes_the_inner_corners(true);
@@ -567,7 +567,7 @@ fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
     }
     assert!(note(ToolShape::FlatEnd).is_empty());
     // In rings each face's ring is its turn, and the note is the same
-    // (decision record 0421).
+    // (decision record 0497).
     let f = Fixture::new(
         MeshSurface::new(&crankshaft()).unwrap(),
         18.0,

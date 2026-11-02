@@ -95,7 +95,7 @@ pub mod parameter {
     /// 0239); the axial pattern only.
     pub const SCALLOP: &str = "scallop";
     /// The spiral pattern's passes: a spiral or rings, as helical
-    /// finishing's (decision records 0390 and 0421).
+    /// finishing's (decision records 0390 and 0497).
     pub const PASS_SHAPE: &str = crate::helical::parameter::PASS_SHAPE;
 }
 
@@ -323,7 +323,7 @@ impl Strategy for SimultaneousFinishing {
                     && p.name != adaptive::parameter::MIN_SPACING
             });
         } else {
-            // Only the spiral pattern cuts a spiral (decision record 0421).
+            // Only the spiral pattern cuts a spiral (decision record 0497).
             schema
                 .parameters
                 .retain(|p| p.name != parameter::PASS_SHAPE);
@@ -581,7 +581,7 @@ fn run(
     // its turn for the note on inside corners (decision record 0410).
     let mut face_up: Vec<bool> = Vec::new();
     let mut held: Vec<f64> = Vec::new();
-    // In rings (decision record 0421), each face across the axis is one of
+    // In rings (decision record 0497), each face across the axis is one of
     // the rings: its X and whether it rises with X.
     let rings = pattern != "axial" && crate::helical::in_rings(parameters);
     let mut ring_faces: Vec<(f64, bool)> = Vec::new();
@@ -1406,7 +1406,7 @@ fn adaptive_passes(
 
 /// `track` cut at the zones' boundaries, in the track's own order, each
 /// piece with its zone and its share of the seeds and samples (OP-26).
-/// What the rings of the spiral pattern need (decision record 0421).
+/// What the rings of the spiral pattern need (decision record 0497).
 struct RingSettings<'f> {
     /// The X range the spiral would cover.
     range: (f64, f64),
@@ -1435,7 +1435,7 @@ struct RingsCut {
     note: String,
 }
 
-/// The spiral pattern in rings (decision records 0390 and 0421): a whole
+/// The spiral pattern in rings (decision records 0390 and 0497): a whole
 /// turn at each X of [`crate::helical::ring_places`], driven as the spiral
 /// is (the smoothed A within the tilt, the lead, round the section's own
 /// centre in a zone that does not surround the axis), each starting at the
@@ -1766,7 +1766,7 @@ impl Plan<'_> {
     /// As [`Self::axis_plan`], with the tool's angle at the start of the
     /// track held at `pin` where that is within `max_tilt` of the target
     /// there: a ring starts with the angle the step before it held, so the
-    /// two are one cut (decision record 0421).
+    /// two are one cut (decision record 0497).
     fn axis_plan_from(
         &self,
         track: &Track,
@@ -1835,7 +1835,7 @@ impl Plan<'_> {
     }
 
     /// The tool's angle held at `phi` along `track` (a step between rings,
-    /// decision record 0421), wherever that leans the tool no more than
+    /// decision record 0497), wherever that leans the tool no more than
     /// `limit` from the surface normal; elsewhere there is no angle, so the
     /// step is split there and the shared services link the pieces (OP-14).
     fn held_plan(&self, track: &Track, phi: f64, limit: f64, findings: &mut Findings) -> AxisPlan {

@@ -435,7 +435,7 @@ fn req_op_04_a_ball_end_leaves_only_its_corner_on_a_face() {
 #[test]
 fn req_op_05_simultaneous_rings_clean_the_faces_of_a_stepped_shaft() {
     // Every section of the shaft surrounds the axis, so each face's ring is
-    // its turn across the axis (decision records 0297 and 0421), among the
+    // its turn across the axis (decision records 0297 and 0497), among the
     // other rings in X order, and the faces are left as the spiral leaves
     // them.
     let job = Job::shaft(ToolShape::FlatEnd);
@@ -783,7 +783,7 @@ fn req_op_05_the_simultaneous_spiral_cleans_the_crankshaft_faces() {
 
 #[test]
 fn req_op_05_the_simultaneous_spiral_in_rings_cleans_the_crankshaft_faces() {
-    // Each face's turn is one of the rings (decision record 0421).
+    // Each face's turn is one of the rings (decision record 0497).
     crankshaft_faces_cleaned_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
 }
 
