@@ -362,6 +362,7 @@ impl Strategy for RestMachining {
             ]
             .into_iter()
             .chain(crate::finishing::specs(true, false))
+            .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
     }
@@ -529,6 +530,8 @@ impl Strategy for RestMachining {
         notes.extend(faces::note(&turns));
         notes.extend(faces::held_note(&found.held));
         notes.extend(free.notes);
+        // Every pass may be linked low when asked (decision 0640).
+        crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok(StrategyOutput {
             passes,
             notes,

@@ -168,6 +168,7 @@ impl Strategy for HelicalFinishing {
             .chain(crate::extend::specs(false))
             .chain(crate::finishing::specs(true, true))
             .chain(adaptive::specs())
+            .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
     }
@@ -515,6 +516,8 @@ fn passes(
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);
+        // Every pass may be linked low when asked (decision 0640).
+        crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok((passes, notes, warnings))
     }
 }

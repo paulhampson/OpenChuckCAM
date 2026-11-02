@@ -300,6 +300,7 @@ impl Strategy for SimultaneousFinishing {
         ]
         .into_iter()
         .chain(adaptive::specs())
+        .chain(std::iter::once(crate::axial::link_height_spec()))
         .collect())
     }
 
@@ -957,6 +958,9 @@ fn run(
         notes.push(outcome.note(settings));
         warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
     }
+    // Every pass may be linked low when asked (decision 0640).
+    let mut passes = passes;
+    crate::axial::mark_low_links_if_asked(parameters, &mut passes);
     Ok(StrategyOutput {
         passes,
         notes,

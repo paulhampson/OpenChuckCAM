@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- PATHORDER pull request D (issue #469; decision 0640, proposed): helical finishing, rest machining and simultaneous finishing have decision 0496's **Links between passes** (`axial::parameter::LINK_HEIGHT`): `low` marks every pass `low_link`, and the shared assembly links them by 0496's rule (above the setup's stock, clear of held regions, a note for links that retract). `retract`, the default, leaves every path and golden file unchanged. Additive API. Version assigned at merge.
+
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
 
 - RINGS-ALL pull request 2 (issue #440, decision 0497, accepted, relayed by the coordinator): simultaneous finishing's spiral pattern can cut rings with the same **Passes** setting. Each ring is driven as the spiral is (the smoothed A within the tilt, the lead the way it travels, round the section's own centre where the section does not surround the axis); a face's ring is its own turn (decision 0410 round an off-axis section's centre); the step between rings holds the A the ring ended at and the next ring starts there, so they are one cut, split where holding A would lean the tool beyond the lead and the tilt. Spiral is the default, so every path is unchanged unless rings are chosen; no version bump. Additive API: `simultaneous::parameter::PASS_SHAPE`.
