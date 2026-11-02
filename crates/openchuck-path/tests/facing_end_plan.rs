@@ -1057,3 +1057,60 @@ fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowan
     let error = check(&raised(allowance + 1e-6)).unwrap_err().to_string();
     assert!(error.contains("unfinished"), "{error}");
 }
+
+/// Invalid input gives a clear refusal, never a crash (NFR-07): a negative
+/// approach distance, and flutes too short for neighbouring bands to overlap
+/// by the written-motion allowance (issue #499, decision 0641).
+#[test]
+fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let error = plan_end(
+        &setup,
+        &EndFacingParameters {
+            approach: -1.,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("approach distance"), "{error}");
+    let short = Tool {
+        flute_length: Millimetres(0.002),
+        ..tool.clone()
+    };
+    let error = plan_end(
+        &FacingSetup {
+            tool: &short,
+            ..setup
+        },
+        &EndFacingParameters {
+            flute_step: 0.001,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("too short"), "{error}");
+}
