@@ -213,16 +213,20 @@ pub fn selection_reach_notes(
 
 /// The note for the first tab shorter along X than a tool of `tool_diameter`
 /// is wide, naming the tool and the operation that uses it, or `None`
-/// (OI-159; decision 0494; interface specification 11.7).
+/// (OI-159; decision 0494; interface specification 11.7). With `skip_auto`,
+/// automatic tabs are left out, as their stored length is not where they are
+/// until the stock and the part are known (decision 0202 item 3).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
     tool_name: &str,
     operation: &str,
+    skip_auto: bool,
 ) -> Option<WorkholdingFinding> {
     workholding.tabs.iter().enumerate().find_map(|(i, tab)| {
         let d = tab.length.0;
-        (d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
+        let counts = !(skip_auto && tab.auto.is_some());
+        (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
             text: format!(
                 "Tab {} is {d:.3} mm long along X, shorter than the tool \
@@ -342,9 +346,12 @@ fn narrow_findings(
     tools: &[SetupTool],
 ) -> Vec<WorkholdingFinding> {
     let resolved = workholding.resolved(stock, part);
+    // With no stock or no part the automatic tabs keep their stored lengths,
+    // which say nothing: leave them for when they can be resolved.
+    let skip_auto = stock.is_none() || part.is_none();
     tools
         .iter()
-        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation))
+        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, skip_auto))
         .collect()
 }
 
@@ -1249,6 +1256,40 @@ mod tests {
         assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &one_ball_tool()).is_empty());
     }
 
+    /// CodeRabbit finding on pull request 460: with no part or no stock an
+    /// automatic tab cannot be resolved, so its stored length says nothing
+    /// and the findings skip it; a tab placed by hand is still compared.
+    #[test]
+    fn req_op_21_findings_wait_for_an_automatic_tab_to_be_resolvable() {
+        let tools = one_ball_tool();
+        let mut w = auto_head_tab(2.0);
+        let manual = Tab {
+            auto: None,
+            x_start: Millimetres(80.0),
+            length: Millimetres(3.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(6.0),
+            },
+            layout: TabLayout::OnAxis,
+        };
+        w.tabs.push(manual);
+        let part = part(18.0, 70.0);
+        // No part, then no stock: only the manual tab (the second, index 1) is found.
+        for notes in [
+            narrow_findings(&w, Some(&stock()), None, &tools),
+            narrow_findings(&w, None, Some(&part), &tools),
+        ] {
+            assert_eq!(notes.len(), 1, "{notes:?}");
+            assert_eq!(notes[0].tab, Some(1));
+            assert!(notes[0].text.starts_with("Tab 2 is 3.000 mm"), "{notes:?}");
+        }
+        // With both, the automatic tab is resolved (8 mm gap) and fits, the
+        // manual one is still short.
+        let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert_eq!(notes[0].tab, Some(1));
+    }
+
     /// The reverse: a thin tab that is long enough is accepted, for a
     /// cylinder and a frustum, on the axis and around it.
     #[test]
@@ -1276,8 +1317,8 @@ mod tests {
                 // Length equal to the tool is long enough.
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
-                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough").is_none());
-                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough").unwrap();
+                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", false).is_none());
+                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", false).unwrap();
                 assert_eq!(
                     note.text,
                     "Tab 1 is 4.000 mm long along X, shorter than the tool T1 Flat \
