@@ -424,3 +424,34 @@ fn req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands
     assert_ne!(bands.band_at(parent, rim), Some(DeviationBand::Unreachable));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_sim_04_req_sim_05_only_a_still_frame_draws_the_cut_part_in_pieces() {
+    // Decision 0638 (the owner's choice B, 2 Nov 2026): the pieces cost
+    // about a second on a large cut part, so a frame shown while playback
+    // plays is coloured by whole triangles, as before, and a still frame is
+    // drawn in pieces.
+    use openchuck_app::playback::Timeline;
+    use openchuck_app::stockplay::DEFAULT_PLAYBACK_MEMORY;
+    let (dir, app) = project("still-pieces", &tube_stl(8.0, 4.0, 20.0), 20.0, 20.0);
+    let run = Arc::new(app.simulate().unwrap());
+    let timeline = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let end = timeline.cursor_at_time(timeline.total_time());
+    let playback = Arc::new(
+        app.start_stock_playback(Arc::clone(&timeline), DEFAULT_PLAYBACK_MEMORY)
+            .wait()
+            .unwrap(),
+    );
+    let still = app.start_stock_surface(&playback, end).wait().unwrap();
+    let still = still.bands.as_ref().expect("the cut part is coloured");
+    assert!(still.pieces.is_some(), "a still frame is drawn in pieces");
+    let playing = app
+        .start_playing_stock_surface(&playback, end)
+        .wait()
+        .unwrap();
+    let playing = playing.bands.as_ref().expect("the cut part is coloured");
+    assert!(playing.pieces.is_none(), "a playing frame is not");
+    // Whole triangles carry the same values either way.
+    assert_eq!(playing.values, still.values);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

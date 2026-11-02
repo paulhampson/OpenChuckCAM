@@ -40,7 +40,12 @@ impl StockSurface {
         context: &JobContext<'_>,
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
-        let bands = samples.map(|s| s.bands(&mesh, context)).transpose()?;
+        // A frame shown while playback plays (no picker) is coloured by
+        // whole triangles; a still frame is drawn in pieces (decision 0638,
+        // the owner's choice B).
+        let bands = samples
+            .map(|s| s.bands(&mesh, picker, context))
+            .transpose()?;
         let picker = if !picker || mesh.triangles.is_empty() {
             None
         } else {
@@ -318,10 +323,12 @@ impl SurfaceSamples {
     /// triangle order, sorted into bands. Each triangle's value depends on
     /// that triangle alone, so the triangles are shared out over the job's
     /// threads in fixed chunks and the values are the same at any thread
-    /// count (NFR-06).
+    /// count (NFR-06). With `pieces`, a face holding more than one band is
+    /// drawn in pieces (decision 0638).
     pub(crate) fn bands(
         &self,
         mesh: &TriangleMesh,
+        pieces: bool,
         context: &JobContext<'_>,
     ) -> Result<DeviationBands, AppError> {
         context.check_cancelled()?;
@@ -339,6 +346,9 @@ impl SurfaceSamples {
             .collect::<Result<_, AppError>>()?;
         let (values, unreachable): (Vec<_>, Vec<_>) = chunks.into_iter().flatten().unzip();
         let bands = deviation_bands_with(&values, &unreachable, self.cell);
+        if !pieces {
+            return Ok(bands);
+        }
         // A face across a band's edge is drawn in pieces (decision 0638).
         let pieces = crate::pieces::refine(
             mesh,
@@ -461,7 +471,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(
             &*bands.values,
@@ -488,6 +498,7 @@ mod tests {
             samples
                 .bands(
                     &TriangleMesh::default(),
+                    true,
                     &JobContext::new(&cancel, &NoProgress)
                 )
                 .is_err()
@@ -614,7 +625,9 @@ mod tests {
                 .num_threads(threads)
                 .build()
                 .unwrap();
-            let bands = pool.install(|| samples.bands(&mesh, &context)).unwrap();
+            let bands = pool
+                .install(|| samples.bands(&mesh, true, &context))
+                .unwrap();
             assert_eq!(bands, expected, "{threads} threads");
         }
     }
@@ -784,7 +797,7 @@ mod tests {
         }
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         let band_of = |t: u32| {
             bands
@@ -837,7 +850,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((3.0, true)));
         assert!(
@@ -855,7 +868,7 @@ mod tests {
         thin[1].at_least = false;
         let thin_samples = SurfaceSamples::with_reach(&thin, Some(&classes), 0.1);
         let bands = thin_samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((2.0, false)));
         assert!(
@@ -868,7 +881,7 @@ mod tests {
         let open =
             SurfaceSamples::with_reach(&thin, Some(&[ReachClass::NotLeft, ReachClass::Open]), 0.1);
         let bands = open
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], None);
         // The same face turned to face -X has the open end behind it, the
@@ -878,7 +891,7 @@ mod tests {
             triangles: vec![[0, 2, 1]],
         };
         let bands = samples
-            .bands(&flipped, &JobContext::new(&cancel, &NoProgress))
+            .bands(&flipped, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], None);
     }
@@ -915,7 +928,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((3.0, true)), "off the surface");
         assert!(
@@ -936,7 +949,7 @@ mod tests {
             0.1,
         );
         let bands = open
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((0.02, false)));
     }
@@ -974,7 +987,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         let pieces = bands.pieces.as_ref().expect("drawn in pieces");
         assert!(pieces.parents.contains(&0));

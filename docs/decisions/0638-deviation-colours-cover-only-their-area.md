@@ -1,6 +1,6 @@
 # 0638: Deviation colours cover only the area each band applies to, not whole triangles (lane SIMVIS, issue #488)
 
-- **Status:** proposed 2 Nov 2026 by lane SIMVIS. The plan (option A) was approved by the owner on 2 Nov 2026, relayed by the coordinator; only the owner accepts this record (decision 0049).
+- **Status:** proposed 2 Nov 2026 by lane SIMVIS. The plan (option A), item 5 and item 6 (choice B) were approved by the owner on 2 Nov 2026, relayed by the coordinator; only the owner accepts this record (decision 0049).
 - **Date:** 2 Nov 2026.
 - **Lane:** SIMVIS, `claude/lane-simvis-bite`, stacked on `claude/lane-simvis` (#486) until that merges.
 - **Issue:** #488 (the owner's request after accepting decision 0633: "the area highlighted covers the whole face and not just the bite. This makes it confusing to the user. Add the ability to highlight the specific area impacted.").
@@ -33,6 +33,7 @@ On the part model the bore's strips hold two bands because the bore is enclosed 
 3. **Bounded and deterministic.** The pieces are made off the interface thread in the job that makes the colours, in fixed chunks, the same at any thread count (NFR-06). They are capped; past the cap the pieces stay coarser and a note says so (NFR-04). Nothing is drawn finer than about two cells, the simulation's own resolution (NFR-12).
 4. **No renderer change.** Rejected: per-vertex colours or a texture in the shader (a renderer change, and blending smears the band edges and the hatches); dots at the affected samples (they show where, not the extent, and would duplicate the unreached dots of lane VIEW-OVERLAYS, #416).
 5. **A cut-part face off the part's surface takes the material behind it** (amends decision 0633 item 4; the owner answered yes on 2 Nov 2026, relayed by the coordinator). A cut-part face, or a piece of one, more than two cells from every counted sample is off the part's surface. It takes the value and class of the sample of any kind nearest to the point one search distance behind it, into the stock, when that is a counted part sample whose value is a bound or whose material left is enclosed, as item 4 of decision 0633 says for faces beyond the search. Otherwise it keeps the nearest counted sample within the search, and beyond the search it is Not measured, as before. Within two cells of a counted sample the face is on the part's surface and takes that sample, as before. Item 4 alone left a cap over a bore within the search of the opening's rim taking the rim's "nothing left": on the tube stand-in only 31% of the bore's disc showed Unreachable.
+6. **The cut part is drawn in pieces on a still frame only** (the owner's choice B, 2 Nov 2026, relayed by the coordinator, after the measurements below). A frame shown while playback plays has no picker (decision 0322) and is coloured by whole triangles, as before pieces, so playback costs what it did. A still frame, at a pause or after a step or a jump, is drawn in pieces. The part model, coloured once per run, is always drawn in pieces.
 
 ## As built so far, and what the measurements found
 
@@ -92,7 +93,11 @@ Measured on the owner's carving (release build, 4 threads, numbers only):
 
 Pieces add about 1.3 s either way. Making the picker is most of a still frame's cost. The 3.2 s quoted earlier "before pieces" was not like for like. The rest of the pieces' cost is finding the mixed triangles: 73,558 of the cut part's 1,323,834 triangles are longer than two cells and are tested at seven points.
 
-Whether that cost is accepted, or pieces are made only for still frames, is the owner's decision (asked 2 Nov 2026).
+The owner chose pieces on still frames only (item 6). As built, measured over four rounds on the cut part at the end:
+
+- **Playing frames:** 1.2 to 1.6 s, the same as without pieces.
+- **Still frames:** 5.6 to 7.3 s on this container, about 1.3 s more than without pieces (see the timings above).
+- **Part model:** 3.4 s.
 
 On the tube stand-in, the faced end shows 47.7 mm² of Unreachable over the bore's 153.9 mm² disc (31%): a cap face within the comparison's search (3 mm plus a cell) of the rim takes the rim's value, on the surface, by decision 0633 item 4. Applying item 4's "material behind" whenever the nearest counted sample is more than two cells away (off the part's surface), not only beyond the search, gave 145.1 mm² (94%) in a trial that was not kept; it changed an accepted rule, so it went to the owner, who agreed (item 5). As built, the interface test gives the same 145.1 mm².
 
@@ -108,3 +113,4 @@ Built so far for item 5 and the strip rule, test first:
 - `openchuck-app` `pieces.rs` `req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length`. It failed first, with 124 pieces. A strip 25 mm by 0.1 mm (two triangles) with one band edge across it makes at most 20 pieces, with the edge placed to within two cells. With two band edges, as across a bore, it makes at most 14 (tightened with the next test).
 - `pieces.rs` `req_nfr_04_req_sim_05_a_clean_band_edge_across_a_strip_is_one_cut`. It failed first, with 22 pieces for the two-triangle strip. A one-triangle strip with two clean edges makes at most 7 pieces, with each band's area within two cells of the true one.
 - The bore test `req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands` now finds the piece across the middle of the bore. The joined pieces are long, so no piece centre lies near the middle.
+- `openchuck-app` `tests/reach.rs` `req_sim_04_req_sim_05_only_a_still_frame_draws_the_cut_part_in_pieces` (13.6 s). It failed first. On the tube, the cut part at the end is drawn in pieces on a still frame but not on a playing frame, and the whole triangles' values are the same on both.
