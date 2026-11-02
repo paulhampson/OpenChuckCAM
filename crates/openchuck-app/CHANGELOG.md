@@ -13,6 +13,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- TABREGRESS (#511, decision 0647, proposed): a whole-part operation (rotary roughing, rest machining, helical, axial, indexed or simultaneous finishing, with no selections) whose tool has no room to cut down beside a tab between a held region and the part says so when generating: the zone's length less the 0.5 mm held clearance, the stock to leave and any wider shank, under the tool's cutting diameter. The path is unchanged. No schema or API change.
+
 - TABS-CHECK (#438, decision 0494): a retaining tab's length along X, not its diameter, is compared with the tool's diameter, in the refusal when generating, the check findings, the overview and export notes, and `workholding_view::narrowest_line` (now the "Length vs tools" line; name and signature unchanged). Wording is "... is N mm long along X, shorter than the tool ...". No schema or API change. The comparison uses an automatic tab's length where the part, the stock and the held regions put it now (decision 0202 item 3), not its last-applied length; `workholding::narrow_tab_notes` is crate-private and takes the part's extent.
 
 - SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
