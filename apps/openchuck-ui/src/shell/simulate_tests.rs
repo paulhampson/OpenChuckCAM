@@ -1991,3 +1991,53 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         "the counts stay"
     );
 }
+
+#[test]
+fn req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore() {
+    // Decision 0638 (issue 488): the cut part's faced end is made of strips
+    // one column wide across the stock; drawn in pieces, only the bore's
+    // disc (Ø14, 153.9 mm²) is Unreachable, not whole strips across the ring.
+    let mut rig = simulate(Rig::tube("sim-bite"));
+    let colour = at(&rig, "Deviation colours");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let surface = rig.shell.viewport.stock_surface().unwrap().clone();
+    let bands = rig.shell.viewport.bands().unwrap().clone();
+    let unreachable = openchuck_app::pathview::DeviationBand::Unreachable;
+    // The area of the triangles in the faced end's plane, X 5, in a band.
+    let on_end =
+        |mesh: &openchuck_app::scene::Mesh, set: &openchuck_app::selection::TriangleSet| -> f64 {
+            set.iter()
+                .filter_map(|t| mesh.triangle(*t as usize))
+                .filter(|c| c.iter().all(|p| (p.x - 5.0).abs() < 1e-6))
+                .map(|[a, b, c]| (b - a).cross(c - a).length() / 2.0)
+                .sum()
+        };
+    let whole: f64 = bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&surface.mesh, set))
+        .sum();
+    let pieces = bands.pieces.as_ref().expect("the end's strips are cut");
+    let cut: f64 = pieces
+        .bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&pieces.mesh, set))
+        .sum();
+    let disc = std::f64::consts::PI * 49.0;
+    let violet = whole + cut;
+    println!("violet on the faced end {violet:.1} mm² against the bore's {disc:.1} mm²");
+    assert!(
+        (violet - disc).abs() < 0.2 * disc,
+        "{violet} against {disc}"
+    );
+}
