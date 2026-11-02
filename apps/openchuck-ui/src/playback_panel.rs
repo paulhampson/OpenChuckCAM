@@ -3197,6 +3197,10 @@ mod tests {
         std::fs::write(&file, text.replacen("solid cube", "solid cube two", 1)).unwrap();
         // The scene is read again (as after any edit of the project).
         viewport.set_scene(app.start_scene(None).wait().unwrap(), false);
+        assert!(
+            viewport.part_bands().is_none(),
+            "not even one frame of the old colours on the new scene"
+        );
         settle_panel(&app, &mut panel, &mut viewport);
         assert!(
             viewport.part_bands().is_none(),
@@ -3204,6 +3208,20 @@ mod tests {
         );
         assert!(viewport.part_changed());
         assert!(panel.error.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// UI-11, decision 0492 item 7: a scene read again from the same file
+    /// gets the part's colours back (they are found again for it).
+    #[test]
+    fn req_sim_05_req_ui_11_the_part_colours_come_back_on_a_scene_read_again_from_the_same_file() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-same-file");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let before = viewport.part_bands().cloned().expect("coloured first");
+        viewport.set_scene(app.start_scene(None).wait().unwrap(), false);
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert_eq!(viewport.part_bands(), Some(&before));
+        assert!(!viewport.part_changed());
         let _ = std::fs::remove_dir_all(dir);
     }
 

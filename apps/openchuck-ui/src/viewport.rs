@@ -912,6 +912,12 @@ impl Viewport {
     pub fn set_scene(&mut self, view: SceneView, fit: bool) {
         self.view = view;
         self.scene_count = self.scene_count.wrapping_add(1);
+        // A new scene may be read from a model file that changed: the part's
+        // colours are not drawn on it until they are found for it again
+        // (decision 0492 item 7).
+        self.part_bands = None;
+        self.probe_pinned = None;
+        self.probe_hover = None;
         self.hover_solid = None;
         self.rebuild();
         self.fit_pending |= fit;
