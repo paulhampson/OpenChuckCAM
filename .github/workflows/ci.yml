@@ -34,6 +34,12 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  # The merge queue (decision 0644, docs/releasing.md "Merge queue"): GitHub builds each queued pull
+  # request on top of `main` (and of the entries ahead of it) and waits for `CI required checks` on
+  # that commit. A merge_group run has no pull request, so `github.event.pull_request.draft` is empty
+  # and the heavy jobs run as on a ready pull request.
+  merge_group:
+    types: [checks_requested]
   # The nightly full run on `main` (decision 0358, Option 4, OI-1413): a push to `main` may be a light run
   # (below), so the whole matrix, and the `main` caches of every leg that pull requests restore, are
   # refreshed once a day. 04:23 UTC is after the other nightly workflows.
@@ -44,7 +50,8 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# A merge_group run (like a push or a manual run) has its own group, so it is never cancelled by or
+# replaced by a pull request run. A newer push to a pull request cancels the older run of that pull request: the newer commit is the
 # one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
 # replaced while it waits: its group is its own run, so every merged commit keeps a complete result
 # (and its cache), even if several manual runs target one commit
@@ -98,6 +105,9 @@ jobs:
         id: filter
         if: github.event_name != 'schedule'
         with:
+          # A merge_group run diffs the queue commit against the branch tip it was built on (decision
+          # 0644); the paths-filter action has no merge_group handling of its own. Empty elsewhere.
+          base: ${{ github.event.merge_group.base_sha }}
           filters: |
             records:
               - 'docs/requirements.md'
@@ -130,6 +140,7 @@ jobs:
         if: github.event_name != 'schedule'
         with:
           predicate-quantifier: some-with-excludes
+          base: ${{ github.event.merge_group.base_sha }}
           filters: |
             rust:
               - 'crates/**'
@@ -691,10 +702,10 @@ jobs:
       # that do not exist on the base yet are skipped.
       - name: cargo semver-checks
         id: semver
-        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.rust == 'true'
         shell: bash
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
             if git cat-file -e "$BASE:crates/$crate/Cargo.toml" 2>/dev/null; then
@@ -741,7 +752,7 @@ jobs:
           check "cargo deny" "$RUST" "$DENY"
           check "cargo audit" "$RUST" "$AUDIT"
           check "cargo about" "$RUST" "$ABOUT"
-          semver=false; if [ "$RUST" = true ] && [ "$EVENT" = pull_request ]; then semver=true; fi
+          semver=false; if [ "$RUST" = true ] && { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; }; then semver=true; fi
           check "cargo semver-checks" "$semver" "$SEMVER"
           if [ -n "$bad" ]; then
             echo "::error title=Fast checks did not pass::${bad#, }"
@@ -758,7 +769,7 @@ jobs:
   fuzz-smoke:
     name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
+    if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -878,7 +889,7 @@ jobs:
   docs:
     name: User guide
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.docs == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -953,10 +964,10 @@ jobs:
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
           check fast-checks "$fast"
           fuzz=false
-          if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
+          if { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; } && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
           docs=false
-          if [ "$EVENT" = pull_request ] && [ "$(out docs)" = true ]; then docs=true; fi
+          if { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; } && [ "$(out docs)" = true ]; then docs=true; fi
           check docs "$docs"
           for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
             case "$checked" in
