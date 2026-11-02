@@ -313,9 +313,9 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "minijinja"
-version = "3.0.3"
+version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90086695417a271bc96e6cb50618555614ca48fa3bb0d9aa96e3468b0f84431e"
+checksum = "00f5a04892e86ddb4fc254e9160835370b63a0d44042d3ab4725bc2dbcbab136"
 dependencies = [
  "serde",
 ]
@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "openchuck-types",
  "serde",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-geom"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "openchuck-types",
  "parry3d-f64",
@@ -392,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-import"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-types",
@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-post"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "minijinja",
  "openchuck-types",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-project"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.27.0"
+version = "0.33.0"
 dependencies = [
  "serde",
  "thiserror",
