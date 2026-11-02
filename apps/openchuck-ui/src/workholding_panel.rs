@@ -71,6 +71,10 @@ pub struct Context {
     pub reach: Vec<(String, String)>,
 }
 
+/// The hover text of "Check against the part and tools" (11.7; decision 0494).
+const CHECK_BUTTON_HOVER: &str =
+    "Tabs lie in the head or tail zone and are at least as long as the tools are wide";
+
 /// The section's state: the draft being edited.
 pub struct WorkholdingPanel {
     deferred: Option<(crate::pending_edits::Ticket, u8)>,
@@ -1352,7 +1356,7 @@ impl WorkholdingPanel {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(idle, egui::Button::new("Check against the part and tools"))
-                .on_hover_text("Tabs lie in the head or tail zone and are wider than the tools")
+                .on_hover_text(CHECK_BUTTON_HOVER)
                 .clicked()
             {
                 action = Some(0);
@@ -1509,7 +1513,7 @@ impl WorkholdingPanel {
             Ok(found) if found.is_empty() => {
                 self.findings = vec![WorkholdingFinding {
                     tab: None,
-                    text: "The tabs are in the head and tail zones and wide enough for the tools."
+                    text: "The tabs are in the head and tail zones and long enough for the tools."
                         .to_owned(),
                 }];
                 None
@@ -1953,6 +1957,30 @@ mod tests {
         panel.start_check(&app, &setup, false);
         assert_ne!(panel.checking.as_ref().unwrap().job.id(), job);
         let _ = app.drain_events();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A clean check says the tabs are long enough, not wide enough (decision
+    /// 0494; CodeRabbit finding on pull request 460).
+    #[test]
+    fn req_ui_25_a_clean_check_says_the_tabs_are_long_enough_for_the_tools() {
+        let (dir, app, _, setup_id) = cube_project("workholding-clean-check");
+        let setup = app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        let command = panel.finish_check(Ok(Vec::new()), false, Workholding::default(), &setup);
+        assert!(command.is_none());
+        assert_eq!(panel.findings.len(), 1);
+        let text = &panel.findings[0].text;
+        assert!(text.contains("long enough for the tools"), "{text}");
+        assert!(!text.contains("wide"), "{text}");
+        assert!(
+            CHECK_BUTTON_HOVER.contains("at least as long"),
+            "{CHECK_BUTTON_HOVER}"
+        );
+        assert!(
+            !CHECK_BUTTON_HOVER.contains("wider"),
+            "{CHECK_BUTTON_HOVER}"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
