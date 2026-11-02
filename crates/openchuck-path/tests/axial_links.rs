@@ -384,3 +384,47 @@ fn req_op_14_req_nfr_07_links_a_reversing_ramp_keeps_high_are_counted() {
         path.notes
     );
 }
+
+/// Refuses any rapid or linking move that turns A below the retract height,
+/// as a collision check that knows something about the low path would.
+#[derive(Debug)]
+struct NoLowTurns {
+    retract: f64,
+}
+
+impl openchuck_path::CollisionOracle for NoLowTurns {
+    fn allows(
+        &self,
+        from: &openchuck_types::ir::ToolPose,
+        to: &openchuck_types::ir::ToolPose,
+        kind: MoveKind,
+    ) -> bool {
+        let turns = (from.a.0 - to.a.0).abs() > 1e-9;
+        let radius = |p: &openchuck_types::ir::ToolPose| p.tip.y.hypot(p.tip.z);
+        let low = radius(from).min(radius(to)) < self.retract - 0.5;
+        !(matches!(kind, MoveKind::Rapid | MoveKind::Linking) && turns && low)
+    }
+}
+
+#[test]
+fn req_op_14_req_nfr_12_a_low_link_the_oracle_rejects_retracts_instead_of_failing() {
+    // The collision oracle may refuse a move the retract-height link would
+    // not need (COL-08); the link then goes up to the clearance, and the
+    // note counts it, rather than the whole path failing.
+    let f = fixture();
+    let oracle = NoLowTurns {
+        retract: PART + 6.0,
+    };
+    let mut input = f.input();
+    input.collision = &oracle;
+    let path = axial_in(&input, &values(&[low()]));
+    let top = |p: &GeneratedPath| link_radii(p).into_iter().fold(0.0_f64, f64::max);
+    assert!((top(&path) - (PART + 6.0)).abs() < 1e-6);
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("could not be lowered")),
+        "{:?}",
+        path.notes
+    );
+}

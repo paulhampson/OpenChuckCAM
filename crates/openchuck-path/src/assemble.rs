@@ -518,38 +518,62 @@ pub fn assemble_with_entry(
                 _ => None,
             };
             let height = local.unwrap_or(link_height);
-            leave(&mut b, view(&stocks, i - 1, input), common, height)?;
-            b.retract(height)?;
-            if helical_starts.get(i).copied().unwrap_or(false)
-                && rotary.range == openchuck_types::machine::ARange::Continuous
-                && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
-            {
-                let before = index
-                    .checked_sub(1)
-                    .and_then(|s| b.segments.get(s))
-                    .map_or(start, |s| s.end);
-                // A pass already at clearance may need no retract. Preserve
-                // its valid motion without inventing a reset boundary. A
-                // pass that adds no motion leaves the same segment last, so
-                // it is recorded once and the list stays strictly increasing.
-                if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
-                    && segment.end.a == before.a
-                    && rotary_reset_after.last() != Some(&index)
+            let link = |b: &mut Builder<'_>, resets: &mut Vec<usize>, height: f64| -> Result<()> {
+                leave(b, view(&stocks, i - 1, input), common, height)?;
+                b.retract(height)?;
+                if helical_starts.get(i).copied().unwrap_or(false)
+                    && rotary.range == openchuck_types::machine::ARange::Continuous
+                    && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
                 {
-                    rotary_reset_after.push(index);
+                    let before = index
+                        .checked_sub(1)
+                        .and_then(|s| b.segments.get(s))
+                        .map_or(start, |s| s.end);
+                    // A pass already at clearance may need no retract. Preserve
+                    // its valid motion without inventing a reset boundary. A
+                    // pass that adds no motion leaves the same segment last, so
+                    // it is recorded once and the list stays strictly increasing.
+                    if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
+                        && segment.end.a == before.a
+                        && resets.last() != Some(&index)
+                    {
+                        resets.push(index);
+                    }
                 }
-            }
-            let target = rotary.to_axis(head.tip, head.a);
-            let at = b.at().height.max(height);
-            let tip = rotary.to_model(
-                AxisPosition {
-                    height: at,
-                    ..target
-                },
-                head.a,
+                let target = rotary.to_axis(head.tip, head.a);
+                let at = b.at().height.max(height);
+                let tip = rotary.to_model(
+                    AxisPosition {
+                        height: at,
+                        ..target
+                    },
+                    head.a,
+                );
+                let end = b.pose(tip, head.a);
+                b.push(MoveKind::Rapid, end, None, None)
+            };
+            // A low link the collision oracle refuses goes up to the retract
+            // height instead, and is counted with those that could not be
+            // lowered (COL-08, NFR-12; CodeRabbit on #459).
+            let lowered_here = local.is_some() && stocks.get(i).and_then(Option::as_ref).is_none();
+            let mark = (
+                b.segments.len(),
+                b.notes.len(),
+                b.pose,
+                b.contact,
+                rotary_reset_after.len(),
             );
-            let end = b.pose(tip, head.a);
-            b.push(MoveKind::Rapid, end, None, None)?;
+            let mut linked = link(&mut b, &mut rotary_reset_after, height);
+            if linked.is_err() && lowered_here {
+                b.segments.truncate(mark.0);
+                b.notes.truncate(mark.1);
+                b.pose = mark.2;
+                b.contact = mark.3;
+                rotary_reset_after.truncate(mark.4);
+                kept_high += 1;
+                linked = link(&mut b, &mut rotary_reset_after, link_height);
+            }
+            linked?;
         }
         entry.enter(&mut b, input, stock, common, i, points, context)?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
