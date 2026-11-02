@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SIMVIS (#488, proposed decision 0638): deviation colours cover only the area each band applies to, not whole triangles. On the cut part, the violet of an enclosed bore covers the bore's disc on a faced end, not whole strips across the ring. The probe reads the piece under the pointer, and the colour scale says when the pieces ran out.
+
 - SIMVIS (#478, accepted decision 0633): Simulate draws material no tool can reach (enclosed across the rotary axis, such as a bore along it) as "Unreachable (enclosed)", violet `#b652ff` under a dark cross-hatch, on the cut part and the part; "Not measured" is slate under a light hatch instead of the grey of "within"; the colour scale lists both; the probe adds "· unreachable (enclosed)"; the results inspector shows "Unreachable (enclosed)" and "Left, not classified", an "of which unreachable" row under each histogram row that has any, and a "Show unreachable (enclosed)" tick box. The run's warning about it is in Results and in Messages, on the setup.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.

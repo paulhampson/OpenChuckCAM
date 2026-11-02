@@ -9,8 +9,9 @@
 //! longest edge, and each half again while its own test points still fall
 //! in more than one band, down to about two simulation cells. A strip (four
 //! or more times longer than it is wide, as the cut part's faced end is
-//! made of) is cut across its length instead, so that a band edge across it
-//! costs a few pieces rather than many along its whole length. The pieces
+//! made of) is cut across its length instead, once at each clean band edge,
+//! so that a band edge across it costs a few pieces rather than many along
+//! its whole length. The pieces
 //! follow the band boundaries, not the area of the triangles that hold
 //! them. Each piece is coloured by its parent's rule at its own centre.
 //! The parents keep their numbers (selection sets, picking and outlines
@@ -404,8 +405,80 @@ fn cut_strip(
             pending.push((from, middle, level + 1));
         }
     }
-    let mut joined: Vec<(f64, f64, Option<_>)> = Vec::with_capacity(stretches.len());
+    // At an end of the strip, the band at that end stands in for the
+    // neighbour beyond it (the rim of a bore, narrower than two cells).
+    let length = a.distance(b);
+    let band_near = |at: f64, toward: f64| {
+        slice(corners, at.min(toward), at.max(toward))
+            .first()
+            .map(|p| band_at(centre(*p)))
+    };
+    // Neighbouring short stretches holding two bands are one edge zone
+    // (where the samples near an edge reach into both).
+    let mut zones: Vec<(f64, f64, Option<_>)> = Vec::with_capacity(stretches.len());
     for stretch in stretches {
+        match zones.last_mut() {
+            Some(last)
+                if last.2.is_none()
+                    && stretch.2.is_none()
+                    && stretch.1 - last.0 <= 2.0 * shortest =>
+            {
+                last.1 = stretch.1;
+            }
+            _ => zones.push(stretch),
+        }
+    }
+    // A short stretch or zone holding two bands between stretches of those two
+    // bands is a clean edge across the strip: it is cut once, at its
+    // middle, within two cells of the edge, and each half joins its
+    // neighbour. Elsewhere (a narrow band, or bands in a tangle) it is cut
+    // on as a piece.
+    let mut edged: Vec<(f64, f64, Option<_>)> = Vec::with_capacity(zones.len());
+    let mut rest = zones.into_iter().peekable();
+    while let Some(stretch) = rest.next() {
+        let (from, to, band) = stretch;
+        let quarter = (to - from) / 4.0;
+        let before = match edged.last() {
+            Some(last) => last.2,
+            None if band.is_none() && from <= 0.0 => band_near(from, from + quarter),
+            None => None,
+        };
+        let after = match rest.peek() {
+            Some(next) => next.2,
+            None if band.is_none() && to >= length => band_near(to, to - quarter),
+            None => None,
+        };
+        let middle = f64::midpoint(from, to);
+        // A half at an end of the strip is a stretch of its own: it is drawn
+        // in the end's band only if its pieces read that band at their
+        // centres; a band too narrow for that is cut on. A half beside a
+        // neighbour joins it.
+        let reads = |from: f64, to: f64, band, alone: bool| {
+            !alone
+                || slice(corners, from, to)
+                    .iter()
+                    .all(|p| band_at(centre(*p)) == band)
+        };
+        let first = edged.is_empty();
+        let last = rest.peek().is_none();
+        match (band, before, after) {
+            (None, Some(b), Some(a))
+                if a != b && reads(from, middle, b, first) && reads(middle, to, a, last) =>
+            {
+                match edged.last_mut() {
+                    Some(last) => last.1 = middle,
+                    None => edged.push((from, middle, Some(b))),
+                }
+                match rest.peek_mut() {
+                    Some(next) => next.0 = middle,
+                    None => edged.push((middle, to, Some(a))),
+                }
+            }
+            _ => edged.push(stretch),
+        }
+    }
+    let mut joined: Vec<(f64, f64, Option<_>)> = Vec::with_capacity(edged.len());
+    for stretch in edged {
         match joined.last_mut() {
             Some(last) if last.2.is_some() && last.2 == stretch.2 => last.1 = stretch.1,
             _ => joined.push(stretch),
@@ -586,11 +659,51 @@ mod tests {
             }
         };
         let pieces = run(&mesh, &rule, PIECE_BUDGET).unwrap();
-        assert!(pieces.parent.len() <= 30, "{}", pieces.parent.len());
+        assert!(pieces.parent.len() <= 14, "{}", pieces.parent.len());
         let violet = band_area(&pieces, DeviationBand::Unreachable);
         assert!(
             (violet - 9.0 * width).abs() <= 4.0 * PITCH * width,
             "{violet}"
+        );
+    }
+
+    #[test]
+    fn req_nfr_04_req_sim_05_a_clean_band_edge_across_a_strip_is_one_cut() {
+        // A band edge clean across a strip (one band on each side) is cut
+        // once, at the edge, to within two cells: a strip of one triangle
+        // with two such edges gives a handful of well-shaped pieces, not a
+        // run of pieces two cells long at each edge.
+        let mesh = TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(25.0, 0.0, 0.0),
+                Point3::new(25.0, PITCH, 0.0),
+            ],
+            triangles: vec![[0, 1, 2]],
+        };
+        let across_a_bore = |_: usize, p: Point3, _: [Point3; 3]| -> Projected {
+            if (8.0..17.0).contains(&p.x) {
+                (Some((2.0, false)), true)
+            } else {
+                (Some((0.0, false)), false)
+            }
+        };
+        let pieces = run(&mesh, &across_a_bore, PIECE_BUDGET).unwrap();
+        assert!(pieces.parent.len() <= 7, "{} pieces", pieces.parent.len());
+        // The coloured areas: the strip is a triangle, its width growing
+        // along X from 0 to one cell.
+        let width_at = |x: f64| PITCH * x / 25.0;
+        let between = |from: f64, to: f64| (width_at(from) + width_at(to)) / 2.0 * (to - from);
+        let violet = band_area(&pieces, DeviationBand::Unreachable);
+        let surface = band_area(&pieces, DeviationBand::OnTarget);
+        let edge = 2.0 * PITCH * PITCH;
+        assert!(
+            (violet - between(8.0, 17.0)).abs() <= 2.0 * edge,
+            "{violet}"
+        );
+        assert!(
+            (surface - between(0.0, 8.0) - between(17.0, 25.0)).abs() <= 2.0 * edge,
+            "{surface}"
         );
     }
 

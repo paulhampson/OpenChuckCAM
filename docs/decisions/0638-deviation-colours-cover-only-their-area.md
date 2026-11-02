@@ -68,19 +68,29 @@ Only 72 runs anywhere are shorter than two cells.
 
 **The cause is the cutting rule, not the bands.** Halving a strip along its longest edge leaves one child as long as the strip, so the pieces spread along the whole strip instead of gathering at the band edge. A model of the rule on a strip 25 to 40 mm long, 0.1 mm wide, with one band edge across it, gave 35 to 151 pieces. The part model's bore strips are slivers too.
 
-**The fix (item 1, as built).** A triangle four or more times longer than it is wide is cut across its length. Its length is halved while a stretch holds more than one band, down to two cells or the strip's width; neighbouring stretches of one band are joined. A stretch still holding more than one band is cut on as a piece. One band edge across a strip then costs a few pieces, placed to within two cells as before.
+**The fix (item 1, as built).** A triangle four or more times longer than it is wide is cut across its length. Its length is halved while a stretch holds more than one band, down to two cells or the strip's width.
 
-After the fix, measured on the owner's carving (release build, 4 threads, numbers only):
+- **A clean band edge is one cut.** This covers a short mixed stretch, or two neighbouring ones, with one band on each side. At an end of the strip, the band at that end counts as the neighbour beyond it. The strip is cut once, at the middle of that stretch, within two cells of the edge, and each half joins its side. A half that would stand alone at a strip's end is kept only if its pieces read its band at their centres. This keeps a rim narrower than the stretch.
+- **Joining.** Neighbouring stretches of one band are joined.
+- **Irregular edges.** A stretch still holding more than one band, where the bands tangle or a band is narrower than the stretch, is cut on as a piece.
 
-| Mesh | Parents | Pieces before the fix | Pieces after |
-| --- | --- | --- | --- |
-| Part model | 1,522 | 133,422 | 16,476 (5,412 on the surface, 11,064 Unreachable) |
-| Cut part at the end | 1,687 | 264,850 | 17,801 (8,988 on the surface, 6,053 Unreachable, 2,760 not measured) |
+One band edge across a strip then costs a few well-shaped pieces. The coordinator relayed the target: about five per parent, and at most seven for a strip with two edges.
 
-Timings after the fix:
+Measured on the owner's carving (release build, 4 threads, numbers only):
 
-- **Cut part.** Making the pieces now takes 1.2 to 1.6 s, against 6.4 s before the fix. The projection pass over the 1,323,834 triangles, made either way, takes 1.1 to 1.7 s. The whole job takes 6.8 to 7.9 s with pieces and 5.2 to 6.6 s without them, run for run on the same container. (The 3.2 s quoted before pieces was measured on a quieter run.)
-- **Part model.** The colouring job takes 3.7 to 3.8 s.
+| Mesh | Parents | Pieces, longest-edge halving | Strips cut across | With one cut per clean edge |
+| --- | --- | --- | --- | --- |
+| Part model | 1,522 | 133,422 | 16,476 | 10,556 (6.9 per parent: 5,412 on the surface, 5,144 Unreachable) |
+| Cut part at the end | 1,687 | 264,850 | 17,801 | 8,975 (5.3 per parent) |
+
+**Timings.** The part model's colouring job takes 3.3 to 3.4 s. For the cut part, the job was run four rounds in one process, alternating with and without pieces:
+
+| Cut-part frame at the end | Without pieces | With pieces |
+| --- | --- | --- |
+| Still (with its picker) | 4.8 to 5.5 s | 6.2 to 6.5 s |
+| Playing (no picker) | 1.1 to 1.6 s | 2.5 to 2.9 s |
+
+Pieces add about 1.3 s either way. Making the picker is most of a still frame's cost. The 3.2 s quoted earlier "before pieces" was not like for like. The rest of the pieces' cost is finding the mixed triangles: 73,558 of the cut part's 1,323,834 triangles are longer than two cells and are tested at seven points.
 
 Whether that cost is accepted, or pieces are made only for still frames, is the owner's decision (asked 2 Nov 2026).
 
@@ -95,4 +105,6 @@ Built so far for item 5 and the strip rule, test first:
 - `openchuck-app` `stock_surface.rs` `req_sim_05_a_stock_face_off_the_part_s_surface_takes_the_material_behind_it`. It failed first. A cap five cells from the rim takes the enclosed bore behind it. A cap one and a half cells from the rim keeps the rim. With nothing bound or enclosed behind a cap, it keeps the nearest counted sample.
 - Decision 0238's projection test `req_sim_05_req_sim_11_stock_colours_and_probes_use_nearest_existing_samples_with_bounds` now places its triangles within two cells of the samples they read. At 0.2 mm (two cells, and a little more at the centroid) the bound behind the triangle was taken, as item 5 intends.
 - `openchuck-ui` `shell::simulate_tests::req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore` (11.5 s), through the whole interface on the tube stand-in. It shows 145.1 mm² Unreachable on the faced end against the bore's 153.9 mm², within 20%. Before item 5 it showed 47.7 mm².
-- `openchuck-app` `pieces.rs` `req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length`. It failed first, with 124 pieces. A strip 25 mm by 0.1 mm with one band edge across it makes at most 20 pieces, with the edge placed to within two cells. With two band edges, as across a bore, it makes at most 30.
+- `openchuck-app` `pieces.rs` `req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length`. It failed first, with 124 pieces. A strip 25 mm by 0.1 mm (two triangles) with one band edge across it makes at most 20 pieces, with the edge placed to within two cells. With two band edges, as across a bore, it makes at most 14 (tightened with the next test).
+- `pieces.rs` `req_nfr_04_req_sim_05_a_clean_band_edge_across_a_strip_is_one_cut`. It failed first, with 22 pieces for the two-triangle strip. A one-triangle strip with two clean edges makes at most 7 pieces, with each band's area within two cells of the true one.
+- The bore test `req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands` now finds the piece across the middle of the bore. The joined pieces are long, so no piece centre lies near the middle.
