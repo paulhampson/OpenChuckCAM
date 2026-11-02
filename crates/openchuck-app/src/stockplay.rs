@@ -14,6 +14,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use openchuck_project::Project;
 use openchuck_project::id::{ModelId, OperationId, SetupId};
 use openchuck_sim::{
     Checkpoint, DeviationOptions, DexelStock, ReachClass, Simulator, stock_mesh, triangle_worst,
@@ -483,28 +484,28 @@ impl Application {
                     AppError::Playback("this setup has no part to compare with".to_owned())
                 })?;
                 // The part as the run was made with it (see `Regeneration::project`).
-                let model = run
+                let setup_ref = run
                     .project
                     .setup(setup)
-                    .and_then(|s| s.part)
+                    .ok_or_else(|| AppError::Playback("the setup has no part".to_owned()))?;
+                let model = setup_ref
+                    .part
                     .and_then(|id| run.project.models().iter().find(|m| m.id == id))
                     .ok_or_else(|| AppError::Playback("the setup has no part".to_owned()))?;
-                let mesh = match run.project.setup(setup) {
-                    Some(setup) => {
-                        crate::model::setup_mesh(&document.location, model, setup, context)?
-                    }
-                    None => crate::model::placed_mesh(&document.location, model, context)?,
-                };
+                let part = crate::model::setup_part(&document.location, model, setup_ref, context)?;
+                // The file is read now, not as the run read it: colours made
+                // for another file's triangles would be wrong, so a file
+                // edited behind the application is refused (decision 0492).
+                if part.hash != model.hash {
+                    return Err(AppError::PartChanged(model.label()));
+                }
+                let mesh = part.mesh;
                 let model_triangles = mesh.triangles.len();
                 // The deviation was measured against the part with the held
                 // regions and tabs; the colours are of the part's triangles,
                 // which come first.
-                let target = match run.project.setup(setup) {
-                    Some(setup) => {
-                        crate::workholding::setup_deviation_target(setup, mesh.clone())?.mesh
-                    }
-                    None => mesh.clone(),
-                };
+                let target =
+                    crate::workholding::setup_deviation_target(setup_ref, mesh.clone())?.mesh;
                 let options = DeviationOptions::for_cell(report.settings.cell.0);
                 let mut worst = triangle_worst(deviation, &target, options.spacing)?;
                 worst.truncate(model_triangles);
@@ -532,6 +533,39 @@ impl Application {
             },
         )
     }
+}
+
+/// Whether the part of `setup` is no longer the one `run` was made with
+/// (decision 0492). The deviation colours the simulation measured belong to
+/// that part's triangles, so a part that changed must not carry them.
+///
+/// The part has changed when the setup is gone from either project, when
+/// the setup names another part or places it differently on the machine
+/// (its frame), or when the part's model differs in its content hash, its
+/// unit or its placement steps. The setup's other settings (stock, material,
+/// clearance, holding) change the toolpath, not the part: the run is then out
+/// of date and keeps its colours (owner's answer to question 2, case 1).
+/// Where the file is stored and the name it is shown by are labels. The model
+/// file on disk is checked by [`Application::start_deviation_bands`], which
+/// reads it.
+#[must_use]
+pub fn part_changed_since(project: &Project, run: &Regeneration, setup: SetupId) -> bool {
+    let (Some(then), Some(now)) = (run.project.setup(setup), project.setup(setup)) else {
+        return true;
+    };
+    if then.part != now.part || then.frame != now.frame {
+        return true;
+    }
+    let Some(id) = then.part else {
+        return true;
+    };
+    let (Some(then), Some(now)) = (
+        run.project.models().iter().find(|m| m.id == id),
+        project.models().iter().find(|m| m.id == id),
+    ) else {
+        return true;
+    };
+    then.hash != now.hash || then.units != now.units || then.transform != now.transform
 }
 
 /// The progress of one group of "prepare playback", reported as moves of
