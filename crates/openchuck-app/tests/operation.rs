@@ -1578,6 +1578,46 @@ fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[test]
+fn req_op_14_req_sim_08_a_new_finishing_operation_keeps_its_links_low() {
+    // Decision 0640 (the owner's choice, relayed, issue 469; amends 0496): a
+    // new operation of a strategy with Links between passes is written with
+    // "low", like any value the user set; an operation saved without it
+    // keeps "retract" (the default), and other strategies get nothing.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, LOW};
+    let (dir, mut app, op) = project("link-height-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let link = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(LINK_HEIGHT)
+            .cloned()
+    };
+    let low = Some(openchuck_app::project::ParameterValue::Text(LOW.into()));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(link(&app, added), low, "{strategy}");
+    }
+    for strategy in ["rotary_roughing", "pencil_finishing", "swarf"] {
+        if let Ok(added) = app.add_operation(strategy, strategy, setup, tool) {
+            assert_eq!(link(&app, added), None, "{strategy}");
+        }
+    }
+    // The operation made before the option has none, so its links retract
+    // as they did.
+    assert_eq!(link(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,

@@ -1224,7 +1224,8 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
         helical.map(|c| c.label.clone())
     );
     assert_eq!(app.strategy_label("not_registered"), "not_registered");
-    // Adding: at the end, enabled, with the strategy's defaults.
+    // Adding: at the end, enabled, with the strategy's defaults and the
+    // low links a new operation is given (decision record 0640).
     let before = app.project().operations().len();
     let second = app
         .add_operation("  Second pass ", "helical_finishing", setup, Some(tool))
@@ -1232,7 +1233,16 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     assert_eq!(app.project().operations().len(), before + 1);
     let added = app.project().operation(second).unwrap();
     assert_eq!(added.name, "Second pass");
-    assert!(added.enabled && added.parameters.is_empty());
+    assert!(added.enabled);
+    assert_eq!(
+        added.parameters.iter().collect::<Vec<_>>(),
+        [(
+            &openchuck_path::axial::parameter::LINK_HEIGHT.to_owned(),
+            &openchuck_app::project::ParameterValue::Text(
+                openchuck_path::axial::parameter::LOW.into()
+            )
+        )]
+    );
     assert_eq!(app.project().operations().last().unwrap().id, second);
     // The cube's ends are free and deeper than the ball's flutes; this test
     // is not about free ends (decision record 0344, OI-1396).

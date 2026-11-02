@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- PATHORDER pull request D (issue #469; decision 0640, proposed): helical finishing, rest machining and simultaneous finishing have decision 0496's **Links between passes** (`axial::parameter::LINK_HEIGHT`): `low` marks every pass `low_link`, and the shared assembly links them by 0496's rule (above the setup's stock, clear of held regions, a note for links that retract). `retract`, the default, leaves every path and golden file unchanged. Additive API only (the parameter in three more schemas; `Pass::low_link` is 0496's), so no version bump (the coordinator, 2 Nov 2026).
+- PATHORDER pull request D (issue #469; decision 0640, proposed): helical finishing, rest machining and simultaneous finishing have decision 0496's **Links between passes** (`axial::parameter::LINK_HEIGHT`): `low` marks every pass `low_link`, and the shared assembly links them by 0496's rule (above the setup's stock, clear of held regions, a note for links that retract). `retract`, the default, leaves every path and golden file unchanged. Additive API (the parameter in three more schemas; `Pass::low_link` is 0496's). Version 0.40.0 (assigned by the coordinator, applied at release), for the new-operation default in `openchuck-app`, which changes the output of a new operation.
 
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
 
