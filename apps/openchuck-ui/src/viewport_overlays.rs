@@ -1201,6 +1201,7 @@ mod tests {
     /// diagram, not a cut, so it is drawn in its own colour, not the Cut
     /// amber, and named in the path legend while one is shown (SIM-01).
     #[test]
+    #[allow(clippy::float_cmp)] // Exact colour constants, not computed values.
     fn req_sim_01_req_ui_25_the_facing_sweep_has_its_own_colour_and_legend_entry() {
         assert_ne!(roles::SWEEP, roles::CUT);
         assert_eq!(

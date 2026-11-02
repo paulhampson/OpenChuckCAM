@@ -577,7 +577,7 @@ fn req_ui_11_req_sim_01_facing_sweep_follows_its_operation_eye_and_currency() {
 #[test]
 fn req_op_24_req_ui_03_facing_sweep_shows_only_the_cutting_moves_at_the_tip() {
     for shape in ["end", "box", "round"] {
-        let (mut p, _) = project(&format!("facing-sweep-cut-{shape}"), shape);
+        let (p, _) = project(&format!("facing-sweep-cut-{shape}"), shape);
         let run = p.app.regenerate().unwrap();
         let group = &run.toolpath.groups[0];
         let radius = 1.5;
