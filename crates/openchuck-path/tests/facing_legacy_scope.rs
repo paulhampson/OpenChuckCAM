@@ -231,3 +231,40 @@ fn req_op_24_req_set_06_unreachable_scoped_candidates_cannot_be_returned_as_usab
         );
     });
 }
+
+/// Round Facing in rings (decision record 0420) is checked by the same
+/// independent completion check as the spiral, and passes it.
+#[test]
+fn req_op_24_restricted_round_facing_in_rings_passes_the_completion_check() {
+    fixture(|input, _setup, ctx| {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(20.),
+            length: Millimetres(30.),
+            x_start: Millimetres(0.),
+        };
+        let setup = FacingSetup {
+            stock: &stock,
+            ..*input.facing.unwrap()
+        };
+        let port = AnalyticStock::from_stock(&stock, None).unwrap();
+        let input = &StrategyInput {
+            stock: &port,
+            facing: Some(&setup),
+            ..*input
+        };
+        let mut v = values("part", 0.);
+        v.insert("shape".into(), ParameterValue::Text("round".into()));
+        v.insert("min_cut".into(), ParameterValue::Number(0.));
+        v.insert("size".into(), ParameterValue::Number(14.));
+        v.insert("pass_shape".into(), ParameterValue::Text("rings".into()));
+        let generated = generate(&Facing, input, &v, ctx).unwrap();
+        Facing
+            .validate_group(
+                input.facing.unwrap(),
+                &Facing.resolve_parameters(&v).unwrap(),
+                &generated.group,
+                ctx,
+            )
+            .unwrap();
+    });
+}

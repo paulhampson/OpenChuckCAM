@@ -510,6 +510,14 @@ Boards 3 and 3b.
 - **Passes**: a segmented control, Spiral or Rings, Spiral for a new operation and for one saved before it. Its tooltip is the parameter's description: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle."
 - The note "helical finishing cut n rings, s mm apart, …" shows in Messages and on the operation as other path notes do.
 
+**Rings for the other spiral strategies ([decision 0420](../decisions/0420-rings-for-rest-roughing-and-round-facing.md), accepted 1 Nov 2026, relayed).** The same **Passes** control, with the same words, Spiral for a new operation and for one saved before it, is in Pattern and tolerance for rest machining, for rotary roughing when the form is continuous and the cut direction is around the part (or usual for the form), and for Facing when the shape is Round. It is not shown for the other forms and shapes, which do not cut a spiral. Each tooltip is that strategy's parameter description:
+
+- Rest machining: "Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, at the start angle. Either way only the places with material left are cut."
+- Rotary roughing: "Continuous form around the part. Spiral: each layer is one continuous spiral that moves along the part as it turns. Rings: each layer is cut one full turn at a time at a fixed place along the part, with a short step along the part between turns."
+- Facing: "Round: Spiral turns each layer down in one continuous spiral that moves along the stock as it turns. Rings cuts each layer one full turn at a time at a fixed place along the stock, with a short step along it between turns."
+
+The note saying the rings were cut and how far apart shows in Messages and on the operation as other path notes do.
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.
@@ -537,6 +545,7 @@ Board 4 (SIM-01 to SIM-07).
   Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
+- **The part** *(SIM-05; [decision 0492](../decisions/0492-deviation-colours-on-the-part-model.md), accepted)*. With "Deviation colours" on and Part shown, the part is coloured by its own measured final result (the band of each triangle's worst counted sample); with Cut part shown too, the cut part is drawn plain at 30% over it. The colour scale box names what it colours ("Part · final result", "Cut part · nearest target sample") and, while only the cut part is shown, adds "Tick Part to see these colours on the part model." The probe on the part reads "Final result · …". After a change to the toolpath or the settings the colours stay under the stale banner; after a change to the part itself (reimport, replacement, placement) the part is drawn plain and the scale box says "Deviation colours are not shown on the part: it has changed since this simulation." When the cut part cannot be prepared nothing is coloured (#330).
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
 - **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the cut stock coloured by deviation, resting the pointer on its surface (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one its stock triangle is coloured by, explicitly labelled as a projected final result. Picking uses the same stock mesh on the CPU; a nearer visible model/stock face hides hover and pinned values in either display mode. A changed mesh clears pins because triangle identities change. While playback plays, the cut part is drawn without its picker, so nothing is read under the pointer and a kept value is not drawn; once playback is still (paused, stopped, stepped or jumped), the frame shown is made again with its picker and the probe works as above ([decision 0322](../decisions/0322-simulate-playback-frame-cost.md) item 6, the owner's decision D5 on issue #382). The operation and move that left the point are added with the rest of SIM-11.
@@ -682,7 +691,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Length | Number | mm | Along X |
    | Diameter | Number | mm | Cylinder only |
    | Diameter at start X, Diameter at end X | Number, two rows | mm | Frustum only. Under them a derived line says which end faces the part: "Small end towards the part", or in `warning` amber "Large end towards the part" |
-   | Narrowest | Read-only | mm | The smallest diameter, compared with the tools (below) |
+   | Length vs tools | Read-only | mm | The tab's length along X, compared with the tools (below; [decision 0494](../decisions/0494-tab-length-is-checked-against-the-tool.md)) |
    | Placement | Segmented: On the axis, Around the axis | | |
    | Count | Whole number, 1 to 64 | | Around the axis only; default 2 |
    | Start angle | Number | ° | Around the axis only; default 0.00; from +Y towards +Z, evenly spaced after it (decision 0041 item 4); a hint names the angles, "0.00°, 180.00°" |
@@ -690,7 +699,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
 
    The row's menu (right click, the menu key, or a "⋯" button) has Remove (Del when the row has focus) and Duplicate. Both change the draft only.
 5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), rounded to the field's 3 places, starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused. Under them, **Head tab** and **Tail tab** ([decision 0202](../decisions/0202-head-and-tail-tabs-placed-automatically.md); the owner's option A on OI-780): each adds a tab with "Place automatically" ticked that fills the gap at that end of the part, from the part to the held region (or the end of the stock), as a cylinder on the axis of Add tab's diameter; each press adds another. A button is disabled with the reason in its tooltip without a part ("Import a model first") or stock, while the part is being read, or when there is no room ("No room at the head: the held region reaches the part.", "No room at the tail: the stock ends at the part."). A collapsed row of a tab placed automatically ends "· Automatic". When such a tab finds no room at its end it keeps its last position, and its row and the Setup checks carry a warning saying so; it is not removed.
-6. **Check against the part and tools**, a secondary button that runs the same checks as Apply without storing anything, then lists what it found under it, or "The tabs are in the head and tail zones and wide enough for the tools."
+6. **Check against the part and tools**, a secondary button that runs the same checks as Apply without storing anything, then lists what it found under it, or "The tabs are in the head and tail zones and long enough for the tools."
 7. **Apply** and **Revert**, right-aligned, Apply right-most.
 
 **The default tabs shown as defaults** (decision 0035, owner's answers; decision 0045 item 3; OI-198). The defaults are never applied silently, and the stored data stays explicit (decision 0041 item 2). So:
@@ -723,7 +732,7 @@ The checks that need the part and the tools run as a job on Apply and on "Check 
 | Check | Message |
 | --- | --- |
 | A tab not wholly in the head or the tail zone (OI-180) | "Tab 3 (X −1.000 to 1.000 mm) is not wholly in the head or the tail zone. Tabs lie between the held region (or the end of the stock) and the part, or between the part and the other end." |
-| A tab narrower than a tool of the setup's operations (OI-159) | "Tab 2 is 3.000 mm across at its narrowest, narrower than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab wider or use a smaller tool." |
+| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decision 0494) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
 | The part, the stock or a tool changed while checking | "The part, stock or tools changed while checking; check again." |
 | The draft changed while it was being checked | "The draft changed while it was being checked; apply it again." |
 
