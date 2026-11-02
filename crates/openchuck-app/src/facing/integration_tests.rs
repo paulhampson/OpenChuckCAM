@@ -496,3 +496,153 @@ fn req_op_14_req_gc_07_box_facing_links_retract_by_default_and_stay_low_on_reque
         );
     }
 }
+
+/// The cutter-sweep diagram follows its own operation (issue #499, the
+/// owner's decision S-1): it shows while that operation's path is current
+/// and its eye is on. Turning on another operation, or hiding one, leaves
+/// it in place; hiding the facing operation itself, or changing it, takes it
+/// away (UI-11, SIM-01).
+#[test]
+fn req_ui_11_req_sim_01_facing_sweep_follows_its_operation_eye_and_currency() {
+    let sweeps = |view: &crate::scene::SceneView| {
+        view.lines
+            .iter()
+            .filter(|l| l.role == crate::scene::SceneRole::FacingSweep)
+            .count()
+    };
+    let (mut p, op) = project("facing-sweep-gate", "box");
+    let other = p.add_operation("Other", "facing");
+    p.app
+        .execute(Command::SetOperationEnabled {
+            operation: other,
+            enabled: false,
+        })
+        .unwrap();
+    let run = std::sync::Arc::new(p.app.regenerate().unwrap());
+    let scene = |p: &mut TestProject| {
+        p.app
+            .start_scene_with_facing(None, Some(run.clone()))
+            .wait()
+            .unwrap()
+    };
+    assert!(sweeps(&scene(&mut p)) > 0);
+    // Another operation turned on: the facing group is still current.
+    p.app
+        .execute(Command::SetOperationEnabled {
+            operation: other,
+            enabled: true,
+        })
+        .unwrap();
+    assert!(
+        sweeps(&scene(&mut p)) > 0,
+        "another operation hid the sweep"
+    );
+    // Another operation's path hidden: still shown.
+    p.app
+        .execute(Command::SetPathsShown {
+            operations: vec![other],
+            shown: false,
+        })
+        .unwrap();
+    assert!(
+        sweeps(&scene(&mut p)) > 0,
+        "hiding another path hid the sweep"
+    );
+    // The facing operation's own eye hides its sweep.
+    p.app
+        .execute(Command::SetPathsShown {
+            operations: vec![op],
+            shown: false,
+        })
+        .unwrap();
+    assert_eq!(sweeps(&scene(&mut p)), 0, "the eye did not hide the sweep");
+    p.app
+        .execute(Command::SetPathsShown {
+            operations: vec![op],
+            shown: true,
+        })
+        .unwrap();
+    assert!(sweeps(&scene(&mut p)) > 0);
+    // An edit to the facing operation makes its sweep out of date.
+    p.app
+        .set_parameter(op, "extent_margin", Some(ParameterValue::Number(0.5)))
+        .unwrap();
+    assert_eq!(sweeps(&scene(&mut p)), 0, "an out-of-date sweep is shown");
+}
+
+/// The owner's decision S-1 (issue #499): the diagram shows only the cutter's
+/// sweep along the cutting moves, at the tool's tip; no circle at the top of
+/// the flutes and none on a plunge or another fed move that is not a cut
+/// (OP-24, UI-03).
+#[test]
+fn req_op_24_req_ui_03_facing_sweep_shows_only_the_cutting_moves_at_the_tip() {
+    for shape in ["end", "box", "round"] {
+        let (mut p, _) = project(&format!("facing-sweep-cut-{shape}"), shape);
+        let run = p.app.regenerate().unwrap();
+        let group = &run.toolpath.groups[0];
+        let radius = 1.5;
+        let cut_tips = {
+            let mut out = Vec::new();
+            let mut from = group.start;
+            for s in &group.segments {
+                if s.kind == openchuck_types::ir::MoveKind::Cutting {
+                    out.push((from.tip, s.end.tip));
+                }
+                from = s.end;
+            }
+            out
+        };
+        let near_a_cut = |q: Point3| {
+            cut_tips.iter().any(|(a, b)| {
+                let ab = *b - *a;
+                let t = if ab.length() > 0. {
+                    ((q - *a).dot(ab) / ab.dot(ab)).clamp(0., 1.)
+                } else {
+                    0.
+                };
+                (q - (*a + ab * t)).length() <= radius + 1e-6
+            })
+        };
+        let scene = p
+            .app
+            .start_scene_with_facing(None, Some(std::sync::Arc::new(run.clone())))
+            .wait()
+            .unwrap();
+        let points = scene
+            .lines
+            .iter()
+            .filter(|l| l.role == crate::scene::SceneRole::FacingSweep)
+            .flat_map(|l| l.points.iter().copied())
+            .collect::<Vec<_>>();
+        assert!(!points.is_empty(), "{shape}");
+        // Round cuts turn A, so their sweep follows an arc: it stays within
+        // the cutting moves' X range and their distance from the axis, give
+        // or take the tool's radius. The others cut at a fixed A.
+        let x = cut_tips
+            .iter()
+            .flat_map(|(a, b)| [a.x, b.x])
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v), hi.max(v))
+            });
+        let r = cut_tips
+            .iter()
+            .flat_map(|(a, b)| [a.y.hypot(a.z), b.y.hypot(b.z)])
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                (lo.min(v), hi.max(v))
+            });
+        for q in points {
+            let ok = if shape == "round" {
+                q.x >= x.0 - radius - 1e-6
+                    && q.x <= x.1 + radius + 1e-6
+                    && q.y.hypot(q.z) >= r.0 - radius - 1e-6
+                    && q.y.hypot(q.z) <= r.1 + radius + 1e-6
+            } else {
+                near_a_cut(q)
+            };
+            assert!(
+                ok,
+                "{shape}: a sweep point {q:?} is not within the tool's radius of a cutting move"
+            );
+        }
+    }
+}

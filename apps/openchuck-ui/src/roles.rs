@@ -53,6 +53,10 @@ pub const WORK_Y: Colour = hex(0x6fd3a8);
 pub const WORK_Z: Colour = hex(0x6fb2ff);
 /// Cut moves, amber `#ffb454`, solid.
 pub const CUT: Colour = hex(0xffb454);
+/// The Facing cutter sweep, lime `#c2e07a`, a thin solid line: the
+/// outline of the tool along the cutting moves, a diagram and not a path,
+/// so it has a colour of its own (issue #499, decision 0643).
+pub const SWEEP: Colour = hex(0xc2e07a);
 /// Link moves, green `#6fd3a8`, solid and thinner.
 pub const LINK: Colour = hex(0x6fd3a8);
 /// Rapid moves, grey `#9aa6b5`, dotted.

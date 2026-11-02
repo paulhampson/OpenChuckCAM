@@ -79,6 +79,8 @@ pub enum LegendEntry {
     Selected,
     /// Avoid surfaces.
     Avoid,
+    /// The Facing cutter sweep (decision 0643).
+    CutterSweep,
     /// A held region.
     HeldRegion,
     /// A tab.
@@ -95,6 +97,7 @@ impl LegendEntry {
             Self::Entry => "Entry",
             Self::Selected => "Selected",
             Self::Avoid => "Avoid",
+            Self::CutterSweep => "Cutter sweep",
             Self::HeldRegion => "Held region",
             Self::Tab => "Tab",
         }
@@ -125,6 +128,10 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
         LegendEntry::Selected,
         LegendEntry::Avoid,
     ];
+    // The Facing cutter sweep, when one is shown (issue #499, decision 0643).
+    if view.lines.iter().any(|l| l.role == SceneRole::FacingSweep) {
+        out.push(LegendEntry::CutterSweep);
+    }
     out.extend(workholding_entries(view));
     out
 }
@@ -932,6 +939,7 @@ pub fn swatch_for(painter: &egui::Painter, r: Rect, entry: LegendEntry, kept: bo
         LegendEntry::Link => line(roles::LINK, roles::LINE_WIDTH, false),
         LegendEntry::Rapid => line(roles::RAPID, roles::PATH_WIDTH, true),
         LegendEntry::Entry => line(roles::ENTRY, roles::PATH_WIDTH, false),
+        LegendEntry::CutterSweep => line(roles::SWEEP, roles::LINE_WIDTH, false),
         LegendEntry::Selected => {
             painter.rect_filled(r, 0.0, to_color32(roles::SELECTED).gamma_multiply(0.4));
         }
@@ -1187,6 +1195,36 @@ mod tests {
         // Below 480 pixels high it collapses to a button (7.2).
         assert!(legend_collapsed(479.0));
         assert!(!legend_collapsed(480.0));
+    }
+
+    /// Issue #499 (the owner's decision S-1): the Facing cutter sweep is a
+    /// diagram, not a cut, so it is drawn in its own colour, not the Cut
+    /// amber, and named in the path legend while one is shown (SIM-01).
+    #[test]
+    fn req_sim_01_req_ui_25_the_facing_sweep_has_its_own_colour_and_legend_entry() {
+        assert_ne!(roles::SWEEP, roles::CUT);
+        assert_eq!(
+            crate::viewport::style(SceneRole::FacingSweep).0,
+            roles::SWEEP
+        );
+        let mut view = SceneView::default();
+        view.lines.push(openchuck_app::scene::ScenePolyline {
+            role: SceneRole::FacingSweep,
+            points: Vec::new(),
+        });
+        let names: Vec<&str> = path_legend(&view).iter().map(|e| e.name()).collect();
+        assert_eq!(
+            names,
+            [
+                "Cut",
+                "Link",
+                "Rapid",
+                "Entry",
+                "Selected",
+                "Avoid",
+                "Cutter sweep"
+            ]
+        );
     }
 
     #[test]
