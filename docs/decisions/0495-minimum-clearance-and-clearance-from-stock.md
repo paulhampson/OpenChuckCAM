@@ -1,7 +1,8 @@
-# 0530: Minimum clearance for the workholding, and clearance from stock (lane CLEARANCE)
+# 0495: Minimum clearance for the workholding, and clearance from stock (lane CLEARANCE)
 
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049), including both lane refinements (item 3, the base radius kept in the max; item 6b, the wording for a tool too long to clear the minimum). Proposed by lane CLEARANCE the same day; the coordinator session approved the plan. The owner answered the four choices D1 to D4 on 1 Nov 2026: D1 and D2 directly in the lane session, and D3 and D4 relayed by the coordinator.
 - **Date:** 1 Nov 2026.
+- **Number:** proposed and accepted as 0530; renumbered 0495 on 2 Nov 2026 under the owner's rule that decision numbers follow on from the highest on `main` (relayed by the coordinator and the Merge Manager). Earlier comments on pull request #458 call it 0530.
 - **Branch:** `claude/lane-clearance`. Issue [#336](https://github.com/paulhampson/OpenChuckCAM/issues/336) ("Clearance considerations for tool length").
 - **Requirements:** SET-06 (clearance geometry), SET-09 (the held region), SET-10 (the machine form), OP-14 (links use the clearance), UI-07, UI-13, NFR-07, NFR-12, GC-07 and NFR-06. No requirement text changes: the minimum and Clearance from stock are part of SET-06's "define clearance geometry" (the coordinator agreed, 1 Nov 2026).
 - **What it amends:** nothing in `requirements.md` or `architecture.md`. The verification plan's SET-06 row, the UI specification (11.3 and 12.5) and the work breakdown (lane rows and the schema claim) are edited in the same pull request.

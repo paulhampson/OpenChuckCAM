@@ -1076,7 +1076,7 @@ fn req_gc_12_req_set_09_offset_stock_held_region_shows_its_x_interval() {
 
 /// Clearance from stock on offset bounding-box stock, with no held region and
 /// no automatic tab: the sheet measures the part, so the clearance in use it
-/// gives is the one generation and posting use (decision 0530; GC-12, SET-06;
+/// gives is the one generation and posting use (decision 0495; GC-12, SET-06;
 /// review on #458).
 #[test]
 fn req_gc_12_req_set_06_offset_stock_clearance_from_stock_measures_the_part() {

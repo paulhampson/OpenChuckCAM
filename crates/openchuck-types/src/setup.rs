@@ -219,11 +219,11 @@ fn corner_radius(b: &Aabb) -> Millimetres {
 }
 
 /// The margin "Clearance from stock" starts with when it is switched on
-/// (decision record 0530).
+/// (decision record 0495).
 pub const DEFAULT_STOCK_MARGIN: Millimetres = Millimetres(5.0);
 
 /// A setup's clearance rules beyond its safe cylinder and safe Z (SET-06,
-/// decision record 0530): its own minimum clearance radius, and whether the
+/// decision record 0495): its own minimum clearance radius, and whether the
 /// clearance grows from the stock. The default has neither, which leaves
 /// the clearance and the generated G-code unchanged (GC-07).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -306,7 +306,7 @@ impl EffectiveClearance {
     }
 }
 
-/// The clearance a setup uses (SET-06, decision record 0530). The base is
+/// The clearance a setup uses (SET-06, decision record 0495). The base is
 /// the setup's own clearance, else the machine's. The minimum is the
 /// setup's, else the machine's. With "Clearance from stock" on, the safe
 /// cylinder radius is the largest of the base radius, the minimum and the
@@ -390,7 +390,7 @@ pub enum SetupWarningKind {
     PartOutsideStock,
     /// The safe cylinder is inside the minimum clearance radius, so links
     /// may hit the chuck, jaws, headstock or tailstock (decision record
-    /// 0530). A warning: generation and export still run (NFR-12).
+    /// 0495). A warning: generation and export still run (NFR-12).
     ClearanceBelowMinimum {
         /// Safe cylinder radius.
         radius: Millimetres,
@@ -567,7 +567,7 @@ pub struct SetupCheck<'a> {
     /// The setup's own clearance; `None` uses the profile's.
     pub clearance: Option<&'a Clearance>,
     /// The setup's minimum clearance and Clearance from stock (decision
-    /// record 0530).
+    /// record 0495).
     pub rules: &'a ClearanceRules,
     /// The part as this setup places it (moved by the part offset,
     /// [`PartExtent::in_setup`]), if the setup has one and it could be read.
@@ -1210,7 +1210,7 @@ mod tests {
     }
 
     /// With no minimum and Clearance from stock off, the clearance is
-    /// exactly the setup's own, else the machine's, as before decision 0530
+    /// exactly the setup's own, else the machine's, as before decision 0495
     /// (GC-07).
     #[test]
     fn req_set_06_req_gc_07_default_rules_leave_the_clearance_unchanged() {
@@ -1234,7 +1234,7 @@ mod tests {
         assert_eq!(e.below_minimum(), Some(Millimetres(90.0)));
     }
 
-    /// The setup's own minimum replaces the machine's (decision 0530, D1).
+    /// The setup's own minimum replaces the machine's (decision 0495, D1).
     #[test]
     fn req_set_06_the_setup_minimum_replaces_the_machine_minimum() {
         let mut profile = MachineProfile::example_x_rotary();
@@ -1257,7 +1257,7 @@ mod tests {
     /// Clearance from stock: the radius is the largest of the base radius,
     /// the minimum and the stock radius plus the margin, and the safe Z is
     /// lifted to at least that radius; it never lowers the clearance
-    /// (decision 0530, D3).
+    /// (decision 0495, D3).
     #[test]
     fn req_set_06_clearance_from_stock_grows_the_safe_cylinder_and_safe_z() {
         let mut profile = MachineProfile::example_x_rotary(); // radius 40, safe Z 50
@@ -1328,7 +1328,7 @@ mod tests {
     }
 
     /// A safe cylinder inside the minimum warns, naming both values and
-    /// where the minimum comes from; it never refuses (decision 0530, D2;
+    /// where the minimum comes from; it never refuses (decision 0495, D2;
     /// NFR-12). A machine minimum that is not confirmed is named.
     #[test]
     fn req_set_06_req_nfr_12_a_clearance_inside_the_minimum_warns() {

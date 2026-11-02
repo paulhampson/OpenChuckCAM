@@ -157,7 +157,7 @@ fn req_set_01_req_prj_04_the_spindle_height_fields_need_machine_schema_7() {
     use openchuck_project::machines::{MACHINE_SCHEMA, parse_profile, render_profile};
     use openchuck_types::machine::MachineProfile;
     use openchuck_types::units::Millimetres;
-    // Schema 8 added the minimum clearance radius (decision 0530); the
+    // Schema 8 added the minimum clearance radius (decision 0495); the
     // spindle-height fields are still refused below schema 7.
     assert_eq!(MACHINE_SCHEMA, 8);
     let mut profile = MachineProfile::example_x_rotary();

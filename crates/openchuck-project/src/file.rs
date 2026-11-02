@@ -128,7 +128,7 @@ use openchuck_types::workholding::Workholding;
 /// - 26: a setup gains the optional `clearance_rules` (its own minimum
 ///   clearance radius and Clearance from stock) and the machine copy the
 ///   optional `min_clearance_radius`, each written only when set; an older
-///   file has neither, so its clearance is unchanged (decision record 0530).
+///   file has neither, so its clearance is unchanged (decision record 0495).
 pub const SCHEMA: i64 = 26;
 
 /// Name of the machine profile file in the project folder.
@@ -214,7 +214,7 @@ fn schema_24_to_25(kind: FileKind, table: &mut toml::Table) -> Result<(), String
 
 /// Schema 26 adds the optional setup `clearance_rules` and the machine
 /// copy's `min_clearance_radius`, which an older file does not have; one
-/// that already holds one is refused (decision record 0530).
+/// that already holds one is refused (decision record 0495).
 fn schema_25_to_26(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     match kind {
         FileKind::Machine => crate::machines::premature_min_clearance(table, 25, 26),

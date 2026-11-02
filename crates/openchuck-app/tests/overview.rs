@@ -2239,7 +2239,7 @@ fn highest_z(program: &str) -> f64 {
 
 /// A machine minimum clearance above the setup's safe cylinder warns in the
 /// setup checks and Messages, naming both values, and generation still runs
-/// (decision 0530, D1 and D2; NFR-12). Clearance from stock grows the
+/// (decision 0495, D1 and D2; NFR-12). Clearance from stock grows the
 /// clearance to the minimum, which clears the warning and lifts the
 /// program's safe Z; switched off again, the program is byte-identical to
 /// the one before (GC-07, NFR-06).
@@ -2297,7 +2297,7 @@ fn req_set_06_req_gc_07_the_minimum_clearance_warns_and_clearance_from_stock_gro
     assert_eq!(f.app.regenerate().unwrap().gcode, before);
 }
 
-/// Case b of decision 0530 on the Makera Z1: a tool whose highest tip is
+/// Case b of decision 0495 on the Makera Z1: a tool whose highest tip is
 /// inside the minimum clearance radius warns that it may be too long to
 /// clear the workholding within the Z travel, and does not advise lowering
 /// the safe Z (NFR-12).

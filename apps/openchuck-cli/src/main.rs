@@ -35,17 +35,17 @@ use openchuck_app::{
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
-/// The setup's clearance rules (decision 0530).
+/// The setup's clearance rules (decision 0495).
 #[derive(clap::Args, Debug)]
 struct ClearanceArgs {
     /// The setup's minimum clearance radius in mm, the smallest safe
     /// cylinder that clears its chuck, jaws, headstock and tailstock, or
-    /// `machine` to use the machine profile's (decision 0530).
+    /// `machine` to use the machine profile's (decision 0495).
     #[arg(long, allow_hyphen_values = true)]
     min_clearance: Option<String>,
     /// Clearance from stock: the margin in mm added to the stock's
     /// radius (the safe cylinder grows to it and to the minimum, and the
-    /// safe Z to at least that radius), or `off` (decision 0530).
+    /// safe Z to at least that radius), or `off` (decision 0495).
     #[arg(long, allow_hyphen_values = true)]
     clearance_from_stock: Option<String>,
 }
@@ -1749,7 +1749,7 @@ fn parse_tab(text: &str) -> Result<Tab> {
 }
 
 /// Reads a length in mm, or `none` (the word that leaves it unset) for
-/// `None`; `zero` allows 0 (decision 0530).
+/// `None`; `zero` allows 0 (decision 0495).
 fn parse_optional_mm(
     text: &str,
     none: &str,
@@ -1993,7 +1993,7 @@ fn print_setup(app: &Application, report: &SetupReport) {
         (None, None) => println!("clearance:  Machine setting (no machine chosen)"),
     }
     if let Some(m) = app.project().machine() {
-        // The clearance the toolpaths, links and program use (decision 0530).
+        // The clearance the toolpaths, links and program use (decision 0495).
         let e = openchuck_app::setup::effective_clearance(
             m,
             setup,

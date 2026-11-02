@@ -2,7 +2,7 @@
 
 ## 0.34.0
 
-- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, accepted):** no change in this crate; all family crates advance together under 0048.
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.
 
 All notable changes to `openchuck-viewport` are recorded here.
 

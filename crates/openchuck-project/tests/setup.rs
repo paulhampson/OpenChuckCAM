@@ -635,7 +635,7 @@ fn req_set_01_req_prj_04_the_spindle_height_fields_need_project_schema_22() {
 /// The setup's clearance rules and the machine copy's minimum clearance
 /// radius survive save and load; a schema 25 project reads with neither, so
 /// its clearance is unchanged; a schema 25 file that already has one is
-/// refused (decision 0530; SET-06, PRJ-04, GC-07).
+/// refused (decision 0495; SET-06, PRJ-04, GC-07).
 #[test]
 fn req_set_06_req_prj_04_clearance_rules_need_project_schema_26() {
     use openchuck_types::setup::ClearanceRules;

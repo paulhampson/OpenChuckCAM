@@ -637,7 +637,7 @@ fn req_gc_17_req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_se
     assert!(out.stdout.contains("machine:    Makera Z1") && out.stdout.contains("material:   oak"));
 
     // The setup's minimum clearance warns when the safe cylinder is inside
-    // it; Clearance from stock grows the clearance to it (decision 0530).
+    // it; Clearance from stock grows the clearance to it (decision 0495).
     let out = run(&args(&[
         "setup",
         p,

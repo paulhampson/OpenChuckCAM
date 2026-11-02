@@ -392,7 +392,7 @@ const SPECS: &[Spec] = &[
         "Minimum clearance radius",
         "The smallest safe cylinder radius that clears the chuck, the jaws, the headstock and \
          the tailstock; blank when it is not known. A setup whose clearance is inside it is \
-         warned about; nothing is refused. A setup can set its own (decision 0530).",
+         warned about; nothing is refused. A setup can set its own (decision 0495).",
         G::Clearance,
         Some(P::MinClearanceRadius),
     ),
@@ -1023,11 +1023,11 @@ mod tests {
     }
 
     /// The minimum clearance radius is an optional value of the Clearance
-    /// group: blank on the built-in Z1 (decision 0530, D4; OI-1780), set
+    /// group: blank on the built-in Z1 (decision 0495, D4; OI-1780), set
     /// and cleared like any optional value, marked not confirmed when it
     /// changes, refused in plain words when it is not positive (SET-10,
     /// UI-13, NFR-07). A value above the safe cylinder is allowed: the
-    /// setup checks warn about it (decision 0530, D2).
+    /// setup checks warn about it (decision 0495, D2).
     #[test]
     fn req_set_10_req_set_06_the_minimum_clearance_radius_is_an_optional_clearance_value() {
         let p = z1();

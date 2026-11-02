@@ -664,7 +664,7 @@ impl SetupSheet {
             // OP-21; OI-918), so the stock can be loaded from the sheet.
             // The part is inspected only when something needs it: an
             // automatic tab, or a held region or Clearance from stock on
-            // offset-stock, whose extent comes from the part (decision 0530:
+            // offset-stock, whose extent comes from the part (decision 0495:
             // the sheet gives the clearance the program uses).
             let held = setup.workholding.start.is_some() || setup.workholding.end.is_some();
             let from_stock = setup.clearance_rules.from_stock.is_some();
@@ -944,7 +944,7 @@ fn setup_facts(
     }
     // The clearance the program uses and the minimum it is checked against,
     // only when the setup sets either rule, so an older sheet is unchanged
-    // (decision record 0530).
+    // (decision record 0495).
     if !setup.clearance_rules.is_default()
         && let Some(machine) = project.machine()
     {
@@ -1589,7 +1589,7 @@ mod tests {
 
     /// The setup sheet names the minimum clearance and the clearance in use
     /// only when the setup sets a clearance rule, so an older project's
-    /// sheet is unchanged (decision 0530; GC-12, GC-07).
+    /// sheet is unchanged (decision 0495; GC-12, GC-07).
     #[test]
     fn req_gc_12_req_set_06_the_sheet_gives_the_clearance_in_use_only_with_rules() {
         use openchuck_types::setup::ClearanceRules;

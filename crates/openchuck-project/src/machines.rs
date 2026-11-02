@@ -43,7 +43,7 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///   `recommended_min_safe_z` for the spindle-height check (decision record
 ///   0317).
 /// - 8: optional `min_clearance_radius`, the radius that clears the chuck,
-///   jaws, headstock and tailstock (decision record 0530).
+///   jaws, headstock and tailstock (decision record 0495).
 pub const MACHINE_SCHEMA: i64 = 8;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
@@ -65,7 +65,7 @@ fn machine_7_to_8(_kind: FileKind, table: &mut toml::Table) -> Result<(), String
 
 /// Refuses a machine file of schema `schema` that already holds
 /// `min_clearance_radius`, which schema `introduced` added (decision record
-/// 0530).
+/// 0495).
 pub(crate) fn premature_min_clearance(
     table: &toml::Table,
     schema: i64,
@@ -480,7 +480,7 @@ mod tests {
         assert_eq!(z1.a_sense, ASense::Positive);
         // Every field says where it came from, but the minimum clearance
         // radius, which the Z1 leaves blank until it is measured (decision
-        // 0530, D4; OI-1780).
+        // 0495, D4; OI-1780).
         assert_eq!(z1.min_clearance_radius, None);
         assert!(
             !z1.provenance
@@ -835,7 +835,7 @@ mod tests {
 
     /// A library profile's minimum clearance radius needs profile schema 8;
     /// a schema 7 file reads with none, and one that already has it is
-    /// refused (decision 0530).
+    /// refused (decision 0495).
     #[test]
     fn req_set_06_req_set_10_the_minimum_clearance_radius_needs_profile_schema_8() {
         let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();

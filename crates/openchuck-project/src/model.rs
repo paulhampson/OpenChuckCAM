@@ -305,7 +305,7 @@ pub struct Setup {
     pub clearance: Option<Clearance>,
     /// The setup's minimum clearance radius and Clearance from stock; the
     /// default sets neither and leaves the clearance as it is (decision
-    /// record 0530).
+    /// record 0495).
     #[serde(default, skip_serializing_if = "ClearanceRules::is_default")]
     pub clearance_rules: ClearanceRules,
     /// The held regions and retaining tabs (SET-09, OP-21); empty by default.

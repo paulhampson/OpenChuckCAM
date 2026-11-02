@@ -76,7 +76,7 @@ pub enum SetupField {
     SafeRadius,
     /// The safe Z above the axis.
     SafeZ,
-    /// The setup's own minimum clearance radius (decision record 0530).
+    /// The setup's own minimum clearance radius (decision record 0495).
     MinClearance,
     /// The margin Clearance from stock adds to the stock's radius.
     StockMargin,
@@ -338,13 +338,13 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
     rows
 }
 
-/// Whether Clearance from stock is on (decision record 0530).
+/// Whether Clearance from stock is on (decision record 0495).
 pub fn clearance_from_stock(setup: &Setup) -> bool {
     setup.clearance_rules.from_stock.is_some()
 }
 
 /// `setup` with Clearance from stock switched on, with the default margin
-/// of 5 mm, or off (decision record 0530).
+/// of 5 mm, or off (decision record 0495).
 pub fn with_clearance_from_stock(setup: &Setup, on: bool) -> Setup {
     let mut edited = setup.clone();
     edited.clearance_rules.from_stock = on.then_some(crate::setup::DEFAULT_STOCK_MARGIN);
@@ -353,7 +353,7 @@ pub fn with_clearance_from_stock(setup: &Setup, on: bool) -> Setup {
 
 /// The line under the clearance rows: the safe radius and safe Z the
 /// setup's toolpaths, links and program use, and why, when Clearance from
-/// stock changes them (decision record 0530). `None` without a machine.
+/// stock changes them (decision record 0495). `None` without a machine.
 pub fn clearance_in_use(
     setup: &Setup,
     machine: Option<&MachineProfile>,
@@ -692,7 +692,7 @@ mod tests {
         // Issue 189: every row that falls back to the machine says "Machine
         // setting", in the hint and in the tooltip, never "the machine's".
         // The minimum clearance (row 3) has a hint only when the machine
-        // gives one; the Z1 does not (decision 0530, D4).
+        // gives one; the Z1 does not (decision 0495, D4).
         for row in &rows[1..3] {
             assert!(row.hint.as_deref().unwrap().ends_with(MACHINE_SETTING));
             assert!(
@@ -760,7 +760,7 @@ mod tests {
     }
 
     /// The minimum clearance and Clearance from stock in the setup's
-    /// clearance section (decision 0530, D1 and D3): the minimum falls back
+    /// clearance section (decision 0495, D1 and D3): the minimum falls back
     /// to the Machine setting; switching from stock on adds the margin row
     /// at 5 mm, and the line under the rows gives the clearance in use.
     #[test]

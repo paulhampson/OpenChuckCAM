@@ -404,7 +404,7 @@ pub struct MachineProfile {
     pub recommended_min_safe_z: Option<Millimetres>,
     /// The smallest safe cylinder radius about the rotary axis that clears
     /// the machine's chuck, jaws, headstock and tailstock, when given. A
-    /// setup may give its own (decision record 0530). Advice the setup
+    /// setup may give its own (decision record 0495). Advice the setup
     /// checks warn against, never a limit that changes the G-code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_clearance_radius: Option<Millimetres>,

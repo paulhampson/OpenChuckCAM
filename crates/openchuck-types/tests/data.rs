@@ -192,7 +192,7 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     assert!(!m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
     // The block-time pair, the software policy and the three spindle-height
     // fields (decision 0317) and the minimum clearance radius (decision
-    // 0530) are off too.
+    // 0495) are off too.
     assert_eq!(m.fields().len(), ProfileField::ALL.len() - 8);
     m.max_spindle_rpm = Some(SpindleSpeed(13000.0));
     m.validate().unwrap();
@@ -458,7 +458,7 @@ fn req_gc_17_req_set_01_only_active_block_time_values_need_machine_confirmation(
 
 /// A profile can give the smallest safe cylinder radius that clears its
 /// chuck, jaws, headstock and tailstock, with its provenance (SET-06, SET-10,
-/// UI-13; decision 0530). Unset, it is not written and not listed, so an
+/// UI-13; decision 0495). Unset, it is not written and not listed, so an
 /// existing profile reads and writes as before (GC-07).
 #[test]
 fn req_set_06_req_ui_13_a_profile_can_give_a_minimum_clearance_radius() {
@@ -485,7 +485,7 @@ fn req_set_06_req_ui_13_a_profile_can_give_a_minimum_clearance_radius() {
     let back: MachineProfile = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
     assert_eq!(back, m);
     // A minimum above the profile's own safe cylinder is allowed: the setup
-    // checks warn about it, the profile does not refuse it (decision 0530).
+    // checks warn about it, the profile does not refuse it (decision 0495).
     m.min_clearance_radius = Some(Millimetres(m.clearance.radius.0 + 10.0));
     m.validate().unwrap();
 }

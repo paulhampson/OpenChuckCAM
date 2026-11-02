@@ -439,7 +439,7 @@ impl Shell {
                         }
                         SetupPart::WorkOffset => {
                             // The part as this setup places it, which
-                            // bounding-box stock measures (decision 0530).
+                            // bounding-box stock measures (decision 0495).
                             let extent = setup
                                 .part
                                 .and_then(|m| self.overview.model_extent(m))
@@ -1781,7 +1781,7 @@ fn stock_section(
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
 /// register, the zero position (read-only, decision 0011 item 1), the zero's
 /// X, the safe radius and the safe Z, the minimum clearance, Clearance from
-/// stock with its margin, and the clearance in use (decision 0530).
+/// stock with its margin, and the clearance in use (decision 0495).
 fn clearance_section(
     ui: &mut egui::Ui,
     state: &mut field_row::FieldState,

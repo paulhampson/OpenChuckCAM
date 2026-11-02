@@ -384,7 +384,7 @@ impl GcodeReport {
     }
 }
 
-// The setup's effective safe Z travels beside the setup (decision record 0530).
+// The setup's effective safe Z travels beside the setup (decision record 0495).
 #[allow(clippy::too_many_arguments)]
 fn check_file(
     text: &str,
@@ -746,7 +746,7 @@ pub(crate) fn post_toolpath(
                     "setup '{setup_tag}' of the toolpath is not in the project"
                 ))
             })?;
-        // The setup's effective safe Z (decision record 0530): the same one
+        // The setup's effective safe Z (decision record 0495): the same one
         // its toolpaths and links were made with, from the part bounds the
         // run measured.
         let part_bounds = run

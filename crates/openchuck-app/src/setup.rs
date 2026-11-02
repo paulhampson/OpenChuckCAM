@@ -85,7 +85,7 @@ pub fn direction_name(v: Vec3) -> &'static str {
         .map_or("?", |c| c.1)
 }
 
-/// The clearance `setup` uses on `machine` (SET-06, decision record 0530):
+/// The clearance `setup` uses on `machine` (SET-06, decision record 0495):
 /// its own or the machine's, grown from the stock when Clearance from stock
 /// is on, with the minimum it is checked against. `part_bounds` are the
 /// setup's part bounds (in the setup's frame), which bounding-box stock
@@ -134,14 +134,14 @@ pub struct SpindleHeight {
     pub recommended_min: Option<f64>,
     /// The minimum clearance radius, when the tool's highest tip is inside
     /// it: no safe Z then clears both the workholding and the top of the Z
-    /// travel (decision record 0530).
+    /// travel (decision record 0495).
     pub below_minimum: Option<f64>,
 }
 
 /// Whether `tool` would take the spindle past the top of the Z travel at
 /// `safe_z` above the axis on `profile` (decision record 0318), or cannot
 /// rise clear of the `minimum` clearance radius within the Z travel at all
-/// (decision record 0530): only on a machine that measures tool lengths and
+/// (decision record 0495): only on a machine that measures tool lengths and
 /// gives its spindle-to-axis distance. `safe_z` is the setup's effective
 /// safe Z ([`effective_clearance`]).
 pub fn spindle_height(
@@ -179,7 +179,7 @@ pub fn spindle_height(
 pub fn spindle_height_text(number: u32, name: &str, found: &SpindleHeight) -> String {
     let mut text = if let Some(minimum) = found.below_minimum {
         // Lowering the safe Z would take links into the workholding, so the
-        // 0318 advice is not given (decision record 0530).
+        // 0318 advice is not given (decision record 0495).
         format!(
             "Tool {number} ({name}) may be too long to clear the workholding within the Z travel: \
              assuming it sticks out {:.3} mm (flute length + 5 mm), its tip can rise at most {:.3} mm \
@@ -312,7 +312,7 @@ mod tests {
         assert!(a_direction(&profile).ends_with("faces +Y at A 90"));
     }
 
-    /// Case a of decision 0530: the check takes the setup's effective safe
+    /// Case a of decision 0495: the check takes the setup's effective safe
     /// Z, so a tool that fits at the base safe Z warns once Clearance from
     /// stock lifts it (SET-06, NFR-12).
     #[test]
@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(found.below_minimum, None);
     }
 
-    /// Case b of decision 0530: a tool whose highest tip is inside the
+    /// Case b of decision 0495: a tool whose highest tip is inside the
     /// minimum clearance radius cannot clear both the workholding and the
     /// top of the travel; the warning says so and does not advise lowering
     /// the safe Z below the minimum (NFR-12).

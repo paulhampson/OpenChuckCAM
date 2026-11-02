@@ -1846,7 +1846,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 // tool lengths (decision record 0318): once per tool of the
                 // setup's enabled operations, in the tool list's order.
                 // The setup's effective clearance, grown from the stock when
-                // Clearance from stock is on (decision record 0530, case a).
+                // Clearance from stock is on (decision record 0495, case a).
                 let part_bounds = s
                     .part
                     .and_then(|id| checks.and_then(|c| c.models.get(&id)))

@@ -2,7 +2,7 @@
 
 ## 0.34.0
 
-- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, accepted):** project schema 26 (a setup's optional `clearance_rules`; the machine copy's optional `min_clearance_radius`) and machine profile schema 8. Older files read with neither and machine as before; an older file that already holds one is refused.
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** project schema 26 (a setup's optional `clearance_rules`; the machine copy's optional `min_clearance_radius`) and machine profile schema 8. Older files read with neither and machine as before; an older file that already holds one is refused.
 
 ## 0.22.0
 
