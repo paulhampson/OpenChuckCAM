@@ -1819,10 +1819,18 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
                 .count()
         })
         .unwrap();
+    // Of the triangles drawn whole: those drawn in pieces (decision 0638)
+    // are in no band themselves.
+    let parents = whole
+        .pieces
+        .as_ref()
+        .map(|p| p.parents.clone())
+        .unwrap_or_default();
     let in_slot = whole
         .values
         .iter()
-        .filter(|v| slot_of(v) == Some(slot))
+        .enumerate()
+        .filter(|(t, v)| slot_of(v) == Some(slot) && !parents.contains(&(*t as u32)))
         .count();
     assert!(in_slot > 0);
     let (i, bin) = bins
@@ -1865,12 +1873,23 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     rig.frame(Vec::new());
     assert_eq!(rig.shell.results.filter.from, Some(0.2));
     let ranged = rig.shell.viewport.bands().unwrap().clone();
+    let whole_only = |t: &usize| !parents.contains(&(*t as u32));
     let expected = whole
         .values
         .iter()
-        .filter(|v| slot_of(v).is_some_and(|s| s != slot) && v.is_some_and(|(v, _)| v >= 0.2))
+        .enumerate()
+        .filter(|(t, v)| {
+            whole_only(t)
+                && slot_of(v).is_some_and(|s| s != slot)
+                && v.is_some_and(|(v, _)| v >= 0.2)
+        })
         .count();
-    let unmeasured = whole.values.iter().filter(|v| v.is_none()).count();
+    let unmeasured = whole
+        .values
+        .iter()
+        .enumerate()
+        .filter(|(t, v)| whole_only(t) && v.is_none())
+        .count();
     assert_eq!(triangles(&ranged), expected + unmeasured);
     // A start above the end is refused, and the range stays.
     rig.shell.results.set_range_text("0.5", "0.1");
@@ -1938,13 +1957,17 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         std::thread::sleep(Duration::from_millis(10));
     }
     rig.settle();
+    // Whole triangles and pieces (decision 0638) in the Unreachable band.
+    let count = |b: &openchuck_app::pathview::DeviationBands| -> usize {
+        b.bands
+            .iter()
+            .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
+            .map(|(_, t)| t.len())
+            .sum::<usize>()
+    };
     let unreachable = |rig: &Rig| {
         rig.shell.viewport.bands().map_or(0, |b| {
-            b.bands
-                .iter()
-                .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
-                .map(|(_, t)| t.len())
-                .sum::<usize>()
+            count(b) + b.pieces.as_ref().map_or(0, |p| count(&p.bands))
         })
     };
     assert!(

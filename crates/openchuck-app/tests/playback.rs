@@ -765,8 +765,14 @@ fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
         .unwrap();
     assert_eq!(model, app.project().models()[0].id);
     let triangles = 12;
-    let total: usize = bands.bands.iter().map(|(_, s)| s.len()).sum();
-    assert_eq!(total, triangles, "every triangle of the cube is in a band");
+    // A triangle holding more than one band is drawn as its pieces
+    // (decision 0638): it is in no band itself, and in the pieces' parents.
+    let parents = bands.pieces.as_ref().map_or(0, |p| p.parents.len());
+    let total: usize = bands.bands.iter().map(|(_, s)| s.len()).sum::<usize>() + parents;
+    assert_eq!(
+        total, triangles,
+        "every triangle of the cube is in a band or in pieces"
+    );
     let report = run.simulation.as_ref().unwrap();
     assert_eq!(bands.tolerance, report.settings.cell.0);
     // The stock outline is a closed mesh the viewport can draw.

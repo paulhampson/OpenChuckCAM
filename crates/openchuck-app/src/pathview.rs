@@ -591,6 +591,100 @@ pub struct DeviationBands {
     /// coloured by, for the probe that reads it under the pointer (SIM-11
     /// in part, decision record 0162).
     pub values: std::sync::Arc<[Option<(f64, bool)>]>,
+    /// The triangles that hold more than one band, drawn in pieces instead
+    /// of whole (decision 0638); `None` when every triangle holds one.
+    pub pieces: Option<std::sync::Arc<BandPieces>>,
+}
+
+/// The pieces that stand in for the triangles holding more than one band
+/// (decision 0638): each such parent is left out of the bands above and
+/// drawn as its pieces, each in its own band.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BandPieces {
+    /// The parents the pieces replace.
+    pub parents: TriangleSet,
+    /// The pieces, three vertices each, in the parents' frame.
+    pub mesh: crate::scene::Mesh,
+    /// Each piece's parent.
+    pub parent: Vec<u32>,
+    /// The pieces sorted into bands, with their values.
+    pub bands: DeviationBands,
+    /// True when the budget ran out: some parents holding more than one
+    /// band are drawn whole, coloured as before.
+    pub capped: bool,
+}
+
+impl DeviationBands {
+    /// The value at `point` on triangle `triangle`: its piece's when the
+    /// triangle is drawn in pieces, else the triangle's own.
+    #[must_use]
+    pub fn value_at(&self, triangle: u32, point: [f64; 3]) -> Option<(f64, bool)> {
+        match self.piece_at(triangle, point) {
+            Some((pieces, piece)) => pieces.bands.values.get(piece).copied().flatten(),
+            None => self.values.get(triangle as usize).copied().flatten(),
+        }
+    }
+
+    /// The band at `point` on triangle `triangle`, as [`DeviationBands::value_at`].
+    #[must_use]
+    pub fn band_at(&self, triangle: u32, point: [f64; 3]) -> Option<DeviationBand> {
+        let (bands, t) = match self.piece_at(triangle, point) {
+            Some((pieces, piece)) => (&pieces.bands, piece as u32),
+            None => (self, triangle),
+        };
+        bands
+            .bands
+            .iter()
+            .find(|(_, set)| set.contains(&t))
+            .map(|(b, _)| *b)
+    }
+
+    /// The piece of `triangle` nearest to `point`, if it is drawn in pieces.
+    fn piece_at(&self, triangle: u32, point: [f64; 3]) -> Option<(&BandPieces, usize)> {
+        let pieces = self.pieces.as_deref()?;
+        if !pieces.parents.contains(&triangle) {
+            return None;
+        }
+        let p = openchuck_types::geometry::Point3::new(point[0], point[1], point[2]);
+        let mut best: Option<(f64, usize)> = None;
+        for (i, _) in pieces
+            .parent
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t == triangle)
+        {
+            let Some(corners) = pieces.mesh.triangle(i) else {
+                continue;
+            };
+            let d = crate::pieces::distance_to_triangle(p, corners);
+            if best.is_none_or(|(b, _)| d < b) {
+                best = Some((d, i));
+            }
+        }
+        best.map(|(_, i)| (pieces, i))
+    }
+}
+
+/// The band of a value as [`deviation_bands_with`] sorts it.
+#[must_use]
+pub fn band_of(value: Option<(f64, bool)>, enclosed: bool, tolerance: f64) -> DeviationBand {
+    match value {
+        None => DeviationBand::Unmeasured,
+        Some((v, _)) if enclosed && v > tolerance => DeviationBand::Unreachable,
+        Some((v, bound)) => {
+            if v < -tolerance {
+                DeviationBand::Overcut
+            } else if v <= tolerance {
+                DeviationBand::OnTarget
+            } else if bound || v > 1.0 {
+                DeviationBand::Thick
+            } else if v > 0.25 {
+                DeviationBand::Medium
+            } else {
+                DeviationBand::Thin
+            }
+        }
+    }
 }
 
 /// Sorts triangles by their worst sampled deviation (see
@@ -613,23 +707,7 @@ pub fn deviation_bands_with(
     let mut sets: [TriangleSet; 7] = Default::default();
     for (i, value) in values.iter().enumerate() {
         let enclosed = unreachable.get(i).copied().unwrap_or(false);
-        let band = match value {
-            None => DeviationBand::Unmeasured,
-            Some((v, _)) if enclosed && *v > tolerance => DeviationBand::Unreachable,
-            Some((v, bound)) => {
-                if *v < -tolerance {
-                    DeviationBand::Overcut
-                } else if *v <= tolerance {
-                    DeviationBand::OnTarget
-                } else if *bound || *v > 1.0 {
-                    DeviationBand::Thick
-                } else if *v > 0.25 {
-                    DeviationBand::Medium
-                } else {
-                    DeviationBand::Thin
-                }
-            }
-        };
+        let band = band_of(*value, enclosed, tolerance);
         let index = DeviationBand::ALL
             .iter()
             .position(|b| *b == band)
@@ -646,6 +724,7 @@ pub fn deviation_bands_with(
             .filter(|(_, s)| !s.is_empty())
             .collect(),
         values: values.into(),
+        pieces: None,
     }
 }
 

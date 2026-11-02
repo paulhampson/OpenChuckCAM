@@ -338,7 +338,17 @@ impl SurfaceSamples {
             })
             .collect::<Result<_, AppError>>()?;
         let (values, unreachable): (Vec<_>, Vec<_>) = chunks.into_iter().flatten().unzip();
-        Ok(deviation_bands_with(&values, &unreachable, self.cell))
+        let bands = deviation_bands_with(&values, &unreachable, self.cell);
+        // A face across a band's edge is drawn in pieces (decision 0638).
+        let pieces = crate::pieces::refine(
+            mesh,
+            &|_| true,
+            &|_, point, corners| self.value_at(corners, point),
+            None,
+            crate::pieces::Limits::for_cell(self.cell),
+            context,
+        )?;
+        Ok(crate::pieces::with_pieces(bands, pieces))
     }
 
     /// The value of the counted sample nearest to the centroid of
@@ -359,6 +369,12 @@ impl SurfaceSamples {
             a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
             a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
         );
+        Ok(self.value_at([a, b, c], point))
+    }
+
+    /// [`SurfaceSamples::value_of`] at `point` on a face with the corners
+    /// `[a, b, c]`: the same rule at a point of a piece (decision 0638).
+    fn value_at(&self, [a, b, c]: [Point3; 3], point: Point3) -> Projected {
         let enclosed_of = |original: usize| {
             self.classes
                 .as_ref()
@@ -368,7 +384,7 @@ impl SurfaceSamples {
         let mut best = None;
         self.nearest(self.root, point, &mut best);
         if let Some((_, original, value)) = best {
-            return Ok((Some(value), enclosed_of(original)));
+            return (Some(value), enclosed_of(original));
         }
         // One search distance behind the face, into the stock.
         let normal = (b - a).cross(c - a);
@@ -380,10 +396,9 @@ impl SurfaceSamples {
         };
         let mut any = None;
         self.nearest_any(self.root, behind, &mut any);
-        Ok(any
-            .and_then(|(_, _, id)| self.nodes.get(id))
+        any.and_then(|(_, _, id)| self.nodes.get(id))
             .filter(|node| node.part_bound || node.enclosed)
-            .map_or((None, false), |node| (Some(node.value), node.enclosed)))
+            .map_or((None, false), |node| (Some(node.value), node.enclosed))
     }
 }
 
@@ -849,5 +864,53 @@ mod tests {
             .bands(&flipped, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], None);
+    }
+
+    #[test]
+    fn req_sim_05_a_stock_face_across_a_band_edge_is_drawn_in_pieces() {
+        // Decision 0638: a large stock face, half over material on the
+        // surface and half over a bore, is drawn in pieces, each in its band.
+        let mut points = Vec::new();
+        for i in 0..100 {
+            let x = f64::from(i) * 0.1;
+            let left = x < 5.0;
+            let mut p = sample(x, if left { 0.0 } else { 3.0 }, !left, SampleOn::Part);
+            p.point.z = -0.05;
+            points.push(p);
+        }
+        let classes: Vec<_> = points
+            .iter()
+            .map(|p| {
+                if p.value > 0.1 {
+                    ReachClass::Enclosed
+                } else {
+                    ReachClass::NotLeft
+                }
+            })
+            .collect();
+        let samples = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        let mesh = TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, -0.05, 0.0),
+                Point3::new(10.0, -0.05, 0.0),
+                Point3::new(5.0, 0.05, 0.0),
+            ],
+            triangles: vec![[0, 1, 2]],
+        };
+        let cancel = CancelToken::new();
+        let bands = samples
+            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        let pieces = bands.pieces.as_ref().expect("drawn in pieces");
+        assert!(pieces.parents.contains(&0));
+        assert_eq!(
+            bands.band_at(0, [1.0, 0.0, 0.0]),
+            Some(DeviationBand::OnTarget)
+        );
+        assert_eq!(
+            bands.band_at(0, [9.0, -0.04, 0.0]),
+            Some(DeviationBand::Unreachable)
+        );
+        assert!(bands.bands.iter().all(|(_, set)| !set.contains(&0)));
     }
 }

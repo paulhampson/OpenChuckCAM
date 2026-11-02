@@ -22,7 +22,7 @@ use std::f64::consts::TAU;
 
 use openchuck_sim::{
     Deviation, DeviationOptions, DexelStock, ReachClass, ReachOptions, SampleOn, classify_reach,
-    compare, sample_areas, triangle_values, triangle_worst,
+    compare, sample_areas, triangle_samples, triangle_values, triangle_worst,
 };
 use openchuck_types::geometry::{Aabb, Point3};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
@@ -343,4 +343,26 @@ fn req_sim_05_each_triangle_names_the_sample_it_is_coloured_by() {
         let named = w.map(|i| (d.points[i].value, d.points[i].at_least));
         assert_eq!(named, *v);
     }
+}
+
+#[test]
+fn req_sim_05_each_triangle_names_the_range_of_its_samples() {
+    // Decision 0638: a triangle drawn in pieces colours each by its own
+    // samples, which lie together, in triangle order.
+    let part = tube(6.0, 3.0, 0.0, 8.0, 12);
+    let d = measured(&part, &box_stock(8.0, -2.0, 10.0));
+    let ranges = triangle_samples(&d, &part, CELL).unwrap();
+    assert_eq!(ranges.len(), part.triangles.len());
+    let mut next = 0;
+    for r in &ranges {
+        assert_eq!(r.start, next);
+        next = r.end;
+    }
+    assert_eq!(next, d.points.len());
+    let worst = triangle_worst(&d, &part, CELL).unwrap();
+    for (r, w) in ranges.iter().zip(&worst) {
+        assert!(w.is_none_or(|i| r.contains(&i)));
+    }
+    let other = tube(6.0, 3.0, 0.0, 9.0, 12);
+    assert!(triangle_samples(&d, &other, CELL).is_err());
 }

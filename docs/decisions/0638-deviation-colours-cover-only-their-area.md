@@ -33,6 +33,21 @@ On the part model the bore's strips hold two bands because the bore is enclosed 
 3. **Bounded and deterministic.** The pieces are made off the interface thread in the job that makes the colours, in fixed chunks, the same at any thread count (NFR-06). They are capped; past the cap the pieces stay coarser and a note says so (NFR-04). Nothing is drawn finer than about two cells, the simulation's own resolution (NFR-12).
 4. **No renderer change.** Rejected: per-vertex colours or a texture in the shader (a renderer change, and blending smears the band edges and the hatches); dots at the affected samples (they show where, not the extent, and would duplicate the unreached dots of lane VIEW-OVERLAYS, #416).
 
+## As built so far, and what the measurements found
+
+Built test-first (`openchuck-app` `pieces.rs`; `stock_surface.rs` and `stockplay.rs` use it; `pathview.rs` `DeviationBands::pieces`, `value_at`, `band_at`; `openchuck-ui` `viewport.rs` `band_layers` and the probe, `playback_panel.rs` the filter on pieces). On the part model a triangle's own samples, within a cell of a piece, decide whether the piece holds more than one band: seven test points missed a band 0.1 mm wide at the rim of a bore (`req_sim_05_a_band_narrower_than_the_test_points_is_found_by_the_samples`). On the cut part the seven test points decide.
+
+Measured on the owner's carving (release build, numbers only):
+
+| Mesh | Parents | Pieces | Pieces by band | Colouring job |
+| --- | --- | --- | --- | --- |
+| Part model | 1,522 | 133,422 | 117,698 Unreachable, 15,724 on the surface | 6.1 s |
+| Cut part at the end | 1,210 (longest edge: median 18.8 mm, at most 40 mm) | 132,134 | 68,711 on the surface, 39,234 Unreachable, 24,189 not measured | 8.3 s (3.2 s before) |
+
+The bands interleave inside those triangles rather than meeting along one boundary, so the adaptive pieces number about as many as even ones; neither run reached the budget. Why the bore's strips hold samples on the surface is being looked into.
+
+On the tube stand-in, the faced end shows 47.7 mm² of Unreachable over the bore's 153.9 mm² disc (31%): a cap face within the comparison's search (3 mm plus a cell) of the rim takes the rim's value, on the surface, by decision 0633 item 4. Applying item 4's "material behind" whenever the nearest counted sample is more than two cells away (off the part's surface), not only beyond the search, gave 145.1 mm² (94%) in a trial that was not kept; it changes an accepted rule and one test of decision 0238's projection, so it is the owner's decision.
+
 ## Verification (to be built, test-first)
 
 `req_sim_05_a_triangle_holding_two_classes_is_coloured_by_each_within_two_cells`, `req_sim_05_a_triangle_of_one_class_is_drawn_whole`, `req_sim_05_adaptive_pieces_follow_the_band_boundary`, `req_nfr_06_the_split_colours_are_the_same_at_any_thread_count`, `req_sim_11_the_probe_on_a_split_triangle_reads_its_piece`, `req_ui_05_selection_sets_and_picking_keep_the_part_s_triangle_numbers`, `req_nfr_04_the_added_triangles_stay_within_their_budget`, and on the tube stand-in through the interface: the violet area on the faced end is about the bore's disc (π·7² ≈ 154 mm²), not whole strips. The adaptive counts and times on the owner's project are measured before the interface half.

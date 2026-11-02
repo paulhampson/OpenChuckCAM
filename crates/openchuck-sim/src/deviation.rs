@@ -354,6 +354,21 @@ pub fn triangle_worst(
     Ok(out)
 }
 
+/// The samples of each triangle of `mesh`, as a range of
+/// [`Deviation::points`] (empty for a degenerate triangle). The same
+/// conditions and failures as [`triangle_values`].
+pub fn triangle_samples(
+    deviation: &Deviation,
+    mesh: &TriangleMesh,
+    spacing: f64,
+) -> Result<Vec<std::ops::Range<usize>>> {
+    let mut out = Vec::with_capacity(mesh.triangles.len());
+    for_each_triangle(deviation, mesh, spacing, |_, first, samples| {
+        out.push(first..first + samples.len());
+    })?;
+    Ok(out)
+}
+
 /// The area of the target's surface each sample of `deviation` stands for,
 /// in square millimetres, in the order of [`Deviation::points`]: its
 /// triangle's area shared equally between the triangle's samples, so they

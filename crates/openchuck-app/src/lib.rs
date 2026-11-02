@@ -52,6 +52,7 @@ mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
+mod pieces;
 mod pipeline;
 pub mod playback;
 mod posting;
