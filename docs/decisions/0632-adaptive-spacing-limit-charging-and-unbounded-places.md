@@ -40,4 +40,13 @@ The default stepover of the piece's 3.175 mm ball (0.4536 mm) leaves a nominal 0
 
 ## Verification
 
-To be completed before the pull request.
+Tests written from the requirements and the decisions first, each seen failing before its change and passing after (uninstrumented, `cargo nextest run`, four cores):
+
+- **Item 1:** `req_op_04_req_nfr_07_a_limit_the_work_fits_within_is_not_met` (before, the limit was said with most of it unused) and `req_op_04_req_nfr_07_measuring_makes_no_more_queries_than_it_charges` (before, 232 queries for 126 charged), unit tests in `adaptive.rs`.
+- **Item 2:** `req_op_04_req_nfr_12_a_place_that_cannot_be_bounded_is_refined_where_a_pass_fits` (unit); `req_op_04_req_nfr_12_continuous_roughing_with_a_ball_confirms_the_part_end_edges` (OI-1510's own case, graded by the test kit's coverage to 0.012 mm, 31.2 s); `req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing` (`openchuck-app`, the example project with adaptive spacing on: no operation partial; 123.6 s alone, listed as long in `.config/nextest.toml`). Before item 2 the last two report the end edges' and the 12 flute-edge places as unverified.
+- **Item 3:** the property with the saved seed fails at 1e-8 and passes at `SEARCH_TOLERANCE`; `req_imp_02_closest_beside_a_closed_bspline_seam_is_within_the_search_tolerance` pins the input and its neighbours (exact off the seam's side, never nearer than the sphere).
+- **Item 4:** `req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said` fails with the old wording.
+- **Measured:** the tutorial piece, release build, command line, four cores: adaptive spacing off 9.2 s; on, before 24 s and partial (20 places), after 32.4 s and complete, 77 passes added, 502,490 geometry queries. With item 1 alone: 491,949 queries, 72 passes, 12 places unverified.
+- **Suites:** `openchuck-path` 669 of 669 and `openchuck-app` 684 of 684 pass, with every adaptive test that grades the excess and every 1, 2 and N thread test unchanged; no golden file changes. One unlisted test over a minute was found, `held_region`'s simultaneous finishing beside a held start (78.7 s, the same on `main` `484e4b2`), and listed.
+- **Checks:** `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo xtask deps`, `licences`, `records` and `trace` (103 of 103 P1 requirements have tests).
+- **Coverage (lower bound):** the new and changed tests alone, instrumented, cover every changed line of `adaptive.rs` and `finishing.rs` (`adaptive.rs` 81.2% of lines on that subset; the crate's figure is the nightly run's).
