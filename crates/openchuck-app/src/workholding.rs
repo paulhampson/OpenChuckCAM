@@ -213,19 +213,20 @@ pub fn selection_reach_notes(
 
 /// The note for the first tab shorter along X than a tool of `tool_diameter`
 /// is wide, naming the tool and the operation that uses it, or `None`
-/// (OI-159; decision 0494; interface specification 11.7). With `skip_auto`,
-/// automatic tabs are left out, as their stored length is not where they are
-/// until the stock and the part are known (decision 0202 item 3).
+/// (OI-159; decision 0494; interface specification 11.7). The tabs of `skip`,
+/// by their place in the list, are left out: automatic tabs whose stored
+/// length is not where they are, because the stock or the part is unknown or
+/// the end has no room for them (decision 0202 item 3).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
     tool_name: &str,
     operation: &str,
-    skip_auto: bool,
+    skip: &[usize],
 ) -> Option<WorkholdingFinding> {
     workholding.tabs.iter().enumerate().find_map(|(i, tab)| {
         let d = tab.length.0;
-        let counts = !(skip_auto && tab.auto.is_some());
+        let counts = !skip.contains(&i);
         (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
             text: format!(
@@ -336,6 +337,30 @@ fn narrow_tab_findings(
     )
 }
 
+/// The automatic tabs of `workholding` whose stored length says nothing about
+/// where they are, by their place in the list: all of them while the stock or
+/// the part is unknown, else those that find no room at their end (listed by
+/// [`Workholding::auto_tabs_without_room`]; only a warning of the zone check).
+fn unresolved_tabs(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> Vec<usize> {
+    if stock.is_none() || part.is_none() {
+        return workholding
+            .tabs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| t.auto.map(|_| i))
+            .collect();
+    }
+    workholding
+        .auto_tabs_without_room(stock, part)
+        .into_iter()
+        .map(|(i, _)| i)
+        .collect()
+}
+
 /// The first note for each tool of `tools` that a tab of `workholding` is too
 /// short for, with the tabs where they are (automatic ones resolved against
 /// the stock and the part; decision 0202 item 3).
@@ -346,12 +371,10 @@ fn narrow_findings(
     tools: &[SetupTool],
 ) -> Vec<WorkholdingFinding> {
     let resolved = workholding.resolved(stock, part);
-    // With no stock or no part the automatic tabs keep their stored lengths,
-    // which say nothing: leave them for when they can be resolved.
-    let skip_auto = stock.is_none() || part.is_none();
+    let skip = unresolved_tabs(workholding, stock, part);
     tools
         .iter()
-        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, skip_auto))
+        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, &skip))
         .collect()
 }
 
@@ -462,9 +485,10 @@ pub fn check_for_tool(
     // (decision 0202 item 3): compare the length it has now, as the target
     // is built from it.
     let resolved = workholding.resolved(stock, Some(part));
+    let skip = unresolved_tabs(workholding, stock, Some(part));
     for (i, tab) in resolved.tabs.iter().enumerate() {
         let d = tab.length.0;
-        if d < tool_diameter - 1e-9 {
+        if d < tool_diameter - 1e-9 && !skip.contains(&i) {
             return Err(refuse(format!(
                 "tab {} is {d:.3} mm long along X, shorter than the tool \
                  '{tool_name}' ({tool_diameter:.3} mm); make the tab longer or use a smaller tool",
@@ -1290,6 +1314,46 @@ mod tests {
         assert_eq!(notes[0].tab, Some(1));
     }
 
+    /// CodeRabbit finding on pull request 460: an automatic tab with no room
+    /// (the held region reaches the part) keeps its stored length, which says
+    /// nothing; it is only a warning of the zone check and is not compared with
+    /// the tool, when generating or in the findings. A tab by hand still is.
+    #[test]
+    fn req_op_21_an_automatic_tab_with_no_room_is_not_compared_with_the_tool() {
+        let mut w = auto_head_tab(2.0);
+        // The grip runs to X 20 and the part starts at X 18: no head gap.
+        w.start = Some(HeldRegion {
+            length: Millimetres(20.0),
+            diameter: None,
+        });
+        let part = part(18.0, 70.0);
+        assert_eq!(
+            w.auto_tabs_without_room(Some(&stock()), Some(&part)),
+            vec![(0, TabEnd::Head)]
+        );
+        assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").is_ok());
+        let tools = one_ball_tool();
+        assert!(narrow_findings(&w, Some(&stock()), Some(&part), &tools).is_empty());
+        // A short tab placed by hand, in the tail zone, is still refused.
+        w.tabs.push(Tab {
+            auto: None,
+            x_start: Millimetres(72.0),
+            length: Millimetres(3.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(6.0),
+            },
+            layout: TabLayout::OnAxis,
+        });
+        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        assert!(
+            error.to_string().contains("tab 2 is 3.000 mm long"),
+            "{error}"
+        );
+        let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert_eq!(notes[0].tab, Some(1));
+    }
+
     /// The reverse: a thin tab that is long enough is accepted, for a
     /// cylinder and a frustum, on the axis and around it.
     #[test]
@@ -1317,8 +1381,8 @@ mod tests {
                 // Length equal to the tool is long enough.
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
-                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", false).is_none());
-                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", false).unwrap();
+                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", &[]).is_none());
+                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", &[]).unwrap();
                 assert_eq!(
                     note.text,
                     "Tab 1 is 4.000 mm long along X, shorter than the tool T1 Flat \
