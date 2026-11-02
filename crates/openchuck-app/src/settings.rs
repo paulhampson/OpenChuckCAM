@@ -274,10 +274,20 @@ impl UserSettings {
 
     /// Drops the recent projects whose folder is gone; whether any was
     /// dropped. The rest keep their order. It only looks at the file system
-    /// (no network), and a folder that cannot be read counts as gone.
+    /// (no network of its own), and a folder that cannot be read counts as
+    /// gone. A folder on a network share can take long to answer, so the
+    /// application asks [`UserSettings::forget_missing_in`] with answers it
+    /// got off the UI thread rather than calling this one while drawing.
     pub fn forget_missing(&mut self) -> bool {
+        let existing = existing_folders(&self.recent);
+        self.forget_missing_in(&existing)
+    }
+
+    /// Drops the recent projects that are not in `existing`; whether any
+    /// was dropped. The rest keep their order.
+    pub fn forget_missing_in(&mut self, existing: &[PathBuf]) -> bool {
         let before = self.recent.len();
-        self.recent.retain(|p| p.is_dir());
+        self.recent.retain(|p| existing.contains(p));
         self.recent.len() != before
     }
 
@@ -309,6 +319,14 @@ impl UserSettings {
             list.sort();
         }
     }
+}
+
+/// The folders among `folders` that exist. Each one is looked at in turn, and
+/// a folder on a dead network share can take long to answer, so call this off
+/// the UI thread.
+#[must_use]
+pub fn existing_folders(folders: &[PathBuf]) -> Vec<PathBuf> {
+    folders.iter().filter(|p| p.is_dir()).cloned().collect()
 }
 
 /// The settings file of one user.

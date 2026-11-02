@@ -17,6 +17,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, UNIX_EPOCH};
 
+/// How often the Open recent menu polls for the folder check's answer.
+const RECENT_POLL: Duration = Duration::from_millis(50);
+/// How soon the menu asks again whether the recent folders exist.
+const RECENT_RECHECK: Duration = Duration::from_secs(5);
+
 // Keep the calendar display bounded and avoid platform-dependent SystemTime
 // overflow from untrusted metadata. The raw timestamp and snapshot stay intact.
 fn capture_time(milliseconds: u64) -> String {
@@ -792,11 +797,44 @@ impl Shell {
         }
     }
 
-    /// The recent projects that still exist, newest first. Folders that are
-    /// gone are forgotten and the list is kept (issue 381).
-    pub(super) fn recent_projects(&mut self) -> Vec<PathBuf> {
-        if self.settings.forget_missing() {
-            self.settings_touched();
+    /// The recent projects, newest first. Whether their folders still exist
+    /// is asked on another thread (a folder on a dead network share can
+    /// take long to answer, and the window must not wait for it): the last
+    /// known list is returned now, and a folder that turns out to be gone is
+    /// forgotten when the answer arrives (issue 381; CodeRabbit on pull
+    /// request 479).
+    pub(super) fn recent_projects(&mut self, ctx: &egui::Context) -> Vec<PathBuf> {
+        let answer = self.recent_check.as_ref().map(Receiver::try_recv);
+        match answer {
+            Some(Ok(existing)) => {
+                self.recent_check = None;
+                if self.settings.forget_missing_in(&existing) {
+                    self.settings_touched();
+                }
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) => ctx.request_repaint_after(RECENT_POLL),
+            Some(Err(mpsc::TryRecvError::Disconnected)) => self.recent_check = None,
+            None => {
+                let due = self
+                    .recent_checked_at
+                    .is_none_or(|at| at.elapsed() >= RECENT_RECHECK);
+                if due && !self.settings.recent.is_empty() {
+                    self.recent_checked_at = Some(std::time::Instant::now());
+                    let folders = self.settings.recent.clone();
+                    let (tx, rx) = mpsc::channel();
+                    #[cfg(test)]
+                    let gate = self.recent_gate.clone();
+                    std::thread::spawn(move || {
+                        #[cfg(test)]
+                        if let Some(gate) = gate {
+                            drop(gate.lock());
+                        }
+                        let _ = tx.send(openchuck_app::settings::existing_folders(&folders));
+                    });
+                    self.recent_check = Some(rx);
+                    ctx.request_repaint_after(RECENT_POLL);
+                }
+            }
         }
         self.settings.recent.clone()
     }

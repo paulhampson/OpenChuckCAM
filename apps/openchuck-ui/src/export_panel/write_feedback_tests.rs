@@ -472,9 +472,14 @@ fn req_ui_15_req_ui_07_a_typed_template_is_kept_only_once_confirmed() {
 /// not split the toolpath again; a new run does (NFR-12: never a stale list).
 #[test]
 fn req_gc_05_req_nfr_12_a_template_edit_does_not_split_the_toolpath_again() {
+    use openchuck_app::Application as App;
     let mut rig = Rig::new("no-resplit");
+    let run = Arc::clone(&rig.run);
+    // Whatever the open panel did while it was built, count from here: the
+    // names and the Preview section both work from the one kept split.
     let _ = rig.panel.named(&rig.app);
-    assert_eq!(rig.panel.splits, 1, "the first names split once");
+    rig.panel.ensure_preview(&rig.app, &run);
+    let before = App::run_splits_on_this_thread();
     for gcode in ["{n}", "{n}-{project}", "{project}-{n}x"] {
         rig.panel.set_file_names(openchuck_app::FileNameTemplates {
             gcode: gcode.into(),
@@ -485,13 +490,33 @@ fn req_gc_05_req_nfr_12_a_template_edit_does_not_split_the_toolpath_again() {
         let named = rig.panel.named(&rig.app).unwrap().clone().unwrap();
         let fresh = rig.app.output_files(&rig.run).unwrap();
         assert_eq!(named, fresh, "the cached split names the same files");
+        // The Preview section is rebuilt on a template edit too (CodeRabbit
+        // on pull request 479), from the same kept split.
+        rig.panel.ensure_preview(&rig.app, &run);
+        let made = &rig.panel.output_preview.as_ref().unwrap().3;
+        assert_eq!(
+            made.as_ref().unwrap().files().len(),
+            named.programs.len(),
+            "the preview lists the files the templates name"
+        );
     }
-    assert_eq!(rig.panel.splits, 1, "template edits do not split again");
+    // Only the check's own `output_files` call above splits, once an edit.
+    assert_eq!(
+        App::run_splits_on_this_thread() - before,
+        3,
+        "a template edit splits only where the test itself calls output_files"
+    );
     // A new run (here a second regeneration, a new Arc) is split again.
     let again = Arc::new(rig.app.regenerate().unwrap());
-    rig.panel.files.as_mut().unwrap().run = again;
+    rig.panel.files.as_mut().unwrap().run = Arc::clone(&again);
+    let before = App::run_splits_on_this_thread();
     let _ = rig.panel.named(&rig.app);
-    assert_eq!(rig.panel.splits, 2, "a new run splits again");
+    rig.panel.ensure_preview(&rig.app, &again);
+    assert_eq!(
+        App::run_splits_on_this_thread() - before,
+        1,
+        "a new run splits once, for the names and the preview together"
+    );
 }
 
 /// The owner's option B on OI-1072: clashing names get a number, the dialog

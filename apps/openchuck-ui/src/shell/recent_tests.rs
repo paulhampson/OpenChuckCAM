@@ -59,6 +59,20 @@ fn req_ui_15_open_recent_forgets_a_folder_that_is_gone() {
     let (mut rig, root, made) = rig_with_recent("recent-gone", 2);
     std::fs::remove_dir_all(&made[0]).unwrap();
     open_menu(&mut rig);
+    // The folders are looked at in the background (never on the UI thread,
+    // where a dead network share could stall the window): the last known list
+    // shows meanwhile, and the answer is applied when it arrives.
+    assert!(rig.shows("job-1"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while rig.shell.settings.recent.len() != 1 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the check never ended"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        rig.frame(Vec::new());
+    }
+    rig.frame(Vec::new());
     assert!(!rig.shows("job-0"), "{:?}", rig.texts());
     assert!(rig.shows("job-1"));
     assert_eq!(rig.shell.settings.recent, vec![made[1].clone()]);
@@ -178,5 +192,26 @@ fn req_nfr_18_a_recent_folder_named_file_does_not_rename_the_file_menu_in_the_lo
         ["click: 'Open recent project'"],
         "the recent entry is logged as the command alone"
     );
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// The folder check runs off the UI thread: the menu is drawn from the last
+/// known list on the frame that asks, with the answer still pending.
+#[test]
+fn req_ui_15_open_recent_does_not_look_at_folders_on_the_ui_thread() {
+    let (mut rig, root, made) = rig_with_recent("recent-background", 2);
+    std::fs::remove_dir_all(&made[0]).unwrap();
+    // Hold the background check so it cannot answer before the next assert.
+    let gate = std::sync::Arc::new(std::sync::Mutex::new(()));
+    let held = gate.lock().unwrap();
+    rig.shell.recent_gate = Some(std::sync::Arc::clone(&gate));
+    open_menu(&mut rig);
+    assert_eq!(
+        rig.shell.settings.recent.len(),
+        2,
+        "the vanished folder is still listed while the check is pending"
+    );
+    assert!(rig.shows("job-0"), "{:?}", rig.texts());
+    drop(held);
     std::fs::remove_dir_all(root).ok();
 }

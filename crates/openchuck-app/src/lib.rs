@@ -202,6 +202,11 @@ struct Document {
     project: Project,
 }
 
+thread_local! {
+    /// How many runs this thread has split into program files (tests).
+    static RUN_SPLITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// An open project and the services that work on it.
 #[derive(Debug)]
 pub struct Application {
@@ -1620,7 +1625,16 @@ impl Application {
     /// in a template does not split the toolpath again (issue 379). A new
     /// run needs a new one; never reuse it across runs (NFR-12).
     pub fn run_programs(run: &Regeneration) -> Result<output_names::RunPrograms, AppError> {
+        RUN_SPLITS.with(|n| n.set(n.get() + 1));
         posting::program_files(run).map(output_names::RunPrograms::new)
+    }
+
+    /// How many times [`Application::run_programs`] has split a run on this
+    /// thread: lets a test show that a template edit does not split again.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn run_splits_on_this_thread() -> usize {
+        RUN_SPLITS.with(std::cell::Cell::get)
     }
 
     /// The step of [`Application::output_files`] that depends on the
@@ -1711,7 +1725,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, &Self::run_programs(run)?)?;
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         for (program, source) in named.programs.iter().zip(sources) {
             let text = run.gcode.get(source).map(|(_, text)| text).ok_or_else(|| {
@@ -1732,8 +1746,12 @@ impl Application {
 
     /// The final names of the program files and, for each, the index of its
     /// text in the run: the one source of the write and the preview.
-    fn program_sources(&self, run: &Regeneration) -> Result<(OutputFiles, Vec<usize>), AppError> {
-        let named = self.output_files(run)?;
+    fn program_sources(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<(OutputFiles, Vec<usize>), AppError> {
+        let named = self.name_outputs(run, programs)?;
         let sources = named
             .programs
             .iter()
@@ -1756,6 +1774,17 @@ impl Application {
         &self,
         run: &std::sync::Arc<Regeneration>,
     ) -> Result<output_preview::OutputPreview, AppError> {
+        self.output_preview_from(run, &Self::run_programs(run)?)
+    }
+
+    /// [`Application::output_preview`] from the run's kept split
+    /// ([`Application::run_programs`] of this same `run`), so a template edit
+    /// names the files again without splitting the toolpath (issue 379).
+    pub fn output_preview_from(
+        &self,
+        run: &std::sync::Arc<Regeneration>,
+        programs: &output_names::RunPrograms,
+    ) -> Result<output_preview::OutputPreview, AppError> {
         if run.gcode.is_empty() {
             return Err(AppError::Post(
                 "There is no G-code to preview. Generate the operations first.".to_owned(),
@@ -1764,7 +1793,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, programs)?;
         output_preview::OutputPreview::new(
             run,
             sources

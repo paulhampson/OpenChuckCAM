@@ -196,6 +196,13 @@ pub struct Shell {
     /// The recent project chosen in this frame, so the action log can leave
     /// its folder name out (NFR-18).
     recent_clicked: Option<std::path::PathBuf>,
+    /// The running check of which recent folders exist, and when it last
+    /// started (the check is off the UI thread; issue 381).
+    recent_check: Option<std::sync::mpsc::Receiver<Vec<std::path::PathBuf>>>,
+    recent_checked_at: Option<std::time::Instant>,
+    /// Held by a test to keep the check from answering.
+    #[cfg(test)]
+    recent_gate: Option<std::sync::Arc<std::sync::Mutex<()>>>,
     /// The click lines the action log was given (tests).
     #[cfg(test)]
     logged_clicks: Vec<String>,
@@ -340,6 +347,10 @@ impl Shell {
             edit_context: None,
             open_hint: None,
             recent_clicked: None,
+            recent_check: None,
+            recent_checked_at: None,
+            #[cfg(test)]
+            recent_gate: None,
             #[cfg(test)]
             logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),

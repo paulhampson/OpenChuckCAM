@@ -635,7 +635,7 @@ impl Shell {
     /// (decision 0460) apply; the Open dialog shows the folder to confirm.
     fn recent_menu(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.menu_button("Open recent", |ui| {
-            let recent = self.recent_projects();
+            let recent = self.recent_projects(ctx);
             if recent.is_empty() {
                 ui.add_enabled(false, egui::Button::new("No recent projects"));
                 return;
