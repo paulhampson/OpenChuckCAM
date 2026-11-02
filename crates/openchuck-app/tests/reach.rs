@@ -401,10 +401,16 @@ fn req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands
             (a.z + b.z + c.z) / 3.0,
         ]
     };
+    // The piece across the middle of the bore: its own band holds the
+    // whole stretch between the rims (a strip is cut across its length).
     let middle = on_parent
         .iter()
+        .find(|i| {
+            let [a, b, c] = pieces.mesh.triangle(**i).unwrap();
+            let (low, high) = (a.x.min(b.x).min(c.x), a.x.max(b.x).max(c.x));
+            low <= 10.0 && 10.0 <= high
+        })
         .map(|i| at(*i))
-        .find(|p| (p[0] - 10.0).abs() < 2.0)
         .unwrap();
     assert_eq!(
         bands.band_at(parent, middle),

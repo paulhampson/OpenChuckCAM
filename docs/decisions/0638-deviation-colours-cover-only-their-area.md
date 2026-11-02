@@ -28,7 +28,7 @@ On the part model the bore's strips hold two bands because the bore is enclosed 
 
 ## Decision (planned)
 
-1. **Option A, adaptive** (owner, 2 Nov 2026, relayed; revised to adaptive after the measurements). A triangle whose test points fall in more than one shown band is halved along its longest edge, and each half again while its own test points still disagree, down to about two simulation cells. The pieces then follow the band boundaries, not the areas of the triangles that hold them. Each piece is coloured by its parent's rule at its own centre: on the part, the nearest of the parent's own samples; on the cut part, decision 0633 item 4. A triangle of one band is drawn whole, as now.
+1. **Option A, adaptive** (owner, 2 Nov 2026, relayed; revised to adaptive after the measurements). A triangle whose test points fall in more than one shown band is halved along its longest edge, and each half again while its own test points still disagree, down to about two simulation cells; a strip (four or more times longer than it is wide) is cut across its length instead (see the measurements below). The pieces then follow the band boundaries, not the areas of the triangles that hold them. Each piece is coloured by its parent's rule at its own centre: on the part, the nearest of the parent's own samples; on the cut part, decision 0633 item 4. A triangle of one band is drawn whole, as now.
 2. **The part's triangle numbers do not change.** The pieces are drawn as an extra coloured layer and their parents are left out of the bands, so selection sets, picking and the outlines (decision 0216) are untouched. The probe reads the piece under the pointer. The cut part's own mesh may be replaced by the refined one, since its picker is built from it (decision 0238).
 3. **Bounded and deterministic.** The pieces are made off the interface thread in the job that makes the colours, in fixed chunks, the same at any thread count (NFR-06). They are capped; past the cap the pieces stay coarser and a note says so (NFR-04). Nothing is drawn finer than about two cells, the simulation's own resolution (NFR-12).
 4. **No renderer change.** Rejected: per-vertex colours or a texture in the shader (a renderer change, and blending smears the band edges and the hatches); dots at the affected samples (they show where, not the extent, and would duplicate the unreached dots of lane VIEW-OVERLAYS, #416).
@@ -50,9 +50,39 @@ Neither run reached the budget. The adaptive pieces number about as many as even
 - **On the surface at each end of the bore:** the rim, where the faced end cuts the stock flush. These are 10,056 samples: values 0 to 0.05 mm, not enclosed, within about a cell of each end.
 - **Unreachable between them:** 1,304,634 samples, enclosed.
 
-Each strip therefore has two real band edges across it, and each is followed down to about two cells. The count is high because the strips are long slivers (about 35 mm): halving along the longest edge takes many steps to reach two cells at each end.
+Each strip therefore has two real band edges across it.
 
-With item 5 (above), the cut part at the end has 1,687 parents and 264,850 pieces: 124,027 on the surface, 104,374 Unreachable, 36,449 not measured. The parents' longest edges have a median of 25.4 mm and reach at most 40 mm. The colouring job took 10.1 to 11.1 s, against 8.3 s under item 4 alone and 3.2 s before pieces. The part model is unchanged by item 5 (3.7 to 4.5 s this run). Whether pieces are made only for still frames is the owner's decision (asked 2 Nov 2026).
+**The cut part.** With item 5 (above), the cut part at the end had 1,687 parents and 264,850 pieces. The colouring job took 10.1 to 11.1 s, against 8.3 s under item 4 alone and 3.2 s before pieces. The owner asked for the cause to be found before any cost was accepted (2 Nov 2026, relayed).
+
+The cut part's mixed triangles hold no interleaving either. Every one of them is a strip of the faced end, exactly 0.1 mm wide (one dexel column) and up to 40 mm long (median 25.4 mm). Sampled every quarter cell along its length:
+
+| Runs of one band | Strips |
+| --- | --- |
+| 1 | 212 |
+| 2 | 996 |
+| 3 | 282 |
+| 4 | 145 |
+| 5 to 8 | 52 |
+
+Only 72 runs anywhere are shorter than two cells.
+
+**The cause is the cutting rule, not the bands.** Halving a strip along its longest edge leaves one child as long as the strip, so the pieces spread along the whole strip instead of gathering at the band edge. A model of the rule on a strip 25 to 40 mm long, 0.1 mm wide, with one band edge across it, gave 35 to 151 pieces. The part model's bore strips are slivers too.
+
+**The fix (item 1, as built).** A triangle four or more times longer than it is wide is cut across its length. Its length is halved while a stretch holds more than one band, down to two cells or the strip's width; neighbouring stretches of one band are joined. A stretch still holding more than one band is cut on as a piece. One band edge across a strip then costs a few pieces, placed to within two cells as before.
+
+After the fix, measured on the owner's carving (release build, 4 threads, numbers only):
+
+| Mesh | Parents | Pieces before the fix | Pieces after |
+| --- | --- | --- | --- |
+| Part model | 1,522 | 133,422 | 16,476 (5,412 on the surface, 11,064 Unreachable) |
+| Cut part at the end | 1,687 | 264,850 | 17,801 (8,988 on the surface, 6,053 Unreachable, 2,760 not measured) |
+
+Timings after the fix:
+
+- **Cut part.** Making the pieces now takes 1.2 to 1.6 s, against 6.4 s before the fix. The projection pass over the 1,323,834 triangles, made either way, takes 1.1 to 1.7 s. The whole job takes 6.8 to 7.9 s with pieces and 5.2 to 6.6 s without them, run for run on the same container. (The 3.2 s quoted before pieces was measured on a quieter run.)
+- **Part model.** The colouring job takes 3.7 to 3.8 s.
+
+Whether that cost is accepted, or pieces are made only for still frames, is the owner's decision (asked 2 Nov 2026).
 
 On the tube stand-in, the faced end shows 47.7 mm² of Unreachable over the bore's 153.9 mm² disc (31%): a cap face within the comparison's search (3 mm plus a cell) of the rim takes the rim's value, on the surface, by decision 0633 item 4. Applying item 4's "material behind" whenever the nearest counted sample is more than two cells away (off the part's surface), not only beyond the search, gave 145.1 mm² (94%) in a trial that was not kept; it changed an accepted rule, so it went to the owner, who agreed (item 5). As built, the interface test gives the same 145.1 mm².
 
@@ -60,8 +90,9 @@ On the tube stand-in, the faced end shows 47.7 mm² of Unreachable over the bore
 
 `req_sim_05_a_triangle_holding_two_classes_is_coloured_by_each_within_two_cells`, `req_sim_05_a_triangle_of_one_class_is_drawn_whole`, `req_sim_05_adaptive_pieces_follow_the_band_boundary`, `req_nfr_06_the_split_colours_are_the_same_at_any_thread_count`, `req_sim_11_the_probe_on_a_split_triangle_reads_its_piece`, `req_ui_05_selection_sets_and_picking_keep_the_part_s_triangle_numbers`, `req_nfr_04_the_added_triangles_stay_within_their_budget`, and on the tube stand-in through the interface: the violet area on the faced end is about the bore's disc (π·7² ≈ 154 mm²), not whole strips. The adaptive counts and times on the owner's project are measured before the interface half.
 
-Built so far for item 5, test first:
+Built so far for item 5 and the strip rule, test first:
 
 - `openchuck-app` `stock_surface.rs` `req_sim_05_a_stock_face_off_the_part_s_surface_takes_the_material_behind_it`. It failed first. A cap five cells from the rim takes the enclosed bore behind it. A cap one and a half cells from the rim keeps the rim. With nothing bound or enclosed behind a cap, it keeps the nearest counted sample.
 - Decision 0238's projection test `req_sim_05_req_sim_11_stock_colours_and_probes_use_nearest_existing_samples_with_bounds` now places its triangles within two cells of the samples they read. At 0.2 mm (two cells, and a little more at the centroid) the bound behind the triangle was taken, as item 5 intends.
 - `openchuck-ui` `shell::simulate_tests::req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore` (11.5 s), through the whole interface on the tube stand-in. It shows 145.1 mm² Unreachable on the faced end against the bore's 153.9 mm², within 20%. Before item 5 it showed 47.7 mm².
+- `openchuck-app` `pieces.rs` `req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length`. It failed first, with 124 pieces. A strip 25 mm by 0.1 mm with one band edge across it makes at most 20 pieces, with the edge placed to within two cells. With two band edges, as across a bore, it makes at most 30.

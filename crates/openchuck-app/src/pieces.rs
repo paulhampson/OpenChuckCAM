@@ -7,7 +7,10 @@
 //! long triangle of the part half in reach) once took one colour over its
 //! whole area. Such a triangle is cut into pieces instead: halved along its
 //! longest edge, and each half again while its own test points still fall
-//! in more than one band, down to about two simulation cells. The pieces
+//! in more than one band, down to about two simulation cells. A strip (four
+//! or more times longer than it is wide, as the cut part's faced end is
+//! made of) is cut across its length instead, so that a band edge across it
+//! costs a few pieces rather than many along its whole length. The pieces
 //! follow the band boundaries, not the area of the triangles that hold
 //! them. Each piece is coloured by its parent's rule at its own centre.
 //! The parents keep their numbers (selection sets, picking and outlines
@@ -154,7 +157,14 @@ pub(crate) fn refine(
                         return None;
                     }
                     let mut out = Vec::new();
-                    cut_piece(corners, &parent_rule, &one_band, finest, 0, &mut out);
+                    cut_piece(
+                        corners,
+                        &parent_rule,
+                        &one_band,
+                        (finest, tolerance),
+                        0,
+                        &mut out,
+                    );
                     Some((t, out))
                 })
                 .collect())
@@ -233,13 +243,14 @@ fn uniform(corners: [Point3; 3], rule: &dyn Fn(Point3) -> Projected, tolerance: 
 }
 
 /// Cuts a piece in two along its longest edge while its test points
-/// disagree and it is longer than `finest`; each leaf takes the rule's
-/// value at its centre.
+/// disagree and it is longer than `finest` (a strip is cut across its
+/// length by [`cut_strip`]); each leaf takes the rule's value at its
+/// centre. `tolerance` is the bands' surface tolerance.
 fn cut_piece(
     corners: [Point3; 3],
     rule: &dyn Fn(Point3) -> Projected,
     one_band: &dyn Fn([Point3; 3]) -> bool,
-    finest: f64,
+    (finest, tolerance): (f64, f64),
     depth: u32,
     out: &mut Vec<([Point3; 3], Projected)>,
 ) {
@@ -253,17 +264,162 @@ fn cut_piece(
         out.push((corners, rule(g)));
         return;
     }
-    // Rotate so that a-b is the longest edge, keeping the winding.
-    let [a, b, c] = if a.distance(b) >= b.distance(c) && a.distance(b) >= c.distance(a) {
+    let [a, b, c] = longest_first(corners);
+    let length = a.distance(b);
+    if length >= ELONGATED * width([a, b, c]) {
+        cut_strip([a, b, c], rule, one_band, (finest, tolerance), depth, out);
+        return;
+    }
+    let m = Point3::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0, (a.z + b.z) / 2.0);
+    cut_piece(
+        [a, m, c],
+        rule,
+        one_band,
+        (finest, tolerance),
+        depth + 1,
+        out,
+    );
+    cut_piece(
+        [m, b, c],
+        rule,
+        one_band,
+        (finest, tolerance),
+        depth + 1,
+        out,
+    );
+}
+
+/// A triangle at least this many times longer than it is wide is a strip:
+/// it is cut across its length, not halved along its longest edge.
+const ELONGATED: f64 = 4.0;
+
+/// The corners turned so that the first edge, a to b, is the longest,
+/// keeping the winding.
+fn longest_first([a, b, c]: [Point3; 3]) -> [Point3; 3] {
+    if a.distance(b) >= b.distance(c) && a.distance(b) >= c.distance(a) {
         [a, b, c]
     } else if b.distance(c) >= c.distance(a) {
         [b, c, a]
     } else {
         [c, a, b]
+    }
+}
+
+/// A triangle's width across its longest edge.
+fn width([a, b, c]: [Point3; 3]) -> f64 {
+    let length = longest([a, b, c]);
+    if length > 0.0 {
+        (b - a).cross(c - a).length() / length
+    } else {
+        0.0
+    }
+}
+
+/// The part of the triangle `[a, b, c]` (a to b its longest edge) whose
+/// distance along a to b is from `from` to `to`, as triangles in a fan.
+fn slice([a, b, c]: [Point3; 3], from: f64, to: f64) -> Vec<[Point3; 3]> {
+    let length = a.distance(b);
+    let along = |p: Point3| (p - a).dot(b - a) / length;
+    let mut polygon = vec![a, b, c];
+    for (limit, keep_above) in [(from, true), (to, false)] {
+        let inside = |p: Point3| {
+            if keep_above {
+                along(p) >= limit
+            } else {
+                along(p) <= limit
+            }
+        };
+        let mut clipped = Vec::with_capacity(polygon.len() + 1);
+        for (i, &p) in polygon.iter().enumerate() {
+            let q = polygon.get((i + 1) % polygon.len()).copied().unwrap_or(p);
+            if inside(p) {
+                clipped.push(p);
+            }
+            if inside(p) != inside(q) {
+                let (sp, sq) = (along(p), along(q));
+                let t = (limit - sp) / (sq - sp);
+                clipped.push(p + (q - p) * t);
+            }
+        }
+        polygon = clipped;
+    }
+    let Some((&first, rest)) = polygon.split_first() else {
+        return Vec::new();
     };
-    let m = Point3::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0, (a.z + b.z) / 2.0);
-    cut_piece([a, m, c], rule, one_band, finest, depth + 1, out);
-    cut_piece([m, b, c], rule, one_band, finest, depth + 1, out);
+    rest.windows(2)
+        .filter_map(|pair| match pair {
+            [p, q] if (*p - first).cross(*q - first).length() > 0.0 => Some([first, *p, *q]),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Cuts a strip (a to b its longest edge) across its length. The length is
+/// halved while a stretch's pieces hold more than one band and it is
+/// longer than `finest` (or than the strip is wide); neighbouring stretches
+/// of one band are joined. A stretch still holding more than one band is
+/// cut on as a piece; each other piece takes the rule's value at its
+/// centre. A band edge across the strip costs a few pieces, where halving
+/// along the longest edge spreads them along the whole strip.
+fn cut_strip(
+    corners: [Point3; 3],
+    rule: &dyn Fn(Point3) -> Projected,
+    one_band: &dyn Fn([Point3; 3]) -> bool,
+    (finest, tolerance): (f64, f64),
+    depth: u32,
+    out: &mut Vec<([Point3; 3], Projected)>,
+) {
+    let [a, b, _] = corners;
+    let shortest = finest.max(width(corners));
+    let centre = |[p, q, r]: [Point3; 3]| {
+        Point3::new(
+            (p.x + q.x + r.x) / 3.0,
+            (p.y + q.y + r.y) / 3.0,
+            (p.z + q.z + r.z) / 3.0,
+        )
+    };
+    let band_at = |p: Point3| {
+        let (value, enclosed) = rule(p);
+        band_of(value, enclosed, tolerance)
+    };
+    // The stretches in order along the strip, each with its band when it
+    // holds one only.
+    let mut stretches: Vec<(f64, f64, Option<_>)> = Vec::new();
+    let mut pending = vec![(0.0, a.distance(b), depth)];
+    while let Some((from, to, level)) = pending.pop() {
+        let pieces = slice(corners, from, to);
+        let mut bands = pieces.iter().map(|p| band_at(centre(*p)));
+        let first = bands.next();
+        let one = first.is_some()
+            && bands.all(|b| Some(b) == first)
+            && pieces.iter().all(|p| one_band(*p));
+        if one {
+            stretches.push((from, to, first));
+        } else if to - from <= shortest || level >= MAX_DEPTH {
+            stretches.push((from, to, None));
+        } else {
+            let middle = (from + to) / 2.0;
+            // The far half first, so the near half is taken next.
+            pending.push((middle, to, level + 1));
+            pending.push((from, middle, level + 1));
+        }
+    }
+    let mut joined: Vec<(f64, f64, Option<_>)> = Vec::with_capacity(stretches.len());
+    for stretch in stretches {
+        match joined.last_mut() {
+            Some(last) if last.2.is_some() && last.2 == stretch.2 => last.1 = stretch.1,
+            _ => joined.push(stretch),
+        }
+    }
+    for (from, to, band) in joined {
+        for piece in slice(corners, from, to) {
+            if band.is_some() {
+                out.push((piece, rule(centre(piece))));
+            } else {
+                cut_piece(piece, rule, one_band, (finest, tolerance), depth + 1, out);
+            }
+        }
+    }
 }
 
 /// `bands` with `pieces` attached: their parents left out of its bands.
@@ -386,6 +542,55 @@ mod tests {
         assert!(
             small < even / 5.0,
             "{small} pieces against {even} even ones"
+        );
+    }
+
+    #[test]
+    fn req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length() {
+        // The cut part's faced end is made of strips one column wide and as
+        // long as the stock is across (decision 0638). Halving a strip along
+        // its longest edge leaves a child as long as the strip, so the
+        // pieces spread along it; cut across its length, a band edge costs
+        // a few pieces and is still placed to within two cells.
+        let (length, width) = (25.0, PITCH);
+        let mesh = TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(length, 0.0, 0.0),
+                Point3::new(length, width, 0.0),
+                Point3::new(0.0, width, 0.0),
+            ],
+            triangles: vec![[0, 1, 2], [0, 2, 3]],
+        };
+        for edge in [3.37, 7.31, 12.5, 20.02] {
+            let pieces = run(&mesh, &split_at(edge), PIECE_BUDGET).expect("the strip is cut");
+            assert!(
+                pieces.parent.len() <= 20,
+                "{} pieces for one band edge across two triangles",
+                pieces.parent.len()
+            );
+            let on = band_area(&pieces, DeviationBand::OnTarget);
+            let thick = band_area(&pieces, DeviationBand::Thick);
+            assert!(
+                (on + thick - length * width).abs() < 1e-9,
+                "the pieces cover the parents"
+            );
+            assert!((on - edge * width).abs() <= 2.0 * PITCH * width, "{on}");
+        }
+        // Two band edges, as on a strip across a bore: still a few pieces.
+        let rule = |_: usize, p: Point3, _: [Point3; 3]| -> Projected {
+            if (8.0..17.0).contains(&p.x) {
+                (Some((2.0, false)), true)
+            } else {
+                (Some((0.0, false)), false)
+            }
+        };
+        let pieces = run(&mesh, &rule, PIECE_BUDGET).unwrap();
+        assert!(pieces.parent.len() <= 30, "{}", pieces.parent.len());
+        let violet = band_area(&pieces, DeviationBand::Unreachable);
+        assert!(
+            (violet - 9.0 * width).abs() <= 4.0 * PITCH * width,
+            "{violet}"
         );
     }
 
