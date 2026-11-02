@@ -174,6 +174,10 @@ pub struct ExportPanel {
     file_names: openchuck_app::FileNameTemplates,
     /// The names they give the current files.
     named: Option<file_names::Named>,
+    split: Option<file_names::Split>,
+    /// How many times a run was split into program files (tests).
+    #[cfg(test)]
+    splits: usize,
 }
 
 impl Default for ExportPanel {
@@ -221,6 +225,9 @@ impl ExportPanel {
             ticked: false,
             file_names: openchuck_app::FileNameTemplates::default(),
             named: None,
+            split: None,
+            #[cfg(test)]
+            splits: 0,
         }
     }
 
@@ -1191,7 +1198,14 @@ impl ExportPanel {
                 Arc::ptr_eq(r, run) && t == templates && *same_then == same
             });
         if !fresh {
-            let made = app.output_preview(run).map_err(|e| e.to_string());
+            let made = match self.split_for(run) {
+                Ok(programs) => {
+                    let programs = Arc::clone(programs);
+                    app.output_preview_from(run, &programs)
+                        .map_err(|e| e.to_string())
+                }
+                Err(e) => Err(e.clone()),
+            };
             self.output_preview = Some((Arc::clone(run), templates.clone(), same, made));
         }
     }
