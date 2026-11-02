@@ -100,8 +100,26 @@ Measured on 2 Nov 2026 on this branch. Estimated time is the sum of the assemble
 | Simultaneous finishing (spiral) | 134.9 → 53.0 mm | 886.2 → 889.6 s (+0.4 %) |
 | Helical finishing | 92.5 → 37.8 mm | 1168.9 → 1168.6 s |
 
-**Scratch projects** (not in the repository: the crankshaft and blisk models from `testdata/stl` in a 38 and 42 mm blank with a 6 mm held start, the baluster example from lane DOCSUSER; Z1 profile, machine clearance radius 40; each operation alone with the others in the setup):
+**Scratch projects.** These are not in the repository:
+- the crankshaft and blisk models from `testdata/stl`, in a 38 mm and a 42 mm blank with a 6 mm held start;
+- the baluster example (lane DOCSUSER).
 
-FINAL-MEASUREMENTS
+All use the Z1 profile with machine clearance radius 40 and a 3.175 mm ball for the finishing. Every operation is generated in one project with rotary roughing before it. The "after main" figures are from `main` at `4c15579` (the parameter absent gives the same output on this branch); "by region" sets it on this branch. The table shows time, then X sweep, then reversals.
+
+| Part, operation | After main passes | By region | Path note |
+| --- | --- | --- | --- |
+| Crankshaft, helical finishing | 1959.9 s, 94.6 mm, 2 | 1960.2 s, 39.8 mm, 0 | between passes 7.7 mm along the part instead of 62.1 mm, +0.3 s |
+| Crankshaft, simultaneous spiral | 1803.7 s, 138.7 mm, 5 | 1812.1 s (+0.5 %), 73.5 mm, 4 | 31.6 mm instead of 95.6 mm, +8.0 s |
+| Crankshaft, simultaneous axial | 12054.0 s, 7851.5 mm, 267 | 12045.4 s, 7824.3 mm, 271 | 338.0 mm instead of 353.9 mm, −9.5 s |
+| Crankshaft, rest machining | 405.8 s | 405.8 s (unchanged: nothing to gain) | none |
+| Blisk, helical finishing | 2572.8 s, 53.5 mm, 1 | unchanged (nothing to gain) | none |
+| Blisk, simultaneous spiral | 16611.0 s, 573.8 mm, 278 | 16609.8 s, 573.0 mm, 277 | 192.2 mm instead of 193.6 mm, −1.3 s |
+| Baluster, helical finishing | 897.3 s, 27.5 mm, 0 | unchanged (no faces it can turn at) | none |
+
+**Reading the table.**
+- On the crankshaft, the face turns and the web contours now come with their region. Helical finishing no longer goes back along the part (no reversals), and the simultaneous spiral's back-and-forth halves.
+- The time changes by between −0.1 and +0.5 per cent.
+- The remaining reversals of the simultaneous patterns are inside the web contour groups and the axial zigzag; on the blisk they are inside one hidden area (OI-1995).
+- Time is the larger saving, and it waits for pull request D (low links), measured in the lane plan: a lower link height saved 10 to 14 per cent on these operations.
 
 **Golden files and reference projects (D3).** None changes: no saved operation has the parameter, so all of them use after main passes. The goldens and reference programs are byte-identical, checked by the existing golden tests on this branch. Only operations created from now on use by region.
