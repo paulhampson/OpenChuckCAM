@@ -620,6 +620,10 @@ pub struct Viewport {
     /// decision 0492). Separate from `bands`, which belongs to the cut part
     /// (or, with no cut part, to the part): both can exist at once.
     part_bands: Option<(ModelId, DeviationBands)>,
+    /// How many scenes have been set: a new one may be read from a model
+    /// file that changed, so colours found for the old one are found again
+    /// (decision 0492 item 7).
+    scene_count: u64,
     /// The part has changed since the simulation, so it is drawn plain and
     /// the colour scale says so (UI-11; decision 0492).
     part_changed: bool,
@@ -744,6 +748,7 @@ impl Viewport {
             pixels: [0, 0],
             bands: None,
             part_bands: None,
+            scene_count: 0,
             part_changed: false,
             probe_source: None,
             stock_surface: None,
@@ -906,6 +911,7 @@ impl Viewport {
     /// Shows a new scene. With `fit` the camera is fitted to it.
     pub fn set_scene(&mut self, view: SceneView, fit: bool) {
         self.view = view;
+        self.scene_count = self.scene_count.wrapping_add(1);
         self.hover_solid = None;
         self.rebuild();
         self.fit_pending |= fit;
@@ -935,6 +941,12 @@ impl Viewport {
         }
         self.part_bands = bands;
         self.rebuild();
+    }
+
+    /// How many scenes have been set, so that colours found for one scene
+    /// are not kept for the next (decision 0492 item 7).
+    pub(crate) fn scene_count(&self) -> u64 {
+        self.scene_count
     }
 
     /// Says the part has changed since the simulation, so it is drawn plain

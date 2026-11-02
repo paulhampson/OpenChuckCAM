@@ -57,6 +57,7 @@ Section 11.5, Viewport, a new item after "The stock" (made in the same change, o
 - Choices made in the build, within the decision:
   - Until the part's job has finished (74 ms on the blisk mesh, below), the cut part keeps its colours; it then turns plain. Both states are real.
   - The cursor readout still reads the cut part; only the probe reads the part.
+  - The part's colours are found again whenever the viewport's scene is read again (`Viewport::scene_count`), so a model file changed behind the application after the colours were found never carries them: the job re-reads the file and refuses it (found by CodeRabbit in review of #472; test `req_ui_11_a_part_file_edited_after_the_colours_is_drawn_plain_once_the_scene_is_read_again`, seen failing first). The part is drawn plain for the job's short time (74 ms on the blisk mesh) after each scene change.
   - A value pinned on the coloured part is still hidden by the part's own nearer faces (decision 0238 item 4); only the cut part's check is skipped for it (found in review of #472; test `req_sim_11_req_sim_05_a_pinned_part_value_hides_behind_nearer_part_faces`, seen failing first, 8.1 s).
   - A run made when the file already differed from its recorded hash gets no part colours: the check is against the recorded hash.
 - Tests:

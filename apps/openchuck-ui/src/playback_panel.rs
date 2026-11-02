@@ -228,6 +228,10 @@ struct PartColours {
     job: Option<PartJob>,
     /// The run `done` belongs to.
     run: Option<Arc<Regeneration>>,
+    /// The viewport's scene `done` was found for (`Viewport::scene_count`):
+    /// a scene read again may be of a model file changed behind the
+    /// application, whose triangles the old colours do not fit.
+    scene: u64,
     /// What the job found for each setup: the part's bands, or `None` when
     /// the model file is no longer the one the run was made with.
     done: Vec<(SetupId, Option<(ModelId, DeviationBands)>)>,
@@ -1220,6 +1224,15 @@ impl PlaybackPanel {
             }
             self.part.done.clear();
             self.part.run = Some(Arc::clone(&run));
+        }
+        // A scene read again is checked again: the job reads the file and
+        // refuses one that is no longer the run's (decision 0492 item 7).
+        if self.part.scene != viewport.scene_count() {
+            if let Some((.., job)) = self.part.job.take() {
+                job.cancel();
+            }
+            self.part.done.clear();
+            self.part.scene = viewport.scene_count();
         }
         // The job on a setup the playback has left is not wanted now.
         if self
@@ -3163,6 +3176,34 @@ mod tests {
             assert!(!panel.frame(&app, &mut viewport, 0.0));
         }
         assert!(panel.part.job.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// UI-11, decision 0492 item 7 (review of #472): the colours already
+    /// found are not kept for a scene read again after the file changed
+    /// behind the application. The scene is built from the file as it is
+    /// now, so the old colours would fall on its new triangles.
+    #[test]
+    fn req_ui_11_a_part_file_edited_after_the_colours_is_drawn_plain_once_the_scene_is_read_again()
+    {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-file-later");
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(
+            viewport.part_bands().is_some(),
+            "the part is coloured first"
+        );
+        let file = dir.join("models/cube.stl");
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, text.replacen("solid cube", "solid cube two", 1)).unwrap();
+        // The scene is read again (as after any edit of the project).
+        viewport.set_scene(app.start_scene(None).wait().unwrap(), false);
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(
+            viewport.part_bands().is_none(),
+            "no old colours on the new file"
+        );
+        assert!(viewport.part_changed());
+        assert!(panel.error.is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 
