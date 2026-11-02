@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc af78a0b3a877b03463cbf630f10501fca0b5e2d8bc950ff52128d37fb0d77c2d # shrinks to qx = 38.5680160064741, qy = 1.9972841649103297, qz = 0.0; issue #467: beside the sphere patch's seam the answer is on its edge, 9e-8 mm off, within the search tolerance
