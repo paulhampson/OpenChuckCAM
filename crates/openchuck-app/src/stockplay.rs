@@ -16,13 +16,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use openchuck_project::id::{ModelId, OperationId, SetupId};
 use openchuck_sim::{
-    Checkpoint, DeviationOptions, DexelStock, Simulator, stock_mesh, triangle_values,
+    Checkpoint, DeviationOptions, DexelStock, ReachClass, Simulator, stock_mesh, triangle_worst,
 };
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::RevolvedProfile;
 
-use crate::pathview::{DeviationBands, deviation_bands};
+use crate::pathview::{DeviationBands, deviation_bands_with};
 use crate::playback::{Cursor, Timeline};
 pub use crate::stock_surface::StockSurface;
 use crate::stock_surface::SurfaceSamples;
@@ -360,8 +360,15 @@ impl Application {
                             .simulation
                             .as_ref()
                             .and_then(|r| r.setups.iter().find(|s| s.id == id))
-                            .and_then(|s| s.deviation.as_ref())
-                            .map(|d| SurfaceSamples::new(&d.points, settings.cell.0)),
+                            .and_then(|s| {
+                                s.deviation.as_ref().map(|d| {
+                                    SurfaceSamples::with_reach(
+                                        &d.points,
+                                        s.reach.as_ref().map(|r| r.classes.as_slice()),
+                                        settings.cell.0,
+                                    )
+                                })
+                            }),
                     });
                 }
                 Ok(StockPlayback {
@@ -499,9 +506,29 @@ impl Application {
                     None => mesh.clone(),
                 };
                 let options = DeviationOptions::for_cell(report.settings.cell.0);
-                let mut values = triangle_values(deviation, &target, options.spacing)?;
-                values.truncate(model_triangles);
-                Ok((model.id, deviation_bands(&values, report.settings.cell.0)))
+                let mut worst = triangle_worst(deviation, &target, options.spacing)?;
+                worst.truncate(model_triangles);
+                let values: Vec<_> = worst
+                    .iter()
+                    .map(|w| {
+                        w.and_then(|i| deviation.points.get(i))
+                            .map(|p| (p.value, p.at_least))
+                    })
+                    .collect();
+                // Material left that no tool reaches is its own band (issue
+                // 478).
+                let unreachable: Vec<bool> = worst
+                    .iter()
+                    .map(|w| {
+                        w.zip(result.reach.as_ref())
+                            .and_then(|(i, r)| r.classes.get(i))
+                            .is_some_and(|c| *c == ReachClass::Enclosed)
+                    })
+                    .collect();
+                Ok((
+                    model.id,
+                    deviation_bands_with(&values, &unreachable, report.settings.cell.0),
+                ))
             },
         )
     }

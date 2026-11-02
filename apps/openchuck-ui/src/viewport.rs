@@ -44,7 +44,7 @@ pub(crate) fn cut_part_scene(
     solid: bool,
 ) -> Scene {
     let mut scene = Scene::default();
-    let mut add = |mesh: &TriangleMesh, mut colour: Colour, hatched: bool| {
+    let mut add = |mesh: &TriangleMesh, mut colour: Colour, hatch: Option<Hatch>| {
         // The mapped palette has narrow contrast margins (0216). Keep its
         // translucent fill near opaque; plain stock retains today's glass.
         colour[3] = if solid {
@@ -58,12 +58,7 @@ pub(crate) fn cut_part_scene(
         if let Some(item) = scene.meshes.last_mut() {
             item.slot = Slot::Part;
             item.translucent = !solid;
-            if hatched {
-                item.hatch = Some(Hatch {
-                    colour: roles::UNMEASURED_HATCH,
-                    cross: false,
-                });
-            }
+            item.hatch = hatch;
         }
     };
     if let Some(bands) = bands {
@@ -79,18 +74,18 @@ pub(crate) fn cut_part_scene(
             add(
                 &triangles_mesh(&surface.mesh, &hidden),
                 roles::HIDDEN_BAND,
-                false,
+                None,
             );
         }
         for (band, set) in &bands.bands {
             add(
                 &triangles_mesh(&surface.mesh, set),
                 band_colour(*band),
-                roles::band_hatched(*band),
+                roles::band_hatch(*band),
             );
         }
     } else {
-        add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], false);
+        add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], None);
     }
     scene
 }
@@ -385,13 +380,10 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                 for (band, triangles) in &bands.bands {
                     let part = triangles_mesh(&mesh.mesh, triangles);
                     scene.add_mesh(&part, &[], band_colour(*band), roles::FEATURE_EDGES);
-                    if roles::band_hatched(*band)
+                    if let Some(hatch) = roles::band_hatch(*band)
                         && let Some(added) = scene.meshes.last_mut()
                     {
-                        added.hatch = Some(Hatch {
-                            colour: roles::UNMEASURED_HATCH,
-                            cross: false,
-                        });
+                        added.hatch = Some(hatch);
                     }
                 }
             }

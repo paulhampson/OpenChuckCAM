@@ -318,33 +318,81 @@ pub fn triangle_values(
     mesh: &TriangleMesh,
     spacing: f64,
 ) -> Result<Vec<Option<(f64, bool)>>> {
+    Ok(triangle_worst(deviation, mesh, spacing)?
+        .into_iter()
+        .map(|w| {
+            w.and_then(|i| deviation.points.get(i))
+                .map(|p| (p.value, p.at_least))
+        })
+        .collect())
+}
+
+/// The sample each triangle of `mesh` is coloured by, as its index in
+/// [`Deviation::points`]: of the samples taken on it that count, the one
+/// furthest from the surface (the first of equals), as
+/// [`triangle_values`] gives its value. `None` for a triangle with no such
+/// sample. The same conditions and failures as [`triangle_values`].
+pub fn triangle_worst(
+    deviation: &Deviation,
+    mesh: &TriangleMesh,
+    spacing: f64,
+) -> Result<Vec<Option<usize>>> {
     let mut out = Vec::with_capacity(mesh.triangles.len());
+    for_each_triangle(deviation, mesh, spacing, |_, first, samples| {
+        let worst = samples.iter().enumerate().filter(|(_, p)| p.counts()).fold(
+            None,
+            |best: Option<(usize, &DeviationPoint)>, (i, p)| {
+                if best.is_none_or(|(_, b)| p.value.abs() > b.value.abs()) {
+                    Some((i, p))
+                } else {
+                    best
+                }
+            },
+        );
+        out.push(worst.map(|(i, _)| first + i));
+    })?;
+    Ok(out)
+}
+
+/// The area of the target's surface each sample of `deviation` stands for,
+/// in square millimetres, in the order of [`Deviation::points`]: its
+/// triangle's area shared equally between the triangle's samples, so they
+/// add up to the area of the triangles that have samples. The same
+/// conditions and failures as [`triangle_values`].
+pub fn sample_areas(deviation: &Deviation, mesh: &TriangleMesh, spacing: f64) -> Result<Vec<f64>> {
+    let mut out = Vec::with_capacity(deviation.points.len());
+    for_each_triangle(deviation, mesh, spacing, |t, _, samples| {
+        if samples.is_empty() {
+            return;
+        }
+        let area = triangle_frame(mesh, t)
+            .map_or(0.0, |(_, [a, b, c])| (b - a).cross(c - a).length() / 2.0);
+        let each = area / samples.len() as f64;
+        out.extend(std::iter::repeat_n(each, samples.len()));
+    })?;
+    Ok(out)
+}
+
+/// Walks the triangles of `mesh` in order, giving `visit` each one's
+/// index, the index of its first sample and its samples (none for a
+/// degenerate triangle). Fails if the counts do not add up.
+fn for_each_triangle(
+    deviation: &Deviation,
+    mesh: &TriangleMesh,
+    spacing: f64,
+    mut visit: impl FnMut(usize, usize, &[DeviationPoint]),
+) -> Result<()> {
     let mut next = 0usize;
     for t in 0..mesh.triangles.len() {
         let count = triangle_sample_count(mesh, t, spacing, usize::MAX);
-        if count == 0 {
-            out.push(None);
-            continue;
-        }
         let samples = deviation.points.get(next..next + count).ok_or_else(|| {
             Error::invalid(
                 "deviation",
                 "it does not hold the samples of this mesh at this spacing",
             )
         })?;
+        visit(t, next, samples);
         next += count;
-        let worst =
-            samples
-                .iter()
-                .filter(|p| p.counts())
-                .fold(None, |best: Option<&DeviationPoint>, p| {
-                    if best.is_none_or(|b| p.value.abs() > b.value.abs()) {
-                        Some(p)
-                    } else {
-                        best
-                    }
-                });
-        out.push(worst.map(|p| (p.value, p.at_least)));
     }
     if next != deviation.points.len() {
         return Err(Error::invalid(
@@ -352,7 +400,7 @@ pub fn triangle_values(
             "it holds more samples than this mesh has at this spacing",
         ));
     }
-    Ok(out)
+    Ok(())
 }
 
 /// The unit normal and corners of triangle `t`; `None` for a triangle that

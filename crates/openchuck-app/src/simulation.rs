@@ -14,8 +14,8 @@ use std::sync::{Arc, OnceLock};
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
-    Checkpoint, Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator,
-    compare_classified,
+    Checkpoint, Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, ReachClass,
+    ReachOptions, Simulator, classify_reach, compare_classified, sample_areas,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -63,6 +63,9 @@ pub struct SetupSimulation {
     pub operations: Vec<OperationSimulation>,
     /// The stock against the setup's part (SIM-05), when a full simulation ran.
     pub deviation: Option<Deviation>,
+    /// Which of the material left no tool can reach (SIM-05; issue 478),
+    /// with `deviation`.
+    pub reach: Option<SetupReach>,
     /// The stock left, as plain data for the viewport and later queries.
     pub stock: DexelStock,
     /// Playback's checkpoints, kept while simulating when the user asks for
@@ -70,6 +73,148 @@ pub struct SetupSimulation {
     /// decision record 0333): the stock at the start, inside the operations
     /// and after each one. Empty when none were kept.
     pub checkpoints: Vec<Checkpoint>,
+}
+
+/// Which of a setup's material left no tool can reach (SIM-05, as amended
+/// on 1 Nov 2026; issue 478).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetupReach {
+    /// Each sample's class, in the order of the comparison's points.
+    pub classes: Vec<ReachClass>,
+    /// The grid pitch the classes were found at, millimetres.
+    pub pitch: f64,
+    /// The material left that is enclosed, when any is.
+    pub enclosed: Option<EnclosedSummary>,
+}
+
+/// Where and how much of the material left is enclosed, from the samples
+/// alone (no geometry), for the warning and the results.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnclosedSummary {
+    /// The share of the counted samples that are enclosed, 0 to 1; the
+    /// histogram's shares are of the same samples.
+    pub share: f64,
+    /// The surface they stand for, square millimetres.
+    pub area: f64,
+    /// Where they start and end along the part, as shares of its length
+    /// from its start (its lowest X), 0 to 1.
+    pub from: f64,
+    /// See `from`.
+    pub to: f64,
+    /// The share of them on surfaces facing the rotary axis, 0 to 1.
+    pub facing_axis: f64,
+    /// The least material left among them, millimetres.
+    pub least: f64,
+    /// The most, millimetres.
+    pub most: f64,
+    /// Whether the most is only a bound of the search (there may be more).
+    pub most_is_bound: bool,
+}
+
+impl EnclosedSummary {
+    /// The summary of the enclosed samples, `None` when there are none.
+    /// `areas` are each sample's share of the surface.
+    fn new(deviation: &Deviation, classes: &[ReachClass], areas: &[f64]) -> Option<Self> {
+        let counted = || {
+            deviation
+                .points
+                .iter()
+                .zip(classes)
+                .zip(areas.iter().copied().chain(std::iter::repeat(0.0)))
+                .filter(|((p, _), _)| p.counts())
+        };
+        let total = counted().count();
+        let (x0, x1) = counted()
+            .filter(|((p, _), _)| p.on == openchuck_sim::SampleOn::Part)
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), ((p, _), _)| {
+                (a.min(p.point.x), b.max(p.point.x))
+            });
+        let length = (x1 - x0).max(f64::MIN_POSITIVE);
+        let mut out = Self {
+            share: 0.0,
+            area: 0.0,
+            from: f64::INFINITY,
+            to: f64::NEG_INFINITY,
+            facing_axis: 0.0,
+            least: f64::INFINITY,
+            most: f64::NEG_INFINITY,
+            most_is_bound: false,
+        };
+        let mut count = 0usize;
+        let mut facing = 0usize;
+        for ((p, _), area) in counted().filter(|((_, c), _)| **c == ReachClass::Enclosed) {
+            count += 1;
+            out.area += area;
+            let at = (p.point.x - x0) / length;
+            out.from = out.from.min(at);
+            out.to = out.to.max(at);
+            let r = p.point.y.hypot(p.point.z);
+            if r > 0.0 && (p.normal.y * p.point.y + p.normal.z * p.point.z) / r < -0.5 {
+                facing += 1;
+            }
+            out.least = out.least.min(p.value);
+            if p.value > out.most {
+                out.most = p.value;
+            }
+            out.most_is_bound |= p.at_least;
+        }
+        if count == 0 || total == 0 {
+            return None;
+        }
+        out.share = count as f64 / total as f64;
+        out.facing_axis = facing as f64 / count as f64;
+        out.from = out.from.clamp(0.0, 1.0);
+        out.to = out.to.clamp(0.0, 1.0);
+        Some(out)
+    }
+
+    /// The warning the run gives for setup `setup` (SIM-05, NFR-12; issue
+    /// 478): how much, where (shares of the part's length only), why, and
+    /// what to do.
+    #[must_use]
+    pub fn warning(&self, setup: &str) -> String {
+        let facing = if self.facing_axis >= 0.9 {
+            ", on surfaces facing the rotary axis"
+        } else {
+            ""
+        };
+        let amount = if self.most_is_bound {
+            format!("{:.2} mm to {:.1} mm or more", self.least, self.most)
+        } else {
+            format!("{:.2} mm to {:.2} mm", self.least, self.most)
+        };
+        format!(
+            "Setup '{setup}': {:.1}% of the part's surface (about {:.0} mm²) {ENCLOSED_WORDS}, \
+             between {:.0}% and {:.0}% of the part's length from its start{facing}. No tool on \
+             this machine can reach it, so {amount} of material is left there (for example in \
+             a bore along the rotary axis). Remove it another way, such as by drilling or \
+             boring along the rotary axis before or after this job. {}",
+            self.share * 100.0,
+            self.area,
+            self.from * 100.0,
+            self.to * 100.0,
+            openchuck_types::notice::VERIFY_GCODE_NOTICE,
+        )
+    }
+}
+
+/// The words that say material is enclosed, in the warning.
+pub const ENCLOSED_WORDS: &str = "is enclosed by the part across the rotary axis";
+
+/// The smallest cutting diameter of `tools`, when every one has a shank no
+/// narrower than its cutter (so a plane across X cuts it in one strip; issue
+/// 478); `None` otherwise, or for no tools, when nothing is classified.
+pub(crate) fn smallest_tool<'a>(
+    tools: impl IntoIterator<Item = &'a openchuck_types::tool::Tool>,
+) -> Option<f64> {
+    let mut smallest: Option<f64> = None;
+    for tool in tools {
+        if tool.shank_diameter.0 < tool.diameter.0 {
+            return None;
+        }
+        smallest = Some(smallest.map_or(tool.diameter.0, |s| s.min(tool.diameter.0)));
+    }
+    smallest
 }
 
 /// The result of a simulation run (SIM-03, SIM-05, SIM-07).
@@ -103,7 +248,7 @@ pub(crate) struct SetupState {
     /// cell as well as the stock, so a later run that ends the setup on the
     /// same state takes the comparison from here (OI-627). Simulating on
     /// clears it.
-    compared: Arc<OnceLock<Deviation>>,
+    compared: Arc<OnceLock<(Deviation, SetupReach)>>,
 }
 
 impl std::fmt::Debug for SetupState {
@@ -236,36 +381,61 @@ impl SetupState {
         &self,
         part: impl FnOnce() -> Result<Option<crate::workholding::DeviationTarget>, AppError>,
         settings: SimulationSettings,
+        smallest_tool: Option<f64>,
         context: &JobContext<'_>,
-    ) -> Result<(Option<Deviation>, bool), AppError> {
-        if let Some(deviation) = self.compared.get() {
-            return Ok((Some(deviation.clone()), false));
+    ) -> Result<(Option<(Deviation, SetupReach)>, bool), AppError> {
+        if let Some(compared) = self.compared.get() {
+            return Ok((Some(compared.clone()), false));
         }
         let Some(target) = part()? else {
             return Ok((None, false));
         };
+        let options = DeviationOptions::for_cell(settings.cell.0);
         let deviation = compare_classified(
             self.stock(),
             &target.mesh,
-            &DeviationOptions::for_cell(settings.cell.0),
+            &options,
             &|t, p, n| target.classify(t, p, n),
             context,
         )?;
-        Ok((Some(deviation), true))
+        // Which of the material left no tool can reach (issue 478). Without
+        // a tool to go by, nothing is decided.
+        let bodies = target.bodies();
+        let bodies: Vec<&openchuck_types::mesh::TriangleMesh> = bodies.iter().collect();
+        let reach = classify_reach(
+            &bodies,
+            &deviation,
+            &ReachOptions::for_cell(settings.cell.0, smallest_tool.unwrap_or(0.0)),
+            context,
+        )?;
+        let areas = sample_areas(&deviation, &target.mesh, options.spacing)?;
+        let enclosed = EnclosedSummary::new(&deviation, &reach.classes, &areas);
+        let reach = SetupReach {
+            classes: reach.classes,
+            pitch: reach.pitch,
+            enclosed,
+        };
+        Ok((Some((deviation, reach)), true))
     }
 
     /// Keeps `deviation` as this stock's comparison with the setup's part,
     /// for the runs that take this state from the cache (OI-627). A state
     /// that already holds one keeps it: both are made from the same inputs
     /// (NFR-06).
-    pub(crate) fn keep_comparison(&self, deviation: Deviation) {
-        let _ = self.compared.set(deviation);
+    pub(crate) fn keep_comparison(&self, compared: (Deviation, SetupReach)) {
+        let _ = self.compared.set(compared);
+    }
+
+    /// The operations simulated on this stock, in order.
+    pub(crate) fn operation_ids(&self) -> &[OperationId] {
+        &self.operation_ids
     }
 
     /// Finishes the setup's report with its comparison with the part, from
     /// [`SetupState::compare`]. The stock moves into the report; nothing is
     /// copied.
-    pub(crate) fn finish(self, deviation: Option<Deviation>) -> SetupSimulation {
+    pub(crate) fn finish(self, compared: Option<(Deviation, SetupReach)>) -> SetupSimulation {
+        let (deviation, reach) = compared.map_or((None, None), |(d, r)| (Some(d), Some(r)));
         let checkpoints = self.simulator.checkpoints().to_vec();
         let mut stock = self.simulator.into_stock();
         // The report holds the stock; without the slack cutting left, it holds
@@ -281,6 +451,7 @@ impl SetupState {
             memory_bytes: stock.memory_bytes(),
             operations: self.operations,
             deviation,
+            reach,
             stock,
             checkpoints,
         }
@@ -292,5 +463,66 @@ impl SetupSimulation {
     /// Quads do not share vertices, so the mesh is blocky at the cell size.
     pub fn stock_mesh(&self) -> openchuck_types::mesh::TriangleMesh {
         openchuck_sim::stock_mesh(&self.stock)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(facing_axis: f64, most_is_bound: bool) -> EnclosedSummary {
+        EnclosedSummary {
+            share: 0.287,
+            area: 1234.4,
+            from: 0.1,
+            to: 1.0,
+            facing_axis,
+            least: 0.12,
+            most: if most_is_bound { 3.0 } else { 2.5 },
+            most_is_bound,
+        }
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_12_the_enclosed_warning_states_only_what_was_measured() {
+        // Issue 478: "facing the rotary axis" only when nine in ten of the
+        // enclosed samples face it; "or more" only when the most is a bound
+        // of the search; shares and ranges only, no coordinates; and the
+        // G-code is the user's to verify (NFR-12).
+        let bore = summary(0.95, true).warning("Setup 1");
+        assert!(bore.starts_with("Setup 'Setup 1': 28.7% of the part's surface (about 1234 mm²) "));
+        assert!(bore.contains(ENCLOSED_WORDS));
+        assert!(bore.contains("between 10% and 100% of the part's length from its start, on surfaces facing the rotary axis."));
+        assert!(bore.contains("so 0.12 mm to 3.0 mm or more of material is left there"));
+        assert!(bore.ends_with(openchuck_types::notice::VERIFY_GCODE_NOTICE));
+        let pocket = summary(0.5, false).warning("Setup 1");
+        assert!(!pocket.contains("facing the rotary axis"), "{pocket}");
+        assert!(pocket.contains("from its start. No tool"), "{pocket}");
+        assert!(
+            pocket.contains("so 0.12 mm to 2.50 mm of material is left there"),
+            "{pocket}"
+        );
+        assert!(!pocket.contains("or more"), "{pocket}");
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_12_only_tools_cut_by_a_plane_in_one_strip_allow_a_classification() {
+        use openchuck_types::tool::{Tool, ToolShape};
+        use openchuck_types::units::Millimetres;
+        let tool = |diameter: f64, shank: f64| Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(diameter),
+            flute_length: Millimetres(10.0),
+            overall_length: Millimetres(40.0),
+            shank_diameter: Millimetres(shank),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        assert_eq!(smallest_tool([&tool(6.0, 6.0), &tool(3.0, 4.0)]), Some(3.0));
+        // A shank narrower than the cutter, or no tool at all: nothing is
+        // decided.
+        assert_eq!(smallest_tool([&tool(6.0, 6.0), &tool(4.0, 3.0)]), None);
+        assert_eq!(smallest_tool(std::iter::empty()), None);
     }
 }
