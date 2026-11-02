@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.0
+
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.
+
 ## 0.33.0
 
 - **Family release (0.33.0, SWARF-FLOOR; issue #435; decision 0491, accepted, relayed by the coordinator):** on swarf, Cut short lifts the tool's tip off an avoid or check set before it cuts the pass short, and Tip extension takes a negative value; `openchuck-path`'s `swarf::Pose` and `swarf::Limits` gain fields (an API break) and saved swarf operations with such a set can be made differently. No change in this crate; all family crates advance together under 0048.
