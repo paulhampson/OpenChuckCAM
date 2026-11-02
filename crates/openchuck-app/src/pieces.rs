@@ -708,6 +708,44 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_05_req_sim_05_pieces_leave_the_part_s_triangles_and_their_numbers() {
+        // Decision 0638 item 2: the pieces are an extra layer. The mesh is
+        // not changed, every piece names a triangle of it, the pieces of a
+        // parent cover exactly that parent, and the parents are left out of
+        // the bands, so selection sets, picking and outlines, which read the
+        // part's own triangle numbers, are untouched.
+        let mut mesh = triangle(10.0);
+        mesh.vertices.extend([
+            Point3::new(20.0, 0.0, 0.0),
+            Point3::new(30.0, 0.0, 0.0),
+            Point3::new(20.0, 10.0, 0.0),
+        ]);
+        mesh.triangles.push([3, 4, 5]);
+        let before = mesh.clone();
+        let pieces = run(&mesh, &split_at(4.0), PIECE_BUDGET).unwrap();
+        assert_eq!(mesh, before);
+        assert_eq!(pieces.parents.iter().copied().collect::<Vec<_>>(), [0]);
+        assert!(pieces.parent.iter().all(|p| *p == 0));
+        let covered: f64 = (0..pieces.parent.len())
+            .map(|i| area(pieces.mesh.triangle(i).unwrap()))
+            .sum();
+        assert!((covered - area(mesh.triangle(0).unwrap())).abs() < 1e-9);
+        let whole = deviation_bands_with(
+            &[Some((0.0, false)), Some((2.0, false))],
+            &[false, false],
+            PITCH,
+        );
+        let drawn = with_pieces(whole, Some(pieces));
+        let in_bands: Vec<u32> = drawn
+            .bands
+            .iter()
+            .flat_map(|(_, set)| set.iter().copied())
+            .collect();
+        assert_eq!(in_bands, [1], "the parent is drawn as its pieces only");
+        assert_eq!(drawn.values.len(), 2, "every triangle keeps its value");
+    }
+
+    #[test]
     fn req_nfr_06_the_split_colours_are_the_same_at_any_thread_count() {
         let mut mesh = TriangleMesh::default();
         for k in 0..40u32 {

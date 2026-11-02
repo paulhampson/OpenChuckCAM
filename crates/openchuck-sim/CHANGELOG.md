@@ -4,7 +4,7 @@ All notable changes to `openchuck-sim` are recorded here.
 
 ## Unreleased
 
-- SIMVIS (#488, proposed decision 0638): `triangle_samples` gives the samples each target triangle holds, in the comparison's order. Additive only.
+- SIMVIS (#488, accepted decision 0638): `triangle_samples` gives the samples each target triangle holds, in the comparison's order. Additive only.
 
 - SIMVIS (#478, accepted decision 0633): `classify_reach` with `ReachOptions`, `ReachClass` and `Reach` tells a counted part sample's material left as enclosed (no tool across the rotary axis reaches it), open or undecided; `triangle_worst` (the sample each triangle is coloured by) and `sample_areas` (the surface each sample stands for). Additive only; `triangle_values` now uses `triangle_worst`, with the same results.
 
