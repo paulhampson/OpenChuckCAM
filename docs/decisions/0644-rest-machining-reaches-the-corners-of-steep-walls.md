@@ -43,7 +43,7 @@ Three causes, found on both:
 
 ## What it costs
 
-The rings at walls are as many as the walls with material need at the user's threshold. On the repository's Baluster with its rest operation: at `min_remaining` 0.05 mm, 218 rings and 36,533 moves (3,390 before); at the default 0.15 mm, 20 rings and 5,148 moves.
+The rings at walls are as many as the walls with material need at the user's threshold. On the repository's Baluster with its rest operation: at `min_remaining` 0.05 mm, 219 rings and 49,766 moves (3,390 before); at the default 0.15 mm, 21 rings and 7,758 moves.
 
 ## Alternatives considered
 
@@ -79,11 +79,13 @@ Measured through the whole pipeline (release build, `openchuck-cli simulate` and
 | Place | Repository Baluster with rest: before | after | Owner's project: before | after |
 | --- | --- | --- | --- | --- |
 | Collar and bead corner | 0.59 mm | 0.09 mm | 0.54 mm | 0.08 mm |
-| Cove walls | 0.26 mm | 0.10 mm | 0.27 mm | 0.10 mm |
+| Cove walls | 0.26 mm | 0.10 mm | 0.27 and 0.22 mm | 0.10 and 0.08 mm |
 | Cove lip into the vase | 0.26 mm | 0.09 mm | 0.26 mm | 0.09 mm |
-| Shoulder beside the grip | 0.92 mm, not said | 0.92 mm, reported too near a held region | (no such shoulder) | |
+| Cove bottom (round, radius 3 or 3.45) | 0.11 mm | 0.11 mm, reported too narrow | | |
+| Flute bottoms | | reported too narrow | | reported too narrow |
+| Beside the grip | 0.92 mm at the tenon's shoulder, not said | 0.92 mm, reported too near a held region (about 81 mm2) | 0.57 mm, not said | 0.48 mm, reported too near a held region (about 39 mm2) |
 
-No new overcut on either. The figures are refreshed in the pull request with the final build.
+No new overcut on either (the deepest, 0.05 mm, is one cell and the same as before rest). Rest machining's size follows its threshold: on the repository's Baluster 219 rings at walls and 49,766 moves at 0.05 mm, 21 rings and 7,758 moves at the default 0.15 mm (3,390 moves before this record).
 
 ## Consequences
 
