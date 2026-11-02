@@ -1,6 +1,6 @@
-# 0644: CI runs on the GitHub merge queue (NFR-06; amends decision 0055 items 4 and 5; lane MERGEQUEUE)
+# 0498: CI runs on the GitHub merge queue (NFR-06; amends decision 0055 items 4 and 5; lane MERGEQUEUE)
 
-- **Status:** proposed by lane MERGEQUEUE on 2 Nov 2026. Only the project owner accepts it. The owner decided on 2 Nov 2026 to enable a merge queue; this record is the workflow change and the settings that go with it.
+- **Status:** proposed by lane MERGEQUEUE on 2 Nov 2026 (drafted as 0644; renumbered 0498 at release under the owner's numbering rule, main's highest being 0497). Only the project owner accepts it. The owner decided on 2 Nov 2026 to enable a merge queue; this record is the workflow change and the settings that go with it.
 - **Date:** 2 Nov 2026.
 - **Builds on:** [0055](0055-push-discipline-and-draft-pull-requests.md) (draft pull requests, push discipline, update from `main` only when released), [0052](0052-ci-speed-up.md) (draft gate, concurrency, `CI required checks`), [0358](0358-ci-time-where-it-goes-and-what-to-change.md) (the light run on `main`).
 - **Open items:** OI-1999 (the light run on `main` after a queue merge), OI-2001 (the first-run checks of the queue).
