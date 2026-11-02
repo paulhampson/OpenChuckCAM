@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Fuzz targets (NFR-07). cargo-fuzz needs a nightly toolchain, so this is a
+# separate workspace. Third-party versions are pinned and recorded in
+# docs/dependencies.md like the main workspace's (checked by `cargo xtask records`).
+[package]
+name = "openchuck-fuzz"
+publish = false
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+toml = "=1.1.8"
+blake3 = "=1.8.7"
+openchuck-types = { path = "../crates/openchuck-types" }
+openchuck-project = { path = "../crates/openchuck-project" }
+openchuck-geom = { path = "../crates/openchuck-geom" }
+openchuck-import = { path = "../crates/openchuck-import" }
+openchuck-gcode = { path = "../crates/openchuck-gcode" }
+openchuck-post = { path = "../crates/openchuck-post" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "machine_profile_json"
+path = "fuzz_targets/machine_profile_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "machine_profile_toml"
+path = "fuzz_targets/machine_profile_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "toolpath_ir_json"
+path = "fuzz_targets/toolpath_ir_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_files"
+path = "fuzz_targets/project_files.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_recovery"
+path = "fuzz_targets/project_recovery.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stl_import"
+path = "fuzz_targets/stl_import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tool_library_toml"
+path = "fuzz_targets/tool_library_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tool_profile_toml"
+path = "fuzz_targets/tool_profile_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gcode_reader"
+path = "fuzz_targets/gcode_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "post_definition"
+path = "fuzz_targets/post_definition.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_folder"
+path = "fuzz_targets/project_folder.rs"
+test = false
+doc = false
+bench = false

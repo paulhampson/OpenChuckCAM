@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Machine, stock and setup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#1b1d21;--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--hd:#c3c9d1;--ac:#5aa9ff;--ok:#4cc38a;--wn:#f2b84b;--er:#ff7b72;--bar:#15171a;--fld:#16181b;--sel:#264466;--seltx:#fff;--chip:#101215;--tip:#f4f6f8;--tiptx:#1d2125;width:1440px;height:900px;display:flex;flex-direction:column;background:var(--bg);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;position:relative}
+.app.light{--bg:#e6e9ed;--p:#f6f7f9;--p2:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--hd:#2f363d;--ac:#1d6ad0;--ok:#1b7f53;--wn:#8a5d00;--er:#c22b2b;--bar:#dde1e6;--fld:#fff;--sel:#d4e5fb;--seltx:#0b2a52;--chip:#eef0f3;--tip:#22262b;--tiptx:#f1f3f5}
+.app *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{height:28px;padding:0 12px;border:1px solid var(--ln);background:var(--p2);color:var(--tx);border-radius:3px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;text-decoration:none}
+.btn.pri{background:#2f6fbd;border-color:#4a8fe0;color:#fff;font-weight:500}
+.btn.ic{width:28px;padding:0;justify-content:center}
+.ib{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.tb{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 8px;background:var(--bar);border-bottom:1px solid var(--ln)}
+.menu{display:flex;gap:2px}.menu span{padding:4px 8px;border-radius:3px}
+.cmd{width:240px;height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--ln);border-radius:3px;background:var(--fld);color:var(--mu)}
+.kbd{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:0 4px;border:1px solid var(--ln);border-radius:3px;color:var(--mu);line-height:16px;white-space:nowrap}
+.wf{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;background:var(--p);border-bottom:1px solid var(--ln);padding:0 8px}
+.tab{height:44px;padding:0 16px;display:flex;align-items:center;gap:8px;border:0;border-bottom:2px solid transparent;background:none;color:var(--mu);font-weight:500;font-size:13px;text-decoration:none}
+.tab i{font-style:normal;width:20px;height:20px;border-radius:10px;border:1px solid var(--mu);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.tab.on{color:var(--tx);border-bottom-color:var(--ac)}.tab.on i{background:var(--ac);border-color:var(--ac);color:#0b1620}
+.tab .hm{width:12px;height:12px;flex:none;margin-left:2px}
+.wf.hs-good .tab,.wf.hs-attn .tab,.wf.hs-err .tab{height:42px}
+.wf.hs-good{border-bottom:2px solid var(--ok)}.wf.hs-attn{border-bottom:2px solid var(--wn)}.wf.hs-err{border-bottom:2px solid var(--er)}
+.badge{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;margin-left:6px;border:1.5px solid var(--ln);border-radius:4px;background:var(--fld);color:var(--tx);font-weight:500;font-size:13px;white-space:nowrap}
+.badge.hs-good{border-color:var(--ok)}.badge.hs-attn{border-color:var(--wn)}.badge.hs-err{border-color:var(--er)}
+.badge .hm{width:12px;height:12px;flex:none}
+.tab.done i{border-color:var(--ok);color:var(--ok)}
+.sep{width:1px;height:22px;background:var(--ln);margin:0 4px;flex:none}
+.panel{background:var(--p);display:flex;flex-direction:column;min-height:0;min-width:0}
+.ph{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 6px 0 12px;border-bottom:1px solid var(--ln);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--hd)}
+.col{width:24px;height:24px;border:0;background:none;color:var(--mu);display:inline-flex;align-items:center;justify-content:center;border-radius:3px;flex:none;padding:0}
+.spl{width:5px;flex:none;background:var(--bg);cursor:col-resize;display:flex;align-items:center;justify-content:center}
+.spl i,.splh i{display:block;background:var(--mu);opacity:.5;border-radius:1px}
+.spl i{width:1px;height:28px}
+.splh{height:5px;flex:none;background:var(--bg);cursor:row-resize;display:flex;align-items:center;justify-content:center}
+.splh i{height:1px;width:28px}
+.grp{padding:10px 8px 4px 12px;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--mu);display:flex;justify-content:space-between;align-items:center}
+.grp .r{display:flex;align-items:center;gap:8px}
+.add{width:22px;height:22px;border:1px solid var(--ln);background:var(--p2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;color:var(--tx);text-decoration:none;font-size:15px;line-height:1}
+.tr{position:relative;display:flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 12px}
+.tr.sel{background:var(--sel);color:var(--seltx);box-shadow:inset 2px 0 0 var(--ac)}
+.tr.l1{padding-left:22px}.tr.l2{padding-left:40px}
+.nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:none;font-size:11px;padding:0 5px;border-radius:3px;background:var(--chip);border:1px solid var(--ln);color:var(--tx);line-height:17px;white-space:nowrap}
+.cb{width:14px;height:14px;border:1px solid var(--mu);border-radius:2px;flex:none;background:var(--fld)}
+.cb.on{background:var(--ac);border-color:var(--ac)}
+.st{width:10px;height:10px;flex:none;display:inline-block}
+.st.ok{background:var(--ok);border-radius:5px}
+.st.stale{background:var(--wn);transform:rotate(45deg) scale(.8)}
+.st.off{border:1.5px solid var(--mu);border-radius:5px}
+.st.er{background:var(--er);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.st.run{border:2px solid var(--ac);border-right-color:transparent;border-radius:5px}
+.key{border-top:1px solid var(--ln);padding:8px 12px;display:flex;gap:12px;color:var(--mu);font-size:11px;flex-wrap:wrap;flex:none}
+.key span{display:flex;align-items:center;gap:5px}
+.row{display:grid;grid-template-columns:120px 1fr;align-items:start;gap:8px;min-height:30px;padding:2px 0}
+.lb{color:var(--mu);line-height:26px;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;min-width:0}
+.cf{width:20px;height:20px;border:0;background:none;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:help;border-radius:10px;flex:none}
+.cf.focus{outline:2px solid var(--ac);outline-offset:1px}
+.fld{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--fld);border:1px solid var(--ln);border-radius:3px;height:26px;padding:0 8px;min-width:0}
+.fld span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fld .u{color:var(--mu);flex:none}
+.fld.ro{background:transparent;border-color:transparent;padding:0}
+.sec{border-top:1px solid var(--ln)}
+.sh{display:flex;align-items:center;justify-content:space-between;height:32px;padding:0 12px;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--hd)}
+.sb{padding:0 12px 10px}
+.seg{display:flex;border:1px solid var(--ln);border-radius:3px;overflow:hidden;height:26px;flex:none}
+.seg span{flex:1;min-width:0;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:center;background:var(--fld);color:var(--mu)}
+.seg span.on{background:var(--sel);color:var(--seltx)}
+.vbar{height:44px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--ln);background:var(--p);overflow:hidden;white-space:nowrap}
+.lgd{height:36px;flex:none;display:flex;align-items:center;gap:16px;padding:0 12px;border-top:1px solid var(--ln);background:var(--p);color:var(--mu);white-space:nowrap;overflow:hidden}
+.lgd span{display:flex;align-items:center;gap:6px}
+.dt{padding:0 12px;height:32px;flex:none;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--ln);background:var(--p)}
+.dtab{padding:7px 12px;color:var(--mu);border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.dtab.on{color:var(--tx);border-bottom-color:var(--ac)}
+.msg{display:grid;grid-template-columns:20px 1fr 130px;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--ln2)}
+.lk{color:var(--ac);text-decoration:underline}
+.tip{position:absolute;left:12px;width:316px;padding:9px 11px;background:var(--tip);color:var(--tiptx);border-radius:4px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.45);z-index:2}
+.tip::before{content:'';position:absolute;top:-5px;left:110px;width:10px;height:10px;background:var(--tip);transform:rotate(45deg)}
+.ft{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;background:var(--bar);border-top:1px solid var(--ln);color:var(--mu);white-space:nowrap}
+.ft .g{display:flex;align-items:center;gap:8px}
+</style>
+</helmet>
+<div class="app {{theme}}">
+  <div class="tb">
+    <div style="display:flex;align-items:center;gap:8px">
+      <svg class="ib" style="width:18px;height:18px;color:var(--ac)" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="4" cy="8" rx="2" ry="5"/><path d="M4 3h8M4 13h8"/><ellipse cx="12" cy="8" rx="2" ry="5"/></svg>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Project</span><span>Tools</span><span>Help</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500">Groove demo</span><span style="width:7px;height:7px;border-radius:4px;background:var(--mu)"></span><span class="mu">Edited</span></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="cmd"><svg class="ib" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><span style="flex:1">Search commands</span><span class="kbd">Ctrl K</span></div>
+      <button class="btn ic" aria-label="Undo" title="Undo (Ctrl Z)"><svg class="ib" viewBox="0 0 16 16"><path d="M4 6h6a3 3 0 010 6H6M4 6l3-3M4 6l3 3"/></svg></button>
+      <button class="btn ic" aria-label="Redo" title="Redo (Ctrl Y)"><svg class="ib" viewBox="0 0 16 16"><path d="M12 6H6a3 3 0 000 6h4M12 6L9 3M12 6L9 9"/></svg></button>
+      <a class="btn ic" href="UndoHistory.dc.html" aria-label="Undo history" title="Undo history (Ctrl H)"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></a>
+    </div>
+  </div>
+  <div class="wf hs-err">
+    <div style="display:flex">
+      <a class="tab done" href="Model.dc.html" title="Model (Alt 1)"><i>1</i>Model<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab on" href="Setup.dc.html" title="Setup (Alt 2)"><i>2</i>Setup<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab" href="Main.dc.html" title="Operations (Alt 3)"><i>3</i>Operations<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg></a>
+      <a class="tab" href="Simulate.dc.html" title="Simulate (Alt 4)"><i>4</i>Simulate<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg></a>
+      <span class="gst" title="G-code not written: no G-code has been written in this session. Past write results are in Messages." style="height:44px;padding:0 12px;margin-left:4px;display:flex;align-items:center;gap:8px;color:var(--mu);font-size:13px;border-left:1px solid var(--ln)"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="none" stroke="var(--mu)" stroke-width="1"/></svg>G-code not written</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px"><span class="mu">Changing a setup marks its operations stale.</span><button class="btn">Add setup</button>  <span class="badge hs-err" title="Overall status: Error to fix&#10;Operations: An operation has an error&#10;Simulate: Not simulated yet&#10;Click to go to the first problem"><svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg>Error to fix</span>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <div class="panel" style="width:264px;flex:none">
+      <div class="ph"><span>Project</span><button class="col" aria-label="Collapse project panel" title="Collapse (Ctrl 1)"><svg class="ib" viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg></button></div>
+      <div style="flex:1;min-height:0;overflow:hidden">
+        <div class="grp"><span>MODEL</span><span class="r"><span>1</span><a class="add" href="ImportCheck.dc.html" title="Import a model" aria-label="Import a model">+</a></span></div>
+        <div class="tr l1"><svg class="ib" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6l-6 3-6-3z"/></svg><span class="nm">groove_part.stl</span><span class="chip m">412,880 tri</span></div>
+        <div class="grp"><span>SETUPS</span><span class="r"><span>1</span><a class="add" href="Setup.dc.html" title="Add a setup" aria-label="Add a setup">+</a></span></div>
+        <div class="tr l1 sel"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M8 1v14"/></svg><span class="nm" style="font-weight:500">Setup 1 · Makera Z1</span><span class="chip m">G54</span></div>
+        <div class="tr l2 mu"><span class="nm">Machine profile</span><span title="Warning: some values are not confirmed on the machine" style="display:inline-flex"><svg class="ib" style="color:var(--wn);width:12px;height:12px" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/></svg></span></div>
+        <div class="tr l2 mu"><span class="nm">Stock · cylinder Ø26 × 32</span></div>
+        <div class="tr l2 mu"><span class="nm">Part position</span></div>
+        <div class="tr l2 mu"><span class="nm">Work offset and clearance</span></div>
+        <div class="tr l2 mu"><span class="nm">Workholding</span><span class="chip">1 held · 2 tabs</span></div>
+        <div class="grp"><span>SELECTION SETS</span><span class="r"><span>3</span><a class="add" href="SelectionSets.dc.html" title="New selection set" aria-label="New selection set">+</a></span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#2d6cb5;flex:none"></span><span class="nm">Groove floor</span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#a04a46;flex:none"></span><span class="nm">Rim (avoid)</span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#7d5bb5;flex:none"></span><span class="nm">Lettering</span></div>
+        <div class="grp"><span>TOOLS</span><span class="r"><span>2</span><a class="add" href="ToolLibrary.dc.html" title="Add a tool from the library" aria-label="Add a tool">+</a></span></div>
+        <div class="tr l1"><span class="chip m">T1</span><span class="nm">Ball Ø3 · 2 flute</span></div>
+        <div class="tr l1"><span class="chip m">T2</span><span class="nm">Flat Ø6 · 3 flute</span></div>
+        <div class="grp"><span>OPERATIONS</span><span class="r"><span>4</span><a class="add" href="Main.dc.html" title="New operation (N)" aria-label="New operation">+</a></span></div>
+        <div class="tr l1"><span class="cb on"></span><span class="st ok"></span><span class="nm">1 Rough · continuous</span></div>
+        <div class="tr l1"><span class="cb on"></span><span class="st ok"></span><span class="nm">2 Helical finish · Groove</span></div>
+        <div class="tr l1"><span class="cb on"></span><span class="st stale"></span><span class="nm">3 Axial finish · Body</span></div>
+      </div>
+      <div class="key"><span><span class="st ok"></span>Up to date</span><span><span class="st stale"></span>Stale</span><span><span class="st run"></span>Running</span><span><svg class="ib" style="color:var(--wn);width:11px;height:11px" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/></svg>Warning</span><span><span class="st er"></span>Error</span><span><span class="st off"></span>Off</span></div>
+    </div>
+    <div class="spl" role="separator" aria-orientation="vertical" aria-label="Resize project panel"><i></i></div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="vbar">
+        <div class="seg" style="width:168px"><span class="on">Shaded</span><span>Wire</span><span>Edges</span></div>
+        <div class="seg" style="width:96px"><span>Persp</span><span class="on">Ortho</span></div>
+        <div class="seg" style="width:150px"><span class="on">Front</span><span>Top</span><span>Iso</span></div>
+        <button class="btn ic" aria-label="Fit all" title="Fit all (F)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
+        <button class="btn ic" aria-label="Section plane" title="Section plane (S)"><svg class="ib" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11"/><path d="M2.5 10.5l11-5"/></svg></button>
+        <button class="btn ic" aria-label="Measure" title="Measure (M)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 11l9-9 3 3-9 9zM5 8l1.5 1.5M7 6l1.5 1.5M9 4l1.5 1.5"/></svg></button>
+        <span class="sep"></span>
+        <span class="mu">A</span>
+        <div class="fld" style="width:84px"><b class="m" style="font-weight:400">0.00</b><span class="u">°</span></div>
+        <button class="btn" title="Turn the part in the view">Turn</button>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;background:radial-gradient(ellipse at 50% 40%,#2c3139 0%,#1b1e23 75%)">
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <svg viewBox="0 0 560 600" width="100%" height="100%" role="img" aria-label="Front view of the setup with X, Y and Z axes: stock, part, rotary axis, work zero, clearance cylinder and safe Z">
+            <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#a3abb5"/></marker>
+            <pattern id="trv" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.5" height="6" fill="#ff7b72" opacity=".6"/></pattern></defs>
+            <g transform="translate(-260 0)">
+              <rect x="300" y="10" width="360" height="5" fill="url(#trv)"/><path d="M300 15H660" stroke="#ff7b72"/>
+              <text x="668" y="19" fill="#ff7b72" font-size="12" font-family="IBM Plex Mono">Z+ travel limit</text>
+              <path d="M300 50H660" stroke="#4cc38a" stroke-dasharray="6 4"/>
+              <text x="668" y="55" fill="#4cc38a" font-size="12" font-family="IBM Plex Mono">Safe Z +50</text>
+              <rect x="380" y="260" width="270" height="280" fill="rgba(76,195,138,.06)" stroke="#4cc38a" stroke-dasharray="6 4"/>
+              <text x="388" y="278" fill="#4cc38a" font-size="12" font-family="IBM Plex Mono">Clearance R20</text>
+              <rect x="400" y="309" width="224" height="182" fill="rgba(90,169,255,.07)" stroke="#7fb4ea" stroke-dasharray="5 4"/>
+              <rect x="407" y="316" width="210" height="168" fill="#8e97a4" stroke="#d3d9e0"/>
+              <path d="M440 316C446 316 450 484 456 484M470 316C476 316 480 484 486 484M500 316C506 316 510 484 516 484M530 316C536 316 540 484 546 484M560 316C566 316 570 484 576 484" fill="none" stroke="#5d6672" stroke-width="1.3"/>
+              <path d="M270 400H700" stroke="#35d0e0" stroke-dasharray="14 4 2 4" stroke-width="1.2"/>
+              <text x="706" y="404" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A axis</text>
+              <path d="M407 400H452" stroke="#ff7b72" stroke-width="2" marker-end="url(#ar)"/><path d="M407 400V355" stroke="#6fb2ff" stroke-width="2" marker-end="url(#ar)"/>
+              <circle cx="407" cy="400" r="7" fill="#16181b" stroke="#6fd3a8" stroke-width="1.6"/><path d="M403 396L411 404M411 396L403 404" stroke="#6fd3a8" stroke-width="1.6"/>
+              <text x="456" y="396" fill="#ff7b72" font-size="12" font-family="IBM Plex Mono">X</text><text x="412" y="352" fill="#6fb2ff" font-size="12" font-family="IBM Plex Mono">Z</text><text x="386" y="404" fill="#6fd3a8" font-size="12" font-family="IBM Plex Mono">Y</text>
+              <text x="414" y="430" fill="#fff" font-size="12" font-family="IBM Plex Mono">G54 · X0 Y0 Z0</text>
+              <g stroke="#a3abb5" fill="none"><path d="M400 556H624" marker-start="url(#ar)" marker-end="url(#ar)"/><path d="M400 548V564M624 548V564"/><path d="M690 309V491" marker-start="url(#ar)" marker-end="url(#ar)"/><path d="M630 309H698M630 491H698"/></g>
+              <text x="464" y="578" fill="#e4e7eb" font-size="12" font-family="IBM Plex Mono">Stock length 32.0</text>
+              <text x="698" y="318" fill="#e4e7eb" font-size="12" font-family="IBM Plex Mono">Ø26.0</text>
+            </g>
+            <path d="M24 50V400" stroke="#a3abb5" fill="none" marker-start="url(#ar)" marker-end="url(#ar)"/>
+            <text x="32" y="226" fill="#e4e7eb" font-size="12" font-family="IBM Plex Mono">Axis to safe Z</text><text x="32" y="243" fill="#e4e7eb" font-size="12" font-family="IBM Plex Mono">50.0 mm</text>
+          </svg>
+        </div>
+        <div style="width:270px;flex:none;border-left:1px solid #3a3f46;display:flex;flex-direction:column;background:rgba(0,0,0,.12);color:#e4e7eb">
+          <div style="padding:8px 12px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#c3c9d1">END VIEW FROM +X</div>
+          <div style="flex:1;min-height:0">
+            <svg viewBox="0 0 254 330" width="100%" height="100%" role="img" aria-label="End view with Y to the right and Z up. A+ turns the top of the part toward the left, the front of the machine.">
+              <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#35d0e0"/></marker></defs>
+              <circle cx="127" cy="170" r="80" fill="rgba(76,195,138,.05)" stroke="#4cc38a" stroke-dasharray="5 4"/>
+              <circle cx="127" cy="170" r="52" fill="rgba(90,169,255,.1)" stroke="#7fb4ea" stroke-dasharray="4 3"/>
+              <circle cx="127" cy="170" r="48" fill="#8e97a4" stroke="#d3d9e0"/>
+              <path d="M44 170H210M127 87V253" stroke="#555d68"/>
+              <circle cx="127" cy="170" r="3" fill="#35d0e0"/>
+              <path d="M127 104A66 66 0 0 0 61 170" fill="none" stroke="#35d0e0" stroke-width="2" marker-end="url(#ar2)"/>
+              <text x="68" y="122" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A+</text>
+              <g font-family="IBM Plex Mono" font-size="12"><text x="116" y="76" fill="#6fb2ff">+Z</text><text x="214" y="174" fill="#6fd3a8">+Y</text><text x="8" y="174" fill="#6fd3a8">−Y</text><text x="4" y="190" fill="#a3abb5" font-size="11">front</text><text x="118" y="270" fill="#a3abb5">−Z</text></g>
+              <text x="127" y="302" fill="#a3abb5" font-size="12" font-family="IBM Plex Sans" text-anchor="middle">A+ turns the top toward the front</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="lgd"><span><svg width="22" height="8" aria-hidden="true"><path d="M0 4H22" stroke="#35d0e0" stroke-dasharray="8 3 2 3" stroke-width="2"/></svg>Rotary axis</span><span><svg width="22" height="8" aria-hidden="true"><path d="M0 4H22" stroke="#7fb4ea" stroke-dasharray="4 3" stroke-width="2"/></svg>Stock</span><span><svg width="22" height="8" aria-hidden="true"><path d="M0 4H22" stroke="#4cc38a" stroke-dasharray="5 3" stroke-width="2"/></svg>Clearance and safe Z</span><span><svg width="22" height="8" aria-hidden="true"><path d="M0 4H22" stroke="#ff7b72" stroke-width="2"/></svg>Travel limit</span><span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#6fd3a8" stroke-width="1.5"/><path d="M4 4L10 10M10 4L4 10" stroke="#6fd3a8"/></svg>Y into the screen</span></div>
+      <div class="splh" role="separator" aria-orientation="horizontal" aria-label="Resize checks panel"><i></i></div>
+      <div class="panel" style="height:170px;flex:none">
+        <div class="dt"><span class="dtab on">Setup checks <span class="chip" style="color:var(--wn)">1 warning</span></span><span class="dtab">Messages</span></div>
+        <div style="overflow:hidden;flex:1">
+          <div class="msg"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Safe Z cannot be checked against the Z travel: the axis height of the Z1 profile is a placeholder.</span><a class="lk">Edit axis height</a></div>
+          <div class="msg"><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Part fits inside the stock with 1.0 mm to spare at each end.</span><span></span></div>
+          <div class="msg"><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Stock is inside the clearance cylinder, and the X travel covers the stock length.</span><span></span></div>
+          <div class="msg"><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Model file hash matches the project.</span><span></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="spl" role="separator" aria-orientation="vertical" aria-label="Resize inspector"><i></i></div>
+
+    <div class="panel" style="width:340px;flex:none">
+      <div class="ph"><span>Setup 1</span><button class="col" aria-label="Collapse inspector" title="Collapse (Ctrl 2)"><svg class="ib" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></button></div>
+      <div style="overflow:hidden;flex:1;position:relative">
+        <div class="sh"><span>Machine</span><span class="chip" style="text-transform:none;letter-spacing:0;font-weight:400">copy stored in project</span></div><div class="sb">
+          <div class="row"><span class="lb">Profile</span><div class="fld"><span>Makera Z1</span><span class="mu">▾</span></div></div>
+          <div class="row"><span class="lb">Rotary axis<button class="cf" aria-label="Status: not confirmed on the machine" title="Not confirmed on the machine. From Makera's profile; check it on the machine and mark it confirmed in the profile."><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3M8 11.6v.4"/></svg></button></span><div class="fld ro"><span>A, about X</span></div></div>
+          <div class="row"><span class="lb">A range<button class="cf" aria-label="Status: not confirmed on the machine" title="Not confirmed on the machine. From Makera's profile; check it on the machine and mark it confirmed in the profile."><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3M8 11.6v.4"/></svg></button></span><div class="fld ro"><span>Continuous</span></div></div>
+          <div class="row"><span class="lb">A+ direction<button class="cf" aria-label="Status: confirmed on the machine" title="Confirmed on the machine, 13 Oct 2026: A+ turns the top of the chuck toward the front."><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M5 8.4l2 2 4-4.4"/></svg></button></span><div class="fld ro"><span>Right-handed about +X</span></div></div>
+          <div class="row"><span class="lb">Axis height<button class="cf focus" aria-label="Status: not confirmed on the machine" aria-describedby="tip-axis"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13zM8 6.5v3M8 11.6v.4"/></svg></button></span><div class="fld"><b class="m" style="font-weight:400">−55.0</b><span class="u">mm (machine Z)</span></div></div>
+        </div>
+        <div class="tip" id="tip-axis" role="tooltip" style="top:206px"><b>Not confirmed on the machine.</b> An unconfirmed placeholder. Measure it by touching the tool tip to the chuck centre and reading G53 Z. Until then the safe Z cannot be checked against the travel.<div style="margin-top:4px;opacity:.75;font-size:11px">Shown on hover or keyboard focus</div></div>
+        <div class="sec"><div class="sh"><span>Stock</span></div><div class="sb">
+          <div class="row"><span class="lb">Shape</span><div class="seg"><span class="on">Cylinder</span><span>Box</span><span>Bounds</span></div></div>
+          <div class="row"><span class="lb">Diameter</span><div class="fld"><b class="m" style="font-weight:400">26.0</b><span class="u">mm</span></div></div>
+          <div class="row"><span class="lb">Length</span><div class="fld"><b class="m" style="font-weight:400">32.0</b><span class="u">mm</span></div></div>
+          <div class="row"><span class="lb">Material</span><div class="fld"><span>Oak</span><span class="mu">▾</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span>Part position</span></div><div class="sb">
+          <div class="row"><span class="lb">Rotate about X</span><div class="fld"><b class="m" style="font-weight:400">0.0</b><span class="u">deg</span></div></div>
+          <div class="row"><span class="lb">Offset along X</span><div class="fld"><b class="m" style="font-weight:400">1.0</b><span class="u">mm</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span>Work offset and clearance</span></div><div class="sb">
+          <div class="row"><span class="lb">Work offset</span><div class="fld"><span>G54</span><span class="mu">▾</span></div></div>
+          <div class="row"><span class="lb">Zero position</span><div class="fld ro"><span>On the A axis (Y0 Z0)</span></div></div>
+          <div class="row"><span class="lb">Safe radius</span><div class="fld"><b class="m" style="font-weight:400">20.0</b><span class="u">mm</span></div></div>
+          <div class="row"><span class="lb">Safe Z</span><div class="fld"><b class="m" style="font-weight:400">50.0</b><span class="u">mm above axis</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span style="display:flex;align-items:center;gap:6px"><svg class="ib" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>Workholding and tabs</span><span class="chip" style="text-transform:none;letter-spacing:0;font-weight:400">1 held · 2 tabs</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ft">
+    <div class="g"><span>Ready</span><span class="sep"></span><span>Edits are applied when you leave a field; undo with Ctrl Z</span><span class="sep"></span><span>Verify G-code before running it</span></div>
+    <div class="g">
+      <span title="Display units">mm · deg</span>
+      <span class="m">Tol 0.010 mm</span>
+      <span style="color:var(--wn)">Z1 axis height unconfirmed</span>
+      <span class="sep"></span>
+      <a class="btn pri" href="Main.dc.html" title="Continue to operations (Alt 3)">Continue to operations</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'dark' };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The application archives for Linux, Windows and macOS, called by the nightly build (decision
+# record 0023) and by the release workflow (decision records 0031 and 0091), so both build,
+# assemble and pack the same way. Builds `openchuck-cli`, `openchuck-ui` and the STEP reader in
+# release mode and uploads one archive per platform, named `<name>-<target>.<tar.gz|zip>`, as a
+# workflow artifact (unzipped, so the Unix executable bits survive). The caller publishes them.
+# The notices travel between the jobs as `<kind>-notices` (`nightly-notices` for the nightly build,
+# as before the build was shared).
+name: Build archives
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: The archive name before the target, for example openchuckcam-<version>.
+        required: true
+        type: string
+      kind:
+        description: >
+          What the README says the build is: "nightly" (a development build), "dry-run" (a dry run
+          of the release workflow) or "release" (a release that passed the release gate).
+        required: true
+        type: string
+      version:
+        description: The version a release names (the workspace version).
+        required: false
+        default: ""
+        type: string
+      retention-days:
+        description: Days the archives are kept as workflow artifacts.
+        required: false
+        default: 30
+        type: number
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
+  # cmake_minimum_required (decision 0003).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  notices:
+    name: Licence notices (cargo about)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the inputs
+        env:
+          KIND: ${{ inputs.kind }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$KIND" in
+            nightly|dry-run) ;;
+            release) [ -n "$VERSION" ] || { echo "a release needs its version"; exit 1; } ;;
+            *) echo "unknown kind '$KIND'"; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      # Shipped with every archive (NFR-10).
+      - run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.kind }}-notices
+          path: THIRD-PARTY-NOTICES.html
+          retention-days: 1
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: notices
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ""
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
+            archive: zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            exe: ""
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NAME: ${{ inputs.name }}-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The STEP kernel (OpenCASCADE, built by occt-sys) takes 8 to 71 minutes cold, so its install
+      # is cached per platform on its own (decision 0039).
+      - uses: ./.github/actions/occt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel
+          cache-on-failure: true
+      # The build script marks the build dirty when a tracked file differs from the commit (NFR-16,
+      # decision 0191). Printed here so a "yes" in a nightly build can be traced to the file.
+      - name: Show the state of the working tree
+        run: |
+          git config --get core.autocrlf || echo "core.autocrlf is not set"
+          echo "--- git status --porcelain"
+          git status --porcelain
+          echo "--- git diff --stat"
+          git diff --stat
+      - name: Build the binaries (release)
+        run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-cli -p openchuck-ui
+      # The STEP reader runs as its own program so that a crash on a damaged file cannot take the
+      # application down (decision 0003); the application finds it beside itself (OI-118).
+      - name: Build the STEP reader (release, with the OpenCASCADE kernel)
+        run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-import --features kernel --bin openchuck-step-worker
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.kind }}-notices
+      # The posts and the built-in machine profile are compiled into the
+      # binaries, so the archive needs no data folders beside them.
+      - name: Assemble the archive folder
+        env:
+          EXE: ${{ matrix.exe }}
+          TARGET: ${{ matrix.target }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          KIND: ${{ inputs.kind }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          dir="dist/$NAME"
+          mkdir -p "$dir"
+          cp "target/$TARGET/release/openchuck-cli$EXE" "target/$TARGET/release/openchuck-ui$EXE" "target/$TARGET/release/openchuck-step-worker$EXE" "$dir/"
+          cp LICENSES/AGPL-3.0-or-later.txt "$dir/LICENSE.txt"
+          # OpenCASCADE is LGPL-2.1 with an exception, linked into the STEP reader: ship both licence
+          # texts from the source occt-sys built, and our notice with the source offer.
+          occt=$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/occt-sys-7.8.1/OCCT | head -1)
+          cp "$occt/LICENSE_LGPL_21.txt" "$occt/OCCT_LGPL_EXCEPTION.txt" "$dir/"
+          cp LICENSES/OpenCASCADE-NOTICE.txt "$dir/OPENCASCADE-NOTICE.txt"
+          cp THIRD-PARTY-NOTICES.html "$dir/"
+          # The IBM Plex fonts compiled into openchuck-ui (OFL-1.1, NFR-10): the notice and the licence text.
+          cp LICENSES/IBM-Plex-NOTICE.txt "$dir/FONT-NOTICE.txt"
+          cp LICENSES/OFL-1.1.txt "$dir/"
+          # The NFR-12 notice, read from its one definition in the code.
+          notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
+          [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
+          {
+            case "$KIND" in
+              nightly) echo "OpenChuckCAM nightly development build" ;;
+              dry-run) echo "OpenChuckCAM release dry run" ;;
+              release) echo "OpenChuckCAM $VERSION" ;;
+            esac
+            echo
+            echo "Commit:   $SHA ($REF)"
+            echo "Built:    $(date -u +%Y-%m-%dT%H:%MZ) on ${ImageOS:-unknown} ${ImageVersion:-}"
+            echo "Target:   $TARGET"
+            echo "Compiler: $(rustc --version)"
+            echo
+            case "$KIND" in
+              nightly)
+                echo "This is an automatic build of the development branch, not a release."
+                echo "It passed no release gate and may be incomplete or broken." ;;
+              dry-run)
+                echo "This is a dry run of the release workflow, not a release. It passed the"
+                echo "release gate at the commit above, but was not published." ;;
+              release)
+                echo "This release passed the release gate at the commit above: the dependency"
+                echo "rules, cargo deny, the golden G-code comparison and the LinuxCNC replay." ;;
+            esac
+            echo
+            echo "$notice"
+            echo
+            echo "Contents:"
+            printf '  %-26s %s\n' \
+              "openchuck-cli$EXE" "the command-line front end (run it with --help)" \
+              "openchuck-ui$EXE" "the desktop application" \
+              "openchuck-step-worker$EXE" "reads STEP files for the others; keep it beside them" \
+              "LICENSE.txt" "GNU Affero General Public License v3.0 or later" \
+              "THIRD-PARTY-NOTICES.html" "licences of the bundled third-party crates" \
+              "OPENCASCADE-NOTICE.txt" "the STEP kernel's notice and source offer" \
+              "FONT-NOTICE.txt" "the bundled IBM Plex fonts: source, version, copyright" \
+              "OFL-1.1.txt" "SIL Open Font License 1.1, the licence of the fonts" \
+              "LICENSE_LGPL_21.txt" "OpenCASCADE licence (LGPL-2.1)" \
+              "OCCT_LGPL_EXCEPTION.txt" "OpenCASCADE licence exception"
+            echo
+            echo "Source: https://github.com/$GITHUB_REPOSITORY/tree/$SHA"
+            case "$TARGET" in
+              *apple*)
+                echo
+                echo "macOS: the binaries are not signed or notarised. If macOS blocks them,"
+                echo "run: xattr -d com.apple.quarantine openchuck-cli openchuck-ui openchuck-step-worker" ;;
+              *windows*)
+                echo
+                echo "Windows: the binaries are not signed, so SmartScreen may warn on first run." ;;
+              *linux*)
+                echo
+                echo "Linux: built against the glibc of the runner image above. The desktop"
+                echo "application needs a Vulkan or OpenGL driver and X11 or Wayland." ;;
+            esac
+          } > "$dir/README.txt"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            sed -i 's/$/\r/' "$dir/README.txt"
+          fi
+      - name: Pack (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+      - name: Pack (zip)
+        if: matrix.archive == 'zip'
+        run: cd dist && 7z a -tzip -bso0 "$NAME.zip" "$NAME"
+      # Uploaded as the archive itself (not zipped again), so the Unix
+      # executable bits survive the download.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/${{ env.NAME }}.${{ matrix.archive }}
+          archive: false
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error

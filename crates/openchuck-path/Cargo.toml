@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-path"
+description = "Reusable 4-axis pathing library: strategies, tool-axis control, A-axis management, linking, gouge protection and feed intent."
+readme = "README.md"
+keywords = ["cam", "cnc", "toolpath", "4-axis", "machining"]
+categories = ["science"]
+# What the published crate holds (OI-302, decision 0138): the library and the files it reads.
+# The tests stay out: they read the repository's testdata/ and the unpublished openchuck-testkit.
+include = ["/src/**", "/examples/**", "/README.md", "/CHANGELOG.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+cavalier_contours.workspace = true
+parry3d-f64.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

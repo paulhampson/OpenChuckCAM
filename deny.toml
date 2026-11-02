@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# cargo-deny configuration (NFR-10, NFR-14; verification plan section 7).
+# Network and telemetry crates, and the layering rules, are enforced by
+# `cargo xtask deps`, so the bans here only cover sources and duplicates.
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# Licences compatible with AGPL-3.0-or-later. CC0-1.0 (blake3, notify) and
+# NCSA (libfuzzer-sys, dev-only) are allowed on purpose (architecture section 7).
+allow = [
+    "AGPL-3.0-or-later",
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "NCSA",
+]
+
+# Allowed licences that no crate currently uses are not an error.
+unused-allowed-license = "allow"
+
+# egui's bundled fonts, scoped to this crate only. OFL-1.1 and Ubuntu-font-1.0
+# were accepted by the project owner on 11 Oct 2026 (docs/open-items.md, OI-15).
+# The fonts are data shipped with the binary, not linked code.
+[[licenses.exceptions]]
+crate = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
+# occt-sys builds OpenCASCADE 7.8.1 for the STEP reader (openchuck-import, feature
+# `kernel`, build dependency only; decision records 0003 and 0027). Its licence is
+# LGPL-2.1 (OpenCASCADE: LGPL-2.1 with its exception), accepted by the project
+# owner on 11 Oct 2026 for static linking into the worker program and nothing
+# else. Scoped to this crate so no other LGPL code is allowed by accident.
+[[licenses.exceptions]]
+crate = "occt-sys"
+allow = ["LGPL-2.1"]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

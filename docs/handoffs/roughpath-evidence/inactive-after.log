@@ -1,0 +1,8 @@
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 9.29s
+     Running tests/posting.rs (target/debug/deps/posting-08ef2eedc8a1dc9e)
+
+running 1 test
+test req_op_11_req_ui_07_inactive_reversing_ramp_is_identified_and_changes_no_output ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.82s

@@ -1,0 +1,305 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Scheduled checks (work breakdown slice 0 item 13; verification plan
+# sections 4.1 and 8): one hour of fuzzing per parser, a beta-toolchain
+# build to catch breakage early, and the long-running tests listed in
+# .config/nextest.toml. The last job opens one GitHub issue per failing job, comments on it
+# each night the job still fails and closes it when the job passes, except the fuzz job, whose
+# issue only a pull request closes (decision 0102).
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'The id of a job to treat as failed in the issues job, to try the issue flow (for example fuzz); a later normal run closes the issue. Empty for none'
+        type: string
+        default: ''
+      only:
+        description: 'The id of the one job to run (fuzz, step-mutations, sanitizer, long-tests or beta), to prove a fix without the whole night; empty runs every job. The issues job gives a skipped job no issue action (decision 0490)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # CMake 4 rejects OpenCASCADE 7.8.1's cmake_minimum_required (decision 0003). The `step-mutations`
+  # and `sanitizer` jobs build OpenCASCADE when its cache misses (issue 451); a job-level `env:`
+  # adds to this block, so the sanitizer job's CXXFLAGS do not replace it.
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  # Each target's corpus is kept between nights in the Actions cache, so the hours add up on what
+  # earlier nights found rather than starting from the seeds again. The CPU time of the hour is
+  # written as an annotation and in the job summary; the running total per parser is kept in
+  # docs/fuzzing.md (decision 0107). `-timeout=10` makes a hang on one input a failure (NFR-07).
+  fuzz:
+    name: Fuzz ${{ matrix.target }} (1 hour)
+    if: (!inputs.only) || inputs.only == 'fuzz'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_recovery, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Restore the corpus of earlier nights
+        uses: actions/cache/restore@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: Seed the STL corpus from testdata
+        if: matrix.target == 'stl_import'
+        run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
+      - name: Seed the machine profile corpus from the built-in profiles
+        if: matrix.target == 'machine_profile_toml'
+        run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
+      - name: Seed the tool library corpus
+        if: matrix.target == 'tool_library_toml'
+        run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/library/*.toml testdata/tools/library/tool-sets/*.toml testdata/tools/broken/*.toml fuzz/corpus/tool_library_toml/
+      - name: Seed the tool profile corpus
+        if: matrix.target == 'tool_profile_toml'
+        run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
+      - name: Seed the G-code corpus
+        if: matrix.target == 'gcode_reader'
+        run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
+      - name: Seed the post definition corpus
+        if: matrix.target == 'post_definition'
+        run: |
+          mkdir -p fuzz/corpus/post_definition
+          for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the recovery checkpoint corpus
+        if: matrix.target == 'project_recovery'
+        run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
+      - name: Seed the project file corpus from the fixtures
+        if: matrix.target == 'project_files'
+        run: |
+          mkdir -p fuzz/corpus/project_files
+          # The first byte picks the kind of file, as in the target: 0 project, 1 machine, 2 setup,
+          # 3 tool, 4 selection set, 5 operation.
+          find crates/openchuck-project/tests/fixtures -name '*.toml' | sort | while read -r f; do
+            case "$f" in
+              */project.toml) k='\x00' ;; */machine.toml) k='\x01' ;; */setups/*) k='\x02' ;;
+              */tools/*) k='\x03' ;; */selections/*) k='\x04' ;; */operations/*) k='\x05' ;; *) continue ;;
+            esac
+            { printf "$k"; cat "$f"; } > "fuzz/corpus/project_files/$(echo "$f" | tr '/' '_')"
+          done
+      - name: Seed the project folder corpus from the fixtures
+        if: matrix.target == 'project_folder'
+        run: |
+          mkdir -p fuzz/corpus/project_folder
+          for d in crates/openchuck-project/tests/fixtures/*/; do
+            (cd "$d" && find . -name '*.toml' | sort | while read -r f; do printf '=== %s\n' "${f#./}"; cat "$f"; done) > "fuzz/corpus/project_folder/$(basename "$d")"
+          done
+      - run: cargo +nightly fuzz build --target x86_64-unknown-linux-gnu ${{ matrix.target }}
+      - name: Fuzz for one hour
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          TIMEFORMAT='%U %S'
+          set +e
+          { time cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=3600 -timeout=10 -print_final_stats=1 > fuzz.log 2>&1 ; } 2> cpu.txt
+          code=$?
+          set -e
+          tail -n 200 fuzz.log
+          read -r user sys < cpu.txt
+          seconds=$(awk -v u="$user" -v s="$sys" 'BEGIN { printf "%d", u + s }')
+          runs=$(sed -n 's/^stat::number_of_executed_units: *//p' fuzz.log | tail -n 1)
+          result=$([ "$code" = 0 ] && echo passed || echo "failed (exit $code)")
+          echo "::notice title=Fuzz CPU time $TARGET::$TARGET ${seconds} CPU seconds, ${runs:-unknown} executions, $result, commit $GITHUB_SHA"
+          printf '| Target | CPU seconds | Executions | Result |\n| --- | --- | --- | --- |\n| %s | %s | %s | %s |\n' "$TARGET" "$seconds" "${runs:-unknown}" "$result" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      - name: Keep the corpus for the next night
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts
+
+  # NFR-07 for STEP (decision 0003, OI-27): the OpenCASCADE reader segfaults on damaged files, so the
+  # importer runs it in a child process. This mutates the corpus and imports every mutant through the
+  # importer; the application process must never crash, hang or panic. The kernel build is cached.
+  step-mutations:
+    name: STEP mutation run through the importer
+    if: (!inputs.only) || inputs.only == 'step-mutations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/occt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel
+          cache-on-failure: true
+      - name: Build the kernel, the worker and the mutation program
+        run: cargo build --locked --release -p openchuck-import --features kernel --bins --example step_mutations
+      # The run number is the seed, so each night imports different mutants (decision 0107); the
+      # CPU time, the worker processes' included, is written as an annotation like the fuzz jobs'.
+      - name: Mutate and import 3000 files
+        shell: bash
+        env:
+          SEED: ${{ github.run_number }}
+        run: |
+          TIMEFORMAT='%U %S'
+          set +e
+          { time cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000 "$SEED" ; } 2> cpu.txt
+          code=$?
+          set -e
+          read -r user sys < <(tail -n 1 cpu.txt)
+          head -n -1 cpu.txt >&2 || true
+          seconds=$(awk -v u="$user" -v s="$sys" 'BEGIN { printf "%d", u + s }')
+          echo "::notice title=Fuzz CPU time step_mutations::step_mutations ${seconds} CPU seconds, 3000 mutants, seed $SEED, exit $code, commit $GITHUB_SHA"
+          exit "$code"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: step-mutation-failures
+          path: target/step-mutations
+
+  # OI-19: AddressSanitizer on the only foreign code in the workspace (decision 0027 item 3). Miri
+  # cannot run C++, and the unsafe Rust is a thin layer over it, so the sanitizer covers both: the
+  # C ABI wrapper, the worker and the kernel oracle, under the import tests and the comparison with
+  # the kernel. Leak detection is off because OpenCASCADE leaks small registry objects on its error
+  # paths by design; memory errors in our code, or in the kernel on valid files, still fail the run.
+  # The crash corpus is part of the import tests: the reader's own segfaults there are expected
+  # and happen in the child process.
+  # The ODR check is off (OI-272): the `tests/step.rs` binary aborted at start-up with an
+  # odr-violation on two compiler-generated switch tables (`CSWTCH.359` and `CSWTCH.361`) from the
+  # vendored GeomToStep_MakeBSplineCurveWithKnotsAndRationalBSplineCurve.cxx, before any test ran. It
+  # looks like a false positive on vendored OpenCASCADE globals that register twice in the test
+  # binary; the open item is to find why and fix it at the source, then turn the check back on.
+  sanitizer:
+    name: AddressSanitizer on the STEP wrapper
+    if: (!inputs.only) || inputs.only == 'sanitizer'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      ASAN_OPTIONS: detect_leaks=0:detect_odr_violation=0
+      RUSTFLAGS: -Zsanitizer=address
+      CXXFLAGS: -fsanitize=address -fno-omit-frame-pointer
+      CARGO_TARGET_DIR: target/asan
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal -c rust-src
+      # Without a symbolizer a report gives only addresses (issue 369); with it, function names.
+      - name: Point AddressSanitizer at llvm-symbolizer
+        run: |
+          set -euo pipefail
+          sym=$(command -v llvm-symbolizer || true)
+          [ -n "$sym" ] || sym=$(compgen -G '/usr/bin/llvm-symbolizer-*' | sort -V | tail -n 1 || true)
+          if [ -z "$sym" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends llvm
+            sym=$(command -v llvm-symbolizer)
+          fi
+          "$sym" --version | head -n 1
+          echo "ASAN_SYMBOLIZER_PATH=$sym" >> "$GITHUB_ENV"
+      # The job's CXXFLAGS instrument OpenCASCADE itself, so it has its own cached install.
+      - uses: ./.github/actions/occt
+        with:
+          variant: asan
+          build-command: cargo +nightly build -Zbuild-std --target $TARGET -p openchuck-import --features kernel --lib
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel-asan
+          cache-on-failure: true
+          workspaces: ". -> target/asan"
+      - name: Build the instrumented worker
+        run: cargo +nightly build -Zbuild-std --target $TARGET -p openchuck-import --features kernel --bins
+      # Doctests are left out: rustdoc does not take the sanitizer flags.
+      - name: Import tests
+        run: cargo +nightly test -Zbuild-std --target $TARGET -p openchuck-import --features kernel --lib --tests
+      - name: Comparison with the kernel
+        env:
+          OPENCHUCK_STEP_WORKER: ${{ github.workspace }}/target/asan/x86_64-unknown-linux-gnu/debug/openchuck-step-worker
+        run: cargo +nightly test -Zbuild-std --target $TARGET -p openchuck-app --features kernel-tests --test step_exact
+
+  long-tests:
+    name: Long-running tests (uninstrumented)
+    if: (!inputs.only) || inputs.only == 'long-tests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      # The `long` profile selects the tests the Coverage trend job leaves out.
+      - run: cargo nextest run --profile long --workspace --locked --no-fail-fast
+
+  beta:
+    name: Beta toolchain (${{ matrix.os }})
+    if: (!inputs.only) || inputs.only == 'beta'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install beta --profile minimal
+      - run: cargo +beta test --workspace --locked
+
+  # One issue per failing job above: the issue with the label `nightly-<job>` is opened by the first
+  # failing night, gets a comment on each night the job still fails and is closed with a comment
+  # naming the run by the first night it passes. The steps are in .github/actions/nightly-issue.
+  # The fuzz job is the exception: a green night never closes its issue (a pull request that
+  # fixes the failure does), and a failure after a green night opens a new issue.
+  # Only this job can write issues, so the jobs that build and test hold a read-only token. It
+  # runs on `main` only (a manual run on another branch never touches the issues).
+  issues:
+    name: Nightly issues
+    needs: [fuzz, step-mutations, sanitizer, long-tests, beta]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    concurrency:
+      group: nightly-issues
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/nightly-issue
+        with:
+          needs: ${{ toJSON(needs) }}
+          simulate: ${{ inputs.simulate_failure }}
+          jobs: |
+            fuzz|Fuzz |Nightly: a fuzz target failed|fix
+            step-mutations|STEP mutation run|Nightly: the STEP mutation run failed
+            sanitizer|AddressSanitizer on the STEP wrapper|Nightly: the AddressSanitizer run failed
+            long-tests|Long-running tests|Nightly: a long-running test failed
+            beta|Beta toolchain|Nightly: the beta toolchain build or tests failed

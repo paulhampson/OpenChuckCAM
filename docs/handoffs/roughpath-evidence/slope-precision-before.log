@@ -1,0 +1,23 @@
+    Blocking waiting for file lock on build directory
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized] target(s) in 32.02s
+     Running unittests src/lib.rs (target/debug/deps/openchuck_path-eb1ed5e7fa7df339)
+
+running 1 test
+test assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle ... FAILED
+
+failures:
+
+---- assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle stdout ----
+
+thread 'assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle' (23368) panicked at crates/openchuck-path/src/assemble/ramp.rs:116:17:
+written slope exceeds 3 degrees: run=3.175 drop=0.16699999999999804
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p openchuck-path --lib`

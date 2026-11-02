@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Command-line end-to-end suite with the network unavailable (NFR-09; verification plan
+# section 5, "Offline use"; work breakdown slice 20 item 5 and the review check "The full
+# run works with no network access"; decision 0096). The suite (`apps/openchuck-cli/tests`)
+# builds the sample projects from import to checked G-code, compares them with the golden
+# programs at 1, 2 and N threads, and runs the undo, redo and cancellation scenarios
+# (slice 20 items 3, 6 and 7). The Tests job of ci.yml runs the same tests on all three
+# platforms with the network up; this job runs them again in a network namespace with no
+# interface but a loopback that is down, after a canary step shows nothing outside is
+# reachable from it.
+#
+# Dependencies are fetched and the tests built before the namespace is entered, so only
+# the run itself is offline: that is what a user's machine does after installation.
+#
+# Draft gate (decision 0052): skipped on a draft pull request, like the heavy jobs of ci.yml.
+#
+# Required check (OI-315, owner's decision, relayed): the job name below,
+# "CLI end to end, network unavailable (NFR-09)", reports on every pull request.
+name: End to end
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# As ci.yml: a newer push to a pull request cancels the older run; other runs are never cancelled.
+concurrency:
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # One job, so it always reports under one name and can be a required check (OI-315). The path
+  # check is a step, not a separate job: if it fails, the job fails. A job skipped because a job
+  # it needs failed would report as skipped, which GitHub counts as passing. A pull request that
+  # changes nothing the suite builds or reads passes in seconds after the path check. A draft
+  # skips the job (decision 0052), and a skipped job counts as passing; the aggregate
+  # `CI required checks` of ci.yml fails on a draft anyway.
+  offline:
+    name: CLI end to end, network unavailable (NFR-09)
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # paths-filter lists a pull request's changed files through the API.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # What the suite builds or reads: the workspace, the posts and the golden programs.
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'apps/**'
+              - 'testdata/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - '.config/**'
+              - '.github/workflows/e2e.yml'
+      # A manual run always runs the suite, whatever the last commit changed.
+      - name: Whether to run the suite
+        id: want
+        env:
+          EVENT: ${{ github.event_name }}
+          CHANGED: ${{ steps.filter.outputs.rust }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || [ "$CHANGED" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Nothing the suite reads changed
+        if: steps.want.outputs.run != 'true'
+        run: echo "No change to the workspace, posts, test data or this workflow; the suite is not run."
+      - uses: Swatinem/rust-cache@v2
+        if: steps.want.outputs.run == 'true'
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: e2e-offline
+      - uses: taiki-e/install-action@v2
+        if: steps.want.outputs.run == 'true'
+        with:
+          tool: cargo-nextest
+      - name: Fetch and build the suite (network up)
+        if: steps.want.outputs.run == 'true'
+        run: cargo nextest run -p openchuck-cli --locked --no-run
+      # `unshare --net` gives the command a new network namespace: no interface but a loopback
+      # that is down. The canary must fail to reach the outside, or the run below proves nothing.
+      - name: Canary, nothing is reachable without the network
+        if: steps.want.outputs.run == 'true'
+        run: |
+          if sudo unshare --net -- curl --silent --show-error --max-time 10 https://github.com > /dev/null; then
+            echo "::error title=Network still reachable::the namespace reached github.com, so the offline run would prove nothing"
+            exit 1
+          fi
+          sudo unshare --net -- ip -brief link
+      # The run itself, as the runner user (sudo is needed only to enter the namespace), with
+      # cargo told not to touch the network either.
+      - name: CLI end-to-end suite, network unavailable
+        if: steps.want.outputs.run == 'true'
+        run: >
+          sudo unshare --net --
+          sudo --preserve-env -u "$USER"
+          env "PATH=$PATH" "HOME=$HOME"
+          cargo nextest run -p openchuck-cli --locked --offline --no-fail-fast --no-tests=fail

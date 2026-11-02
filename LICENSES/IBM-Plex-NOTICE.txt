@@ -1,0 +1,30 @@
+IBM Plex font notice
+
+OpenChuckCAM bundles four unmodified font files from the IBM Plex typeface
+family, loaded from the program and never from a network (NFR-09):
+
+  IBMPlexSans-Regular.ttf    IBM Plex Sans 1.1.0 (the font file's own version: 1.1)
+  IBMPlexSans-SemiBold.ttf   IBM Plex Sans 1.1.0
+  IBMPlexMono-Regular.ttf    IBM Plex Mono 2.5.0 (the font file's own version: 2.005)
+  IBMPlexMono-SemiBold.ttf   IBM Plex Mono 2.5.0
+
+Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+
+The fonts are licensed under the SIL Open Font License, Version 1.1. The full
+text is in OFL-1.1.txt, shipped beside this file. The files are not subset,
+renamed or otherwise modified. They are not sold on their own.
+
+Source: https://github.com/IBM/plex, packages/plex-sans (1.1.0) and
+packages/plex-mono (2.5.0), folder fonts/complete/ttf. The same releases are
+published to npm as @ibm/plex-sans and @ibm/plex-mono.
+
+SHA-256 of the bundled files:
+
+  975dcda37d80f038dcd143c22e33ca2d97a0cc5a929aace1c749153b0fe1afa5  IBMPlexSans-Regular.ttf
+  a20caf8286023a6a7a85e40b1d2a4ae9fc3e3b1f9eda8f4c542dd4986af67bb1  IBMPlexSans-SemiBold.ttf
+  7c6fbddca4b700be918f5f6183d9bd4464fa427fe435f0b480d77fe2bb8c5a43  IBMPlexMono-Regular.ttf
+  f04d7c488ddf7d1fa99f2574efc3406ea4cbe17bb1af3a1ab960f84d0c96a172  IBMPlexMono-SemiBold.ttf
+
+In the repository the files are in apps/openchuck-ui/assets/fonts/ and are
+compiled into the openchuck-ui program. Release and nightly archives also carry
+this notice and the licence text (FONT-NOTICE.txt and OFL-1.1.txt).

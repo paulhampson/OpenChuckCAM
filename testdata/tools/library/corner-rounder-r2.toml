@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Sample library tool (TL-01; decision record 0014). Cutting data, where
+# given, are plausible corpus values, not recommendations.
+schema = 1
+id = "0d6b8a5e-3c1f-4e2a-9b7d-000000000008"
+name = "Corner rounder r2"
+
+[tool]
+diameter = 6.0
+flute_length = 10.0
+overall_length = 50.0
+shank_diameter = 6.0
+flute_count = 2
+
+[tool.shape]
+type = "custom"
+
+[[tool.shape.profile.segments]]
+type = "line"
+to = { radius = 1.0, height = 0.0 }
+
+[[tool.shape.profile.segments]]
+type = "arc"
+to = { radius = 3.0, height = 2.0 }
+centre = { radius = 3.0, height = 0.0 }

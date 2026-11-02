@@ -1,0 +1,331 @@
+Decision 0255 / issue #346: bounded M2 evidence (lane STEPALL-T), 28 Oct 2026 (Europe/London).
+
+Machine: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores, 15 GiB, cloud container; rustc 1.97.0 (2d8144b78 2026-07-07); release build (debug line tables), no coverage instrumentation; RAYON_NUM_THREADS=4. STEP worker built with: CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --release -p openchuck-import --features kernel --bins --locked
+
+== Blisk run: source and inputs
+4f814fccb39e73798d9130588a7ff3fd2594fd2f
+1b4490d508b367da1a9452abb07d23c9b037ce559246b2b43054e5e2a0e590a9  target/release/examples/step_accuracy
+056d379378091889e8ea54a49062603d4f1cdeedf63bf89cfbd5adf4447dc698  target/release/openchuck-step-worker
+0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646  testdata/step/valid/blisk.step
+ace7e6ed96cb25d51ad267e3c8461a56fb82adf0b057a2d069d0cdb7b3a7557d  testdata/step/valid/box.step
+e99ee1a7e82a5e264a1101f2639dafafd9166cb6cf9dd2a8d643a42dfe4475a0  testdata/step/valid/box_inch.step
+0b8b337558d0df674067bfe6200e612cdbfe951dc66ec5ffd588eac8703a5501  testdata/step/valid/bspline_face.step
+ae459659ca7426c82fde9dbbfceeb33499d4516afa40c72cfd1dcac3c2b54971  testdata/step/valid/cone.step
+93f461c451602880c347738adccbaa75e8ead937888db3883a14c7794394e7d7  testdata/step/valid/cylinder.step
+1f9c965f5155b155419b3f978696dff71f15054e752bf695009a16668a065008  testdata/step/valid/extruded_spline.step
+223ee517c6da38dc713f2d3c75d25d3b4a9a7c0ba5bacd6cb2f4385f11a7db0d  testdata/step/valid/filleted_box.step
+3478505a0fb27bfa47a83635018102ebedebd443028270efcc402b264e4be1a0  testdata/step/valid/hex_bar.step
+5537894c6b749125df1e874589cef238198a73623e8c05cfd15b731049bbb367  testdata/step/valid/multi_body.step
+3eb341a23c293b96a953fed4bccae73839ca20f34d086a7c7764b221c3ed4c5b  testdata/step/valid/revolved_spline.step
+7c6633eee840291c4644492fbfeea26e7bd007e4b8b5141f11bfd1d756de769b  testdata/step/valid/revolved_spline_partial.step
+014f76eba98bd6005a99fac8811f11927f7a71571518ead4be3e0f7afc687f28  testdata/step/valid/rotary_blank_drilled.step
+54362c47d585199c0f3f191c1155f931e8473876f55fc82c11746bf837b02dfe  testdata/step/valid/shouldered_shaft.step
+3eb3fbb4f20b3658a02913ae497155468e8b15b4008c4bf2320dd88e93722b98  testdata/step/valid/sphere.step
+e01779fceb9be5b48a26527e39338f2adc25ab04062190d9d3b01da4c8d57b5f  testdata/step/valid/torus.step
+48351f42635f05eea09aaf77dd685e7b2bd564cd087b4a336fb29554a7e33f37  <outside the repository>/owner-blisk.stl
+
+Command (the STL is the owner's trial file from claude/upbeat-davinci-jk46yd:docs/trial-feedback-projects/blisk.stl):
+OPENCHUCK_STEP_WORKER=target/release/openchuck-step-worker RAYON_NUM_THREADS=4 target/release/examples/step_accuracy --only m2 --part blisk --forms a,b,c --fine 0.01 --angular 0.02 --stl owner-blisk.stl --raw RAW_DIR
+
+== Blisk run: complete output
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+owner's blisk.stl moved by Vec3 { x: 10.0, y: 0.0, z: 0.0 } to sit on the STEP part
+owner's blisk.stl: 6386 triangles, vertices up to 0.0313 mm from the exact faces
+form c deflection: 0.01 mm and 0.02 rad
+M2 bounded checker: 25 faces in 34640 starting pieces; tolerance 0.0005 mm, margin 1 mm, budget 4000000 pieces a station
+
+## form a (owner's blisk.stl): 6386 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | contact stations | widest interval mm
+roughing | 0.3 | 38840 | 0.0000 | 0.0000 | 0.0000 | 0.0593 | 0.0141 | 0.0592 | 6683 | 0.000500
+rest | 0 | 223772 | 0.0734 | 0.0739 | 0.0734 | 0.0624 | 0.0734 | 0.0609 | 190073 | 0.000500
+pencil | 0 | 12100 | 0.0244 | 0.0248 | 0.0244 | 0.0411 | 0.0247 | 0.0418 | 10969 | 0.000500
+helical | 0 | 223772 | 0.0734 | 0.0739 | 0.0734 | 0.0624 | 0.0734 | 0.0609 | 190073 | 0.000500
+axial | 0 | 517388 | 0.0783 | 0.0787 | 0.0783 | 0.0534 | 0.0788 | 0.0531 | 482456 | 0.000500
+indexed | 0 | 2344 | 0.0704 | 0.0709 | 0.0704 | 0.0600 | 0.0705 | 0.0601 | 2149 | 0.000500
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.497, A 11556.701 within the tolerance: it would cut 0.0203 mm into the surface; reduce the largest tilt or the largest angle step
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | contact stations | widest interval mm
+roughing | 0.3 | 38868 | 0.0000 | 0.0000 | 0.0000 | 0.0091 | 0.0263 | 0.0074 | 7404 | 0.000500
+rest | 0 | 246096 | 0.0426 | 0.0430 | 0.0426 | 0.0103 | 0.0427 | 0.0090 | 211486 | 0.000500
+pencil | 0 | 9028 | 0.0342 | 0.0347 | 0.0342 | 0.0065 | 0.0360 | 0.0065 | 8537 | 0.000500
+helical | 0 | 246088 | 0.0426 | 0.0430 | 0.0426 | 0.0103 | 0.0427 | 0.0090 | 211478 | 0.000500
+axial | 0 | 776444 | 0.0428 | 0.0432 | 0.0428 | 0.0095 | 0.0429 | 0.0090 | 722234 | 0.000500
+indexed | 0 | 2328 | 0.0318 | 0.0322 | 0.0318 | 0.0072 | 0.0319 | 0.0076 | 2141 | 0.000500
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.041, A 11982.931 within the tolerance: it would cut 0.1368 mm into the surface; reduce the largest tilt or the largest angle step
+
+## form c (STEP, finer tessellation): 106928 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | contact stations | widest interval mm
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0000 | 0.0050 | 0.0039 | 0.0042 | 7704 | 0.000500
+rest | 0 | 227736 | 0.0062 | 0.0066 | 0.0051 | 0.0052 | 0.0051 | 0.0053 | 213580 | 0.000500
+pencil | 0 | 9092 | 0.0009 | 0.0014 | 0.0009 | 0.0014 | 0.0011 | 0.0014 | 8760 | 0.000500
+helical | 0 | 227728 | 0.0062 | 0.0066 | 0.0051 | 0.0052 | 0.0051 | 0.0053 | 213572 | 0.000500
+axial | 0 | 756352 | 0.0059 | 0.0064 | 0.0054 | 0.0057 | 0.0054 | 0.0042 | 710191 | 0.000500
+indexed | 0 | 2260 | 0.0052 | 0.0057 | 0.0037 | 0.0028 | 0.0037 | 0.0045 | 2075 | 0.000500
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.041, A 11982.848 within the tolerance: it would cut 0.3568 mm into the surface; reduce the largest tilt or the largest angle step
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	52m31.331s
+user	174m40.552s
+sys	1m36.788s
+exit=0
+
+== Blisk: derived from the raw files (contact stations as M2 counts them)
+file | stations | proven drop-error bound mm | widest interval mm | mean pieces (exact) | most pieces (exact) | mean pieces (tessellation) | most pieces (tessellation)
+m2-a-axial.tsv | 517388 | 0.0793 | 0.000500 | 217 | 28684 | 344 | 1900
+m2-a-helical.tsv | 223772 | 0.0739 | 0.000500 | 249 | 1069 | 444 | 1862
+m2-a-indexed.tsv | 2344 | 0.0709 | 0.000500 | 258 | 752 | 411 | 1695
+m2-a-pencil.tsv | 12100 | 0.0423 | 0.000500 | 345 | 3337 | 1260 | 3780
+m2-a-rest.tsv | 223772 | 0.0739 | 0.000500 | 249 | 1069 | 444 | 1862
+m2-a-roughing.tsv | 38840 | 0.0596 | 0.000500 | 414 | 6153 | 497 | 4648
+m2-b-axial.tsv | 776444 | 0.0433 | 0.000500 | 226 | 22013 | 187 | 1275
+m2-b-helical.tsv | 246088 | 0.0431 | 0.000500 | 243 | 1042 | 190 | 472
+m2-b-indexed.tsv | 2328 | 0.0323 | 0.000500 | 271 | 755 | 193 | 565
+m2-b-pencil.tsv | 9028 | 0.0365 | 0.000500 | 409 | 3702 | 470 | 1131
+m2-b-rest.tsv | 246096 | 0.0431 | 0.000500 | 243 | 1042 | 190 | 472
+m2-b-roughing.tsv | 38868 | 0.0268 | 0.000500 | 414 | 6014 | 225 | 1197
+m2-c-axial.tsv | 756352 | 0.0058 | 0.000500 | 230 | 22013 | 365 | 1871
+m2-c-helical.tsv | 227728 | 0.0058 | 0.000500 | 252 | 1146 | 402 | 1499
+m2-c-indexed.tsv | 2260 | 0.0050 | 0.000500 | 276 | 755 | 417 | 1106
+m2-c-pencil.tsv | 9092 | 0.0018 | 0.000500 | 421 | 3757 | 877 | 2285
+m2-c-rest.tsv | 227736 | 0.0058 | 0.000500 | 252 | 1146 | 402 | 1499
+m2-c-roughing.tsv | 37728 | 0.0046 | 0.000500 | 419 | 6014 | 523 | 4928
+
+== Blisk: SHA-256 of the complete raw files (regenerated by the command above at the stated source; the raw extract is in 0255-bounded-m2-raw-extract.tsv)
+758400d1f130164a697d7fa7061a06c23f5684b0e27637539edef19920009388  m2-a-axial.tsv
+bcb18f07d3c1a5004aa054fcacae584930e05fb01f844cf14757d6fd369c278a  m2-a-helical.tsv
+742d18a81d88c48db64743e3934dcf25727a1703b38ea42c1f2f3d1b68f3ca9b  m2-a-indexed.tsv
+ae6de4904ff7ceef93f90d541944e740f244c493703a02fa7359af6f70734920  m2-a-pencil.tsv
+bd9b9e4042663c253e3d62cf2ffc4b87b4792fd47bfe1dd849c8b784c263cae9  m2-a-rest.tsv
+cba3c120afbadac0c70a30428389de970aa2ebcd0aaf844d519899c21e2c006f  m2-a-roughing.tsv
+eb7e2659d56b028c069e0ecc186f90fa796bf1f6b11a594e8ed447e510370d1e  m2-b-axial.tsv
+0dcee2b0d26ce15a09b5ff8164da2584f97a3da292923410a83cd0c1c1db2ecd  m2-b-helical.tsv
+281a029cbedba0b3e286648d3f427bdc93b6728e5bf832a6e8945d56d4282bbf  m2-b-indexed.tsv
+6fe55aa496febfa91d497d1e26f07fddc3a78fbf4dc41735f6d491cd4964ef24  m2-b-pencil.tsv
+79b3a58c6ac2f3f86bb7791a5a6de4da4f7b9e43c893eb07c02c1e63c082d8bf  m2-b-rest.tsv
+c54a76f0c6678c6affe07f10a5122d6d8a32933c0ace45d99ed77e49fbd79e11  m2-b-roughing.tsv
+d4321d429dc84bb82062f550508cff2e28cc59ff4d89aa42cd3f2421cf424be0  m2-c-axial.tsv
+53f4d89190b8c7095f4de1f78ab28ea1c44519f959c192a67dae111cfb5e121b  m2-c-helical.tsv
+78cd083a2dab82a8e65c3b53932bf5ca9dd4a85ff82bec60cb5d6742d4f61fe2  m2-c-indexed.tsv
+19c546e2f21dde99ba92b2938fd89361c2e3bcd5862ecc91bd1c2a262d3aeff0  m2-c-pencil.tsv
+cffff05921ee851561339d7f4bbbd21fe853dd475dbef6daada3deecdf518ddf  m2-c-rest.tsv
+2ce66561310e93ae1595f169c36cec74e67ccc10a6f8396ee36b4cf029eff76a  m2-c-roughing.tsv
+
+== Corpus runs: source
+0560e4fd9f1c1ce9cdff287b8130e6703856ed49
+f5c5d88bde07bce29958b6f8c81e76ae802ba0cb71de8b475d859e1b20d2ed5e  target/release/examples/step_accuracy
+
+Command, per part (cylinder cone sphere bspline_face filleted_box revolved_spline):
+target/release/examples/step_accuracy --only m2 --part PART --forms b,c --fine 0.01 --angular 0.02 --raw RAW_DIR
+Torus: the same command stopped at import: Error: Worker("the STEP reader did not finish within 120 s and was stopped") (the 0.02 rad form-c import). Rerun on form b only:
+target/release/examples/step_accuracy --only m2 --part torus --forms b --fine 0.01 --angular 0.1 --raw RAW_DIR
+
+== Corpus: output from the first form on (the header lines are as for the blisk)
+=== cylinder
+## form b (STEP, import tessellation 0.01 mm): 500 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 8264 | 0.0000 | 0.0000 | 0.0000 | 0.0005 | 0.0031 | 0.0005 | 0.0036 | 6194 | 0.000500
+rest | 0 | 124812 | 0.0031 | 0.0036 | 0.0031 | 0.0005 | 0.0035 | 0.0003 | 0.0040 | 117334 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 124804 | 0.0031 | 0.0036 | 0.0031 | 0.0005 | 0.0035 | 0.0003 | 0.0040 | 117326 | 0.000500
+axial | 0 | 179872 | 0.0050 | 0.0055 | 0.0031 | 0.0005 | 0.0033 | 0.0004 | 0.0037 | 171580 | 0.000500
+indexed | 0 | 928 | 0.0047 | 0.0050 | 0.0030 | 0.0003 | 0.0032 | 0.0002 | 0.0036 | 912 | 0.000500
+simultaneous | 0 | 120004 | 0.0031 | 0.0036 | 0.0031 | 0.0002 | 0.0033 | 0.0002 | 0.0037 | 112623 | 0.000500
+
+## form c (STEP, finer tessellation): 2512 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 8264 | 0.0000 | 0.0000 | 0.0000 | 0.0005 | 0.0004 | 0.0005 | 0.0010 | 8256 | 0.000500
+rest | 0 | 97856 | 0.0002 | 0.0007 | 0.0002 | 0.0005 | 0.0006 | 0.0004 | 0.0010 | 97568 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 124804 | 0.0002 | 0.0007 | 0.0002 | 0.0005 | 0.0006 | 0.0004 | 0.0010 | 124796 | 0.000500
+axial | 0 | 179872 | 0.0030 | 0.0035 | 0.0002 | 0.0005 | 0.0006 | 0.0005 | 0.0011 | 171071 | 0.000500
+indexed | 0 | 928 | 0.0017 | 0.0020 | 0.0000 | 0.0002 | 0.0001 | 0.0002 | 0.0007 | 912 | 0.000500
+simultaneous | 0 | 120004 | 0.0002 | 0.0007 | 0.0002 | 0.0002 | 0.0003 | 0.0002 | 0.0007 | 119996 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	11m32.867s
+user	29m3.561s
+sys	0m16.240s
+exit=0
+=== cone
+## form b (STEP, import tessellation 0.01 mm): 2194 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 25848 | 0.0000 | 0.0000 | 0.0000 | 0.0011 | 0.0091 | 0.0003 | 0.0095 | 5075 | 0.000500
+rest | 0 | 80152 | 0.0091 | 0.0095 | 0.0091 | 0.0005 | 0.0092 | 0.0002 | 0.0096 | 74952 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 80152 | 0.0091 | 0.0095 | 0.0091 | 0.0005 | 0.0092 | 0.0002 | 0.0096 | 74952 | 0.000500
+axial | 0 | 143312 | 0.0090 | 0.0095 | 0.0090 | 0.0005 | 0.0092 | 0.0004 | 0.0096 | 136552 | 0.000500
+indexed | 0 | 848 | 0.0089 | 0.0093 | 0.0089 | 0.0005 | 0.0090 | 0.0002 | 0.0095 | 816 | 0.000500
+simultaneous | 0 | 75792 | 0.0091 | 0.0095 | 0.0091 | 0.0002 | 0.0092 | 0.0002 | 0.0096 | 70910 | 0.000500
+
+## form c (STEP, finer tessellation): 20782 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 23764 | 0.0000 | 0.0000 | 0.0000 | 0.0018 | 0.0006 | 0.0003 | 0.0011 | 4750 | 0.000500
+rest | 0 | 76360 | 0.0006 | 0.0011 | 0.0006 | 0.0005 | 0.0008 | 0.0004 | 0.0012 | 76352 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 76360 | 0.0006 | 0.0011 | 0.0006 | 0.0005 | 0.0008 | 0.0004 | 0.0012 | 76352 | 0.000500
+axial | 0 | 143312 | 0.0027 | 0.0032 | 0.0006 | 0.0005 | 0.0008 | 0.0005 | 0.0012 | 136458 | 0.000500
+indexed | 0 | 848 | 0.0027 | 0.0031 | 0.0003 | 0.0005 | 0.0004 | 0.0004 | 0.0009 | 791 | 0.000500
+simultaneous | 0 | 72004 | 0.0006 | 0.0011 | 0.0006 | 0.0003 | 0.0008 | 0.0003 | 0.0012 | 72000 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	3m39.456s
+user	10m13.921s
+sys	0m20.959s
+exit=0
+=== sphere
+## form b (STEP, import tessellation 0.01 mm): 15024 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 21076 | 0.0000 | 0.0000 | 0.0000 | 0.0004 | 0.0166 | 0.0000 | 0.0171 | 4327 | 0.000500
+rest | 0 | 77136 | 0.0194 | 0.0197 | 0.0194 | 0.0001 | 0.0194 | 0.0000 | 0.0198 | 73581 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 77128 | 0.0194 | 0.0197 | 0.0194 | 0.0001 | 0.0194 | 0.0000 | 0.0198 | 73573 | 0.000500
+axial | 0 | 413268 | 0.0204 | 0.0208 | 0.0204 | 0.0002 | 0.0204 | 0.0000 | 0.0208 | 348627 | 0.000500
+indexed | 0 | 1464 | 0.0090 | 0.0094 | 0.0075 | 0.0001 | 0.0075 | 0.0000 | 0.0079 | 1281 | 0.000500
+simultaneous | 0 | 72412 | 0.0176 | 0.0180 | 0.0176 | 0.0002 | 0.0178 | 0.0000 | 0.0181 | 69098 | 0.000500
+
+## form c (STEP, finer tessellation): 201558 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 21228 | 0.0000 | 0.0000 | 0.0000 | 0.0041 | 0.0030 | 0.0024 | 0.0035 | 4850 | 0.000500
+rest | 0 | 76816 | 0.0037 | 0.0042 | 0.0037 | 0.0024 | 0.0038 | 0.0024 | 0.0043 | 76808 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 76808 | 0.0037 | 0.0042 | 0.0037 | 0.0024 | 0.0038 | 0.0024 | 0.0043 | 76800 | 0.000500
+axial | 0 | 326300 | 0.0060 | 0.0065 | 0.0038 | 0.0025 | 0.0039 | 0.0024 | 0.0044 | 247964 | 0.000500
+indexed | 0 | 1208 | 0.0055 | 0.0059 | 0.0025 | 0.0025 | 0.0028 | 0.0024 | 0.0032 | 916 | 0.000500
+simultaneous | 0 | 72008 | 0.0038 | 0.0042 | 0.0038 | 0.0025 | 0.0038 | 0.0024 | 0.0042 | 72000 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	6m2.407s
+user	18m26.991s
+sys	0m19.843s
+exit=0
+=== torus
+exit=0
+=== bspline_face
+## form b (STEP, import tessellation 0.01 mm): 1614 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 33464 | 0.0000 | 0.0000 | 0.0000 | 0.0097 | 0.0094 | 0.0086 | 0.0099 | 4758 | 0.000500
+rest | 0 | 63148 | 0.0099 | 0.0104 | 0.0099 | 0.0116 | 0.0100 | 0.0102 | 0.0106 | 60090 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 63144 | 0.0099 | 0.0104 | 0.0099 | 0.0116 | 0.0100 | 0.0102 | 0.0106 | 60090 | 0.000500
+axial | 0 | 68728 | 0.0106 | 0.0111 | 0.0100 | 0.0103 | 0.0101 | 0.0101 | 0.0106 | 54772 | 0.000500
+indexed | 0 | 516 | 0.0095 | 0.0100 | 0.0090 | 0.0094 | 0.0090 | 0.0093 | 0.0098 | 414 | 0.000500
+simultaneous | 0 | 26212 | 0.0028 | 0.0033 | 0.0000 | 0.0101 | 0.0000 | 0.0101 | 0.0106 | 24901 | 0.000500
+
+## form c (STEP, finer tessellation): 4546 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 33472 | 0.0000 | 0.0000 | 0.0000 | 0.0089 | 0.0068 | 0.0070 | 0.0075 | 4764 | 0.000500
+rest | 0 | 63208 | 0.0071 | 0.0075 | 0.0071 | 0.0082 | 0.0072 | 0.0074 | 0.0078 | 60114 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 63204 | 0.0071 | 0.0075 | 0.0071 | 0.0082 | 0.0072 | 0.0074 | 0.0078 | 60114 | 0.000500
+axial | 0 | 64244 | 0.0084 | 0.0089 | 0.0071 | 0.0067 | 0.0072 | 0.0057 | 0.0076 | 48054 | 0.000500
+indexed | 0 | 496 | 0.0058 | 0.0062 | 0.0043 | 0.0060 | 0.0046 | 0.0049 | 0.0054 | 404 | 0.000500
+simultaneous | 0 | 26096 | 0.0035 | 0.0039 | 0.0000 | 0.0073 | 0.0000 | 0.0073 | 0.0077 | 24811 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	2m1.332s
+user	6m38.994s
+sys	0m6.796s
+exit=0
+=== filleted_box
+## form b (STEP, import tessellation 0.01 mm): 9460 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 20248 | 0.0000 | 0.0000 | 0.0000 | 0.0020 | 0.0025 | 0.0002 | 0.0030 | 3139 | 0.000500
+rest | 0 | 91972 | 0.0059 | 0.0064 | 0.0031 | 0.0022 | 0.0030 | 0.0003 | 0.0035 | 64318 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 124908 | 0.0059 | 0.0064 | 0.0029 | 0.0022 | 0.0030 | 0.0003 | 0.0035 | 81814 | 0.000500
+axial | 0 | 276728 | 0.0062 | 0.0066 | 0.0029 | 0.0002 | 0.0031 | 0.0002 | 0.0035 | 230654 | 0.000500
+indexed | 0 | 1136 | 0.0037 | 0.0041 | 0.0008 | 0.0002 | 0.0009 | 0.0002 | 0.0013 | 1035 | 0.000500
+simultaneous | 0 | 130952 | 0.0065 | 0.0069 | 0.0027 | 0.0020 | 0.0028 | 0.0003 | 0.0033 | 122195 | 0.000500
+
+## form c (STEP, finer tessellation): 209188 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 20192 | 0.0000 | 0.0000 | 0.0000 | 0.0021 | 0.0002 | 0.0002 | 0.0007 | 3040 | 0.000500
+rest | 0 | 144568 | 0.0040 | 0.0045 | 0.0001 | 0.0022 | 0.0003 | 0.0003 | 0.0008 | 77960 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 124908 | 0.0040 | 0.0045 | 0.0001 | 0.0022 | 0.0003 | 0.0003 | 0.0008 | 84990 | 0.000500
+axial | 0 | 275952 | 0.0041 | 0.0044 | 0.0001 | 0.0002 | 0.0003 | 0.0002 | 0.0007 | 236908 | 0.000500
+indexed | 0 | 1136 | 0.0034 | 0.0039 | 0.0000 | 0.0002 | 0.0001 | 0.0002 | 0.0007 | 1040 | 0.000500
+simultaneous | 0 | 139272 | 0.0041 | 0.0045 | 0.0001 | 0.0021 | 0.0003 | 0.0002 | 0.0007 | 136526 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	12m36.644s
+user	41m44.098s
+sys	0m29.965s
+exit=0
+=== revolved_spline
+## form b (STEP, import tessellation 0.01 mm): 29538 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 18184 | 0.0000 | 0.0000 | 0.0000 | 0.0089 | 0.0095 | 0.0088 | 0.0099 | 4246 | 0.000500
+rest | 0 | 96064 | 0.0199 | 0.0203 | 0.0199 | 0.0096 | 0.0200 | 0.0095 | 0.0204 | 88761 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 96064 | 0.0199 | 0.0203 | 0.0199 | 0.0096 | 0.0200 | 0.0095 | 0.0204 | 88761 | 0.000500
+axial | 0 | 1666668 | 0.0208 | 0.0212 | 0.0208 | 0.0111 | 0.0208 | 0.0091 | 0.0212 | 1400785 | 0.000500
+indexed | 0 | 2036 | 0.0116 | 0.0118 | 0.0073 | 0.0096 | 0.0096 | 0.0094 | 0.0100 | 1727 | 0.000500
+simultaneous | 0 | 96084 | 0.0193 | 0.0196 | 0.0193 | 0.0096 | 0.0193 | 0.0095 | 0.0198 | 89515 | 0.000500
+
+## form c (STEP, finer tessellation): 117192 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 18124 | 0.0000 | 0.0000 | 0.0000 | 0.0015 | 0.0030 | 0.0006 | 0.0035 | 5091 | 0.000500
+rest | 0 | 96012 | 0.0030 | 0.0034 | 0.0030 | 0.0007 | 0.0030 | 0.0007 | 0.0035 | 96004 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 96012 | 0.0030 | 0.0034 | 0.0030 | 0.0007 | 0.0030 | 0.0007 | 0.0035 | 96004 | 0.000500
+axial | 0 | 1455416 | 0.0059 | 0.0063 | 0.0023 | 0.0025 | 0.0031 | 0.0007 | 0.0035 | 1106744 | 0.000500
+indexed | 0 | 1716 | 0.0051 | 0.0056 | 0.0026 | 0.0025 | 0.0029 | 0.0006 | 0.0031 | 1352 | 0.000500
+simultaneous | 0 | 96004 | 0.0030 | 0.0035 | 0.0030 | 0.0009 | 0.0031 | 0.0008 | 0.0036 | 95996 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	13m15.127s
+user	48m6.052s
+sys	0m28.021s
+exit=0
+ALLDONE
+
+== Torus, form b: complete output
+# step_accuracy (decision 0211)
+cpu:   Intel(R) Xeon(R) Processor @ 2.80GHz
+cores: 4
+build: release
+
+part: ./crates/openchuck-app/../../testdata/step/valid/torus.step
+part placed: X 10.000 to 70.000, Y -29.991 to 29.991, Z -9.997 to 9.997
+form c deflection: 0.01 mm and 0.1 rad
+M2 bounded checker: 1 faces in 21120 starting pieces; tolerance 0.0005 mm, margin 1 mm, budget 4000000 pieces a station
+
+## form b (STEP, import tessellation 0.01 mm): 31752 triangles
+### M2: the cut against the exact faces
+operation | stock mm | stations | deepest cut mm | proven at most | (at poses) | largest gap mm | drop error: deepest in | furthest out | proven at most | contact stations | widest interval mm
+roughing | 0.3 | 182800 | 0.0000 | 0.0000 | 0.0000 | 0.0043 | 0.0124 | 0.0029 | 0.0129 | 10530 | 0.000500
+rest | 0 | 190176 | 0.0152 | 0.0153 | 0.0124 | 0.0039 | 0.0126 | 0.0030 | 0.0130 | 159304 | 0.000500
+pencil | 0 | refused: pencil clean-up has no inside corner to follow: no edge of the part is an inside corner that turns 30 degrees or more; lower crease_angle
+helical | 0 | 183500 | 0.0152 | 0.0153 | 0.0124 | 0.0039 | 0.0126 | 0.0030 | 0.0130 | 153486 | 0.000500
+axial | 0 | 1168708 | 0.0143 | 0.0148 | 0.0124 | 0.0047 | 0.0125 | 0.0032 | 0.0130 | 999800 | 0.000500
+indexed | 0 | 2744 | 0.0113 | 0.0117 | 0.0092 | 0.0003 | 0.0094 | 0.0001 | 0.0099 | 2453 | 0.000500
+simultaneous | 0 | 188312 | 0.0161 | 0.0165 | 0.0124 | 0.0036 | 0.0125 | 0.0030 | 0.0130 | 160929 | 0.000500
+M2 qualified: widest interval 0.000500 mm (under 0.001 mm)
+
+real	16m28.848s
+user	30m24.451s
+sys	0m20.509s
+exit=0

@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The STEP kernel's OpenCASCADE install, cached on its own (decision 0039, OI-169).
+#
+# `occt-sys` builds OpenCASCADE 7.8.1 in 23 to 35 minutes. Cached inside the cargo target directory
+# by rust-cache it was lost whenever any Cargo.toml changed, and each workflow kept its own copy.
+# Here the finished install (`lib/` and `include/`) is cached under a key that names only what the
+# build depends on: the `occt-sys` version, the platform, the variant and a manual revision. A hit
+# sets OCCT_ROOT, which `crates/openchuck-import/build.rs` already honours, so `occt-sys` and CMake
+# are skipped. A miss builds the kernel once through cargo, saves the install straight away (so a
+# later failing step does not lose it), and sets OCCT_ROOT as well.
+#
+# Caches written on a pull request are visible to that pull request only; `occt-cache.yml` writes
+# and refreshes the ones every pull request reads, from `main`.
+name: OpenCASCADE install
+description: Restore or build the cached OpenCASCADE install and export OCCT_ROOT
+
+inputs:
+  variant:
+    description: >
+      "plain" for the normal build. A build with different compiler flags needs its own variant
+      (the sanitizer job sets CXXFLAGS, which the cmake crate passes to OpenCASCADE).
+    default: plain
+  build-command:
+    description: A command that builds openchuck-import with the kernel feature; run on a miss only.
+    default: cargo build --release --locked -p openchuck-import --features kernel --lib
+  revision:
+    description: Bump to discard every cached install (a new runner toolchain that breaks linking).
+    default: "1"
+
+outputs:
+  cache-hit:
+    description: "'true' when the install came from the cache"
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Work out the cache key
+      id: key
+      shell: bash
+      run: |
+        version=$(sed -nE 's/^occt-sys = "=([0-9.]+)".*/\1/p' Cargo.toml)
+        [ -n "$version" ] || { echo "::error::no occt-sys pin in Cargo.toml"; exit 1; }
+        key="occt-$version-$RUNNER_OS-$RUNNER_ARCH-$VARIANT-r$REVISION"
+        # On Linux the runner image is part of the key: the `ubuntu-latest` label moved from 24.04 to
+        # 26.04 and an install built there crashed the worker (decision 0251, OI-1003), so a build on
+        # one image must never be restored on another. `ImageOS` is set by the hosted runner images
+        # (`ubuntu24`, `ubuntu26`) and names the OS release, not the weekly image build, so the key
+        # does not change every week. Windows and macOS keep their keys (their builds take 8 to 71 min).
+        [ "$RUNNER_OS" != Linux ] || key="$key-${ImageOS:-unknown}"
+        echo "key=$key" >> "$GITHUB_OUTPUT"
+      env:
+        VARIANT: ${{ inputs.variant }}
+        REVISION: ${{ inputs.revision }}
+
+    - id: restore
+      uses: actions/cache/restore@v5
+      with:
+        path: occt-install
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build OpenCASCADE (cache miss)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BUILD: ${{ inputs.build-command }}
+      run: |
+        set -euo pipefail
+        eval "$BUILD"
+        # occt-sys installs to <target dir>/OCCT, or <target dir>/<triple>/OCCT with --target.
+        lib=$(/usr/bin/find "${CARGO_TARGET_DIR:-target}" -type d -path '*/OCCT/lib' | head -n 1)
+        [ -n "$lib" ] || { echo "::error::the build left no OCCT/lib directory"; exit 1; }
+        src=$(dirname "$lib")
+        mkdir -p occt-install
+        cp -R "$src/lib" "$src/include" occt-install/
+        # Keep the copy out of the cargo cache: the install is cached on its own.
+        rm -rf "$src"
+        du -sh occt-install
+
+    - name: Save the OpenCASCADE install
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: occt-install
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Point the build at the install
+      shell: bash
+      run: |
+        test -d occt-install/lib -a -d occt-install/include
+        echo "OCCT_ROOT=${{ github.workspace }}/occt-install" >> "$GITHUB_ENV"

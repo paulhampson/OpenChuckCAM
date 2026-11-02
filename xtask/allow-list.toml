@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Recorded exceptions to the dependency rules (architecture section 4).
+# Each entry names the decision record holding its NFR-14 justification.
+# Use krate = "*" for an exception to the network ban that applies everywhere.
+#
+# [[exception]]
+# krate = "openchuck-path"
+# dependency = "clipper2"
+# record = "docs/decisions/NNNN-title.md"

@@ -1,0 +1,952 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Pull request and main-branch CI (work breakdown slice 0 items 5 and 13;
+# verification plan sections 7 to 9). Jobs are path-filtered:
+# - `rust`, `step`, `gate3` and `fuzz` (every heavy job) are off when every changed file that matches
+#   them is Markdown (`*.md`, in any directory; decision 0249): documentation is not built. A change
+#   outside Markdown to crates/, testdata/, tools/, the posts (crates/openchuck-post/posts/ since
+#   decision 0103) or .github/workflows/ turns them on, because the golden G-code tests read the
+#   posts and testdata/ and the workflow is part of what is tested.
+# - `records` and `any` still see Markdown, because `cargo xtask records`, `testdata`, `trace` and
+#   `conflicts` read it (testdata/README.md, docs/requirements.md, docs/work-breakdown.md,
+#   docs/dependencies.md, docs/open-items.md and docs/decisions/**), so Fast checks run on a
+#   Markdown-only pull request that changes one of those, and the heavy jobs do not.
+#
+# Light run on `main` (decision 0358, Option 4): a push to `main` whose commit has exactly the git tree
+# that a full, green pull request run already tested (the `tested-tree` artifact of that run) runs only
+# the fast checks and the Ubuntu legs of Build and test (`mode` = light); every other push, and every
+# scheduled or manual run, runs the full matrix. Any error while deciding means full.
+#
+# Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
+# heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
+# fuzz smoke) and the User guide check run when it is marked ready for review. `CI required checks`
+# fails on a draft and, on a ready pull request or a push, requires every heavy job whose filter is
+# true to succeed.
+#
+# User guide (decision 0400): the `docs` job builds and checks user-docs/ on a ready pull request
+# that changes it (filter `docs`, which matches Markdown). A pull request that does not change it
+# skips the job, and `CI required checks` treats the skip as a pass, so no other pull request waits.
+name: CI
+
+on:
+  pull_request:
+    # `ready_for_review` starts the full run when a draft is marked ready (decision 0052, draft gate).
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  # The nightly full run on `main` (decision 0358, Option 4, OI-1413): a push to `main` may be a light run
+  # (below), so the whole matrix, and the `main` caches of every leg that pull requests restore, are
+  # refreshed once a day. 04:23 UTC is after the other nightly workflows.
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
+# replaced while it waits: its group is its own run, so every merged commit keeps a complete result
+# (and its cache), even if several manual runs target one commit
+# (decision 0052, Option 1).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Cache policy (decision 0358, Option 1, OI-1410): every `rust-cache` step below saves only on `main`
+# (`save-if`); a pull request run restores the entries `main` wrote (a cache written on a pull request
+# branch is visible to that pull request only, and a push to each of several pull requests filled the
+# 10 GB repository limit and evicted the OpenCASCADE installs).
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
+  # cmake_minimum_required; needed once openchuck-import builds the kernel
+  # (decision 0003, slice 11).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    # paths-filter lists a pull request's changed files through the API.
+    permissions:
+      contents: read
+      pull-requests: read
+      # The light-run check reads the pull request's CI runs and their `tested-tree` artifact.
+      actions: read
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      bt_matrix: ${{ steps.mode.outputs.bt_matrix }}
+      rust: ${{ steps.mode.outputs.rust }}
+      # `others`: the jobs that a light run leaves out besides the three below (UI smoke, Each library alone).
+      others: ${{ steps.mode.outputs.others }}
+      records: ${{ steps.mode.outputs.records }}
+      any: ${{ steps.mode.outputs.any }}
+      fuzz: ${{ steps.mode.outputs.fuzz }}
+      step: ${{ steps.mode.outputs.step }}
+      gate3: ${{ steps.mode.outputs.gate3 }}
+      linuxcnc_image: ${{ steps.mode.outputs.linuxcnc_image }}
+      # The user guide (decision 0400): straight from the filter, so empty (not due) on a schedule or a push.
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # `records`, `any`, `linuxcnc_image` and `docs` match Markdown too (see the header).
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name != 'schedule'
+        with:
+          filters: |
+            records:
+              - 'docs/requirements.md'
+              - 'docs/work-breakdown.md'
+              - 'docs/dependencies.md'
+              # The register checks of `cargo xtask records` (registers.rs) read the open-items
+              # register, the decision index and the decision file names; `deps` checks that the
+              # record an allow-list entry names exists (decisions 0249 addendum, OI-1000).
+              - 'docs/open-items.md'
+              - 'docs/decisions/**'
+              - 'testdata/**'
+            # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
+            any:
+              - '**'
+            linuxcnc_image:
+              - 'docker/linuxcnc/**'
+            # The user guide and what builds or publishes it (decision 0400). Markdown counts here: the
+            # guide's pages are Markdown.
+            docs:
+              - 'user-docs/**'
+              - '.github/actions/user-docs/**'
+              - '.github/workflows/docs-site.yml'
+      # The heavy jobs ignore Markdown. `some-with-excludes` (not the default `some`, where '!**/*.md'
+      # would match every other file) matches a file that matches a pattern and no '!' pattern, so a
+      # Markdown file never turns a heavy filter on, whatever directory it is in (decision 0249).
+      # The quantifier is per step, so these filters have a step of their own.
+      # v4.0.3 is the first release with `some-with-excludes`; the moving `v4` tag is not relied on.
+      - uses: dorny/paths-filter@v4.0.3
+        id: heavy
+        if: github.event_name != 'schedule'
+        with:
+          predicate-quantifier: some-with-excludes
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'apps/**'
+              - 'xtask/**'
+              - 'benches/**'
+              - 'fuzz/**'
+              - 'testdata/**'
+              - 'tools/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
+              - 'rustfmt.toml'
+              - 'deny.toml'
+              - 'about.toml'
+              - 'about.hbs'
+              - '.cargo/**'
+              - '.config/**'
+              - '.github/workflows/**'
+              - '!**/*.md'
+            # The STEP kernel build (decision 0003): only what can change the wrapper, its
+            # inputs or what is compared with it. A docs or posts change never gets here.
+            step:
+              - 'crates/openchuck-import/**'
+              - 'crates/openchuck-types/**'
+              - 'crates/openchuck-path/**'
+              - 'crates/openchuck-app/**'
+              - 'crates/openchuck-geom/**'
+              - 'testdata/step/**'
+              - 'testdata/golden/reference/drilling_*'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'deny.toml'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/occt/**'
+              - '!**/*.md'
+            gate3:
+              - 'crates/openchuck-types/**'
+              - 'crates/openchuck-post/**'
+              - 'crates/openchuck-gcode/**'
+              - 'crates/openchuck-app/**'
+              - 'apps/openchuck-cli/**'
+              - 'testdata/golden/**'
+              - 'tools/linuxcnc/**'
+              - 'docker/linuxcnc/**'
+              - 'xtask/**'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            fuzz:
+              - 'fuzz/**'
+              - 'crates/openchuck-gcode/**'
+              - 'crates/openchuck-post/**'
+              - 'crates/openchuck-types/**'
+              - 'crates/openchuck-project/**'
+              - 'crates/openchuck-geom/**'
+              - 'crates/openchuck-import/**'
+              - 'testdata/stl/**'
+              # The fuzz job itself, so a change to it is run by its own pull request.
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+
+      # Which run this is (decision 0358, Option 4). A scheduled run is full and due everywhere. A push to
+      # `main` is light only when the pushed commit's git tree is the tree a full green pull request run
+      # tested; every failure, ambiguity or missing piece below means full.
+      - name: Work out the run mode and the due jobs
+        id: mode
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          F_RUST: ${{ steps.heavy.outputs.rust }}
+          F_STEP: ${{ steps.heavy.outputs.step }}
+          F_GATE3: ${{ steps.heavy.outputs.gate3 }}
+          F_FUZZ: ${{ steps.heavy.outputs.fuzz }}
+          F_RECORDS: ${{ steps.filter.outputs.records }}
+          F_ANY: ${{ steps.filter.outputs.any }}
+          F_IMAGE: ${{ steps.filter.outputs.linuxcnc_image }}
+        run: bash tools/ci/main-run-mode.sh
+
+  # The simulator runs in real time. Bounded first-cut fixtures are expanded before
+  # the golden programs and fixtures are dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
+  # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
+  # programs fails, and `needs: gate3` in the aggregator waits for all three.
+  gate3:
+    name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 3)
+    needs: changes
+    if: needs.changes.outputs.gate3 == 'true' && github.event.pull_request.draft != true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Built from docker/linuxcnc by the linuxcnc-image workflow; if it has not been
+      # published yet (or the Dockerfile changed in this pull request) it is built here.
+      LINUXCNC_IMAGE: ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Get the LinuxCNC image
+        env:
+          IMAGE_CHANGED: ${{ needs.changes.outputs.linuxcnc_image }}
+        run: |
+          if [ "$IMAGE_CHANGED" = "true" ]; then
+            docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
+          else
+            docker pull "$LINUXCNC_IMAGE" || docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
+          fi
+      # Every LinuxCNC golden program runs in the headless XYZA simulator and is compared
+      # with the replay of the same file (verification plan section 6, gate 3).
+      - name: Replay the golden programs in LinuxCNC
+        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/3" --keep-reports target/replay
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gate3-reports-${{ matrix.shard }}
+          path: target/replay
+          if-no-files-found: ignore
+
+  # Every OS splits the test run over two jobs (decision 0052, Option 4; dealt by binary and measured
+  # time since decision 0358, Option 3, see SHARD1_BINARIES below). Shard 1 also runs clippy, the doctests and
+  # the examples, which the other shards would only repeat. The partition check below fails a job whose
+  # shares are empty or do not add up to the full list, so no test goes unrun.
+  build-test:
+    name: Build and test (${{ matrix.os }}, shard ${{ matrix.shard }} of ${{ matrix.shards }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.bt_matrix) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      SHARD1_BINARIES: >-
+        openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
+        openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
+        openchuck-path::simultaneous openchuck-path::helical_faces
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: shard-${{ matrix.shard }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: clippy (deny warnings, unwrap and unchecked indexing)
+        if: matrix.shard == 1
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The two shares are dealt by test binary, by measured time (decision 0358, Option 3, OI-1412):
+      # share 1 runs the binaries listed in SHARD1_BINARIES, share 2 runs every other test (the exact
+      # complement), so a new test or binary always runs, in share 2 unless it is listed. The list was
+      # chosen from the per-test times of run 41096871005 on all three systems so that both shares hold
+      # about half of the test time on each (Ubuntu 18.4 and 18.7 min of 4-thread time, Windows 23.5
+      # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
+      # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
+      # removed), if either share is empty or if the shares do not add up to the full list.
+      # Re-dealt 1 Nov 2026 (issue #438) from run 41302204775, where share 2 had grown to 149 cpu-minutes
+      # against 90 (Ubuntu 42.5 and 28.1 min, Windows 40.4 and 22.2, macOS 42.4 and 22.9): openchuck-path::simultaneous
+      # and helical_faces moved to share 1, expected about 35 and 36 min on the slowest share.
+      - name: Check the test partition
+        shell: bash
+        run: |
+          list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          total=$(list | wc -l)
+          n1=$(list -E "$shard1" | wc -l)
+          n2=$(list -E "not ($shard1)" | wc -l)
+          echo "full list: $total tests; share 1: $n1; share 2: $n2"
+          for b in $SHARD1_BINARIES; do
+            n=$(list -E "binary_id(=$b)" | wc -l)
+            if [ "$n" -eq 0 ]; then
+              echo "::error title=Listed test binary has no tests::$b in SHARD1_BINARIES matches no test; rename or remove it"
+              exit 1
+            fi
+          done
+          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ]; then
+            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2"
+            exit 1
+          fi
+          if [ $((n1 + n2)) -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::$n1 + $n2 is not the full list of $total"
+            exit 1
+          fi
+      - name: Tests
+        shell: bash
+        run: |
+          shard1=""
+          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
+          if [ "${{ matrix.shard }}" = 1 ]; then filter="$shard1"; else filter="not ($shard1)"; fi
+          cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
+      - name: Doctests
+        if: matrix.shard == 1
+        run: cargo test --workspace --doc --locked
+      # bash, so a failing example is not hidden behind the next one on the Windows leg (pwsh
+      # reports only the last command's exit code).
+      - name: Examples run
+        if: matrix.shard == 1
+        shell: bash
+        run: |
+          cargo run --locked -p openchuck-types --example kinematics
+          cargo run --locked -p openchuck-geom --example check_and_place
+          cargo run --locked -p openchuck-path --example host
+
+  ui-smoke:
+    name: UI smoke test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.others == 'true' && github.event.pull_request.draft != true
+    # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
+    # application, software-rendered where the runner has no GPU (decision
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb. Windows (WARP) and
+    # macOS (the runner's Metal device) are proven on hosted runners (OI-129), so
+    # all three legs block: a failed leg fails this job and so `CI required checks`
+    # (owner's decision, 17 Oct 2026, OI-320). Every leg must find an adapter: the
+    # render tests skip their assertions without one unless OPENCHUCK_REQUIRE_ADAPTER
+    # is set, and a blocking leg must not pass by skipping. The Linux leg runs on
+    # the pinned ubuntu-24.04 image, not ubuntu-latest, which moved to Ubuntu
+    # 26.04 (Mesa 26.0.8, LLVM 21.1.8) on 27 Oct 2026 and crashes the render tests
+    # with SIGSEGV; the job name still reads `ubuntu-latest` (decision 0250,
+    # OI-1002).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runner: ubuntu-24.04
+            require_adapter: "1"
+          - os: windows-latest
+            require_adapter: "1"
+          - os: macos-latest
+            require_adapter: "1"
+    runs-on: ${{ matrix.runner || matrix.os }}
+    timeout-minutes: 30
+    env:
+      OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Software Vulkan and a virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # xvfb-run needs xauth, which the xvfb package only recommends.
+          # winit loads libxkbcommon-x11 (and may load the other X11 client
+          # libraries) at run time; the bare runner lacks them.
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
+            libxkbcommon-x11-0 libxkbcommon0 libx11-xcb1 libxcursor1 libxrandr2 libxi6
+      - name: Viewport render tests
+        shell: bash
+        run: |
+          if [ -z "$OPENCHUCK_REQUIRE_ADAPTER" ]; then unset OPENCHUCK_REQUIRE_ADAPTER; fi
+          cargo test --locked -p openchuck-viewport --test render -- --nocapture
+      - name: Launch the application (3 s scripted camera path)
+        shell: bash
+        run: |
+          cargo build --locked -p openchuck-ui
+          run() { "$@" ./target/debug/openchuck-ui --bench testdata/stl/cube_ascii.stl --seconds 3; }
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            run xvfb-run -a -s "-screen 0 1920x1080x24" > launch.log 2>&1
+          else
+            run > launch.log 2>&1
+          fi
+          code=$?
+          set -e
+          cat launch.log
+          # 0 passes and 2 fails the frame-time limit; either means the
+          # window opened, drew and closed. Anything else is a failure, and
+          # the end of the output becomes an annotation on the check page.
+          echo "exit code $code"
+          if [ "$code" != 0 ] && [ "$code" != 2 ]; then
+            tail -n 25 launch.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+            echo "::error title=UI launch failed (exit $code)::$(cat tail.txt)"
+            exit 1
+          fi
+
+  # OpenCASCADE 7.8.1 is built from source by occt-sys (cold: 8 to 9 min on macOS arm64, 32 to 51 min
+  # on Linux, 48 to 71 min on Windows, decision 0003), so the finished install is cached per platform
+  # on its own (.github/actions/occt, decision 0039) and saved even when a later step fails. The job runs only when a change can affect the wrapper. The other
+  # jobs exclude the kernel: it is behind the `kernel` feature of openchuck-import.
+  step-kernel:
+    name: STEP kernel (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.step == 'true' && github.event.pull_request.draft != true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Linux leg runs on ubuntu-latest (Ubuntu 26.04) again: the worker's SIGSEGV there was
+          # OpenCASCADE's type registry destroyed before other toolkits' statics at exit, fixed in
+          # cpp/occ_step.cpp (decision 0490, which ends decision 0251's pin; OI-1003). This leg is the
+          # pull request guard against shipping a Linux worker that crashes at exit.
+          - os: ubuntu-latest
+          - os: windows-latest
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # OpenCASCADE comes from its own cache (decision 0039), keyed on the occt-sys version, so a
+      # manifest change no longer rebuilds it; rust-cache keeps the Rust dependencies.
+      - uses: ./.github/actions/occt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: step-kernel
+          cache-on-failure: true
+      - name: Tool versions
+        shell: bash
+        run: rustc --version; cmake --version | head -1
+      - name: Build the kernel, the wrapper and the worker
+        run: cargo build --locked -p openchuck-import --features kernel --bins
+      - name: clippy on the wrapper (deny warnings)
+        run: cargo clippy --locked -p openchuck-import --features kernel --all-targets -- -D warnings
+      # The examples and tests behind `kernel-tests` are skipped by the workspace clippy job, which
+      # builds without the kernel (OI-1340). Clippy only checks, so this is one leg: the Linux one.
+      - name: clippy on the kernel-tests examples and tests (deny warnings)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo clippy --locked --workspace --all-targets --features openchuck-app/kernel-tests -- -D warnings
+      # Import, numbering, units, tessellation, the corpus, the crash and malformed files, and the
+      # worker exiting cleanly (the link order contract of decision 0003).
+      - name: Import tests
+        run: cargo test --locked -p openchuck-import --features kernel
+      # Exact evaluation against the kernel itself (decision 0017: the SP-9 comparison, kept).
+      - name: Exact surfaces against the kernel
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_exact
+      # B-rep edges of the corpus as edge chains (OP-08, decision 0053); needs the worker built above.
+      - name: B-rep edge chains of the STEP corpus
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
+      # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
+      # the `drilling` reference job against its golden files on every platform (OI-28), every
+      # strategy on corpus STEP parts against the exact B-rep, and a STEP part's faces and edges
+      # picked, saved and the same after reopening and a second import (decision 0066).
+      - name: STEP parts through the application
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
+      # The STEP accuracy measurement (decision 0211): its functions checked on closed forms, and
+      # the measuring example built so it keeps compiling. The measurement itself is run by hand.
+      # bash, so the test's failure is not hidden behind the build on the Windows leg (pwsh
+      # reports only the last command's exit code).
+      - name: STEP accuracy measurement
+        shell: bash
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
+      # The exact face and trim queries on the corpus (lane STEPALL-X1, OI-839), and the measuring
+      # example built so it keeps compiling. The measurement itself is run by hand.
+      # bash, so the test's failure is not hidden behind the build on the Windows leg (pwsh
+      # reports only the last command's exit code).
+      - name: STEP exact queries
+        shell: bash
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_queries
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_queries
+      - name: Mutation run through the importer (NFR-07)
+        run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
+
+  libraries-alone:
+    name: Each library alone (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.others == 'true' && github.event.pull_request.draft != true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack,cargo-nextest
+      # The library family builds and tests on its own, without the C++
+      # toolchain, GPU libraries or application crates (architecture section 12).
+      - name: Build each library crate on its own
+        run: >
+          cargo hack check --no-dev-deps
+          --package openchuck-types --package openchuck-path
+          --package openchuck-post --package openchuck-gcode
+          --package openchuck-geom --package openchuck-sim --package openchuck-project
+      # nextest runs a crate's test binaries side by side (cargo test runs them one after another:
+      # 21 to 24 min a leg, mostly openchuck-path), and the crate is still built and tested alone, one
+      # `-p` at a time. nextest does not run doctests, so they follow (decision 0358, Option 2, OI-1411).
+      - name: Test each library-family crate on its own
+        shell: bash
+        run: |
+          for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
+            cargo nextest run --locked --no-fail-fast --no-tests=fail -p "$crate"
+            cargo test --locked --doc -p "$crate"
+          done
+      # The library family packages and builds from its packages alone, as `cargo publish` would
+      # (OI-302, decision 0138). Once is enough: packaging does not depend on the platform.
+      - name: Publish dry run of the library family
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          cargo publish --dry-run --locked
+          -p openchuck-types -p openchuck-gcode -p openchuck-path -p openchuck-post
+
+  # The checks of about two minutes or less that are not specific to an operating system share
+  # one Linux job that runs beside the long jobs, so a code change needs one runner for them
+  # instead of six (decision 0052, Option 8). Each check is its own step and keeps the condition
+  # its job had: `rust` for all but the repository checks (`rust` or `records`), and the semver
+  # check only on a pull request. Every step after the first check runs even when an earlier one
+  # failed (`if: always()`), so one run names every failing check; the last step fails the job if
+  # a check that was due did not succeed, so a wrong condition cannot pass quietly. There is no
+  # `continue-on-error`: a failed step fails the job, which fails `CI required checks`.
+  fast-checks:
+    name: Fast checks (rustfmt, xtask, deny, audit, notices, semver)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true' || needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    env:
+      RUST: ${{ needs.changes.outputs.rust }}
+      RECORDS: ${{ needs.changes.outputs.records }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The semver check compares with the pull request's base commit.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: fast-checks
+      - uses: taiki-e/install-action@v2
+        if: needs.changes.outputs.rust == 'true'
+        with:
+          tool: cargo-audit,cargo-about,cargo-semver-checks
+      - name: rustfmt
+        id: fmt
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo fmt --all --check
+      - name: Dependency rules (architecture sections 4 and 12)
+        id: deps
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask deps
+      - name: SPDX headers and crate licences (NFR-10)
+        id: licences
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask licences
+      - name: Dependency pins and records (NFR-14)
+        id: records
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask records
+      - name: Test-data size policy
+        id: testdata
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask testdata
+      - name: Library family ready for crates.io (decision 0138)
+        id: publish
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo xtask publish
+      # The light-run decision of the `changes` job, against a fake `gh` (decision 0358, Option 4).
+      - name: Main-run mode logic (light or full)
+        run: bash tools/ci/main-run-mode.test.sh
+        if: always() && needs.changes.outputs.rust == 'true'
+      - name: Unresolved merge conflict markers
+        id: conflicts
+        if: always()
+        run: cargo xtask conflicts
+      - name: Traceability report
+        id: trace
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask trace --report target/traceability.md
+      - uses: actions/upload-artifact@v7
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        with:
+          name: traceability-report
+          path: target/traceability.md
+          if-no-files-found: ignore
+      - name: cargo deny (licences, advisories, sources)
+        id: deny
+        if: always() && needs.changes.outputs.rust == 'true'
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - name: cargo audit
+        id: audit
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo audit --deny warnings
+      - name: Licence notices (cargo about)
+        id: about
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
+      - uses: actions/upload-artifact@v7
+        if: always() && needs.changes.outputs.rust == 'true'
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.html
+          if-no-files-found: ignore
+      # Compares the public API with the pull request's base (INT-07). Crates
+      # that do not exist on the base yet are skipped.
+      - name: cargo semver-checks
+        id: semver
+        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
+            if git cat-file -e "$BASE:crates/$crate/Cargo.toml" 2>/dev/null; then
+              cargo semver-checks --package "$crate" --baseline-rev "$BASE"
+            else
+              echo "$crate is new in this change; no baseline"
+            fi
+          done
+      # Fails the job when a check that was due did not succeed. A step skipped by a wrong
+      # condition, or cancelled, counts as not run here, so it cannot read as a pass.
+      - name: Every check that was due ran and passed
+        if: always()
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          FMT: ${{ steps.fmt.outcome }}
+          DEPS: ${{ steps.deps.outcome }}
+          LICENCES: ${{ steps.licences.outcome }}
+          RECORDS_STEP: ${{ steps.records.outcome }}
+          TESTDATA: ${{ steps.testdata.outcome }}
+          CONFLICTS: ${{ steps.conflicts.outcome }}
+          PUBLISH: ${{ steps.publish.outcome }}
+          TRACE: ${{ steps.trace.outcome }}
+          DENY: ${{ steps.deny.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+          ABOUT: ${{ steps.about.outcome }}
+          SEMVER: ${{ steps.semver.outcome }}
+        run: |
+          bad=""
+          # check NAME DUE OUTCOME: DUE is "true" when the check should have run.
+          check() {
+            echo "$1: due=$2 outcome=$3"
+            if [ "$2" = true ] && [ "$3" != success ]; then bad="$bad, $1 ($3)"; fi
+          }
+          repo=false; if [ "$RUST" = true ] || [ "$RECORDS" = true ]; then repo=true; fi
+          check rustfmt "$RUST" "$FMT"
+          check "xtask deps" "$repo" "$DEPS"
+          check "xtask licences" "$repo" "$LICENCES"
+          check "xtask records" "$repo" "$RECORDS_STEP"
+          check "xtask testdata" "$repo" "$TESTDATA"
+          check "xtask conflicts" true "$CONFLICTS"
+          check "xtask publish" "$RUST" "$PUBLISH"
+          check "xtask trace" "$repo" "$TRACE"
+          check "cargo deny" "$RUST" "$DENY"
+          check "cargo audit" "$RUST" "$AUDIT"
+          check "cargo about" "$RUST" "$ABOUT"
+          semver=false; if [ "$RUST" = true ] && [ "$EVENT" = pull_request ]; then semver=true; fi
+          check "cargo semver-checks" "$semver" "$SEMVER"
+          if [ -n "$bad" ]; then
+            echo "::error title=Fast checks did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "Every check that was due ran and passed."
+
+  # Ten targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three or
+  # four that share a toolchain install, a cargo-fuzz install and a build cache, instead of ten jobs
+  # that each set up and build from scratch (decision 0052, Option 7; `project_folder` joined group
+  # A in decision 0107). Every target still gets its
+  # own minute and its own seeded corpus; a failing target is named in the annotation and does not
+  # stop the others in its job from running.
+  fuzz-smoke:
+    name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - name: A
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder
+          - name: B
+            targets: project_files project_recovery stl_import tool_library_toml
+          - name: C
+            targets: tool_profile_toml gcode_reader post_definition
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: fuzz
+          key: fuzz-smoke
+      - name: Seed the STL corpus from testdata
+        if: contains(format(' {0} ', matrix.group.targets), ' stl_import ')
+        run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
+      - name: Seed the machine profile corpus from the built-in profiles
+        if: contains(format(' {0} ', matrix.group.targets), ' machine_profile_toml ')
+        run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
+      - name: Seed the tool library corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_library_toml ')
+        run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/library/*.toml testdata/tools/library/tool-sets/*.toml testdata/tools/broken/*.toml fuzz/corpus/tool_library_toml/
+      - name: Seed the tool profile corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_profile_toml ')
+        run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
+      - name: Seed the G-code corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' gcode_reader ')
+        run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
+      - name: Seed the post definition corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' post_definition ')
+        run: |
+          mkdir -p fuzz/corpus/post_definition
+          for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the recovery checkpoint corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' project_recovery ')
+        run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
+      - name: Seed the project file corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
+        run: |
+          mkdir -p fuzz/corpus/project_files
+          # The first byte picks the kind of file, as in the target: 0 project, 1 machine, 2 setup,
+          # 3 tool, 4 selection set, 5 operation.
+          find crates/openchuck-project/tests/fixtures -name '*.toml' | sort | while read -r f; do
+            case "$f" in
+              */project.toml) k='\x00' ;; */machine.toml) k='\x01' ;; */setups/*) k='\x02' ;;
+              */tools/*) k='\x03' ;; */selections/*) k='\x04' ;; */operations/*) k='\x05' ;; *) continue ;;
+            esac
+            { printf "$k"; cat "$f"; } > "fuzz/corpus/project_files/$(echo "$f" | tr '/' '_')"
+          done
+      - name: Seed the project folder corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_folder ')
+        run: |
+          mkdir -p fuzz/corpus/project_folder
+          for d in crates/openchuck-project/tests/fixtures/*/; do
+            (cd "$d" && find . -name '*.toml' | sort | while read -r f; do printf '=== %s\n' "${f#./}"; cat "$f"; done) > "fuzz/corpus/project_folder/$(basename "$d")"
+          done
+      - name: Fuzz each target for one minute
+        shell: bash
+        env:
+          TARGETS: ${{ matrix.group.targets }}
+        run: |
+          failed=""
+          for target in $TARGETS; do
+            echo "::group::Fuzz $target"
+            set +e
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 -timeout=10 > "fuzz-$target.log" 2>&1
+            code=$?
+            set -e
+            cat "fuzz-$target.log"
+            echo "::endgroup::"
+            # On failure, the end of the output becomes an annotation on the
+            # check page, so the cause is visible without opening the log.
+            if [ "$code" != 0 ]; then
+              tail -n 25 "fuzz-$target.log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+              echo "::error title=Fuzz $target failed (exit $code)::$(cat tail.txt)"
+              failed="$failed $target"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "Failed targets:$failed"
+            exit 1
+          fi
+
+  # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
+  # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
+  # tests (Build and test runs every test, uninstrumented).
+
+  # The single status to require in the branch ruleset for `main` ("CI required checks").
+  # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
+  # required status that never reports blocks the merge. Requiring this one job
+  # avoids listing every job (and every matrix leg) in the ruleset. It always runs.
+  # - `changes` itself must succeed: if it fails, every other job is skipped and
+  #   the filter result is unknown, so that must not read as a pass.
+  # - A draft pull request fails here: its heavy jobs have not run (decision 0052). A
+  #   draft cannot be merged, and marking it ready starts a full run.
+  # - Otherwise every job whose path filter (or event) says it is due must have succeeded;
+  #   a due job that was skipped, failed or was cancelled fails the run. A job that is not
+  #   due may be skipped. So a skipped job passes only because a path filter or the event
+  #   turned it off, never because of the draft condition.
+  # To make a new job required, add it to `needs:` and to the list below; to make one
+  # advisory, remove it from both.
+  # The user guide (decision 0400, NFR-19): built and checked exactly as it is published
+  # (.github/actions/user-docs: the tools' tests, mdBook, check.py, lychee, the Nu HTML Checker),
+  # on a ready pull request that changes user-docs/ or what builds it. No project toolchain: the
+  # tools are cached after their first install. Part of `CI required checks` when due.
+  docs:
+    name: User guide
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The stamp names a commit and the screenshot check compares commits.
+          fetch-depth: 0
+      - uses: ./.github/actions/user-docs
+        with:
+          mode: preview
+
+  required:
+    name: CI required checks
+    if: always()
+    needs:
+      - changes
+      - gate3
+      - build-test
+      - ui-smoke
+      - step-kernel
+      - libraries-alone
+      - fast-checks
+      - fuzz-smoke
+      - docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check the required jobs
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if [ "$(echo "$NEEDS" | jq -r '.changes.result')" != "success" ]; then
+            echo "::error::The change-detection job did not succeed, so skipped jobs cannot be trusted"
+            exit 1
+          fi
+          if [ "$DRAFT" = true ]; then
+            echo "::error title=Draft pull request::The heavy checks have not run on a draft; mark the pull request ready for review to run them"
+            exit 1
+          fi
+          out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
+          res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
+          bad=""
+          # Every job in `needs` must be checked below: a job that is listed and never checked
+          # would pass without anyone looking at its result.
+          checked=" changes "
+          # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
+          check() {
+            local r
+            checked="$checked$1 "
+            r=$(res "$1")
+            if [ "$2" = true ]; then
+              [ "$r" = success ] || bad="$bad, $1 ($r, due)"
+            else
+              [ "$r" = skipped ] || [ "$r" = success ] || bad="$bad, $1 ($r)"
+            fi
+          }
+          check gate3 "$(out gate3)"
+          check build-test "$(out rust)"
+          check ui-smoke "$(out others)"
+          check libraries-alone "$(out others)"
+          check step-kernel "$(out step)"
+          fast=false
+          if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
+          check fast-checks "$fast"
+          fuzz=false
+          if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
+          check fuzz-smoke "$fuzz"
+          docs=false
+          if [ "$EVENT" = pull_request ] && [ "$(out docs)" = true ]; then docs=true; fi
+          check docs "$docs"
+          for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
+            case "$checked" in
+              *" $job "*) ;;
+              *) bad="$bad, $job (in needs, never checked)" ;;
+            esac
+          done
+          if [ -n "$bad" ]; then
+            echo "::error title=Required jobs did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "All required jobs passed or were turned off by their path filters."
+      # The tested tree for the light-run check on `main` (decision 0358, Option 4): written only by a
+      # pull request run that is not a draft and whose required jobs all passed (the step above fails
+      # otherwise). `full=true` only when the code jobs were due, so a docs-only run never counts.
+      - name: Record the tested tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUST: ${{ needs.changes.outputs.rust }}
+        run: |
+          set -euo pipefail
+          tree=$(gh api "repos/$REPO/git/commits/$SHA" --jq .tree.sha)
+          full=false
+          [ "$RUST" = true ] && full=true
+          printf 'tree=%s\nfull=%s\n' "$tree" "$full" > tested-tree.txt
+          cat tested-tree.txt
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+        with:
+          name: tested-tree
+          path: tested-tree.txt
+          retention-days: 30

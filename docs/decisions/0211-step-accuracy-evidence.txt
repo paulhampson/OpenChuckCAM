@@ -1,0 +1,397 @@
+SPDX-License-Identifier: AGPL-3.0-or-later
+STEPALL-M refreshed evidence, measured source 827fc45.
+BLOCKED: the main measurement and production CLI return exit status 1 on form-a gate 2.
+The probe returns 0 only because its diagnostics complete; its printed comparison results remain errors.
+Quick-stepover samples are not a certified accuracy bound or five-run performance measurement.
+No owner choice or methodology waiver is accepted.
+
+ENVIRONMENT
+{
+  "source_commit": "827fc45dd8736265d8504ab71bc8c5057ce9c664",
+  "main_commit": "a2605495d4e05d323d4cc3f85a4f4d6be118072f",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "cpu_max": "400000 100000",
+  "memory_max": "17179869184",
+  "cgroup_cpuset": "0-4",
+  "nproc": "5",
+  "rust": "1.97.0 (2d8144b78 2026-07-07)",
+  "cmake": "4.4.4",
+  "occt": "7.8.1 via occt-sys, static, release",
+  "build_jobs": 4,
+  "stl_sha256": "48351f42635f05eea09aaf77dd685e7b2bd564cd087b4a336fb29554a7e33f37",
+  "step_sha256": "0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646",
+  "cxx": "G++ 14.2.0 (Debian 14.2.0-19), C++17 wrapper",
+  "release_profile": "optimized + debuginfo; no coverage instrumentation",
+  "rayon_all_threads": 4,
+  "completed_london": "2026-10-24T00:51:34.989734+01:00",
+  "measurement_exit_code": 1,
+  "cli_diagnostic_exit_code": 1,
+  "probe_exit_code": 0,
+  "probe_exit_meaning": "diagnostic completed; gate 2 remained failed at both counts",
+  "form_a_posted_sha256_at_1_2_4_threads": "9c4d20200e5a70076e1e16c010fc170ae255bcb57f5c104c04d8940b773fc268",
+  "nextest": "0.9.149",
+  "llvm_cov": "0.9.1",
+  "cargo_deny": "0.20.2"
+}
+
+ORIGINAL STUB RED TESTS (EXPECTED FAILURE)
+   Compiling syn v3.0.7
+   Compiling once_cell v1.21.4
+   Compiling rustix v1.1.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling ahash v0.8.12
+   Compiling cavalier_contours v0.9.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling num-derive v0.5.1
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.12.0
+   Compiling thiserror v2.0.21
+   Compiling parry3d-f64 v0.31.1
+   Compiling serde v1.0.229
+   Compiling openchuck-types v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling minijinja v3.0.1
+   Compiling openchuck-gcode v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-gcode)
+   Compiling openchuck-geom v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-geom)
+   Compiling openchuck-path v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+   Compiling openchuck-sim v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
+   Compiling openchuck-import v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+   Compiling openchuck-post v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+   Compiling openchuck-project v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-project)
+   Compiling openchuck-testkit v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling openchuck-app v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.82s
+     Running tests/step_accuracy_checks.rs (target/debug/deps/step_accuracy_checks-7929041bce3ebdb0)
+
+running 3 tests
+test req_gc_09_m4_rejects_unclean_replay_even_when_output_is_identical ... ok
+test req_op_23_m4_gate_rejects_differing_harness_and_application_paths ... ok
+test req_gc_07_req_nfr_06_m4_rejects_changed_gcode_and_toolpaths ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/step_accuracy_posting.rs (target/debug/deps/step_accuracy_posting-796a085b5fc8574d)
+
+running 3 tests
+test req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors ... FAILED
+test req_gc_07_m4_posts_only_the_operations_that_generated_successfully ... FAILED
+test req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path ... FAILED
+
+failures:
+
+---- req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors stdout ----
+
+thread 'req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors' (3013) panicked at crates/openchuck-app/tests/step_accuracy_posting.rs:45:5:
+assertion failed: posting::post_run(&[], &job).is_err()
+
+---- req_gc_07_m4_posts_only_the_operations_that_generated_successfully stdout ----
+
+thread 'req_gc_07_m4_posts_only_the_operations_that_generated_successfully' (3011) panicked at crates/openchuck-app/tests/step_accuracy_posting.rs:37:5:
+assertion failed: !successful.is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path stdout ----
+
+thread 'req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path' (3012) panicked at crates/openchuck-app/tests/step_accuracy_posting.rs:18:5:
+M4 must compare posted motion, not empty output
+
+
+failures:
+    req_gc_07_m4_posts_only_the_operations_that_generated_successfully
+    req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path
+    req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p openchuck-app --test step_accuracy_posting`
+
+
+UNINSTRUMENTED NON-KERNEL TESTS
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+────────────
+ Nextest run ID 6682e967-0ddb-4ea4-8156-e457674e43ac with nextest profile: default
+    Starting 6 tests across 2 binaries
+        PASS [   0.011s] (1/6) openchuck-app::step_accuracy_checks req_gc_07_req_nfr_06_m4_rejects_changed_gcode_and_toolpaths
+        PASS [   0.009s] (2/6) openchuck-app::step_accuracy_checks req_op_23_m4_gate_rejects_differing_harness_and_application_paths
+        PASS [   0.012s] (3/6) openchuck-app::step_accuracy_checks req_gc_09_m4_rejects_unclean_replay_even_when_output_is_identical
+        PASS [   0.008s] (4/6) openchuck-app::step_accuracy_posting req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors
+        PASS [   0.029s] (5/6) openchuck-app::step_accuracy_posting req_gc_07_m4_posts_only_the_operations_that_generated_successfully
+        PASS [   0.017s] (6/6) openchuck-app::step_accuracy_posting req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path
+────────────
+     Summary [   0.029s] 6 tests run: 6 passed, 0 skipped
+
+
+NATIVE TESTS
+    Blocking waiting for file lock on build directory
+   Compiling openchuck-app v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `release` profile [optimized + debuginfo] target(s) in 10m 50s
+────────────
+ Nextest run ID 9f973dfb-5c60-4b6c-b1f0-4f66d97d13a6 with nextest profile: default
+    Starting 10 tests across 3 binaries
+        PASS [   1.508s] ( 1/10) openchuck-app::step_accuracy req_imp_06_the_tessellation_error_is_measured_on_the_triangles_not_taken_from_the_setting
+        PASS [   0.428s] ( 2/10) openchuck-app::step_accuracy req_op_12_a_mesh_is_sampled_by_its_area_and_read_like_the_exact_faces
+        PASS [   1.531s] ( 3/10) openchuck-app::step_accuracy req_op_12_a_moves_middle_and_quarters_lie_on_the_machines_straight_move
+        PASS [   1.514s] ( 4/10) openchuck-app::step_accuracy req_op_12_a_pose_reads_its_gouge_and_its_gap_against_the_exact_faces
+        PASS [   0.004s] ( 5/10) openchuck-app::step_accuracy_checks req_gc_07_req_nfr_06_m4_rejects_changed_gcode_and_toolpaths
+        PASS [   0.003s] ( 6/10) openchuck-app::step_accuracy_checks req_gc_09_m4_rejects_unclean_replay_even_when_output_is_identical
+        PASS [   0.003s] ( 7/10) openchuck-app::step_accuracy_checks req_op_23_m4_gate_rejects_differing_harness_and_application_paths
+        PASS [   0.005s] ( 8/10) openchuck-app::step_accuracy_posting req_gc_07_m4_posts_only_the_operations_that_generated_successfully
+        PASS [   0.005s] ( 9/10) openchuck-app::step_accuracy_posting req_gc_07_req_nfr_06_m4_posts_repeatable_bytes_for_a_measured_path
+        PASS [   0.004s] (10/10) openchuck-app::step_accuracy_posting req_nfr_07_m4_refuses_an_empty_program_and_propagates_post_errors
+────────────
+     Summary [   5.005s] 10 tests run: 10 passed, 0 skipped
+
+
+FULL M2/M4 QUICK RUN (EXIT 1)
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.11s
+     Running `target/release/examples/step_accuracy --only m2,m4 --forms a,b,c --fine 0.01 --angular 0.02 --stl /workspace/owner-blisk.stl --quick --keep /workspace/stepall-evidence/project`
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+owner's blisk.stl moved by Vec3 { x: 10.0, y: 0.0, z: 0.0 } to sit on the STEP part
+owner's blisk.stl: 6386 triangles, vertices up to 0.0313 mm from the exact faces
+form c deflection: 0.01 mm and 0.02 rad
+exact samples: 5307226 points, 0.05 mm apart
+
+## form a (owner's blisk.stl): 6386 triangles
+### M2: the cut against the exact faces
+operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses
+roughing | 0.3 | 38840 | 0.0000 | 0.0000 | 0.0593 | 0.0136 | 0.0593 | 6587
+rest | 0 | 67104 | 0.0709 | 0.0709 | 0.0614 | 0.0709 | 0.0605 | 55123
+pencil | 0 | 14060 | 0.0244 | 0.0244 | 0.0415 | 0.0256 | 0.0403 | 9743
+helical | 0 | 67104 | 0.0709 | 0.0709 | 0.0614 | 0.0709 | 0.0605 | 55123
+axial | 0 | 62460 | 0.0777 | 0.0777 | 0.0533 | 0.0780 | 0.0533 | 57401
+indexed | 0 | 2348 | 0.0702 | 0.0702 | 0.0600 | 0.0704 | 0.0602 | 2091
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.771, A 3565.997 within the tolerance: it would cut 0.0485 mm into the surface; reduce the largest tilt or the largest angle step
+### M4: the toolpath at 1, 2 and 4 threads
+2 threads: toolpath and posted G-code identical
+4 threads: toolpath and posted G-code identical
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M2: the cut against the exact faces
+operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses
+roughing | 0.3 | 38868 | 0.0000 | 0.0000 | 0.0091 | 0.0264 | 0.0072 | 7360
+rest | 0 | 73468 | 0.0421 | 0.0421 | 0.0097 | 0.0422 | 0.0086 | 61140
+pencil | 0 | 9860 | 0.0340 | 0.0335 | 0.0086 | 0.0346 | 0.0084 | 6775
+helical | 0 | 73460 | 0.0421 | 0.0421 | 0.0097 | 0.0422 | 0.0086 | 61132
+axial | 0 | 94016 | 0.0414 | 0.0407 | 0.0089 | 0.0426 | 0.0087 | 86522
+indexed | 0 | 2328 | 0.0316 | 0.0316 | 0.0073 | 0.0319 | 0.0074 | 2062
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.175, A 3862.777 within the tolerance: it would cut 0.0180 mm into the surface; reduce the largest tilt or the largest angle step
+### M4: the toolpath at 1, 2 and 4 threads
+2 threads: toolpath and posted G-code identical
+4 threads: toolpath and posted G-code identical
+
+## form c (STEP, finer tessellation): 106928 triangles
+### M2: the cut against the exact faces
+operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses
+roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0050 | 0.0040 | 0.0042 | 7616
+rest | 0 | 68240 | 0.0058 | 0.0047 | 0.0042 | 0.0052 | 0.0051 | 62275
+pencil | 0 | 10100 | 0.0066 | 0.0007 | 0.0050 | 0.0022 | 0.0042 | 7288
+helical | 0 | 68232 | 0.0058 | 0.0047 | 0.0042 | 0.0052 | 0.0051 | 62267
+axial | 0 | 91204 | 0.0054 | 0.0049 | 0.0060 | 0.0062 | 0.0050 | 84572
+indexed | 0 | 2260 | 0.0051 | 0.0035 | 0.0031 | 0.0038 | 0.0044 | 2003
+simultaneous | 0 | refused: simultaneous finishing cannot keep the move to X 20.175, A 3862.858 within the tolerance: it would cut 0.0184 mm into the surface; reduce the largest tilt or the largest angle step
+### M4: the toolpath at 1, 2 and 4 threads
+2 threads: toolpath and posted G-code identical
+4 threads: toolpath and posted G-code identical
+
+## M4: the application's G-code at 1, 2 and 4 threads
+operation 'simultaneous' is turned off: the strategy refused it
+form b, 1 threads: regenerate 184.8 s, gates clean, G-code identical
+form b, 2 threads: regenerate 111.9 s, gates clean, G-code identical
+form b, 4 threads: regenerate 56.8 s, gates clean, G-code identical
+the library's form b path is the application's
+operation 'simultaneous' is turned off: the strategy refused it
+Error: "M4 failed: form a, 1 threads, replay gates is not clean"
+
+
+EARLIER ROUGHING/PENCIL FORM-B SMOKE
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.14s
+     Running `target/release/examples/step_accuracy --only m4 --forms b --ops roughing,pencil --fine 0.01 --angular 0.02 --quick --keep /workspace/stepall-evidence/form-b-smoke-project`
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/blisk.step
+part placed: X 10.000 to 60.000, Y -20.000 to 20.000, Z -20.000 to 20.000
+form c deflection: 0.01 mm and 0.02 rad
+exact samples: 5307226 points, 0.05 mm apart
+
+## form b (STEP, import tessellation 0.01 mm): 15936 triangles
+### M4: the toolpath at 1, 2 and 4 threads
+2 threads: toolpath and posted G-code identical
+4 threads: toolpath and posted G-code identical
+
+## M4: the application's G-code at 1, 2 and 4 threads
+form b, 1 threads: regenerate 29.7 s, gates clean, G-code identical
+form b, 2 threads: regenerate 23.0 s, gates clean, G-code identical
+form b, 4 threads: regenerate 24.7 s, gates clean, G-code identical
+the library's form b path is the application's
+project kept in /workspace/stepall-evidence/form-b-smoke-project
+
+
+REPOSITORY CHECKS
+trace: 99 of 99 P1 requirements have tests; report in /workspace/OpenChuckCAM/target/traceability.md
+deps: ok
+licences: ok
+records: ok
+testdata: ok
+conflicts: ok
+publish: ok
+trace: ok
+
+
+PRODUCTION CLI REPRODUCER (EXIT 1)
+OPENCHUCK_STEP_WORKER=/workspace/OpenChuckCAM/target/release/openchuck-step-worker RAYON_NUM_THREADS=4 cargo run --release -p openchuck-cli --locked -- --threads 1 regenerate /workspace/stepall-evidence/project.stl --post makera-z1 --tool-numbers keep --out /workspace/stepall-evidence/form-a-diagnostic
+
+/workspace/stepall-evidence/project.stl: 6 toolpath groups, 1 G-code files
+  01-setup-1.nc: replay does not match the toolpath: tip error 0.000912 mm is above 0.000867 mm
+Generated G-code must be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup.
+error: 1 G-code file(s) failed the checks above
+
+ROUNDING DIAGNOSTIC SOURCE
+This temporary file was copied to crates/openchuck-app/examples/stepall_replay_probe.rs, run with the same worker and RAYON_NUM_THREADS=4 using: cargo run --release -p openchuck-app --features kernel-tests --example stepall_replay_probe --locked. It was then removed from the checkout. It is diagnostic evidence, not a new product example, independent checker or accepted policy.
+
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Temporary diagnostic; source is retained in the lane evidence, not as a product example.
+use openchuck_app::{Application, PostSelection, Threads};
+use openchuck_types::kinematics::{MachinePosition, RotaryFrame, machine_xyz, tool_tip_in_model};
+use openchuck_types::geometry::Point3;
+use openchuck_types::units::Degrees;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for n in [4, 2] {
+        let mut app = Application::open(std::path::Path::new("/workspace/stepall-evidence/project.stl"), Threads::Exactly(n))?;
+        app.set_post(Some(PostSelection::parse("makera-z1")));
+        let result = app.regenerate()?;
+        let setup = app.project().setups().first().ok_or("no setup")?;
+        let frame = RotaryFrame::work(app.project().machine().ok_or("no machine")?, &setup.frame);
+        let (_, text) = result.gcode.first().ok_or("no G-code")?;
+        std::fs::write(format!("/workspace/stepall-evidence/form-a-probe-{n}.nc"), text)?;
+        for report in &result.reports {
+            println!("{n} threads: findings {:?}; comparison {:?}", report.findings, report.comparison);
+        }
+        let mut worst = 0.0_f64;
+        let mut detail = serde_json::Value::Null;
+        let replay = openchuck_gcode::replay(&openchuck_gcode::read(text).map_err(|e| format!("{e:?}"))?, openchuck_gcode::Dialect::MakeraZ1)?;
+        for (g, group) in result.toolpath.groups.iter().enumerate() {
+            for (i, pose) in std::iter::once(&group.start).chain(group.segments.iter().map(|s| &s.end)).enumerate() {
+                let xyz = machine_xyz(&frame, pose.tip, pose.a);
+                let rounded = Point3::new(openchuck_post::round_written(xyz.x, 3), openchuck_post::round_written(xyz.y, 3), openchuck_post::round_written(xyz.z, 3));
+                let a = openchuck_post::round_written(pose.a.0, 3);
+                let back = tool_tip_in_model(&frame, &MachinePosition {xyz: rounded, a: Degrees(a)});
+                let error = back.distance(pose.tip);
+                if error > worst {
+                    worst = error;
+                    let lines: Vec<_> = replay.moves().filter(|m| !m.machine && (m.to[0]-rounded.x).abs()<1e-8 && (m.to[1]-rounded.y).abs()<1e-8 && (m.to[2]-rounded.z).abs()<1e-8 && ((m.to[3]-a)/360.0 - ((m.to[3]-a)/360.0).round()).abs()<1e-8).map(|m| m.line).collect();
+                    detail = serde_json::json!({"group_index":g,"operation_tag":group.tags.operation,"pose_index":i,"tip":pose.tip,"a_exact":pose.a.0,"xyz_exact":xyz,"xyz_rounded":rounded,"a_rounded":a,"xyz_rounding_delta":[rounded.x-xyz.x,rounded.y-xyz.y,rounded.z-xyz.z],"a_rounding_delta_deg":a-pose.a.0,"rounding_only_tip_error_mm":error,"gcode_lines":lines});
+                }
+            }
+        }
+        println!("{n} threads rounding-only worst:\n{}", serde_json::to_string_pretty(&detail)?);
+        std::fs::write(format!("/workspace/stepall-evidence/form-a-rounding-{n}.json"), serde_json::to_vec_pretty(&detail)?)?;
+    }
+    Ok(())
+}
+
+
+ROUNDING DIAGNOSTIC OUTPUT (DIAGNOSTIC EXIT 0; BOTH GATE RESULTS FAIL)
+   Compiling openchuck-app v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `release` profile [optimized + debuginfo] target(s) in 1.32s
+     Running `target/release/examples/stepall_replay_probe`
+4 threads: findings []; comparison Err("tip error 0.000912 mm is above 0.000867 mm")
+4 threads rounding-only worst:
+{
+  "a_exact": 120.93751838129586,
+  "a_rounded": 120.938,
+  "a_rounding_delta_deg": 0.0004816187041427611,
+  "gcode_lines": [
+    31243
+  ],
+  "group_index": 2,
+  "operation_tag": "495b289a-bd0b-4dc5-92c6-1deb8ffa3845",
+  "pose_index": 2295,
+  "rounding_only_tip_error_mm": 0.0009120345106203881,
+  "tip": {
+    "x": 21.558251369535647,
+    "y": 38.60626192975822,
+    "z": -23.120484683710057
+  },
+  "xyz_exact": {
+    "x": 21.558251369535647,
+    "y": -0.016498447475797207,
+    "z": 45.000000000000014
+  },
+  "xyz_rounded": {
+    "x": 21.558,
+    "y": -0.016,
+    "z": 45.0
+  },
+  "xyz_rounding_delta": [
+    -0.0002513695356469725,
+    0.0004984474757972063,
+    -1.4210854715202004e-14
+  ]
+}
+2 threads: findings []; comparison Err("tip error 0.000912 mm is above 0.000867 mm")
+2 threads rounding-only worst:
+{
+  "a_exact": 120.93751838129586,
+  "a_rounded": 120.938,
+  "a_rounding_delta_deg": 0.0004816187041427611,
+  "gcode_lines": [
+    31243
+  ],
+  "group_index": 2,
+  "operation_tag": "495b289a-bd0b-4dc5-92c6-1deb8ffa3845",
+  "pose_index": 2295,
+  "rounding_only_tip_error_mm": 0.0009120345106203881,
+  "tip": {
+    "x": 21.558251369535647,
+    "y": 38.60626192975822,
+    "z": -23.120484683710057
+  },
+  "xyz_exact": {
+    "x": 21.558251369535647,
+    "y": -0.016498447475797207,
+    "z": 45.000000000000014
+  },
+  "xyz_rounded": {
+    "x": 21.558,
+    "y": -0.016,
+    "z": 45.0
+  },
+  "xyz_rounding_delta": [
+    -0.0002513695356469725,
+    0.0004984474757972063,
+    -1.4210854715202004e-14
+  ]
+}
+
+
+FORM-A PROGRAMS
+Direct byte comparison of the production CLI one-thread program and the application diagnostic programs at two/four threads: identical.
+SHA-256: 9c4d20200e5a70076e1e16c010fc170ae255bcb57f5c104c04d8940b773fc268
+The approximately 1.7 MB programs and trial STL remain outside the repository.
+
+
+CARGO DENY
+cargo deny --locked check (0.20.2): advisories ok, bans ok, licenses ok, sources ok
+
+
+FINAL DOCUMENT/REGISTER CHECKS
+trace: 99 of 99 P1 requirements have tests; report in /workspace/OpenChuckCAM/target/traceability.md
+deps: ok
+licences: ok
+records: ok
+testdata: ok
+conflicts: ok
+publish: ok
+trace: ok
+cargo xtask records was also rerun after the final historical/current wording reconciliation: records ok.

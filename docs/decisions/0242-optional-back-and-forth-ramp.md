@@ -1,0 +1,43 @@
+# 0242: Optional back-and-forth ramp entry
+
+- **Status:** accepted directly by the project owner on 24 October 2026 after complete-record review: "Accept 0239". The one-cutting-diameter minimum and refusal wording were approved directly beforehand. Administratively renumbered from provisional 0239 to 0242 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance. The owner reaffirmed the unchanged acceptance after each complete renumbered record was presented, relayed by Merge Manager in [PR340 comment6400352887](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400352887) on 25 October 2026.
+- **Date:** 24 October 2026.
+- **Lane / issue:** ROUGHPATH, #291; rotary boundaries follow accepted 0241.
+- **Requirements:** OP-03, OP-11/12/13/14, SET-09, OP-21, GC-07, NFR-04/06/07/12 and configured machine/post limits.
+- **Allocation:** 0242, assigned by [Merge Manager on 25 October 2026](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400185337), replacing this lane's former provisional 0239. The coordinator's audit confirms merged SIMUI owns 0238, FINSTEP retains reservation 0239, and merged OUTPUT-1 owns 0240. This administrative reconciliation changes no substantive rule or owner acceptance. No OI or project-schema number is claimed.
+
+## Evidence
+
+The historical `blisk_bad_roughing` project is on `origin/claude/upbeat-davinci-jk46yd`, not main. Its saved entry is plunge. A separately migrated copy with ramp entry explicitly set to 3 degrees reproduces the pass-1563 refusal: a 37.506 mm run starts where stock is 0.078 mm above the rapid's intended stop. It refused after 263.514 seconds. The tool is the Z1 O-flute metal 3.175 x 12. This establishes the existing refusal, not that a shorter reversing entry fits. No hardware/material-removal verification is claimed.
+
+## Accepted decision
+
+1. Add common parameter `ramp_back_and_forth`, default false, applicable only to ramp entry. Keep the existing single-line path when absent or false, including its refusal behavior. Compare byte-identical G-code with the option absent and explicitly false at the same rotary policy and software version. A true value with another entry style has no motion effect and is identified as inactive in the parameter form.
+
+2. Implement the option once in shared entry assembly for strategies using that service. Keep A and the tool axis fixed throughout entry. Search a straight corridor along the existing entry direction at the first cut point, using deterministic candidate order and bounded subdivision. A candidate must connect to the first cut point and pass complete sweep checks. Clear endpoints or ordinary warn-only sampling cannot certify it. A missing direction, an unprovable corridor or unsupported clearance input refuses the selected optional entry rather than substituting a plunge.
+
+3. The minimum usable tool-centre travel is one cutting diameter, using the complete cutting profile's maximum diameter conservatively for tapered/custom tools. For the reported tool it is 3.175 mm. The full cutting and shank envelope, target, stock, held regions, tabs and machine constraints must also fit. The diameter threshold alone is no clearance proof. Approved refusal: “Back-and-forth ramp needs at least {minimum} mm of usable tool-centre travel; only {verified} mm could be verified. Choose another entry or change the entry geometry.” When no positive length is proved, report zero verified length, without claiming all alternatives are geometrically impossible.
+
+4. Descend on every reversing leg at no more than the configured ramp angle. Start at a stock-clear, checked approach height. Reverse at deterministic corridor endpoints without a separate vertical plunge. Stop descent exactly at the requested target depth, allowing a shorter final leg. If that leg ends inside the corridor, connect at target depth to the first cut point by a separately checked fed move. Use `LeadIn` and the existing plunge feed, with the shared axis-limit/feed timing rules. Do not change cutting passes to make the entry fit.
+
+5. Supply explicit clearance inputs for the whole target and protected geometry, the complete configured tool body and machine travel. Selected-region or warn-only surfaces cannot serve as the clearance certificate. For each straight fixed-A leg, prove the entire swept envelope: a conservative tool inflation covering each bounded subinterval's lateral motion, checked at its minimum height, may enclose the continuous sweep. Include stock-to-leave and the documented geometric tolerance. Apply the existing target/refusal checks additionally to every leg, reversal, initial approach and final connection. Check protected geometry without allowing a warn-only overcut. Refuse if the surface/tool representation cannot establish the bound; do not silently replace it with point sampling. Keep coverage, finished target surfaces and protected geometry distinct.
+
+6. Bound one entry to 10,000 descending legs and 100,000 clearance subintervals. Check cancellation during search, certification and emission. Reject non-finite arithmetic, a leg that cannot reduce height at machine precision, insufficient verified length or exhausted bounds with an actionable refusal. Determine the leg count before allocating/emitting the entry; do not return a partial operation. Do not recommend reducing the angle to remedy insufficient length.
+
+7. Explain that repeated entry passes can engage the full tool width as a slot. The option, minimum length and geometric checks do not validate feeds, tool suitability or G-code for machining. Preserve the existing NFR-12 verification notice. No new machine trial is implied.
+
+8. The parameter uses the existing operation parameter map and flag value type. Existing projects omit it and retain false behavior; an older generator refuses an unfamiliar parameter at generation. No structural persistence change is proposed. If implementation needs a project-format change, claim a schema number in the work breakdown before use. Shared public API changes follow decision 0048, with migration notes and the workspace minor bump. FACING/FINSTEP consume the shared interface after this lane merges; new facing planning and adaptive finishing remain theirs.
+
+## Verification and delivery
+
+Write requirement-based failing tests before implementation. Cover multiple legs, angle limits, partial final legs, exact minimum boundaries, impossible progress, bounded generation/cancellation, feeds and fixed A. Seed an obstacle between otherwise clear endpoints, a protected region reached only on a later leg, an unsafe reversal, a shank collision and an invalid final connection. Cover applicable roughing and other shared-entry strategies, absent/false byte identity and determinism at 1, 2 and available-N threads. Re-run the historical case and report success or the remaining specific refusal honestly.
+
+Update specifications, work breakdown, changelogs and registers in the implementation PR. Complete uninstrumented timing, long-test classification, changed-crate coverage and cleanup, formatting, lint and xtask checks. Stop any uninstrumented test exceeding ten minutes for an owner decision. Keep the lane PR draft for Merge Manager.
+
+## Alternatives and risks
+
+Half a diameter permits tighter spaces but adds short reversals; two diameters refuses more entries. The owner selected one diameter. Reversing ramps add engagement, direction changes and potentially long generation; conservative full-envelope certification may refuse an entry that a more capable geometric planner could find. The new checks require more explicit shared safety inputs than the current sampled entry code. Approval does not authorize weakening those checks to make the reported project generate.
+
+## Clearance-cost correction
+
+Accepted [0248](0248-ramp-clearance-budget.md) (RAMPBUDGET, #343; directly accepted under provisional 0247) changes certificate scheduling to conservative adaptive intervals and bounded exact-input reuse. It retains this record's motion rules, one-diameter minimum, global stock-clear start, 10,000 descending legs and 100,000-attempt entry limit. Every adaptive attempt, including inconclusive bounds and cache hits, consumes the shared budget. Protected geometry, machine constraints and the additional target checks remain independent. See [measurements and verification](../rampbudget-verification.md); the historical blisk's missing straight direction remains separate.

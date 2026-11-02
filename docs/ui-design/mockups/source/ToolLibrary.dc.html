@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tool library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.w{--bg:#1b1d21;--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--hd:#c3c9d1;--ac:#5aa9ff;--ok:#4cc38a;--er:#ff7b72;--bar:#15171a;--fld:#16181b;--sel:#264466;--seltx:#fff;--chip:#101215;width:1200px;height:760px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border:1px solid #4a5059}
+.w.light{--bg:#e6e9ed;--p:#f6f7f9;--p2:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--hd:#2f363d;--ac:#1d6ad0;--ok:#1b7f53;--er:#c22b2b;--bar:#dde1e6;--fld:#fff;--sel:#d4e5fb;--seltx:#0b2a52;--chip:#eef0f3}
+.w *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{height:28px;padding:0 12px;border:1px solid var(--ln);background:var(--p2);color:var(--tx);border-radius:3px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:#2f6fbd;border-color:#4a8fe0;color:#fff;font-weight:500}
+.btn.sm{height:24px;padding:0 8px}
+.ib{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--hd)}
+.fld{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--fld);border:1px solid var(--ln);border-radius:3px;height:26px;padding:0 8px;min-width:0}
+.fld span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.u{color:var(--mu);flex:none}
+.grp{padding:10px 12px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--mu)}
+.tr{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px 0 20px}
+.tr.sel{background:var(--sel);color:var(--seltx);box-shadow:inset 2px 0 0 var(--ac)}
+.nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:none;font-size:11px;padding:0 5px;border-radius:3px;background:var(--chip);border:1px solid var(--ln);line-height:17px;white-space:nowrap}
+.fr{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center}
+.sg{display:grid;grid-template-columns:24px 44px 120px 1fr;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--ln2);font-family:'IBM Plex Mono',monospace;font-size:12px}
+.sg.hd{font-family:'IBM Plex Sans';color:var(--mu);font-size:11px;border-bottom:1px solid var(--ln)}
+.sg.sel{background:var(--sel);color:var(--seltx)}
+.ct{display:grid;grid-template-columns:1fr 54px 50px 50px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--ln2)}
+.ct.hd{color:var(--mu);font-size:11px;border-bottom:1px solid var(--ln)}
+.ct span:not(:first-child){text-align:right}
+.ok{color:var(--ok)}
+</style>
+</helmet>
+<div class="w {{theme}}">
+  <div style="height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--bar);border-bottom:1px solid var(--ln)">
+    <span style="font-weight:600;font-size:13px">Tool library</span>
+    <span class="mu m">~/OpenChuckCAM/tools · 9 tools</span>
+  </div>
+  <div style="flex:1;min-height:0;display:flex">
+    <div style="width:270px;flex:none;border-right:1px solid var(--ln);display:flex;flex-direction:column">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--ln)"><div class="fld"><span class="mu">Search tools</span><svg class="ib mu" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></div></div>
+      <div style="flex:1;overflow:hidden">
+        <div class="grp">THIS PROJECT</div>
+        <div class="tr"><span class="nm">Ball Ø3 · 2 flute</span><span class="chip m">T201</span></div>
+        <div class="tr"><span class="nm">Flat Ø6 · 3 flute</span><span class="chip m">T3</span></div>
+        <div class="grp">BALL END MILLS</div>
+        <div class="tr"><span class="nm">Ball Ø3 · 2 flute</span><span class="chip">in project</span></div>
+        <div class="tr"><span class="nm">Ball Ø1.5 · 2 flute</span></div>
+        <div class="grp">FLAT END MILLS</div>
+        <div class="tr"><span class="nm">Flat Ø6 · 3 flute</span><span class="chip">in project</span></div>
+        <div class="tr"><span class="nm">Flat Ø3.175 · 1 flute</span></div>
+        <div class="grp">BULL-NOSE AND TAPERED</div>
+        <div class="tr"><span class="nm">Bull-nose Ø6 R1</span></div>
+        <div class="tr"><span class="nm">Tapered ball R0.5 · 5°</span></div>
+        <div class="grp">V-BIT, CHAMFER AND DRILL</div>
+        <div class="tr"><span class="nm">V-bit 60° Ø6</span></div>
+        <div class="tr"><span class="nm">Drill Ø4</span></div>
+        <div class="grp">CUSTOM PROFILE</div>
+        <div class="tr sel"><span class="nm" style="font-weight:500">Form cutter Ø6</span></div>
+      </div>
+      <div style="padding:10px 12px;border-top:1px solid var(--ln);display:flex;gap:6px"><button class="btn sm">New tool ▾</button><button class="btn sm">Duplicate</button><button class="btn sm">Delete</button></div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--ln)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span class="h">Tool</span><span style="flex:1"></span><span style="color:#f2b84b">Changed: not saved yet</span><button class="btn sm">Cancel</button><button class="btn sm pri">Save</button></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">
+          <div class="fr"><span class="mu">Name</span><div class="fld"><span>Form cutter Ø6</span></div></div>
+          <div class="fr"><span class="mu">Type</span><div class="fld"><span>Custom profile</span><span class="mu">▾</span></div></div>
+          <div class="fr"><span class="mu">Diameter</span><div class="fld"><b class="m" style="font-weight:400">6.000</b><span class="u">from profile</span></div></div>
+          <div class="fr"><span class="mu">Flutes</span><div class="fld"><b class="m" style="font-weight:400">2</b></div></div>
+          <div class="fr"><span class="mu">Flute length</span><div class="fld"><b class="m" style="font-weight:400">12.0</b><span class="u">mm</span></div></div>
+          <div class="fr"><span class="mu">Shank Ø</span><div class="fld"><b class="m" style="font-weight:400">6.0</b><span class="u">mm</span></div></div>
+          <div class="fr"><span class="mu">Overall length</span><div class="fld"><b class="m" style="font-weight:400">50.0</b><span class="u">mm</span></div></div>
+          <div class="fr"><span class="mu">Material</span><div class="fld"><span>Carbide</span><span class="mu">▾</span></div></div>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;display:flex">
+        <div style="width:220px;flex:none;border-right:1px solid var(--ln);background:radial-gradient(ellipse at 50% 40%,#2c3139 0%,#1b1e23 75%);display:flex;flex-direction:column;color:#e4e7eb">
+          <div style="padding:8px 12px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#c3c9d1">PROFILE PREVIEW</div>
+          <svg viewBox="0 0 400 340" width="100%" height="100%" role="img" aria-label="Revolved tool profile: flat tip, arc, taper, then straight flutes. The arc segment is highlighted.">
+            <path d="M200 20V320" stroke="#35d0e0" stroke-dasharray="10 4 2 4"/>
+            <path d="M140 40L140 220L160 280A20 20 0 0 0 180 300L220 300A20 20 0 0 0 240 280L260 220L260 40Z" fill="#6d7681" stroke="#c9d0d9" stroke-width="1.2"/>
+            <path d="M220 300A20 20 0 0 0 240 280" fill="none" stroke="#5aa9ff" stroke-width="4"/>
+            <g fill="#e4e7eb"><circle cx="220" cy="300" r="3.5"/><circle cx="240" cy="280" r="3.5"/><circle cx="260" cy="220" r="3"/><circle cx="260" cy="40" r="3"/><circle cx="200" cy="300" r="3"/></g>
+            <g stroke="#a3abb5" fill="none"><path d="M140 326H260M140 320V332M260 320V332M300 40V300M290 40H310M290 300H310"/></g>
+            <g font-family="IBM Plex Mono" font-size="12" fill="#e4e7eb"><text x="178" y="338">Ø6.0</text><text x="306" y="176">12.0</text><text x="250" y="296" fill="#5aa9ff">2</text></g>
+          </svg>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 14px;gap:8px">
+          <div class="h">Profile segments</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="display:flex;gap:6px"><button class="btn sm">+ Line</button><button class="btn sm">+ Arc</button><button class="btn sm" aria-label="Move up">↑</button><button class="btn sm" aria-label="Move down">↓</button><button class="btn sm">Delete</button></span></div>
+          <div style="border:1px solid var(--ln);border-radius:3px;overflow:hidden">
+            <div class="sg hd"><span>#</span><span>Type</span><span>End r, z (mm)</span><span>Arc</span></div>
+            <div class="sg"><span>1</span><span>Line</span><span>1.000, 0.000</span><span class="mu">–</span></div>
+            <div class="sg sel"><span>2</span><span>Arc</span><span>2.000, 1.000</span><span>R 1.000</span></div>
+            <div class="sg"><span>3</span><span>Line</span><span>3.000, 4.000</span><span class="mu">–</span></div>
+            <div class="sg"><span>4</span><span>Line</span><span>3.000, 12.000</span><span class="mu">–</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px" class="ok"><svg class="ib" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg>Valid: starts on the axis, radius and height never decrease, arc within a quarter turn.</div>
+          <div class="mu" style="line-height:1.45">Profiles use the same rules as an imported profile file. Undercut tools are not supported.</div>
+          <div style="display:flex;gap:6px"><button class="btn sm">Import profile file…</button><button class="btn sm">Export profile…</button><span style="flex:1"></span><button class="btn sm">Cancel</button><button class="btn sm">Apply</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:300px;flex:none;border-left:1px solid var(--ln);padding:12px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+      <div class="h">Cutting data by material</div>
+      <div>
+        <div class="ct hd"><span>Material</span><span>rpm</span><span>mm/t</span><span>Plunge</span></div>
+        <div class="ct"><span>Oak</span><span class="m">12000</span><span class="m">0.020</span><span class="m">150</span></div>
+        <div class="ct"><span>Pine</span><span class="m">14000</span><span class="m">0.030</span><span class="m">200</span></div>
+        <div class="ct"><span>MDF</span><span class="m">14000</span><span class="m">0.025</span><span class="m">200</span></div>
+        <button class="btn sm" style="margin-top:8px">Add material</button>
+      </div>
+      <div class="mu" style="line-height:1.45">Operations cutting a stock of this material take these values unless they set their own. Stepover and stepdown are in each material's detail.</div>
+      <div class="h" style="margin-top:8px">Machine tool sets</div>
+      <div class="fr" style="grid-template-columns:1fr 70px"><span>Makera Z1</span><div class="fld"><b class="m" style="font-weight:400">T3</b></div></div>
+      <div class="mu" style="line-height:1.45">The number suggested when this tool is added to a project for that machine. The project keeps its own number.</div>
+    </div>
+  </div>
+  <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid var(--ln);background:var(--bar)">
+    <div style="display:flex;gap:8px"><button class="btn">Import library…</button><button class="btn">Export library…</button></div>
+    <div style="display:flex;gap:8px"><button class="btn">Close</button><button class="btn pri" style="opacity:.45" title="Save the tool first">Add to project</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'dark' };
+}
+}
+</script>
+</body>
+</html>

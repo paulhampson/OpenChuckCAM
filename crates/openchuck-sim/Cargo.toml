@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-sim"
+description = "Material removal simulation, deviation measurement and the implementations of the pathing ports."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+openchuck-path.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+rayon.workspace = true
+
+[lints]
+workspace = true

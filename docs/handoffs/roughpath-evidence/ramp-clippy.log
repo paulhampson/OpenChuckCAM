@@ -1,0 +1,11 @@
+    Checking openchuck-types v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling openchuck-import v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+    Checking openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Checking openchuck-testkit v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+    Checking openchuck-geom v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-geom)
+    Checking openchuck-gcode v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-gcode)
+    Checking openchuck-project v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-project)
+    Checking openchuck-post v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+    Checking openchuck-sim v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
+    Checking openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `dev` profile [unoptimized] target(s) in 8.15s

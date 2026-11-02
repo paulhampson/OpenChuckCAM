@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Operations workspace</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#1b1d21;--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--hd:#c3c9d1;--ac:#5aa9ff;--ok:#4cc38a;--wn:#f2b84b;--er:#ff7b72;--bar:#15171a;--fld:#16181b;--sel:#264466;--seltx:#fff;--chip:#101215;--wbg:#2a2316;--wbd:#6b5420;--wtx:#f2d28a;--ebg:#2e1a1a;--ebd:#7a3330;--etx:#ffb4ae;display:flex;flex-direction:column;background:var(--bg);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;position:relative}
+.app.light{--bg:#e6e9ed;--p:#f6f7f9;--p2:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--hd:#2f363d;--ac:#1d6ad0;--ok:#1b7f53;--wn:#8a5d00;--er:#c22b2b;--bar:#dde1e6;--fld:#fff;--sel:#d4e5fb;--seltx:#0b2a52;--chip:#eef0f3;--wbg:#fff4d6;--wbd:#e0b44c;--wtx:#5c4300;--ebg:#fde8e7;--ebd:#e59a95;--etx:#7a1d18}
+.app *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{height:28px;padding:0 12px;border:1px solid var(--ln);background:var(--p2);color:var(--tx);border-radius:3px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:#2f6fbd;border-color:#4a8fe0;color:#fff;font-weight:500}
+.btn.ic{width:28px;padding:0;justify-content:center}
+.btn:disabled{opacity:.45;cursor:default}
+.ib{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.tb{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 8px;background:var(--bar);border-bottom:1px solid var(--ln)}
+.menu{display:flex;gap:2px}.menu span{padding:4px 8px;border-radius:3px}
+.cmd{width:240px;height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--ln);border-radius:3px;background:var(--fld);color:var(--mu)}
+.kbd{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:0 4px;border:1px solid var(--ln);border-radius:3px;color:var(--mu);line-height:16px;white-space:nowrap}
+.wf{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;background:var(--p);border-bottom:1px solid var(--ln);padding:0 8px}
+.tab{height:44px;padding:0 16px;display:flex;align-items:center;gap:8px;border:0;border-bottom:2px solid transparent;background:none;color:var(--mu);font-weight:500;font-size:13px}
+.tab i{font-style:normal;width:20px;height:20px;border-radius:10px;border:1px solid var(--mu);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.tab.on{color:var(--tx);border-bottom-color:var(--ac)}.tab.on i{background:var(--ac);border-color:var(--ac);color:#0b1620}
+.tab .hm{width:12px;height:12px;flex:none;margin-left:2px}
+.wf.hs-good .tab,.wf.hs-attn .tab,.wf.hs-err .tab{height:42px}
+.wf.hs-good{border-bottom:2px solid var(--ok)}.wf.hs-attn{border-bottom:2px solid var(--wn)}.wf.hs-err{border-bottom:2px solid var(--er)}
+.badge{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;margin-left:6px;border:1.5px solid var(--ln);border-radius:4px;background:var(--fld);color:var(--tx);font-weight:500;font-size:13px;white-space:nowrap}
+.badge.hs-good{border-color:var(--ok)}.badge.hs-attn{border-color:var(--wn)}.badge.hs-err{border-color:var(--er)}
+.badge .hm{width:12px;height:12px;flex:none}
+.tab.done i{border-color:var(--ok);color:var(--ok)}
+.sep{width:1px;height:22px;background:var(--ln);margin:0 4px;flex:none}
+.panel{background:var(--p);display:flex;flex-direction:column;min-height:0;min-width:0}
+.ph{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 6px 0 12px;border-bottom:1px solid var(--ln);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--hd)}
+.col{width:24px;height:24px;border:0;background:none;color:var(--mu);display:inline-flex;align-items:center;justify-content:center;border-radius:3px;flex:none}
+.spl{width:5px;flex:none;background:var(--bg);cursor:col-resize;display:flex;align-items:center;justify-content:center}
+.spl i,.splh i{display:block;background:var(--mu);opacity:.5;border-radius:1px}
+.spl i{width:1px;height:28px}
+.splh{height:5px;flex:none;background:var(--bg);cursor:row-resize;display:flex;align-items:center;justify-content:center}
+.splh i{height:1px;width:28px}
+.grp{padding:10px 8px 4px 12px;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--mu);display:flex;justify-content:space-between;align-items:center}
+.grp .r{display:flex;align-items:center;gap:8px}
+.add{width:22px;height:22px;border:1px solid var(--ln);background:var(--p2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;color:var(--tx);text-decoration:none;font-size:15px;line-height:1}
+.tr{position:relative;display:flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 12px}
+.tr.sel{background:var(--sel);color:var(--seltx);box-shadow:inset 2px 0 0 var(--ac)}
+.tr.l1{padding-left:22px}.tr.l2{padding-left:40px}
+.nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:none;font-size:11px;padding:0 5px;border-radius:3px;background:var(--chip);border:1px solid var(--ln);color:var(--tx);line-height:17px;white-space:nowrap}
+.cb{width:14px;height:14px;border:1px solid var(--mu);border-radius:2px;flex:none;background:var(--fld)}
+.cb.on{background:var(--ac);border-color:var(--ac)}
+.st{width:10px;height:10px;flex:none;display:inline-block}
+.st.ok{background:var(--ok);border-radius:5px}
+.st.stale{background:var(--wn);transform:rotate(45deg) scale(.8)}
+.st.off{border:1.5px solid var(--mu);border-radius:5px}
+.st.er{background:var(--er);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.st.run{border:2px solid var(--ac);border-right-color:transparent;border-radius:5px}
+.prog{position:absolute;left:22px;right:8px;bottom:1px;height:3px;background:var(--ln)}
+.prog i{display:block;height:3px;background:var(--ac)}
+.key{border-top:1px solid var(--ln);padding:8px 12px;display:flex;gap:12px;color:var(--mu);font-size:11px;flex-wrap:wrap;flex:none}
+.key span{display:flex;align-items:center;gap:5px}
+.row{display:grid;grid-template-columns:120px 1fr;align-items:start;gap:8px;min-height:30px;padding:2px 0}
+.lb{color:var(--mu);line-height:26px;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;min-width:0}
+.mod::before{content:'';width:6px;height:6px;border-radius:3px;background:var(--ac);margin-right:6px;display:inline-block;vertical-align:1px}
+.fld{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--fld);border:1px solid var(--ln);border-radius:3px;height:26px;padding:0 8px;min-width:0}
+.fld span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fld .u{color:var(--mu);flex:none}
+.fld.bad{border-color:var(--er)}
+.fld.ro{background:transparent;border-color:transparent;padding:0}
+.rst{width:22px;height:22px;border:0;background:none;color:var(--ac);display:inline-flex;align-items:center;justify-content:center;flex:none;padding:0}
+.err{color:var(--er);font-size:12px;margin-top:3px;line-height:1.35}
+.hint{color:var(--mu);font-size:11px;margin-top:3px;line-height:1.35}
+.sec{border-top:1px solid var(--ln)}
+.sh{display:flex;align-items:center;justify-content:space-between;height:32px;padding:0 12px;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--hd)}
+.sb{padding:0 12px 10px}
+.seg{display:flex;border:1px solid var(--ln);border-radius:3px;overflow:hidden;height:26px;flex:none}
+.seg span{flex:1;min-width:0;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:center;background:var(--fld);color:var(--mu)}
+.seg span.on{background:var(--sel);color:var(--seltx)}
+.vbar{height:44px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--ln);background:var(--p);overflow:hidden;white-space:nowrap}
+.vp{position:relative;flex:1;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#2c3139 0%,#1b1e23 75%)}
+.vf{position:absolute;background:rgba(22,24,27,.92);border:1px solid #3a3f46;border-radius:4px;color:#e4e7eb}
+.vf .mu{color:#a3abb5}
+.vbtn{width:28px;height:28px;border:1px solid #3a3f46;background:#2b2f35;color:#e4e7eb;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.vbtn.on{background:#264466;border-color:#5aa9ff}
+.vseg{display:flex;flex:1;border:1px solid #3a3f46;border-radius:3px;overflow:hidden;height:24px}
+.vseg span{flex:1;display:flex;align-items:center;justify-content:center;background:#16181b;color:#a3abb5;font-size:11px}
+.vseg span.on{background:#264466;color:#fff}
+.vrow{height:26px;display:flex;align-items:center;gap:8px;padding:0 6px;border:1px solid transparent;background:none;color:#e4e7eb;border-radius:3px;width:100%;text-align:left;white-space:nowrap}
+.vrow.on{background:#264466;border-color:#5aa9ff}
+.vrow small{color:#a3abb5;font-size:11px}
+.vrow .k{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a3abb5;border:1px solid #3a3f46;border-radius:3px;padding:0 4px;line-height:16px}
+.legbtn{display:none}
+@media (max-height:800px){.leg{display:none!important}.legbtn{display:inline-flex}}
+.dt{padding:0 12px;height:32px;flex:none;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--ln);background:var(--p)}
+.dtab{padding:7px 12px;color:var(--mu);border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.dtab.on{color:var(--tx);border-bottom-color:var(--ac)}
+.flt{margin-left:auto;display:flex;gap:6px;padding-bottom:4px}
+.msg{display:grid;grid-template-columns:20px 1fr 120px 90px;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--ln2)}
+.lk{color:var(--ac);text-decoration:underline}
+.ft{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;background:var(--bar);border-top:1px solid var(--ln);color:var(--mu);white-space:nowrap}
+.ft .g{display:flex;align-items:center;gap:8px}
+</style>
+</helmet>
+<div class="app {{theme}}" style="width:{{w}}px;height:{{h}}px">
+  <div class="tb">
+    <div style="display:flex;align-items:center;gap:8px">
+      <svg class="ib" style="width:18px;height:18px;color:var(--ac)" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="4" cy="8" rx="2" ry="5"/><path d="M4 3h8M4 13h8"/><ellipse cx="12" cy="8" rx="2" ry="5"/></svg>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Project</span><span>Tools</span><span>Help</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-weight:500">Groove demo</span><span class="mu">· saved</span></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="cmd"><svg class="ib" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><span style="flex:1">Search commands</span><span class="kbd">Ctrl K</span></div>
+      <button class="btn ic" aria-label="Undo" title="Undo (Ctrl Z)"><svg class="ib" viewBox="0 0 16 16"><path d="M4 6h6a3 3 0 010 6H6M4 6l3-3M4 6l3 3"/></svg></button>
+      <button class="btn ic" aria-label="Redo" title="Redo (Ctrl Y)"><svg class="ib" viewBox="0 0 16 16"><path d="M12 6H6a3 3 0 000 6h4M12 6L9 3M12 6L9 9"/></svg></button>
+      <a class="btn ic" href="UndoHistory.dc.html" aria-label="Undo history" title="Undo history (Ctrl H)"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></a>
+    </div>
+  </div>
+  <div class="wf hs-err">
+    <div style="display:flex">
+      <a class="tab done" href="Model.dc.html" title="Model (Alt 1)" style="text-decoration:none"><i>1</i>Model<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab done" href="Setup.dc.html" title="Setup (Alt 2)" style="text-decoration:none"><i>2</i>Setup<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab on" href="Main.dc.html" title="Operations (Alt 3)" style="text-decoration:none"><i>3</i>Operations<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg></a>
+      <a class="tab" href="Simulate.dc.html" title="Simulate (Alt 4)" style="text-decoration:none"><i>4</i>Simulate<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg></a>
+      <span class="gst" title="G-code not written: no G-code has been written in this session. Past write results are in Messages." style="height:44px;padding:0 12px;margin-left:4px;display:flex;align-items:center;gap:8px;color:var(--mu);font-size:13px;border-left:1px solid var(--ln)"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="none" stroke="var(--mu)" stroke-width="1"/></svg>G-code not written</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="btn" title="New operation (N)"><svg class="ib" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>New operation</button>
+      <button class="btn" title="Duplicate (Ctrl D)"><svg class="ib" viewBox="0 0 16 16"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 11V4a1 1 0 011-1h7"/></svg>Duplicate</button>
+      <span class="badge hs-err" title="Overall status: Error to fix&#10;Operations: An operation has an error&#10;Simulate: Not simulated yet&#10;Click to go to the first problem"><svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg>Error to fix</span>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <div class="panel" style="width:264px;flex:none">
+      <div class="ph"><span>Project</span><button class="col" aria-label="Collapse project panel" title="Collapse (Ctrl 1)"><svg class="ib" viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg></button></div>
+      <div style="flex:1;min-height:0;overflow:hidden">
+        <div class="grp"><span>MODEL</span><span class="r"><span>1</span><a class="add" href="ImportCheck.dc.html" title="Import a model" aria-label="Import a model">+</a></span></div>
+        <div class="tr l1"><svg class="ib" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6l-6 3-6-3z"/></svg><span class="nm">groove_part.stl</span><span class="chip m">412,880 tri</span></div>
+        <div class="grp"><span>SETUPS</span><span class="r"><span>1</span><a class="add" href="Setup.dc.html" title="Add a setup" aria-label="Add a setup">+</a></span></div>
+        <div class="tr l1"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M8 1v14"/></svg><span class="nm">Setup 1 · Makera Z1</span><span class="chip m">G54</span></div>
+        <div class="grp"><span>SELECTION SETS</span><span class="r"><span>3</span><a class="add" href="SelectionSets.dc.html" title="New selection set" aria-label="New selection set">+</a></span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#2d6cb5;flex:none"></span><span class="nm">Groove floor</span><span class="chip m">8,214 tri</span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#a04a46;flex:none"></span><span class="nm">Rim (avoid)</span><span class="chip m">1,030 tri</span></div>
+        <div class="tr l1"><span style="width:12px;height:12px;border-radius:2px;background:#7d5bb5;flex:none"></span><span class="nm">Lettering</span><span class="st er" title="Error: 12 edges missing"></span></div>
+        <div class="grp"><span>TOOLS</span><span class="r"><span>2</span><a class="add" href="ToolLibrary.dc.html" title="Add a tool from the library" aria-label="Add a tool">+</a></span></div>
+        <div class="tr l1"><span class="chip m">T1</span><span class="nm">Ball Ø3 · 2 flute</span></div>
+        <div class="tr l1"><span class="chip m">T2</span><span class="nm">Flat Ø6 · 3 flute</span></div>
+        <div class="grp"><span>OPERATIONS</span><span class="r"><span>4</span><a class="add" href="Main.dc.html" title="New operation (N)" aria-label="New operation">+</a></span></div>
+        <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st ok" title="Up to date"></span><span class="nm">1 Rough · continuous</span><span class="chip m">T2</span></div>
+        <div class="tr l1 sel"><span class="cb on" title="Enabled"></span><span class="st ok" title="Up to date"></span><span class="nm" style="font-weight:500">2 Helical finish · Groove</span><span class="chip m">T1</span></div>
+        <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st run" title="Generating"></span><span class="nm">3 Axial finish · Body</span><span class="m mu">42%</span><button class="col" style="width:22px;height:22px" aria-label="Cancel generating operation 3" title="Cancel (Esc)"><svg class="ib" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button><span class="prog"><i style="width:42%"></i></span></div>
+        <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st er" title="Error"></span><span class="nm">4 Engrave · Lettering</span><span class="chip m">T1</span></div>
+      </div>
+      <div class="key"><span><span class="st ok"></span>Up to date</span><span><span class="st stale"></span>Stale</span><span><span class="st run"></span>Running</span><span><svg class="ib" style="color:var(--wn);width:11px;height:11px" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/></svg>Warning</span><span><span class="st er"></span>Error</span><span><span class="st off"></span>Off</span></div>
+    </div>
+    <div class="spl" role="separator" aria-orientation="vertical" aria-label="Resize project panel"><i></i></div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="vbar">
+        <div class="seg" style="width:168px"><span class="on">Shaded</span><span>Wire</span><span>Edges</span></div>
+        <div class="seg" style="width:96px"><span class="on">Persp</span><span>Ortho</span></div>
+        <button class="btn ic" aria-label="Fit all" title="Fit all (F)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
+        <button class="btn ic" aria-label="Show or hide items" title="Show or hide: part, stock, axis, selections (V)"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg></button>
+        <button class="btn ic" aria-label="Section plane" title="Section plane (S)"><svg class="ib" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11"/><path d="M2.5 10.5l11-5"/></svg></button>
+        <button class="btn ic" aria-label="Measure" title="Measure (M)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 11l9-9 3 3-9 9zM5 8l1.5 1.5M7 6l1.5 1.5M9 4l1.5 1.5"/></svg></button>
+        <span class="sep"></span>
+        <span class="mu">Turn part to A</span>
+        <div class="fld" style="width:92px"><b class="m" style="font-weight:400">−53.20</b><span class="u">°</span></div>
+        <button class="btn" title="Turn the part in the view (does not change the program)">Turn</button>
+      </div>
+      <div class="vp">
+        <svg viewBox="-80 0 916 608" width="100%" height="100%" role="img" aria-label="Part with helical finishing toolpath on the groove selection, a hovered edge in yellow, rotary axis, and X, Y, Z axes at the work zero">
+          <defs>
+            <pattern id="avoid" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="#ff7b72" opacity=".55"/></pattern>
+            <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a93a0"/><stop offset=".45" stop-color="#b7bfca"/><stop offset="1" stop-color="#5d6570"/></linearGradient>
+          </defs>
+          <g transform="rotate(-6 420 320)">
+            <path d="M110 190H236V450H110z" fill="#3a4048" stroke="#555d68"/>
+            <ellipse cx="110" cy="320" rx="26" ry="130" fill="#2f343b" stroke="#555d68"/>
+            <path d="M236 216H654A36 104 0 0 1 654 424H236A36 104 0 0 1 236 216z" fill="none" stroke="#7fb4ea" stroke-dasharray="5 4" opacity=".75"/>
+            <path d="M250 232H640A30 88 0 0 1 640 408H250A30 88 0 0 1 250 232z" fill="url(#body)" stroke="#d3d9e0"/>
+            <ellipse cx="640" cy="320" rx="30" ry="88" fill="#a2abb7" stroke="#d3d9e0"/>
+            <rect x="340" y="232" width="180" height="176" fill="#3d8bff" opacity=".42"/>
+            <rect x="250" y="232" width="34" height="176" fill="url(#avoid)"/>
+            <path d="M262 232C278 232 286 408 302 408M288 232C304 232 312 408 328 408M314 232C330 232 338 408 354 408M340 232C356 232 364 408 380 408M366 232C382 232 390 408 406 408M392 232C408 232 416 408 432 408M418 232C434 232 442 408 458 408M444 232C460 232 468 408 484 408M470 232C486 232 494 408 510 408M496 232C512 232 520 408 536 408M522 232C538 232 546 408 562 408" fill="none" stroke="#ffb454" stroke-width="1.6"/>
+            <path d="M262 232L262 180L574 180L574 232" fill="none" stroke="#9aa6b5" stroke-dasharray="2 5"/>
+            <path d="M520 232H640" stroke="#ffe066" stroke-width="2"/>
+            <path d="M584 222l7 14 2-6 6-1z" fill="#e4e7eb" stroke="#101215" stroke-width="1"/>
+            <path d="M80 320H720" stroke="#35d0e0" stroke-dasharray="14 4 2 4" stroke-width="1.2"/>
+            <circle cx="250" cy="320" r="4" fill="#35d0e0"/>
+            <g stroke-width="2.5" stroke-linecap="round"><path d="M250 320H306" stroke="#ff7b72"/><path d="M250 320L284 300" stroke="#6fd3a8"/><path d="M250 320V258" stroke="#6fb2ff"/></g>
+            <g font-family="IBM Plex Mono" font-size="12" font-weight="500" stroke="#101215" stroke-width="3" paint-order="stroke"><text x="310" y="324" fill="#ff7b72">X</text><text x="288" y="300" fill="#6fd3a8">Y</text><text x="245" y="252" fill="#6fb2ff">Z</text></g>
+          </g>
+          <path d="M700 258a62 62 0 0 1 4 70" fill="none" stroke="#35d0e0" stroke-width="1.5"/><path d="M704 328l-7-3 9-4z" fill="#35d0e0"/>
+          <text x="712" y="262" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A+</text>
+          <text x="104" y="478" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A axis · about +X</text>
+        </svg>
+        <div class="vf" style="left:12px;top:12px;padding:6px;width:196px;display:flex;flex-direction:column;gap:4px" role="toolbar" aria-label="Selection tools">
+          <div style="display:flex;align-items:center;gap:8px;padding:0 0 2px 4px"><span class="mu" style="font-size:11px">Pick</span><div class="vseg" role="radiogroup" aria-label="Pick"><span class="on" title="An edge when the pointer is near one, the surface otherwise">Both</span><span title="Only surfaces">Faces</span><span title="Only edges">Edges</span></div></div>
+          <button class="vrow on" title="Select one (Q)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 2l9 6-4 1-2 4z"/></svg>Select one<span class="k">Q</span></button>
+          <button class="vrow" title="Flood fill (W); on an edge, Chain"><svg class="ib" viewBox="0 0 16 16"><path d="M3 9l5-6 5 6-5 5zM13 11c1 1.5 1 2.5 0 3"/></svg>Flood fill<small>· Chain</small><span class="k">W</span></button>
+          <button class="vrow" title="By angle (E); on an edge, Smooth chain"><svg class="ib" viewBox="0 0 16 16"><path d="M3 13h10M3 13l6-8M6 13a4 4 0 00-1-3"/></svg>By angle<small>· Smooth chain</small><span class="k">E</span></button>
+          <button class="vrow" title="Same direction (R); faces only"><svg class="ib" viewBox="0 0 16 16"><path d="M3 12h10M3 8h10M3 4h10"/></svg>Same direction<span class="k">R</span></button>
+          <button class="vrow" title="Box select (B)"><svg class="ib" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" stroke-dasharray="2 2"/></svg>Box<span class="k">B</span></button>
+          <span class="mu" style="font-size:11px;padding:2px 4px 0;white-space:normal;line-height:1.35">Near an edge: Select one, Chain and Smooth chain.</span>
+        </div>
+        <button class="vf vbtn legbtn" style="left:12px;top:284px;width:auto;padding:0 10px;gap:6px;height:28px" aria-label="Path legend" title="Path legend"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#ffb454" stroke-width="2"/></svg>Legend</button>
+        <div class="vf leg" style="left:12px;top:284px;padding:8px 10px;display:flex;flex-direction:column;gap:5px">
+          <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#ffb454" stroke-width="2"/></svg>Cut</span>
+          <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#6fd3a8" stroke-width="2"/></svg>Link</span>
+          <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#9aa6b5" stroke-dasharray="2 4" stroke-width="2"/></svg>Rapid</span>
+          <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#e8b6ff" stroke-width="2"/></svg>Entry</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:20px;height:10px;background:#3d8bff;opacity:.7"></span>Selected</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:20px;height:10px;background:repeating-linear-gradient(45deg,#ff7b72 0 2px,transparent 2px 5px)"></span>Avoid</span>
+        </div>
+        <div class="vf" style="right:12px;top:12px;width:84px;height:84px;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 80 80" width="76" height="76" role="img" aria-label="View cube, isometric"><path d="M40 8l28 16v32L40 72 12 56V24z" fill="#2b2f35" stroke="#7b8490"/><path d="M12 24l28 16 28-16M40 40v32" fill="none" stroke="#7b8490"/><path d="M40 8l28 16-28 16-28-16z" fill="#3a4048"/><text x="40" y="28" fill="#e4e7eb" font-size="8" text-anchor="middle" font-family="IBM Plex Sans">TOP</text><text x="26" y="54" fill="#e4e7eb" font-size="8" text-anchor="middle" font-family="IBM Plex Sans" transform="rotate(30 26 54)">FRONT</text><text x="55" y="54" fill="#e4e7eb" font-size="8" text-anchor="middle" font-family="IBM Plex Sans" transform="rotate(-30 55 54)">RIGHT</text></svg>
+        </div>
+        <div class="vf" style="right:12px;top:104px;width:84px;height:78px;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 84 76" width="80" height="72" role="img" aria-label="Axes: X right, Y into the screen, Z up"><g stroke-width="2.5" stroke-linecap="round" fill="none"><path d="M26 56H66" stroke="#ff7b72"/><path d="M26 56L50 40" stroke="#6fd3a8"/><path d="M26 56V12" stroke="#6fb2ff"/></g><g font-family="IBM Plex Mono" font-size="12" font-weight="500"><text x="68" y="60" fill="#ff7b72">X</text><text x="52" y="40" fill="#6fd3a8">Y</text><text x="21" y="9" fill="#6fb2ff">Z</text></g></svg>
+        </div>
+        <div class="vf m" style="right:12px;bottom:12px;padding:6px 10px;width:212px;display:grid;grid-template-columns:20px 1fr 36px;gap:2px 6px">
+          <span style="color:#ff7b72">X</span><span style="text-align:right">142.318</span><span class="mu">mm</span>
+          <span style="color:#6fd3a8">Y</span><span style="text-align:right">-11.902</span><span class="mu">mm</span>
+          <span style="color:#6fb2ff">Z</span><span style="text-align:right">3.450</span><span class="mu">mm</span>
+          <span style="color:#35d0e0">A</span><span style="text-align:right">-53.20</span><span class="mu">deg</span>
+          <span class="mu" style="grid-column:1/4;font-family:'IBM Plex Sans';font-size:11px">Cursor on surface, G54</span>
+        </div>
+      </div>
+      <div class="splh" role="separator" aria-orientation="horizontal" aria-label="Resize message panel"><i></i></div>
+      <div class="panel" style="height:196px;flex:none">
+        <div class="dt"><span class="dtab on">Messages <span class="chip">3</span></span><a class="dtab" href="SelectionSets.dc.html" style="text-decoration:none">Selection sets</a><span class="dtab">Jobs <span class="chip">1</span></span>
+          <div class="flt"><span class="chip" style="color:var(--er)">1 error</span><span class="chip" style="color:var(--wn)">1 warning</span><span class="chip">1 info</span></div></div>
+        <div style="overflow:hidden;flex:1">
+          <div class="msg"><svg class="ib" style="color:var(--er)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>The selection “Lettering” no longer matches the model: 12 of 40 edges were not found.</span><span class="mu">Operation 4</span><a class="lk" href="OpError.dc.html">Reselect</a></div>
+          <div class="msg"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Axis height of the Z1 is unconfirmed, so the safe Z cannot be checked against the travel.</span><span class="mu">Setup 1</span><a class="lk" href="Setup.dc.html">Review setup</a></div>
+          <div class="msg"><svg class="ib" style="color:var(--ac)" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5v.5"/></svg><span>STL has fixed tessellation. Gouge tolerance is measured against the mesh, not the original surface.</span><span class="mu">groove_part.stl</span><span></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="spl" role="separator" aria-orientation="vertical" aria-label="Resize inspector"><i></i></div>
+
+    <div class="panel" style="width:340px;flex:none">
+      <div class="ph"><span>Operation</span><button class="col" aria-label="Collapse inspector" title="Collapse (Ctrl 2)"><svg class="ib" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></button></div>
+      <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;flex:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="fld" style="flex:1;height:28px;font-weight:500;font-size:13px"><span>2 Helical finish · Groove</span></div>
+          <span class="chip" style="color:var(--ok);display:inline-flex;align-items:center;gap:5px;line-height:20px"><span class="st ok" style="width:8px;height:8px"></span>Up to date</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--ln);border:1px solid var(--ln);border-radius:3px;overflow:hidden">
+          <div style="background:var(--fld);padding:6px 10px"><div class="mu" style="font-size:11px">Moves</div><div class="m" style="font-size:14px">18,420</div></div>
+          <div style="background:var(--fld);padding:6px 10px"><div class="mu" style="font-size:11px">Cut length</div><div class="m" style="font-size:14px">1,284 mm</div></div>
+          <div style="background:var(--fld);padding:6px 10px"><div class="mu" style="font-size:11px">A travel</div><div class="m" style="font-size:14px">5,400°</div></div>
+          <div style="background:var(--fld);padding:6px 10px"><div class="mu" style="font-size:11px">A unwinds</div><div class="m" style="font-size:14px">1</div></div>
+        </div>
+        <div class="seg"><span class="on">Basic</span><span>Advanced</span></div>
+      </div>
+      <div style="overflow:hidden;flex:1;position:relative">
+        <div class="sec"><div class="sh"><span>Geometry</span></div><div class="sb">
+          <div class="row"><span class="lb">Cut on</span><div class="fld"><span>Groove floor</span><span class="chip m">8,214 tri</span></div></div>
+          <div class="row"><span class="lb">Contain within</span><div class="fld"><span class="mu">None</span><span class="mu">▾</span></div></div>
+          <div class="row"><span class="lb">Avoid</span><div class="fld"><span>Rim (avoid)</span><span class="mu">▾</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span>Tool and feeds</span></div><div class="sb">
+          <div class="row"><span class="lb">Tool</span><div class="fld"><span>T1 · Ball Ø3 · 2 flute</span><span class="mu">▾</span></div></div>
+          <div class="row"><span class="lb">Material</span><div class="fld"><span>Oak</span><span class="mu">▾</span></div></div>
+          <div class="row"><span class="lb"><span class="mod">Spindle</span><button class="rst" aria-label="Reset spindle to default" title="Reset to 12000 rpm (tool library)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5V5h2.5"/></svg></button></span><div class="fld"><b class="m" style="font-weight:400">14000</b><span class="u">rpm</span></div></div>
+          <div class="row"><span class="lb">Feed per tooth</span><div class="fld"><b class="m" style="font-weight:400">0.020</b><span class="u">mm</span></div></div>
+          <div class="row"><span class="lb">Cutting feed</span><div><div class="fld ro"><b class="m" style="font-weight:400">560 mm/min</b></div><div class="hint">0.020 mm × 2 flutes × 14000 rpm</div></div></div>
+          <div class="row"><span class="lb">Plunge feed</span><div class="fld"><b class="m" style="font-weight:400">150</b><span class="u">mm/min</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span>Pattern and tolerance</span></div><div class="sb">
+          <div class="row"><span class="lb">Tolerance</span><div class="fld"><b class="m" style="font-weight:400">0.010</b><span class="u">mm</span></div></div>
+          <div class="row"><span class="lb">Stepover</span><div><div class="fld bad"><b class="m" style="font-weight:400">3.5</b><span class="u">mm</span></div><div class="err">Must not exceed the tool diameter (3.0 mm). Not applied.</div></div></div>
+          <div class="row"><span class="lb"><span class="mod">Stock to leave</span><button class="rst" aria-label="Reset stock to leave to default" title="Reset to 0.00 mm"><svg class="ib" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5V5h2.5"/></svg></button></span><div><div class="fld"><b class="m" style="font-weight:400">0.005 in</b><span class="u">typed</span></div><div class="hint">Stored as 0.127 mm</div></div></div>
+          <div class="row"><span class="lb">Direction</span><div class="seg"><span class="on">Climb</span><span>Conventional</span></div></div>
+        </div></div>
+        <div class="sec"><div class="sh"><span>Tool axis and A</span></div><div class="sb">
+          <div class="row"><span class="lb">A step</span><div class="fld"><b class="m" style="font-weight:400">5.0</b><span class="u">deg</span></div></div>
+        </div></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:32px;background:linear-gradient(transparent,var(--p))"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ft">
+    <div class="g"><span class="st run"></span><span style="color:var(--tx)">Generating 3 Axial finish · 42%</span><span class="mu">· edits apply when you leave a field; undo with Ctrl Z</span></div>
+    <div class="g">
+      <div class="seg" style="width:80px;height:24px" title="Display units"><span class="on">mm</span><span>in</span></div>
+      <span class="m">Tol 0.010 mm</span>
+      <span style="color:var(--wn);display:flex;align-items:center;gap:5px"><svg class="ib" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3"/></svg>Z1 axis height unconfirmed</span>
+      <span class="sep"></span>
+      <button class="btn" title="Cancel generation (Esc)">Cancel</button>
+      <button class="btn" title="Generate selected (G)">Generate selected</button>
+      <button class="btn pri" disabled title="Available when generation finishes and operation 4 is fixed or turned off">Continue to simulate</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"w":{"editor":null,"default":1440},"h":{"editor":null,"default":900},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'dark', w: this.props.w ?? 1440, h: this.props.h ?? 900 };
+}
+}
+</script>
+</body>
+</html>

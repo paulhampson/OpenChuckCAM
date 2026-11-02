@@ -1,0 +1,10 @@
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized] target(s) in 12.34s
+     Running tests/entry_safety.rs (target/debug/deps/entry_safety-c7c9bac221404bc1)
+
+running 2 tests
+test req_set_09_req_op_21_sweep_checks_protected_geometry_budget_and_cancellation ... ok
+test req_op_11_req_op_12_sweep_detects_thin_obstacle_between_clear_endpoints ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

@@ -1,0 +1,56 @@
+# Changelog
+
+## 0.22.0
+
+- GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
+
+
+All notable changes to `openchuck-project` are recorded here.
+
+## Unreleased
+
+- Project schema 25 (ENDFACE stage 3, second pull request; OI-1453; decision 0239): rotary roughing and Facing operations saved before it open with an explicit `adaptive_spacing = false`, so they machine as before; a schema 24 roughing or Facing operation that already holds the switch is refused, naming it.
+
+- ENDFACE stage 3 (#303, decision 0239, accepted): project schema 24. The 23 to 24 step writes `adaptive_spacing = false` into each saved helical, axial and simultaneous finishing operation, so it machines as before; a schema 23 file that already holds the switch is refused, naming it.
+
+- MODELCOPY (#385, accepted decision 0307): project schema 21. `ModelRef` has a new public field, `name`, the file name a model had when it was added, written only when it differs from the stored path's file name; `display_name`, `label` and `copy_path` (`models/<hash>.<ext>`), `RelativePath::is_outside_project` and `file_name`, and `MODELS_FOLDER`. The 20 to 21 migration changes only the number and refuses a schema 20 file that already holds a `name`.
+
+- Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
+
+- Version 0.24.0 with the library family (GC-17, decisions 0222/0245): configurable short-block reporting and geometry-preserving slowdown; profile/post/report APIs extended. Legacy project copies retain Off.
+
+- CHECKPOINT (PRJ-08): separate checksummed recovery containers, portable exclusive writer ownership, complete publication before independent three-periodic/one-interim retention, and revision-bounded Save/close retirement. Normal project schema and saved files are unchanged by recovery reads.
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+
+- Version 0.20.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`; decision 0231).
+- Project schema 18 (decisions 0230 and 0231): `Operation` has a new public field, `material`, the stock material whose cutting data the operation's preset takes (`None` for the setup's), written only when set; the machine copy may hold the spindle speed range. Machine profile files go to their schema 4 for the range, and the built-in Makera Z1 gives `max_spindle_rpm = 13000`, unconfirmed. Both migrations change only the number and refuse an older file that already holds a new field.
+- Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
+- Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
+- Project schema 17 (decisions 0201 and 0202): an older setup with a part offset has its cylinder or box stock, its tabs and its work zero moved along X by the offset, so it machines as before now that the offset moves only the part; a retaining tab may hold `auto` (`"head"` or `"tail"`), written only when set, and an older file that holds one is refused.
+- Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
+- **Project schema 16** (decision 0196, issue #249; TL-05, NFR-12): an operation gains the optional `spindle_speed` (rpm), written only when the user set one. `Operation` has a new public field, `spindle_speed: Option<SpindleSpeed>`; code that builds an `Operation` adds `spindle_speed: None`. A value that is not finite and above 0 is refused. A schema 15 file loads with none and a schema 15 operation file that holds one is refused. Version 0.15.0 with the library family.
+- Version 0.14.0 with the library family (`RegionConstraint` in `openchuck-path` gains `boundary_limits` and `watch`, a breaking change; decision 0176).
+- **Project schema 14** (decision 0176 item 3, issue #227; OP-02): an operation's boundary, avoid and check sets each carry their own options. `Operation` has a new public field, `restriction_options` (a new `RestrictionOptions`: the boundary's `BoundaryOptions`, `limits_pass` and `limits_tip`, both true by default, and a `SetOptions` per avoid or check set, whose `on_break` is a new `OnBreak`: `CutShort` by default, `Warn` or `Ignore`); code that builds an `Operation` adds `restriction_options: Default::default()`. They are stored in the operation file as the optional `[boundary_options]`, `[avoid_options.<set id>]` and `[check_options.<set id>]` tables, each written only when it differs from the defaults; a schema 13 file loads with the defaults, and one that already holds a table is refused. Options for a set not in that role, or boundary options without a boundary set, are refused. They join `file::selection_inputs_hash`, which is unchanged at the defaults.
+- Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
+- Lane BUG-SIM (decisions 0168 and 0169): project schema 15. `project.toml` gains `skip_stock_simulation` and `hidden_paths`, written only when set; `Project::skip_stock_simulation`, `set_skip_stock_simulation`, `path_shown`, `set_paths_shown` and `same_output` (equal apart from what the view uses and the skip). Schema 14 is lane BUG-SWARF's; this branch passes through it with a step that changes only the number.
+- Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
+- `file::load_files` loads a project from the texts of its files in memory, with every check `file::load` makes; `load` now reads every file before it checks any (decision 0107, for the `project_folder` fuzz target).
+- Slice 23 (decision 0081, TL-12): `tools::default_tools`, `standard_tools`, `z1_tools`, `default_tool_sets`, `ToolLibrary::install_defaults`, `ToolLibrary::restore_defaults`, `InstallReport` and `LEDGER_FILE`; 23 standard tools, 23 Makera Z1 tools and the Z1 default tool set embedded in the crate.
+- Slice 11b (lane O, decision 0066): project schema 12, `SelectionTarget::MeshEdges` with `MeshEdge` (a triangle and side, written `[triangle, side]`), `SelectionTarget::len`, `is_empty` and `kind_name`; `SelectionSet::keep_tangent_edges` (B-rep edge sets only) with the project's default `Project::keep_tangent_edges`, `set_keep_tangent_edges` and `keeps_tangent_edges` (written to `project.toml` only when true), part of `selection_inputs_hash` for operations on edge sets; `Project::warn_on_selection_reset` and `set_warn_on_selection_reset` (written to `project.toml` only when false; `Project` now implements `Default` by hand so the warning is on); the schema 11 to 12 migration changes only the number and refuses a schema 11 file that already holds `mesh_edges`, `keep_tangent_edges` or `warn_on_selection_reset` (OI-204).
+- Version 0.9.0 with the library family. Project schema 13 (provisional; 12 is held for lane O and passes through a no-change step here) and machine profile schema 3: the machine's feed limits may hold `rotary_in_feed`; the built-in Makera Z1 sets `"makera"`, and an older project copy (or a schema 2 library file) of the built-in Z1, known by its `id`, gains it when migrated (decision 0076).
+- Version 0.7.0 with the library family. Project schema 8: tools may state `centre_cutting` (decision 0033).
+- Slice 10 (decision 0032): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 7, migrated from 6 (a number only).
+- Machine IDs (decision 0029 item 16): `machines::ProfileEntry` (a profile with its optional `id`), `parse_profile_entry`, `load_profile_entry`, `render_profile_entry`, `save_profile_entry`, `builtin_entry`, `list_library_entries`, `validate_machine_id` and `new_machine_id`; profile files schema 2 with `id` beside `[machine]`; the built-in Makera Z1 has a fixed ID; `Project::machine_id` and `set_machine_from`, and `machine.toml` keeps the copy's source ID (project schema 6).
+- Project schema 6 (decision 0029 item 10): `Operation::enabled`, written to the operation's file only when false; the schema 5 to 6 migration changes only the number.
+- Slice 7 (decision 0025): the project holds `SimulationSettings` (`simulation`, `set_simulation`), written to `project.toml` as `[simulation]` only when not the default; project folder schema 5, migrated from 4.
+- Slice 4 (decision 0014): tool snapshots gain the controller mapping and cutting data; project folder schema 4 (a schema 3 tool snapshot is refused with what to do); new `tools` module: the tool library folder (`ToolLibrary`, one TOML file per tool, import, export, `find`), machine tool sets in `tool-sets/` (`ToolSet`, TL-11), custom profile text files (arcs by centre or by radius and curve) and `compare_snapshot` (TL-07). `file::write_if_changed` is shared within the crate.
+- Slice 3 (decision 0011): the project keeps a copy of its machine profile in `machine.toml` (replacing the `MachineRef` placeholder, OI-43); setups gain part, stock, material, part and work offsets and clearance; project folder schema 3, migrated from 2; new `machines` module (profile files with their own schema, the built-in Makera Z1 profile, library folders).
+- Model references gain `units` and `transform`; the project folder schema is 2, migrated from 1; selections must match the model's kind (slice 2, decision 0010, OI-44).
+- Project document model: models, setups, tool snapshots, selection sets and operations with stable IDs, edits that keep the document valid, and whole-document validation (slice 1, PRJ-05).
+- Model references by relative path with a BLAKE3 content hash and a change check (PRJ-02).
+- Cache folder for generated data with its own ignore file (PRJ-03).
+- Selection sets with reserved descriptor fields (PRJ-06, PRJ-07).
+- Order keys on setups, tools, selection sets and operations, with renumbering and a long-key report (PRJ-05, decisions 0006 and 0008).
+- The project folder as TOML files: `file::save`, `file::load`, `file::create`, schema version in every file, step-by-step migration, merge-conflict detection and strict loading (PRJ-01, PRJ-04).
+- Crate created as a shell (work breakdown slice 0).

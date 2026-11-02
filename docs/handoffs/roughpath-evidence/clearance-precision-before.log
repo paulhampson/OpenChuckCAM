@@ -1,0 +1,23 @@
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized] target(s) in 43.73s
+     Running tests/entry_safety.rs (target/debug/deps/entry_safety-c7c9bac221404bc1)
+
+running 1 test
+test req_op_11_req_set_09_sweep_reserves_controller_rounding_clearance ... FAILED
+
+failures:
+
+---- req_op_11_req_set_09_sweep_reserves_controller_rounding_clearance stdout ----
+
+thread 'req_op_11_req_set_09_sweep_reserves_controller_rounding_clearance' (24532) panicked at crates/openchuck-path/tests/entry_safety.rs:202:5:
+assertion failed: proof.verify(pose(-2.0), pose(-1.0004), 0.0, 0.01, &mut 100_000,
+        &ctx).is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    req_op_11_req_set_09_sweep_reserves_controller_rounding_clearance
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p openchuck-path --test entry_safety`

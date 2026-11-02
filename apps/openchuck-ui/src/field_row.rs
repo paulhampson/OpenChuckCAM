@@ -1,0 +1,1388 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The inspector's field row, drawn once for every form (UI-07; interface
+//! specification section 8, "Fields"; decision record 0029 item 11; slice 22
+//! lane X4, decision 0114 C10).
+//!
+//! A row is a label in a 120-pixel column, with a reset button (↺) at its
+//! right end when the value can be reset, and the value to its right. A
+//! number field draws its unit inside the field on the right, and gives the
+//! allowed range in the field's tooltip. An empty field shows the value that
+//! applies as a hint, with its source.
+//!
+//! Typed text is kept here until it is committed: on Enter or when the field
+//! loses focus. Esc puts back the last applied text. A refused value stays in
+//! its field with a red border and the reason in red under it. The caller
+//! applies a committed value (one undoable command) and reports the outcome
+//! with [`FieldState::result`].
+
+use std::collections::BTreeMap;
+
+use eframe::egui::{self, Key, RichText, Stroke};
+
+use crate::arith;
+use crate::theme::{DARK, RADIUS, width};
+
+/// Text being typed into fields, and refused values with their reasons, by
+/// the row's key.
+#[derive(Debug, Default)]
+pub struct FieldState {
+    text: BTreeMap<String, String>,
+    errors: BTreeMap<String, String>,
+    /// Fields whose typed entry cannot be read as a number or a sum
+    /// (UI-26); their label, by key. They are a kind of refusal, kept apart
+    /// so the step bar can mark them.
+    unreadable: BTreeMap<String, String>,
+}
+
+impl FieldState {
+    /// Forgets typed text and errors, for another item or after an undo.
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.errors.clear();
+        self.unreadable.clear();
+    }
+
+    /// Forgets child buffers after an explicitly guarded structural edit.
+    /// Callers must resolve pending edits before changing indexed row identities.
+    pub fn clear_prefix(&mut self, prefix: &str) {
+        self.text.retain(|key, _| !key.starts_with(prefix));
+        self.errors.retain(|key, _| !key.starts_with(prefix));
+        self.unreadable.retain(|key, _| !key.starts_with(prefix));
+    }
+
+    /// Records the outcome of applying a committed value of `key`: accepted
+    /// drops the typed text, refused keeps it with the reason.
+    pub fn result(&mut self, key: &str, result: Result<(), String>) {
+        match result {
+            Ok(()) => {
+                self.text.remove(key);
+                self.errors.remove(key);
+                self.unreadable.remove(key);
+            }
+            Err(e) => {
+                self.errors.insert(key.to_owned(), e);
+            }
+        }
+    }
+
+    /// Marks `key` refused with `reason`, keeping `typed` in the field.
+    pub fn refuse(&mut self, key: &str, typed: &str, reason: String) {
+        self.text.insert(key.to_owned(), typed.to_owned());
+        self.errors.insert(key.to_owned(), reason);
+    }
+
+    /// The reason a field's value was refused, if it was.
+    pub fn error(&self, key: &str) -> Option<&str> {
+        self.errors.get(key).map(String::as_str)
+    }
+
+    /// The text typed into `key` and not yet applied, if any.
+    pub fn typed(&self, key: &str) -> Option<&str> {
+        self.text.get(key).map(String::as_str)
+    }
+
+    /// True while a field holds a refused value.
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+}
+
+/// What the user did with a row this frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Nothing to apply.
+    None,
+    /// Apply this text (Enter, or the field lost focus with changed text).
+    Commit(String),
+    /// Reset the value, so the default or the source applies (↺).
+    Reset,
+}
+
+type Validate<'a> = &'a dyn Fn(&str) -> Result<(), String>;
+
+/// A text or number row.
+#[derive(Clone, Default)]
+pub struct TextRow<'a> {
+    /// Identifies the row's typed text and refusal; unique within the form.
+    pub key: &'a str,
+    /// The label, in sentence case.
+    pub label: &'a str,
+    /// What the value does, for the label's tooltip.
+    pub description: &'a str,
+    /// The unit drawn inside the field ("mm", "°", "mm/min"), or empty.
+    pub unit: &'a str,
+    /// The allowed range in words, for the field's tooltip.
+    pub range: Option<&'a str>,
+    /// The text of the applied value; empty when the field is empty.
+    pub applied: String,
+    /// The value that applies while the field is empty, with its source:
+    /// "0.020 · from the tool's cutting data".
+    pub hint: Option<String>,
+    /// A refusal or check to show under the field, besides the one this
+    /// state holds (a draft's check, 11.7).
+    pub problem: Option<&'a str>,
+    /// Offer ↺ in the label column.
+    pub reset: bool,
+    /// False draws the row read-only.
+    pub enabled: bool,
+    /// Ask for keyboard focus this frame (a new tab's Start X, 11.7).
+    pub focus: bool,
+    /// The operation's path was made with a warning that points at this
+    /// setting, in a plain sentence: an amber border and, under the field,
+    /// the warning shape and the sentence, so the mark does not rest on
+    /// colour alone (decision record 0175; the marks of decision record
+    /// 0173). Shown whatever the field holds, unlike a refusal.
+    pub warned: Option<&'a str>,
+    /// A required value that is missing, in a few plain words ("Enter feed"):
+    /// an amber border and, under the field, the same warning shape the tree
+    /// uses and these words, so the mark does not rest on colour alone
+    /// (UI-11; issue 224). Calmer than `problem`, which is for a refusal.
+    pub needs: Option<&'a str>,
+    /// Scroll this row into view this frame (the "Show setting" and "Show
+    /// first" jumps).
+    pub scroll_to: bool,
+    /// A number box: the entry may be a sum (`12.5 + 3`), worked out when it
+    /// is confirmed and rounded to the places of the unit; an entry that
+    /// cannot be read is refused under the box, and the last good value is
+    /// kept (UI-26; [`crate::arith`]).
+    pub number: bool,
+    /// A box that is not a number (a tool number) but is as compact as one,
+    /// so a form's boxes share their edges (decision 0440).
+    pub compact: bool,
+    /// Checks the interpreted entry without applying it. The departure
+    /// guard checks every pending field before any command is executed.
+    pub validate: Option<Validate<'a>>,
+    pub preflight: Option<crate::pending_edits::Preflight>,
+}
+
+impl std::fmt::Debug for TextRow<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextRow")
+            .field("key", &self.key)
+            .field("label", &self.label)
+            .field("applied", &self.applied)
+            .field("number", &self.number)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Shows `text` as the tooltip of `response` on hover and while it has
+/// keyboard focus (section 16: tooltips open on focus as well as hover).
+pub fn tip(response: egui::Response, text: &str) -> egui::Response {
+    if response.has_focus() {
+        response.show_tooltip_text(text);
+    }
+    response.on_hover_text(text)
+}
+
+/// A small outlined chip ("Not applied"): measured first and drawn in one
+/// allocated rectangle, so its place does not depend on the layout it is in
+/// (a frame in a right-to-left row lay outside the pane and widened it).
+pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(
+        text.to_owned(),
+        egui::TextStyle::Small.resolve(ui.style()),
+        colour,
+    );
+    let size = galley.size() + egui::vec2(10.0, 2.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        Stroke::new(1.0, DARK.line),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, colour);
+    response
+}
+
+/// What the labels of the pane drawn in one frame needed: the widest of this
+/// frame and of the one before, so that a row drawn first knows what a row
+/// drawn later asks for (decision 0440).
+#[derive(Clone, Copy, Default)]
+struct Needed {
+    pass: u64,
+    last: f32,
+    now: f32,
+}
+
+/// The key of the label column the row being drawn belongs to: the window or
+/// panel it is in, so every row of a form has the same column (decision
+/// 0440).
+fn needed_id(ui: &egui::Ui) -> egui::Id {
+    egui::Id::unique("label column").with(ui.layer_id())
+}
+
+/// Tells the pane that a label needs `width` (the label, the reset slot and
+/// the gap after them).
+pub fn need_label_width(ui: &egui::Ui, width: f32) {
+    let pass = ui.ctx().cumulative_pass_nr();
+    let id = needed_id(ui);
+    let grown = ui.data_mut(|d| {
+        let n = d.get_temp_mut_or_default::<Needed>(id);
+        if n.pass != pass {
+            n.last = n.now;
+            n.now = 0.0;
+            n.pass = pass;
+        }
+        n.now = n.now.max(width);
+        width > n.last + 0.5
+    });
+    // A label wider than the column the pane was drawn with: draw the frame
+    // again with the new column, so the form never shows the old one.
+    if grown {
+        ui.ctx().request_discard("label column grew");
+    }
+}
+
+/// The width of the label column of the row being drawn: as wide as the
+/// widest label of the pane needs, not narrower than `width::LABEL_MIN`, and
+/// not wider than the smaller of `width::LABEL_MAX` and `width::LABEL_SHARE`
+/// of the room the row has (specification section 8; decision 0440). Every
+/// row of the pane has the same column, so the boxes line up.
+pub fn label_column(ui: &egui::Ui) -> f32 {
+    let pass = ui.ctx().cumulative_pass_nr();
+    let id = needed_id(ui);
+    let needed = ui
+        .data(|d| d.get_temp::<Needed>(id))
+        .map_or(0.0, |n| if n.pass == pass { n.last } else { n.now });
+    let most = width::LABEL_MAX.min(width::LABEL_SHARE * ui.available_width());
+    let column = needed.min(most).max(width::LABEL_MIN);
+    #[cfg(test)]
+    ui.data_mut(|d| d.insert_temp(egui::Id::unique("last label column"), column));
+    column
+}
+
+/// The label column the last row drew with (for tests that click just
+/// after it).
+#[cfg(test)]
+pub(crate) fn last_label_column(ctx: &egui::Context) -> f32 {
+    ctx.data(|d| d.get_temp(egui::Id::unique("last label column")))
+        .unwrap_or(width::LABEL_MIN)
+}
+
+/// A row of the form: a horizontal layout one point narrower than the room,
+/// so a row never ends past the pane's edge by the rounding of a fractional
+/// label column and holds the pane open (decision 0440).
+fn form_row<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.scope(|ui| {
+        ui.set_max_width((ui.available_width() - 1.0).max(0.0));
+        ui.horizontal(add).inner
+    })
+    .inner
+}
+
+/// The width a label needs in the label column, with the reset slot and the
+/// gap before the value.
+fn label_need(ui: &egui::Ui, label: &str) -> f32 {
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        DARK.muted,
+    );
+    galley.size().x + ui.spacing().interact_size.y + 6.0
+}
+
+/// The width of a number box in a row with `available` points left: the
+/// compact width, so the boxes of a form share their edges, and never more
+/// than the room.
+fn number_width(available: f32) -> f32 {
+    width::NUMBER_BOX.min(available).max(60.0)
+}
+
+/// The width of a drop-down list showing the widest of `texts`, in a row
+/// with `available` points left.
+fn list_width(ui: &egui::Ui, texts: &[&str], available: f32) -> f32 {
+    let widest = texts
+        .iter()
+        .map(|t| {
+            ui.painter()
+                .layout_no_wrap(
+                    (*t).to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    (widest + 2.0 * ui.spacing().button_padding.x + ui.spacing().icon_width + 8.0)
+        .max(80.0)
+        .min(available.max(80.0))
+}
+
+/// The label column: the label with its tooltip at the left, and ↺ in a slot
+/// at its right end. The slot is reserved whether or not ↺ is shown, so
+/// showing or hiding it never moves the label or the value (issue 243).
+/// Returns true when ↺ was clicked.
+fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
+    let height = ui.spacing().interact_size.y;
+    need_label_width(ui, label_need(ui, label));
+    let size = egui::vec2(label_column(ui), height);
+    // Allocated and drawn in one step, so the cell is where the cursor is and
+    // the value follows it directly.
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let slot = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - height, rect.top()),
+        egui::vec2(height, height),
+    );
+    let text = egui::Rect::from_min_max(rect.min, egui::pos2(slot.left(), rect.bottom()));
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(text)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    label_text(&mut child, label, description);
+    // A child of its own, so a button wider than the slot cannot push the
+    // cursor on. Made whether or not ↺ is shown: each child takes an
+    // automatic ID from the row, so a child made only with ↺ would change the
+    // value's ID and take its focus as ↺ comes and goes.
+    let mut slot_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(slot)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    if !reset {
+        return false;
+    }
+    let button = slot_ui
+        .add(
+            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent))
+                .small()
+                .min_size(slot.size()),
+        )
+        .on_hover_text("Reset: the default or the tool's cutting data applies");
+    button.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Reset {label}"))
+    });
+    button.clicked()
+}
+
+/// The label, cut with "…" when the column is too narrow for it; a cut label
+/// is also given as the tooltip, so the whole of it can be read (UI-14).
+fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
+    let response = ui.add(
+        egui::Label::new(RichText::new(label).color(DARK.muted))
+            .truncate()
+            .sense(egui::Sense::hover()),
+    );
+    let cut =
+        response.rect.width() + 0.5 < label_need(ui, label) - ui.spacing().interact_size.y - 6.0;
+    let text = match (cut, description.is_empty()) {
+        (true, true) => label.to_owned(),
+        (true, false) => format!("{label}: {description}"),
+        (false, _) => description.to_owned(),
+    };
+    if !text.is_empty() {
+        response.on_hover_text(text);
+    }
+}
+
+/// The reason in red under the value, indented past the label column.
+fn reason_line(ui: &mut egui::Ui, reason: &str, colour: egui::Color32) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
+        ui.label(RichText::new(reason).color(colour));
+    });
+}
+
+/// Draws a text or number row. Returns what the user did.
+pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) -> Outcome {
+    let mut outcome = Outcome::None;
+    let id = crate::pending_edits::field_id(ui, "field row", row.key);
+    let error = state.error(row.key).map(str::to_owned);
+    let marked = error.is_some() || row.problem.is_some();
+    let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
+    let warned = row.warned.is_some() && !marked;
+    if row.scroll_to {
+        ui.scroll_to_cursor(Some(egui::Align::Center));
+    }
+    form_row(ui, |ui| {
+        if label_cell(ui, row.label, row.description, row.reset && row.enabled) {
+            outcome = Outcome::Reset;
+        }
+        let mut typed = state
+            .typed(row.key)
+            .map_or_else(|| row.applied.clone(), str::to_owned);
+        // The box takes the rest of the row as one fixed rectangle, so what is
+        // typed in it cannot change its size or the size of the pane around
+        // it (a row that grew with its content made the inspector widen).
+        let margin = egui::vec2(6.0, 2.0);
+        let box_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0 * margin.y;
+        let (frame_rect, _) = ui.allocate_exact_size(
+            egui::vec2(
+                if row.number || row.compact || !row.unit.is_empty() {
+                    number_width(ui.available_width())
+                } else {
+                    ui.available_width().max(60.0)
+                },
+                box_height,
+            ),
+            egui::Sense::hover(),
+        );
+        let background = ui.painter().add(egui::Shape::Noop);
+        let response = {
+            let mut inner = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(frame_rect.shrink2(margin))
+                    .layout(
+                        egui::Layout::left_to_right(egui::Align::Center)
+                            .with_main_align(egui::Align::Min),
+                    ),
+            );
+            let ui = &mut inner;
+            // The row draws the box; the edit inside it is only its text. egui
+            // 0.37 raises an edit to the height of a button.
+            ui.spacing_mut().interact_size.y = 0.0;
+            let unit = (!row.unit.is_empty()).then(|| {
+                ui.painter().layout_no_wrap(
+                    row.unit.to_owned(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    DARK.muted,
+                )
+            });
+            let unit_width = unit
+                .as_ref()
+                .map_or(0.0, |g| g.size().x + ui.spacing().item_spacing.x);
+            let mut edit = crate::theme::single_line(ui, &mut typed)
+                .id(id)
+                .frame(egui::Frame::NONE)
+                .font(egui::TextStyle::Monospace)
+                .desired_width((ui.available_width() - unit_width).max(0.0))
+                .interactive(row.enabled);
+            if let Some(hint) = &row.hint {
+                edit = edit.hint_text(RichText::new(hint).color(DARK.muted));
+            }
+            let response = ui.add(edit);
+            if let Some(unit) = unit {
+                let (rect, _) = ui.allocate_exact_size(unit.size(), egui::Sense::hover());
+                ui.painter().galley(rect.min, unit, DARK.muted);
+            }
+            response
+        };
+        let border = if marked {
+            DARK.error
+        } else if response.has_focus() {
+            DARK.accent
+        } else if needed || warned {
+            DARK.warning
+        } else {
+            DARK.line
+        };
+        ui.painter().set(
+            background,
+            egui::epaint::RectShape::new(
+                frame_rect,
+                RADIUS,
+                DARK.field,
+                Stroke::new(
+                    if response.has_focus() || needed || warned {
+                        2.0
+                    } else {
+                        1.0
+                    },
+                    border,
+                ),
+                egui::StrokeKind::Inside,
+            ),
+        );
+        // What the box shows only in part is in its tooltip, on hover and on
+        // keyboard focus: the default that applies with its source (a compact
+        // box cuts a long one), then the allowed range (decision 0440).
+        let mut tooltip = Vec::new();
+        if row.applied.trim().is_empty()
+            && let Some(hint) = &row.hint
+        {
+            tooltip.push(hint.clone());
+        }
+        if let Some(range) = row.range {
+            tooltip.push(format!("Allowed: {range}."));
+        }
+        let response = if tooltip.is_empty() {
+            response
+        } else {
+            tip(response, &tooltip.join("\n"))
+        };
+        if row.focus {
+            response.request_focus();
+        }
+        if response.changed() {
+            state.text.insert(row.key.to_owned(), typed.clone());
+            state.errors.remove(row.key);
+            state.unreadable.remove(row.key);
+        }
+        if crate::pending_edits::take_discard(ui.ctx(), response.id) {
+            state.text.remove(row.key);
+            state.errors.remove(row.key);
+            state.unreadable.remove(row.key);
+            typed = row.applied.clone();
+        }
+        if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+            state.refuse(row.key, &typed, reason);
+            if row.number && arith::entry_text(&typed, places(row.unit)).is_err() {
+                state
+                    .unreadable
+                    .insert(row.key.to_owned(), row.label.to_owned());
+            }
+        }
+        if crate::pending_edits::take_focus(ui.ctx(), response.id) {
+            response.request_focus();
+        }
+        let keep =
+            crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Keep(response.id);
+        if keep
+            || (response.lost_focus()
+                && crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Normal
+                && (!crate::pending_edits::holds_focus_loss(ui.ctx())
+                    || ui.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Escape))))
+        {
+            if ui.input(|i| i.key_pressed(Key::Escape)) {
+                // Esc puts back the last applied text (section 8).
+                state.text.remove(row.key);
+                state.errors.remove(row.key);
+                state.unreadable.remove(row.key);
+            } else if state.text.contains_key(row.key) {
+                // A sum is worked out here, so what is applied and kept is
+                // only the number (UI-26); an entry that cannot be read is
+                // refused and the last good value stays (NFR-07).
+                let entry = if row.number && !typed.trim().is_empty() {
+                    arith::entry_text(&typed, places(row.unit))
+                } else {
+                    Ok(typed.clone())
+                };
+                match entry {
+                    Err(reason) => {
+                        state.refuse(row.key, &typed, reason);
+                        state
+                            .unreadable
+                            .insert(row.key.to_owned(), row.label.to_owned());
+                    }
+                    Ok(text) => {
+                        state.unreadable.remove(row.key);
+                        if text.trim() == row.applied.trim() && error.is_none() {
+                            state.text.remove(row.key);
+                        } else {
+                            state.text.insert(row.key.to_owned(), text.clone());
+                            outcome = Outcome::Commit(text);
+                        }
+                    }
+                }
+            }
+        }
+        let pending = state
+            .typed(row.key)
+            .filter(|text| text.trim() != row.applied.trim())
+            .map(|text| {
+                if let Some(reason) = state.error(row.key) {
+                    return Err(reason.to_owned());
+                }
+                let checked = if row.number && !text.trim().is_empty() {
+                    arith::entry_text(text, places(row.unit))
+                } else {
+                    Ok(text.to_owned())
+                };
+                checked.and_then(|text| {
+                    if let Some(validate) = row.validate {
+                        validate(&text)?;
+                    }
+                    Ok(text)
+                })
+            });
+        crate::pending_edits::track(ui, &response, row.label, pending);
+        crate::pending_edits::set_preflight(ui.ctx(), response.id, row.preflight.clone());
+    });
+    note_unreadable(ui.ctx(), row.key, state.unreadable.get(row.key));
+    let error = state.error(row.key).map(str::to_owned);
+    if let Some(reason) = error.as_deref().or(row.problem) {
+        reason_line(ui, reason, DARK.error);
+    } else if let (true, Some(text)) = (needed, row.needs) {
+        warning_line(ui, text);
+    } else if let Some(text) = row.warned {
+        warning_line(ui, text);
+    }
+    outcome
+}
+
+/// Remembers for the step bar that `key` holds an entry that cannot be read
+/// (or that it no longer does), as of this frame.
+fn note_unreadable(ctx: &egui::Context, key: &str, label: Option<&String>) {
+    let id = egui::Id::unique("unreadable-entries");
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
+        match label {
+            Some(label) => {
+                seen.insert(key.to_owned(), (frame, label.clone()));
+            }
+            None => {
+                seen.remove(key);
+            }
+        }
+    });
+}
+
+/// The labels of the number boxes drawn in the last frame or two that hold
+/// an entry that cannot be read, for the step bar (UI-26).
+pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
+    let id = egui::Id::unique("unreadable-entries");
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
+        seen.retain(|_, (at, _)| frame.saturating_sub(*at) <= 2);
+        let mut labels: Vec<String> = seen.values().map(|(_, l)| l.clone()).collect();
+        labels.sort();
+        labels.dedup();
+        labels
+    })
+}
+
+/// A warning under a field or a section: the warning shape the tree uses and
+/// a plain sentence, indented past the label column. It says what is missing
+/// (issue 224; UI-11) or why a setting is marked by its path's warning
+/// (decision record 0175).
+pub fn warning_line(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
+        crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
+        ui.label(RichText::new(text).color(DARK.warning));
+    });
+}
+
+/// The inspector header's name, in an editable field with no label (section
+/// 8): drawn as the operation name until it has focus. It commits as a row
+/// does, Esc puts the name back, and a refusal shows under it.
+pub fn name_field(ui: &mut egui::Ui, state: &mut FieldState, key: &str, applied: &str) -> Outcome {
+    let mut outcome = Outcome::None;
+    let mut typed = state
+        .typed(key)
+        .map_or_else(|| applied.to_owned(), str::to_owned);
+    let response = ui.add(
+        crate::theme::single_line(ui, &mut typed)
+            .id(crate::pending_edits::field_id(ui, "name field", key))
+            .font(egui::TextStyle::Heading)
+            .desired_width(ui.available_width() - 90.0),
+    );
+    response.widget_info(|| egui::WidgetInfo::text_edit(true, applied, &typed, "Name"));
+    if response.changed() {
+        state.text.insert(key.to_owned(), typed.clone());
+        state.errors.remove(key);
+    }
+    if crate::pending_edits::take_discard(ui.ctx(), response.id) {
+        state.text.remove(key);
+        state.errors.remove(key);
+        typed = applied.to_owned();
+    }
+    if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+        state.refuse(key, &typed, reason);
+    }
+    if crate::pending_edits::take_focus(ui.ctx(), response.id) {
+        response.request_focus();
+    }
+    let keep =
+        crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Keep(response.id);
+    if keep
+        || (response.lost_focus()
+            && crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Normal
+            && (!crate::pending_edits::holds_focus_loss(ui.ctx())
+                || ui.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Escape))))
+    {
+        if ui.input(|i| i.key_pressed(Key::Escape)) {
+            state.text.remove(key);
+            state.errors.remove(key);
+        } else if state.text.contains_key(key) {
+            if typed == applied {
+                state.text.remove(key);
+                state.errors.remove(key);
+            } else {
+                outcome = Outcome::Commit(typed);
+            }
+        }
+    }
+    crate::pending_edits::track(
+        ui,
+        &response,
+        "Name",
+        state
+            .typed(key)
+            .filter(|text| *text != applied)
+            .map(|text| {
+                if let Some(reason) = state.error(key) {
+                    Err(reason.to_owned())
+                } else if text.trim().is_empty() {
+                    Err("Give the item a name. Not applied.".to_owned())
+                } else {
+                    Ok(text.to_owned())
+                }
+            }),
+    );
+    outcome
+}
+
+/// The reason a header's name was refused, in red under it.
+pub fn name_problem(ui: &mut egui::Ui, state: &FieldState, key: &str) {
+    if let Some(reason) = state.error(key) {
+        ui.label(RichText::new(reason).color(DARK.error));
+    }
+}
+
+/// Draws a read-only row: the label and the value as text, with an optional
+/// note under it.
+pub fn read_only_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    description: &str,
+    value: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    form_row(ui, |ui| {
+        label_cell(ui, label, description, false);
+        // A point narrower than the room, so wrapped text never runs to the
+        // pane's edge and holds the pane open.
+        ui.scope(|ui| {
+            ui.set_max_width((ui.available_width() - 2.0).max(40.0));
+            ui.add(egui::Label::new(value).wrap())
+        })
+        .inner
+    })
+}
+
+/// A derived line under a row, indented past the label column ("Small end
+/// towards the part").
+pub fn note_line(ui: &mut egui::Ui, text: &str, colour: egui::Color32) {
+    reason_line(ui, text, colour);
+}
+
+/// Draws a check box row. Returns the new value when it was toggled.
+pub fn flag_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    description: &str,
+    value: bool,
+    enabled: bool,
+) -> Option<bool> {
+    let mut on = value;
+    let changed = form_row(ui, |ui| {
+        label_cell(ui, label, description, false);
+        let response = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on));
+        response
+            .widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, label));
+        crate::pending_edits::track(ui, &response, label, None);
+        response.changed()
+    });
+    changed.then_some(on)
+}
+
+/// Draws a segmented control of `options`, the selected one filled with the
+/// `selected` token (two to four exclusive choices, section 8). Returns the
+/// index chosen this frame.
+pub fn segmented(
+    ui: &mut egui::Ui,
+    options: &[&str],
+    current: Option<usize>,
+    enabled: bool,
+) -> Option<usize> {
+    let mut chosen = None;
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (i, option) in options.iter().enumerate() {
+            let on = current == Some(i);
+            let button = egui::Button::new(RichText::new(*option).color(if on {
+                DARK.text
+            } else {
+                DARK.muted
+            }))
+            .fill(if on { DARK.selected } else { DARK.field })
+            .stroke(Stroke::new(1.0, DARK.line))
+            .corner_radius(0.0)
+            .selected(on);
+            let response = ui.add_enabled(enabled, button);
+            crate::pending_edits::track(ui, &response, option, None);
+            if response.clicked() && !on {
+                chosen = Some(i);
+            }
+        }
+    });
+    chosen
+}
+
+/// The width the segmented control of `options` needs, so a row can fall
+/// back to a drop-down list when the pane is too narrow for it (a rigid
+/// control that does not fit holds the pane open).
+fn segmented_width(ui: &egui::Ui, options: &[&str]) -> f32 {
+    options
+        .iter()
+        .map(|option| {
+            ui.painter()
+                .layout_no_wrap(
+                    (*option).to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x
+                + 2.0
+        })
+        .sum()
+}
+
+/// A row of a choice: a segmented control for two to four options, else a
+/// drop-down list. Returns the index chosen this frame.
+pub fn choice_row(
+    ui: &mut egui::Ui,
+    key: &str,
+    label: &str,
+    description: &str,
+    options: &[&str],
+    current: Option<usize>,
+    enabled: bool,
+) -> Option<usize> {
+    form_row(ui, |ui| {
+        label_cell(ui, label, description, false);
+        if (2..=4).contains(&options.len())
+            && segmented_width(ui, options) + 2.0 <= ui.available_width()
+        {
+            segmented(ui, options, current, enabled)
+        } else {
+            let mut chosen = None;
+            let shown = current
+                .and_then(|i| options.get(i))
+                .copied()
+                .unwrap_or_default();
+            ui.add_enabled_ui(enabled, |ui| {
+                let response = egui::ComboBox::from_id_salt(("choice", key))
+                    .selected_text(shown)
+                    .width(list_width(
+                        ui,
+                        &[options, &[shown]].concat(),
+                        ui.available_width(),
+                    ))
+                    .show_ui(ui, |ui| {
+                        for (i, option) in options.iter().enumerate() {
+                            if ui.selectable_label(current == Some(i), *option).clicked()
+                                && current != Some(i)
+                            {
+                                chosen = Some(i);
+                            }
+                        }
+                    });
+                crate::pending_edits::track(ui, &response.response, label, None);
+            });
+            chosen
+        }
+    })
+}
+
+/// A row of a drop-down list whose closed box shows `shown`, which may be
+/// none of the options (a material preset that was dropped shows "No
+/// preset"). Returns the index chosen this frame, unless it is `current`.
+pub fn list_row(
+    ui: &mut egui::Ui,
+    key: &str,
+    label: &str,
+    description: &str,
+    (options, current): (&[&str], Option<usize>),
+    shown: &str,
+) -> Option<usize> {
+    form_row(ui, |ui| {
+        label_cell(ui, label, description, false);
+        let mut chosen = None;
+        let response = egui::ComboBox::from_id_salt(("list", key))
+            .selected_text(shown)
+            .width(list_width(
+                ui,
+                &[options, &[shown]].concat(),
+                ui.available_width(),
+            ))
+            .truncate()
+            .show_ui(ui, |ui| {
+                for (i, option) in options.iter().enumerate() {
+                    if ui.selectable_label(current == Some(i), *option).clicked()
+                        && current != Some(i)
+                    {
+                        chosen = Some(i);
+                    }
+                }
+            })
+            .response
+            .on_hover_text(description);
+        crate::pending_edits::track(ui, &response, label, None);
+        chosen
+    })
+}
+
+/// The decimal places a quantity is shown with (14.3): positions and lengths
+/// in mm to 3, degrees to 2, feeds whole; a plain number as it is.
+pub fn places(unit: &str) -> Option<usize> {
+    match unit {
+        "mm" => Some(3),
+        "°" | "deg" => Some(2),
+        "mm/min" | "rpm" => Some(0),
+        _ => None,
+    }
+}
+
+/// `value` with `places` decimals, or more where fewer would show another
+/// value, so a stored value is never misread (14.3). With no places, the
+/// shortest text that reads back as `value`.
+pub fn number(value: f64, places: Option<usize>) -> String {
+    let Some(places) = places else {
+        return format!("{value}");
+    };
+    (places..=9)
+        .map(|p| format!("{value:.p$}"))
+        .find(|t| {
+            t.parse::<f64>()
+                .is_ok_and(|v| (v - value).abs() <= 1e-12 * value.abs().max(1.0))
+        })
+        .unwrap_or_else(|| format!("{value}"))
+}
+
+/// What a section of the inspector gave back this frame.
+pub struct Section<R> {
+    /// What the body returned, when it is open.
+    pub body: Option<R>,
+    /// Whether it is open after this frame.
+    pub open: bool,
+    /// The header row, to scroll to.
+    pub header: egui::Response,
+}
+
+/// A collapsible section of the inspector (section 8): its title upper case,
+/// small, in the heading colour, with `extra` drawn after it (chips, a
+/// status mark). Clicking the title or the arrow opens or closes it; the
+/// caller remembers the open state per item kind. `force_open` opens it this
+/// frame (a tree row or a message chose it).
+pub fn section<R>(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    title: &str,
+    default_open: bool,
+    force_open: bool,
+    extra: impl FnOnce(&mut egui::Ui),
+    body: impl FnOnce(&mut egui::Ui) -> R,
+) -> Section<R> {
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        id,
+        default_open,
+    );
+    if force_open || crate::pending_edits::needs_section(ui.ctx(), id) {
+        state.set_open(true);
+    }
+    let mut clicked = false;
+    let mut header = state.show_header(ui, |ui| {
+        let title = ui.add(
+            egui::Label::new(
+                RichText::new(title.to_uppercase())
+                    .small()
+                    .strong()
+                    .color(DARK.heading),
+            )
+            .sense(egui::Sense::click()),
+        );
+        extra(ui);
+        clicked = title.clicked();
+    });
+    if clicked {
+        header.toggle();
+    }
+    let open = header.is_open();
+    let (_, header, body) = header.body(|ui| {
+        let ctx = ui.ctx().clone();
+        crate::pending_edits::section(&ctx, id, || body(ui))
+    });
+    Section {
+        body: body.map(|b| b.inner),
+        open,
+        header: header.response,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    /// Runs one frame of a row, with `events` as the frame's input.
+    fn frame(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        row: &TextRow<'_>,
+        events: Vec<egui::Event>,
+    ) -> Outcome {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 300.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut outcome = Outcome::None;
+        let mut output = ctx.run_ui(input, |ui| {
+            outcome = text_row(ui, state, row);
+        });
+        output.textures_delta.clear();
+        outcome
+    }
+
+    fn key(key: Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    fn stepover(focus: bool) -> TextRow<'static> {
+        TextRow {
+            key: "stepover",
+            label: "Stepover",
+            unit: "mm",
+            range: Some("above 0 mm"),
+            applied: "0.500".to_owned(),
+            enabled: true,
+            focus,
+            ..TextRow::default()
+        }
+    }
+
+    /// Focuses the row and types `text` over its value.
+    fn type_text(ctx: &egui::Context, state: &mut FieldState, text: &str) {
+        frame(ctx, state, &stepover(true), Vec::new());
+        frame(
+            ctx,
+            state,
+            &stepover(false),
+            vec![
+                key(Key::End),
+                egui::Event::Key {
+                    key: Key::Home,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::SHIFT,
+                },
+            ],
+        );
+        frame(
+            ctx,
+            state,
+            &stepover(false),
+            vec![egui::Event::Text(text.to_owned())],
+        );
+    }
+
+    #[test]
+    fn req_ui_07_a_value_is_applied_on_enter_not_while_typing() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        type_text(&ctx, &mut state, "0.25");
+        assert_eq!(state.typed("stepover"), Some("0.25"));
+        // Typing applies nothing; Enter commits the typed text.
+        let outcome = frame(&ctx, &mut state, &stepover(false), vec![key(Key::Enter)]);
+        assert_eq!(outcome, Outcome::Commit("0.25".to_owned()));
+        state.result("stepover", Ok(()));
+        assert_eq!(state.typed("stepover"), None);
+    }
+
+    #[test]
+    fn req_ui_07_esc_puts_back_the_last_applied_text() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        type_text(&ctx, &mut state, "9");
+        let outcome = frame(&ctx, &mut state, &stepover(false), vec![key(Key::Escape)]);
+        assert_eq!(outcome, Outcome::None);
+        assert_eq!(state.typed("stepover"), None);
+        assert!(state.typed("stepover").is_none());
+    }
+
+    #[test]
+    fn req_ui_07_a_refused_value_stays_with_its_reason_until_accepted() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        type_text(&ctx, &mut state, "-1");
+        let outcome = frame(&ctx, &mut state, &stepover(false), vec![key(Key::Enter)]);
+        assert_eq!(outcome, Outcome::Commit("-1".to_owned()));
+        state.result(
+            "stepover",
+            Err("Must be above 0 mm. Not applied.".to_owned()),
+        );
+        // The typed text stays in the field, the reason under it.
+        assert_eq!(state.typed("stepover"), Some("-1"));
+        assert_eq!(
+            state.error("stepover"),
+            Some("Must be above 0 mm. Not applied.")
+        );
+        state.result("stepover", Ok(()));
+        assert_eq!(state.error("stepover"), None);
+        assert!(state.typed("stepover").is_none());
+    }
+
+    #[test]
+    fn req_ui_07_numbers_have_fixed_places_and_never_misread() {
+        assert_eq!(number(0.5, places("mm")), "0.500");
+        assert_eq!(number(90.0, places("°")), "90.00");
+        assert_eq!(number(1200.0, places("mm/min")), "1200");
+        // More places where the fixed ones would show another value.
+        assert_eq!(number(0.0005, places("mm")), "0.0005");
+        assert_eq!(number(0.1, None), "0.1");
+    }
+
+    /// The label's position and the field's rectangle in one frame of a row.
+    fn placed(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        row: &TextRow<'_>,
+        width: f32,
+    ) -> (egui::Pos2, egui::Rect) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, 300.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            text_row(ui, state, row);
+        });
+        output.textures_delta.clear();
+        let mut label = None;
+        let mut field = None;
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::Shape::Text(t) if t.galley.text() == row.label => label = Some(t.pos),
+                egui::Shape::Rect(r) if r.rect.width() > 60.0 => field = Some(r.rect),
+                _ => {}
+            }
+        }
+        (label.unwrap(), field.unwrap())
+    }
+
+    #[test]
+    fn req_ui_07_the_reset_button_never_moves_the_label_or_the_field() {
+        for scale in [1.0_f32, 1.2] {
+            for width in [260.0_f32, 320.0, 420.0] {
+                let ctx = egui::Context::default();
+                ctx.set_zoom_factor(scale);
+                let mut state = FieldState::default();
+                let default = stepover(false);
+                let entered = TextRow {
+                    reset: true,
+                    ..stepover(false)
+                };
+                // Settle the first frame, then compare the two states.
+                placed(&ctx, &mut state, &default, width);
+                let before = placed(&ctx, &mut state, &default, width);
+                let during = placed(&ctx, &mut state, &entered, width);
+                let after = placed(&ctx, &mut state, &default, width);
+                assert_eq!(before, during, "value set, scale {scale}, width {width}");
+                assert_eq!(before, after, "reverted, scale {scale}, width {width}");
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_07_a_focused_field_keeps_focus_and_text_when_the_reset_button_comes_and_goes() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let entered = TextRow {
+            reset: true,
+            ..stepover(false)
+        };
+        frame(&ctx, &mut state, &stepover(true), Vec::new());
+        let focused = ctx.memory(egui::Memory::focused);
+        assert!(focused.is_some());
+        frame(&ctx, &mut state, &entered, vec![key(Key::End)]);
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button shown");
+        frame(
+            &ctx,
+            &mut state,
+            &entered,
+            vec![egui::Event::Text("7".into())],
+        );
+        frame(&ctx, &mut state, &stepover(false), Vec::new());
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button hidden");
+        frame(
+            &ctx,
+            &mut state,
+            &stepover(false),
+            vec![egui::Event::Text("1".into())],
+        );
+        assert_eq!(state.typed("stepover"), Some("0.50071"));
+    }
+
+    /// One frame of a form of three rows at a pane `width`: a long-labelled
+    /// number row, a short-labelled number row and a text row. Returns the
+    /// boxes (the field fill) and the texts with their rectangles.
+    fn form(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        width: f32,
+    ) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>, Vec<String>) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, 300.0),
+            )),
+            ..Default::default()
+        };
+        let rows = [
+            ("long", "Distance past the stock", "mm", true),
+            ("short", "Tolerance", "mm", true),
+            ("name", "Name", "", false),
+        ];
+        let mut output = ctx.run_ui(input, |ui| {
+            for (key, label, unit, number) in rows {
+                let row = TextRow {
+                    key,
+                    label,
+                    unit,
+                    number,
+                    applied: "0.400".to_owned(),
+                    enabled: true,
+                    ..TextRow::default()
+                };
+                text_row(ui, state, &row);
+            }
+        });
+        output.textures_delta.clear();
+        let mut boxes = Vec::new();
+        let mut texts = Vec::new();
+        let mut elided = Vec::new();
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::Shape::Rect(r) if r.fill == DARK.field => boxes.push(r.rect),
+                egui::Shape::Text(t) if t.galley.elided => {
+                    elided.push(t.galley.text().to_string());
+                }
+                egui::Shape::Text(t) => texts.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                _ => {}
+            }
+        }
+        (boxes, texts, elided)
+    }
+
+    fn settled(width: f32) -> (Vec<egui::Rect>, Vec<(String, egui::Rect)>, Vec<String>) {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let mut last = form(&ctx, &mut state, width);
+        for _ in 0..4 {
+            last = form(&ctx, &mut state, width);
+        }
+        last
+    }
+
+    #[test]
+    fn req_ui_07_the_label_column_fits_the_widest_label_and_every_row_shares_it() {
+        let (boxes, texts, elided) = settled(420.0);
+        assert!(elided.is_empty(), "a label is cut at 420: {elided:?}");
+        let long = texts
+            .iter()
+            .find(|(t, _)| t == "Distance past the stock")
+            .unwrap();
+        assert_eq!(boxes.len(), 3, "{boxes:?}");
+        let lefts: Vec<f32> = boxes.iter().map(|b| b.left()).collect();
+        assert!(
+            lefts.iter().all(|l| (l - lefts[0]).abs() < 0.6),
+            "{lefts:?}"
+        );
+        assert!(lefts[0] >= long.1.right() + 4.0, "{lefts:?} {:?}", long.1);
+    }
+
+    #[test]
+    fn req_ui_07_a_number_box_stays_compact_and_a_text_box_fills_as_the_pane_widens() {
+        let (narrow, _, _) = settled(340.0);
+        let (wide, _, _) = settled(520.0);
+        let number = width::NUMBER_BOX;
+        assert!((wide[0].width() - number).abs() < 0.6, "{wide:?}");
+        assert!(narrow[0].width() <= number + 0.6, "{narrow:?}");
+        assert!(
+            wide[2].width() > narrow[2].width() + 100.0,
+            "{narrow:?} {wide:?}"
+        );
+        assert!(wide[2].width() > wide[0].width() + 100.0, "{wide:?}");
+        // The compact boxes share one width and one left edge.
+        assert!((wide[0].width() - wide[1].width()).abs() < 0.6, "{wide:?}");
+        assert!((wide[0].left() - wide[1].left()).abs() < 0.6, "{wide:?}");
+    }
+
+    #[test]
+    fn req_ui_07_the_column_is_limited_to_its_share_of_a_narrow_pane() {
+        // 200 points: the long label cannot have its width, and the boxes
+        // keep their minimum.
+        let (boxes, _, elided) = settled(200.0);
+        // The detector catches a cut label: at 200 the long label is cut.
+        assert!(
+            elided.iter().any(|t| t == "Distance past the stock"),
+            "{elided:?}"
+        );
+        assert!(boxes.iter().all(|b| b.width() >= 60.0), "{boxes:?}");
+        assert!(boxes[0].left() <= 0.55 * 200.0 + 24.0, "{boxes:?}");
+    }
+
+    #[test]
+    fn req_ui_07_the_default_and_its_source_are_in_the_tooltip_while_the_box_has_focus() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let row = |focus| TextRow {
+            key: "speed",
+            label: "Spindle speed",
+            unit: "rpm",
+            number: true,
+            hint: Some("12000 \u{b7} from the tool's cutting data for oak".to_owned()),
+            range: Some("above 0 rpm"),
+            enabled: true,
+            focus,
+            ..TextRow::default()
+        };
+        let run = |state: &mut FieldState, row: &TextRow<'_>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(340.0, 300.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                text_row(ui, state, row);
+            });
+            output.textures_delta.clear();
+            // The tooltip is one text holding the hint and the allowed range;
+            // the box's own hint is a different text without the range.
+            output.shapes.iter().any(|c| {
+                fn has(shape: &egui::Shape) -> bool {
+                    match shape {
+                        egui::Shape::Text(t) => {
+                            t.galley
+                                .text()
+                                .contains("from the tool's cutting data for oak")
+                                && t.galley.text().contains("Allowed: above 0 rpm.")
+                        }
+                        egui::Shape::Vec(v) => v.iter().any(has),
+                        _ => false,
+                    }
+                }
+                has(&c.shape)
+            })
+        };
+        // No tooltip before the box has focus.
+        for _ in 0..3 {
+            assert!(!run(&mut state, &row(false)), "a tooltip without focus");
+        }
+        run(&mut state, &row(true));
+        let mut shown = false;
+        for _ in 0..4 {
+            shown |= run(&mut state, &row(false));
+        }
+        // With keyboard focus the tooltip has the whole hint and the range.
+        assert!(shown);
+    }
+}

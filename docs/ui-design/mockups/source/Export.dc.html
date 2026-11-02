@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Post and export</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.dlg{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--tx:#e4e7eb;--mu:#9ba3ae;--ac:#5aa9ff;--ok:#4cc38a;--wn:#f2b84b;--er:#ff7b72;width:1040px;height:760px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border:1px solid #4a5059}
+.dlg *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{height:28px;padding:0 14px;border:1px solid var(--ln);background:var(--p2);border-radius:3px;display:inline-flex;align-items:center;gap:6px}
+.btn.pri{background:#2f6fbd;border-color:#4a8fe0;color:#fff;font-weight:500}
+.btn.off{opacity:.45}
+.ib{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#c3c9d1;margin-bottom:8px;display:flex;justify-content:space-between}
+.fld{display:flex;align-items:center;justify-content:space-between;background:#16181b;border:1px solid var(--ln);border-radius:3px;height:26px;padding:0 8px}
+.seg{display:flex;border:1px solid var(--ln);border-radius:3px;overflow:hidden;height:26px}
+.seg span{flex:1;display:flex;align-items:center;justify-content:center;background:#16181b;color:var(--mu)}
+.seg span.on{background:#264466;color:#fff}
+.seg span{min-width:0;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+.sec{padding:12px 14px;border-bottom:1px solid var(--ln)}
+.tt{display:grid;grid-template-columns:64px 1fr 96px 64px 24px;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #2d3137}
+.tt.hd{color:var(--mu);font-size:11px;border-bottom:1px solid var(--ln)}
+.rad{width:12px;height:12px;border-radius:6px;border:1.5px solid #7b8490;flex:none;display:inline-block}
+.rad.on{border-color:var(--ac);background:radial-gradient(circle,var(--ac) 0 3px,transparent 4px)}
+.cb{width:14px;height:14px;border:1px solid #7b8490;border-radius:2px;flex:none;background:#17191c}
+.code{background:#121418;border:1px solid var(--ln);border-radius:3px;padding:8px 10px;line-height:1.55;font-size:12px;overflow:hidden}
+.cm{color:#7f8a98}.ax{color:#35d0e0}
+</style>
+</helmet>
+<div class="dlg">
+  <div style="height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#15171a;border-bottom:1px solid var(--ln)">
+    <span style="font-weight:600;font-size:13px">Post and export G-code</span>
+      </div>
+  <div style="flex:1;min-height:0;display:flex">
+    <div style="width:520px;flex:none;border-right:1px solid var(--ln);overflow:hidden">
+      <div class="sec">
+        <div class="h"><span>1 Post-processor</span></div>
+        <div class="row"><span class="mu">Post</span><div class="fld"><span>Makera Z1</span><span class="mu">▾</span></div></div>
+        <div class="row"><span class="mu">Feed mode</span><div class="fld"><span>Units per minute</span><span class="mu">from post</span></div></div>
+        <div class="row"><span class="mu">Units, A letter</span><div class="fld"><span class="m">mm · A · continuous</span><span class="mu">from post</span></div></div>
+        <div class="row"><span class="mu">Files</span><div class="seg"><span>Project</span><span class="on">Per setup</span><span>Operation</span><span>Tool</span></div></div>
+        <div class="row"><span class="mu">Folder</span><div class="fld"><span class="m">groove_demo/out/</span><span class="mu">Browse</span></div></div>
+      </div>
+      <div class="sec">
+        <div class="h"><span>2 Tool numbers in the program</span><span style="text-transform:none;letter-spacing:0;font-weight:400" class="mu">Z1 accepts T1 to T4</span></div>
+        <div class="tt hd"><span>Library</span><span>Tool</span><span>Used in</span><span>Program</span><span></span></div>
+        <div class="tt"><span class="m">T1</span><span>Ball Ø3 · 2 flute</span><span class="m">ops 2, 3, 4</span><div class="fld" style="height:24px"><b class="m" style="font-weight:400">1</b></div><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg></div>
+        <div class="tt"><span class="m">T2</span><span>Flat Ø6 · 3 flute</span><span class="m">op 1</span><div class="fld" style="height:24px"><b class="m" style="font-weight:400">2</b></div><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg></div>
+        <div style="display:flex;gap:16px;margin-top:10px">
+          <span style="display:flex;align-items:center;gap:6px"><span class="rad on"></span>Keep as saved</span>
+          <span style="display:flex;align-items:center;gap:6px"><span class="rad"></span>Renumber in order of use</span>
+          <span style="display:flex;align-items:center;gap:6px"><span class="rad"></span>By hand</span>
+        </div>
+        <div class="mu" style="margin-top:6px;line-height:1.45">The chosen numbers are saved in the project, so the next post gives the same output. Duplicates are refused.</div>
+      </div>
+      <div class="sec" style="border-bottom:0">
+        <div class="h"><span>3 Checks before writing</span></div>
+        <div style="display:grid;grid-template-columns:18px 1fr;gap:6px 8px;align-items:start">
+          <svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Every operation is generated and up to date.</span>
+          <svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Tool numbers are unique and inside the machine's range.</span>
+          <svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Z1 axis height is an unconfirmed placeholder. Every Z in this program depends on it.</span>
+          <svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Operation 3 has not been simulated.</span>
+          <svg class="ib mu" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5v.5"/></svg><span class="mu">Operation 4 is off and will not be posted.</span>
+        </div>
+        <div class="mu" style="margin-top:10px;line-height:1.45">Writing is blocked while an enabled operation is stale or has an error. An operation that has not been simulated only warns.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+      <div class="sec">
+        <div class="h"><span>Files to write</span><span class="mu" style="text-transform:none;letter-spacing:0;font-weight:400">identical output on every run</span></div>
+        <div class="tt" style="grid-template-columns:1fr 64px 104px"><span class="m">groove_demo_setup1.nc</span><span class="mu">Setup 1</span><span class="m" style="text-align:right">18,942 lines</span></div>
+        <div class="mu" style="margin-top:6px">Includes operations 1 to 3 and 2 tool changes.</div>
+      </div>
+      <div class="sec" style="flex:1;border-bottom:0;min-height:0">
+        <div class="h"><span>Preview</span><span class="mu" style="text-transform:none;letter-spacing:0;font-weight:400">first lines</span></div>
+        <div class="code m"><span class="cm">( OpenChuckCAM · Makera Z1 post )</span><br><span class="cm">( Generated G-code must be verified by you )</span><br><span class="cm">( Operation 2: Helical finish · Groove · T1 Ball Ø3 )</span><br>N100 G21 G90 G94 G54<br>N110 T1 M6<br>N120 S12000 M3<br>N130 G0 X-4.000 <span class="ax">A0.000</span><br>N140 G0 Z50.000<br>N150 G1 X0.000 Z11.200 F150<br>N160 G1 X0.310 Z11.060 <span class="ax">A5.000</span> F480<br>N170 G1 X0.622 Z10.924 <span class="ax">A10.000</span> F480<br>N180 G1 X0.934 Z10.790 <span class="ax">A15.000</span> F480<br><span class="cm">( … 18,930 more lines )</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:none;padding:12px 14px;border-top:1px solid #6b5420;background:#2a2316">
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <svg class="ib" style="color:var(--wn);width:18px;height:18px;margin-top:1px" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg>
+      <div style="flex:1;color:#f6e2b4;line-height:1.5"><b>Verify this G-code before you run it.</b> It was produced from your project and has not been tested on your machine. Check the origin, axis height, tool lengths, A direction and unwinding at the controller, and run an air cut first.
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;color:#fff"><span class="cb" role="checkbox" aria-checked="false" tabindex="0"></span>I will verify this G-code before running it on a machine.</div>
+        <div style="margin-top:4px;color:#d9c7a0;font-size:12px">Asked once per project on this computer. Opening the project on another computer asks again. This notice stays visible on every export.</div></div>
+    </div>
+  </div>
+  <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid var(--ln);background:#1b1e22">
+    <button class="btn">Export setup sheet (HTML / PDF)</button>
+    <div style="display:flex;gap:8px"><button class="btn">Cancel</button><button class="btn pri off" disabled>Write G-code</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+OpenCASCADE Technology notice and source offer
+
+OpenChuckCAM reads STEP files with the OpenCASCADE Technology (OCCT) 7.8.1
+geometry kernel. The kernel is statically linked into the program
+"openchuck-step-worker" that ships beside the application, and into nothing
+else. OCCT is licensed under the GNU Lesser General Public License, version 2.1,
+with the Open CASCADE exception (the two texts are LICENSE_LGPL_21.txt and
+OCCT_LGPL_EXCEPTION.txt, shipped in this folder). OpenChuckCAM itself is licensed
+under the GNU Affero General Public License v3.0 or later (LICENSE.txt).
+
+Source offer. The complete corresponding source of the OCCT version used is
+distributed in the Rust crate "occt-sys" 7.8.1 (https://crates.io/crates/occt-sys),
+which is what the OpenChuckCAM build compiles. The source of OpenChuckCAM, including
+the build scripts that link the kernel, is at the repository named in README.txt, at
+the commit named there. Because the kernel is linked statically, you may rebuild
+openchuck-step-worker against a modified OCCT: build it from that commit with
+"cargo build --release -p openchuck-import --features kernel --bin openchuck-step-worker",
+setting the environment variable OCCT_ROOT to your own OCCT installation.
+
+The Open CASCADE exception text and the LGPL-2.1 text govern the kernel; where this
+notice and those texts differ, they win.
