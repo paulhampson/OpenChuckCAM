@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.42.0 (provisional; assigned by the coordinator, applied at the release push)
+
+- RESTCORNERS (issue #508, decision 0644, proposed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
+
 ## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.

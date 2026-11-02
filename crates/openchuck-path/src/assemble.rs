@@ -112,6 +112,10 @@ pub enum UnreachedReason {
         /// The least lean that reaches it, in degrees.
         degrees: f64,
     },
+    /// The tool could reach it only by coming over the gripped length of
+    /// the stock, which every tool keeps clear of by its radius (SET-09;
+    /// decision records 0161 and 0644).
+    NearHeldRegion,
 }
 
 /// A place where a strategy broke a pass because the tool's shank, wider

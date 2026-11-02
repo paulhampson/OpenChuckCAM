@@ -443,6 +443,14 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Refusals.** An unknown pass shape is refused by name for each strategy, and roughing in rings refuses by name a stepover that needs too many points a layer.
 - **Schema.** Each strategy offers Passes, Spiral or Rings, Spiral by default; roughing only for its continuous form around the part, Facing only for Round.
 
+**Rest machining at walls** ([decision 0644](decisions/0644-rest-machining-reaches-the-corners-of-steep-walls.md), proposed 2 Nov 2026; issue #508). OP-09, OP-20 (its report), SET-09, GC-07, NFR-06, NFR-07, NFR-12. In `crates/openchuck-sim/tests/rest_corners.rs`, against the simulated stock after a 3.175 mm ball, with a 3.175 mm flat end, the owner's stepover (2.2225 mm) and threshold (0.05 mm):
+
+- **Inside corners of steep walls.** An 80 degree wall's foot, in rings and in a spiral, and the near-vertical walls where a bead runs into a cove: the most material left there is no more than the threshold plus one simulation cell, with no overcut and no rapid cut.
+- **What the tool cannot reach is said.** A V groove narrower than the tool and a cove's round bottom are reported too narrow, a corner a held region keeps the tool from is reported too near a held region, each with its X range, A range and area, in a warning that ends with the NFR-12 sentence; the part under the grip is not reported, and beside a held region the tool cuts up to its keep-out.
+- **Nothing added where nothing needs it.** A plain cylinder gets no ring at a wall and no report.
+- **Wording.** The note does not say the passes clean the material.
+- **Determinism.** Rings, spiral and the report are the same at 1, 2 and N threads.
+
 **Simultaneous finishing's spiral pattern** ([decision 0497](decisions/0497-rings-for-the-simultaneous-spiral.md), accepted 1 Nov 2026, relayed). OP-05, OP-06, OP-11, OP-12, OP-14, OP-15, OP-26, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/simultaneous_rings.rs` unless named:
 
 - **Shape.** On a cylinder at two stepovers and both rotations, whole turns (to within the mesh's facets) at X no wider apart than the stepover from end to end, A never reversing within a cut; the steps hold A still, and rings and steps are one cut with a lead of 0, 5 and -5 degrees, A building up one turn a ring (OP-15). On a lobed part, at two tilts, every move either turns A or holds it; with no tilt and no lead no step can hold A within the normal, so each ring is its own cut. A face's ring on a stepped shaft is its turn across the axis and the faces are left as with the spiral (`helical_faces.rs`); the corner note for a round end is the same in rings (`simultaneous_off_axis.rs`).

@@ -29,7 +29,7 @@
 
 use std::collections::BTreeMap;
 
-use openchuck_types::geometry::{Point3, UnitVec3};
+use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
@@ -42,6 +42,8 @@ use crate::stock::StockModel;
 use crate::strategy::{Pass, Strategy, StrategyInput, StrategyOutput};
 use crate::surface::SurfaceSource;
 use crate::wrap_fit::{CHORD_FACTOR, Fit, fit_region};
+
+mod walls;
 
 /// The registry name of [`RestMachining`].
 pub const NAME: &str = "rest_machining";
@@ -81,7 +83,19 @@ pub struct RemainingMap {
     spacing: f64,
     tested: usize,
     count: usize,
-    cells: BTreeMap<[i64; 3], Vec<Point3>>,
+    cells: BTreeMap<[i64; 3], Vec<Sample>>,
+}
+
+/// A sample of the part with material left: where it is, the part's
+/// outward normal there and the area of the part it stands for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sample {
+    /// The point on the part's surface.
+    pub point: Point3,
+    /// The outward unit normal of the triangle it lies on.
+    pub normal: Vec3,
+    /// The share of the triangle's area it stands for, square millimetres.
+    pub area: f64,
 }
 
 impl RemainingMap {
@@ -142,7 +156,7 @@ impl RemainingMap {
             spacing *= 1.25;
         }
         context.report("rest machining: finding material left", 0, None);
-        let found: Vec<(usize, Vec<Point3>)> = parallel::map_in_order(&mesh.triangles, |tri| {
+        let found: Vec<(usize, Vec<Sample>)> = parallel::map_in_order(&mesh.triangles, |tri| {
             let [Some(a), Some(b), Some(c)] = tri.map(corner) else {
                 return (0, Vec::new());
             };
@@ -166,13 +180,18 @@ impl RemainingMap {
             let k = subdivisions(tri, spacing);
             let (ab, ac) = (b - a, c - a);
             let kf = k as f64;
+            let area = 0.5 * ab.cross(ac).length() / (kf * kf);
             let mut tested = 0;
             let mut left = Vec::new();
             let mut visit = |u: f64, v: f64| {
                 let p = a + ab * (u / kf) + ac * (v / kf);
                 tested += 1;
                 if probes.iter().all(|d| stock.contains(p + *d * probe)) {
-                    left.push(p);
+                    left.push(Sample {
+                        point: p,
+                        normal: n,
+                        area,
+                    });
                 }
             };
             for i in 0..k {
@@ -195,9 +214,12 @@ impl RemainingMap {
         };
         for (tested, left) in found {
             map.tested += tested;
-            for p in left {
+            for sample in left {
                 map.count += 1;
-                map.cells.entry(map.key(p)).or_default().push(p);
+                map.cells
+                    .entry(map.key(sample.point))
+                    .or_default()
+                    .push(sample);
             }
         }
         Ok(map)
@@ -215,7 +237,7 @@ impl RemainingMap {
             for dy in -1..=1 {
                 for dz in -1..=1 {
                     if let Some(points) = self.cells.get(&[kx + dx, ky + dy, kz + dz])
-                        && points.iter().any(|q| q.distance(p) <= self.reach)
+                        && points.iter().any(|q| q.point.distance(p) <= self.reach)
                     {
                         return true;
                     }
@@ -248,6 +270,12 @@ impl RemainingMap {
     /// The samples with material left, in a deterministic order (by their
     /// cell, then as they were found).
     pub fn samples(&self) -> Vec<Point3> {
+        self.cells.values().flatten().map(|s| s.point).collect()
+    }
+
+    /// The samples with material left, with their normals and areas, in the
+    /// order of [`samples`](Self::samples).
+    pub fn samples_with_normals(&self) -> Vec<Sample> {
         self.cells.values().flatten().copied().collect()
     }
 }
@@ -415,7 +443,14 @@ impl Strategy for RestMachining {
         }
 
         let spacing = detection_spacing(input.tool, stepover);
-        let reach = 0.5 * stepover + spacing;
+        // A flat bottom touches a floor anywhere under it, so its contact
+        // can be a whole flat's width from the material it cuts: the reach
+        // spans it too (decision record 0644; 0 for a round end).
+        let flat = input
+            .tool
+            .point_for_normal(-std::f64::consts::FRAC_PI_2 + 1e-6)
+            .map_or(input.tool.cutting_radius(), |q| q.radius.0);
+        let reach = 0.5 * stepover + spacing + 2.0 * flat;
         let probe = leave + min_remaining;
         let map = RemainingMap::detect(input.surface, input.stock, probe, spacing, reach, context)?;
         if map.is_empty() {
@@ -466,13 +501,36 @@ impl Strategy for RestMachining {
         // (decision record 0297; issue 404).
         let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
         let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
+        // The walls with material left, where the tool's side meets them
+        // (decision record 0644; issue #508).
+        let walls = walls::Walls {
+            grown: &grown,
+            span: (x0, x1),
+            stepover,
+            target: min_remaining.max(tolerance),
+            smallest: tolerance.max(MIN_WALL_SPACING),
+            tolerance,
+            min_remaining,
+        };
+        let samples = map.samples_with_normals();
+        let (wall_rings, capped) = if walls.modelled() {
+            walls.rings(&samples, map.spacing(), input.keep_out)
+        } else {
+            (Vec::new(), false)
+        };
+        // A wall ring where a face's turn already is would cut it twice.
+        let wall_rings: Vec<f64> = wall_rings
+            .into_iter()
+            .filter(|w| turns.iter().all(|t| (t - w).abs() >= walls.smallest))
+            .collect();
         let mut ring_note = None;
         let mut passes = if crate::helical::in_rings(parameters) {
             // Rings and the steps between them, each cut only where material
             // is left; a step with nothing to cut is left to the shared
             // services to link (decision record 0420; OP-14). A face's turn
             // is one of the rings.
-            let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &turns);
+            let places: Vec<f64> = turns.iter().chain(&wall_rings).copied().collect();
+            let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &places);
             let (passes, _) =
                 crate::helical::ring_passes(&fit, &xs, step, false, "rest machining", context)?;
             ring_note = Some(format!(
@@ -483,9 +541,11 @@ impl Strategy for RestMachining {
             passes
         } else {
             let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
-            // One whole turn at each face across the axis, cut where material
-            // is left, as helical finishing does.
-            for &x in &turns {
+            // One whole turn at each face across the axis and at each wall
+            // ring, cut where material is left, as helical finishing does.
+            let mut places: Vec<f64> = turns.iter().chain(&wall_rings).copied().collect();
+            places.sort_by(f64::total_cmp);
+            for &x in &places {
                 context.check_cancelled()?;
                 let at = start + sign * 360.0 * (x - x0) / stepover;
                 passes.extend(crate::helical::turn_passes(
@@ -519,22 +579,103 @@ impl Strategy for RestMachining {
         }
         let mut notes = vec![format!(
             "rest machining: {} of {} points sampled on the part have more than {} mm of \
-             material left; {} passes clean them",
+             material left; {} passes cut where it is left",
             map.len(),
             map.tested(),
             min_remaining,
             passes.len()
         )];
         notes.extend(ring_note);
+        if let Some(note) = wall_note(&wall_rings, walls.target) {
+            notes.push(note);
+        }
+        let mut warnings = free.warnings;
+        if capped {
+            warnings.push(crate::assemble::PathWarning {
+                message: format!(
+                    "rest machining placed the most rings it may at walls ({}): walls further \
+                     along may keep more than {} mm between rings; check them in the simulation",
+                    walls::MAX_WALL_RINGS,
+                    walls.target
+                ),
+                parameter: Some(parameter::MIN_REMAINING.to_owned()),
+                requires_acknowledgement: false,
+            });
+        }
+        let unreached = if walls.modelled() {
+            walls.unreached(input, &samples, map.spacing(), context)?
+        } else {
+            notes.push(
+                "this tool's profile is not convex, so rest machining places no rings at walls \
+                 and does not check what the tool cannot reach"
+                    .to_owned(),
+            );
+            Vec::new()
+        };
+        warnings.extend(unreached_warning(
+            &unreached,
+            2.0 * input.tool.cutting_radius(),
+        ));
         notes.extend(faces::note(&turns));
         notes.extend(faces::held_note(&found.held));
         notes.extend(free.notes);
         Ok(StrategyOutput {
             passes,
             notes,
-            warnings: free.warnings,
-            unreached: Vec::new(),
+            warnings,
+            unreached,
             shank_breaks: Vec::new(),
         })
     }
+}
+
+/// The closest two rings at walls may be, millimetres (with the toolpath
+/// tolerance if that is larger).
+const MIN_WALL_SPACING: f64 = 0.01;
+
+/// The note for the rings added at walls; `None` with none.
+fn wall_note(rings: &[f64], target: f64) -> Option<String> {
+    let closest = rings
+        .windows(2)
+        .filter_map(|w| match w {
+            [a, b] => Some(b - a),
+            _ => None,
+        })
+        .fold(f64::INFINITY, f64::min);
+    let (first, last) = (rings.first()?, rings.last()?);
+    let apart = if closest.is_finite() {
+        format!(", as close as {closest:.4} mm apart,")
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its tool's \
+         side meets a wall with material left, so that a steep wall keeps about {target} mm or \
+         less between them",
+        rings.len()
+    ))
+}
+
+/// The warning for the material the tool cannot reach (decision record
+/// 0644, in the words of OP-20's report); `None` with none.
+fn unreached_warning(
+    areas: &[crate::assemble::Unreached],
+    diameter: f64,
+) -> Option<crate::assemble::PathWarning> {
+    if areas.is_empty() {
+        return None;
+    }
+    let plural = if areas.len() == 1 { "" } else { "s" };
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "rest machining cannot reach {} area{plural} of the part where material is left, \
+             which stay uncut: {}. Check them in the simulation; a smaller tool or another \
+             operation may reach them. Generated G-code must be verified by the user before it \
+             is run on a machine.",
+            areas.len(),
+            crate::simultaneous::unreached_list(areas, diameter, 0.0)
+        ),
+        parameter: None,
+        requires_acknowledgement: false,
+    })
 }

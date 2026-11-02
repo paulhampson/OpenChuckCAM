@@ -1545,8 +1545,9 @@ impl StockModel for LeftByEarlier<'_> {
 /// How far, beyond its largest radius, the tool keeps from a held region
 /// along the axis, in millimetres (decision 0161): the jaw face is not a
 /// surface to cut against, and the simulation's cells would read a tool
-/// flush with it as touching the held stock.
-pub const HELD_CLEARANCE: f64 = 0.5;
+/// flush with it as touching the held stock. The library's value, which
+/// rest machining also uses (decision 0644).
+pub const HELD_CLEARANCE: f64 = openchuck_path::HELD_CLEARANCE;
 
 #[cfg(test)]
 #[allow(
