@@ -806,9 +806,9 @@ impl Shell {
     pub(super) fn recent_projects(&mut self, ctx: &egui::Context) -> Vec<PathBuf> {
         let answer = self.recent_check.as_ref().map(Receiver::try_recv);
         match answer {
-            Some(Ok(existing)) => {
+            Some(Ok((checked, existing))) => {
                 self.recent_check = None;
-                if self.settings.forget_missing_in(&existing) {
+                if self.settings.forget_missing_in(&checked, &existing) {
                     self.settings_touched();
                 }
             }
@@ -829,7 +829,8 @@ impl Shell {
                         if let Some(gate) = gate {
                             drop(gate.lock());
                         }
-                        let _ = tx.send(openchuck_app::settings::existing_folders(&folders));
+                        let existing = openchuck_app::settings::existing_folders(&folders);
+                        let _ = tx.send((folders, existing));
                     });
                     self.recent_check = Some(rx);
                     ctx.request_repaint_after(RECENT_POLL);

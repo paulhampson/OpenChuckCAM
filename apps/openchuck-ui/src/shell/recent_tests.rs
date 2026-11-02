@@ -215,3 +215,40 @@ fn req_ui_15_open_recent_does_not_look_at_folders_on_the_ui_thread() {
     drop(held);
     std::fs::remove_dir_all(root).ok();
 }
+
+/// A folder-check answer applies only to the list it was asked about: a
+/// project added to the recent list while the check ran is never forgotten
+/// by that answer (UI-15; owner's review of pull request 479).
+#[test]
+fn req_ui_15_a_late_folder_check_does_not_forget_a_project_added_meanwhile() {
+    let (mut rig, root, made) = rig_with_recent("recent-late-check", 1);
+    let newer = root.join("job-new");
+    std::fs::create_dir_all(&newer).unwrap();
+    let newer = newer.canonicalize().unwrap();
+    // The check for [job-0] is asked, and held.
+    let gate = std::sync::Arc::new(std::sync::Mutex::new(()));
+    let held = gate.lock().unwrap();
+    rig.shell.recent_gate = Some(std::sync::Arc::clone(&gate));
+    open_menu(&mut rig);
+    assert!(rig.shell.recent_check.is_some(), "the check was asked");
+    // A project is opened meanwhile (shell.rs adds it to the front).
+    rig.shell.settings.opened(&newer);
+    assert_eq!(rig.shell.settings.recent, [newer.clone(), made[0].clone()]);
+    // The held answer (only job-0 was looked at) now arrives.
+    drop(held);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while rig.shell.recent_check.is_some() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the check never ended"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        rig.frame(Vec::new());
+    }
+    assert_eq!(
+        rig.shell.settings.recent,
+        [newer, made[0].clone()],
+        "the project added meanwhile was not looked at, so it stays"
+    );
+    std::fs::remove_dir_all(root).ok();
+}

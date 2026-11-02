@@ -105,6 +105,10 @@ const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
 
+/// The answer to a check of which recent folders exist: the list that was
+/// looked at, and the folders among them that exist.
+type RecentCheck = std::sync::mpsc::Receiver<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)>;
+
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Next {
@@ -198,7 +202,7 @@ pub struct Shell {
     recent_clicked: Option<std::path::PathBuf>,
     /// The running check of which recent folders exist, and when it last
     /// started (the check is off the UI thread; issue 381).
-    recent_check: Option<std::sync::mpsc::Receiver<Vec<std::path::PathBuf>>>,
+    recent_check: Option<RecentCheck>,
     recent_checked_at: Option<std::time::Instant>,
     /// Held by a test to keep the check from answering.
     #[cfg(test)]

@@ -405,3 +405,23 @@ fn req_ui_15_recent_projects_forget_vanished_folders_and_can_be_cleared() {
     assert!(settings.recent.is_empty());
     std::fs::remove_dir_all(config).unwrap();
 }
+
+/// An answer about folders applies only to the list it was asked about: a
+/// project added since is never looked at, so it is never forgotten by it
+/// (UI-15; owner's review of pull request 479).
+#[test]
+fn req_ui_15_a_folder_answer_forgets_only_what_it_was_asked_about() {
+    let a = PathBuf::from("/projects/a");
+    let b = PathBuf::from("/projects/b");
+    let gone = PathBuf::from("/projects/gone");
+    let mut settings = UserSettings {
+        recent: vec![b.clone(), a.clone(), gone.clone()],
+        ..UserSettings::default()
+    };
+    // Asked about [a, gone] before b was added; only a exists.
+    let changed = settings.forget_missing_in(&[a.clone(), gone], std::slice::from_ref(&a));
+    assert!(changed);
+    assert_eq!(settings.recent, [b.clone(), a.clone()]);
+    // Nothing missing: nothing changes.
+    assert!(!settings.forget_missing_in(&[a.clone(), b.clone()], &[a, b]));
+}
