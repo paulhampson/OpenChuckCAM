@@ -23,12 +23,15 @@ fn part() -> TriangleMesh {
         triangles: vec![[0, 1, 2]],
     }
 }
+const FLUTE: f64 = 25.;
 fn tool() -> Tool {
     Tool {
         shape: ToolShape::FlatEnd,
         diameter: Millimetres(3.),
-        flute_length: Millimetres(10.),
-        overall_length: Millimetres(30.),
+        // Long enough to reach the 24 mm ends below from one view: an end
+        // deeper than the flutes is faced from two (the owner's F1, #499).
+        flute_length: Millimetres(FLUTE),
+        overall_length: Millimetres(40.),
         shank_diameter: Millimetres(3.),
         flute_count: 2,
         material: None,
@@ -84,17 +87,16 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
         assert!((actual - expected).abs() < 1e-10);
     }
     // The bands reach 0.00125 (an eighth of the tolerance) past each edge
-    // and the 10 mm flute steps by 9.9975, so neighbours overlap by at least
-    // that much for the motion the controller reads back (issue #499).
+    // (issue #499); the 10 mm flute step leaves the 25 mm flutes overlapping.
     let heights = plan
         .bands
         .iter()
         .map(|band| band.heights)
         .collect::<Vec<_>>();
     let expected = [
-        (2.00375, 12.00125),
-        (-7.99375, 2.00375),
-        (-12.00125, -7.99375),
+        (2.00125, 12.00125),
+        (-7.99875, 2.00125),
+        (-12.00125, -7.99875),
     ];
     assert_eq!(heights.len(), expected.len());
     for (actual, expected) in heights.iter().zip(expected) {
@@ -120,7 +122,7 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
                 assert!((point.tip.x - plan.axial_planes[slice] - 1.5).abs() < 1e-12);
                 assert_eq!(point.tip.z, plan.bands[band].heights.0);
                 assert!((point.contact.x - plan.axial_planes[slice]).abs() < 1e-12);
-                assert!(point.contact.z >= point.tip.z && point.contact.z <= point.tip.z + 10.);
+                assert!(point.contact.z >= point.tip.z && point.contact.z <= point.tip.z + FLUTE);
             }
         }
     }
@@ -398,7 +400,7 @@ fn req_op_24_req_op_21_cylindrical_tab_flanks_stay_outside_and_cover_the_remaini
                     let h = y * ny + z * nz;
                     let u = y * nz - z * ny;
                     h >= height - 1e-10
-                        && h <= height + 10. + 1e-10
+                        && h <= height + FLUTE + 1e-10
                         && u >= u0 - 1e-10
                         && u <= u1 + 1e-10
                 }),
@@ -532,16 +534,18 @@ fn req_op_24_stored_end_settings_control_axial_depth_flute_spacing_and_start_vie
     let plan = plan_end(&setup, &p, &ctx).unwrap();
     assert_eq!(plan.target.x, 50.2);
     assert_eq!(plan.axial_planes.len(), 5);
-    assert!(
-        plan.bands
-            .iter()
-            .all(|b| b.heights.1 - b.heights.0 <= 1. + 1e-12 && b.angle.0 == 30.)
-    );
+    // At A 30 the stock's bounding square is about 32.8 mm deep across the
+    // tool's axis, more than the 25 mm flutes reach from one view, so the
+    // end is faced from A 30 and A 210 (the owner's F1, issue #499).
+    assert!(plan.bands.iter().all(
+        |b| b.heights.1 - b.heights.0 <= 1. + 1e-12 && (b.angle.0 == 30. || b.angle.0 == 210.)
+    ));
+    assert!(plan.bands.iter().any(|b| b.angle.0 == 30.));
     assert!(
         plan.passes
             .iter()
             .flat_map(|pass| &pass.points)
-            .all(|p| p.a.0 == 30.)
+            .all(|p| p.a.0 == 30. || p.a.0 == 210.)
     );
 }
 
@@ -721,9 +725,13 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
     let mut unfinished = path.group.clone();
     // A raised final band leaves a thin INTERNAL stripe; plane tolerance is
     // not permission to ignore a ridge running back to the original stock.
-    // Bands overlap by twice the written-motion allowance (issue #499), so
-    // the band is raised by the tolerance, well past that overlap.
-    let top = plan.bands[0].heights.0;
+    // The lowest band reaches the written-motion allowance below the edge
+    // (issue #499), so it is raised by the tolerance, well past that.
+    let top = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.0)
+        .fold(f64::INFINITY, f64::min);
     let mut last_a = unfinished.start;
     for segment in &mut unfinished.segments {
         if segment.kind.is_fed() && last_a.tip.z == top && segment.end.tip.z == top {
@@ -1021,7 +1029,7 @@ fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowan
     assert!((highest - (12. + allowance)).abs() < 1e-12, "{highest}");
     // Neighbouring bands overlap by at least the allowance as well.
     for pair in plan.bands.windows(2) {
-        assert!(pair[1].heights.0 + 10. >= pair[0].heights.0 + 2. * allowance - 1e-12);
+        assert!(pair[1].heights.0 + FLUTE >= pair[0].heights.0 + 2. * allowance - 1e-12);
     }
     let raised = |by: f64| {
         let mut group = actual_sweeps(&plan.passes, &machine);
@@ -1056,4 +1064,149 @@ fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowan
     }
     let error = check(&raised(allowance + 1e-6)).unwrap_err().to_string();
     assert!(error.contains("unfinished"), "{error}");
+}
+
+fn end_setup<'a>(
+    part: &'a TriangleMesh,
+    stock: &'a Stock,
+    tool: &'a Tool,
+    machine: &'a MachineProfile,
+) -> FacingSetup<'a> {
+    FacingSetup {
+        part,
+        stock,
+        tool,
+        machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    }
+}
+
+/// The owner's decision F1 on issue #499: one view reaches at most the flute
+/// length below the stock's top at that view. An end the flutes reach from
+/// one view is faced from one, as before.
+#[test]
+fn req_op_24_an_end_the_flutes_reach_is_faced_from_one_view() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let plan = plan_end(
+        &end_setup(&part, &stock, &tool, &machine),
+        &settings(),
+        &ctx,
+    )
+    .unwrap();
+    assert!(plan.bands.iter().all(|b| b.angle.0 == 0.));
+    assert!(plan.bands.iter().all(|b| 12. - b.heights.0 <= FLUTE));
+}
+
+/// F1: an end taller than the flutes reach from one view is faced from A and
+/// A + 180 degrees, each view no deeper than the flute length below the
+/// stock's top there and down past the axis, and the two together finish
+/// the whole end; each axial slice turns A once (decision 0252's alternating
+/// view order).
+#[test]
+fn req_op_24_req_nfr_12_an_end_deeper_than_the_flutes_is_faced_from_both_sides() {
+    use openchuck_path::facing::coverage::verify_end_coverage;
+    let part = part();
+    let tool = Tool {
+        flute_length: Millimetres(15.),
+        ..tool()
+    };
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = end_setup(&part, &stock, &tool, &machine);
+    let plan = plan_end(&setup, &settings(), &ctx).unwrap();
+    let mut angles = plan.bands.iter().map(|b| b.angle.0).collect::<Vec<_>>();
+    angles.dedup();
+    assert_eq!(angles, [0., 180.], "{angles:?}");
+    for band in &plan.bands {
+        assert!(
+            12. - band.heights.0 <= 15.,
+            "{band:?} reaches past the flutes"
+        );
+    }
+    for angle in [0., 180.] {
+        let lowest = plan
+            .bands
+            .iter()
+            .filter(|b| b.angle.0 == angle)
+            .map(|b| b.heights.0)
+            .fold(f64::INFINITY, f64::min);
+        assert!(lowest < 0., "A {angle} reaches past the axis: {lowest}");
+    }
+    // One A flip per axial slice: the passes of a slice are all at one A
+    // before they turn, and the next slice starts where the last one ended.
+    let mut turns = 0;
+    for pair in plan.passes.windows(2) {
+        if pair[0].points[0].a != pair[1].points[0].a {
+            turns += 1;
+        }
+    }
+    assert_eq!(turns, plan.axial_planes.len(), "one A turn per slice");
+    verify_end_coverage(
+        &setup,
+        plan.end,
+        plan.target,
+        plan.coverage,
+        &actual_sweeps(&plan.passes, &machine),
+        0.01,
+        0.,
+        &ctx,
+    )
+    .unwrap();
+}
+
+/// F1: an end deeper than twice the flutes cannot be faced from two sides,
+/// and the operation refuses, naming the place, the depth, the flutes and
+/// each remedy (decision 0344 item 7's style; NFR-07).
+#[test]
+fn req_nfr_07_req_op_24_an_end_deeper_than_two_sides_reach_refuses_with_remedies() {
+    let part = part();
+    let tool = Tool {
+        flute_length: Millimetres(10.),
+        ..tool()
+    };
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let error = plan_end(
+        &end_setup(&part, &stock, &tool, &machine),
+        &settings(),
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    for words in [
+        "X 50.200",
+        "10.000 mm of flute",
+        "A 0.000 and A 180.000",
+        "longer flutes",
+        "Box facing",
+    ] {
+        assert!(error.contains(words), "{words:?} missing from: {error}");
+    }
 }

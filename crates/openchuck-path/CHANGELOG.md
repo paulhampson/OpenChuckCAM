@@ -7,6 +7,7 @@
   - **Air point.** Where each End band starts and ends, the complete tool is the approach distance (never less than a quarter of the tolerance) from the stock's end face and any protection beyond it, not a quarter of the tolerance.
   - **Bands.** End bands reach an eighth of the tolerance past the requested top and bottom edges, and the band spacing is at most the flute length less twice that, so neighbouring bands overlap by at least as much; a tab-limited band is not carried further.
   - **Links.** Facing's schema gains `link_height` (Links between passes, Retract by default, or Low), shown for End and Box; Low sets `Pass::low_link` on every End and Box pass (decision 0496's rule). A saved operation without it is unchanged.
+  - **Flute depth (decision 0642, the owner's F1).** Each End view reaches at most the tool's flute length below the stock's top at that view; an end deeper than that is faced from A and A + 180 degrees, and one deeper than two sides reach is refused with the depth, the flutes and the remedies.
   - **Output.** Every End facing path changes (air points and band heights). Box, Flat and Round paths are unchanged unless Low is chosen. No golden file changes.
 
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
