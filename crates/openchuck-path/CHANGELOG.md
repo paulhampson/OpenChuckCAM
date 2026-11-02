@@ -2,7 +2,7 @@
 
 ## Unreleased (lane FACEAPPROACH; the coordinator assigns the minor version)
 
-- **Breaking (FACEAPPROACH, issue #499, decision 0640, proposed):** End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low.
+- **Breaking (FACEAPPROACH, issue #499, decision 0641, proposed):** End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low.
   - **API.** `facing::end::EndFacingParameters` gains `approach` (the operation's approach distance); struct literals add it. `EndFacingParameters::read` fills it from `approach_distance`.
   - **Air point.** Where each End band starts and ends, the complete tool is the approach distance (never less than a quarter of the tolerance) from the stock's end face and any protection beyond it, not a quarter of the tolerance.
   - **Bands.** End bands reach an eighth of the tolerance past the requested top and bottom edges, and the band spacing is at most the flute length less twice that, so neighbouring bands overlap by at least as much; a tab-limited band is not carried further.

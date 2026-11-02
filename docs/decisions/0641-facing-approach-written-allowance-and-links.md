@@ -1,10 +1,10 @@
-# 0640: End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low (OP-14, OP-24, SET-06, SET-09, NFR-05, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
+# 0641: End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low (OP-14, OP-24, SET-06, SET-09, NFR-05, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
 
 - **Status:** proposed by lane FACEAPPROACH on 2 Nov 2026. Item 3 is the owner's decision D1 (option iii), relayed by the coordinator (decision 0049) on 2 Nov 2026. Items 1 and 2 fix defects and needed no choice (the coordinator, 2 Nov 2026). The record awaits the owner's acceptance.
 - **Date:** 2 Nov 2026.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499), "Facing: the toolpath starts from the safe Z instead of just above the top of the material".
 - **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End and Box facing, their completion proofs and the written-motion budget), [0496](0496-low-links-between-finishing-passes.md) (Links between passes), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (the clearance in use), [0033](0033-slice-14-rotary-roughing.md) item 6 (low links against stock), [0048](0048-pre-1-0-api-changes.md) (pre-release API changes).
-- **Open items:** OI-1741 (other strategies that retract between passes) is narrowed; OI-2001 (End facing depth against the flute length) and OI-2002 (the Facing cutter-sweep overlay) are new. No project schema change.
+- **Open items:** OI-1741 (other strategies that retract between passes) is narrowed; OI-1997 (End facing depth against the flute length) and OI-1998 (the Facing cutter-sweep overlay) are new. No project schema change.
 
 ## Context
 
@@ -60,8 +60,8 @@ The export refusal had a measurable cause. The lowest band sat exactly on the co
   - Tests: `crates/openchuck-path/tests/facing_end_plan.rs`, `crates/openchuck-app/tests/facing_approach.rs` (the Baluster set-up) and `crates/openchuck-app/src/facing/integration_tests.rs`.
 - **Documents:** the verification plan rows OP-14 and OP-24, the work breakdown (lane FACEAPPROACH), the open-items register and the decision index.
 - **Not in this record.** These were reported on #499 and are left open:
-  - End facing reaches 35 mm below the stock top with 25 mm of flute. The owner's expectation is to turn A through 180° at the flute limit (OI-2001).
-  - The Facing cutter-sweep overlay is drawn in the Cut colour, at the tip and at the flute top of every fed move, and only when the last run's project equals the current one. This is what made the Operations view look different with Rough enabled and disabled (OI-2002).
+  - End facing reaches 35 mm below the stock top with 25 mm of flute. The owner's expectation is to turn A through 180° at the flute limit (OI-1997).
+  - The Facing cutter-sweep overlay is drawn in the Cut colour, at the tip and at the flute top of every fed move, and only when the last run's project equals the current one. This is what made the Operations view look different with Rough enabled and disabled (OI-1998).
   - Box facing refuses on the Baluster with an unfinished strip near the held end: issue #500. It has a different cause: nothing covers X 0 to 9.4 next to the held region.
 
 ## Verification
