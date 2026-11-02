@@ -289,7 +289,26 @@ fn req_op_09_req_gc_07_rest_spiral_is_unchanged_when_rings_are_not_chosen() {
         format!("{:?}", spiral.group)
     );
     assert_eq!(missing.notes, spiral.notes);
-    assert!(ring_xs(&spiral).is_empty());
+    // The spiral has no rings of its own. Its only whole turns at one X are
+    // the turns where the tool's side meets the flank, which holds material
+    // under this stock (decision record 0644 items 1 and 2): within a tool
+    // radius (1.5 mm) of the flank, X 12 to 13.6, and the patch a sample
+    // stands for (a sample spacing of 0.75 mm along the flank, about 0.2 mm
+    // along X).
+    let turns = ring_xs(&spiral);
+    assert!(
+        turns.iter().all(|&x| (10.25..=15.35).contains(&x)),
+        "{turns:?}"
+    );
+    assert!(
+        turns.is_empty()
+            || spiral
+                .notes
+                .iter()
+                .any(|n| n.message.contains("where its tool's side meets")),
+        "{:?}",
+        spiral.notes
+    );
 }
 
 #[test]

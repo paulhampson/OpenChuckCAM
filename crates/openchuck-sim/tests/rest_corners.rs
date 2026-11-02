@@ -15,7 +15,8 @@
     clippy::unwrap_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::float_cmp
+    clippy::float_cmp,
+    clippy::print_stderr
 )]
 
 use std::collections::BTreeMap;
