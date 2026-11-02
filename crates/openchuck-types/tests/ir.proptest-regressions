@@ -1,7 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc ca5c1b918e4acb7efd460e022bdd833dd53743e1c92bfe5742b50419d6a39a46 # shrinks to start = ToolPose { tip: Point3 { x: 0.0, y: 0.0, z: 0.0 }, axis: UnitVec3(Vec3 { x: 0.0, y: 0.0, z: 1.0 }), a: Degrees(0.0) }, ends = [(ToolPose { tip: Point3 { x: 0.0, y: 0.0, z: -1756.7238797881735 }, axis: UnitVec3(Vec3 { x: 0.0, y: 0.0, z: 1.0 }), a: Degrees(0.0) }, 0.0, 1.0)]

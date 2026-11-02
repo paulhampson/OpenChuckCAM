@@ -1,7 +1,0 @@
-schema = 17
-name = "lobed"
-
-[[models]]
-id = "dc2144a5-d3e5-4bff-b66a-357a2f0556ec"
-path = "models/part.stl"
-hash = "blake3:7d6311b3a972241dccbba9a32c0f0f9c91bfc87522de1f21fba1162de4d5759d"

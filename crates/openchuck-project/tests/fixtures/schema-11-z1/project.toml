@@ -1,7 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# A project folder as schema 11 wrote it, holding a copy of the built-in
-# Makera Z1 (its library `id`) from before the feed limits said how the Z1
-# counts A in its feed word. Schema 13 (provisional) gives the copy
-# `rotary_in_feed = "makera"` (PRJ-04, decision record 0076).
-schema = 11
-name = "Schema 11 Z1 fixture"

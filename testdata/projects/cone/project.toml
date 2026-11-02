@@ -1,7 +1,0 @@
-schema = 17
-name = "cone"
-
-[[models]]
-id = "a1c34e1c-1720-4150-bf1e-bba748b2d72e"
-path = "models/part.stl"
-hash = "blake3:e4b0938ec03f4801423bee32b270dc4e01eefaffa0d14be95fb99c3e00b52db1"

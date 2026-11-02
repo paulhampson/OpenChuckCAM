@@ -1,9 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
-────────────
- Nextest run ID 138de006-038a-41fd-a501-43281446b117 with nextest profile: default
-    Starting 3 tests across 1 binary (26 tests skipped)
-        PASS [   0.152s] (1/3) openchuck-app::posting req_op_03_req_op_11_indexed_roughing_uses_shared_reversing_ramp
-        PASS [   0.652s] (2/3) openchuck-app::posting req_gc_07_req_op_11_ramp_option_off_posts_identical_bytes
-        PASS [   2.234s] (3/3) openchuck-app::posting req_op_11_req_gc_09_req_gc_10_reversing_ramp_posts_from_application
-────────────
-     Summary [   2.234s] 3 tests run: 3 passed, 26 skipped

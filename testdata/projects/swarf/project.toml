@@ -1,7 +1,0 @@
-schema = 17
-name = "swarf"
-
-[[models]]
-id = "7cc5b822-e7df-402b-9936-745e1c4199c7"
-path = "models/hex_bar.step"
-hash = "blake3:ede317badab25ca3922181593492ad84670f97fe77e9916f83e910da2417a154"

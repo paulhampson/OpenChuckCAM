@@ -1,2 +1,0 @@
-apps/openchuck-ui/src/export_panel.rs: 916/1035 lines; added lines uncovered 0/1
-OWN 22698/26157 = 86.78%

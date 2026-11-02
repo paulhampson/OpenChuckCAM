@@ -1,7 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# Stable toolchain pinned for every build (verification plan section 8).
-# Fuzzing uses nightly in its own CI job; a scheduled job builds on beta.
-[toolchain]
-channel = "1.97.0"
-components = ["rustfmt", "clippy"]
-profile = "minimal"

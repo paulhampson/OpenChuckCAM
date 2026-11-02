@@ -1,7 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# A project folder as schema 15 wrote it, with setups that have a part offset.
-# Before schema 17 the offset placed the part, stock, tabs and work zero
-# together; schema 17 moves the stock, tabs and work zero by it so that each
-# setup machines exactly as before (PRJ-04, decision record 0201).
-schema = 15
-name = "Schema 15 offset fixture"

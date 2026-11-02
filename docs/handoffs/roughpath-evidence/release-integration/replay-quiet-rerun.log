@@ -1,5 +1,0 @@
-cone_axial_lead_linuxcnc.ngc: running in the LinuxCNC simulator (real time)
-/workspace/OpenChuckCAM/testdata/golden/reference/cone_axial_lead_linuxcnc.ngc: the simulator reached all 1344 moves (largest difference 0.1000, 285.4 s of motion) and reported no fault
-cone_axial_linuxcnc.ngc: running in the LinuxCNC simulator (real time)
-/workspace/OpenChuckCAM/testdata/golden/reference/cone_axial_linuxcnc.ngc: the simulator reached all 608 moves (largest difference 0.0132, 270.3 s of motion) and reported no fault
-replay: ok

@@ -1,7 +1,0 @@
-{
-  "source": "eee448609348e7ecc5bbfe71e8b3377d91170b32",
-  "binary_sha256": "f882e7ea261084a4dbc23f7fd717f99eeafae6a606959b0bd3bf705d4bde6c2e",
-  "scope": "six successful operations in original sequence; simultaneous refusal excluded explicitly; not a seven-operation benchmark",
-  "runs": 5,
-  "rayon_threads": 4
-}

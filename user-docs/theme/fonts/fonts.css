@@ -1,3 +1,0 @@
-/* SPDX-License-Identifier: AGPL-3.0-or-later */
-/* Empty on purpose. Its presence stops mdBook from copying its own default fonts; the guide uses the
-   interface's IBM Plex files, which user-docs/tools/build.py copies from apps/openchuck-ui/assets/fonts. */

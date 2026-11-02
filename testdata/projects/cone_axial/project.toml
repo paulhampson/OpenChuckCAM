@@ -1,7 +1,0 @@
-schema = 17
-name = "cone_axial"
-
-[[models]]
-id = "b092c0e6-0ba9-4386-9723-23433ad87839"
-path = "models/part.stl"
-hash = "blake3:e4b0938ec03f4801423bee32b270dc4e01eefaffa0d14be95fb99c3e00b52db1"

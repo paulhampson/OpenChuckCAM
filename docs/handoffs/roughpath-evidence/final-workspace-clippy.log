@@ -1,7 +1,0 @@
-    Checking openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
-   Compiling openchuck-buildinfo v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-buildinfo)
-    Checking openchuck-sim v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
-    Checking openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
-    Checking openchuck-ui v0.21.0 (/workspace/OpenChuckCAM/apps/openchuck-ui)
-    Checking openchuck-cli v0.21.0 (/workspace/OpenChuckCAM/apps/openchuck-cli)
-    Finished `dev` profile [unoptimized] target(s) in 32.00s
