@@ -86,8 +86,11 @@ pub(crate) fn link_height_spec() -> ParameterSpec {
         description: "Retract: links go up to the clearance, as set under Retract. Low: links \
                       stay the approach distance above the stock where the whole link is clear \
                       of the stock, held regions and part, which saves time at the ends of \
-                      passes. Any link that cannot stay low retracts as usual, and a note says \
-                      how many. Generated G-code is still yours to verify before it is run."
+                      passes. The stock is checked at sampled points along each link, not \
+                      everywhere, so a very thin feature of left-over stock between them could \
+                      be missed: verify the path before it is run. Any link that cannot stay \
+                      low retracts as usual, and a note says how many. Generated G-code is \
+                      yours to verify before it is run."
             .to_owned(),
         kind: ParameterKind::Choice {
             options: vec![parameter::RETRACT.to_owned(), parameter::LOW.to_owned()],

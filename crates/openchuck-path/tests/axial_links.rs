@@ -115,6 +115,20 @@ fn req_op_14_axial_links_default_to_retract_and_are_unchanged() {
     // Every link goes to the clearance cylinder.
     let top = link_radii(&plain).into_iter().fold(0.0_f64, f64::max);
     assert!((top - (PART + 6.0)).abs() < 1e-6, "{top}");
+    // The limit of the check is in the words the user reads (NFR-12).
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        let spec = strategy
+            .schema()
+            .get(parameter::LINK_HEIGHT)
+            .cloned()
+            .unwrap();
+        assert!(
+            spec.description.contains("checked at sampled points")
+                && spec.description.contains("verify"),
+            "{}",
+            spec.description
+        );
+    }
     assert!(
         AxialFinishing
             .schema()
