@@ -49,8 +49,13 @@ pub(super) fn ready_project(name: &str) -> Rig {
         store.publish(&snapshot).unwrap();
     }
     drop(store);
+    // Recovery is offered for the project being opened (decision 0460).
     let mut rig = Rig::new(
-        Shell::with_settings(false, None, Some(SettingsFile::in_folder(&config))),
+        Shell::with_settings(
+            false,
+            Some(project.clone()),
+            Some(SettingsFile::in_folder(&config)),
+        ),
         vec![root],
     );
     for _ in 0..100 {
@@ -61,6 +66,31 @@ pub(super) fn ready_project(name: &str) -> Rig {
         std::thread::sleep(Duration::from_millis(2));
     }
     rig
+}
+
+/// Draws until `done`, failing after five seconds.
+fn wait(rig: &mut Rig, mut done: impl FnMut(&Rig) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !done(rig) {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+fn writer_ready(rig: &Rig) -> bool {
+    rig.shell
+        .recovery
+        .active
+        .as_ref()
+        .is_some_and(|s| s.is_ready())
+}
+
+fn recovered(rig: &Rig) -> bool {
+    rig.shell
+        .app
+        .as_ref()
+        .is_some_and(openchuck_app::Application::is_modified)
 }
 
 pub(super) fn click(rig: &mut Rig, text: &str) {
@@ -88,15 +118,11 @@ fn req_prj_08_user_chooses_an_older_periodic_snapshot_without_saved_file_changes
     assert!(rig.shows("Interim"));
     assert!(rig.shows("periodic state"));
     assert!(rig.shows("interim state"));
-    assert!(rig.shell.app.is_none());
+    // The requested project is open, unchanged, behind the offer.
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().name(), "saved");
     click(&mut rig, "Periodic");
     click(&mut rig, "Recover selected");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while rig.shell.app.is_none() {
-        rig.frame(Vec::new());
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    wait(&mut rig, recovered);
     let app = rig.shell.app.as_ref().unwrap();
     assert_eq!(app.project().name(), "periodic state");
     assert!(app.is_modified());
@@ -115,12 +141,7 @@ fn req_prj_08_keep_saved_is_distinct_from_explicit_checkpoint_deletion() {
     let mut rig = ready_project("checkpoint-keep");
     assert!(rig.shows("Recover project changes"));
     click(&mut rig, "Keep saved project");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while rig.shell.app.is_none() {
-        rig.frame(Vec::new());
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    wait(&mut rig, writer_ready);
     let app = rig.shell.app.as_ref().unwrap();
     assert_eq!(app.project().name(), "saved");
     assert!(!app.is_modified());
@@ -138,12 +159,7 @@ fn req_prj_08_explicit_discard_requires_confirmation_and_deletes_only_after_answ
     assert_eq!(Catalog::read(&root).unwrap().snapshots.len(), 2);
     click(&mut rig, "Discard recovery data…");
     click(&mut rig, "Delete checkpoints");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while rig.shell.app.is_none() {
-        rig.frame(Vec::new());
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    wait(&mut rig, writer_ready);
     assert!(Catalog::read(&root).unwrap().snapshots.is_empty());
     assert_eq!(file::load(&root).unwrap().name(), "saved");
 }
@@ -153,12 +169,8 @@ fn req_prj_08_cancel_close_preserves_recovery_and_resolved_close_waits_for_retir
     let mut rig = ready_project("checkpoint-close");
     click(&mut rig, "Interim");
     click(&mut rig, "Recover selected");
+    wait(&mut rig, recovered);
     let deadline = Instant::now() + Duration::from_secs(5);
-    while rig.shell.app.is_none() {
-        rig.frame(Vec::new());
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(2));
-    }
     let root = rig.shell.app.as_ref().unwrap().location().to_owned();
     let ctx = rig.ctx.clone();
     rig.shell.request(super::Next::Quit, &ctx);
@@ -197,7 +209,7 @@ fn req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writ
     click(&mut rig, "Periodic");
     click(&mut rig, "Recover selected");
     let deadline = Instant::now() + Duration::from_secs(5);
-    while rig.shell.app.is_none() || rig.shell.recovery.problem.is_none() {
+    while !recovered(&rig) || rig.shell.recovery.problem.is_none() {
         rig.frame(Vec::new());
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(1));
@@ -217,49 +229,26 @@ fn req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writ
 }
 
 #[test]
-fn req_prj_08_recovery_cannot_replace_another_unsaved_project_without_its_normal_warning() {
-    let mut rig = ready_project("checkpoint-replace-unsaved");
-    let other = rig.dirs[0].join("other");
-    let app = openchuck_app::Application::create(
-        &other,
-        "Other saved project",
-        openchuck_app::Threads::Exactly(1),
-    )
-    .unwrap();
-    rig.shell.set_app(app);
+fn req_prj_08_an_offer_waits_while_the_opened_project_has_unsaved_edits() {
+    // The offer is for the opened project only, and is never shown over
+    // unsaved edits: recovering would replace them (decision 0460).
+    let mut rig = ready_project("checkpoint-offer-waits");
+    let offer = rig.shell.recovery.review.take().unwrap();
     rig.shell
         .app
         .as_mut()
         .unwrap()
-        .execute(openchuck_app::Command::RenameProject(
-            "Other unsaved changes".into(),
-        ))
+        .execute(openchuck_app::Command::RenameProject("Unsaved edit".into()))
         .unwrap();
-    click(&mut rig, "Periodic");
-    click(&mut rig, "Recover selected");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
+    rig.shell.recovery.offer_again(offer);
+    for _ in 0..10 {
         rig.frame(Vec::new());
-        if matches!(rig.shell.dialog, Some(super::Dialog::Unsaved(_)))
-            || rig.shell.app.as_ref().unwrap().project().name() == "periodic state"
-        {
-            break;
-        }
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(1));
+        assert!(!rig.shows("Recover project changes"));
     }
     assert_eq!(
         rig.shell.app.as_ref().unwrap().project().name(),
-        "Other unsaved changes"
+        "Unsaved edit"
     );
-    assert!(matches!(rig.shell.dialog, Some(super::Dialog::Unsaved(_))));
-    rig.frame(Vec::new());
-    click(&mut rig, "Cancel");
-    assert_eq!(
-        rig.shell.app.as_ref().unwrap().project().name(),
-        "Other unsaved changes"
-    );
-    assert_eq!(file::load(&other).unwrap().name(), "Other saved project");
 }
 
 #[test]

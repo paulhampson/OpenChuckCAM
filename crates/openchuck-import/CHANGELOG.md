@@ -4,6 +4,8 @@ All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
 
+- Fixed: on Linux the STEP worker, and any process that read STEP through the kernel, segfaulted at exit after writing its answer (issue #369, OI-1003). OpenCASCADE's type registry was destroyed before a static map in `StepAP214_Protocol.cxx` that still held type handles. The wrapper now builds the registry first with a priority initialiser on ELF (decision 0490). No API change.
+
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
 
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.

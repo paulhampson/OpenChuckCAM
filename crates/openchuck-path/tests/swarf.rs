@@ -24,9 +24,9 @@ use openchuck_path::{
 use openchuck_testkit::gouge::Outline;
 use openchuck_testkit::ruled::{
     boss_cylinder, coaxial_cylinder, cross_plane, draft_cone, floor_plane, pocket_cylinder, point,
-    sphere_band, torus_band, wall_plane,
+    single_face, sphere_band, torus_band, wall_plane,
 };
-use openchuck_types::brep::BrepModel;
+use openchuck_types::brep::{BrepModel, Frame, Surface};
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::ir::{MoveKind, PathTags, ToolPose, ToolpathGroup};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
@@ -1309,18 +1309,10 @@ fn req_nfr_07_req_op_07_a_mesh_a_region_and_a_cancelled_job_are_refused_clearly(
         .err()
         .unwrap();
     assert!(err.to_string().contains("not a region"), "{err}");
-    // A negative tip extension is refused by the schema.
-    let err = run(|ctx| {
-        generate(
-            &Swarf,
-            &f.input(),
-            &values(&[(swarf::parameter::TIP_EXTENSION, num(-1.0))]),
-            ctx,
-        )
-    })
-    .err()
-    .unwrap();
-    assert!(err.to_string().contains("tip_extension"), "{err}");
+    // A negative tip extension is no longer refused by the schema (decision
+    // 0491 item 2): one that leaves nothing of the rulings is refused by the
+    // strategy, in
+    // `req_op_07_req_nfr_07_a_tip_extension_that_lifts_the_tool_off_the_whole_ruling_is_refused`.
     // Cancellation is an error, not a path.
     let cancel = CancelToken::new();
     cancel.cancel();
@@ -1854,32 +1846,492 @@ fn req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_pat
 }
 
 #[test]
-fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_into_it_is_refused()
-{
+fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_into_it_is_lifted_back()
+ {
     // The floor at the foot of the wall, as an avoid surface: a flat tool
-    // with its tip at the foot only meets it, so nothing is dropped; a tip
-    // extension cuts into it everywhere, so nothing is left, and the face is
-    // refused naming why (decision 0176).
+    // with its tip at the foot only meets it, so nothing changes. A tip
+    // extension of 0.5 mm would cut into it everywhere, so the tool is lifted
+    // back up the rulings by the least that keeps it off the floor (decision
+    // 0491 item 1, amending decision 0176 item 4, which refused the face).
     let f = Fixture::brep(&limit_wall(), flat());
-    let floor = BrepSurface::new(&floor_plane(Z0, 15.0, 45.0, 8.0, 30.0)).unwrap();
+    let floor = BrepSurface::new(&floor_model()).unwrap();
     let avoid = RegionConstraint {
         avoid: Some(&floor),
         ..RegionConstraint::default()
     };
     let path = limited(&f, &avoid, &f.settings()).unwrap();
     assert_eq!(path.limits.avoid_uncut, 0.0, "{:?}", path.limits);
+    assert_eq!(path.limits.tip_lifted, 0.0, "{:?}", path.limits);
     let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
     assert_eq!(path.runs, plain.runs);
     let extended = Settings {
         tip_extension: 0.5,
         ..f.settings()
     };
-    let err = limited(&f, &avoid, &extended).unwrap_err().to_string();
-    assert!(err.contains("swarf cannot cut face 0"), "{err}");
+    let lifted = limited(&f, &avoid, &extended).unwrap();
+    assert_eq!(lifted.limits.avoid_uncut, 0.0, "{:?}", lifted.limits);
     assert!(
-        err.contains("cut into the avoid surfaces wherever it cuts it"),
-        "{err}"
+        least_lift(lifted.limits.tip_lifted, 0.5),
+        "{:?}",
+        lifted.limits
     );
+    assert!(floor_cut(&f.tool, &lifted) <= TOL + CHECKER_SLACK);
+}
+
+// ---- the tip clears a floor (issue #435; decision 0491) -------------------
+
+/// How much more than the least a lift may be: it keeps the tool off the
+/// samples of the surface by what the surface may come nearer between them
+/// (decision 0491 item 1), r / 512 for a rounded end over a flat floor with
+/// the samples an eighth of the radius apart (OI-636; 0.006 mm for r = 3).
+const LIFT_RESOLUTION: f64 = 0.006;
+
+/// Whether `lift` is the least lift `needed`, to the lift's resolution.
+fn least_lift(lift: f64, needed: f64) -> bool {
+    lift >= needed - 1e-3 && lift <= needed + LIFT_RESOLUTION + 1e-3
+}
+/// What the independent checker's sampling of the motion may add.
+const CHECKER_SLACK: f64 = 0.002;
+
+/// The floor at the foot of the limit wall.
+fn floor_model() -> BrepModel {
+    floor_plane(Z0, 15.0, 45.0, 8.0, 30.0)
+}
+
+fn ball() -> RevolvedProfile {
+    tool(ToolShape::BallEnd, 15.0)
+}
+
+/// The face path's poses as the IR's poses.
+fn tool_poses(path: &swarf::FacePath) -> Vec<Vec<ToolPose>> {
+    path.runs
+        .iter()
+        .map(|run| {
+            run.iter()
+                .map(|p| ToolPose {
+                    tip: p.tip,
+                    axis: p.axis,
+                    a: p.a,
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The deepest cut into `floor`, by the independent checker over the
+/// machine's motion.
+fn cut_into(tool: &RevolvedProfile, path: &swarf::FacePath, floor: &BrepModel) -> f64 {
+    let outline = Outline::new(tool);
+    let points = samples(floor, 120, 88, 0.0);
+    tool_poses(path)
+        .iter()
+        .map(|run| measured_cut(&outline, run, &points, 0.05))
+        .fold(0.0, f64::max)
+}
+
+/// Every note of a generated path, in one string.
+fn joined(path: &openchuck_path::GeneratedPath) -> String {
+    path.notes
+        .iter()
+        .map(|n| n.message.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn floor_cut(tool: &RevolvedProfile, path: &swarf::FacePath) -> f64 {
+    cut_into(tool, path, &floor_model())
+}
+
+#[test]
+fn req_op_02_req_op_07_req_op_12_a_floor_in_an_avoid_set_lifts_a_ball_tool_instead_of_refusing() {
+    // A ball tool's flank starts a radius above its tip, so with the flank
+    // at the foot of the wall the ball reaches 3 mm into the floor. Before
+    // decision 0491 the floor as an avoid set refused the face ("nothing of
+    // it is left to cut", issue #435); now the tip is lifted up the rulings
+    // by the least that keeps it off the floor, all along.
+    let f = Fixture::brep(&limit_wall(), ball());
+    let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
+    assert!(
+        floor_cut(&f.tool, &plain) > TOOL_RADIUS - 0.01,
+        "without the set the ball cuts into the floor"
+    );
+    let floor = BrepSurface::new(&floor_model()).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    assert_eq!(path.limits.avoid_uncut, 0.0, "{:?}", path.limits);
+    assert!(
+        least_lift(path.limits.tip_lifted, TOOL_RADIUS),
+        "the least lift that keeps the ball off the floor: {:?}",
+        path.limits
+    );
+    assert!(path.poses().all(|p| least_lift(p.lift, TOOL_RADIUS)));
+    assert!(floor_cut(&f.tool, &path) <= TOL + CHECKER_SLACK);
+    // The pass is as long as before: nothing is cut short.
+    let span = |p: &swarf::FacePath| {
+        let x: Vec<f64> = p.poses().map(|q| q.contact.x).collect();
+        x.iter().copied().fold(f64::MIN, f64::max) - x.iter().copied().fold(f64::MAX, f64::min)
+    };
+    assert!((span(&path) - span(&plain)).abs() < 1e-9);
+    // The strip left at the foot is left on purpose: it is not material
+    // left, so the face is not refused under the default limit.
+    assert!(path.left <= TOL, "{}", path.left);
+    assert!(path.refusal(LIMIT).is_none());
+    let note = path.note(TOL, LIMIT);
+    assert!(
+        note.contains(&format!(
+            "The tool is lifted up to {:.3} mm along the rulings to keep clear of the avoid \
+             surfaces, so a strip up to about {:.3} mm wide is left at that end of the face.",
+            path.limits.tip_lifted, path.limits.tip_lifted
+        )),
+        "{note}"
+    );
+    // The same through the strategy, with no warning.
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &avoid, &values(&[]), ctx)).unwrap();
+    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    assert!(
+        made.notes
+            .iter()
+            .any(|n| n.message.contains("The tool is lifted up to"))
+    );
+}
+
+/// A floor rising along X by `degrees` from the foot of the limit wall at
+/// X = 30: below the wall's foot for X < 30, above it beyond.
+fn rising_floor(degrees: f64) -> BrepModel {
+    let (s, c) = degrees.to_radians().sin_cos();
+    single_face(
+        Surface::Plane {
+            frame: Frame {
+                origin: Point3::new(30.0, 0.0, Z0),
+                x: Vec3::new(c, 0.0, s),
+                y: Vec3::new(0.0, 1.0, 0.0),
+                z: Vec3::new(-s, 0.0, c),
+            },
+        },
+        [-15.0, 15.0, 8.0, 30.0],
+        false,
+    )
+}
+
+#[test]
+fn req_op_02_req_op_07_req_op_12_the_lift_follows_a_floor_that_rises_along_the_pass() {
+    // The lift is found at each pose, so it changes along the pass with the
+    // floor: none where the floor is below the foot of the wall, more where
+    // it rises, and the floor is not cut into anywhere.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let model = rising_floor(5.0);
+    let floor = BrepSurface::new(&model).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    assert_eq!(path.limits.avoid_uncut, 0.0, "{:?}", path.limits);
+    let poses: Vec<&swarf::Pose> = path.poses().collect();
+    assert!(
+        poses
+            .iter()
+            .filter(|p| p.contact.x < 26.0)
+            .all(|p| p.lift == 0.0)
+    );
+    // The flat end, 3 mm in radius, reaches X + 3 where the floor stands
+    // (X + 3 - 30) tan 5 degrees above the foot. The lift may be more by what
+    // the sloping floor rises between its samples, 0.375 sin 5 degrees, and
+    // by one such step where two poses' lifts are made to agree.
+    let slope = 5f64.to_radians();
+    let step = 0.375 * slope.sin();
+    for p in poses.iter().filter(|p| p.contact.x > 28.0) {
+        let needed = (p.contact.x + TOOL_RADIUS - 30.0) * slope.tan();
+        assert!(p.lift >= needed - 1e-3, "{} {}", p.contact.x, p.lift);
+        assert!(
+            p.lift <= needed + 2.0 * step + 1e-3,
+            "{} {}",
+            p.contact.x,
+            p.lift
+        );
+    }
+    assert!(path.limits.tip_lifted > 0.8, "{:?}", path.limits);
+    assert!(cut_into(&f.tool, &path, &model) <= TOL + CHECKER_SLACK);
+}
+
+/// A floor rising away from the foot of the limit wall by `degrees`: it
+/// meets the wall at Y = 8, Z = `Z0`, and climbs towards +Y, under the far
+/// side of the tool.
+fn floor_rising_away(degrees: f64) -> BrepModel {
+    let (s, c) = degrees.to_radians().sin_cos();
+    single_face(
+        Surface::Plane {
+            frame: Frame {
+                origin: Point3::new(0.0, 8.0, Z0),
+                x: Vec3::new(1.0, 0.0, 0.0),
+                y: Vec3::new(0.0, c, s),
+                z: Vec3::new(0.0, -s, c),
+            },
+        },
+        [15.0, 45.0, 0.0, 22.0],
+        false,
+    )
+}
+
+#[test]
+fn req_op_02_req_op_07_req_op_12_the_far_side_of_the_tool_is_kept_off_the_set_on_a_short_wall() {
+    // On a wall 2 mm tall the far side of a 6 mm flat end mill is 6 mm from
+    // the wall and further from the middle of the ruling than half the
+    // ruling and the tool radius. A floor rising away from the wall by 10
+    // degrees stands 6 tan 10 = 1.06 mm above the foot under that side, so
+    // the tool is lifted by that much and does not cut the floor (issue
+    // #435; on the blisk the short rulings at the blade's front end).
+    let f = Fixture::brep(&wall_plane(8.0, 22.0, 38.0, Z0, Z0 + 2.0), flat());
+    let model = floor_rising_away(10.0);
+    let floor = BrepSurface::new(&model).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    let needed = 2.0 * TOOL_RADIUS * 10f64.to_radians().tan();
+    assert!(
+        path.limits.tip_lifted >= needed - 1e-3 && path.limits.tip_lifted < needed + 0.1,
+        "{needed} {:?}",
+        path.limits
+    );
+    assert!(cut_into(&f.tool, &path, &model) <= TOL + CHECKER_SLACK);
+}
+
+#[test]
+fn req_op_02_req_op_07_req_op_12_a_check_set_lifts_the_tool_the_stock_to_leave_clear() {
+    // A check surface keeps the stock to leave clear (decision 0176 item 4),
+    // so the flat tool, which only meets the floor, is lifted by the stock to
+    // leave.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let floor = BrepSurface::new(&floor_model()).unwrap();
+    let check = RegionConstraint {
+        check: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let leave = Settings {
+        stock_to_leave: 0.5,
+        ..f.settings()
+    };
+    let path = limited(&f, &check, &leave).unwrap();
+    assert_eq!(path.limits.check_uncut, 0.0, "{:?}", path.limits);
+    assert!(least_lift(path.limits.tip_lifted, 0.5), "{:?}", path.limits);
+    assert!(
+        path.note(TOL, LIMIT)
+            .contains("to keep clear of the check surfaces")
+    );
+    let outline = Outline::new(&f.tool);
+    let points = samples(&floor_model(), 120, 88, 0.0);
+    for run in tool_poses(&path) {
+        for p in &points {
+            assert!(best_clearance(&outline, &run, *p) >= 0.5 - TOL - CHECKER_SLACK);
+        }
+    }
+    // A ball under the same floor in both an avoid and a check set is
+    // lifted clear of both, and the note names both.
+    let f = Fixture::brep(&limit_wall(), ball());
+    let both = RegionConstraint {
+        avoid: Some(&floor),
+        check: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &both, &leave).unwrap();
+    assert_eq!(
+        path.limits.lifted_clear_of,
+        vec![Protection::Avoid, Protection::Check]
+    );
+    assert!(
+        path.note(TOL, LIMIT)
+            .contains("to keep clear of the avoid and check surfaces")
+    );
+}
+
+#[test]
+fn req_op_02_req_op_07_a_surface_the_side_of_the_tool_meets_still_cuts_the_pass_short() {
+    // A lift clears what the tip end meets; a wall across the pass is met by
+    // the side of the tool however far it is lifted, so the pass is still
+    // cut short there (decision 0491 item 1), and nothing is lifted.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let end = BrepSurface::new(&cross_plane(38.0, 8.0, 20.0, Z0, Z1)).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&end),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    assert!(path.limits.avoid_uncut > 2.9, "{:?}", path.limits);
+    assert_eq!(path.limits.tip_lifted, 0.0, "{:?}", path.limits);
+}
+
+#[test]
+fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_leaves_the_strip() {
+    // Decision 0491 item 2: a negative tip extension starts the flank that far
+    // up the rulings. The strip below is left on purpose: it is not material
+    // left, so the default limit of 0.1 mm does not refuse a 1 mm strip.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let up = generated(&f, &[(swarf::parameter::TIP_EXTENSION, num(-1.0))]);
+    assert!(
+        cutting_poses(&up.group)
+            .iter()
+            .all(|p| (p.tip.z - (Z0 + 1.0)).abs() < 1e-6),
+        "{:?}",
+        cutting_poses(&up.group)[0]
+    );
+    let note = joined(&up);
+    assert!(
+        note.contains(
+            "The tip sits 1.000 mm up the rulings (a negative tip extension), so a strip about \
+             1.000 mm wide is left at that end of the face."
+        ),
+        "{note}"
+    );
+    assert!(
+        note.contains("The tool's end stays 1.000 mm short of the end of the rulings at the tip."),
+        "{note}"
+    );
+    // A ball pulled up by its radius clears the floor, which it cut 3 mm
+    // into at zero.
+    let f = Fixture::brep(&limit_wall(), ball());
+    let raised = Settings {
+        tip_extension: -TOOL_RADIUS,
+        ..f.settings()
+    };
+    let path = limited(&f, &RegionConstraint::default(), &raised).unwrap();
+    assert!(floor_cut(&f.tool, &path) <= CHECKER_SLACK);
+    assert!(path.left <= TOL, "{}", path.left);
+    assert!(path.poses().all(|p| p.lift == 0.0));
+    // With the tip at the other end of the rulings, the flank starts that
+    // far down from the top of the wall.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let down = generated(
+        &f,
+        &[
+            (swarf::parameter::TIP_EXTENSION, num(-1.0)),
+            (swarf::parameter::TIP_END, text("reversed")),
+        ],
+    );
+    assert!(
+        cutting_poses(&down.group)
+            .iter()
+            .all(|p| (p.tip.z - (Z1 - 1.0)).abs() < 1e-6),
+        "{:?}",
+        cutting_poses(&down.group)[0]
+    );
+}
+
+#[test]
+fn req_op_07_req_nfr_07_a_tip_extension_that_lifts_the_tool_off_the_whole_face_is_refused() {
+    // The rulings of the limit wall are 8 mm long: -8 mm leaves nothing of
+    // the face, which is refused naming the face, the value and the length
+    // (decision 0491 item 2).
+    let f = Fixture::brep(&limit_wall(), flat());
+    let why = refused(&f, &[(swarf::parameter::TIP_EXTENSION, num(-8.0))]);
+    assert!(
+        why.contains(
+            "swarf cannot cut face 0: a Tip extension of -8 mm lifts the tool off the whole of \
+             the face, whose longest ruling is 8.000 mm long: use a value above -8.000 mm"
+        ),
+        "{why}"
+    );
+    // Just above the length is accepted.
+    let path = generated(&f, &[(swarf::parameter::TIP_EXTENSION, num(-7.5))]);
+    assert!(!path.group.segments.is_empty());
+}
+
+/// A wall whose top edge falls along X: 8 mm tall at X = 22, 2 mm at X = 38,
+/// so its rulings shorten along the pass, as at a trimmed corner of a blade.
+fn sloping_top_wall() -> BrepModel {
+    let mut model = limit_wall();
+    // The parameter box is [z0, z1, x0, x1] along (Z, X); a trim loop
+    // cuts the top off along the line from (Z1, 22) to (Z0 + 2, 38).
+    model.faces[0].trims = vec![openchuck_types::brep::TrimLoop(vec![
+        openchuck_types::brep::UvPoint { u: Z0, v: 22.0 },
+        openchuck_types::brep::UvPoint { u: Z0, v: 38.0 },
+        openchuck_types::brep::UvPoint {
+            u: Z0 + 2.0,
+            v: 38.0,
+        },
+        openchuck_types::brep::UvPoint { u: Z1, v: 22.0 },
+    ])];
+    model
+}
+
+#[test]
+fn req_op_07_rulings_no_longer_than_a_negative_tip_extension_are_left_uncut_and_said() {
+    // A trimmed face has short rulings at its corners (on the blisk's blades,
+    // 0.016 mm). They do not refuse the face: the rulings no longer than the
+    // value are not cut, the pass stops where they start, and the note says
+    // how much of the face that is (decision 0491 item 2).
+    let f = Fixture::brep(&sloping_top_wall(), flat());
+    let up = Settings {
+        tip_extension: -4.0,
+        ..f.settings()
+    };
+    let path = limited(&f, &RegionConstraint::default(), &up).unwrap();
+    // The ruling is 4 mm long at X = 22 + 16 * 4 / 6 = 32.667.
+    let last = path.poses().map(|p| p.contact.x).fold(f64::MIN, f64::max);
+    assert!((last - (22.0 + 16.0 * 4.0 / 6.0)).abs() < 0.05, "{last}");
+    // Measured along the middles of the rulings, which fall 3 mm over the
+    // 16 mm of the wall as its top does.
+    let along = (38.0 - last) * (1.0 + (3.0f64 / 16.0).powi(2)).sqrt();
+    assert!(
+        (path.limits.too_short - along).abs() < 0.05,
+        "{along} {:?}",
+        path.limits
+    );
+    assert!(
+        path.note(TOL, LIMIT).contains(&format!(
+            "About {:.3} mm along the face is not cut because its rulings there are no longer \
+             than the negative tip extension.",
+            path.limits.too_short
+        )),
+        "{}",
+        path.note(TOL, LIMIT)
+    );
+}
+
+#[test]
+fn req_op_07_req_nfr_12_each_face_note_says_how_far_the_tool_end_reaches_below_the_rulings() {
+    // Decision 0491 item 2: a ball or corner radius reaches below the end of
+    // the rulings by its radius plus the tip extension, which is where a cut
+    // into a floor comes from, so every face's note says it.
+    let f = Fixture::brep(&limit_wall(), ball());
+    let note = joined(&generated(&f, &[]));
+    assert!(
+        note.contains(
+            "The tool's end reaches 3.000 mm beyond the end of the rulings at the tip (its \
+             corner radius and the tip extension), so it cuts into any face that meets them \
+             there, such as a floor, unless that face is in an avoid or check set."
+        ),
+        "{note}"
+    );
+    let f = Fixture::brep(&limit_wall(), flat());
+    let note = joined(&generated(&f, &[]));
+    assert!(
+        note.contains("The tool's end is level with the end of the rulings at the tip."),
+        "{note}"
+    );
+}
+
+#[test]
+fn req_nfr_06_req_op_07_a_lifted_swarf_path_is_identical_at_1_2_and_n_threads() {
+    let f = Fixture::brep(&limit_wall(), ball());
+    let model = rising_floor(5.0);
+    let floor = BrepSurface::new(&model).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let runs = openchuck_testkit::determinism::check(|| {
+        let made =
+            run(|ctx| generate_in_region(&Swarf, &f.input(), &avoid, &values(&[]), ctx)).unwrap();
+        format!("{:?}{:?}", made.group, made.notes).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
 }
 
 // ---- the tolerance check measures the written path (issue #296) -----------

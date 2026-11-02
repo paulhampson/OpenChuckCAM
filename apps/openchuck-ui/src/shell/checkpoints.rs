@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Recovery presentation; storage and jobs remain in the application layer.
+//!
+//! Recovery is offered only for the project being opened (PRJ-08; decision
+//! 0460, amending 0243 items 7 and 8). Startup discovery never opens a
+//! dialog: another project's kept recovery data is one line in Messages,
+//! whose action opens that project (or locates a moved one).
 use super::{Next, Shell};
 use eframe::egui::{self, Id};
+use openchuck_app::overview::{Message, MessageAction, Severity};
 use openchuck_app::project::recovery::{Catalog, Kind};
 use openchuck_app::{
     Application, Threads,
     checkpoints::{self as jobs, Candidate, Discovery, Notice, Session},
 };
-use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, UNIX_EPOCH};
@@ -24,10 +29,24 @@ fn capture_time(milliseconds: u64) -> String {
         .unwrap_or_else(|| "Capture time unavailable on this platform".into())
 }
 
+/// A folder as the user knows it: Windows' canonical `\\?\` prefix is an
+/// implementation detail, not part of the name they chose (decision 0114).
+fn shown(folder: &Path) -> String {
+    let text = folder.display().to_string();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        rest.to_owned()
+    } else {
+        text
+    }
+}
+
 enum Read {
     Startup(Discovery),
     Attached(u64, Candidate),
-    Located(Box<Review>, Result<Candidate, String>),
+    Unopened(Key, Candidate),
+    Located(Box<Locate>, Result<Candidate, String>),
     Restored(Result<jobs::Recovered, String>),
 }
 #[derive(Clone, Copy)]
@@ -36,29 +55,57 @@ enum Choice {
     Keep,
     Discard,
 }
-struct Review {
-    candidate: Candidate,
+/// The open request an offer belongs to; a later open drops it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Key {
+    /// The project opened, as open number `0`.
+    Opened(u64),
+    /// The requested project's saved files could not be loaded (open number
+    /// `0`, failed request `1`): its valid checkpoints are still offered, and
+    /// the project that stays open keeps its writer (decision 0460 item 2).
+    Unopened(u64, u64),
+}
+
+/// The recovery choices of the project being opened.
+pub(super) struct Review {
+    pub(super) candidate: Candidate,
+    /// The open this offer belongs to; a later open drops it.
+    key: Key,
     selected: Option<String>,
     confirm_discard: bool,
-    locate_path: String,
+}
+/// Finding the new folder of a moved project, from its Messages line.
+pub(super) struct Locate {
+    candidate: Candidate,
+    pub(super) path: String,
+    pub(super) problem: Option<String>,
 }
 
 #[derive(Default)]
 pub(super) struct State {
     config: Option<PathBuf>,
     readers: Vec<Receiver<Read>>,
-    queued: VecDeque<Candidate>,
-    shown: BTreeSet<(PathBuf, String)>,
-    review: Option<Review>,
+    /// The opened project's recovery choices, waiting for a free frame.
+    offer: Option<(Key, Candidate)>,
+    pub(super) review: Option<Review>,
     review_session: Option<Session>,
     review_folder: Option<PathBuf>,
     install_review: Option<Review>,
     awaiting_install: bool,
     choice: Option<Choice>,
-    active: Option<Session>,
+    pub(super) active: Option<Session>,
     active_folder: Option<PathBuf>,
     pending_attach: Option<PathBuf>,
     attachment: u64,
+    /// Requests whose saved project could not be loaded.
+    failed: u64,
+    /// Canonical folder of the opened project, once inspected.
+    opened: Option<PathBuf>,
+    /// Other projects with kept recovery data, from startup discovery.
+    pub(super) elsewhere: Vec<Candidate>,
+    pub(super) locate: Option<Locate>,
+    /// The Messages lines changed.
+    pub(super) changed: bool,
     retiring: Vec<Session>,
     close_next: Option<Next>,
     pub(super) problem: Option<String>,
@@ -66,8 +113,17 @@ pub(super) struct State {
 
 pub(super) enum Effect {
     Recovered(PathBuf, Box<openchuck_app::project::Project>, Vec<String>),
-    Open(PathBuf),
     Resume(Next),
+}
+
+/// Whether a project's recovery data needs the user: unexpected-session
+/// choices, damaged files or a folder that cannot be found.
+fn needs_attention(candidate: &Candidate) -> bool {
+    candidate.problem.is_some()
+        || candidate
+            .catalog
+            .as_ref()
+            .is_some_and(|c| c.recovery_needed || !c.problems.is_empty())
 }
 
 impl State {
@@ -89,6 +145,9 @@ impl State {
     pub(super) fn attach(&mut self, folder: &Path, previous_revision: u64, _minutes: u16) {
         self.attachment = self.attachment.saturating_add(1);
         self.pending_attach = None;
+        // An offer belongs to the open that found it, never to a later one.
+        self.offer = None;
+        self.opened = None;
         if let Some(mut previous) = self.active.take() {
             match previous.close(previous_revision) {
                 Ok(()) => self.retiring.push(previous),
@@ -100,8 +159,11 @@ impl State {
             self.active = self.review_session.take();
             self.review_folder = None;
             self.active_folder = Some(folder.to_owned());
+            self.opened = Some(folder.to_owned());
             return;
         }
+        self.review = None;
+        self.choice = None;
         self.review_session = None;
         self.review_folder = None;
         if self.config.is_none() {
@@ -112,6 +174,40 @@ impl State {
 
     fn inspect(&mut self, folder: PathBuf) {
         let attachment = self.attachment;
+        self.read_folder(folder, move |candidate| {
+            Read::Attached(attachment, candidate)
+        });
+    }
+
+    /// The requested project's saved files could not be loaded. Its recovery
+    /// data is still inspected and offered for this request only; the
+    /// project that is open, if any, stays open with its writer.
+    pub(super) fn open_failed(&mut self, folder: &Path) {
+        if self.config.is_none() {
+            return;
+        }
+        self.failed = self.failed.saturating_add(1);
+        let key = Key::Unopened(self.attachment, self.failed);
+        self.offer = None;
+        self.read_folder(folder.to_owned(), move |candidate| {
+            Read::Unopened(key, candidate)
+        });
+    }
+
+    fn current(&self, key: Key) -> bool {
+        match key {
+            Key::Opened(attachment) => attachment == self.attachment,
+            Key::Unopened(attachment, failed) => {
+                attachment == self.attachment && failed == self.failed
+            }
+        }
+    }
+
+    fn read_folder(
+        &mut self,
+        folder: PathBuf,
+        read: impl FnOnce(Candidate) -> Read + Send + 'static,
+    ) {
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let canonical = folder.canonicalize().unwrap_or(folder);
@@ -123,15 +219,12 @@ impl State {
                 .as_ref()
                 .and_then(|c| c.project_id.clone())
                 .unwrap_or_default();
-            let _ = tx.send(Read::Attached(
-                attachment,
-                Candidate {
-                    folder: canonical,
-                    catalog,
-                    problem,
-                    project_id,
-                },
-            ));
+            let _ = tx.send(read(Candidate {
+                folder: canonical,
+                catalog,
+                problem,
+                project_id,
+            }));
         });
         self.readers.push(rx);
     }
@@ -147,6 +240,13 @@ impl State {
             }
             Err(e) => self.problem = Some(e),
         }
+    }
+
+    /// Drop another project's line once that project is the open one.
+    fn forget_elsewhere(&mut self, folder: &Path) {
+        let before = self.elsewhere.len();
+        self.elsewhere.retain(|c| c.folder != folder);
+        self.changed |= self.elsewhere.len() != before;
     }
 
     pub(super) fn saved(&mut self, revision: u64) {
@@ -179,7 +279,7 @@ impl State {
     }
 
     pub(super) fn blocks_input(&self) -> bool {
-        self.review.is_some() || self.close_next.is_some()
+        self.review.is_some() || self.locate.is_some() || self.close_next.is_some()
     }
 
     pub(super) fn is_closing(&self) -> bool {
@@ -197,19 +297,93 @@ impl State {
             self.review_session = None;
             self.review_folder = None;
         }
-        if let Some(review) = self.install_review.take() {
-            self.shown.remove(&(
-                review.candidate.folder.clone(),
-                review.candidate.project_id.clone(),
-            ));
-            self.queued.push_front(review.candidate);
+        if let Some(review) = self.install_review.take()
+            && self.current(review.key)
+        {
+            self.offer = Some((review.key, review.candidate));
         }
+    }
+
+    /// Whether a background read is still running.
+    #[cfg(test)]
+    pub(super) fn reading(&self) -> bool {
+        !self.readers.is_empty()
+    }
+
+    /// Put a shown offer back, waiting for a free frame (tests).
+    #[cfg(test)]
+    pub(super) fn offer_again(&mut self, review: Review) {
+        self.offer = Some((review.key, review.candidate));
+    }
+
+    /// The folder of another project's Messages line.
+    pub(super) fn elsewhere_folder(&self, index: usize) -> Option<PathBuf> {
+        self.elsewhere.get(index).map(|c| c.folder.clone())
+    }
+
+    /// Ask where a moved project went (its Messages line's action).
+    pub(super) fn start_locate(&mut self, index: usize) {
+        if let Some(c) = self.elsewhere.get(index) {
+            self.locate = Some(Locate {
+                candidate: Candidate {
+                    folder: c.folder.clone(),
+                    catalog: None,
+                    problem: c.problem.clone(),
+                    project_id: c.project_id.clone(),
+                },
+                path: String::new(),
+                problem: None,
+            });
+        }
+    }
+
+    /// One Messages line per other project with kept recovery data. Nothing
+    /// is offered from here: the action opens (or locates) that project.
+    pub(super) fn messages(&self) -> Vec<Message> {
+        self.elsewhere
+            .iter()
+            .enumerate()
+            .map(|(index, c)| {
+                let folder = shown(&c.folder);
+                let name = c
+                    .catalog
+                    .as_ref()
+                    .and_then(|catalog| catalog.snapshots.first())
+                    .map(|e| e.project_name.clone());
+                let (text, action) = match (&c.problem, &c.catalog) {
+                    (Some(_), _) | (None, None) => (
+                        format!(
+                            "Recovery data was kept for a project last in {folder}, but it is not there now. If you moved the project, locate its new folder"
+                        ),
+                        MessageAction::LocateRecovery(index),
+                    ),
+                    (None, Some(catalog)) if catalog.recovery_needed => (
+                        format!(
+                            "Unsaved changes to '{}' in {folder} were kept when it closed unexpectedly. Open that project to recover or discard them",
+                            name.unwrap_or_else(|| "a project".into())
+                        ),
+                        MessageAction::OpenRecovery(index),
+                    ),
+                    (None, Some(_)) => (
+                        format!(
+                            "Some recovery files for the project in {folder} are damaged. They were kept; open that project to see them"
+                        ),
+                        MessageAction::OpenRecovery(index),
+                    ),
+                };
+                Message::new(Severity::Warning, text, None, Some(action))
+            })
+            .collect()
     }
 
     fn choose(&mut self, choice: Choice, minutes: u16) {
         let Some(review) = &self.review else {
             return;
         };
+        if !self.current(review.key) {
+            self.review = None;
+            return;
+        }
         if matches!(choice, Choice::Recover) {
             let Some(id) = review.selected.clone() else {
                 return;
@@ -253,6 +427,149 @@ impl State {
         }
     }
 
+    fn receive(&mut self, read: Read, minutes: u16, effects: &mut Vec<Effect>) {
+        match read {
+            Read::Startup(found) => {
+                if !found.problems.is_empty() {
+                    self.problem = Some(found.problems.join("\n"));
+                }
+                let opened = self.opened.clone();
+                self.elsewhere = found
+                    .projects
+                    .into_iter()
+                    .filter(|c| needs_attention(c) && Some(&c.folder) != opened.as_ref())
+                    .collect();
+                self.changed = true;
+            }
+            Read::Attached(attachment, candidate) => {
+                if attachment != self.attachment {
+                    return;
+                }
+                self.opened = Some(candidate.folder.clone());
+                self.forget_elsewhere(&candidate.folder);
+                let catalog = candidate.catalog.as_ref();
+                if let Some(original) = catalog.and_then(|c| c.copied_from.clone()) {
+                    self.problem = Some(format!(
+                        "This project folder is a copy of {}. The recovery data copied with it belongs to that project, so it is not offered here; it is kept in a folder named .openchuck-recovery-copied-… inside this project folder.",
+                        shown(&original)
+                    ));
+                    if self.active.is_none() {
+                        self.start(candidate.folder, minutes);
+                    }
+                } else if candidate.problem.is_some() {
+                    self.problem = candidate.problem;
+                } else if catalog.is_some_and(|c| c.live) {
+                    self.problem=Some("Another application instance owns this project's checkpoints. Recovery writing is unavailable here.".into());
+                } else if catalog.is_some_and(|c| c.recovery_needed) {
+                    self.offer = Some((Key::Opened(attachment), candidate));
+                } else if self.active.is_none()
+                    && self
+                        .review
+                        .as_ref()
+                        .is_none_or(|r| r.candidate.folder != candidate.folder)
+                {
+                    if let Some(problems) = catalog.map(|c| &c.problems)
+                        && !problems.is_empty()
+                    {
+                        self.problem = Some(problems.join("\n"));
+                    }
+                    self.start(candidate.folder, minutes);
+                }
+            }
+            Read::Unopened(key, candidate) => {
+                // Only this request's own valid checkpoints; nothing starts
+                // writing, and the open project is left as it is.
+                if self.current(key)
+                    && candidate.problem.is_none()
+                    && candidate
+                        .catalog
+                        .as_ref()
+                        .is_some_and(|c| c.recovery_needed && !c.live)
+                {
+                    self.forget_elsewhere(&candidate.folder);
+                    self.offer = Some((key, candidate));
+                }
+            }
+            Read::Located(mut locate, result) => match result {
+                Ok(found) => {
+                    let old = locate.candidate;
+                    self.elsewhere
+                        .retain(|c| c.folder != old.folder || c.project_id != old.project_id);
+                    if needs_attention(&found) && self.opened.as_ref() != Some(&found.folder) {
+                        self.elsewhere.push(found);
+                    }
+                    self.changed = true;
+                }
+                Err(e) => {
+                    locate.problem = Some(e);
+                    self.locate = Some(*locate);
+                }
+            },
+            Read::Restored(result) => {
+                self.choice = None;
+                let current = self.review.as_ref().is_some_and(|r| self.current(r.key));
+                match result {
+                    Ok(recovered) if current => {
+                        self.install_review = self.review.take();
+                        self.awaiting_install = true;
+                        if let Some(config) = &self.config {
+                            match Session::open(recovered.folder.clone(), config.clone(), minutes) {
+                                Ok(session) => {
+                                    self.review_session = Some(session);
+                                    self.review_folder = Some(recovered.folder.clone());
+                                }
+                                Err(e) => self.problem = Some(e),
+                            }
+                        }
+                        effects.push(Effect::Recovered(
+                            recovered.folder,
+                            recovered.project,
+                            recovered.warnings,
+                        ));
+                    }
+                    Ok(_) => self.review = None,
+                    Err(e) => self.problem = Some(e),
+                }
+            }
+        }
+    }
+
+    /// The Keep or Discard answer was stored: the opened project stays open
+    /// and its writer carries on. Never open another project from here.
+    fn review_answered(&mut self, notices: Vec<Notice>) {
+        for notice in notices {
+            match notice {
+                Notice::Saved if self.choice.is_some() => {
+                    self.choice = None;
+                    let review = self.review.take();
+                    let session = self.review_session.take();
+                    self.review_folder = None;
+                    // A project whose saved files could not be loaded is
+                    // not open: its answer is stored, nothing else changes.
+                    if let Some(review) = review
+                        && review.key == Key::Opened(self.attachment)
+                        && self.active.is_none()
+                    {
+                        self.active = session;
+                        self.active_folder = Some(review.candidate.folder);
+                    }
+                    return;
+                }
+                Notice::Problem(e) => {
+                    self.problem = Some(format!("Recovery checkpoint failed: {e}"));
+                    if matches!(self.choice, Some(Choice::Keep | Choice::Discard)) {
+                        self.review = None;
+                    }
+                    self.choice = None;
+                    self.review_session = None;
+                    self.review_folder = None;
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+
     pub(super) fn frame(
         &mut self,
         ctx: &egui::Context,
@@ -276,105 +593,21 @@ impl State {
             Err(mpsc::TryRecvError::Disconnected) => false,
         });
         for read in received {
-            match read {
-                Read::Startup(found) => {
-                    if !found.problems.is_empty() {
-                        self.problem = Some(found.problems.join("\n"));
-                    }
-                    for candidate in found.projects {
-                        if candidate.problem.is_some()
-                            || candidate
-                                .catalog
-                                .as_ref()
-                                .is_some_and(|c| c.recovery_needed || !c.problems.is_empty())
-                        {
-                            self.queued.push_back(candidate);
-                        }
-                    }
-                }
-                Read::Attached(attachment, candidate) => {
-                    if attachment != self.attachment {
-                        continue;
-                    }
-                    if candidate.problem.is_some() {
-                        self.problem = candidate.problem;
-                    } else if candidate.catalog.as_ref().is_some_and(|c| c.live) {
-                        self.problem=Some("Another application instance owns this project's checkpoints. Recovery writing is unavailable here.".into());
-                    } else if candidate
-                        .catalog
-                        .as_ref()
-                        .is_some_and(|c| c.recovery_needed)
-                    {
-                        self.queued.push_back(candidate);
-                    } else if self
-                        .review
-                        .as_ref()
-                        .is_none_or(|r| r.candidate.folder != candidate.folder)
-                        && self.active.is_none()
-                    {
-                        self.start(candidate.folder, minutes);
-                    }
-                }
-                Read::Located(original, result) => match result {
-                    Ok(candidate) => {
-                        self.problem = None;
-                        self.review = Some(Review {
-                            candidate,
-                            selected: None,
-                            confirm_discard: false,
-                            locate_path: String::new(),
-                        })
-                    }
-                    Err(e) => {
-                        self.problem = Some(e);
-                        self.review = Some(*original);
-                    }
-                },
-                Read::Restored(result) => {
-                    self.choice = None;
-                    match result {
-                        Ok(recovered) => {
-                            self.install_review = self.review.take();
-                            self.awaiting_install = true;
-                            if let Some(config) = &self.config {
-                                match Session::open(
-                                    recovered.folder.clone(),
-                                    config.clone(),
-                                    minutes,
-                                ) {
-                                    Ok(session) => {
-                                        self.review_session = Some(session);
-                                        self.review_folder = Some(recovered.folder.clone());
-                                    }
-                                    Err(e) => self.problem = Some(e),
-                                }
-                            }
-                            effects.push(Effect::Recovered(
-                                recovered.folder,
-                                recovered.project,
-                                recovered.warnings,
-                            ));
-                        }
-                        Err(e) => self.problem = Some(e),
-                    }
-                }
-            }
+            self.receive(read, minutes, &mut effects);
         }
-        if self.review.is_none() && !self.awaiting_install && allow_offer {
-            while let Some(candidate) = self.queued.pop_front() {
-                if self
-                    .shown
-                    .insert((candidate.folder.clone(), candidate.project_id.clone()))
-                {
-                    self.review = Some(Review {
-                        candidate,
-                        selected: None,
-                        confirm_discard: false,
-                        locate_path: String::new(),
-                    });
-                    break;
-                }
-            }
+        if self.review.is_none()
+            && self.locate.is_none()
+            && !self.awaiting_install
+            && allow_offer
+            && let Some((key, candidate)) = self.offer.take()
+            && self.current(key)
+        {
+            self.review = Some(Review {
+                candidate,
+                key,
+                selected: None,
+                confirm_discard: false,
+            });
         }
         self.retiring.retain_mut(|session| {
             let mut closed = false;
@@ -416,33 +649,8 @@ impl State {
             }
         }
         if let Some(session) = &mut self.review_session {
-            for notice in session.poll(session.elapsed()) {
-                match notice {
-                    Notice::Saved if self.choice.is_some() => {
-                        if let Some(review) = self.review.take() {
-                            effects.push(Effect::Open(review.candidate.folder.clone()));
-                            self.install_review = Some(review);
-                            self.awaiting_install = true;
-                            self.choice = None;
-                        }
-                    }
-                    Notice::Problem(e) => {
-                        self.problem = Some(format!("Recovery checkpoint failed: {e}"));
-                        if matches!(self.choice, Some(Choice::Keep))
-                            && let Some(review) = self.review.take()
-                        {
-                            effects.push(Effect::Open(review.candidate.folder.clone()));
-                            self.install_review = Some(review);
-                            self.awaiting_install = true;
-                        }
-                        self.choice = None;
-                        self.review_session = None;
-                        self.review_folder = None;
-                        break;
-                    }
-                    _ => {}
-                }
-            }
+            let notices = session.poll(session.elapsed());
+            self.review_answered(notices);
         }
         if self.close_next.is_some() {
             egui::Modal::new(Id::unique("closing recovery")).show(ctx, |ui| {
@@ -450,58 +658,11 @@ impl State {
                 ui.spinner();
             });
         }
-        let mut answer = None;
-        let mut located = None;
-        if let Some(review) = &mut self.review {
-            egui::Modal::new(Id::unique("recover project choices")).show(ctx,|ui| {
-                ui.set_max_width(680.0);
-                ui.heading("Recover project changes");
-                ui.label(review.candidate.folder.display().to_string());
-                ui.label("Choose a checkpoint to recover. Saved project files change only after you explicitly Save.");
-                if let Some(problem)=&review.candidate.problem {ui.colored_label(crate::theme::DARK.error,problem);}
-                if let Some(problem)=&self.problem {ui.colored_label(crate::theme::DARK.error,problem);}
-                if let Some(catalog)=&review.candidate.catalog {
-                    for problem in &catalog.problems {ui.colored_label(crate::theme::DARK.error,problem);}
-                    egui::ScrollArea::vertical().max_height(300.0).show(ui,|ui| {
-                        for entry in &catalog.snapshots {
-                            let kind=match entry.metadata.kind {Kind::Periodic=>"Periodic",Kind::Interim=>"Interim"};
-                            let time=capture_time(entry.metadata.timestamp_ms);
-                            let retired=if entry.retired {" · retained history"}else{""};
-                            ui.radio_value(&mut review.selected,Some(entry.id.clone()),format!("{} · {kind} — {time}{retired}",entry.project_name));
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.add_enabled(review.selected.is_some() && self.choice.is_none(),egui::Button::new("Recover selected")).clicked() {answer=Some(Choice::Recover);}
-                        if ui.add_enabled(self.choice.is_none(),egui::Button::new("Keep saved project")).clicked() {answer=Some(Choice::Keep);}
-                        if ui.add_enabled(self.choice.is_none(),egui::Button::new("Discard recovery data…")).clicked() {review.confirm_discard=true;}
-                    });
-                    if review.confirm_discard {
-                        ui.label("Delete the valid recovery checkpoints for this project? This cannot be undone. Damaged and partial files remain preserved.");
-                        if ui.button("Delete checkpoints").clicked() {answer=Some(Choice::Discard);}
-                        if ui.button("Cancel deletion").clicked() {review.confirm_discard=false;}
-                    }
-                }
-                if review.candidate.problem.is_some() {
-                    ui.label("Moved project folder:");
-                    ui.text_edit_singleline(&mut review.locate_path);
-                    if ui.add_enabled(!review.locate_path.trim().is_empty(),egui::Button::new("Locate")).clicked() {located=Some(PathBuf::from(review.locate_path.trim()));}
-                }
-                if self.choice.is_some() {ui.spinner();}
-            });
-        }
+        let answer = self.review_dialog(ctx);
         if let Some(choice) = answer {
             self.choose(choice, minutes);
         }
-        if let Some(folder) = located
-            && let (Some(config), Some(review)) = (self.config.clone(), self.review.take())
-        {
-            let (tx, rx) = mpsc::channel();
-            std::thread::spawn(move || {
-                let result = jobs::locate(&config, &review.candidate, &folder);
-                let _ = tx.send(Read::Located(Box::new(review), result));
-            });
-            self.readers.push(rx);
-        }
+        self.locate_dialog(ctx);
         if self.active.is_some()
             || !self.readers.is_empty()
             || self.review_session.is_some()
@@ -510,6 +671,88 @@ impl State {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
         effects
+    }
+
+    fn review_dialog(&mut self, ctx: &egui::Context) -> Option<Choice> {
+        let review = self.review.as_mut()?;
+        let mut answer = None;
+        egui::Modal::new(Id::unique("recover project choices")).show(ctx,|ui| {
+            ui.set_max_width(680.0);
+            ui.heading("Recover project changes");
+            ui.label(format!("Unsaved changes were kept for the project you are opening, in {}, when it last closed unexpectedly.", shown(&review.candidate.folder)));
+            ui.label("Choose a checkpoint to recover. Saved project files change only after you explicitly Save.");
+            if let Some(problem)=&review.candidate.problem {ui.colored_label(crate::theme::DARK.error,problem);}
+            if let Some(problem)=&self.problem {ui.colored_label(crate::theme::DARK.error,problem);}
+            if let Some(catalog)=&review.candidate.catalog {
+                for problem in &catalog.problems {ui.colored_label(crate::theme::DARK.error,problem);}
+                egui::ScrollArea::vertical().max_height(300.0).show(ui,|ui| {
+                    for entry in &catalog.snapshots {
+                        let kind=match entry.metadata.kind {Kind::Periodic=>"Periodic",Kind::Interim=>"Interim"};
+                        let time=capture_time(entry.metadata.timestamp_ms);
+                        let retired=if entry.retired {" · retained history"}else{""};
+                        ui.radio_value(&mut review.selected,Some(entry.id.clone()),format!("{} · {kind} — {time}{retired}",entry.project_name));
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(review.selected.is_some() && self.choice.is_none(),egui::Button::new("Recover selected")).clicked() {answer=Some(Choice::Recover);}
+                    if ui.add_enabled(self.choice.is_none(),egui::Button::new("Keep saved project")).clicked() {answer=Some(Choice::Keep);}
+                    if ui.add_enabled(self.choice.is_none(),egui::Button::new("Discard recovery data…")).clicked() {review.confirm_discard=true;}
+                });
+                if review.confirm_discard {
+                    ui.label("Delete the valid recovery checkpoints for this project? This cannot be undone. Damaged and partial files remain preserved.");
+                    if ui.button("Delete checkpoints").clicked() {answer=Some(Choice::Discard);}
+                    if ui.button("Cancel deletion").clicked() {review.confirm_discard=false;}
+                }
+            }
+            if self.choice.is_some() {ui.spinner();}
+        });
+        answer
+    }
+
+    fn locate_dialog(&mut self, ctx: &egui::Context) {
+        let Some(locate) = &mut self.locate else {
+            return;
+        };
+        let mut chosen = None;
+        let mut cancel = false;
+        egui::Modal::new(Id::unique("locate moved recovery project")).show(ctx, |ui| {
+            ui.set_max_width(680.0);
+            ui.heading("Locate moved project");
+            ui.label(format!(
+                "Recovery data was kept for a project last in {}. Enter the folder it was moved to. Nothing is opened or changed until you open that project.",
+                shown(&locate.candidate.folder)
+            ));
+            if let Some(problem) = &locate.problem {
+                ui.colored_label(crate::theme::DARK.error, problem);
+            }
+            ui.label("Moved project folder:");
+            ui.text_edit_singleline(&mut locate.path);
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(!locate.path.trim().is_empty(), egui::Button::new("Locate"))
+                    .clicked()
+                {
+                    chosen = Some(PathBuf::from(locate.path.trim()));
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+        if cancel {
+            self.locate = None;
+            return;
+        }
+        if let Some(folder) = chosen
+            && let (Some(config), Some(locate)) = (self.config.clone(), self.locate.take())
+        {
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let result = jobs::locate(&config, &locate.candidate, &folder);
+                let _ = tx.send(Read::Located(Box::new(locate), result));
+            });
+            self.readers.push(rx);
+        }
     }
 }
 
@@ -527,7 +770,7 @@ impl Shell {
             self.settings.checkpoint_minutes,
             allow_offer,
         );
-        if self.recovery.problem != previous {
+        if self.recovery.problem != previous || std::mem::take(&mut self.recovery.changed) {
             self.overview_dirty = true;
         }
         for effect in effects {
@@ -544,18 +787,25 @@ impl Shell {
                         }
                     }
                 }
-                Effect::Open(folder) => match Application::open(&folder, Threads::All) {
-                    Ok(app) => {
-                        self.recovery_project = Some((app, Vec::new(), false));
-                        self.request(Next::Recovery, ctx);
-                    }
-                    Err(e) => {
-                        self.recovery.cancel_install(&folder);
-                        self.dialog = Some(super::Dialog::Error(e.to_string()));
-                    }
-                },
                 Effect::Resume(next) => self.proceed(next, ctx),
             }
+        }
+    }
+
+    /// A recovery line's action: open that project through the ordinary
+    /// Open dialog (with its unsaved-changes question), or locate it.
+    pub(super) fn recovery_action(&mut self, action: MessageAction) {
+        match action {
+            MessageAction::OpenRecovery(index) => {
+                if let Some(folder) = self.recovery.elsewhere_folder(index)
+                    && let Some(ctx) = self.edit_context.clone()
+                {
+                    self.open_hint = Some(shown(&folder));
+                    self.request(Next::Open, &ctx);
+                }
+            }
+            MessageAction::LocateRecovery(index) => self.recovery.start_locate(index),
+            _ => {}
         }
     }
 }
@@ -639,54 +889,17 @@ mod tests {
     }
 
     #[test]
-    fn req_prj_08_failed_locate_preserves_the_choice_and_allows_retry() {
-        let mut rig = ready_project("checkpoint-locate-retry");
-        let review = rig.shell.recovery.review.as_mut().unwrap();
-        let original = review.candidate.folder.clone();
-        review.candidate.problem = Some("Project folder moved".into());
-        review.locate_path = original.join("does-not-exist").display().to_string();
-        rig.settle();
-        rig.frame(Vec::new());
-        click(&mut rig, "Locate");
-        rig.frame(Vec::new());
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !rig.shell.recovery.readers.is_empty() {
-            rig.frame(Vec::new());
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(1));
-        }
+    fn req_prj_08_folder_names_leave_out_the_windows_verbatim_prefix() {
+        // Decision 0460 item 3: the user's folder, not `\\?\` (decision 0114).
         assert_eq!(
-            rig.shell
-                .recovery
-                .review
-                .as_ref()
-                .map(|r| &r.candidate.folder),
-            Some(&original),
-            "a failed Locate must retain the original recovery choice"
+            shown(Path::new(r"\\?\C:\Projects\Part")),
+            r"C:\Projects\Part"
         );
-        assert!(rig.shell.recovery.problem.is_some());
-        assert!(rig.shows("Locate"));
-        rig.shell.recovery.review.as_mut().unwrap().locate_path = original.display().to_string();
-        rig.frame(Vec::new());
-        rig.frame(Vec::new());
-        click(&mut rig, "Locate");
-        rig.frame(Vec::new());
-        while !rig.shell.recovery.readers.is_empty() {
-            rig.frame(Vec::new());
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        assert!(rig.shell.recovery.problem.is_none());
-        assert!(
-            rig.shell
-                .recovery
-                .review
-                .as_ref()
-                .unwrap()
-                .candidate
-                .catalog
-                .is_some()
+        assert_eq!(
+            shown(Path::new(r"\\?\UNC\server\share\Part")),
+            r"\\server\share\Part"
         );
+        assert_eq!(shown(Path::new("/home/user/Part")), "/home/user/Part");
     }
 
     #[test]
@@ -723,7 +936,13 @@ mod tests {
         let mut rig = ready_project("checkpoint-reopen");
         click(&mut rig, "Keep saved project");
         let deadline = Instant::now() + Duration::from_secs(5);
-        while rig.shell.app.is_none() {
+        while rig
+            .shell
+            .recovery
+            .active
+            .as_ref()
+            .is_none_or(|s| !s.is_ready())
+        {
             rig.frame(Vec::new());
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(1));

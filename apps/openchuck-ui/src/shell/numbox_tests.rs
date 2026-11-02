@@ -31,7 +31,7 @@ fn unit_box(rig: &Rig) -> egui::Pos2 {
         .collect();
     rig.entry_rects()
         .into_iter()
-        .filter(|b| b.width() > 60.0 && b.right() >= rig.size.x - 30.0)
+        .filter(|b| b.width() > 60.0 && b.left() >= rig.size.x - 340.0)
         .find(|b| units.iter().any(|u| b.contains(u.center())))
         .map(|b| b.center())
         .expect("a number box with a unit in the setup step")

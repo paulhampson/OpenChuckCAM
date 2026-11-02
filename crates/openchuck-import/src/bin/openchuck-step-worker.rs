@@ -10,8 +10,11 @@
 //! has no other use.
 //!
 //! The process ends by returning from `main`, so the kernel's static
-//! destructors run: the build links `TKernel` first so that is safe, and the
-//! tests exit this way on every platform (decision 0003, exit crash).
+//! destructors run. That is safe because OpenCASCADE's type registry is built
+//! before, and destroyed after, every other kernel static: on macOS and Windows
+//! the build links `TKernel` first, on Linux the wrapper builds the registry in
+//! a priority initialiser (decision 0003, exit crash; decision 0490). The tests
+//! exit this way on every platform.
 
 #![allow(clippy::print_stderr)]
 

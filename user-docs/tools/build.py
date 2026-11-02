@@ -35,6 +35,7 @@ _HREF = re.compile(r'<a href="([^"#:]+\.html)">')
 _BANNER = re.compile(r"<!--latest-banner-->.*?<!--/latest-banner-->", re.S)
 # mdBook 0.5.4 writes a part title as an li inside another li, which is not valid HTML.
 _PART = re.compile(r'<li class="chapter-item[^"]*"><li class="part-title">(.*?)</li></li>', re.S)
+_OL_START = re.compile(r'<ol start="(\d+)">')
 
 
 def fix_nav(text, rel):
@@ -49,6 +50,14 @@ def fix_nav(text, rel):
         return _PART.sub(r'<li class="part-title">\1</li>', _HREF.sub(link, m.group(1)))
 
     return _NAV.sub(nav, text, count=1)
+
+
+def fix_lists(text):
+    """Carry a list's start number into the theme's step counter, which ignores the start attribute.
+
+    A procedure that a figure interrupts goes on in a second list that starts at its next number.
+    """
+    return _OL_START.sub(lambda m: f'<ol start="{m.group(1)}" style="counter-reset: step {int(m.group(1)) - 1}">', text)
 
 
 def fill(text, version, tag, commit, date, notice, nightly=None):
@@ -105,7 +114,7 @@ def build(out, version=None, tag=None, nightly=None):
             rel = os.path.relpath(path, out).replace(os.sep, "/")
             with open(path, encoding="utf-8") as f:
                 text = f.read()
-            text = fill(fix_nav(text, rel), version, tag, commit, date, notice, nightly)
+            text = fill(fix_lists(fix_nav(text, rel)), version, tag, commit, date, notice, nightly)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
     # mdBook's contents frame for readers without JavaScript; this theme puts the contents in each

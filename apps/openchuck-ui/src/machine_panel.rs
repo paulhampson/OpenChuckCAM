@@ -22,7 +22,7 @@ use openchuck_app::setup::{
 };
 
 use crate::field_row::{self, FieldState, Outcome, TextRow};
-use crate::theme::{DARK, width};
+use crate::theme::DARK;
 
 const NOTE: Color32 = DARK.warning;
 
@@ -96,8 +96,20 @@ pub fn icon(ui: &mut egui::Ui, value: &MachineValue) -> egui::Response {
 fn value_row(ui: &mut egui::Ui, value: &MachineValue) {
     ui.horizontal(|ui| {
         let height = ui.spacing().interact_size.y;
+        field_row::need_label_width(
+            ui,
+            ui.painter()
+                .layout_no_wrap(
+                    value.label.to_owned(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    DARK.muted,
+                )
+                .size()
+                .x
+                + 2.0 * height,
+        );
         let (rect, _) = ui.allocate_exact_size(
-            egui::vec2(width::LABEL_COLUMN, height),
+            egui::vec2(field_row::label_column(ui), height),
             egui::Sense::hover(),
         );
         let mut child = ui.new_child(
@@ -111,7 +123,12 @@ fn value_row(ui: &mut egui::Ui, value: &MachineValue) {
         child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add(egui::Label::new(RichText::new(value.label).color(DARK.muted)).truncate());
         });
-        ui.add(egui::Label::new(&value.value).wrap());
+        // Narrower than the room by a point, so the wrapped text never runs
+        // to the pane's edge and holds the pane open.
+        ui.scope(|ui| {
+            ui.set_max_width((ui.available_width() - 2.0).max(40.0));
+            ui.add(egui::Label::new(&value.value).wrap());
+        });
     });
 }
 

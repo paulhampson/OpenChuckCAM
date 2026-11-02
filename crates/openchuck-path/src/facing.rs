@@ -136,6 +136,11 @@ impl Strategy for Facing {
         ];
         parameters.extend(new_specs());
         parameters.extend(borrowed);
+        parameters.push(crate::helical::pass_shape_spec(
+            "Round: Spiral turns each layer down in one continuous spiral that moves along the \
+             stock as it turns. Rings cuts each layer one full turn at a time at a fixed place \
+             along the stock, with a short step along it between turns.",
+        ));
         parameters.extend(crate::extend::specs(true));
         parameters.extend(crate::adaptive::specs());
         parameters.push(crate::adaptive::allowed_excess_spec());
@@ -163,6 +168,10 @@ impl Strategy for Facing {
                 && matches!(name, roughing::MAX_ANGLE_STEP | roughing::START_ANGLE)
             {
                 return false;
+            }
+            // Only the round shape cuts a spiral (decision record 0420).
+            if name == roughing::PASS_SHAPE {
+                return shape == parameter::ROUND;
             }
             if name == parameter::LAYERS || name == parameter::ARBITRARY {
                 return shape == parameter::BOX;
