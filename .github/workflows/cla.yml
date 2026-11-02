@@ -13,7 +13,7 @@ on:
     types: [created]
   pull_request_target:
     types: [opened, closed, synchronize]
-  # Ready for a merge queue (decision 0498; not used here, decision 0646): a merge_group run has no pull request and no commit author to
+  # Ready for a merge queue (decision 0498; not used here, decision 0499): a merge_group run has no pull request and no commit author to
   # check. The signatures were checked on the pull request, and this check is not in the ruleset's
   # required list; the job reports success so that it can be required without blocking the queue.
   merge_group:

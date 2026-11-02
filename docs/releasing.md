@@ -146,7 +146,7 @@ The first application release then creates `docs-releases` with its own folder, 
 
 ## Up-to-date rule relaxed
 
-How pull requests merge ([decision 0646](decisions/0646-up-to-date-rule-relaxed.md), accepted; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) item 4; it supersedes in part [0498](decisions/0498-merge-queue.md), accepted). GitHub's merge queue is not available on a personal-account repository, so it is not used. With "Require branches to be up to date" on, every merge turned the other ready pull requests behind, and each had to merge `main`, push and wait for a full CI run.
+How pull requests merge ([decision 0499](decisions/0499-up-to-date-rule-relaxed.md), accepted; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) item 4; it supersedes in part [0498](decisions/0498-merge-queue.md), accepted). GitHub's merge queue is not available on a personal-account repository, so it is not used. With "Require branches to be up to date" on, every merge turned the other ready pull requests behind, and each had to merge `main`, push and wait for a full CI run.
 
 **What the owner changes** (Settings, Rules, Rulesets, "Main branch protection"): clear **Require branches to be up to date before merging**. Keep **Require status checks** with `CI required checks`; change nothing else.
 
