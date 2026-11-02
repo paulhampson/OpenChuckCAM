@@ -499,7 +499,7 @@ pub fn assemble_with_entry(
                 }
                 // A pass without its own stock that asks for low links is
                 // linked against the setup's stock, and only where no held
-                // region lies in the way (decision 0510).
+                // region lies in the way (decision 0496).
                 None if low_links.get(i).copied().unwrap_or(false) && !reversing_ramp => {
                     asked_low += 1;
                     let low = local_link_height(&b, input.stock, common, head, link_height)

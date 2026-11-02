@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Links between passes of axial and indexed finishing: the option to keep
 //! them low (OP-14, SET-06, SET-09, NFR-07, NFR-12, GC-07; issue #436;
-//! decision 0510).
+//! decision 0496).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,

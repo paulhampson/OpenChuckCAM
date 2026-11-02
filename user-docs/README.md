@@ -5,17 +5,19 @@ The source of the guide for people who use OpenChuckCAM, published at <https://p
 | Path | Contents |
 | --- | --- |
 | `src/` | The pages, in Markdown; `src/SUMMARY.md` is the contents and their order. |
+| `src/tutorial/images/` | The tutorial's screenshots, and `CAPTURED.toml`: the commit they were taken at, and any later review. |
 | `theme/` | The page template, the stylesheet and the version script. They replace mdBook's own theme. |
 | `tools/build.py` | Builds the guide with mdBook and finishes the pages (version stamp, the G-code notice, fonts). |
 | `tools/assemble.py` | Puts the published site together: `latest/` beside every released version. |
-| `tools/check.py` | The style, privacy and safety checks. |
+| `tools/check.py` | The style, privacy and safety checks, and whether the tutorial's screenshots are older than the screens. |
+| `tools/capture.py` | Takes the tutorial's screenshots and the home page's hero images from the real application. |
 | `tools/manifest.py` | The SHA-256 manifest of a released version. |
 | `tools/tests/` | Tests of the tools. |
 | `STYLE.md` | How to write the pages, and the review checklist. |
 
 ## Build and check it locally
 
-You need Python 3.11 or later, Git, and the tools pinned in `.github/workflows/docs-site.yml`: mdBook and lychee (`cargo install mdbook --version 0.5.4 --locked`, `cargo install lychee --version 0.24.2 --locked`), and the Nu HTML Checker with Java. From the repository root:
+You need Python 3.11 or later, Git, and the tools pinned in `.github/actions/user-docs/action.yml`: mdBook and lychee (`cargo install mdbook --version 0.5.4 --locked`, `cargo install lychee --version 0.24.2 --locked`), and the Nu HTML Checker with Java. From the repository root:
 
 ```text
 python3 -m unittest discover -s user-docs/tools/tests
@@ -27,6 +29,17 @@ java -jar vnu.jar --skip-non-html --errors-only /tmp/guide/root/OpenChuckCAM/lat
 ```
 
 To read it, serve the folder (`python3 -m http.server -d /tmp/guide/root`) and open <http://localhost:8000/OpenChuckCAM/>. The version list needs a server; the pages themselves also open from disk.
+
+## Taking the screenshots
+
+The screenshots come from the real program, never from a mock-up, and show only the repository's example models (`user-docs/STYLE.md`, Figures). `tools/capture.py` builds nothing itself: build the release program first, then run it on Linux with Xvfb, xdotool, ImageMagick, Pillow and a software Vulkan driver (its opening comment lists the packages). Commit any change to the screens first. It writes the images and `src/tutorial/images/CAPTURED.toml`:
+
+```text
+cargo build --release -p openchuck-ui
+python3 user-docs/tools/capture.py
+```
+
+The click positions in the script belong to the layout of one build. When a screen changes, change the positions and the pages that describe it, and capture again. If you check the screens against a newer build without capturing, add `reviewed_at = "<commit>"` to `CAPTURED.toml`. The docs check warns on a pull request when the screens have changed since the capture or review commit, and a release refuses it (decision 0400, section G).
 
 ## How it is published
 

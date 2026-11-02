@@ -7,7 +7,7 @@
 //! each tab), which join the model's surface as the composite target of every
 //! operation, the simulation and the deviation report; checks what needs the
 //! part and the tool (tabs only in the head and tail zones, a tab not
-//! narrower than the tool); computes the default tabs of decision 0035
+//! shorter along X than the tool is wide, decision 0494); computes the default tabs of decision 0035
 //! (OI-158); and builds the deviation target.
 //!
 //! Positions are model X, which is the rotary axis; angles about the axis run
@@ -211,22 +211,26 @@ pub fn selection_reach_notes(
     notes
 }
 
-/// The note for the first tab narrower than a tool of `tool_diameter`, naming
-/// the tool and the operation that uses it, or `None` (OI-159; interface
-/// specification 11.7).
+/// The note for the first tab shorter along X than a tool of `tool_diameter`
+/// is wide, naming the tool and the operation that uses it, or `None`
+/// (OI-159; decision 0494; interface specification 11.7). With `skip_auto`,
+/// automatic tabs are left out, as their stored length is not where they are
+/// until the stock and the part are known (decision 0202 item 3).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
     tool_name: &str,
     operation: &str,
+    skip_auto: bool,
 ) -> Option<WorkholdingFinding> {
     workholding.tabs.iter().enumerate().find_map(|(i, tab)| {
-        let d = narrowest(tab);
-        (d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
+        let d = tab.length.0;
+        let counts = !(skip_auto && tab.auto.is_some());
+        (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
             text: format!(
-                "Tab {} is {d:.3} mm across at its narrowest, narrower than the tool \
-                 {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab wider or use \
+                "Tab {} is {d:.3} mm long along X, shorter than the tool \
+                 {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab longer or use \
                  a smaller tool.",
                 i + 1
             ),
@@ -273,8 +277,9 @@ pub fn operation_label(
 pub(crate) fn narrow_tab_notes(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
+    part: Option<&PartExtent>,
 ) -> Vec<String> {
-    narrow_tab_findings(project, setup)
+    narrow_tab_findings(project, setup, part)
         .into_iter()
         .map(|f| f.text)
         .collect()
@@ -321,15 +326,37 @@ pub fn setup_tools(
 fn narrow_tab_findings(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
+    part: Option<&PartExtent>,
 ) -> Vec<WorkholdingFinding> {
-    setup_tools(project, setup.id)
-        .into_iter()
-        .filter_map(|t| narrow_tab_note(&setup.workholding, t.diameter, &t.tool, &t.operation))
+    narrow_findings(
+        &setup.workholding,
+        setup.stock.as_ref(),
+        part,
+        &setup_tools(project, setup.id),
+    )
+}
+
+/// The first note for each tool of `tools` that a tab of `workholding` is too
+/// short for, with the tabs where they are (automatic ones resolved against
+/// the stock and the part; decision 0202 item 3).
+fn narrow_findings(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+    tools: &[SetupTool],
+) -> Vec<WorkholdingFinding> {
+    let resolved = workholding.resolved(stock, part);
+    // With no stock or no part the automatic tabs keep their stored lengths,
+    // which say nothing: leave them for when they can be resolved.
+    let skip_auto = stock.is_none() || part.is_none();
+    tools
+        .iter()
+        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, skip_auto))
         .collect()
 }
 
 /// What is wrong with the workholding of `setup` as it would be stored: tabs
-/// outside the head and tail zones (OI-180), then tabs narrower than a tool of
+/// outside the head and tail zones (OI-180), then tabs shorter along X than a tool of
 /// its operations (OI-159). Reads and places the part for its extent; empty
 /// when the setup has no part.
 pub(crate) fn findings_of(
@@ -371,7 +398,7 @@ pub(crate) fn findings_of(
                 },
             })
             .collect();
-    found.extend(narrow_tab_findings(project, setup));
+    found.extend(narrow_tab_findings(project, setup, extent.as_ref()));
     Ok(found)
 }
 
@@ -405,21 +432,9 @@ pub(crate) fn reach_warnings_of(
     Ok(selection_reach_notes(project, operation, &mesh, &solids))
 }
 
-/// The smallest diameter of a tab's shape.
-fn narrowest(tab: &Tab) -> f64 {
-    match tab.shape {
-        TabShape::Cylinder { diameter } => diameter.0,
-        TabShape::Frustum {
-            start_diameter,
-            end_diameter,
-        } => start_diameter.0.min(end_diameter.0),
-        _ => f64::INFINITY,
-    }
-}
-
 /// The checks that need the part and the tool, made before generating
 /// (decision 0035, owner's answers; OI-159 and OI-180): every tab lies wholly
-/// in the head zone or the tail zone, and none is narrower than the tool.
+/// in the head zone or the tail zone, and none is shorter along X than the tool is wide.
 /// The message names the tab and what to change.
 pub fn check_for_tool(
     workholding: &Workholding,
@@ -443,12 +458,16 @@ pub fn check_for_tool(
             x.0, x.1
         )));
     }
-    for (i, tab) in workholding.tabs.iter().enumerate() {
-        let d = narrowest(tab);
+    // An automatic tab keeps its last-applied length when the part moves
+    // (decision 0202 item 3): compare the length it has now, as the target
+    // is built from it.
+    let resolved = workholding.resolved(stock, Some(part));
+    for (i, tab) in resolved.tabs.iter().enumerate() {
+        let d = tab.length.0;
         if d < tool_diameter - 1e-9 {
             return Err(refuse(format!(
-                "tab {} is {d:.3} mm across at its narrowest, narrower than the tool \
-                 '{tool_name}' ({tool_diameter:.3} mm); make the tab wider or use a smaller tool",
+                "tab {} is {d:.3} mm long along X, shorter than the tool \
+                 '{tool_name}' ({tool_diameter:.3} mm); make the tab longer or use a smaller tool",
                 i + 1
             )));
         }
@@ -1144,28 +1163,169 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn req_op_21_a_tab_narrower_than_the_tool_is_refused() {
-        let w = Workholding {
+    fn tab_of(length: f64, shape: TabShape, layout: TabLayout) -> Workholding {
+        Workholding {
             tabs: vec![Tab {
                 auto: None,
                 x_start: Millimetres(80.0),
+                length: Millimetres(length),
+                shape,
+                layout,
+            }],
+            ..Workholding::default()
+        }
+    }
+
+    /// OP-21, decision 0494 (amends 0035 item 6): the tab's length along X is
+    /// compared with the tool's diameter, not the tab's diameter. A wide tab
+    /// that is shorter than the tool is refused.
+    #[test]
+    fn req_op_21_a_tab_shorter_than_the_tool_is_refused_whatever_its_diameter() {
+        let w = tab_of(
+            3.0,
+            TabShape::Cylinder {
+                diameter: Millimetres(12.0),
+            },
+            TabLayout::OnAxis,
+        );
+        let part = part(20.0, 78.0);
+        assert!(check_for_tool(&w, Some(&stock()), &part, 3.0, "a").is_ok());
+        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        let text = error.to_string();
+        assert!(text.contains("3.000 mm long along X"), "{text}");
+        assert!(
+            text.contains("shorter than the tool 'ball 4' (4.000 mm)"),
+            "{text}"
+        );
+        assert!(!text.contains("across"), "{text}");
+    }
+
+    fn auto_head_tab(stored_length: f64) -> Workholding {
+        Workholding {
+            start: Some(HeldRegion {
                 length: Millimetres(10.0),
-                shape: TabShape::Frustum {
-                    start_diameter: Millimetres(3.0),
-                    end_diameter: Millimetres(9.0),
+                diameter: None,
+            }),
+            tabs: vec![Tab {
+                auto: Some(TabEnd::Head),
+                x_start: Millimetres(10.0),
+                length: Millimetres(stored_length),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(8.0),
                 },
                 layout: TabLayout::OnAxis,
             }],
             ..Workholding::default()
-        };
-        let part = part(20.0, 78.0);
-        assert!(check_for_tool(&w, Some(&stock()), &part, 3.0, "a").is_ok());
-        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        }
+    }
+
+    fn one_ball_tool() -> [SetupTool; 1] {
+        [SetupTool {
+            tool: "T1 Ball".into(),
+            diameter: 4.0,
+            operation: "1 Rough".into(),
+        }]
+    }
+
+    /// OP-21, decision 0202 item 3 and decision 0494: an automatic tab is
+    /// compared with the tool where it is now, not at the length it was last
+    /// applied with. Stored 8 mm long; the part now starts at X 12, so the
+    /// head gap is 2 mm and a 4 mm tool does not fit: refused when generating
+    /// and found by the checks.
+    #[test]
+    fn req_op_21_an_automatic_tab_that_shrank_is_refused_at_its_resolved_length() {
+        let shrunk = auto_head_tab(8.0);
+        let near = part(12.0, 70.0);
+        let error = check_for_tool(&shrunk, Some(&stock()), &near, 4.0, "ball 4").unwrap_err();
         assert!(
-            error.to_string().contains("narrower than the tool"),
+            error.to_string().contains("2.000 mm long along X"),
             "{error}"
         );
+        let notes = narrow_findings(&shrunk, Some(&stock()), Some(&near), &one_ball_tool());
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].text.contains("2.000 mm long along X"), "{notes:?}");
+    }
+
+    /// The other way: stored 2 mm long; the part now starts at X 18, so the
+    /// gap is 8 mm and the 4 mm tool fits.
+    #[test]
+    fn req_op_21_an_automatic_tab_that_grew_is_accepted_at_its_resolved_length() {
+        let grown = auto_head_tab(2.0);
+        let far = part(18.0, 70.0);
+        assert!(check_for_tool(&grown, Some(&stock()), &far, 4.0, "ball 4").is_ok());
+        assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &one_ball_tool()).is_empty());
+    }
+
+    /// CodeRabbit finding on pull request 460: with no part or no stock an
+    /// automatic tab cannot be resolved, so its stored length says nothing
+    /// and the findings skip it; a tab placed by hand is still compared.
+    #[test]
+    fn req_op_21_findings_wait_for_an_automatic_tab_to_be_resolvable() {
+        let tools = one_ball_tool();
+        let mut w = auto_head_tab(2.0);
+        let manual = Tab {
+            auto: None,
+            x_start: Millimetres(80.0),
+            length: Millimetres(3.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(6.0),
+            },
+            layout: TabLayout::OnAxis,
+        };
+        w.tabs.push(manual);
+        let part = part(18.0, 70.0);
+        // No part, then no stock: only the manual tab (the second, index 1) is found.
+        for notes in [
+            narrow_findings(&w, Some(&stock()), None, &tools),
+            narrow_findings(&w, None, Some(&part), &tools),
+        ] {
+            assert_eq!(notes.len(), 1, "{notes:?}");
+            assert_eq!(notes[0].tab, Some(1));
+            assert!(notes[0].text.starts_with("Tab 2 is 3.000 mm"), "{notes:?}");
+        }
+        // With both, the automatic tab is resolved (8 mm gap) and fits, the
+        // manual one is still short.
+        let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert_eq!(notes[0].tab, Some(1));
+    }
+
+    /// The reverse: a thin tab that is long enough is accepted, for a
+    /// cylinder and a frustum, on the axis and around it.
+    #[test]
+    fn req_op_21_a_thin_tab_at_least_as_long_as_the_tool_is_accepted() {
+        let part = part(20.0, 78.0);
+        let layouts = [
+            TabLayout::OnAxis,
+            TabLayout::AroundAxis {
+                count: 2,
+                start_angle: openchuck_types::units::Degrees(0.0),
+                radial_offset: Millimetres(3.0),
+            },
+        ];
+        for layout in layouts {
+            for shape in [
+                TabShape::Cylinder {
+                    diameter: Millimetres(1.0),
+                },
+                TabShape::Frustum {
+                    start_diameter: Millimetres(1.0),
+                    end_diameter: Millimetres(2.0),
+                },
+            ] {
+                let w = tab_of(4.0, shape, layout);
+                // Length equal to the tool is long enough.
+                assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
+                assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
+                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", false).is_none());
+                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", false).unwrap();
+                assert_eq!(
+                    note.text,
+                    "Tab 1 is 4.000 mm long along X, shorter than the tool T1 Flat \
+                     (4.500 mm) of 1 Rough. Make the tab longer or use a smaller tool."
+                );
+            }
+        }
     }
 
     #[test]

@@ -75,7 +75,7 @@ pub struct Pass {
     /// distance above the highest stock under the tool along the whole
     /// link, where that is below the retract height, instead of going up to
     /// it (OP-14; axial and indexed finishing with `link_height` set to
-    /// `low`; decision 0510). A pass that carries its own `stock` is linked
+    /// `low`; decision 0496). A pass that carries its own `stock` is linked
     /// that way already. False links at the retract height.
     pub low_link: bool,
     /// The points, in cutting order.

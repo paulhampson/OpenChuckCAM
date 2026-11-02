@@ -1,4 +1,4 @@
-# 0510: Axial and indexed finishing can keep the links between passes low (OP-14, SET-06, SET-09, NFR-07, NFR-12, GC-07, NFR-06; issue #436; lane PATH-TIDY)
+# 0496: Axial and indexed finishing can keep the links between passes low (OP-14, SET-06, SET-09, NFR-07, NFR-12, GC-07, NFR-06; issue #436; lane PATH-TIDY)
 
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The option (name, default and wording) was the owner's choice, relayed the same way.
 - **Date:** 1 Nov 2026.

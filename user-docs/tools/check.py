@@ -260,6 +260,12 @@ def stale_screens(repo, images):
     latest_change = _git(repo, "log", "-1", "--format=%H", "--", *SCREEN_PATHS)
     if not latest_change:
         return None
+    unknown = [m for m in marks if subprocess.run(["git", "cat-file", "-e", f"{m}^{{commit}}"], cwd=repo,
+                                                   capture_output=True).returncode != 0]
+    if len(unknown) == len(marks):
+        return (f"the commit in CAPTURED.toml ({', '.join(m[:12] for m in unknown)}) is not in this checkout's "
+                "history, so the screenshots cannot be shown to be current")
+    marks = [m for m in marks if m not in unknown]
     for mark in marks:
         try:
             if subprocess.run(["git", "merge-base", "--is-ancestor", latest_change, mark], cwd=repo).returncode == 0:

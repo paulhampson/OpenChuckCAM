@@ -70,7 +70,7 @@ pub mod parameter {
     pub const SCALLOP: &str = "scallop";
     /// The furthest apart, in X, points of a pass are before refinement, mm.
     pub const MAX_X_STEP: &str = "max_x_step";
-    /// Where links between passes go (decision 0510).
+    /// Where links between passes go (decision 0496).
     pub const LINK_HEIGHT: &str = "link_height";
     /// A `link_height` value: links retract to the clearance (the default).
     pub const RETRACT: &str = "retract";
@@ -78,7 +78,7 @@ pub mod parameter {
     pub const LOW: &str = "low";
 }
 
-/// The `link_height` choice, shared with indexed finishing (decision 0510).
+/// The `link_height` choice, shared with indexed finishing (decision 0496).
 pub(crate) fn link_height_spec() -> ParameterSpec {
     ParameterSpec {
         name: parameter::LINK_HEIGHT.to_owned(),
@@ -462,7 +462,7 @@ impl<'a> AlongX<'a> {
     }
 
     /// `passes` marked as linkable low when the operation asks (decision
-    /// 0510).
+    /// 0496).
     fn marked(&self, mut passes: Vec<Pass>) -> Vec<Pass> {
         if self.low_links {
             for pass in &mut passes {

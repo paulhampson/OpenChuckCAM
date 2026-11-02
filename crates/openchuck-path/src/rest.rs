@@ -57,6 +57,9 @@ pub mod parameter {
     pub const START_ANGLE: &str = "start_angle";
     /// The largest A step between points, degrees.
     pub const MAX_ANGLE_STEP: &str = "max_angle_step";
+    /// The shape of the passes: a spiral or rings, as helical finishing's
+    /// (decision records 0390 and 0420).
+    pub const PASS_SHAPE: &str = crate::helical::parameter::PASS_SHAPE;
 }
 
 /// The default of [`parameter::MIN_REMAINING`], in millimetres: more than one
@@ -350,6 +353,12 @@ impl Strategy for RestMachining {
                         default: Some(2.0),
                     },
                 },
+                crate::helical::pass_shape_spec(
+                    "Spiral: one continuous spiral that moves along the part as it turns. Rings: \
+                     one full turn at a time at a fixed place along the part, with a short step \
+                     along the part between turns, at the start angle. Either way only the \
+                     places with material left are cut.",
+                ),
             ]
             .into_iter()
             .chain(crate::finishing::specs(true, false))
@@ -453,26 +462,45 @@ impl Strategy for RestMachining {
             wanted: Some(&wanted),
             across: 0.0,
         };
-        let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
-        // One whole turn at each face across the axis, where the tool's side
-        // touches it, cut where material is left, as helical finishing does
+        // The faces across the axis, where the tool's side touches them
         // (decision record 0297; issue 404).
         let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
         let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
-        for &x in &turns {
-            context.check_cancelled()?;
-            let at = start + sign * 360.0 * (x - x0) / stepover;
-            passes.extend(crate::helical::turn_passes(
-                input,
-                None,
-                (&grown, leave, &[]),
-                tolerance,
-                (x, at, sign),
-                step,
-                Some(&wanted),
-                context,
-            )?);
-        }
+        let mut ring_note = None;
+        let mut passes = if crate::helical::in_rings(parameters) {
+            // Rings and the steps between them, each cut only where material
+            // is left; a step with nothing to cut is left to the shared
+            // services to link (decision record 0420; OP-14). A face's turn
+            // is one of the rings.
+            let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &turns);
+            let (passes, _) =
+                crate::helical::ring_passes(&fit, &xs, step, false, "rest machining", context)?;
+            ring_note = Some(format!(
+                "rest machining cut rings no more than {gap:.4} mm apart, each a whole turn at \
+                 one place along the part, joined by steps along it at A {start}, where material \
+                 is left"
+            ));
+            passes
+        } else {
+            let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
+            // One whole turn at each face across the axis, cut where material
+            // is left, as helical finishing does.
+            for &x in &turns {
+                context.check_cancelled()?;
+                let at = start + sign * 360.0 * (x - x0) / stepover;
+                passes.extend(crate::helical::turn_passes(
+                    input,
+                    None,
+                    (&grown, leave, &[]),
+                    tolerance,
+                    (x, at, sign),
+                    step,
+                    Some(&wanted),
+                    context,
+                )?);
+            }
+            passes
+        };
         // The free ends, in layers down beside them (decision record 0344).
         let free = crate::finishing::free_ends(
             input,
@@ -497,6 +525,7 @@ impl Strategy for RestMachining {
             min_remaining,
             passes.len()
         )];
+        notes.extend(ring_note);
         notes.extend(faces::note(&turns));
         notes.extend(faces::held_note(&found.held));
         notes.extend(free.notes);

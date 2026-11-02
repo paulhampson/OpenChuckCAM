@@ -258,6 +258,11 @@ priority = 79
 # a minute uninstrumented in the contended four-test run. Default still runs
 # them; coverage excludes and nightly long selects them.
 # req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 117.339 s.
+# TABS-CHECK 1 Nov 2026 (issue #438), alone and uninstrumented on four cores: the
+# same test took 606 s on main because a new rotary roughing operation has
+# adaptive spacing on (decision 0239 item 6), which the held-region fixture
+# did not turn off for roughing; with it off the test takes 53 s. The binary's
+# other tests are 51 to 89 s. All stay listed.
 # req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 128.797 s.
 # req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 93.617 s.
 # req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 95.625 s.
@@ -290,6 +295,26 @@ priority = 79
 # Simulator continuous-roughing envelope75.124s in the concurrent normal run.
 # Keep default tests; coverage excludes and
 # nightly long selects these exact cases. Instrumented costs are not used.
+# TABS-CHECK 1 Nov 2026 (issue #438), long-test rule of AGENTS.md: tests of 60 s or more
+# in the Ubuntu "Build and test" shard 2 job of CI run 41302204775 (head 368de211, four test
+# threads, uninstrumented) that were not listed. Coverage excludes them, the nightly long
+# profile selects them, and the pull request Tests job still runs them. Times:
+#    167.7 s  openchuck-path::simultaneous_hidden req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported
+#    153.4 s  openchuck-path::adaptive req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads
+#    143.7 s  openchuck-path::adaptive req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing
+#    138.7 s  openchuck-path::adaptive req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a
+#    138.5 s  openchuck-sim::roughing req_op_14_links_stay_below_the_clearance_cylinder_without_cutting
+#    115.6 s  openchuck-path::adaptive req_op_04_axial_passes_are_added_only_where_needed
+#    104.6 s  openchuck-path::adaptive req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads
+#    101.4 s  openchuck-path::adaptive req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met
+#     90.5 s  openchuck-path::simultaneous_hidden req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into
+#     87.3 s  openchuck-path::simultaneous_hidden req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads
+#     83.9 s  openchuck-path::adaptive req_op_04_req_op_11_roughing_keeps_its_stock_to_leave
+#     70.5 s  openchuck-path::indexed req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads
+#     67.2 s  openchuck-path::adaptive req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met
+#     66.7 s  openchuck-path::simultaneous_hidden req_op_20_two_pins_side_by_side_are_cut_all_round
+#     64.8 s  openchuck-path::helical_rings req_op_12_req_op_11_rings_cover_the_surface_without_gouging
+#     64.2 s  openchuck-path::brep_outline_drop req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force
 default-filter = '''not (
     test(~finest_setting_is_within)
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
@@ -355,6 +380,22 @@ default-filter = '''not (
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_14_links_stay_below_the_clearance_cylinder_without_cutting))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_axial_passes_are_added_only_where_needed))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
+  | (binary_id(=openchuck-path::indexed) & test(=req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_two_pins_side_by_side_are_cut_all_round))
+  | (binary_id(=openchuck-path::helical_rings) & test(=req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
+  | (binary_id(=openchuck-path::brep_outline_drop) & test(=req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
 )'''
 
 [profile.long]
@@ -362,6 +403,7 @@ default-filter = '''not (
 # Existing app both-direction roughing regression: 92.703 s, also above.
 # Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
 # 67.238 s uninstrumented; see the coverage profile above.
+# TABS-CHECK 1 Nov 2026: the sixteen tests added to the coverage profile above (times there).
 default-filter = '''
     test(~finest_setting_is_within)
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
@@ -427,4 +469,20 @@ default-filter = '''
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
   | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
+  | (binary_id(=openchuck-sim::roughing) & test(=req_op_14_links_stay_below_the_clearance_cylinder_without_cutting))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_axial_passes_are_added_only_where_needed))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
+  | (binary_id(=openchuck-path::indexed) & test(=req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_two_pins_side_by_side_are_cut_all_round))
+  | (binary_id(=openchuck-path::helical_rings) & test(=req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
+  | (binary_id(=openchuck-path::brep_outline_drop) & test(=req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
 '''

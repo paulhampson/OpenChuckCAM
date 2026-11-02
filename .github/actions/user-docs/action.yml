@@ -84,6 +84,7 @@ runs:
         rm -rf "$work"
         python3 -m unittest discover -s user-docs/tools/tests
         screens=warn
+        release_failed=0
         # A release copy needs its version and the nightly "latest" its date, or the stamp and checks are wrong.
         [ "$MODE" != release ] || [ -n "$VERSION" ] || { echo "::error::mode release needs the input version"; exit 1; }
         [ "$MODE" != nightly ] || [ -n "$NIGHTLY" ] || { echo "::error::mode nightly needs the input nightly-date"; exit 1; }
@@ -93,7 +94,10 @@ runs:
           release)
             guide="$work/v$VERSION"
             python3 user-docs/tools/build.py --out "$guide" --version "$VERSION" --tag "app-v$VERSION"
-            python3 user-docs/tools/check.py --site "$guide" --release "$VERSION" --screens strict
+            # The release checks (stamp, release notes, screenshots) fail the step only after the site
+            # checks below have run too, so one run reports every problem, and a dry run (where the
+            # release workflow tolerates this step's failure) still exercises lychee and the Nu checker.
+            python3 user-docs/tools/check.py --site "$guide" --release "$VERSION" --screens strict || release_failed=1
             screens=strict ;;
           *) echo "::error::unknown mode '$MODE'"; exit 1 ;;
         esac
@@ -108,4 +112,9 @@ runs:
           echo "site=$site"
           echo "guide=$guide"
         } >> "$GITHUB_OUTPUT"
+        if [ "$release_failed" -ne 0 ]; then
+          echo "::error::The release checks of the user guide failed (see check.py's errors above); the site checks after them passed."
+          echo "User guide (release $VERSION): the release checks failed; the site checks passed." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
         echo "User guide ($MODE${VERSION:+ $VERSION}${NIGHTLY:+ $NIGHTLY}) built and checked." >> "$GITHUB_STEP_SUMMARY"
