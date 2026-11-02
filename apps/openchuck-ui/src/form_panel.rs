@@ -386,6 +386,7 @@ fn row(
                 warned,
                 scroll_to: scroll,
                 number: !matches!(field.kind, FieldKind::Text),
+                compact: false,
                 validate: Some(&validate),
                 preflight,
             };

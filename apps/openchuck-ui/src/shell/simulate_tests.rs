@@ -1022,6 +1022,108 @@ fn req_sim_05_req_nfr_12_deviation_colours_can_be_hidden_on_current_and_stale_re
     }
 }
 
+/// Waits for the cut part to be drawn.
+fn until_cut_part_drawn(rig: &mut Rig) {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while !rig
+        .shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Stock)
+        .is_some_and(|s| !s.meshes.is_empty())
+    {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the cut part was never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn req_ui_11_a_stale_toolpath_keeps_the_part_colours_with_the_banner() {
+    // Decision 0492 item 7: a changed toolpath or setting leaves the part
+    // coloured, not dimmed, under the one banner.
+    let mut rig = simulated("simui-part-stale");
+    until_cut_part_drawn(&mut rig);
+    rig.shell
+        .viewport
+        .set_simulate_show(crate::viewport::SimulateShow {
+            model: true,
+            cut_part: true,
+            toolpath: false,
+        });
+    let app = rig.shell.app.as_mut().unwrap();
+    let operation = app.project().operations()[0].id;
+    app.set_parameter(
+        operation,
+        "stepover",
+        Some(openchuck_app::project::ParameterValue::Number(0.6)),
+    )
+    .unwrap();
+    rig.settle();
+    rig.click(at(&rig, "Deviation colours"));
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.part_bands().is_none() || rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the colours did not appear");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    assert!(rig.shell.viewport.part_coloured() && !rig.shell.viewport.part_changed());
+    assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+    assert_eq!(rig.shell.viewport.scale_title(), "Part \u{b7} final result");
+    assert!(rig.shell.viewport.scale_notes().is_empty());
+}
+
+#[test]
+fn req_ui_11_a_changed_part_is_drawn_plain_in_the_shell_with_the_note() {
+    // Decision 0492 item 7: the part changed since the run; the cut part
+    // keeps its colours, and the scale says why the part has none.
+    let mut rig = simulated("simui-part-changed");
+    until_cut_part_drawn(&mut rig);
+    rig.shell
+        .viewport
+        .set_simulate_show(crate::viewport::SimulateShow {
+            model: true,
+            cut_part: true,
+            toolpath: false,
+        });
+    rig.click(at(&rig, "Deviation colours"));
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.part_bands().is_none() || rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the colours did not appear");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let app = rig.shell.app.as_mut().unwrap();
+    let model = app.project().models()[0].id;
+    app.execute(Command::SetModelTransform {
+        model,
+        transform: vec![
+            openchuck_app::model::TransformStep::CentreOnRotaryAxis,
+            openchuck_app::model::TransformStep::Translate {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        ],
+    })
+    .unwrap();
+    rig.settle();
+    assert!(rig.shell.viewport.part_bands().is_none());
+    assert!(rig.shell.viewport.part_changed());
+    assert!(
+        rig.shell.viewport.bands().is_some(),
+        "the cut part keeps its colours"
+    );
+    assert_eq!(
+        rig.shell.viewport.scale_notes(),
+        [crate::viewport::PART_CHANGED_NOTE]
+    );
+    assert_eq!(
+        rig.shell.viewport.scale_title(),
+        "Cut part \u{b7} nearest target sample"
+    );
+}
+
 /// Draws until the run started is done and its playback is ready.
 fn until_simulated_again(rig: &mut Rig) {
     let deadline = Instant::now() + Duration::from_secs(120);

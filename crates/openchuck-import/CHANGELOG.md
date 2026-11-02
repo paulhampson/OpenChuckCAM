@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.34.0 (provisional; the coordinator confirms the number at merge)
+## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0530, accepted):** no change in this crate; all family crates advance together under 0048.
 
 All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
+
+- Fixed: on Linux the STEP worker, and any process that read STEP through the kernel, segfaulted at exit after writing its answer (issue #369, OI-1003). OpenCASCADE's type registry was destroyed before a static map in `StepAP214_Protocol.cxx` that still held type handles. The wrapper now builds the registry first with a priority initialiser on ELF (decision 0490). No API change.
 
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
 

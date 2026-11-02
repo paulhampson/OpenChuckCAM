@@ -51,7 +51,7 @@ Reading STEP files needs the OpenCASCADE geometry kernel, which is not built by 
 
 The program opens with an empty window and offers **New project...** (also **File > New project...**, <kbd>Ctrl</kbd>+<kbd>N</kbd>). A [project](../glossary.md#project) is a folder of plain text files that holds the model, the setup, the tools and the operations of one job.
 
-The program does not save by itself. Use **File > Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) as you work. Edits in a form take effect when you press <kbd>Enter</kbd> or leave the field, and **Edit > Undo** reverses them.
+The program does not save by itself. Use **File > Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) as you work; the window title says when there are changes you have not saved. As a safety net the program also keeps recovery copies of an open project (**File > Settings** sets how often), and offers to recover one when the project is opened again after a crash. They do not replace saving. Edits in a form take effect when you press <kbd>Enter</kbd> or leave the field, and **Edit > Undo** reverses them.
 
 Next: [Your first project](../tutorial/index.md) takes you through one job from start to finish.
 

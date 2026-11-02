@@ -2584,6 +2584,87 @@ mod tests {
         );
     }
 
+    /// The fixture of the swarf floor (decision 0491, issue #435): the flat
+    /// wall of [`swarf_limits_fixture`] (face 0) and the floor at its foot
+    /// (face 1, `z = FOOT`, facing +Z), cut by a flat end mill.
+    fn swarf_floor_fixture(parameters: &[(&str, Value)]) -> Fixture {
+        use openchuck_testkit::ruled::{floor_plane, wall_plane};
+        let mut brep = wall_plane(8.0, 22.0, 38.0, FOOT, TOP);
+        let mut floor = floor_plane(FOOT, 15.0, 45.0, 8.0, 18.0);
+        for face in &mut floor.faces {
+            face.id = FaceId(1);
+        }
+        brep.faces.extend(floor.faces);
+        let flat = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(FLAT),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(FLAT),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            swarf::NAME,
+            parameters,
+            brep,
+            Vec::new(),
+            "wall.step",
+            flat,
+            20.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f
+    }
+
+    #[test]
+    fn req_op_02_req_op_07_req_op_12_swarf_lifts_the_tool_clear_of_a_floor_in_an_avoid_set() {
+        // A tip extension of 0.5 mm reaches into the floor; with the floor in
+        // an avoid set on Cut short the tool is lifted back off it, the whole
+        // wall is still cut, and the note says so (decision 0491 item 1).
+        // Before decision 0491 the face was refused (issue #435).
+        let reach = [(swarf::parameter::TIP_EXTENSION, Value::Number(0.5))];
+        let plain = swarf_floor_fixture(&reach).run().unwrap();
+        assert!(
+            plain.notes.iter().any(
+                |n| n.contains("The tool's end reaches 0.500 mm beyond the end of the rulings")
+            ),
+            "{:?}",
+            plain.notes
+        );
+        let mut f = swarf_floor_fixture(&reach);
+        f.select_as(
+            SelectionTarget::Faces([FaceId(1)].into()),
+            f.hash,
+            f.model,
+            Role::Avoid,
+        );
+        let path = f.run().unwrap();
+        assert!((furthest_cut(&path) - 38.0).abs() < 0.02);
+        assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("The tool is lifted up to 0.50")
+                    && n.contains("to keep clear of the avoid surfaces")),
+            "{:?}",
+            path.notes
+        );
+        // A negative tip extension is taken through the application and
+        // pulls the tool up the wall (decision 0491 item 2).
+        let up = swarf_floor_fixture(&[(swarf::parameter::TIP_EXTENSION, Value::Number(-1.0))])
+            .run()
+            .unwrap();
+        assert!(
+            up.notes
+                .iter()
+                .any(|n| n.contains("The tip sits 1.000 mm up the rulings")),
+            "{:?}",
+            up.notes
+        );
+    }
+
     /// The banded bar of decision 0209 item 3: a round bar of `BAR` about
     /// the rotary axis whose side is three faces, 0 (X 0 to 20), 1 (20 to
     /// 40) and 2 (40 to 60), cut by a ball of `BALL`, from the STEP file

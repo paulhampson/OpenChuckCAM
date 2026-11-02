@@ -532,17 +532,6 @@ pub(crate) fn setup_mesh(
     setup_part(project_root, model, setup, context).map(|part| part.mesh)
 }
 
-/// The placed triangles of a project's model: a mesh, or a STEP model's
-/// joined tessellation, for drawing, the workholding checks and the
-/// simulation.
-pub(crate) fn placed_mesh(
-    project_root: &Path,
-    model: &ModelRef,
-    context: &JobContext<'_>,
-) -> Result<TriangleMesh, AppError> {
-    placed_part(project_root, model, context).map(|part| part.mesh)
-}
-
 /// The placed mesh of a mesh model with the hash of the file as read now,
 /// for triangle selections. Triangle `i` of the result is facet `i` of the
 /// file: placement keeps the order. A STEP model is refused: it is selected

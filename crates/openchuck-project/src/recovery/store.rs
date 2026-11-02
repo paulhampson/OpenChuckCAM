@@ -12,6 +12,23 @@ use std::path::{Path, PathBuf};
 /// Recovery lives beside, never among, tracked project files.
 pub const DIRECTORY: &str = ".openchuck-recovery";
 
+/// The canonical folder whose writer last owned this recovery data
+/// (decision 0460). Older builds ignore the file.
+const ORIGIN: &str = "origin";
+/// A canonical folder path is far shorter; anything larger is damaged.
+const ORIGIN_LIMIT: u64 = 64 * 1024;
+
+/// Where a recovery folder was written, from its origin record.
+enum Origin {
+    /// Written by a writer for this folder.
+    Here,
+    /// Copied: the recorded folder still holds the same recovery identity.
+    Copied(PathBuf),
+    /// Moved, written before origins were recorded, or a damaged record:
+    /// the data stays this folder's, as before decision 0460.
+    Unknown,
+}
+
 /// A validated recovery choice. Its ID is a safe basename, not a path.
 #[derive(Debug, Clone)]
 pub struct Entry {
@@ -40,6 +57,9 @@ pub struct Catalog {
     pub live: bool,
     /// An unexpected session left an unretired, undismissed state.
     pub recovery_needed: bool,
+    /// The recovery data was copied with the project folder from this
+    /// folder, which still owns it. Nothing is offered for the copy.
+    pub copied_from: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -61,6 +81,7 @@ pub struct Store {
     session: String,
     state: State,
     closed: bool,
+    set_aside: Option<PathBuf>,
     _lock: File,
 }
 
@@ -105,6 +126,50 @@ fn state(dir: &Path) -> Result<State, ProjectError> {
             Ok(State::default())
         }
         Err(e) => Err(e),
+    }
+}
+
+/// Compare the origin record with this folder. Any doubt keeps the
+/// pre-0460 behaviour (the data is this folder's), so damage never hides
+/// recovery choices; only a positive match with a live original is a copy.
+fn origin(dir: &Path, root: &Path, identity: &str) -> Origin {
+    let Ok(here) = root.canonicalize() else {
+        return Origin::Unknown;
+    };
+    let path = dir.join(ORIGIN);
+    if std::fs::symlink_metadata(&path).map_or(true, |m| !m.file_type().is_file()) {
+        return Origin::Unknown;
+    }
+    let mut bytes = Vec::new();
+    let read = File::open(&path).and_then(|f| f.take(ORIGIN_LIMIT + 1).read_to_end(&mut bytes));
+    if read.is_err() || bytes.len() as u64 > ORIGIN_LIMIT {
+        return Origin::Unknown;
+    }
+    let Ok(text) = String::from_utf8(bytes) else {
+        return Origin::Unknown;
+    };
+    let recorded = Path::new(text.trim_end_matches(['\r', '\n']));
+    if !recorded.is_absolute() {
+        return Origin::Unknown;
+    }
+    let Ok(recorded) = recorded.canonicalize() else {
+        return Origin::Unknown;
+    };
+    if recorded == here {
+        return Origin::Here;
+    }
+    match read_text(&recorded.join(DIRECTORY).join("identity")) {
+        Ok(theirs) if theirs.trim() == identity => Origin::Copied(recorded),
+        _ => Origin::Unknown,
+    }
+}
+
+/// Record this folder as the owner, when its canonical path is text.
+fn record_origin(dir: &Path, root: &Path) -> Result<(), ProjectError> {
+    let here = root.canonicalize().map_err(|e| io(root, e))?;
+    match here.to_str() {
+        Some(text) => replace(dir, ORIGIN, text),
+        None => Ok(()),
     }
 }
 
@@ -169,6 +234,12 @@ pub fn read_choice(root: &Path, id: &str, project_id: &str) -> Result<Snapshot, 
     }
     if read_text(&dir.join("identity"))?.trim() != project_id {
         return Err(invalid("recovery folder identity changed"));
+    }
+    if let Origin::Copied(original) = origin(&dir, root, project_id) {
+        return Err(invalid(format!(
+            "this recovery data was copied from '{}' and belongs to that project",
+            original.display()
+        )));
     }
     let snapshot = Snapshot::decode(&read_text(&dir.join(id))?)?;
     if snapshot.metadata().project_id != project_id || snapshot.metadata().kind != kind {
@@ -256,6 +327,12 @@ impl Catalog {
             return Err(invalid("recovery directory is a symbolic link"));
         }
         let identity = read_text(&dir.join("identity"))?;
+        if let Origin::Copied(original) = origin(&dir, root, identity.trim()) {
+            return Ok(Self {
+                copied_from: Some(original),
+                ..Self::default()
+            });
+        }
         let (state, problem) = match state(&dir) {
             Ok(s) => (s, None),
             Err(e) => (State::default(), Some(e.to_string())),
@@ -286,6 +363,7 @@ impl Store {
         {
             return Err(invalid("recovery directory is a symbolic link"));
         }
+        let set_aside = Self::set_aside_copy(root, &dir)?;
         std::fs::create_dir_all(&dir).map_err(|e| io(&dir, e))?;
         // Match the cache's self-ignoring convention without changing any
         // user-owned .gitignore or tracked project file.
@@ -324,6 +402,9 @@ impl Store {
             Err(e) => return Err(e),
         };
         uuid::Uuid::parse_str(&identity).map_err(invalid)?;
+        if !matches!(origin(&dir, root, &identity), Origin::Here) {
+            record_origin(&dir, root)?;
+        }
         let mut state = match state(&dir) {
             Ok(state) => state,
             Err(error) => {
@@ -345,10 +426,33 @@ impl Store {
             session: uuid::Uuid::new_v4().to_string(),
             state,
             closed: false,
+            set_aside,
             _lock: lock,
         };
         store.save_state()?;
         Ok(store)
+    }
+
+    /// A copied project folder carried another folder's recovery data:
+    /// move it aside, kept whole and never offered here, so this folder
+    /// starts its own (decision 0460).
+    fn set_aside_copy(root: &Path, dir: &Path) -> Result<Option<PathBuf>, ProjectError> {
+        let identity = match read_text(&dir.join("identity")) {
+            Ok(text) => text,
+            Err(_) => return Ok(None),
+        };
+        if !matches!(origin(dir, root, identity.trim()), Origin::Copied(_)) {
+            return Ok(None);
+        }
+        let aside = root.join(format!("{DIRECTORY}-copied-{}", uuid::Uuid::new_v4()));
+        std::fs::rename(dir, &aside).map_err(|e| io(dir, e))?;
+        Ok(Some(aside))
+    }
+
+    /// Where this writer moved recovery data copied from another project
+    /// folder, if it did so when it opened.
+    pub fn set_aside(&self) -> Option<&Path> {
+        self.set_aside.as_deref()
     }
 
     /// Capture metadata for this owner's session.

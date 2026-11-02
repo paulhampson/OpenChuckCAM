@@ -116,6 +116,9 @@ pub mod parameter {
     pub const ALONG: &str = "along the length of the part";
     /// Passes around the part, stepping along X.
     pub const AROUND: &str = "around the part";
+    /// The continuous form's passes around the part: a spiral or rings, as
+    /// helical finishing's (decision records 0390 and 0420).
+    pub const PASS_SHAPE: &str = crate::helical::parameter::PASS_SHAPE;
 }
 
 /// Fine nodes per coarse node: the path between two nodes is refined down to
@@ -333,6 +336,12 @@ impl Strategy for RotaryRoughing {
                 (0.0, false, None),
                 Some(0.15),
             ),
+            crate::helical::pass_shape_spec(
+                "Continuous form around the part. Spiral: each layer is one continuous spiral \
+                 that moves along the part as it turns. Rings: each layer is cut one full turn \
+                 at a time at a fixed place along the part, with a short step along the part \
+                 between turns.",
+            ),
         ]
         .into_iter()
         .chain(crate::extend::specs(false))
@@ -342,9 +351,22 @@ impl Strategy for RotaryRoughing {
     }
 
     /// Adaptive spacing only for the two forms whose passes run along the
-    /// axis (decision record 0239 item 2; OI-1453).
+    /// axis (decision record 0239 item 2; OI-1453), and the choice of a
+    /// spiral or rings only for the continuous form around the part, the
+    /// one that cuts a spiral (decision record 0420).
     fn schema_for(&self, values: &BTreeMap<String, ParameterValue>) -> ParameterSchema {
-        crate::adaptive::schema_for_lines(self.schema(), values, along_the_axis(values))
+        let along = along_the_axis(values);
+        let mut schema = crate::adaptive::schema_for_lines(self.schema(), values, along);
+        let indexed = matches!(
+            values.get(parameter::FORM),
+            Some(ParameterValue::Text(t)) if t == "indexed"
+        );
+        if along || indexed {
+            schema
+                .parameters
+                .retain(|p| p.name != parameter::PASS_SHAPE);
+        }
+        schema
     }
 
     fn honours_region(&self) -> bool {
@@ -422,6 +444,7 @@ fn rough(
     // in the others' schema, so it reads as off there.
     job.spacing = adaptive::Settings::read(parameters, adaptive::parameter::ALLOWED_EXCESS)?;
     let mut tally = None;
+    let mut ring_note = None;
     match (indexed, around) {
         (true, false) => job.indexed(parameters, context).map(|(p, t)| {
             tally = t;
@@ -434,7 +457,10 @@ fn rough(
             tally = t;
             (p, Vec::new())
         }),
-        (false, true) => job.continuous(parameters, context),
+        (false, true) => job.continuous(parameters, context).map(|(p, t, note)| {
+            ring_note = note;
+            (p, t)
+        }),
     }
     .and_then(|(passes, turns)| {
         if passes.is_empty() {
@@ -453,7 +479,12 @@ fn rough(
                 )
             }))
         } else {
-            Ok((passes, turns, report(job.spacing, tally)))
+            let (notes, warnings) = report(job.spacing, tally);
+            Ok((
+                passes,
+                turns,
+                (ring_note.into_iter().chain(notes).collect(), warnings),
+            ))
         }
     })
 }
@@ -515,8 +546,11 @@ pub(crate) fn face(
         });
     }
     job.face = Some(level);
+    let mut ring_note = None;
     let (passes, tally) = if round {
-        (job.continuous(parameters, context)?.0, None)
+        let (passes, _, note) = job.continuous(parameters, context)?;
+        ring_note = note;
+        (passes, None)
     } else {
         // Adaptive spacing for the flat face's lines along the axis only
         // (OI-1453): the switch is not in the round shape's schema.
@@ -532,7 +566,7 @@ pub(crate) fn face(
     let (notes, warnings) = report(job.spacing, tally);
     Ok(StrategyOutput {
         passes,
-        notes,
+        notes: ring_note.into_iter().chain(notes).collect(),
         warnings,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
@@ -1024,7 +1058,7 @@ impl<'a> Job<'a> {
         &self,
         p: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<(Vec<Pass>, Vec<f64>)> {
+    ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
         // Where a held region cuts the range short, the helix turns once at
         // that end without advancing, so the stock beside the keep-out is
         // cleared all round, as it is beyond the part's ends where the
@@ -1054,9 +1088,12 @@ impl<'a> Job<'a> {
             Vec::new()
         };
         let face_turns = &face_turns;
-        let all_turns = turns + rings + face_turns.len() as f64;
         let step = p.number(parameter::MAX_ANGLE_STEP)?;
         let per_turn = (360.0 / step).ceil().max(4.0);
+        if crate::helical::in_rings(p) {
+            return self.continuous_rings((x0, x1), face_turns, per_turn, context);
+        }
+        let all_turns = turns + rings + face_turns.len() as f64;
         let nodes = all_turns * per_turn;
         if nodes > MAX_NODES {
             return Err(PathError::Parameter {
@@ -1142,7 +1179,122 @@ impl<'a> Job<'a> {
             };
             (site, None)
         };
-        let site_at = move |f: f64| place(f).0;
+        let passes = self.layers(&place, coarse, context)?;
+        Ok((passes, face_turns.iter().map(|t| t.x).collect(), None))
+    }
+
+    /// The continuous form in rings (decision records 0390 and 0420): in
+    /// each layer, a whole turn of A at each X of
+    /// [`crate::helical::ring_places`] over `x0..x1`, joined by steps along
+    /// X at A a whole number of turns from the start angle, cut with the
+    /// same layers, floor, remaining stock and region as the spiral. A face
+    /// across the axis inside the range (decision record 0297) is one of the
+    /// rings, and the ends of the range are rings, so a held region's end
+    /// and round Facing's ends are cleared all round as the spiral's end
+    /// turns clear them.
+    fn continuous_rings(
+        &self,
+        (x0, x1): (f64, f64),
+        face_turns: &[faces::Turn],
+        per_turn: f64,
+        context: &JobContext<'_>,
+    ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
+        let face_xs: Vec<f64> = face_turns.iter().map(|t| t.x).collect();
+        let along = self.line_spacing();
+        // The nodes a layer needs, estimated before any ring is placed, so
+        // that a stepover too fine to cut is refused by name rather than
+        // counted out (NFR-07): a whole turn a ring, the rings at each gap,
+        // each end and each face, and a step a gap at least one node long.
+        let length = x1 - x0;
+        let gaps = (length / self.stepover).ceil().max(1.0);
+        let rings = gaps + 1.0 + face_xs.len() as f64;
+        let estimate = rings * per_turn + gaps * ((length / gaps) / along).ceil().max(1.0);
+        if !estimate.is_finite() || estimate > MAX_NODES {
+            return Err(too_many_rings(length, self.stepover, estimate));
+        }
+        let (xs, gap) = crate::helical::ring_places((x0, x1), self.stepover, &face_xs);
+        // Each piece of path, in coarse nodes from its first: a ring, then a
+        // step to the next ring.
+        let around = per_turn as usize;
+        let mut pieces: Vec<(usize, Piece<'_>)> = Vec::with_capacity(2 * xs.len());
+        let mut coarse = 0_usize;
+        for (k, &x) in xs.iter().enumerate() {
+            let a = self.start + 360.0 * k as f64;
+            let face = face_turns.iter().find(|t| (t.x - x).abs() < 1e-9);
+            pieces.push((coarse, Piece::Ring { x, a, face }));
+            coarse += around;
+            if let Some(&next) = xs.get(k + 1) {
+                let nodes = ((next - x) / along).ceil().max(1.0) as usize;
+                pieces.push((
+                    coarse,
+                    Piece::Step {
+                        x0: x,
+                        x1: next,
+                        a: a + 360.0,
+                        nodes,
+                    },
+                ));
+                coarse += nodes;
+            }
+        }
+        if coarse as f64 > MAX_NODES {
+            return Err(too_many_rings(length, self.stepover, coarse as f64));
+        }
+        let place = |f: f64| -> (Site, Option<&faces::Turn>) {
+            let c = f / SUB as f64;
+            let i = pieces
+                .partition_point(|(first, _)| *first as f64 <= c)
+                .saturating_sub(1);
+            let Some((first, piece)) = pieces.get(i) else {
+                return (
+                    Site {
+                        x: x0,
+                        a: self.start,
+                        across: 0.0,
+                    },
+                    None,
+                );
+            };
+            let u = c - *first as f64;
+            match *piece {
+                Piece::Ring { x, a, face } => (
+                    Site {
+                        x,
+                        a: a + 360.0 * (u / around as f64).min(1.0),
+                        across: 0.0,
+                    },
+                    face,
+                ),
+                Piece::Step { x0, x1, a, nodes } => (
+                    Site {
+                        x: x0 + (x1 - x0) * (u / nodes as f64).min(1.0),
+                        a,
+                        across: 0.0,
+                    },
+                    None,
+                ),
+            }
+        };
+        let passes = self.layers(&place, coarse, context)?;
+        let note = format!(
+            "each layer is cut in {} rings no more than {gap:.4} mm apart, each a whole turn at \
+             one place along the part, joined by steps along it",
+            xs.len()
+        );
+        Ok((passes, face_xs, Some(note)))
+    }
+
+    /// The layers of the continuous form along the path `place` gives: the
+    /// site at fine node `f` (fractional between nodes) of `coarse * SUB`,
+    /// with the face across the axis it turns at, if any.
+    fn layers<'t>(
+        &self,
+        place: &(impl Fn(f64) -> (Site, Option<&'t faces::Turn>) + Sync),
+        coarse: usize,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let fine = coarse * SUB;
+        let site_at = |f: f64| place(f).0;
         let site = move |f: usize| site_at(f as f64);
 
         context.report("rotary roughing: finding the part", 0, Some(fine as u64));
@@ -1228,7 +1380,7 @@ impl<'a> Job<'a> {
             levels.len() as u64,
             Some(levels.len() as u64),
         );
-        Ok((passes, face_turns.iter().map(|t| t.x).collect()))
+        Ok(passes)
     }
 
     /// The node spacing along a straight line of cut positions.
@@ -1580,6 +1732,36 @@ impl<'a> Job<'a> {
                 })
             })
     }
+}
+
+/// The refusal of a layer in rings that needs more than [`MAX_NODES`]
+/// points: `nodes` for `length` mm at `stepover` (NFR-07).
+fn too_many_rings(length: f64, stepover: f64, nodes: f64) -> PathError {
+    PathError::Parameter {
+        name: names::STEPOVER.to_owned(),
+        reason: format!(
+            "{length:.3} mm of length in rings at {stepover} mm needs {nodes:.0} points per \
+             layer; increase the stepover or the largest angle step"
+        ),
+    }
+}
+
+/// A piece of the continuous form's path in rings: a whole turn from A `a`
+/// at `x`, at a face across the axis when `face` is set, or a step along X
+/// at A `a` over `nodes` coarse nodes.
+#[derive(Debug, Clone, Copy)]
+enum Piece<'t> {
+    Ring {
+        x: f64,
+        a: f64,
+        face: Option<&'t faces::Turn>,
+    },
+    Step {
+        x0: f64,
+        x1: f64,
+        a: f64,
+        nodes: usize,
+    },
 }
 
 /// Passes, with what adaptive spacing did when it was on.
