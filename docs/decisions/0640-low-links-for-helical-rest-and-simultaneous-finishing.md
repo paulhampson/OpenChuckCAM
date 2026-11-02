@@ -85,6 +85,14 @@ Estimated time is the sum of the assembled moves' durations, the figure playback
 - The cutting time is unchanged (within 0.6 s: only the plunge into each pass is shorter).
 - Of the 1415 links of the axial pattern, 11 could not be lowered and retract, as the note says.
 
-SIMULATION-RESULT
+**Simulation (SIM-03, SIM-05, OP-14).** `openchuck-cli simulate` was run on the same project with the roughing, helical finishing, simultaneous spiral and rest machining, first with `retract` and then with `low` (cell 0.1 mm). Both runs passed: no rapid move removes material, and nothing is overcut beyond one cell.
+
+The results are identical:
+- each operation removed the same material: 38013.5, 1404.3, 56.0 and 0.3 mm³;
+- 17234.0 mm³ is left;
+- the most material left is 3.0 mm at the same point, the unreachable held end;
+- the deepest overcut is 0.0472 mm at the same point.
+
+With `low` the finishing operations have fewer poses: 144382 instead of 213838 for helical finishing, from the shorter moves between passes.
 
 The figures depend on how far the clearance is above the stock. On the tests' fixture, with the clearance 11.5 mm above the stock, the saving is 1.5 to 2 per cent.
