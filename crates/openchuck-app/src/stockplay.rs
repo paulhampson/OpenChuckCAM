@@ -488,7 +488,7 @@ impl Application {
                 let part = crate::model::setup_part(&document.location, model, setup_ref, context)?;
                 // The file is read now, not as the run read it: colours made
                 // for another file's triangles would be wrong, so a file
-                // edited behind the application is refused (decision 0520).
+                // edited behind the application is refused (decision 0492).
                 if part.hash != model.hash {
                     return Err(AppError::PartChanged(model.label()));
                 }
@@ -509,7 +509,7 @@ impl Application {
 }
 
 /// Whether the part of `setup` is no longer the one `run` was made with
-/// (decision 0520). The deviation colours the simulation measured belong to
+/// (decision 0492). The deviation colours the simulation measured belong to
 /// that part's triangles, so a part that changed must not carry them.
 ///
 /// The part has changed when the setup is gone from either project, when

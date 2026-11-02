@@ -672,7 +672,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         let note_height = notes.iter().map(|(g, _)| g.size().y).sum::<f32>();
         let held_top = scale_held_top(viewport, note_height);
         if let Some(bands) = viewport.scale_bands() {
-            // What the colours are on, then the scale (NFR-15; decision 0520).
+            // What the colours are on, then the scale (NFR-15; decision 0492).
             painter.text(
                 r.left_top() + vec2(8.0, 6.0),
                 egui::Align2::LEFT_TOP,
@@ -726,7 +726,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     }
 }
 
-/// The height of the colour scale's title line (decision 0520).
+/// The height of the colour scale's title line (decision 0492).
 const SCALE_TITLE: f32 = 18.0;
 /// The width the scale box's notes wrap at.
 const SCALE_NOTE_WIDTH: f32 = 220.0;

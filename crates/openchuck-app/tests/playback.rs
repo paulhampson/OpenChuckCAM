@@ -783,7 +783,7 @@ fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Decision 0520: the part's deviation colours are shown only while the part
+/// Decision 0492: the part's deviation colours are shown only while the part
 /// is the one the run was made with. A change of the part's file identity,
 /// units or placement, or of the setup's placement, is a change; a rename of
 /// the setup or an edit of something else is not.
@@ -862,7 +862,7 @@ fn req_ui_11_the_part_guard_names_what_changed_since_the_run() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Decision 0520: the job reads the model file at the document location, so a
+/// Decision 0492: the job reads the model file at the document location, so a
 /// file edited behind the app must not give the run's colours to new
 /// triangles. It says so with a distinguishable error.
 #[test]

@@ -1039,7 +1039,7 @@ fn until_cut_part_drawn(rig: &mut Rig) {
 
 #[test]
 fn req_ui_11_a_stale_toolpath_keeps_the_part_colours_with_the_banner() {
-    // Decision 0520 item 7: a changed toolpath or setting leaves the part
+    // Decision 0492 item 7: a changed toolpath or setting leaves the part
     // coloured, not dimmed, under the one banner.
     let mut rig = simulated("simui-part-stale");
     until_cut_part_drawn(&mut rig);
@@ -1075,7 +1075,7 @@ fn req_ui_11_a_stale_toolpath_keeps_the_part_colours_with_the_banner() {
 
 #[test]
 fn req_ui_11_a_changed_part_is_drawn_plain_in_the_shell_with_the_note() {
-    // Decision 0520 item 7: the part changed since the run; the cut part
+    // Decision 0492 item 7: the part changed since the run; the cut part
     // keeps its colours, and the scale says why the part has none.
     let mut rig = simulated("simui-part-changed");
     until_cut_part_drawn(&mut rig);

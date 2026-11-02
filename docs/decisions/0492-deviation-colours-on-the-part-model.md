@@ -1,6 +1,6 @@
-# 0520: Simulate shows the deviation colours on the part model as well as on the cut part (SIM-05, UI-05, UI-11, UI-12, NFR-15; issue #430; lane VIEW-OVERLAYS)
+# 0492: Simulate shows the deviation colours on the part model as well as on the cut part (SIM-05, UI-05, UI-11, UI-12, NFR-15; issue #430; lane VIEW-OVERLAYS)
 
-- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner's answers to questions 1 to 3 (1 Nov 2026) were relayed the same way; the specification entry below was accepted with the record.
+- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). Numbered 0520 until its release, then renumbered 0492 under the owner's numbering rule (1 Nov 2026: decision numbers as consecutive as possible, no reserved ranges). The owner's answers to questions 1 to 3 (1 Nov 2026) were relayed the same way; the specification entry below was accepted with the record.
 - **Date:** 1 Nov 2026.
 - **Issue:** #430 ("Deviation colours should show on the part model").
 - **Requirements:** SIM-05, SIM-15, UI-05, UI-11, NFR-12, NFR-15. No requirement changes.
@@ -30,7 +30,7 @@ The comparison already measures on the part. Its samples lie on the target's tri
 
 Section 11.5, Viewport, a new item after "The stock" (made in the same change, on the owner's acceptance):
 
-- **The part** *(SIM-05; decision 0520)*. With "Deviation colours" on and Part shown, the part is coloured by its own measured final result (the band of each triangle's worst counted sample); with Cut part shown too, the cut part is drawn plain at 30% over it. The colour scale box names what it colours ("Part · final result", "Cut part · nearest target sample") and, while only the cut part is shown, adds "Tick Part to see these colours on the part model." The probe on the part reads "Final result · …". After a change to the toolpath or the settings the colours stay under the stale banner; after a change to the part itself (reimport, replacement, placement) the part is drawn plain and the scale box says "Deviation colours are not shown on the part: it has changed since this simulation." When the cut part cannot be prepared nothing is coloured (#330).
+- **The part** *(SIM-05; decision 0492)*. With "Deviation colours" on and Part shown, the part is coloured by its own measured final result (the band of each triangle's worst counted sample); with Cut part shown too, the cut part is drawn plain at 30% over it. The colour scale box names what it colours ("Part · final result", "Cut part · nearest target sample") and, while only the cut part is shown, adds "Tick Part to see these colours on the part model." The probe on the part reads "Final result · …". After a change to the toolpath or the settings the colours stay under the stale banner; after a change to the part itself (reimport, replacement, placement) the part is drawn plain and the scale box says "Deviation colours are not shown on the part: it has changed since this simulation." When the cut part cannot be prepared nothing is coloured (#330).
 
 ## Alternatives considered
 

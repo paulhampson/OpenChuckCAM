@@ -480,7 +480,7 @@ fn paint_and_read(device: &wgpu::Device, queue: &wgpu::Queue, renderer: &Rendere
 
 #[test]
 fn req_sim_11_req_sim_05_a_coloured_part_is_probed_through_the_plain_cut_part() {
-    // Decision 0520 item 4: with the part coloured, the pointer reads the
+    // Decision 0492 item 4: with the part coloured, the pointer reads the
     // part's triangle; the cut part drawn plain in front of it is not probed.
     let (rig, surface) = surface_fixture("simui-part-probe");
     let ctx = egui::Context::default();
@@ -536,7 +536,7 @@ fn req_sim_11_req_sim_05_a_coloured_part_is_probed_through_the_plain_cut_part() 
 
 #[test]
 fn req_sim_11_req_sim_05_a_pinned_part_value_hides_behind_nearer_part_faces() {
-    // Decision 0520 item 5 with decision 0238 item 4: a value pinned on the
+    // Decision 0492 item 5 with decision 0238 item 4: a value pinned on the
     // coloured part is read through the plain cut part, never through the
     // part itself. Turned to the far side, the nearer faces hide it; turned
     // back, it shows again (review of #472).

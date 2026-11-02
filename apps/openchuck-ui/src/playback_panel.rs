@@ -219,7 +219,7 @@ type PartJob = (
     JobHandle<(ModelId, DeviationBands)>,
 );
 
-/// The part's own deviation colours on Simulate (SIM-05, decision 0520): the
+/// The part's own deviation colours on Simulate (SIM-05, decision 0492): the
 /// measuring job, what it found for each setup of the run (kept, so going
 /// back to a setup costs nothing), and what the viewport has been given.
 #[derive(Default)]
@@ -369,7 +369,7 @@ pub struct PlaybackPanel {
     tool_group: Option<usize>,
     tool_dirty: bool,
     stock: StockState,
-    /// The part's own colours (decision 0520).
+    /// The part's own colours (decision 0492).
     part: PartColours,
     bands_on: bool,
     bands_surface: Option<Arc<StockSurface>>,
@@ -1182,7 +1182,7 @@ impl PlaybackPanel {
         }
     }
 
-    /// The part's own measured colours on Simulate (SIM-05; decision 0520),
+    /// The part's own measured colours on Simulate (SIM-05; decision 0492),
     /// for the setup the playback is in. They are made by a job off the
     /// interface thread, once for each run and setup, and shown only while
     /// the deviation colours are on, the part is ticked and the cut part has
@@ -2913,7 +2913,7 @@ mod tests {
         (app, panel, viewport, dir)
     }
 
-    /// Decision 0520: the part is coloured by the values measured on its own
+    /// Decision 0492: the part is coloured by the values measured on its own
     /// triangles (decisions 0108, 0194), by a job, and the cut part keeps its
     /// own projected values beside them.
     #[test]
@@ -2954,7 +2954,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Decision 0520, items 1 and 2 of its colours: with the part and the
+    /// Decision 0492, items 1 and 2 of its colours: with the part and the
     /// cut part shown, the cut part is drawn plain at the stock's own
     /// translucency, even in Solid, so the coloured part shows through.
     #[test]
@@ -3000,7 +3000,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Decision 0330 and 0520: when the cut part could not be prepared the
+    /// Decision 0330 and 0492: when the cut part could not be prepared the
     /// deviation colours are off everywhere, the part's included.
     #[test]
     fn req_sim_05_no_colours_anywhere_when_cut_part_preparation_failed() {
@@ -3057,7 +3057,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// UI-11, decision 0520 item 7: a change to the toolpath or the settings
+    /// UI-11, decision 0492 item 7: a change to the toolpath or the settings
     /// leaves the part's colours as they are.
     #[test]
     fn req_ui_11_a_stale_toolpath_keeps_the_part_colours() {
@@ -3085,7 +3085,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// UI-11, decision 0520 item 7: a part that changed since the run is
+    /// UI-11, decision 0492 item 7: a part that changed since the run is
     /// drawn plain with the note, whichever way it changed, and the colours
     /// come back with the old part.
     #[test]
@@ -3145,7 +3145,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// UI-11, decision 0520 item 7: the job reads the model file, so a file
+    /// UI-11, decision 0492 item 7: the job reads the model file, so a file
     /// edited behind the application gets no colours either.
     #[test]
     fn req_ui_11_a_part_file_edited_behind_the_application_is_drawn_plain_with_the_note() {

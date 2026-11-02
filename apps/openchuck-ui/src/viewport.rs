@@ -106,14 +106,14 @@ pub(crate) const PROBE_PAUSE: f64 = 0.3;
 const PROBE_STILL: f32 = 2.0;
 
 /// The colour scale's note when the part has changed since the simulation,
-/// so the part is drawn plain (UI-11; decision 0520).
+/// so the part is drawn plain (UI-11; decision 0492).
 pub(crate) const PART_CHANGED_NOTE: &str =
     "Deviation colours are not shown on the part: it has changed since this simulation.";
 /// The colour scale's note when only the cut part is coloured (NFR-15;
-/// decision 0520).
+/// decision 0492).
 pub(crate) const TICK_PART_NOTE: &str = "Tick Part to see these colours on the part model.";
 
-/// Whose values the probe reads (decision 0520).
+/// Whose values the probe reads (decision 0492).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProbeSource {
     /// The part's own measured values, by its triangles.
@@ -617,11 +617,11 @@ pub struct Viewport {
     /// The part coloured by deviation, when asked for (SIM-05).
     bands: Option<(ModelId, DeviationBands)>,
     /// The part coloured by its own measured values, on Simulate (SIM-05;
-    /// decision 0520). Separate from `bands`, which belongs to the cut part
+    /// decision 0492). Separate from `bands`, which belongs to the cut part
     /// (or, with no cut part, to the part): both can exist at once.
     part_bands: Option<(ModelId, DeviationBands)>,
     /// The part has changed since the simulation, so it is drawn plain and
-    /// the colour scale says so (UI-11; decision 0520).
+    /// the colour scale says so (UI-11; decision 0492).
     part_changed: bool,
     /// Whose values the probe reads, to drop a kept value when it changes.
     probe_source: Option<ProbeSource>,
@@ -784,7 +784,7 @@ impl Viewport {
     fn rebuild(&mut self) {
         let options = SceneOptions {
             // The part's own measured colours when it has them (decision
-            // 0520); else the old colours of the part, which are drawn only
+            // 0492); else the old colours of the part, which are drawn only
             // while there is no cut part to carry them (decision 0238).
             bands: self
                 .part_bands
@@ -813,7 +813,7 @@ impl Viewport {
     }
 
     /// Whether the part is drawn in its own measured deviation colours:
-    /// Simulate, with Part ticked and the values at hand (decision 0520).
+    /// Simulate, with Part ticked and the values at hand (decision 0492).
     pub(crate) fn part_coloured(&self) -> bool {
         self.part_bands.is_some() && self.simulate_show.model && self.step() == ViewStep::Simulate
     }
@@ -876,7 +876,7 @@ impl Viewport {
             .map_or_else(Scene::default, |surface| {
                 // With the part coloured, the cut part is drawn plain at the
                 // stock's own translucency, even when Solid was chosen, so
-                // the coloured part shows through it (decision 0520).
+                // the coloured part shows through it (decision 0492).
                 let behind_part = self.part_coloured();
                 cut_part_scene(
                     surface,
@@ -927,7 +927,7 @@ impl Viewport {
     }
 
     /// Colours the part by the values measured on its own triangles (SIM-05;
-    /// decision 0520), or draws it as it is for `None`. The scene is built
+    /// decision 0492), or draws it as it is for `None`. The scene is built
     /// again.
     pub fn set_part_bands(&mut self, bands: Option<(ModelId, DeviationBands)>) {
         if self.part_bands == bands {
@@ -938,7 +938,7 @@ impl Viewport {
     }
 
     /// Says the part has changed since the simulation, so it is drawn plain
-    /// and the colour scale says why (UI-11; decision 0520).
+    /// and the colour scale says why (UI-11; decision 0492).
     pub fn set_part_changed(&mut self, changed: bool) {
         self.part_changed = changed;
     }
@@ -970,7 +970,7 @@ impl Viewport {
             .map(|(_, b)| b)
     }
 
-    /// What the colour scale says it colours (NFR-15; decision 0520).
+    /// What the colour scale says it colours (NFR-15; decision 0492).
     pub(crate) fn scale_title(&self) -> &'static str {
         if self.part_coloured() {
             "Part \u{b7} final result"
@@ -979,7 +979,7 @@ impl Viewport {
         }
     }
 
-    /// The lines under the colour scale's own, in order (decision 0520).
+    /// The lines under the colour scale's own, in order (decision 0492).
     pub(crate) fn scale_notes(&self) -> Vec<&'static str> {
         let mut notes = Vec::new();
         if self.part_changed {
@@ -1539,7 +1539,7 @@ impl Viewport {
     pub(crate) fn probe_text(&self, triangle: u32) -> Option<String> {
         if self.probe_source == Some(ProbeSource::Part) {
             // The part's own triangles: a real measurement, not the nearest
-            // sample to a projected point (decision 0520).
+            // sample to a projected point (decision 0492).
             let (_, bands) = self.part_bands.as_ref()?;
             let value = bands.values.get(triangle as usize).copied().flatten();
             let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
@@ -1581,7 +1581,7 @@ impl Viewport {
             // Keep the pin, but do not paint its value through a nearer
             // stock face or a visible model after the camera/view changes.
             // A value on the coloured part is read through the plain cut
-            // part (decision 0520 item 5), never through the part's own
+            // part (decision 0492 item 5), never through the part's own
             // nearer faces (decision 0238 item 4).
             let (origin, direction) = self.camera.ray([ndc[0], ndc[1]], self.aspect);
             let back = rigid_inverse(&self.part_transform);
@@ -1710,7 +1710,7 @@ impl Viewport {
             .picker()
             .and_then(|p| p.pick(o, d).ok().flatten());
         // The part's own hit, which the probe reads when the part is coloured:
-        // the cut part drawn plain behind it is not probed (decision 0520).
+        // the cut part drawn plain behind it is not probed (decision 0492).
         let part_pick = surface;
         if !self.picking && self.stock_surface.is_some() {
             if !self.part_shown() {
@@ -2416,7 +2416,7 @@ pub(crate) mod tests {
         openchuck_app::pathview::deviation_bands(&values, 0.1)
     }
 
-    /// Decision 0520: the part is drawn in its own bands, in a viewport that
+    /// Decision 0492: the part is drawn in its own bands, in a viewport that
     /// also holds the cut part's bands; the part's colours are separate state.
     #[test]
     fn req_sim_05_the_part_and_the_cut_part_keep_their_own_bands() {
@@ -2463,7 +2463,7 @@ pub(crate) mod tests {
         assert!(viewport.part_bands().is_some());
     }
 
-    /// Decision 0520 item 5: the bands never get outlines, which mark a
+    /// Decision 0492 item 5: the bands never get outlines, which mark a
     /// selection set, and a shown set keeps its framed outline over the
     /// coloured part.
     #[test]
@@ -2532,7 +2532,7 @@ pub(crate) mod tests {
         );
     }
 
-    /// Decision 0520 item 4: the probe on the coloured part reads the part's
+    /// Decision 0492 item 4: the probe on the coloured part reads the part's
     /// triangle under the pointer, and says "Final result" without the
     /// nearest-sample wording, which belongs to the cut part's projection.
     #[test]
@@ -2572,7 +2572,7 @@ pub(crate) mod tests {
         assert_eq!(viewport.probe_hover, None);
     }
 
-    /// Decision 0520 item 3 and UI-11: the colour scale says what it colours.
+    /// Decision 0492 item 3 and UI-11: the colour scale says what it colours.
     #[test]
     fn req_nfr_15_the_colour_scale_names_what_it_colours() {
         let view = cube_scene("scale-title");
