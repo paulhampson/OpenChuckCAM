@@ -40,7 +40,7 @@ The strategies with the most links are helical finishing, rest machining and sim
    The setup's stock is the blank, not what earlier operations left. So after roughing, the links are higher than they need be and never lower (OI-1740 keeps the lower height open).
 3. **The cuts are unchanged.** Only the moves between passes differ (OP-12): the tests compare the cutting moves move for move.
 4. **The generated G-code remains the user's to verify (NFR-12).** The parameter text says the stock is checked at sampled points along each link. It does not claim the links were verified on a machine.
-5. **Library.** Additive: the parameter is in three more schemas. `Pass::low_link` already exists (0496). The version is assigned by the coordinator at merge.
+5. **Library.** Additive only: the parameter is in three more schemas, and `Pass::low_link` already exists (0496). So there is no version bump; the coordinator confirmed this on 2 Nov 2026.
 
 ## Alternatives considered
 
