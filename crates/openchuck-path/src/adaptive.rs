@@ -29,8 +29,9 @@
 //! as bounded by `(p + q + d) / 2`, where `d` is the largest change between
 //! neighbouring samples there: the bound of a function whose slope is no
 //! steeper than the samples show. Where the samples meet the
-//! Allowed excess but that bound does not, the place is reported as
-//! unverified and not refined further (decision record 0239 item 11). A
+//! Allowed excess but that bound does not, the place is refined like one
+//! that holds too much, and reported as unverified only where no pass can
+//! be added (decision record 0239 item 11, as the owner amended it on OI-1510). A
 //! feature narrower than the samples can be missed. The tests grade the
 //! result independently, with the test kit's tool outline and contact
 //! checker (decision record 0255 is test-only).
@@ -691,8 +692,8 @@ fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) 
         ),
         (n, Some(w)) => format!(
             "adaptive spacing: {n} pass{} added where more than the allowed excess of \
-             {:.3} mm was left, the closest {w:.3} mm from its neighbour; measuring and \
-             fitting them made {} geometry queries",
+             {:.3} mm was left or could not be ruled out, the closest {w:.3} mm from its \
+             neighbour; measuring and fitting them made {} geometry queries",
             if n == 1 { "" } else { "es" },
             settings.height,
             queries
@@ -904,18 +905,17 @@ impl Work<'_> {
         let spans_of = |at: &[f64]| merge(at, reach, &interval.spans);
         let c_mid = 0.5 * (lo.c + hi.c);
         let half = self.family.width((hi.c - lo.c) / 2.0);
-        let high = spans_of(&high);
+        let high_spans = spans_of(&high);
         // A place that cannot be confirmed within a stretch that gets a pass
         // is measured again in the halves.
         let inside = |s: f64| {
-            high.iter()
+            high_spans
+                .iter()
                 .any(|&(a, b)| s >= a.min(b) - EPS && s <= a.max(b) + EPS)
         };
         unsure.retain(|&s| !inside(s));
-        for (from, to) in spans_of(&unsure) {
-            self.place(c_mid, 0.5 * (from + to), Reason::Unverified);
-        }
-        if high.is_empty() {
+        let unsure_spans = spans_of(&unsure);
+        if high_spans.is_empty() && unsure_spans.is_empty() {
             return Ok(Vec::new());
         }
         let reason = if interval.level >= self.limits.levels {
@@ -928,15 +928,23 @@ impl Work<'_> {
             None
         };
         if let Some(reason) = reason {
-            for &(from, to) in &high {
-                self.place(c_mid, 0.5 * (from + to), reason);
-            }
+            self.say(c_mid, &high_spans, reason, &unsure_spans);
             return Ok(Vec::new());
         }
+        // A place the samples meet but their bound does not is refined like
+        // one that holds too much, where a pass can still be added: the
+        // added pass lowers the plateau beside the step that kept the bound
+        // up (OI-1510, the owner's choice of 2 Nov 2026 amending decision
+        // record 0239 item 11). Where none can be added it is reported as
+        // unverified.
+        let mut refined = high;
+        refined.extend_from_slice(&unsure);
+        refined.sort_by(f64::total_cmp);
+        let spans = spans_of(&refined);
         // The candidate pass, fitted over each stretch, and kept whole or
         // not at all.
         let mut passes = Vec::new();
-        for &span in &high {
+        for &span in &spans {
             passes.extend(self.family.fit(c_mid, span, context)?);
         }
         let count = passes.len() as u64;
@@ -955,9 +963,7 @@ impl Work<'_> {
         };
         if let Some(reason) = over {
             self.stopped = Some(reason);
-            for &(from, to) in &high {
-                self.place(c_mid, 0.5 * (from + to), reason);
-            }
+            self.say(c_mid, &high_spans, reason, &unsure_spans);
             return Ok(Vec::new());
         }
         self.added += count;
@@ -973,16 +979,27 @@ impl Work<'_> {
             Interval {
                 lo: interval.lo,
                 hi: mid,
-                spans: high.clone(),
+                spans: spans.clone(),
                 level,
             },
             Interval {
                 lo: mid,
                 hi: interval.hi,
-                spans: high,
+                spans,
                 level,
             },
         ])
+    }
+
+    /// Records the stretches at `c` that hold too much as not confirmed for
+    /// `reason`, and those whose height could not be bounded as unverified.
+    fn say(&mut self, c: f64, high: &[(f64, f64)], reason: Reason, unsure: &[(f64, f64)]) {
+        for &(from, to) in high {
+            self.place(c, 0.5 * (from + to), reason);
+        }
+        for &(from, to) in unsure {
+            self.place(c, 0.5 * (from + to), Reason::Unverified);
+        }
     }
 
     /// Records every stretch of `interval` as not confirmed, for `reason`.
@@ -1398,7 +1415,13 @@ mod tests {
             queries: most,
             ..Limits::OWNER
         };
-        let (outcome, cs) = run(&plane, 1.0, SETTINGS, limits);
+        // A smallest spacing wider than half the interval: no line is added
+        // to bound the place, so only the measuring is counted.
+        let settings = Settings {
+            min_spacing: 1.0,
+            ..SETTINGS
+        };
+        let (outcome, cs) = run(&plane, 1.0, settings, limits);
         assert_eq!(outcome.queries, most);
         assert_eq!(cs, vec![0.0, 1.0]);
         assert!(
@@ -1410,6 +1433,42 @@ mod tests {
             outcome.places
         );
         assert!(!outcome.places.is_empty());
+    }
+
+    #[test]
+    fn req_op_04_req_nfr_12_a_place_that_cannot_be_bounded_is_refined_where_a_pass_fits() {
+        // OI-1510 (the owner's choice, 2 Nov 2026): where the samples are
+        // within the Allowed excess but the bound between them is not, a
+        // pass is added halfway, as where too much is found, and the place
+        // is reported unverified only where no pass can be added.
+        let plane = || Plane {
+            length: 0.0,
+            step: Some(0.45),
+            ..Plane::new()
+        };
+        let (outcome, cs) = run(&plane(), 1.0, SETTINGS, Limits::OWNER);
+        assert_eq!(outcome.added(), 1);
+        assert_eq!(cs, vec![0.0, 0.5, 1.0]);
+        // Halved, the step lies past the last sample of the near half and
+        // the far half has none: both are bounded.
+        assert!(outcome.places.is_empty(), "{:?}", outcome.places);
+        // With no room for a pass, the place is said.
+        let settings = Settings {
+            min_spacing: 1.0,
+            ..SETTINGS
+        };
+        let (outcome, cs) = run(&plane(), 1.0, settings, Limits::OWNER);
+        assert_eq!(outcome.added(), 0);
+        assert_eq!(cs, vec![0.0, 1.0]);
+        assert!(!outcome.places.is_empty());
+        assert!(
+            outcome
+                .places
+                .iter()
+                .all(|p| p.reason == Reason::Unverified),
+            "{:?}",
+            outcome.places
+        );
     }
 
     #[test]
