@@ -1,6 +1,6 @@
 # 0634: A free-end ring that would part the part from the chuck is warned about (SET-09, NFR-12; issue #477; lane LARGEPATH)
 
-- **Status:** proposed 2 Nov 2026 by lane LARGEPATH. The owner chose option A on issue #477 (warn, and still generate) on 1 Nov 2026, relayed by the coordinator (decision 0049); only the owner accepts this record.
+- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after reading it in full. Proposed the same day by lane LARGEPATH; the owner chose option A on issue #477 (warn, and still generate) on 1 Nov 2026, relayed the same way.
 - **Date:** 2 Nov 2026.
 - **Lane:** LARGEPATH, pull request 3.
 - **Issue:** #477 ("SAFETY: the free-end ring can part the PART from the chuck").
