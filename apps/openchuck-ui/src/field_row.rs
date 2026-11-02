@@ -923,7 +923,9 @@ pub fn places(unit: &str) -> Option<usize> {
 }
 
 /// `value` with `places` decimals, or more where fewer would show another
-/// value, so a stored value is never misread (14.3). With no places, the
+/// value, so a stored value is never misread (14.3). A difference below a
+/// billionth of the value is float noise (499.99999992 for 500, issue 463) and
+/// does not count as another value. With no places, the
 /// shortest text that reads back as `value`.
 pub fn number(value: f64, places: Option<usize>) -> String {
     let Some(places) = places else {
@@ -933,7 +935,7 @@ pub fn number(value: f64, places: Option<usize>) -> String {
         .map(|p| format!("{value:.p$}"))
         .find(|t| {
             t.parse::<f64>()
-                .is_ok_and(|v| (v - value).abs() <= 1e-12 * value.abs().max(1.0))
+                .is_ok_and(|v| (v - value).abs() <= 1e-9 * value.abs().max(1.0))
         })
         .unwrap_or_else(|| format!("{value}"))
 }
@@ -1131,6 +1133,21 @@ mod tests {
         // More places where the fixed ones would show another value.
         assert_eq!(number(0.0005, places("mm")), "0.0005");
         assert_eq!(number(0.1, None), "0.1");
+    }
+
+    #[test]
+    fn req_ui_07_a_derived_value_with_float_noise_shows_rounded() {
+        // Issue 463: a feed per tooth of 0.02083333333 mm, one flute, 24000
+        // rpm gives 499.99999992, which is 500 to every digit that matters.
+        // The display is rounded; the value itself is not touched.
+        let derived: f64 = 0.02083333333 * 1.0 * 24000.0;
+        assert!((derived - 500.0).abs() > 1e-9);
+        assert_eq!(number(derived, places("mm/min")), "500");
+        assert_eq!(number(0.1 + 0.2, places("mm")), "0.300");
+        // A stored value that differs in a digit someone could read stays visible.
+        assert_eq!(number(14.3, places("mm/min")), "14.3");
+        assert_eq!(number(500.0004, places("mm/min")), "500.0004");
+        assert_eq!(number(0.0004, places("mm")), "0.0004");
     }
 
     /// The label's position and the field's rectangle in one frame of a row.
