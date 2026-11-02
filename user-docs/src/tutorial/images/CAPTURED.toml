@@ -1,12 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Written by user-docs/tools/capture.py. Add reviewed_at = "<commit>" after checking the
 # screens against a later build without re-capturing (user-docs/STYLE.md, Figures).
-#
-# These screens were taken by lane DOCSUSER on its branch (commit aaedc90), which changed
-# nothing under apps/ or crates/ after main's 7505bca: the screens are main at that commit.
-# They show the five-step workflow from before decision 0282, so the check reports them stale
-# until lane DOCSUSER phase 2 re-captures them (decision 0400, D4).
-captured_at = "7505bca206bb780ad7382e556f434979d6d5e57f"
-captured_on = "2026-10-29"
+captured_at = "2fae091d5d87ccf706939cff52b7a71d3d68e820"
+captured_on = "2026-11-01"
 renderer = "Mesa lavapipe (software Vulkan) on Xvfb"
 window = "1366x768"

@@ -93,7 +93,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-23 | P2 | D | System | Demo of the recent project list and of importing a dropped file |
 | UI-24 | P2 | T | Integration | A set with missing triangles offers to select again; keeping the part that matches saves a set against the current model with only those triangles, as one undoable step |
 | UI-26 | P2 | T | Unit, Integration | Unit tests of the grammar, rounding and every fault; shell tests of the message under the box, the step bar mark and the kept value |
-| SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
+| SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected. Decision 0495 (accepted): with no minimum and Clearance from stock off, the effective clearance is the old one exactly and the G-code is byte-identical; Clearance from stock never lowers the clearance and keeps the safe Z on or above the cylinder (property test); a safe cylinder inside the minimum warns, naming both values and the source, and never refuses; toolpaths, links and the post use the same effective clearance; the spindle-height check takes the effective safe Z and warns when a tool cannot clear the minimum within the Z travel |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
 | SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |
 | SET-09 | P1 | T, D | Unit, system | A gripped length and holding diameter validate (inside the stock, not past it, not overlapping each other), persist and migrate; roughing, finishing and links on the oracle parts never cut or cross the held region (independent checker), and the simulated stock keeps it (no move of any kind removes material inside it, and rapid moves remove none) |
@@ -348,6 +348,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 - Licence and advisory reports are clean or have recorded decisions (NFR-10, NFR-14), and each spike in section 7 has a written result.
 - The warning that G-code must be verified before use is present and checked (NFR-12).
 - The user documentation for the release is current: the release workflow's documentation check passes and the documentation items of the application release checklist (`docs/releasing.md`) are ticked in the verification report ([decision 0400](decisions/0400-user-documentation-site.md), section R).
+- The release notes were drafted by a lane from the changelogs, merged pull requests and closed issues, and reviewed and edited by the owner before publication (`docs/releasing.md`, owner's choice of 1 Nov 2026).
 - A verification report is issued (below) and the plan has been reviewed against what actually happened.
 
 **Defect severity.**
@@ -419,7 +420,7 @@ Written by lane ENDFACE with [decision 0239](decisions/0239-adaptive-pass-spacin
 - **The legacy-zero dialog** (decision 0239 item 5): Cancel changes nothing; Turn on sets both in one undoable step (`apps/openchuck-ui/src/shell/adaptive_tests.rs`, `crates/openchuck-app/tests/operation.rs`).
 - **Not yet covered:** engagement off the rotary centreline (OI-1373). Generated G-code remains the user's to verify before it is run (NFR-12).
 
-### Helical finishing in rings (decision 0390)
+### Rings instead of a spiral (decisions 0390 and 0420)
 
 With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 Oct 2026 (relayed). OP-02, OP-04, OP-11, OP-12, OP-14, OP-15, GC-07, NFR-06, NFR-07.
 
@@ -429,3 +430,15 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Off is as before.** The setting absent and Spiral give the same path; every golden program is byte-identical.
 - **Determinism.** The same path at 1, 2 and N threads.
 - **Refusals.** An unknown pass shape is refused by name; an absurd stepover is refused as for the spiral.
+
+**The other spiral strategies** ([decision 0420](decisions/0420-rings-for-rest-roughing-and-round-facing.md), accepted 1 Nov 2026, relayed). OP-02, OP-03, OP-09, OP-11, OP-12, OP-14, OP-15, OP-24, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/spiral_rings.rs` unless named:
+
+- **Shape.** Rest machining (both rotations, two start angles), continuous rotary roughing around the part (two start angles) and round Facing cut every move either at constant X turning A the set way, or along X at constant A a whole number of turns from the start angle, with rings no wider apart than the stepover; rest's rings reach both ends of the part. A never reverses within a cut (OP-15).
+- **Rest cuts only where material is left.** On a stepped shaft with clean stock over its large end, the rings cut no further onto the clean part than the spiral does.
+- **The material left,** measured with the test kit's independent gouge and coverage checks: rest on a cylinder, roughing on a cylinder (flat tool) and a cone (ball), no gouge and no more left than the spiral leaves.
+- **Roughing's layers** are at the spiral's levels, and a layer above the part is one cut, as with the spiral. Round Facing reaches the diameter and as far along the stock as the spiral.
+- **Selections and checks.** Roughing in rings keeps to a selected region and starts on its edge (`roughing_region.rs`); restricted round Facing in rings passes the independent completion check (`facing_legacy_scope.rs`).
+- **Off is as before.** The setting absent and Spiral give the same path for each strategy; roughing's other forms and Facing's other shapes ignore it; every golden program and the legacy Facing reference are byte-identical.
+- **Determinism.** The same path at 1, 2 and N threads for each strategy.
+- **Refusals.** An unknown pass shape is refused by name for each strategy, and roughing in rings refuses by name a stepover that needs too many points a layer.
+- **Schema.** Each strategy offers Passes, Spiral or Rings, Spiral by default; roughing only for its continuous form around the part, Facing only for Round.

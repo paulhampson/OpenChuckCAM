@@ -783,6 +783,117 @@ fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Decision 0492: the part's deviation colours are shown only while the part
+/// is the one the run was made with. A change of the part's file identity,
+/// units or placement, or of the setup's placement, is a change; a rename of
+/// the setup or an edit of something else is not.
+#[test]
+fn req_ui_11_the_part_guard_names_what_changed_since_the_run() {
+    use openchuck_app::project::ContentHash;
+    use openchuck_app::stockplay::part_changed_since;
+    let (dir, mut app, _) = project("part-guard");
+    let run = app.simulate().unwrap();
+    let setup = app.project().setups()[0].id;
+    let model = app.project().models()[0].id;
+    assert!(!part_changed_since(app.project(), &run, setup));
+
+    // A rename of the setup is a label, as in the pipeline cache.
+    let mut renamed = app.project().setup(setup).unwrap().clone();
+    renamed.name = "Renamed".into();
+    app.execute(Command::Replace(Item::Setup(renamed))).unwrap();
+    assert!(!part_changed_since(app.project(), &run, setup));
+
+    // A setting of the setup that is not the part or its placement (the
+    // material, the stock, the holding) leaves the part as it was: the run is
+    // out of date, but its colours still belong to these triangles (owner's
+    // answer to question 2, case 1).
+    let mut material = app.project().setup(setup).unwrap().clone();
+    material.material = Some("Another material".into());
+    material.clearance = None;
+    app.execute(Command::Replace(Item::Setup(material)))
+        .unwrap();
+    assert!(!part_changed_since(app.project(), &run, setup));
+    app.undo().unwrap();
+
+    // The part's placement.
+    app.execute(Command::SetModelTransform {
+        model,
+        transform: vec![
+            TransformStep::CentreOnRotaryAxis,
+            TransformStep::Translate {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        ],
+    })
+    .unwrap();
+    assert!(part_changed_since(app.project(), &run, setup));
+    app.undo().unwrap();
+    assert!(!part_changed_since(app.project(), &run, setup));
+
+    // The part's units.
+    app.execute(Command::SetModelUnits {
+        model,
+        units: Some(openchuck_app::model::LengthUnit::Inch),
+    })
+    .unwrap();
+    assert!(part_changed_since(app.project(), &run, setup));
+    app.undo().unwrap();
+
+    // The part's file, as reimported with another hash.
+    let mut reference = app.project().models()[0].clone();
+    reference.hash = ContentHash::of_bytes(b"another file");
+    app.execute(Command::Replace(Item::Model(reference)))
+        .unwrap();
+    assert!(part_changed_since(app.project(), &run, setup));
+    app.undo().unwrap();
+
+    // The setup's placement on the machine.
+    let mut moved = app.project().setup(setup).unwrap().clone();
+    moved.frame.part_offset = Millimetres(1.0);
+    app.execute(Command::Replace(Item::Setup(moved))).unwrap();
+    assert!(part_changed_since(app.project(), &run, setup));
+    app.undo().unwrap();
+    assert!(!part_changed_since(app.project(), &run, setup));
+
+    // A setup the project no longer has cannot vouch for its part.
+    assert!(part_changed_since(app.project(), &run, SetupId::new()));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Decision 0492: the job reads the model file at the document location, so a
+/// file edited behind the app must not give the run's colours to new
+/// triangles. It says so with a distinguishable error.
+#[test]
+fn req_ui_11_deviation_bands_refuse_a_part_file_changed_since_the_run() {
+    let (dir, app, _) = project("part-file");
+    let run = Arc::new(app.simulate().unwrap());
+    let setup = app.project().setups()[0].id;
+    start_ok(&app, &run, setup);
+    // The same cube under another solid name: another file, the same
+    // triangles.
+    let file = dir.join("models/cube.stl");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, text.replacen("solid cube", "solid cube two", 1)).unwrap();
+    let error = app
+        .start_deviation_bands(Arc::clone(&run), setup)
+        .wait()
+        .unwrap_err();
+    assert!(
+        matches!(error, openchuck_app::AppError::PartChanged(_)),
+        "{error}"
+    );
+    assert!(error.to_string().contains("changed"), "{error}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn start_ok(app: &Application, run: &Arc<Regeneration>, setup: SetupId) {
+    app.start_deviation_bands(Arc::clone(run), setup)
+        .wait()
+        .unwrap();
+}
+
 #[test]
 fn req_sim_04_the_stock_at_a_move_comes_from_the_checkpoints() {
     let (dir, app, _) = project("stock-at");

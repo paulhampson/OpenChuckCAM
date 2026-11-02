@@ -3,7 +3,7 @@
 1. Press **Generate stale (2)** at the bottom right. "Stale" means the operation has no up-to-date [toolpath](../glossary.md#toolpath).
 2. Wait until both operations show a green dot in the project tree: they are then up to date.
 
-The status bar shows the progress. On a small part this takes about a minute without a graphics card, and less with one.
+The status bar shows the progress. On this part it takes a few minutes on a computer with no graphics card, and less with one.
 
 <figure>
   <img src="images/13-generated.png" width="1366" height="768"

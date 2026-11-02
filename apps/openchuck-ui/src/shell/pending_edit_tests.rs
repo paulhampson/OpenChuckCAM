@@ -358,7 +358,9 @@ fn req_ui_07_req_ui_25_req_nfr_07_keep_checks_the_tab_count_range_before_changin
     ] {
         let mut rig = Rig::cube(&format!("pending-tab-count-{text}"), None);
         crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
-        rig.size = egui::vec2(1920.0, 1800.0);
+        // Tall enough for the tab editor below the clearance section, which
+        // decision 0495 lengthened by two rows.
+        rig.size = egui::vec2(1920.0, 2000.0);
         let before = rig.shell.app.as_ref().unwrap().project().clone();
         rig.shell
             .choose_setup(before.setups()[0].id, Some(super::SetupPart::Workholding));
@@ -1009,7 +1011,7 @@ fn req_ui_07_req_ui_25_keep_a_workholding_field_does_not_apply_the_draft() {
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {
@@ -1363,6 +1365,11 @@ fn req_ui_07_req_ui_08_setup_field_confirmation_and_shape_choice_both_apply() {
         rig.frame(Vec::new());
     }
     type_unconfirmed(&mut rig, "Diameter", "22");
+    // The shape is a segmented control when it fits beside the label column
+    // and a drop-down list when it does not (decision 0440).
+    if !rig.visible_text_rects().iter().any(|(t, _)| t == "Box") {
+        click(&mut rig, "Cylinder");
+    }
     click(&mut rig, "Box");
     assert!(!rig.shows("Unconfirmed changes"));
     match rig.shell.app.as_ref().unwrap().project().setups()[0].stock {
@@ -1407,7 +1414,7 @@ fn req_ui_07_req_ui_25_deferred_pick_can_select_an_unapplied_held_region() {
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {
@@ -1671,7 +1678,7 @@ fn req_ui_07_req_ui_08_req_ui_25_explicit_apply_resumes_after_keeping_the_workho
         .unwrap()
         .1;
     rig.click(egui::pos2(
-        held.left() + crate::theme::width::LABEL_COLUMN + 10.0,
+        held.left() + crate::field_row::last_label_column(&rig.ctx) + 10.0,
         held.center().y,
     ));
     for _ in 0..4 {

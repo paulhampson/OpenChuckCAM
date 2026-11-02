@@ -325,6 +325,13 @@ pub enum MessageAction {
     /// Select the operation and mark, in its inspector, the setting its
     /// warning names, so the user can change it (decision record 0175).
     ShowSetting(OperationId),
+    /// Open another project that has kept recovery data, so its own
+    /// recovery choices are offered there (PRJ-08; decision 0460). The index
+    /// is the front end's list of such projects for this run.
+    OpenRecovery(usize),
+    /// Find the new folder of a moved project whose recovery data was kept
+    /// (PRJ-08; decisions 0243 and 0460). Same index as `OpenRecovery`.
+    LocateRecovery(usize),
 }
 
 impl MessageAction {
@@ -338,6 +345,8 @@ impl MessageAction {
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
             Self::ShowSetting(_) => "Show setting",
+            Self::OpenRecovery(_) => "Open project",
+            Self::LocateRecovery(_) => "Locate folder",
         }
     }
 }
@@ -1102,6 +1111,7 @@ pub(crate) fn run_checks(
                     frame: &s.frame,
                     stock: s.stock.as_ref(),
                     clearance: s.clearance.as_ref(),
+                    rules: &s.clearance_rules,
                     part: part.as_ref(),
                 })
             }
@@ -1132,7 +1142,11 @@ pub(crate) fn run_checks(
                 unconfirmed: Vec::new(),
             }),
         );
-        notes.extend(crate::workholding::narrow_tab_notes(project, s));
+        notes.extend(crate::workholding::narrow_tab_notes(
+            project,
+            s,
+            part.as_ref(),
+        ));
         let unbuildable = match (&part, s.workholding.is_empty()) {
             (Some(part), false) => {
                 crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), part)
@@ -1262,6 +1276,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::PartOutsideStock => Some(SetupPart::Stock),
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
         | SetupWarningKind::AutoTabNoRoom { .. }
@@ -1830,14 +1845,26 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 // A tool too long for the safe Z on a machine that measures
                 // tool lengths (decision record 0318): once per tool of the
                 // setup's enabled operations, in the tool list's order.
-                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                // The setup's effective clearance, grown from the stock when
+                // Clearance from stock is on (decision record 0495, case a).
+                let part_bounds = s
+                    .part
+                    .and_then(|id| checks.and_then(|c| c.models.get(&id)))
+                    .and_then(|model| model.findings.as_ref().ok())
+                    .and_then(|f| f.extent)
+                    .map(|e| e.in_setup(&s.frame).bounds);
+                let effective = crate::setup::effective_clearance(m, s, part_bounds.as_ref());
+                let safe_z = effective.clearance.safe_z.0;
+                let minimum = effective.minimum.map(|(r, _)| r.0);
                 for snapshot in project.tools().iter().filter(|t| {
                     project
                         .operations()
                         .iter()
                         .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
                 }) {
-                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                    if let Some(found) =
+                        crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
+                    {
                         let text = crate::setup::spindle_height_text(
                             snapshot.controller.number,
                             &snapshot.name,
@@ -1848,7 +1875,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             at(SetupPart::Machine),
                             ItemStatus::new(
                                 ItemState::Warning,
-                                "a tool may take the spindle above the Z travel",
+                                if found.below_minimum.is_some() {
+                                    "a tool may be too long to clear the workholding"
+                                } else {
+                                    "a tool may take the spindle above the Z travel"
+                                },
                             ),
                         );
                         messages.push(Message::new(
@@ -2442,6 +2473,18 @@ mod tests {
         assert_eq!(short_mm(26.0), "26");
         assert_eq!(short_mm(12.5), "12.5");
         assert_eq!(short_mm(0.1234), "0.123");
+    }
+
+    #[test]
+    fn req_prj_08_recovery_lines_name_their_actions_in_plain_words() {
+        // Decision 0460 item 1: another project's kept recovery data is a
+        // Messages line whose action opens that project or locates it.
+        assert_eq!(MessageAction::OpenRecovery(0).label(), "Open project");
+        assert_eq!(MessageAction::LocateRecovery(3).label(), "Locate folder");
+        assert_ne!(
+            MessageAction::OpenRecovery(1),
+            MessageAction::OpenRecovery(2)
+        );
     }
 
     #[test]

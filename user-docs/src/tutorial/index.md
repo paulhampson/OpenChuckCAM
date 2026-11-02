@@ -1,6 +1,6 @@
 # Your first project
 
-This tutorial takes you through one complete job in OpenChuckCAM, from an empty window to G-code and a setup sheet. Every step has a screenshot of the real application. The job is a small turned and fluted piece (a baluster with a ball finial), rough-cut with one tool and finished with another, for a Makera Z1 with a chuck.
+This tutorial takes you through one complete job in OpenChuckCAM, from an empty window to G-code and a setup sheet. Every step has a screenshot of the real program. The job is a small turned and fluted piece (a baluster with a ball finial), rough-cut with one tool and finished with another, for a Makera Z1 with a chuck. You work through the four steps along the top of the window: Model, Setup, Operations and Simulate. Writing the G-code is an action on the Simulate step.
 
 > [!WARNING]
 > The piece, the tools and every speed and feed in this tutorial are **an example for learning the program, not a tested cutting recipe**. Nothing here has been cut on a machine. Choose your own tools, speeds and feeds for your material and machine.
@@ -9,15 +9,12 @@ This tutorial takes you through one complete job in OpenChuckCAM, from an empty 
 
 OpenChuckCAM is in early development. See the [known limitations](../start/limitations.md).
 
-> [!NOTE]
-> The screenshots are from an earlier build of the program. They show five steps along the top of the window, ending in **Post and export**. The program now has four steps: Model, Setup, Operations and Simulate. Post and export is a button on the Simulate step (and **File > Post and export...**), so where a page says **Continue to post and export**, use that button instead. Some other labels may differ a little. The screenshots will be taken again from the current program.
-
 ## What you need
 
 - The program. See [Install and first run](../start/install.md).
-- One file from the OpenChuckCAM repository: [`testdata/examples/baluster/baluster.stl`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/baluster) (269 KB). Save it somewhere you will find it again. A finished copy of the project is in `testdata/examples/baluster/baluster-project` in the same folder, if you want to compare or skip ahead.
+- One file from the OpenChuckCAM repository: [`testdata/examples/baluster/baluster.stl`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/baluster) (269 KB). Save it somewhere you will find it again. A finished copy of the project is in `testdata/examples/baluster/baluster-project` in the same folder, if you want to compare or skip ahead. `generate.py` beside the model writes it again.
 
-The screenshots were taken with a software renderer at 1366 x 768, so colours and line widths on your screen may differ a little. File paths in them are from the machine that took them; yours will be your own.
+The screenshots were taken at 1366 x 768 with a software renderer, so colours and line widths on your screen may differ a little. File paths in them are from the machine that took them; yours will be your own. The program is changing, so a label may differ from the one shown here; the steps stay the same.
 
 ## Words used in this tutorial
 
@@ -41,6 +38,9 @@ Stepdown
 
 Stock to leave
 : Material deliberately left on the part by an operation so that a later operation can finish it. See [stock to leave](../glossary.md#stock-to-leave).
+
+Adaptive spacing
+: A finishing setting that adds passes where the material left between two neighbouring passes stands higher than you allow. See [adaptive spacing](../glossary.md#adaptive-spacing).
 
 Tolerance
 : How closely the toolpath may differ from the model. See [tolerance](../glossary.md#tolerance).

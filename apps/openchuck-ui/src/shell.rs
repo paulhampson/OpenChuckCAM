@@ -65,7 +65,11 @@ mod adaptive_tests;
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
+mod open_recovery_tests;
+#[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -100,6 +104,10 @@ const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
+
+/// The answer to a check of which recent folders exist: the list that was
+/// looked at, and the folders among them that exist.
+type RecentCheck = std::sync::mpsc::Receiver<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)>;
 
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,6 +194,22 @@ pub struct Shell {
     recovery: checkpoints::State,
     recovery_project: Option<(Application, Vec<String>, bool)>,
     edit_context: Option<egui::Context>,
+    /// The folder the next Open dialog starts with: a recovery line's
+    /// project (decision 0460).
+    open_hint: Option<String>,
+    /// The recent project chosen in this frame, so the action log can leave
+    /// its folder name out (NFR-18).
+    recent_clicked: Option<std::path::PathBuf>,
+    /// The running check of which recent folders exist, and when it last
+    /// started (the check is off the UI thread; issue 381).
+    recent_check: Option<RecentCheck>,
+    recent_checked_at: Option<std::time::Instant>,
+    /// Held by a test to keep the check from answering.
+    #[cfg(test)]
+    recent_gate: Option<std::sync::Arc<std::sync::Mutex<()>>>,
+    /// The click lines the action log was given (tests).
+    #[cfg(test)]
+    logged_clicks: Vec<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -325,6 +349,14 @@ impl Shell {
             ),
             recovery_project: None,
             edit_context: None,
+            open_hint: None,
+            recent_clicked: None,
+            recent_check: None,
+            recent_checked_at: None,
+            #[cfg(test)]
+            recent_gate: None,
+            #[cfg(test)]
+            logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),
@@ -471,6 +503,9 @@ impl Shell {
                 self.dialog = Some(Dialog::Error(format!(
                     "The project could not be opened: {e}"
                 )));
+                // Its valid recovery checkpoints stay reachable for this
+                // request (PRJ-08, NFR-07; decision 0460 item 2).
+                self.recovery.open_failed(&folder);
             }
         }
     }
@@ -647,6 +682,9 @@ impl Shell {
                         None,
                     ));
                 }
+                for message in self.recovery.messages() {
+                    self.overview.push(message);
+                }
                 self.overview_dirty = false;
             }
             return;
@@ -699,6 +737,9 @@ impl Shell {
             }
             if let Some(problem) = &self.recovery.problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            }
+            for message in self.recovery.messages() {
+                overview.push(message);
             }
             self.overview = overview;
             self.overview_dirty = false;
@@ -875,9 +916,10 @@ impl Shell {
         }
         match next {
             Next::New | Next::Open => {
+                let hint = self.open_hint.take().filter(|_| next == Next::Open);
                 self.dialog = Some(Dialog::Folder {
                     create: next == Next::New,
-                    folder: String::new(),
+                    folder: hint.unwrap_or_default(),
                     name: "Untitled".to_owned(),
                 });
             }
@@ -1357,6 +1399,9 @@ impl Shell {
                 self.choose_setup(setup, Some(SetupPart::Workholding));
             }
             MessageAction::Generate => self.generate(false),
+            MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
+                self.recovery_action(action);
+            }
             MessageAction::ShowSetting(op) => {
                 self.show_item(ItemRef::Operation(op));
                 self.setting_jump = self
@@ -2084,6 +2129,8 @@ impl Shell {
                         action = Some(Box::new(move |s: &mut Self| {
                             if s.save() {
                                 s.proceed(next, &ctx);
+                            } else {
+                                s.open_hint = None;
                             }
                         }));
                     }
@@ -2094,6 +2141,9 @@ impl Shell {
                     }
                     if ui.button("Cancel").clicked() {
                         close = true;
+                        // A recovery line's folder belongs to that request
+                        // only, never to a later Open (decision 0460).
+                        action = Some(Box::new(|s: &mut Self| s.open_hint = None));
                     }
                 });
             }
@@ -2872,6 +2922,10 @@ mod frame_tests;
 #[cfg(test)]
 mod strategy_picker_tests;
 
+#[cfg(test)]
+mod dock_buttons_tests;
+#[cfg(test)]
+mod inspector_layout_tests;
 #[cfg(test)]
 mod numbox_tests;
 

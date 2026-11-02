@@ -38,6 +38,7 @@
 - [Limit an operation to a region](how-to/limit-to-a-region.md)
 - [Add a tool to the library](how-to/add-a-tool.md)
 - [Confirm machine profile values](how-to/confirm-machine-values.md)
+- [Machine setup: short moves](how-to/short-block-settings.md)
 - [Export G-code and the setup sheet](how-to/export.md)
 
 # Safety and verification

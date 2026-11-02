@@ -272,6 +272,36 @@ impl UserSettings {
         self.recent.truncate(RECENT_KEPT);
     }
 
+    /// Drops the recent projects whose folder is gone; whether any was
+    /// dropped. The rest keep their order. It only looks at the file system
+    /// (no network of its own), and a folder that cannot be read counts as
+    /// gone. A folder on a network share can take long to answer, so the
+    /// application asks [`existing_folders`] off the UI thread and applies
+    /// the answer with [`UserSettings::forget_missing_in`] rather than
+    /// calling this one while drawing.
+    pub fn forget_missing(&mut self) -> bool {
+        let checked = self.recent.clone();
+        let existing = existing_folders(&checked);
+        self.forget_missing_in(&checked, &existing)
+    }
+
+    /// Applies an answer of [`existing_folders`] for the list `checked`:
+    /// drops the recent projects that were in `checked` and are not in
+    /// `existing`; whether any was dropped. A project added since `checked`
+    /// was taken was never looked at, so it stays; the rest keep their
+    /// order.
+    pub fn forget_missing_in(&mut self, checked: &[PathBuf], existing: &[PathBuf]) -> bool {
+        let before = self.recent.len();
+        self.recent
+            .retain(|p| !checked.contains(p) || existing.contains(p));
+        self.recent.len() != before
+    }
+
+    /// Forgets every recent project.
+    pub fn clear_recent(&mut self) {
+        self.recent.clear();
+    }
+
     /// Whether the inspector section `section` of an item of `kind` is open;
     /// `default` when the user has not chosen.
     pub fn section_open(&self, kind: &str, section: &str, default: bool) -> bool {
@@ -295,6 +325,14 @@ impl UserSettings {
             list.sort();
         }
     }
+}
+
+/// The folders among `folders` that exist. Each one is looked at in turn, and
+/// a folder on a dead network share can take long to answer, so call this off
+/// the UI thread.
+#[must_use]
+pub fn existing_folders(folders: &[PathBuf]) -> Vec<PathBuf> {
+    folders.iter().filter(|p| p.is_dir()).cloned().collect()
 }
 
 /// The settings file of one user.
