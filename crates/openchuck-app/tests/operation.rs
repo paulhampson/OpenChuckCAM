@@ -1577,6 +1577,44 @@ fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[test]
+fn req_op_14_req_sim_08_a_new_operation_cuts_extra_passes_by_region() {
+    // Decision 0639 (the owner's choice, relayed, issue 469): a new
+    // operation of a strategy with a pass order is written with "by
+    // region", like any value the user set; an operation saved without it
+    // keeps the old order (the default), and other strategies get nothing.
+    let (dir, mut app, op) = project("pass-order-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let order = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(openchuck_path::order::PARAMETER)
+            .cloned()
+    };
+    let by_region = Some(openchuck_app::project::ParameterValue::Text(
+        openchuck_path::order::BY_REGION.into(),
+    ));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(order(&app, added), by_region, "{strategy}");
+    }
+    for strategy in ["rotary_roughing", "axial_finishing", "indexed_finishing"] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(order(&app, added), None, "{strategy}");
+    }
+    // The operation made before the option has none, so its order is as
+    // it was.
+    assert_eq!(order(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,

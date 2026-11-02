@@ -292,6 +292,7 @@ impl Strategy for SimultaneousFinishing {
         ]
         .into_iter()
         .chain(adaptive::specs())
+        .chain(std::iter::once(crate::order::spec()))
         .collect())
     }
 
@@ -712,7 +713,7 @@ fn run(
         by_track.push(plan.track_passes(track, &axis, lead, &mut findings, context)?);
     }
     let mut spaced = None;
-    let mut passes: Vec<Pass> = match adaptive {
+    let passes: Vec<Pass> = match adaptive {
         Some(settings) => {
             let (passes, outcome) = adaptive_passes(
                 &plan,
@@ -738,6 +739,9 @@ fn run(
     // corner between them (decision record 0410, issue #439).
     let turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
     let mut corners: Vec<f64> = Vec::new();
+    // Each turn, and the contours of each hidden area, is a group cut after
+    // the drive's passes or beside its region (decision record 0639).
+    let mut groups: Vec<Vec<Pass>> = Vec::with_capacity(face_turns.len());
     for (k, turn) in face_turns.into_iter().enumerate() {
         context.check_cancelled()?;
         if let Some(zone) = zones
@@ -756,7 +760,7 @@ fn run(
                 contour: None,
             };
             let axis = plan.axis_plan(&track, 0.0, max_tilt, &mut findings);
-            passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+            groups.push(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
             if !plan.flat_bottom {
                 let up = face_up.get(k).copied().unwrap_or(true);
                 corners.push(faces::face_of(
@@ -768,7 +772,7 @@ fn run(
             }
             continue;
         }
-        passes.extend(crate::helical::turn_passes(
+        groups.push(crate::helical::turn_passes(
             input,
             region,
             (&grown, leave, &[]),
@@ -803,6 +807,7 @@ fn run(
     plan.contours = found.contours;
     let hidden_count = plan.contours.len() as u64;
     let mut hidden_x = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut area = None;
     for k in 0..plan.contours.len() {
         context.check_cancelled()?;
         context.report(
@@ -825,8 +830,19 @@ fn run(
             contour: Some(k),
         };
         let axis = contour_axis_plan(c);
-        passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+        let cut = plan.track_passes(&track, &axis, 0.0, &mut findings, context)?;
+        match groups.last_mut() {
+            Some(group) if area == Some(c.area) => group.extend(cut),
+            _ => groups.push(cut),
+        }
+        area = Some(c.area);
     }
+    let passes = crate::order::arrange(
+        parameters.text(crate::order::PARAMETER)?,
+        passes,
+        groups,
+        crate::order::Rates::of(&input.max_feeds),
+    );
 
     let mut notes = Vec::new();
     if let Some(at) = findings.slope_at

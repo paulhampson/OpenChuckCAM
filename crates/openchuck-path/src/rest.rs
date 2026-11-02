@@ -362,6 +362,7 @@ impl Strategy for RestMachining {
             ]
             .into_iter()
             .chain(crate::finishing::specs(true, false))
+            .chain(std::iter::once(crate::order::spec()))
             .collect(),
         )
     }
@@ -482,13 +483,15 @@ impl Strategy for RestMachining {
             ));
             passes
         } else {
-            let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
+            let passes = fit_region(&fit, seeds, "rest machining", context)?;
             // One whole turn at each face across the axis, cut where material
-            // is left, as helical finishing does.
+            // is left, as helical finishing does, after the helix or beside
+            // its region (decision record 0639).
+            let mut groups = Vec::with_capacity(turns.len());
             for &x in &turns {
                 context.check_cancelled()?;
                 let at = start + sign * 360.0 * (x - x0) / stepover;
-                passes.extend(crate::helical::turn_passes(
+                groups.push(crate::helical::turn_passes(
                     input,
                     None,
                     (&grown, leave, &[]),
@@ -499,7 +502,12 @@ impl Strategy for RestMachining {
                     context,
                 )?);
             }
-            passes
+            crate::order::arrange(
+                parameters.text(crate::order::PARAMETER)?,
+                passes,
+                groups,
+                crate::order::Rates::of(&input.max_feeds),
+            )
         };
         // The free ends, in layers down beside them (decision record 0344).
         let free = crate::finishing::free_ends(

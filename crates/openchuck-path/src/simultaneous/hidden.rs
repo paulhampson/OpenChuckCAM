@@ -424,6 +424,9 @@ pub(super) struct Contour {
     pub x: f64,
     /// The section's index, for the order of the passes.
     pub section: usize,
+    /// The area of hidden surface it is on: contours of one area are cut
+    /// one after another (decision record 0639).
+    pub area: usize,
     /// The chain's points along the pass, and their lengths from its start.
     points: Vec<Point3>,
     s: Vec<f64>,
@@ -578,6 +581,7 @@ fn order(contours: &mut Vec<Contour>, near_mm: f64) {
     let mut last_group = usize::MAX;
     let mut flip = false;
     for (group, _, _, mut c) in keyed {
+        c.area = group;
         if group != last_group {
             flip = false;
             last_group = group;
@@ -954,6 +958,7 @@ impl Plan<'_> {
         Some(Contour {
             x,
             section,
+            area: 0,
             points,
             s,
             facets,
