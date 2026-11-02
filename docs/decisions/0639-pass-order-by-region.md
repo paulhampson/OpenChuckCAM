@@ -1,12 +1,11 @@
 # 0639: Face turns and hidden-surface passes are cut beside their region (OP-14, OP-15, SIM-08, OP-12, SET-09, GC-07, NFR-06, NFR-12; issue #469; lane PATHORDER)
 
-- **Status:** proposed, 2 Nov 2026, by lane PATHORDER. The owner's answers were relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7) on 1 and 2 Nov 2026 (decision 0049):
+- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after the owner read it in full. Proposed the same day by lane PATHORDER. The owner's answers were relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7) on 1 and 2 Nov 2026 (decision 0049):
   - D1: ordering (this record, pull request C) first, then low links for helical, rest and simultaneous finishing as a separate pull request (D, OI-1741).
   - D2: on for new operations; saved operations unchanged.
   - Objective (b): by X region, A as the tie-break, accepting up to one per cent more estimated time.
   - D4 dropped (see Alternatives).
   - D3, golden changes: none are needed (see Verification).
-  - The record is not yet accepted.
 - **Date:** 2 Nov 2026.
 - **Issue:** #469, "Optimise toolpath order for all strategies: avoid going back and forth, and extra machining time".
 - **Amends:** [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) item 3 ("each face's turn is its own pass after it") and [0368](0368-simultaneous-finishing-of-hidden-surfaces.md) item 2 ("cut after the drive's passes and the turns at faces"). With **Pass order** set to by region, those passes may be cut beside their region instead. With after main passes they are cut as those records say.

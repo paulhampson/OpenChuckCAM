@@ -9,7 +9,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
-- PATHORDER (#469, decision 0639): a new helical finishing, rest machining or simultaneous finishing operation is written with Pass order `by_region` (`add_operation`, `add_operation_on`); operations saved without it keep the order they had.
+- PATHORDER (#469, decision 0639, accepted): a new helical finishing, rest machining or simultaneous finishing operation is written with Pass order `by_region` (`add_operation`, `add_operation_on`); operations saved without it keep the order they had.
 - TABS-CHECK (#438, decision 0494): a retaining tab's length along X, not its diameter, is compared with the tool's diameter, in the refusal when generating, the check findings, the overview and export notes, and `workholding_view::narrowest_line` (now the "Length vs tools" line; name and signature unchanged). Wording is "... is N mm long along X, shorter than the tool ...". No schema or API change. The comparison uses an automatic tab's length where the part, the stock and the held regions put it now (decision 0202 item 3), not its last-applied length; `workholding::narrow_tab_notes` is crate-private and takes the part's extent.
 
 - SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
