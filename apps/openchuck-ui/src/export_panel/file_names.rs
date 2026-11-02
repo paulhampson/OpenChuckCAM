@@ -25,6 +25,13 @@ pub(super) struct Named {
     pub(super) result: Result<OutputFiles, String>,
 }
 
+/// The run's toolpath split into program files: the part of naming that
+/// depends only on the run.
+pub(super) struct Split {
+    run: Arc<Regeneration>,
+    programs: Result<openchuck_app::output_names::RunPrograms, String>,
+}
+
 impl ExportPanel {
     /// Uses the user's templates, from the settings file (the shell calls
     /// this when the dialog opens).
@@ -59,7 +66,28 @@ impl ExportPanel {
             .as_ref()
             .is_some_and(|named| Arc::ptr_eq(&named.run, &run) && named.templates == *templates);
         if !fresh {
-            let result = app.output_files(&run).map_err(|e| e.to_string());
+            // The split depends only on the run: it is kept until the run
+            // changes, so a template edit only names the files again
+            // (issue 379; NFR-12: a new run always splits afresh).
+            if !self
+                .split
+                .as_ref()
+                .is_some_and(|split| Arc::ptr_eq(&split.run, &run))
+            {
+                #[cfg(test)]
+                {
+                    self.splits += 1;
+                }
+                self.split = Some(Split {
+                    programs: Application::run_programs(&run).map_err(|e| e.to_string()),
+                    run: Arc::clone(&run),
+                });
+            }
+            let result = match self.split.as_ref().map(|split| &split.programs) {
+                Some(Ok(programs)) => app.name_outputs(&run, programs).map_err(|e| e.to_string()),
+                Some(Err(e)) => Err(e.clone()),
+                None => Err(String::new()),
+            };
             self.named = Some(Named {
                 run,
                 templates: templates.clone(),

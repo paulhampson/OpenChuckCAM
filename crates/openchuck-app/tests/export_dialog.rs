@@ -1476,3 +1476,24 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     assert!(openchuck_app::partial_operations(app.project(), &ordinary).is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Issue 379: naming from the run's kept split gives the same files as the
+/// one-step `output_files`, for every template, and the program text the split
+/// holds is the run's own (GC-07: only names change).
+#[test]
+fn req_gc_05_req_gc_07_naming_from_the_kept_split_matches_output_files() {
+    let (dir, mut app) = project("Bracket", false);
+    let run = post(&mut app, OutputGrouping::Tool);
+    let kept = openchuck_app::Application::run_programs(&run).unwrap();
+    for gcode in ["{n}", "{project}_{n}_T{tool_no}", "{contents}"] {
+        app.set_file_name_templates(templates(gcode, "{project} sheet"));
+        assert_eq!(
+            app.name_outputs(&run, &kept).unwrap(),
+            app.output_files(&run).unwrap(),
+            "{gcode}"
+        );
+    }
+    app.set_file_name_templates(templates("{missing_field}", "{project} sheet"));
+    assert!(app.name_outputs(&run, &kept).is_err());
+    std::fs::remove_dir_all(dir).ok();
+}

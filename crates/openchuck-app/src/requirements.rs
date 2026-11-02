@@ -286,7 +286,9 @@ pub(crate) fn operation_requirements(
             // come from; the short text stays for the lists.
             let detail = (name == openchuck_path::roughing::parameter::STEPDOWN).then(|| {
                 "Required. Enter the depth of each layer, or add cutting data for this tool \
-                 and material in the tool library."
+                 and material in the tool library and choose Update from library in the \
+                 operation's tool section, because the project holds its own copy of the \
+                 tool."
                     .to_owned()
             });
             out.push(Requirement {
@@ -383,7 +385,7 @@ mod tests {
         assert_eq!(
             stepdown.detail.as_deref(),
             Some(
-                "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library."
+                "Required. Enter the depth of each layer, or add cutting data for this tool and material in the tool library and choose Update from library in the operation's tool section, because the project holds its own copy of the tool."
             )
         );
     }

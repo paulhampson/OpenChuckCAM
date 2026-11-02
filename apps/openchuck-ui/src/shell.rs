@@ -68,6 +68,8 @@ mod checkpoint_tests;
 mod open_recovery_tests;
 #[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -191,6 +193,12 @@ pub struct Shell {
     /// The folder the next Open dialog starts with: a recovery line's
     /// project (decision 0460).
     open_hint: Option<String>,
+    /// The recent project chosen in this frame, so the action log can leave
+    /// its folder name out (NFR-18).
+    recent_clicked: Option<std::path::PathBuf>,
+    /// The click lines the action log was given (tests).
+    #[cfg(test)]
+    logged_clicks: Vec<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -331,6 +339,9 @@ impl Shell {
             recovery_project: None,
             edit_context: None,
             open_hint: None,
+            recent_clicked: None,
+            #[cfg(test)]
+            logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),

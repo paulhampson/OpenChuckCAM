@@ -111,7 +111,19 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             .project
             .operation(*id)
             .map_or(operation, |o| o.name.clone());
-        summarised.push(format!("operation '{made_as}': "));
+        // The notes carry only the name, so the notes of a name that two
+        // operations of the run share cannot be told apart: none are hidden
+        // (NFR-12), and each operation still has its own line, by id.
+        let shared = run
+            .project
+            .operations()
+            .iter()
+            .filter(|o| o.name == made_as)
+            .count()
+            > 1;
+        if !shared {
+            summarised.push(format!("operation '{made_as}': "));
+        }
     }
     let shown: Vec<String> = run
         .notes
@@ -1108,6 +1120,49 @@ mod tests {
         let lines = result_lines(&run, &removed);
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].text.contains("(removed operation)"));
+    }
+
+    #[test]
+    fn req_nfr_12_two_operations_with_one_name_hide_none_of_their_notes() {
+        // Issue 418: the per-move notes carry only the operation's name, so
+        // when two operations share it the notes cannot be told apart. Each
+        // operation keeps its own summary line (by id), and no note is
+        // hidden: an unread note is never lost (NFR-12). Note text is
+        // unchanged (GC-07).
+        let (mut run, mut project, name) = limited_run("shared", 2);
+        let first = run.feed_limits[0].0;
+        let mut twin = project.operation(first).unwrap().clone();
+        twin.id = OperationId::new();
+        let twin_id = twin.id;
+        project
+            .insert(
+                openchuck_app::project::Item::Operation(twin),
+                openchuck_app::project::Placement::End,
+            )
+            .unwrap();
+        let twin_notes: Vec<String> = (0..3).map(|_| feed_note(&name, 500.0, 600.0)).collect();
+        let bare: Vec<String> = twin_notes
+            .iter()
+            .map(|n| n.split_once("': ").unwrap().1.to_owned())
+            .collect();
+        run.feed_limits.push((
+            twin_id,
+            openchuck_app::note_groups::feed_limit_of(&bare).unwrap(),
+        ));
+        run.notes.extend(twin_notes);
+        run.project = Arc::new(project.clone());
+        let lines = result_lines(&run, &project);
+        let summaries = lines
+            .iter()
+            .filter(|l| l.severity == Severity::Info && l.text.contains("limited by"))
+            .count();
+        assert_eq!(summaries, 2, "{lines:?}");
+        let kept: usize = lines
+            .iter()
+            .filter(|l| l.severity == Severity::Warning)
+            .map(|l| l.moves.len().max(1))
+            .sum();
+        assert_eq!(kept, 5, "every per-move note stays: {lines:?}");
     }
 
     #[test]

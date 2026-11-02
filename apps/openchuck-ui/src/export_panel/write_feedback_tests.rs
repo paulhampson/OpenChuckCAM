@@ -468,6 +468,32 @@ fn req_ui_15_req_ui_07_a_typed_template_is_kept_only_once_confirmed() {
     assert!(named.programs[0].name.ends_with("-x.nc"), "{named:?}");
 }
 
+/// Issue 379: typing in a template field works the names out again but does
+/// not split the toolpath again; a new run does (NFR-12: never a stale list).
+#[test]
+fn req_gc_05_req_nfr_12_a_template_edit_does_not_split_the_toolpath_again() {
+    let mut rig = Rig::new("no-resplit");
+    let _ = rig.panel.named(&rig.app);
+    assert_eq!(rig.panel.splits, 1, "the first names split once");
+    for gcode in ["{n}", "{n}-{project}", "{project}-{n}x"] {
+        rig.panel.set_file_names(openchuck_app::FileNameTemplates {
+            gcode: gcode.into(),
+            setup_sheet: "{project}-sheet".into(),
+        });
+        rig.app
+            .set_file_name_templates(rig.panel.file_names.clone());
+        let named = rig.panel.named(&rig.app).unwrap().clone().unwrap();
+        let fresh = rig.app.output_files(&rig.run).unwrap();
+        assert_eq!(named, fresh, "the cached split names the same files");
+    }
+    assert_eq!(rig.panel.splits, 1, "template edits do not split again");
+    // A new run (here a second regeneration, a new Arc) is split again.
+    let again = Arc::new(rig.app.regenerate().unwrap());
+    rig.panel.files.as_mut().unwrap().run = again;
+    let _ = rig.panel.named(&rig.app);
+    assert_eq!(rig.panel.splits, 2, "a new run splits again");
+}
+
 /// The owner's option B on OI-1072: clashing names get a number, the dialog
 /// warns and previews the numbered names, and writing is not blocked.
 #[test]

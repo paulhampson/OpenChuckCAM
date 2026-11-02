@@ -31,7 +31,7 @@ fn capture_time(milliseconds: u64) -> String {
 
 /// A folder as the user knows it: Windows' canonical `\\?\` prefix is an
 /// implementation detail, not part of the name they chose (decision 0114).
-fn shown(folder: &Path) -> String {
+pub(super) fn shown(folder: &Path) -> String {
     let text = folder.display().to_string();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
@@ -790,6 +790,23 @@ impl Shell {
                 Effect::Resume(next) => self.proceed(next, ctx),
             }
         }
+    }
+
+    /// The recent projects that still exist, newest first. Folders that are
+    /// gone are forgotten and the list is kept (issue 381).
+    pub(super) fn recent_projects(&mut self) -> Vec<PathBuf> {
+        if self.settings.forget_missing() {
+            self.settings_touched();
+        }
+        self.settings.recent.clone()
+    }
+
+    /// Opens a recent project through the ordinary Open command: the
+    /// unsaved-changes question first, then the Open dialog on that folder
+    /// (the same route as a recovery line, decision 0460).
+    pub(super) fn open_recent(&mut self, folder: &Path, ctx: &egui::Context) {
+        self.open_hint = Some(shown(folder));
+        self.request(Next::Open, ctx);
     }
 
     /// A recovery line's action: open that project through the ordinary

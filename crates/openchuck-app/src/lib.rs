@@ -1610,13 +1610,34 @@ impl Application {
     /// written, when a template cannot name a file (NFR-07). The dialog's
     /// preview and the write both use this.
     pub fn output_files(&self, run: &Regeneration) -> Result<OutputFiles, AppError> {
+        self.name_outputs(run, &Self::run_programs(run)?)
+    }
+
+    /// The step of [`Application::output_files`] that depends only on the
+    /// run: the toolpath split into program files, with each file's text.
+    /// Keep it with the run it was made from and give it to
+    /// [`Application::name_outputs`] again after a template edit, so typing
+    /// in a template does not split the toolpath again (issue 379). A new
+    /// run needs a new one; never reuse it across runs (NFR-12).
+    pub fn run_programs(run: &Regeneration) -> Result<output_names::RunPrograms, AppError> {
+        posting::program_files(run).map(output_names::RunPrograms::new)
+    }
+
+    /// The step of [`Application::output_files`] that depends on the
+    /// templates: the final names, from `programs`, which must be
+    /// [`Application::run_programs`] of this same `run`.
+    pub fn name_outputs(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<OutputFiles, AppError> {
         let job = self.job_facts(
             &run.project,
             run.posted_selection.as_ref().map(|(post, _)| post),
         );
-        let mut programs = Vec::new();
+        let mut programs_out = Vec::new();
         let mut groups = Vec::new();
-        for (index, (file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
+        for (index, (file, contents)) in programs.files().iter().enumerate() {
             let extension = std::path::Path::new(&file.posted_name)
                 .extension()
                 .map_or_else(String::new, |e| e.to_string_lossy().into_owned());
@@ -1625,14 +1646,15 @@ impl Application {
                 &job,
                 &output_names::FileFacts {
                     index,
-                    contents: &contents,
-                    file: &file,
+                    contents,
+                    file,
                 },
             )
             .map_err(AppError::FileNames)?;
             groups.push((stem, vec![extension]));
-            programs.push(file);
+            programs_out.push(file.clone());
         }
+        let programs = programs_out;
         let sheet = output_names::sheet_stem(&self.file_names.setup_sheet, &job)
             .map_err(AppError::FileNames)?;
         groups.push((
@@ -1644,6 +1666,7 @@ impl Application {
         ));
         let (mut named, renamed) = output_names::unique_names(&groups);
         let sheet_names = named.pop().unwrap_or_default();
+        let mut programs = programs;
         for (program, names) in programs.iter_mut().zip(named) {
             program.name = names.into_iter().next().unwrap_or_default();
         }
