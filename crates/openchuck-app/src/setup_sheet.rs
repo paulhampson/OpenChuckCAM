@@ -956,14 +956,25 @@ fn setup_facts(
             ));
         }
         if e.from_stock {
-            facts.push((
-                "Clearance in use".to_string(),
+            // Bounding-box stock is measured from the part; without it the
+            // stock's radius is not known, so no clearance is stated as the
+            // one in use (CodeRabbit on #458).
+            let measured = setup
+                .stock
+                .as_ref()
+                .is_some_and(|s| s.radius(extent).is_some());
+            let value = if measured {
                 format!(
                     "radius {} mm, safe Z {} mm (Clearance from stock)",
                     mm(e.clearance.radius.0),
                     mm(e.clearance.safe_z.0)
-                ),
-            ));
+                )
+            } else {
+                "not known: the stock's size comes from the part, which could not be read \
+                 (Clearance from stock)"
+                    .to_string()
+            };
+            facts.push(("Clearance in use".to_string(), value));
         }
     }
     facts
@@ -1626,5 +1637,17 @@ mod tests {
             get("Clearance in use"),
             "radius 55 mm, safe Z 55 mm (Clearance from stock)"
         );
+        // Bounding-box stock with no part to measure: the clearance in use is
+        // not known, and the sheet does not state the base one as in use.
+        setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+            offset: Millimetres(1.0),
+        });
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert!(in_use.starts_with("not known"), "{in_use}");
     }
 }
