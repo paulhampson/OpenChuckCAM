@@ -451,7 +451,7 @@ impl Application {
 
     /// What is wrong with `draft` as the workholding of `setup`, from the
     /// part and the tools, which the setup's own validation cannot see: tabs
-    /// outside the head and tail zones (OI-180) and tabs narrower than a tool
+    /// outside the head and tail zones (OI-180) and tabs shorter along X than a tool is wide
     /// of the setup's operations (OI-159). A front end runs it before it
     /// stores an edit; generation refuses the same things. Empty when there
     /// is nothing wrong or no part to check against. Reads and places the
@@ -1003,10 +1003,10 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
-            // A tab narrower than a tool that operations of the setup use is
+            // A tab shorter along X than a tool is wide that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            notes.extend(workholding::narrow_tab_notes(project, s));
+            notes.extend(workholding::narrow_tab_notes(project, s, part.as_ref()));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),

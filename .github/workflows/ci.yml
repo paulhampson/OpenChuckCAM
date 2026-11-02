@@ -279,6 +279,13 @@ jobs:
         openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
         openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
         openchuck-path::simultaneous openchuck-path::helical_faces
+      # Windows only: three shares instead of two (matrix.shards is 3), dealt from the per-test times of
+      # run 41312032946 (test time was 69 to 75% of the Windows legs). Share 2 is every other test.
+      THREE_WAY_SHARD1_BINARIES: >-
+        openchuck-path::helical_faces openchuck-path::walls openchuck-app
+      THREE_WAY_SHARD3_BINARIES: >-
+        openchuck-path::adaptive openchuck-path::simultaneous openchuck-ui::bin/openchuck-ui
+        openchuck-app::workholding openchuck-app::reference_jobs
     steps:
       - uses: actions/checkout@v7
         with:
@@ -308,33 +315,56 @@ jobs:
         shell: bash
         run: |
           list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
-          shard1=""
-          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
-          total=$(list | wc -l)
-          n1=$(list -E "$shard1" | wc -l)
-          n2=$(list -E "not ($shard1)" | wc -l)
-          echo "full list: $total tests; share 1: $n1; share 2: $n2"
-          for b in $SHARD1_BINARIES; do
+          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
+          if [ "${{ matrix.shards }}" = 3 ]; then
+            bins="$THREE_WAY_SHARD1_BINARIES $THREE_WAY_SHARD3_BINARIES"
+            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
+            total=$(list | wc -l)
+            n1=$(list -E "$s1" | wc -l)
+            n3=$(list -E "$s3" | wc -l)
+            n2=$(list -E "not (($s1) | ($s3))" | wc -l)
+            echo "full list: $total tests; share 1: $n1; share 2: $n2; share 3: $n3"
+            n_empty=0; [ "$n3" -eq 0 ] && n_empty=1
+          else
+            bins="$SHARD1_BINARIES"
+            s1=$(any_of "$SHARD1_BINARIES")
+            total=$(list | wc -l)
+            n1=$(list -E "$s1" | wc -l)
+            n2=$(list -E "not ($s1)" | wc -l)
+            n3=0
+            echo "full list: $total tests; share 1: $n1; share 2: $n2"
+            n_empty=0
+          fi
+          for b in $bins; do
             n=$(list -E "binary_id(=$b)" | wc -l)
             if [ "$n" -eq 0 ]; then
-              echo "::error title=Listed test binary has no tests::$b in SHARD1_BINARIES matches no test; rename or remove it"
+              echo "::error title=Listed test binary has no tests::$b is listed for a share and matches no test; rename or remove it"
               exit 1
             fi
           done
-          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ]; then
-            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2"
+          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ] || [ "$n_empty" -eq 1 ]; then
+            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2, share 3 has $n3"
             exit 1
           fi
-          if [ $((n1 + n2)) -ne "$total" ]; then
-            echo "::error title=Test shares do not add up::$n1 + $n2 is not the full list of $total"
+          if [ $((n1 + n2 + n3)) -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::$n1 + $n2 + $n3 is not the full list of $total"
             exit 1
           fi
       - name: Tests
         shell: bash
         run: |
-          shard1=""
-          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
-          if [ "${{ matrix.shard }}" = 1 ]; then filter="$shard1"; else filter="not ($shard1)"; fi
+          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
+          if [ "${{ matrix.shards }}" = 3 ]; then
+            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
+            case "${{ matrix.shard }}" in
+              1) filter="$s1" ;;
+              3) filter="$s3" ;;
+              *) filter="not (($s1) | ($s3))" ;;
+            esac
+          else
+            s1=$(any_of "$SHARD1_BINARIES")
+            if [ "${{ matrix.shard }}" = 1 ]; then filter="$s1"; else filter="not ($s1)"; fi
+          fi
           cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
       - name: Doctests
         if: matrix.shard == 1
