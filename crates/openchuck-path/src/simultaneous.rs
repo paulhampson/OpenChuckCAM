@@ -2417,6 +2417,7 @@ impl Plan<'_> {
                             if !points.is_empty() {
                                 passes.push(Pass {
                                     helical_pass_start: false,
+                                    low_link: false,
                                     points: std::mem::take(&mut points),
                                     stock: None,
                                     rapids: Vec::new(),
@@ -2431,6 +2432,7 @@ impl Plan<'_> {
             if !points.is_empty() {
                 passes.push(Pass {
                     helical_pass_start: false,
+                    low_link: false,
                     points,
                     stock: None,
                     rapids: Vec::new(),
