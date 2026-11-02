@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.33.0
+
+- **Breaking (0.33.0, SWARF-FLOOR; issue #435; decision 0491, accepted, relayed by the coordinator):** swarf keeps the tool's tip off a floor.
+  - **Cut short lifts first.** Where the tool on a ruling would break an avoid or check set (`RegionConstraint::avoid` and `check`), the tip is lifted up the ruling by the least that keeps it off the set (the stock to leave clear of a check set), allowing for the set's sampling, before the pass is cut short; the pass is cut short only where a lift that leaves a quarter of the ruling in contact does not clear it. Before, a set under the whole face (a floor) refused the face. The strip left at the foot is not measured as material left, and the note says how far the tool was lifted.
+  - **Negative tip extension.** `swarf::parameter::TIP_EXTENSION` has no minimum: a negative value starts the flank that far up the rulings, the strip is not material left, and a value that leaves nothing of a face's rulings refuses the face naming the value and the length.
+  - **Notes.** Each face's note says where the tool's end is against the end of the rulings (a ball or corner radius plus the tip extension).
+  - **API.** `swarf::Pose` gains `lift`; `swarf::Limits` gains `tip_lifted`, `lifted_clear_of`, `tip_up` and `end_reach` (struct literals add them).
+  - **Output.** A swarf operation with an avoid or check set on Cut short that its tip broke is made differently (lifted where it was cut short or refused). Paths with no such set, and every golden file, are unchanged.
+
 ## 0.32.0
 
 - **Changed message text (UIBUGS, issue #463):** the notes about faces across the rotary axis (decision 0297 item 4, and the held-region note of decision 0343) say "step" and "shoulder facing along X" and that the tool makes one extra turn, in place of "face" and "turns once ... where its side touches it". The path and G-code are unchanged. No API change.
