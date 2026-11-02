@@ -9,6 +9,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
 - OP20 (issue #413, decision 0368): operations give the strategies the tool's shank where it is wider than the cutting part (`StrategyInput::shank`, from the shank diameter and the flute length), which simultaneous finishing keeps clear of the part on every pass; the strategies' unreached areas reach `Regeneration` through the generated path's warning.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): a partial path (adaptive spacing that met a limit or could not confirm a place) is listed in the export checks and written only once the output plan is acknowledged for its own run (`OutputPlan::partial_operations`, `acknowledge_partial_path`, `partial_path_acknowledged`; `partial_operations`, `partial_path_refusal`, `EXPORT_PARTIAL_PATH_LABEL`); `OutputReport` gains `partial` and says the path is not complete. `Application::adaptive_spacing_needs_height` and `enable_adaptive_spacing` (one undoable step). The command line's `regenerate` takes `--acknowledge-partial-path`.
