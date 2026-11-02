@@ -146,7 +146,7 @@ The first application release then creates `docs-releases` with its own folder, 
 
 ## Merge queue
 
-How pull requests merge ([decision 0498](decisions/0498-merge-queue.md), proposed; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) items 4 and 5). Without the queue, the ruleset's "Require branches to be up to date" makes every merge turn the other pull requests behind, and each must merge `main`, push and wait for a full CI run.
+How pull requests merge ([decision 0498](decisions/0498-merge-queue.md), accepted; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) items 4 and 5). Without the queue, the ruleset's "Require branches to be up to date" makes every merge turn the other pull requests behind, and each must merge `main`, push and wait for a full CI run.
 
 **Entering the queue.** A pull request joins the queue when it is ready for review (not a draft), its required checks pass and the owner (or the Merge Manager, when delegated) chooses **Merge when ready** or **Add to merge queue**. A draft cannot be queued: `CI required checks` fails on a draft by design (decision 0055 item 1). A lane does not merge `main` to catch up; the queue builds on the current `main`.
 
