@@ -141,7 +141,7 @@ pub struct PostOptions {
     pub feed_mode: FeedMode,
     /// Write a run of consecutive fed moves that turn A only, at the same
     /// written X, Y and Z, in the same direction, of the same kind and with
-    /// the same written per-minute feed word, as one block (decision 0648,
+    /// the same written per-minute feed word, as one block (decision 0506,
     /// proposed). The motion and its time are unchanged; the controller
     /// plans one move instead of one per step. A post that leaves it out
     /// writes every step, as before.

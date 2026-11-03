@@ -1,6 +1,6 @@
-# 0648: Consecutive pure-A moves written as one block (GC-04, GC-07, GC-08, GC-10, GC-17, NFR-06, NFR-07, NFR-12; issue #503; lane A-MOVES)
+# 0506: Consecutive pure-A moves written as one block (GC-04, GC-07, GC-08, GC-10, GC-17, NFR-06, NFR-07, NFR-12; issue #503; lane A-MOVES)
 
-- **Status:** accepted by the project owner on 3 Nov 2026, including item 6 (the GC-17 reading) and the regenerated first-cut goldens, relayed by the coordinator (decision 0049). Proposed by lane A-MOVES on 2 Nov 2026. Item 1 (build it now, before the air cut confirms the cause; on in both built-in posts; off for a post file without the key) is the owner's choice D1, relayed by the coordinator on 2 Nov 2026.
+- **Status:** accepted by the project owner on 3 Nov 2026, including item 6 (the GC-17 reading) and the regenerated first-cut goldens, relayed by the coordinator (decision 0049). Written as 0648; renumbered 0506 at the release of #517 by the Merge Manager (the next number after main's highest when it merges). Proposed by lane A-MOVES on 2 Nov 2026. Item 1 (build it now, before the air cut confirms the cause; on in both built-in posts; off for a post file without the key) is the owner's choice D1, relayed by the coordinator on 2 Nov 2026.
 - **Date:** 2 Nov 2026.
 - **Issue:** #503, severity proposal sev3 (Tier 2 bug).
 - **Builds on:** [0007](0007-sp-12-z1-conventions.md) (the Z1's feed rule, A-only moves included), [0222](0222-short-moves-minimum-block-time.md) and [0245](0245-short-block-report-and-slowdown.md) (GC-17: Report and Slow down; Merge deferred), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (the end turn at a held region), [0390](0390-helical-finishing-in-rings.md), [0420](0420-rings-for-rest-roughing-and-round-facing.md) and [0497](0497-rings-for-the-simultaneous-spiral.md) (rings), [0241](0241-continuous-rotary-operation-boundaries.md) and [0247](0247-long-operation-rotary-accumulation.md) (counter resets at declared boundaries), the [first-cut tail investigation](../first-cut-tail-tab-investigation.md) (OI-993).
@@ -47,7 +47,7 @@ The estimated time is the IR's, under the controller's feed rule; it does not ch
 
 ## Consequences
 
-- `PostOptions` and `ConvertOptions` gain a public field: a breaking change to `openchuck-post` (decision 0048), with a workspace minor bump and a changelog entry assigned by the Merge Manager in merge order.
+- `PostOptions` and `ConvertOptions` gain a public field: a breaking change to `openchuck-post` (decision 0048): the family moves to 0.39.0, with changelog entries in `openchuck-post` and `openchuck-gcode`.
 - A user's copy of a built-in post made before this change keeps writing every step until the key is added.
 - A user template that writes something per fed block writes it once per combined block.
 - A feed hold in the middle of a combined block holds part way round, as it would part way along any long move.

@@ -60,7 +60,7 @@ pub struct ConvertOptions<F> {
     pub operation_spindle: BTreeMap<String, f64>,
     /// Write each run of consecutive fed pure-A moves (the same written X, Y
     /// and Z, the same direction, kind and written per-minute feed word) as
-    /// one move (decision 0648, accepted; GC-04 option
+    /// one move (decision 0506, accepted; GC-04 option
     /// `combine_rotary_runs`). The motion and its time are unchanged.
     pub combine_rotary_runs: bool,
 }

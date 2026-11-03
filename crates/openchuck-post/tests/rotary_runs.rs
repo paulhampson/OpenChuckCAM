@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Exact combining of consecutive pure-A blocks (GC-04 post option
-//! `combine_rotary_runs`, GC-17; decision 0648, accepted; issue 503).
+//! `combine_rotary_runs`, GC-17; decision 0506, accepted; issue 503).
 //!
 //! A run of fed moves that turn A only, at the same written X, Y and Z, in
 //! the same direction, of the same kind and with the same written feed word,

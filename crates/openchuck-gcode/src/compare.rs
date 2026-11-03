@@ -281,7 +281,7 @@ pub fn compare_with_moves(
     let mut coordinate_shift = 0.0;
     let mut boundary = None;
     // A fed move that turns A alone may stand for several consecutive IR
-    // poses (a post's combined pure-A run, decision 0648): the move, and
+    // poses (a post's combined pure-A run, decision 0506): the move, and
     // where along it the last pose was reached.
     let mut partway: Option<(&Move, Axes)> = None;
     for e in &expected {
