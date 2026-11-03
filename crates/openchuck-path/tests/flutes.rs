@@ -346,15 +346,29 @@ fn refused_then_accepted(
     extra: &[(&str, ParameterValue)],
     parameter: Option<&str>,
 ) {
-    let e = on_box(strategy, box_depth() - 0.05, extra).unwrap_err();
+    refused_and_accepted_at(
+        strategy,
+        extra,
+        parameter,
+        (box_depth() - 0.05, box_depth() + 0.05),
+    );
+}
+
+/// Refused with `flutes.0` of flute, accepted with `flutes.1`.
+fn refused_and_accepted_at(
+    strategy: &dyn openchuck_path::Strategy,
+    extra: &[(&str, ParameterValue)],
+    parameter: Option<&str>,
+    flutes: (f64, f64),
+) {
+    let e = on_box(strategy, flutes.0, extra).unwrap_err();
     let text = e.to_string();
     assert!(text.contains("mm of flute"), "{}: {text}", strategy.name());
     assert!(text.contains("35.000 x 35.000 mm box"), "{text}");
     if let Some(p) = parameter {
         assert!(text.starts_with(&format!("parameter {p}:")), "{text}");
     }
-    on_box(strategy, box_depth() + 0.05, extra)
-        .unwrap_or_else(|e| panic!("{}: {e}", strategy.name()));
+    on_box(strategy, flutes.1, extra).unwrap_or_else(|e| panic!("{}: {e}", strategy.name()));
 }
 
 #[test]
@@ -393,10 +407,14 @@ fn req_tl_04_req_nfr_07_finishing_layers_hold_each_layer_to_the_flutes_instead()
 
 #[test]
 fn req_tl_04_req_nfr_07_indexed_finishing_is_refused_with_short_flutes() {
-    refused_then_accepted(
+    // A held at faces of the box, not its corners: the tool meets the flat
+    // top of the box (17.5 mm from the axis), more than the inscribed depth
+    // of 12.5 mm above the bar.
+    refused_and_accepted_at(
         &openchuck_path::IndexedFinishing,
         &[],
         Some("finishing_layers"),
+        (12.4, 40.0),
     );
 }
 

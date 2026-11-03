@@ -122,7 +122,10 @@ pub fn ball(diameter: f64) -> Tool {
     Tool {
         shape: ToolShape::BallEnd,
         diameter: Millimetres(diameter),
-        flute_length: Millimetres(12.0),
+        // Long enough for the fixtures' stock above the part, which the
+        // flute check reads (decision record 0508): for a ball whose shank
+        // is no wider, the body above the flutes is the same cylinder.
+        flute_length: Millimetres(40.0),
         overall_length: Millimetres(50.0),
         shank_diameter: Millimetres(diameter),
         flute_count: 2,
@@ -325,4 +328,36 @@ pub fn generate_in_zones(
         &spacing_off(strategy, values),
         context,
     )
+}
+
+/// Stock that earlier operations have cut back to the part: no material
+/// outside it, within `radius` of the rotary axis. For a test of a tool
+/// whose flutes are shorter than the setup's stock stands above the part
+/// (decision record 0508).
+#[derive(Debug, Clone, Copy)]
+pub struct Bare {
+    pub radius: f64,
+}
+
+impl openchuck_path::StockModel for Bare {
+    fn contains(&self, _point: openchuck_types::geometry::Point3) -> bool {
+        false
+    }
+
+    fn ray_entry(
+        &self,
+        _origin: openchuck_types::geometry::Point3,
+        _direction: openchuck_types::geometry::UnitVec3,
+        _max_distance: f64,
+    ) -> Option<f64> {
+        None
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        Some(self.radius)
+    }
+
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
 }
