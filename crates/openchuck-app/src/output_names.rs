@@ -292,6 +292,22 @@ pub struct ProgramFile {
     pub steps: Vec<ProgramStep>,
 }
 
+/// The program files of one run with their text, before any template names
+/// them: the part of naming that depends only on the run (issue 379). It is
+/// made by [`crate::Application::run_programs`] and belongs to that run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunPrograms(Vec<(ProgramFile, String)>);
+
+impl RunPrograms {
+    pub(crate) fn new(files: Vec<(ProgramFile, String)>) -> Self {
+        Self(files)
+    }
+
+    pub(crate) fn files(&self) -> &[(ProgramFile, String)] {
+        &self.0
+    }
+}
+
 /// Every file one write makes, with its final name (issues 308 to 310).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputFiles {
