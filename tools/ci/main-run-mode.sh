@@ -53,7 +53,7 @@ else
   records=${F_RECORDS:-} any=${F_ANY:-} image=${F_IMAGE:-}
 fi
 others=$rust
-matrix='{"include":[{"os":"ubuntu-latest","shard":1,"shards":2},{"os":"ubuntu-latest","shard":2,"shards":2},{"os":"windows-latest","shard":1,"shards":2},{"os":"windows-latest","shard":2,"shards":2},{"os":"macos-latest","shard":1,"shards":2},{"os":"macos-latest","shard":2,"shards":2}]}'
+matrix='{"include":[{"os":"ubuntu-latest","shard":1,"shards":2},{"os":"ubuntu-latest","shard":2,"shards":2},{"os":"windows-latest","shard":1,"shards":3},{"os":"windows-latest","shard":2,"shards":3},{"os":"windows-latest","shard":3,"shards":3},{"os":"macos-latest","shard":1,"shards":2},{"os":"macos-latest","shard":2,"shards":2}]}'
 if [ "$mode" = light ]; then
   matrix='{"include":[{"os":"ubuntu-latest","shard":1,"shards":2},{"os":"ubuntu-latest","shard":2,"shards":2}]}'
   others=false step=false gate3=false

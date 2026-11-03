@@ -367,3 +367,61 @@ fn req_ui_15_req_gc_05_file_name_templates_are_personal_and_kept_across_projects
     std::fs::remove_dir_all(config).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Issue 381: the recent projects are bounded, newest first, and forget a
+/// folder that is gone; the list can be cleared (UI-15).
+#[test]
+fn req_ui_15_recent_projects_forget_vanished_folders_and_can_be_cleared() {
+    let config = folder("recent-projects");
+    let mut settings = UserSettings::default();
+    let names: Vec<PathBuf> = (0..openchuck_app::settings::RECENT_KEPT + 3)
+        .map(|i| config.join(format!("project-{i}")))
+        .collect();
+    for name in &names {
+        std::fs::create_dir_all(name).unwrap();
+        settings.opened(name);
+    }
+    assert_eq!(settings.recent.len(), openchuck_app::settings::RECENT_KEPT);
+    let newest = std::fs::canonicalize(names.last().unwrap()).unwrap();
+    assert_eq!(settings.recent[0], newest);
+    // Opening an older one again moves it to the front, once.
+    let again = std::fs::canonicalize(&names[names.len() - 3]).unwrap();
+    settings.opened(&names[names.len() - 3]);
+    assert_eq!(settings.recent[0], again);
+    assert_eq!(settings.recent.iter().filter(|p| **p == again).count(), 1);
+    // A folder that is gone is forgotten; the order of the rest is kept.
+    let before = settings.recent.clone();
+    assert!(!settings.forget_missing(), "everything still exists");
+    assert_eq!(settings.recent, before);
+    std::fs::remove_dir_all(&newest).unwrap();
+    assert!(settings.forget_missing());
+    let expected: Vec<PathBuf> = before.into_iter().filter(|p| *p != newest).collect();
+    assert_eq!(settings.recent, expected);
+    // The pruned list is what is saved.
+    let file = SettingsFile::in_folder(&config);
+    file.save(&settings).unwrap();
+    assert_eq!(file.load().settings.recent, expected);
+    settings.clear_recent();
+    assert!(settings.recent.is_empty());
+    std::fs::remove_dir_all(config).unwrap();
+}
+
+/// An answer about folders applies only to the list it was asked about: a
+/// project added since is never looked at, so it is never forgotten by it
+/// (UI-15; owner's review of pull request 479).
+#[test]
+fn req_ui_15_a_folder_answer_forgets_only_what_it_was_asked_about() {
+    let a = PathBuf::from("/projects/a");
+    let b = PathBuf::from("/projects/b");
+    let gone = PathBuf::from("/projects/gone");
+    let mut settings = UserSettings {
+        recent: vec![b.clone(), a.clone(), gone.clone()],
+        ..UserSettings::default()
+    };
+    // Asked about [a, gone] before b was added; only a exists.
+    let changed = settings.forget_missing_in(&[a.clone(), gone], std::slice::from_ref(&a));
+    assert!(changed);
+    assert_eq!(settings.recent, [b.clone(), a.clone()]);
+    // Nothing missing: nothing changes.
+    assert!(!settings.forget_missing_in(&[a.clone(), b.clone()], &[a, b]));
+}

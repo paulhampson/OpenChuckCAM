@@ -202,6 +202,11 @@ struct Document {
     project: Project,
 }
 
+thread_local! {
+    /// How many runs this thread has split into program files (tests).
+    static RUN_SPLITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// An open project and the services that work on it.
 #[derive(Debug)]
 pub struct Application {
@@ -446,7 +451,7 @@ impl Application {
 
     /// What is wrong with `draft` as the workholding of `setup`, from the
     /// part and the tools, which the setup's own validation cannot see: tabs
-    /// outside the head and tail zones (OI-180) and tabs narrower than a tool
+    /// outside the head and tail zones (OI-180) and tabs shorter along X than a tool is wide
     /// of the setup's operations (OI-159). A front end runs it before it
     /// stores an edit; generation refuses the same things. Empty when there
     /// is nothing wrong or no part to check against. Reads and places the
@@ -961,6 +966,7 @@ impl Application {
                         frame: &s.frame,
                         stock: s.stock.as_ref(),
                         clearance: s.clearance.as_ref(),
+                        rules: &s.clearance_rules,
                         part: part.as_ref(),
                     }),
                     Some(setup::expected_work_offset(profile, &s.frame)),
@@ -998,10 +1004,10 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
-            // A tab narrower than a tool that operations of the setup use is
+            // A tab shorter along X than a tool is wide that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            notes.extend(workholding::narrow_tab_notes(project, s));
+            notes.extend(workholding::narrow_tab_notes(project, s, part.as_ref()));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),
@@ -1610,13 +1616,43 @@ impl Application {
     /// written, when a template cannot name a file (NFR-07). The dialog's
     /// preview and the write both use this.
     pub fn output_files(&self, run: &Regeneration) -> Result<OutputFiles, AppError> {
+        self.name_outputs(run, &Self::run_programs(run)?)
+    }
+
+    /// The step of [`Application::output_files`] that depends only on the
+    /// run: the toolpath split into program files, with each file's text.
+    /// Keep it with the run it was made from and give it to
+    /// [`Application::name_outputs`] again after a template edit, so typing
+    /// in a template does not split the toolpath again (issue 379). A new
+    /// run needs a new one; never reuse it across runs (NFR-12).
+    pub fn run_programs(run: &Regeneration) -> Result<output_names::RunPrograms, AppError> {
+        RUN_SPLITS.with(|n| n.set(n.get() + 1));
+        posting::program_files(run).map(output_names::RunPrograms::new)
+    }
+
+    /// How many times [`Application::run_programs`] has split a run on this
+    /// thread: lets a test show that a template edit does not split again.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn run_splits_on_this_thread() -> usize {
+        RUN_SPLITS.with(std::cell::Cell::get)
+    }
+
+    /// The step of [`Application::output_files`] that depends on the
+    /// templates: the final names, from `programs`, which must be
+    /// [`Application::run_programs`] of this same `run`.
+    pub fn name_outputs(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<OutputFiles, AppError> {
         let job = self.job_facts(
             &run.project,
             run.posted_selection.as_ref().map(|(post, _)| post),
         );
-        let mut programs = Vec::new();
+        let mut programs_out = Vec::new();
         let mut groups = Vec::new();
-        for (index, (file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
+        for (index, (file, contents)) in programs.files().iter().enumerate() {
             let extension = std::path::Path::new(&file.posted_name)
                 .extension()
                 .map_or_else(String::new, |e| e.to_string_lossy().into_owned());
@@ -1625,14 +1661,15 @@ impl Application {
                 &job,
                 &output_names::FileFacts {
                     index,
-                    contents: &contents,
-                    file: &file,
+                    contents,
+                    file,
                 },
             )
             .map_err(AppError::FileNames)?;
             groups.push((stem, vec![extension]));
-            programs.push(file);
+            programs_out.push(file.clone());
         }
+        let programs = programs_out;
         let sheet = output_names::sheet_stem(&self.file_names.setup_sheet, &job)
             .map_err(AppError::FileNames)?;
         groups.push((
@@ -1644,6 +1681,7 @@ impl Application {
         ));
         let (mut named, renamed) = output_names::unique_names(&groups);
         let sheet_names = named.pop().unwrap_or_default();
+        let mut programs = programs;
         for (program, names) in programs.iter_mut().zip(named) {
             program.name = names.into_iter().next().unwrap_or_default();
         }
@@ -1688,7 +1726,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, &Self::run_programs(run)?)?;
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         for (program, source) in named.programs.iter().zip(sources) {
             let text = run.gcode.get(source).map(|(_, text)| text).ok_or_else(|| {
@@ -1709,8 +1747,12 @@ impl Application {
 
     /// The final names of the program files and, for each, the index of its
     /// text in the run: the one source of the write and the preview.
-    fn program_sources(&self, run: &Regeneration) -> Result<(OutputFiles, Vec<usize>), AppError> {
-        let named = self.output_files(run)?;
+    fn program_sources(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<(OutputFiles, Vec<usize>), AppError> {
+        let named = self.name_outputs(run, programs)?;
         let sources = named
             .programs
             .iter()
@@ -1733,6 +1775,17 @@ impl Application {
         &self,
         run: &std::sync::Arc<Regeneration>,
     ) -> Result<output_preview::OutputPreview, AppError> {
+        self.output_preview_from(run, &Self::run_programs(run)?)
+    }
+
+    /// [`Application::output_preview`] from the run's kept split
+    /// ([`Application::run_programs`] of this same `run`), so a template edit
+    /// names the files again without splitting the toolpath (issue 379).
+    pub fn output_preview_from(
+        &self,
+        run: &std::sync::Arc<Regeneration>,
+        programs: &output_names::RunPrograms,
+    ) -> Result<output_preview::OutputPreview, AppError> {
         if run.gcode.is_empty() {
             return Err(AppError::Post(
                 "There is no G-code to preview. Generate the operations first.".to_owned(),
@@ -1741,7 +1794,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, programs)?;
         output_preview::OutputPreview::new(
             run,
             sources

@@ -438,11 +438,18 @@ impl Shell {
                             );
                         }
                         SetupPart::WorkOffset => {
+                            // The part as this setup places it, which
+                            // bounding-box stock measures (decision 0495).
+                            let extent = setup
+                                .part
+                                .and_then(|m| self.overview.model_extent(m))
+                                .map(|e| e.in_setup(&setup.frame));
                             edited.extend(clearance_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
+                                extent.as_ref(),
                             ));
                         }
                         SetupPart::Workholding => {
@@ -1280,6 +1287,36 @@ const CUT_SHORT_LIFTS: &str = "Where the tool would touch this set, it is lifted
                                stock to leave above it; the material over the set is still \
                                roughed.";
 
+/// Cut short's tooltip on an avoid or check set of swarf, which first lifts
+/// the tool's tip up the face clear of the set (decision record 0491 items 1
+/// and 3).
+const CUT_SHORT_LIFTS_TIP: &str = "Where the tip of the tool would break this set, the tool is \
+                                   first lifted up the face it cuts, by the least that keeps it \
+                                   off the set, and a strip that wide is left at that end of the \
+                                   face. Where no lift clears the set, such as a wall the side of \
+                                   the tool meets, the pass stops short of it and starts again \
+                                   after it. To keep the tool off a wall at an end of the face, \
+                                   put that wall in an avoid set too.";
+
+/// The tooltip of `choice` on a set in `role` where the strategy gives it one
+/// of its own: Cut short lifts the tool on swarf's avoid and check sets and
+/// on rotary roughing's check sets. `None` for the shared tooltip.
+fn cut_short_tip(
+    choice: OnBreak,
+    role: SelectionRole,
+    shown: SetOptionsShown,
+) -> Option<&'static str> {
+    if choice != OnBreak::CutShort {
+        None
+    } else if shown.cut_short_lifts_tip {
+        Some(CUT_SHORT_LIFTS_TIP)
+    } else if role == SelectionRole::Check && shown.check_lifts_tool {
+        Some(CUT_SHORT_LIFTS)
+    } else {
+        None
+    }
+}
+
 /// The options of the sets in `role` that the strategy takes (decision
 /// records 0176 item 3 and 0229), under its row: the boundary's two limits,
 /// or each avoid or check set's choice. A set whose options leave it
@@ -1341,14 +1378,7 @@ fn set_options(
                     ui.add_space(indent);
                     ui.label(RichText::new(&set).color(DARK.muted));
                     for (choice, label, tip) in ON_BREAK {
-                        let tip = if choice == OnBreak::CutShort
-                            && role == SelectionRole::Check
-                            && shown.check_lifts_tool
-                        {
-                            CUT_SHORT_LIFTS
-                        } else {
-                            tip
-                        };
+                        let tip = cut_short_tip(choice, role, shown).unwrap_or(tip);
                         if ui
                             .selectable_label(current == choice, label)
                             .on_hover_text(tip)
@@ -1750,12 +1780,14 @@ fn stock_section(
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
 /// register, the zero position (read-only, decision 0011 item 1), the zero's
-/// X, the safe radius and the safe Z.
+/// X, the safe radius and the safe Z, the minimum clearance, Clearance from
+/// stock with its margin, and the clearance in use (decision 0495).
 fn clearance_section(
     ui: &mut egui::Ui,
     state: &mut field_row::FieldState,
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
+    part: Option<&openchuck_app::setup::PartExtent>,
 ) -> Vec<(Setup, Option<String>)> {
     let (names, current) = setup_form::registers(setup);
     let chosen_register = field_row::choice_row(
@@ -1783,6 +1815,22 @@ fn clearance_section(
     )
     .into_iter()
     .collect();
+    let from_stock = field_row::flag_row(
+        ui,
+        "Clearance from stock",
+        "Grow the safe radius to the stock's radius plus the margin, and to the minimum \
+         clearance, and lift the safe Z to at least that radius. It never lowers the \
+         clearance, and follows the stock when it changes.",
+        setup_form::clearance_from_stock(setup),
+        true,
+    );
+    if let Some(line) = setup_form::clearance_in_use(setup, machine, part) {
+        field_row::note_line(ui, &line, DARK.muted);
+    }
+    if let Some(on) = from_stock {
+        let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
+        edited.push((setup_form::with_clearance_from_stock(current, on), None));
+    }
     if let Some(register) = chosen_register {
         let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
         edited.push((setup_form::with_register(current, register), None));
@@ -1839,5 +1887,57 @@ impl Shell {
             // A model is named by its file, and a setup's part by the setup.
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod cut_short_tests {
+    use super::{CUT_SHORT_LIFTS, CUT_SHORT_LIFTS_TIP, OnBreak, SelectionRole, cut_short_tip};
+    use openchuck_app::SetOptionsShown;
+
+    /// Decision record 0491 items 1 and 3: on swarf, Cut short's tooltip
+    /// says the tip is lifted first, that a strip is left, and that a wall
+    /// at an end of the face can be put in an avoid set; rotary roughing's
+    /// check sets keep theirs, and every other choice and strategy the
+    /// shared one.
+    #[test]
+    fn req_op_02_req_op_07_swarf_cut_short_says_the_tip_is_lifted_first() {
+        let swarf = SetOptionsShown {
+            boundary: true,
+            avoid_and_check: true,
+            check_lifts_tool: false,
+            cut_short_lifts_tip: true,
+        };
+        for role in [SelectionRole::Avoid, SelectionRole::Check] {
+            assert_eq!(
+                cut_short_tip(OnBreak::CutShort, role, swarf),
+                Some(CUT_SHORT_LIFTS_TIP)
+            );
+            assert_eq!(cut_short_tip(OnBreak::Warn, role, swarf), None);
+            assert_eq!(cut_short_tip(OnBreak::Ignore, role, swarf), None);
+        }
+        assert!(CUT_SHORT_LIFTS_TIP.contains("first lifted up the face"));
+        assert!(CUT_SHORT_LIFTS_TIP.contains("put that wall in an avoid set"));
+        let roughing = SetOptionsShown {
+            avoid_and_check: true,
+            check_lifts_tool: true,
+            ..SetOptionsShown::default()
+        };
+        assert_eq!(
+            cut_short_tip(OnBreak::CutShort, SelectionRole::Check, roughing),
+            Some(CUT_SHORT_LIFTS)
+        );
+        assert_eq!(
+            cut_short_tip(OnBreak::CutShort, SelectionRole::Avoid, roughing),
+            None
+        );
+        let helical = SetOptionsShown {
+            avoid_and_check: true,
+            ..SetOptionsShown::default()
+        };
+        assert_eq!(
+            cut_short_tip(OnBreak::CutShort, SelectionRole::Check, helical),
+            None
+        );
     }
 }

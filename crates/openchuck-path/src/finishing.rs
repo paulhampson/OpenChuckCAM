@@ -314,6 +314,7 @@ pub(crate) fn free_ends(
                 .collect();
             out.passes.push(Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points: pass,
                 stock: None,
                 rapids: Vec::new(),
@@ -532,6 +533,7 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
     if points.len() >= 2 {
         out.push(Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),

@@ -1,4 +1,4 @@
-# 0634: A free-end ring that would part the part from the chuck is warned about (SET-09, NFR-12; issue #477; lane LARGEPATH)
+# 0500: A free-end ring that would part the part from the chuck is warned about (SET-09, NFR-12; issue #477; lane LARGEPATH)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after reading it in full. Proposed the same day by lane LARGEPATH; the owner chose option A on issue #477 (warn, and still generate) on 1 Nov 2026, relayed the same way.
 - **Date:** 2 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #477 ("SAFETY: the free-end ring can part the PART from the chuck").
 - **Requirements:** SET-09 (keep clear of what holds the stock), NFR-12 (generated G-code remains the user's to verify before running it on a machine), OP-04, OP-09.
 - **Amends:** [decision 0344](0344-finishing-stepdown-and-free-ends.md) item 8 (the cut-free warning) and its "Risks, and what limits them" (a loose piece). 0344 is not edited; this record adds to it.
-- **Numbers:** 0634, the next free number on 2 Nov 2026 (0631 is this lane's pull request 1; 0632 and 0633 are held by lanes PATHBUGS and SIMVIS), by the owner's rule that numbers are as monotonic as possible; renumbered at release if needed. No project schema number; no library version change (an internal change to `openchuck-path`: a new warning, no API change).
+- **Numbers:** 0500, given at release on 3 Nov 2026 by the owner's rule (`main`'s highest at release plus one; `main`'s highest was 0499). It was 0634 while the pull request was a draft. No project schema number; no library version change (an internal change to `openchuck-path`: a new warning, no API change).
 - **Open items:** OI-1393 stays open (a test that what is past a ring is joined to a held region, or a limit to the depth); this record narrows it.
 
 ## Context
