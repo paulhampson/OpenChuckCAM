@@ -589,7 +589,10 @@ mod tests {
         ] {
             assert!(shown.iter().any(|s| s == want), "Missing {want}: {shown:?}");
         }
-        assert!(!shown.iter().any(|s| s == "retract" || s == "low"), "{shown:?}");
+        assert!(
+            !shown.iter().any(|s| s == "retract" || s == "low"),
+            "{shown:?}"
+        );
     }
 
     #[test]
