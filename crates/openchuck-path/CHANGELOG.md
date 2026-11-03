@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (RESTCORNERS follow-up 2; the Merge Manager decides on a version at release)
+## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)
 
 - **Fix (OI-2017, CodeRabbit on #518):** rest machining's wall-ring ranges are clipped at the keep-out's slack-adjusted edges, the same edges the keep-out tests use, so a tool place within 1e-6 mm inside a keep-out's lower edge keeps its ring. `KEEP_OUT_SLACK` is `pub(crate)`. No API change.
 
