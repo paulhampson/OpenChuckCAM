@@ -1,10 +1,10 @@
-# 0632: Adaptive spacing charges its query limit station by station, and refines a place it cannot bound (OP-03, OP-04, OP-05, GC-07, NFR-06, NFR-07, NFR-12; issues #462 and #467; lane PATHBUGS)
+# 0502: Adaptive spacing charges its query limit station by station, and refines a place it cannot bound (OP-03, OP-04, OP-05, GC-07, NFR-06, NFR-07, NFR-12; issues #462 and #467; lane PATHBUGS)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, unchanged, relayed by the coordinator (decision 0049) after reading it in full. Proposed the same day by lane PATHBUGS. Item 2 is the owner's choice B1 on OI-1510 and item 4 the owner's decision on OI-1800, both relayed by the coordinator; item 1 implements decision 0239 item 8 as written (the coordinator's answer).
 - **Date:** 2 Nov 2026.
 - **Issues:** #462 (helical finishing with adaptive spacing on, the default, ends with a partial path on the tutorial's turned piece), #467 (a proptest of the B-spline closest point missed its tolerance on macOS).
 - **Amends:** [0239](0239-adaptive-pass-spacing.md) items 8 and 11 (adaptive pass spacing); [0344](0344-finishing-stepdown-and-free-ends.md) item 2 (the wording of a free end's missing Stepdown).
-- **Open items:** closes OI-1510. Raises OI-1985 (a B-spline face closed on itself without a period: a closest-point search that sees the seam). Settles OI-1800 (the register row is on lane POLISH's branch, #479).
+- **Open items:** closes OI-1510. Raises OI-2012 (a B-spline face closed on itself without a period: a closest-point search that sees the seam). Closes OI-1800.
 
 ## Context
 
@@ -22,7 +22,7 @@ The default stepover of the piece's 3.175 mm ball (0.4536 mm) leaves a nominal 0
 
 1. **The limit is charged station by station (implements decision 0239 item 8).** The stations of an interval are measured in runs whose most fits what is left of the limit; each run is charged after the real count of the runs before it. Work is still charged before it is done, and where the limit is met is the same at any thread count (GC-07, NFR-06). Doubling keeps the samples a station has (sample `k` of `n` is sample `2k` of `2n`, the same position exactly), so a station makes at most the 63 drops it is charged and the values measured are unchanged.
 2. **A place the measure cannot bound is refined where a pass fits (amends decision 0239 item 11; the owner's choice B1 on OI-1510).** Where the samples meet the Allowed excess but the bound between them does not, a pass is added halfway, as where too much is found, and measured again. Such a place is reported as unverified only where no pass can be added: at the levels, the Smallest spacing, a tool that cannot reach or a limit. The note now says the passes were added where more than the Allowed excess "was left or could not be ruled out".
-3. **The B-spline closest point is held to its stated tolerance in the tests (#467).** The proptest's sphere is a clamped rational patch whose `u = 0` and `u = 1` edges meet at +X, and a B-spline face carries no period. At the saved input, 0.0027 mm off that seam, the search answers on the `u = 0` edge, 8.9e-8 mm further than the sphere's nearest point: within the 1e-6 mm `SEARCH_TOLERANCE` of decision 0260, never nearer. The property now asserts that tolerance; the input has its own test; the seed is kept. A search that sees such a seam is OI-1985.
+3. **The B-spline closest point is held to its stated tolerance in the tests (#467).** The proptest's sphere is a clamped rational patch whose `u = 0` and `u = 1` edges meet at +X, and a B-spline face carries no period. At the saved input, 0.0027 mm off that seam, the search answers on the `u = 0` edge, 8.9e-8 mm further than the sphere's nearest point: within the 1e-6 mm `SEARCH_TOLERANCE` of decision 0260, never nearer. The property now asserts that tolerance; the input has its own test; the seed is kept. A search that sees such a seam is OI-2012.
 4. **A free end's missing Stepdown is said in plain words (OI-1800, amends decision 0344 item 2's wording).** "Set Stepdown to the depth of each layer, or add cutting data for this tool and material in the tool library and then choose Update from library in the operation's tool section: the project keeps its own copy of the tool, so a change in the library reaches it only then." (TL-05, TL-07.)
 
 ## Alternatives
@@ -35,7 +35,7 @@ The default stepover of the piece's 3.175 mm ball (0.4536 mm) leaves a nominal 0
 ## Consequences
 
 - With adaptive spacing off, the output is byte-identical (item 13). Saved operations are unchanged (the migration rules of items 6 and 0239's second pull request stand).
-- With it on, the output changes only where a run met the query limit early or reported a place it could not bound, in every family (the measure is shared): helical, axial, indexed and simultaneous finishing, rotary roughing's axial forms and flat Facing. The default output for a new operation changes, so the workspace's minor version is bumped (item 13; the number is assigned at release).
+- With it on, the output changes only where a run met the query limit early or reported a place it could not bound, in every family (the measure is shared): helical, axial, indexed and simultaneous finishing, rotary roughing's axial forms and flat Facing. The default output for a new operation changes, so the workspace's minor version is bumped (item 13): library family 0.37.0, assigned by the Merge Manager at release.
 - Code: `crates/openchuck-path/src/adaptive.rs` (the charge, the samples, the refinement and its note), `finishing.rs` (the Stepdown wording). Tests in `openchuck-path` (`adaptive.rs`, `tests/adaptive.rs`, `tests/brep_faces.rs` and its regression file, `tests/helical_faces.rs`) and the new `crates/openchuck-app/tests/adaptive_example.rs`.
 
 ## Verification

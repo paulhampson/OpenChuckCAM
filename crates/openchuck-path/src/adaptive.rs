@@ -1137,6 +1137,7 @@ mod tests {
             let n = 20;
             Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points: (0..=n)
                     .map(|k| {
                         let x = from + (to - from) * k as f64 / n as f64;
