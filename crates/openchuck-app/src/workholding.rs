@@ -528,31 +528,26 @@ pub(crate) fn uncleared_tab_notes(
                 .filter(|(_, t)| t.x_start.0 < hi && t.x_start.0 + t.length.0 > lo)
                 .map(|(i, _)| (i + 1).to_string())
                 .collect();
-            if tabs.is_empty() {
-                return None;
-            }
+            let (last, rest) = tabs.split_last()?;
             let wider = (tool.reach - tool.cutting_radius).max(0.0);
             let room = (hi - lo) - HELD_CLEARANCE - tool.leave - wider;
             if room >= diameter - 1e-9 {
                 return None;
             }
-            let (word, list) = match tabs.as_slice() {
-                [one] => ("tab", one.clone()),
-                [rest @ .., last] => ("tabs", format!("{} and {last}", rest.join(", "))),
-                [] => return None,
+            let (word, list) = if rest.is_empty() {
+                ("tab", last.clone())
+            } else {
+                ("tabs", format!("{} and {last}", rest.join(", ")))
             };
-            let mut taken = vec![
-                format!("the {HELD_CLEARANCE:.3} mm it keeps from the held region"),
-                format!("the {:.3} mm stock to leave", tool.leave),
-            ];
-            if wider > 0.0 {
-                taken.push(format!(
-                    "the {wider:.3} mm its shank or body is wider than its cut"
-                ));
-            }
-            let taken = match taken.split_last() {
-                Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-                None => String::new(),
+            let clearance = format!("the {HELD_CLEARANCE:.3} mm it keeps from the held region");
+            let leave = format!("the {:.3} mm stock to leave", tool.leave);
+            let taken = if wider > 0.0 {
+                format!(
+                    "{clearance}, {leave} and the {wider:.3} mm its shank or body is wider \
+                     than its cut"
+                )
+            } else {
+                format!("{clearance} and {leave}")
             };
             Some(format!(
                 "{} cannot cut down beside {word} {list}: between the held region and the \
@@ -1572,6 +1567,26 @@ mod tests {
         );
     }
 
+    /// Two tabs in one zone (two short ones side by side) are named together
+    /// in one note.
+    #[test]
+    fn req_op_21_req_set_09_tabs_sharing_a_zone_are_named_together() {
+        let (mut w, stock, part) = blisk_like();
+        let short = |x: f64| Tab {
+            auto: None,
+            x_start: Millimetres(x),
+            length: Millimetres(2.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(10.0),
+            },
+            layout: TabLayout::OnAxis,
+        };
+        w.tabs = vec![short(0.0), short(2.0)];
+        let notes = uncleared_tab_notes(&w, &stock, &part, &flat(0.5, 1.5875));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(notes[0].contains("beside tabs 1 and 2:"), "{notes:?}");
+    }
+
     /// The tail zone the same way, and no note where no held region bounds
     /// the zone (the tool can pass off the end of the stock) or where the
     /// zone has no tab.
@@ -1598,7 +1613,7 @@ mod tests {
         });
         let tail = Workholding {
             end: held_end,
-            tabs: vec![tail_tab.clone()],
+            tabs: vec![tail_tab],
             ..Workholding::default()
         };
         let notes = uncleared_tab_notes(&tail, &stock, &part, &flat(0.5, 1.5875));
