@@ -220,7 +220,11 @@ impl Walls<'_> {
                 }
                 _ => continue,
             };
-            let reach = (self.target / slope).clamp(self.smallest, 0.5 * self.stepover);
+            // Never wider than half a stepover, nor narrower than the
+            // closest spacing, which wins for a stepover under twice it:
+            // `clamp` would panic on crossed bounds (NFR-07).
+            let widest = (0.5 * self.stepover).max(self.smallest);
+            let reach = (self.target / slope).clamp(self.smallest, widest);
             // The patch of wall the sample stands for, as places of the
             // tool's axis: the wall's own direction moves along X by `rise`
             // of the distance along it.

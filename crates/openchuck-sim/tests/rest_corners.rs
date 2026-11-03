@@ -523,6 +523,29 @@ fn req_op_09_rest_with_a_tool_it_cannot_model_says_so() {
 }
 
 #[test]
+fn req_nfr_07_rest_with_a_stepover_under_twice_the_tolerance_does_not_panic() {
+    // The closest rings at a wall are the tolerance apart and the widest
+    // half a stepover: a stepover under twice the tolerance must still give
+    // a path, not a panic (NFR-07; the review of #509).
+    let rig = Rig::steep_wall();
+    let stock = rig.after_ball();
+    let v = values(&[
+        (names::STEPOVER, ParameterValue::Number(0.15)),
+        (names::TOLERANCE, ParameterValue::Number(0.1)),
+        (
+            parameter::MIN_REMAINING,
+            ParameterValue::Number(MIN_REMAINING),
+        ),
+        (
+            parameter::PASS_SHAPE,
+            ParameterValue::Text("rings".to_owned()),
+        ),
+    ]);
+    let path = rig.generate(&RestMachining, &flat(), &stock, &v).unwrap();
+    assert!(!path.group.segments.is_empty());
+}
+
+#[test]
 fn req_op_09_rest_adds_no_wall_ring_where_no_wall_holds_material() {
     // A plain cylinder under a thicker one: material is left all along, on
     // a surface round the axis, with no wall to meet.

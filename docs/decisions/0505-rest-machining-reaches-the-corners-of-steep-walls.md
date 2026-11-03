@@ -69,6 +69,7 @@ Tests, each written before the code and watched to fail (four of the first eight
 | Beside a held region the tool cuts up to its keep-out, and the strip it cannot reach is reported; the grip is not | `req_op_09_req_set_09_rest_cuts_up_to_a_held_region_and_reports_the_strip_it_cannot` | 0.046 mm left from X 3.5 on; one area X 3 to 3.5 all round |
 | Material under an overhang (a dovetail) is reported blocked | `req_op_09_req_op_20_rest_reports_material_under_an_overhang_as_blocked` | Blocked, within the groove, in the warning |
 | A tool whose profile is not convex: no rings at walls, nothing called unreachable, a note | `req_op_09_rest_with_a_tool_it_cannot_model_says_so` | Written after the code, from items 5 and 8, to cover those branches |
+| A stepover under twice the tolerance gives a path, not a panic (NFR-07; CodeRabbit on #509: the ring spacing's bounds crossed) | `req_nfr_07_rest_with_a_stepover_under_twice_the_tolerance_does_not_panic` | Failed (a `clamp` panic) before the fix |
 | No wall, no wall ring | `req_op_09_rest_adds_no_wall_ring_where_no_wall_holds_material` | No note, nothing reported |
 | The note does not claim the material is cleaned | `req_op_09_rest_does_not_claim_its_passes_clean_the_material` | "cut where it is left" |
 | Identical at 1, 2 and N threads | `req_nfr_06_req_op_09_rest_wall_rings_are_identical_at_1_2_and_n_threads` | Rings, spiral and the report |
