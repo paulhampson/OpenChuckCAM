@@ -131,11 +131,21 @@ pub(super) fn bands(
                 [axis.across, axis.height]
             })
             .to_vec();
-        let mut low = polygon.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+        let low = polygon.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
         let high = polygon
             .iter()
             .map(|p| p[1])
             .fold(f64::NEG_INFINITY, f64::max);
+        // The bands reach past the requested edges by one eighth of the
+        // tolerance, the written-motion share of the budget (0252), and
+        // overlap each other by at least as much, so the coordinates the
+        // controller reads back (rounded words, single-precision floats)
+        // still cover the face. Without it the Baluster's End facing could
+        // not be exported (issue #499). A band the tab limits keeps its
+        // separation and is not carried further.
+        let written = 0.125 * parameters.tolerance;
+        let mut low = low - written;
+        let high = high + written;
         if let Some((centre, radius)) = tab {
             low = low.max(rotary.to_axis(centre, angle).height + radius);
         }
@@ -145,8 +155,16 @@ pub(super) fn bands(
         if low >= high {
             continue;
         }
+        let step = parameters
+            .flute_step
+            .min(setup.tool.flute_length.0 - 2. * written);
+        if !step.is_finite() || step <= 0. {
+            return Err(refuse(
+                "the flutes are too short to overlap the bands by the written-motion allowance",
+            ));
+        }
         let mut upper = high;
-        for lower in LayerDistribution::Full.levels(high, low, parameters.flute_step)? {
+        for lower in LayerDistribution::Full.levels(high, low, step)? {
             context.check_cancelled()?;
             let strip = clip(&clip(&polygon, lower, true), upper, false);
             let min = strip.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);

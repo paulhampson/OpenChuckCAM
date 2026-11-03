@@ -441,3 +441,58 @@ fn req_op_24_req_gc_07_req_ui_03_req_sim_05_all_modes_complete_through_real_appl
         );
     }
 }
+
+/// Issue #499, the owner's decision D1: Box facing offers decision 0496's
+/// "Links between passes" choice, retract by default. Low keeps the links
+/// between rows the approach distance above the stock where the whole link
+/// is clear, instead of going back up to the retract height each time, and
+/// both posts still accept the path (OP-14, SET-09, GC-08). The default
+/// path is unchanged (GC-07).
+#[test]
+fn req_op_14_req_gc_07_box_facing_links_retract_by_default_and_stay_low_on_request() {
+    // How far the tool travels away from and back towards the axis at
+    // rapid over the whole path.
+    let lifts = |group: &openchuck_types::ir::ToolpathGroup| {
+        let radius = |p: &openchuck_types::ir::ToolPose| p.tip.y.hypot(p.tip.z);
+        let mut previous = group.start;
+        let mut total = 0.;
+        for s in &group.segments {
+            if s.kind == openchuck_types::ir::MoveKind::Rapid {
+                total += (radius(&s.end) - radius(&previous)).abs();
+            }
+            previous = s.end;
+        }
+        total
+    };
+    let (mut p, op) = project("facing-box-links", "box");
+    let saved = p.app.regenerate().unwrap();
+    p.app
+        .set_parameter(
+            op,
+            "link_height",
+            Some(ParameterValue::Text("retract".into())),
+        )
+        .unwrap();
+    let retract = p.app.regenerate().unwrap();
+    assert_eq!(saved.canonical_toolpath, retract.canonical_toolpath);
+    let high = lifts(&retract.toolpath.groups[0]);
+    p.app
+        .set_parameter(op, "link_height", Some(ParameterValue::Text("low".into())))
+        .unwrap();
+    for post in ["linuxcnc", "makera-z1"] {
+        let run = p
+            .app
+            .start_regenerate_with_post(
+                PostSelection::Builtin(post.into()),
+                OutputGrouping::Operation,
+            )
+            .wait()
+            .unwrap();
+        assert_eq!(run.gcode.len(), 1, "{post}");
+        let low = lifts(&run.toolpath.groups[0]);
+        assert!(
+            low < 0.5 * high,
+            "{post}: {low} mm of rapid lift with low links, {high} mm without"
+        );
+    }
+}
