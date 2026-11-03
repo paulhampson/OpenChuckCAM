@@ -2,7 +2,7 @@
 
 ## Unreleased (A-MOVES)
 
-- **Breaking family release (version assigned by the Merge Manager in merge order; lane A-MOVES, issue #503; decision 0648, proposed):** `PostOptions::combine_rotary_runs` (post key `combine_rotary_runs`, read as `false` when a post leaves it out; `true` in both built-in posts) and `ConvertOptions::combine_rotary_runs`: a run of consecutive fed pure-A moves with the same written X, Y, Z, direction, kind and per-minute F is written as one block. Struct literals of `ConvertOptions` and `PostOptions` add the field. GC-17 reports count the blocks as written.
+- **Breaking family release (version assigned by the Merge Manager in merge order; lane A-MOVES, issue #503; decision 0648, accepted):** `PostOptions::combine_rotary_runs` (post key `combine_rotary_runs`, read as `false` when a post leaves it out; `true` in both built-in posts) and `ConvertOptions::combine_rotary_runs`: a run of consecutive fed pure-A moves with the same written X, Y, Z, direction, kind and per-minute F is written as one block. Struct literals of `ConvertOptions` and `PostOptions` add the field. GC-17 reports count the blocks as written.
 
 ## 0.34.0
 

@@ -2,7 +2,7 @@
 
 ## Unreleased (A-MOVES)
 
-- **Family release (version assigned by the Merge Manager in merge order; lane A-MOVES, issue #503; decision 0648, proposed):** gate 2 (`compare`, `compare_with_moves`) accepts IR poses part way along a fed pure-A block at exactly the same written X, Y and Z, in order; each is compared and timed as the part of the block that reaches it, and observers see that part. No API change.
+- **Family release (version assigned by the Merge Manager in merge order; lane A-MOVES, issue #503; decision 0648, accepted):** gate 2 (`compare`, `compare_with_moves`) accepts IR poses part way along a fed pure-A block at exactly the same written X, Y and Z, in order; each is compared and timed as the part of the block that reaches it, and observers see that part. No API change.
 
 ## 0.34.0
 

@@ -6,4 +6,4 @@ A post is a folder: `post.toml` (schema, name, template file, feed rule, every o
 
 Machine conventions (A-axis letter, direction, wrap, feed mode) live here and in machine profiles, never in the engine (GC-04).
 
-`combine_rotary_runs` (decision 0648, proposed) writes a run of consecutive fed moves that turn A only, at the same X, Y and Z, the same way round and with the same feed, as one block, so the controller plans one rotation instead of one per step. Both built-in posts set it to `true`; a post that leaves the key out writes every step. Set it to `false` in a copied post to compare the two on a machine.
+`combine_rotary_runs` (decision 0648, accepted) writes a run of consecutive fed moves that turn A only, at the same X, Y and Z, the same way round and with the same feed, as one block, so the controller plans one rotation instead of one per step. Both built-in posts set it to `true`; a post that leaves the key out writes every step. Set it to `false` in a copied post to compare the two on a machine.

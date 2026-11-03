@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Gate 2 with combined pure-A blocks (GC-04 `combine_rotary_runs`, GC-08,
-//! GC-17; decision 0648, proposed).
+//! GC-17; decision 0648, accepted).
 //!
 //! One G-code block may stand for several consecutive IR poses only when it
 //! turns A alone and every pose lies on it exactly: the same written X, Y and
