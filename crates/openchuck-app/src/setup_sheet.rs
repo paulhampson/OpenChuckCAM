@@ -959,20 +959,21 @@ fn setup_facts(
             // Bounding-box stock is measured from the part; without it the
             // stock's radius is not known, so no clearance is stated as the
             // one in use (CodeRabbit on #458).
-            let measured = setup
-                .stock
-                .as_ref()
-                .is_some_and(|s| s.radius(extent).is_some());
-            let value = if measured {
+            let in_use = |note: &str| {
                 format!(
-                    "radius {} mm, safe Z {} mm (Clearance from stock)",
+                    "radius {} mm, safe Z {} mm (Clearance from stock{note})",
                     mm(e.clearance.radius.0),
                     mm(e.clearance.safe_z.0)
                 )
-            } else {
-                "not known: the stock's size comes from the part, which could not be read \
-                 (Clearance from stock)"
-                    .to_string()
+            };
+            let value = match &setup.stock {
+                // With no stock the clearance is the base and the minimum,
+                // which are known (CodeRabbit on #495).
+                None => in_use("; no stock is set"),
+                Some(stock) if stock.radius(extent).is_some() => in_use(""),
+                Some(_) => "not known: the stock's size comes from the part, which could not \
+                            be read (Clearance from stock)"
+                    .to_string(),
             };
             facts.push(("Clearance in use".to_string(), value));
         }
@@ -1649,5 +1650,18 @@ mod tests {
             .unwrap()
             .1;
         assert!(in_use.starts_with("not known"), "{in_use}");
+        // No stock: the base clearance and the minimum are known and given,
+        // saying that no stock is set.
+        setup.stock = None;
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert_eq!(
+            in_use,
+            "radius 45 mm, safe Z 50 mm (Clearance from stock; no stock is set)"
+        );
     }
 }
