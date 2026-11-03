@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Retaining tabs beside a held region on the public blisk (issue #511;
-//! OP-21, SET-09; decision 0502): roughing and rest machining never cut into
+//! OP-21, SET-09; decision 0503): roughing and rest machining never cut into
 //! the tab, the simulated stock keeps it, the stock round it is cleared down
 //! to it where the tool has room, and where the tool has no room the
 //! operation says so instead of leaving the stock round the tab silently.

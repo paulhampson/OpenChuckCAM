@@ -695,7 +695,7 @@ pub(crate) fn generate_with_part(
     }
     // A whole-part operation whose tool cannot cut down beside a tab between
     // a held region and the part says so; it still generates (OP-21, SET-09;
-    // decision 0502; issue #511).
+    // decision 0503; issue #511).
     if operation.selections.is_empty()
         && CLEARS_ROUND_TABS.contains(&operation.strategy.as_str())
         && !setup.workholding.tabs.is_empty()
@@ -1548,7 +1548,7 @@ fn tool_reach(
 
 /// The strategies that clear the whole part when no selection limits them,
 /// for which a tab zone the tool cannot cut down in is worth a note (decision
-/// 0502). Selections, drilling, swarf, edges and Facing (which has its own
+/// 0503). Selections, drilling, swarf, edges and Facing (which has its own
 /// end-zone rules, decision 0252) are left out.
 const CLEARS_ROUND_TABS: [&str; 6] = [
     roughing::NAME,

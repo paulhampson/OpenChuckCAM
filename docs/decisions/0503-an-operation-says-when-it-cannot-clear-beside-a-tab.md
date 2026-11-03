@@ -1,4 +1,4 @@
-# 0502: An operation says when its tool cannot cut down beside a tab (OP-21, SET-09, NFR-12; issue #511; lane TABREGRESS)
+# 0503: An operation says when its tool cannot cut down beside a tab (OP-21, SET-09, NFR-12; issue #511; lane TABREGRESS)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged after reading it in full. The owner chose this approach earlier the same day (answer (b): "roughing does not clear round the tab"). Issue #511 is relabelled sev3.
 - **Date:** 2 Nov 2026.
