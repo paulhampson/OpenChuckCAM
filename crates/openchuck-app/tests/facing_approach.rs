@@ -220,3 +220,41 @@ fn req_op_14_req_set_09_end_facing_low_links_stay_beside_the_end() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// The owner's decision F1 on issue #499: the Baluster's end is 35 mm deep
+/// across the tool and the tool has 25 mm of flute, so End facing faces it
+/// from A 0 and A 180, never cutting more than the flute length below the
+/// stock's top, and both posts accept the program.
+#[test]
+fn req_op_24_req_nfr_12_baluster_end_is_faced_from_both_sides_within_the_flutes() {
+    let dir = project("flutes", "");
+    for name in ["makera-z1", "linuxcnc"] {
+        let run = post(&dir, name);
+        let group = facing(&run);
+        let mut angles = Vec::new();
+        for segment in &group.segments {
+            if segment.kind == MoveKind::Cutting {
+                let a = segment.end.a.0.rem_euclid(360.);
+                if !angles.contains(&a) {
+                    angles.push(a);
+                }
+                // The tip's height above the axis along the tool, at this A.
+                let (sin, cos) = segment.end.a.0.to_radians().sin_cos();
+                let height = segment.end.tip.z * cos + segment.end.tip.y * sin;
+                assert!(
+                    STOCK_TOP - height <= 25. + 1e-6,
+                    "{name}: a cut {:.3} mm below the stock top at A {a}",
+                    STOCK_TOP - height
+                );
+            }
+        }
+        angles.sort_by(f64::total_cmp);
+        assert_eq!(angles.len(), 2, "{name}: {angles:?}");
+        assert!(
+            (angles[1] - angles[0] - 180.).abs() < 1e-6,
+            "{name}: {angles:?}"
+        );
+        assert_eq!(run.gcode.len(), 1, "{name}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (lane FACEAPPROACH PR 2; no API change, so no version bump of its own)
+
+- **Flute depth (decision 0504, accepted; the owner's F1).** Each End view reaches at most the tool's flute length below the stock's top at that view; an end deeper than that is faced from A and A + 180 degrees, and one deeper than two sides reach is refused with the depth, the flutes and the remedies.
+
 ## 0.37.0
 
 - **Changed output with adaptive spacing on (PATHBUGS, issues #462 and #467; decision 0502, accepted, relayed by the coordinator):** helical finishing of the tutorial's turned piece with its defaults now gives a complete path, not a partial one to acknowledge.
