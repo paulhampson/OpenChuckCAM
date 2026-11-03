@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
+
 ## 0.38.0
 
 - RESTCORNERS (issue #508, decision 0505, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.

@@ -216,6 +216,26 @@ pub fn run_is_current(project: &Project, run: &Regeneration) -> bool {
         })
 }
 
+/// The operations `run` holds that are still current in `project`: present,
+/// enabled, and unchanged with everything before them (the same key as
+/// [`run_is_current`], per operation). Used to show each operation's
+/// Facing sweep on its own (issue #499).
+pub(crate) fn current_operations(project: &Project, run: &Regeneration) -> Vec<OperationId> {
+    let (Ok(then), Ok(now)) = (keys(&run.project), keys(project)) else {
+        return Vec::new();
+    };
+    run.groups
+        .iter()
+        .map(|g| g.operation)
+        .filter(|id| {
+            let key = |list: &[(OperationId, crate::cache::Key)]| {
+                list.iter().find(|(o, _)| o == id).map(|(_, k)| *k)
+            };
+            key(&now).is_some() && key(&now) == key(&then)
+        })
+        .collect()
+}
+
 /// Why `run` no longer matches `project`, in a plain sentence, or `None`
 /// while it does (issue 260, NFR-12). It uses the stale set the export check
 /// uses, so Simulate, the dock and export agree: an operation removed or

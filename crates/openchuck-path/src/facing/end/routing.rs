@@ -12,6 +12,13 @@ use openchuck_types::geometry::{Point3, UnitVec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::units::Degrees;
 
+/// The flute bands that face the end coverage at `target`, top first in
+/// each view, and the tab remainder bound when a tab is routed round.
+/// Views are the start angle alone, two opposite views where the flutes
+/// cannot reach the whole end from one (decision 0504), or the tangent
+/// views round one cylindrical tab (decision 0252). Bands reach the
+/// written-motion allowance past the coverage edges and overlap by as
+/// much (decision 0501). An end the flutes cannot reach is refused.
 pub(super) fn bands(
     setup: &FacingSetup<'_>,
     parameters: &EndFacingParameters,

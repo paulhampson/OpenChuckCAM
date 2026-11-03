@@ -123,13 +123,13 @@ enum ProbeSource {
 }
 
 /// The colour of a scene item, and whether it is a guide drawn over the part.
-fn style(role: SceneRole) -> (Colour, bool) {
+pub(crate) fn style(role: SceneRole) -> (Colour, bool) {
     match role {
         SceneRole::Part => (roles::PART, false),
         SceneRole::Stock => (roles::STOCK, false),
         SceneRole::FacingExtent => (roles::SELECTED, true),
         SceneRole::FacingMargin => (roles::CLEARANCE, true),
-        SceneRole::FacingSweep => (roles::CUT, false),
+        SceneRole::FacingSweep => (roles::SWEEP, false),
         SceneRole::HeldRegion => (roles::HELD, false),
         SceneRole::Tab => (roles::TAB, false),
         SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
