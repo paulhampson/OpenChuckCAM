@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RESTCORNERS follow-up; the Merge Manager decides on a version at release)
+
+- **Fix (OI-2014, CodeRabbit on #509; decision 0505 item 1):** a rest machining ring at a wall never stands inside a held region's keep-out. A ring's range of places is clipped to the free interval round its own place, so a wall that faces a keep-out just past that place keeps its ring, where before the pass trimming dropped it and the wall's foot kept its material. Rest machining's path changes only next to a held region; no API change.
+
 ## 0.38.0
 
 - **Breaking (0.38.0, RESTCORNERS, issue #508, decision 0505, accepted, relayed by the coordinator):** rest machining reaches the inside corners of steep walls and says what its tool cannot reach.
