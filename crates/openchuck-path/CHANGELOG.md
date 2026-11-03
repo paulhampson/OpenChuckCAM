@@ -9,6 +9,8 @@
   - **Wording.** The note says "passes cut where it is left", not "clean them" (NFR-12).
   - **API.** Additive: `rest::Sample`, `RemainingMap::samples_with_normals`, `HELD_CLEARANCE` (0.5 mm, moved from `openchuck-app`).
   - **Output.** Rest machining's path changes wherever a wall holds material, a held region is near, or the tool has a flat bottom. No golden program uses rest machining; every other strategy is unchanged.
+- FACEAPPROACH pull request 2 (#505; no API change of its own, released in 0.38.0):
+  - **Flute depth (decision 0504, accepted; the owner's F1).** Each End view reaches at most the tool's flute length below the stock's top at that view; an end deeper than that is faced from A and A + 180 degrees, and one deeper than two sides reach is refused with the depth, the flutes and the remedies.
 
 ## 0.37.0
 
