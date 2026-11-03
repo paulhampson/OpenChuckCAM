@@ -2,7 +2,7 @@
 
 ## 0.42.0 (provisional; assigned by the coordinator, applied at the release push)
 
-- RESTCORNERS (issue #508, decision 0644, proposed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
+- RESTCORNERS (issue #508, decision 0644, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
 
 ## 0.34.0
 

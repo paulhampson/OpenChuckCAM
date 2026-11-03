@@ -2,7 +2,7 @@
 
 ## 0.42.0 (provisional; assigned by the coordinator, applied at the release push)
 
-- **Breaking (0.42.0, RESTCORNERS, issue #508, decision 0644, proposed):** rest machining reaches the inside corners of steep walls and says what its tool cannot reach.
+- **Breaking (0.42.0, RESTCORNERS, issue #508, decision 0644, accepted, relayed):** rest machining reaches the inside corners of steep walls and says what its tool cannot reach.
   - **Rings at walls.** Where the remaining-material map finds material on a wall, rest machining adds rings (whole turns in the spiral form) where its tool's side meets it, as close as the wall's slope needs for about `min_remaining` to be left between them, with one at each wall's foot and one at the edge of a held region's keep-out; at most 10,000, with a warning past it. A note counts them.
   - **Reach of a wanted point.** A point is cut when material lies within half a stepover, a sample spacing and the width of the tool's flat bottom of its contact (amends decision 0044 item 3; unchanged for a ball).
   - **What the tool cannot reach** is in `StrategyOutput::unreached` and one warning, as simultaneous finishing reports it: too narrow, blocked, or the new `UnreachedReason::NearHeldRegion` (breaking for an exhaustive `match`). The part under the grip is not reported.
