@@ -3,7 +3,7 @@
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged. Proposed by lane FACEAPPROACH the same day; the rule is the owner's decision F1, option (i), relayed by the coordinator.
 - **Date:** 2 Nov 2026.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499).
-- **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End facing: flank bands, tab views, the union-of-views completion proof and "using only the active flute length"), [0641](0641-facing-approach-written-allowance-and-links.md) (the written-motion allowance in the End bands), [0344](0344-finishing-stepdown-and-free-ends.md) item 7 (how a free end deeper than the flutes is refused), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (OI-1782: stick-out is not modelled).
+- **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End facing: flank bands, tab views, the union-of-views completion proof and "using only the active flute length"), [0501](0501-facing-approach-written-allowance-and-links.md) (the written-motion allowance in the End bands), [0344](0344-finishing-stepdown-and-free-ends.md) item 7 (how a free end deeper than the flutes is refused), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (OI-1782: stick-out is not modelled).
 - **Open items:** closes OI-1997. No project schema change and no library API change.
 
 ## Context
@@ -22,7 +22,7 @@ That geometry is clean against the stock, but the stick-out and the holder are n
    - The stock's top is the whole stock's support along the tool's axis at that A, the same measure Box facing starts its layers from.
 2. **Two views for a deeper end.**
    - When the end coverage seen from the start angle needs more than the flute length, End facing faces it from the start angle A and from A + 180 degrees (in the machine's rotary sense).
-   - Each view covers its side down past the axis line by the written-motion allowance of decision 0641. The completion proof that already certifies tab views (decision 0252) certifies the union of the two.
+   - Each view covers its side down past the axis line by the written-motion allowance of decision 0501. The completion proof that already certifies tab views (decision 0252) certifies the union of the two.
    - Decision 0252's alternating view order keeps one A turn per axial slice: A, A + 180; then A + 180, A; and so on.
 3. **Refusal.**
    - When a view would still need more than the flute length, End facing is refused (NFR-07). That happens when the end is deeper than twice the flutes reach, or when a view around a tab must reach further than the flutes to keep clear of the tab.
@@ -41,7 +41,7 @@ That geometry is clean against the stock, but the stick-out and the holder are n
 - **Output.**
   - An End facing whose end is deeper than the flutes from one view is now faced from two views: on the Baluster set-up, A 0 and A 180.
   - An end deeper than twice the flutes, which was cut before, is now refused.
-  - Shallower ends are unchanged from decision 0641. No golden file uses End facing.
+  - Shallower ends are unchanged from decision 0501. No golden file uses End facing.
 - **Code:** `crates/openchuck-path/src/facing/end/routing.rs`.
 - **Tests:**
   - `crates/openchuck-path/tests/facing_end_plan.rs`:

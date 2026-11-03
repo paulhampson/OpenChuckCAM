@@ -432,6 +432,26 @@ fn req_op_04_a_ball_end_leaves_only_its_corner_on_a_face() {
     shaft_faces_left_at(&job, &path, 0.0, 0.5 * DIAMETER + 0.05, "ball end");
 }
 
+#[test]
+fn req_op_05_simultaneous_rings_clean_the_faces_of_a_stepped_shaft() {
+    // Every section of the shaft surrounds the axis, so each face's ring is
+    // its turn across the axis (decision records 0297 and 0497), among the
+    // other rings in X order, and the faces are left as the spiral leaves
+    // them.
+    let job = Job::shaft(ToolShape::FlatEnd);
+    let path = job.path_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
+    shaft_faces_left_at(&job, &path, 0.0, 0.0, "simultaneous rings");
+    let r = 0.5 * DIAMETER;
+    let clear = 0.1 * TOLERANCE;
+    let turns = turns_in_place(&path);
+    for face in [10.0 - r - clear, 25.0 + r + clear] {
+        assert!(
+            turns.iter().any(|x| (x - face).abs() < 1e-5),
+            "no ring at {face}: {turns:?}"
+        );
+    }
+}
+
 /// Points on the shaft's round surfaces (r 6, 10 and 7), `step` mm apart
 /// along X and round, kept `margin` mm from each face across the axis.
 fn shaft_rounds(step: f64, margin: f64) -> Vec<Point3> {
@@ -759,6 +779,12 @@ fn req_op_03_continuous_roughing_cleans_the_crankshaft_faces() {
 #[test]
 fn req_op_05_the_simultaneous_spiral_cleans_the_crankshaft_faces() {
     crankshaft_faces_cleaned(&SimultaneousFinishing, &[]);
+}
+
+#[test]
+fn req_op_05_the_simultaneous_spiral_in_rings_cleans_the_crankshaft_faces() {
+    // Each face's turn is one of the rings (decision record 0497).
+    crankshaft_faces_cleaned_with(&SimultaneousFinishing, &[], &[(PASS_SHAPE, "rings")]);
 }
 
 /// Runs of cutting moves that turn A by at least a whole turn without moving
@@ -1299,19 +1325,9 @@ fn req_op_04_face_free_ends_off_leaves_the_path_as_before() {
     assert!(turns_in_place(&off).iter().all(|t| (t - x).abs() > 1e-6));
 }
 
-#[test]
-fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_warning() {
-    // A held region past the free end grips the stock beyond the ring, so it
-    // cannot be cut free there: the end is faced, with its note, and the
-    // cut-free warning is not given.
-    let job = free_end(true, 12.0);
-    let tag = tags();
-    let keep_out = [(-20.0, -4.9)];
-    let input = StrategyInput {
-        keep_out: &keep_out,
-        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
-    };
-    let values: BTreeMap<String, ParameterValue> = [
+/// The values of a free-end job with a Stepdown of 2 mm.
+fn free_end_values() -> BTreeMap<String, ParameterValue> {
+    [
         (names::STEPOVER, STEPOVER),
         (names::FEED, 600.0),
         (names::PLUNGE_FEED, 150.0),
@@ -1320,8 +1336,98 @@ fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_wa
     ]
     .into_iter()
     .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
-    .collect();
-    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    .collect()
+}
+
+#[test]
+fn req_set_09_a_free_end_ring_that_would_part_the_part_from_the_chuck_is_warned() {
+    // Issue #477 (the owner's option A): the held region past the free end
+    // grips the stock beyond the ring, and nothing holds the part on its
+    // other side (its far end is the stock's end). The ring down to the axis
+    // parts the part from the stock the chuck grips, so it is warned about,
+    // and the end is still faced. Before #477 no warning was given here.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = run(|ctx| generate(strategy, &input, &free_end_values(), ctx)).unwrap();
+        let text = messages(&path);
+        assert!(
+            text.contains("in 6 layers of 2 mm"),
+            "{}: {text}",
+            strategy.name()
+        );
+        assert!(
+            text.contains("X 0.000")
+                && text.contains("down to the rotary axis")
+                && text
+                    .contains("nothing in this setup holds the part on the other side of the ring")
+                && text.contains("the part can be cut free there")
+                && text.contains("check the stock and the workholding"),
+            "{}: {text}",
+            strategy.name()
+        );
+        // The stock past the ring is gripped: its own warning is not given.
+        assert!(
+            !text.contains("the stock past the ring is not held"),
+            "{}: {text}",
+            strategy.name()
+        );
+    }
+}
+
+#[test]
+fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_warned() {
+    // Stock past both ends, each gripped by a held region past it: each end
+    // is a free end faced down to the axis, so between the two rings the
+    // part is held by nothing (issue #477). Both rings are warned about.
+    let mut job = free_end(true, 12.0);
+    job.stock = Box::new(Carried(AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 40.0,
+    }));
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9), (34.9, 60.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
+    let text = messages(&path);
+    assert_eq!(
+        text.matches("nothing in this setup holds the part on the other side of the ring")
+            .count(),
+        2,
+        "{text}"
+    );
+    assert!(
+        text.contains("X 0.000") && text.contains("X 30.000"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_set_09_a_free_end_ring_with_the_part_held_past_it_gets_no_cut_free_warning() {
+    // A held region grips the stock past the free end and another grips the
+    // part's far end: neither side of the ring can come loose, so the end is
+    // faced, with its note, and no cut-free warning is given.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9), (26.0, 50.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
     let text = messages(&path);
     assert!(text.contains("in 6 layers of 2 mm"), "{text}");
     assert!(!text.contains("cut free"), "{text}");
