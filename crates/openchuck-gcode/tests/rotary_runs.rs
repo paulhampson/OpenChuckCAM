@@ -159,3 +159,34 @@ fn req_gc_08_replay_refuses_a_combined_block_that_does_not_pass_every_pose() {
     let slow = check(&format!("{HEAD}G1 A40 F150\nM2\n"), &ring()).unwrap_err();
     assert!(matches!(slow, CompareError::Tolerance(_)), "{slow}");
 }
+
+#[test]
+fn req_gc_08_replay_never_splits_an_inverse_time_block() {
+    // In G93 the F word is the whole block's time, so a block standing for
+    // two IR segments of one second each must last two seconds; if each part
+    // were timed at the whole block's time, a one-second block (F60) would
+    // pass as two. Only a G94 block may reach IR poses part way along it.
+    let two = path(&[(5.0, 30.0), (10.0, 30.0)]);
+    let text = format!("{HEAD}G93\nG1 A10 F60\nM2\n");
+    // Refused: the block is matched whole, so the first pose is not on it.
+    assert!(
+        compare(
+            &replay(&read(&text).unwrap(), Dialect::Linuxcnc).unwrap(),
+            &two,
+            &frame(),
+            TimingRule::InverseTime,
+            Tolerances::for_decimals(3, 3),
+        )
+        .is_err()
+    );
+    // Written block by block, the same motion matches.
+    let steps = format!("{HEAD}G93\nG1 A5 F60\nG1 A10 F60\nM2\n");
+    compare(
+        &replay(&read(&steps).unwrap(), Dialect::Linuxcnc).unwrap(),
+        &two,
+        &frame(),
+        TimingRule::InverseTime,
+        Tolerances::for_decimals(3, 3),
+    )
+    .unwrap();
+}
