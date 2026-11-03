@@ -43,6 +43,7 @@ mod machine_library_window;
 mod machine_panel;
 mod memory;
 mod model_panel;
+mod orient;
 mod pending_edits;
 mod playback_panel;
 mod results_panel;

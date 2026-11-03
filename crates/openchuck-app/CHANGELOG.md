@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- VIEW-ORIENT (#531, decision 0646, proposed): `SceneRole::AZero` marks A = 0 on the part (a line from the rotary axis along the model's up direction, and an "A0" label); the A+ arrow's start is labelled "A0".
+
 - FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
 
 ## 0.38.0

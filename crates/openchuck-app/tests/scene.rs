@@ -104,7 +104,7 @@ fn req_ui_03_part_stock_axis_and_work_zero_are_drawn_together() {
         assert_eq!((l[0][0].x, l[0][0].y, l[0][0].z), (3.0, 0.0, 0.0));
     }
     let texts: Vec<&str> = view.labels.iter().map(|l| l.text.as_str()).collect();
-    assert_eq!(texts, ["A+", "X", "Y", "Z"]);
+    assert_eq!(texts, ["A+", "A0", "A0", "X", "Y", "Z"]);
     // The readout names the frame by the setup's register (specification 7.2).
     assert_eq!(view.work_register.as_deref(), Some("G54"));
 
@@ -150,6 +150,36 @@ fn req_set_01_req_ui_03_a_arrow_follows_the_documented_convention() {
     let view = scene(&app);
     let quarter = lines(&view, SceneRole::ADirection)[0][18];
     assert!(quarter.y > 0.0, "{quarter:?}");
+}
+
+#[test]
+fn req_ui_03_req_sim_02_the_a0_mark_runs_from_the_axis_up_past_the_stock() {
+    // Issue 531: A0 is where the part's up side is at A = 0. Its mark runs
+    // from the rotary axis along the model's up direction (+Z for the example
+    // machine) out past the stock (radius 10), with an "A0" label, whatever
+    // the sense of A; the fixed arc's start is labelled "A0" too.
+    let (_dir, mut app, _) = project("a0-mark");
+    for sense in [ASense::Positive, ASense::Negative] {
+        let mut profile = MachineProfile::example_x_rotary();
+        profile.a_sense = sense;
+        app.execute(Command::SetMachine(Some(Box::new(profile))))
+            .unwrap();
+        let view = scene(&app);
+        let marks = lines(&view, SceneRole::AZero);
+        assert_eq!(marks.len(), 1, "{sense:?}");
+        let (from, to) = (marks[0][0], *marks[0].last().unwrap());
+        assert!(from.y.abs() < 1e-9 && from.z.abs() < 1e-9, "{from:?}");
+        assert!(to.y.abs() < 1e-9 && to.z > 10.0, "{to:?}");
+        let labels: Vec<_> = view.labels.iter().filter(|l| l.text == "A0").collect();
+        assert_eq!(labels.len(), 2, "one on the part, one on the arc's start");
+        let part = labels.iter().find(|l| l.role == SceneRole::AZero).unwrap();
+        assert!(part.at.z > to.z * 0.99, "{:?}", part.at);
+        let arc = labels
+            .iter()
+            .find(|l| l.role == SceneRole::ADirection)
+            .unwrap();
+        assert!(arc.at.z > 0.0 && arc.at.y.abs() < 1e-9, "{:?}", arc.at);
+    }
 }
 
 #[test]

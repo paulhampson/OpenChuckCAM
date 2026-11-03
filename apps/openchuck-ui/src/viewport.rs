@@ -132,7 +132,9 @@ pub(crate) fn style(role: SceneRole) -> (Colour, bool) {
         SceneRole::FacingSweep => (roles::SWEEP, false),
         SceneRole::HeldRegion => (roles::HELD, false),
         SceneRole::Tab => (roles::TAB, false),
-        SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
+        SceneRole::RotaryAxis | SceneRole::ADirection | SceneRole::AZero => {
+            (roles::ROTARY_AXIS, true)
+        }
         SceneRole::WorkX => (roles::WORK_X, true),
         SceneRole::WorkY => (roles::WORK_Y, true),
         SceneRole::WorkZ => (roles::WORK_Z, true),
@@ -491,6 +493,7 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             SceneRole::Stock => show.stock,
             SceneRole::RotaryAxis
             | SceneRole::ADirection
+            | SceneRole::AZero
             | SceneRole::WorkX
             | SceneRole::WorkY
             | SceneRole::WorkZ => show.axes,
@@ -507,7 +510,7 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                 (roles::LINE_WIDTH, LineStyle::Dashed)
             }
             SceneRole::RotaryAxis => (roles::LINE_WIDTH, LineStyle::DashDot),
-            SceneRole::ADirection => (roles::OUTLINE_WIDTH, LineStyle::Solid),
+            SceneRole::ADirection | SceneRole::AZero => (roles::OUTLINE_WIDTH, LineStyle::Solid),
             SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ => {
                 (roles::AXIS_WIDTH, LineStyle::Solid)
             }
@@ -532,6 +535,7 @@ fn turns_with_part(role: SceneRole) -> bool {
     matches!(
         role,
         SceneRole::Stock
+            | SceneRole::AZero
             | SceneRole::Problem
             | SceneRole::Hole
             | SceneRole::FacingExtent
@@ -675,6 +679,8 @@ pub struct Viewport {
     tool_transform: Mat4,
     /// The part's turn about the rotary axis, degrees.
     part_turn: f64,
+    /// The frame "Turn part with A" chooses (issue 531).
+    part_frame: openchuck_app::playback::ViewFrame,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
     /// What the pointer may pick (slice 11 item 5).
@@ -788,6 +794,7 @@ impl Viewport {
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
             part_turn: 0.0,
+            part_frame: openchuck_app::playback::ViewFrame::Machine,
             picking: false,
             filter: PickFilter::Both,
             input: PickInput::default(),
@@ -1275,6 +1282,17 @@ impl Viewport {
         } else {
             rotation_x(degrees.to_radians())
         };
+    }
+
+    /// Sets the frame "Turn part with A" chooses (issue 531): the view cube's
+    /// caption names it.
+    pub fn set_part_frame(&mut self, frame: openchuck_app::playback::ViewFrame) {
+        self.part_frame = frame;
+    }
+
+    /// The frame the view cube's faces refer to now (issue 531).
+    pub(crate) fn cube_frame(&self) -> openchuck_app::playback::ViewFrame {
+        crate::orient::cube_frame(self.step(), self.part_frame)
     }
 
     /// The part's turn about the rotary axis, degrees.
@@ -2729,6 +2747,48 @@ pub(crate) mod tests {
         assert_eq!(label_point(SceneRole::WorkX, at, &turn), [1., 0., 2.]);
     }
 
+    #[test]
+    fn req_ui_03_req_sim_02_the_a0_mark_turns_with_the_part_and_hides_with_the_axes() {
+        // Issue 531: the mark of A = 0 on the part turns with it; the arc's
+        // start label (a guide) does not; both hide with the axes.
+        let point = Point3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        };
+        let mut view = SceneView::default();
+        view.lines.push(ScenePolyline {
+            role: SceneRole::AZero,
+            points: vec![point, Point3 { z: 5., ..point }],
+        });
+        let scene = to_scene(&view);
+        assert_eq!(scene.lines.len(), 1);
+        assert_eq!(scene.lines[0].slot, Slot::Part);
+        let turn = rotation_x(std::f64::consts::FRAC_PI_2);
+        let at = Point3 {
+            x: 1.,
+            y: 0.,
+            z: 2.,
+        };
+        let turned = transform(&turn, [1., 0., 2., 1.]);
+        assert_eq!(
+            label_point(SceneRole::AZero, at, &turn),
+            [turned[0], turned[1], turned[2]]
+        );
+        assert_eq!(label_point(SceneRole::ADirection, at, &turn), [1., 0., 2.]);
+        let hidden = to_scene_with(
+            &view,
+            &SceneOptions {
+                show: Visibility {
+                    axes: false,
+                    ..Visibility::default()
+                },
+                ..SceneOptions::default()
+            },
+        );
+        assert!(hidden.lines.is_empty());
+    }
+
     /// The colour the scene gives the cube part with no bands.
     fn view_colour(view: &SceneView) -> Colour {
         to_scene(view).meshes[0].colour
@@ -3333,7 +3393,7 @@ pub(crate) mod tests {
         let small = egui::vec2(900.0, 480.0);
         // Setup: the cube and the triad; the held region and tab legend is
         // the shell's legend strip under the view.
-        check(&mut viewport, large, 2);
+        check(&mut viewport, large, 3);
         // Operations: the path legend and the readout of the point under the
         // pointer join them; in a low view the legend is a button, and it
         // opens below it.
@@ -3345,10 +3405,10 @@ pub(crate) mod tests {
         );
         viewport.set_layer(Layer::Paths, paths);
         viewport.set_view(StandardView::Front);
-        check(&mut viewport, large, 4);
-        check(&mut viewport, small, 4);
-        viewport.legend_open = true;
+        check(&mut viewport, large, 5);
         check(&mut viewport, small, 5);
+        viewport.legend_open = true;
+        check(&mut viewport, small, 6);
         // Simulate: the colour scale with the kept roles, and the tool at
         // its move in the readout.
         let values: Vec<Option<(f64, bool)>> = (0..12)
@@ -3359,10 +3419,10 @@ pub(crate) mod tests {
             work: [1.0, 2.0, 3.0, 4.0],
             move_number: 7,
         }));
-        check(&mut viewport, large, 4);
+        check(&mut viewport, large, 5);
         // A draft shows its chip; the scale stays where it is.
         viewport.set_workholding_draft(Some(WorkholdingDraft::default()));
-        check(&mut viewport, large, 4);
+        check(&mut viewport, large, 5);
         // The toolbar offers Simulate's Show choices, and the scene is drawn.
         assert_eq!(viewport.step(), ViewStep::Simulate);
         assert!(viewport.is_drawn());
