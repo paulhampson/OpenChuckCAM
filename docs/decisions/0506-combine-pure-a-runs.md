@@ -4,7 +4,7 @@
 - **Date:** 2 Nov 2026.
 - **Issue:** #503, severity proposal sev3 (Tier 2 bug).
 - **Builds on:** [0007](0007-sp-12-z1-conventions.md) (the Z1's feed rule, A-only moves included), [0222](0222-short-moves-minimum-block-time.md) and [0245](0245-short-block-report-and-slowdown.md) (GC-17: Report and Slow down; Merge deferred), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (the end turn at a held region), [0390](0390-helical-finishing-in-rings.md), [0420](0420-rings-for-rest-roughing-and-round-facing.md) and [0497](0497-rings-for-the-simultaneous-spiral.md) (rings), [0241](0241-continuous-rotary-operation-boundaries.md) and [0247](0247-long-operation-rotary-accumulation.md) (counter resets at declared boundaries), the [first-cut tail investigation](../first-cut-tail-tab-investigation.md) (OI-993).
-- **Open items:** OI-993 stays open (the owner's air cut, below). No new open item.
+- **Open items:** OI-993 stays open (the owner's air cut, below). OI-2015 (a G93 block split by gate 2) is carried by pull request 519.
 
 ## Context
 
