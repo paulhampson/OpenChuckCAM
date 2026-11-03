@@ -1,4 +1,4 @@
-# 0635: Helical finishing set up to face the ends: two notes that point at Facing (OP-04, OP-24, NFR-12; issue #471; lane LARGEPATH)
+# 0508: Helical finishing set up to face the ends: two notes that point at Facing (OP-04, OP-24, NFR-12; issue #471; lane LARGEPATH)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after reading it in full. Proposed the same day by lane LARGEPATH; the owner agreed both notes and the reworded Facing End refusal on 1 Nov 2026, relayed the same way.
 - **Date:** 2 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #471 (helical finishing set up to remove excess material at the ends of the part does not give the expected facing result).
 - **Requirements:** OP-04 (helical finishing), OP-24 (Facing), NFR-12 (the notes do not say the G-code is safe; generated G-code remains the user's to verify before running it on a machine).
 - **Amends:** nothing in the documents. Adds to [decision 0344](0344-finishing-stepdown-and-free-ends.md) item 9 (the notes of a free end) and [decision 0252](0252-facing-ends-sides-and-extents.md) (End facing's refusal when the stock ends at the part's end).
-- **Numbers:** 0635, the next free number on 2 Nov 2026 (0631 and 0634 are this lane's pull requests 1 and 3; 0632 and 0633 are held by lanes PATHBUGS and SIMVIS); renumbered at release if needed. No project schema number; no library version change (internal; no API change).
+- **Numbers:** 0508, given at release on 3 Nov 2026 by the owner's rule (`main`'s highest at release plus one; `main`'s highest was 0507). It was 0635 while the pull request was a draft. No project schema number; no library version change (internal; no API change).
 
 ## Context
 
