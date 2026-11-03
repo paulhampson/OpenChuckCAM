@@ -462,3 +462,17 @@ fn req_nfr_07_a_roughing_stepdown_past_the_flutes_is_refused() {
     // all the check roughing needs.
     on_box(&rough, 3.0, &[("stepdown", ParameterValue::Number(3.0))]).unwrap();
 }
+
+#[test]
+fn req_op_08_req_tl_04_req_nfr_07_edge_following_counts_the_stock_above_the_surface() {
+    // The bar's end edges engraved 0.3 mm deep in 35 x 35 box stock: the
+    // corner stands 24.749 - 4.7 mm above the tip, not the 0.3 mm the
+    // depth alone asks (the depth check of OP-08 measured from the part).
+    let edges = openchuck_path::EdgeFollowing::default();
+    let depth = [(
+        openchuck_path::edge_following::parameter::DEPTH,
+        ParameterValue::Number(0.3),
+    )];
+    let need = 17.5_f64.hypot(17.5) - (BAR - 0.3);
+    refused_and_accepted_at(&edges, &depth, None, (need - 0.05, need + 0.05));
+}

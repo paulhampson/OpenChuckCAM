@@ -2583,3 +2583,17 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
     );
     assert_eq!(cancelled, Err(openchuck_path::PathError::Cancelled));
 }
+
+#[test]
+fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall_is_refused() {
+    // Decision record 0508: the 8 mm wall fits 11 mm of flank, but the
+    // 22 mm round stock stands 4 mm above the wall's top, so the shank
+    // would meet it; 13 mm of flute reaches.
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 11.0));
+    let message = refused(&f, &[]);
+    assert!(message.contains("11.000 mm of flute"), "{message}");
+    assert!(message.contains("44.000 mm diameter cylinder"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 13.0));
+    assert!(generated(&f, &[]).group.segments.len() > 10);
+}
