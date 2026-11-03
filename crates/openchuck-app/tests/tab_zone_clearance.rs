@@ -218,18 +218,41 @@ fn fed_tips(run: &Regeneration, group: usize) -> Vec<(Point3, f64)> {
         .collect()
 }
 
-/// True when a tool whose tip is at `p` overlaps the tab along X.
-fn over_tab(p: Point3) -> bool {
-    p.x + TOOL / 2.0 > TAB.0 && p.x - TOOL / 2.0 < TAB.1
+/// Each fed move of `group` as the X its tip spans, from the move's start
+/// (the end of the move before it) to its end, and the least distance of its
+/// tip from the rotary axis. The moves run along X or turn A at one distance,
+/// or plunge and retract along the tool, so the least distance along a move
+/// is at one of its ends.
+fn fed_spans(run: &Regeneration, group: usize) -> Vec<((f64, f64), f64)> {
+    let segments = &run.toolpath.groups[group].segments;
+    segments
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.kind.is_fed())
+        .map(|(i, s)| {
+            let end = s.end.tip;
+            let start = i
+                .checked_sub(1)
+                .and_then(|j| segments.get(j))
+                .map_or(end, |p| p.end.tip);
+            let span = (start.x.min(end.x), start.x.max(end.x));
+            (span, start.y.hypot(start.z).min(end.y.hypot(end.z)))
+        })
+        .collect()
+}
+
+/// True when a tool whose tip spans `x` along X overlaps the tab.
+fn over_tab((lo, hi): (f64, f64)) -> bool {
+    hi + TOOL / 2.0 > TAB.0 && lo - TOOL / 2.0 < TAB.1
 }
 
 /// No fed move of `group` puts the tool's tip inside the tab's cylinder.
 fn assert_tab_not_cut(run: &Regeneration, group: usize, what: &str) {
-    let tips = fed_tips(run, group);
-    assert!(tips.len() > 100, "{what}: {} fed moves", tips.len());
-    let worst = tips
+    let moves = fed_spans(run, group);
+    assert!(moves.len() > 100, "{what}: {} fed moves", moves.len());
+    let worst = moves
         .iter()
-        .filter(|(p, _)| over_tab(*p))
+        .filter(|(span, _)| over_tab(*span))
         .map(|&(_, r)| r)
         .fold(f64::INFINITY, f64::min);
     assert!(
