@@ -1,7 +1,8 @@
-# 0642: End facing reaches at most the flute length below the stock top, and faces a deeper end from both sides (OP-24, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
+# 0504: End facing reaches at most the flute length below the stock top, and faces a deeper end from both sides (OP-24, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged. Proposed by lane FACEAPPROACH the same day; the rule is the owner's decision F1, option (i), relayed by the coordinator.
 - **Date:** 2 Nov 2026.
+- **Number:** proposed and accepted as 0642; renumbered 0504 on 3 Nov 2026 at release (assigned by the Merge Manager; 0502 and 0503 are reserved for #485 and #515, which merge first). Earlier comments on pull requests #505 and #506 call it 0642.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499).
 - **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End facing: flank bands, tab views, the union-of-views completion proof and "using only the active flute length"), [0501](0501-facing-approach-written-allowance-and-links.md) (the written-motion allowance in the End bands), [0344](0344-finishing-stepdown-and-free-ends.md) item 7 (how a free end deeper than the flutes is refused), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (OI-1782: stick-out is not modelled).
 - **Open items:** closes OI-1997. No project schema change and no library API change.
