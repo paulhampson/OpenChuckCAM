@@ -309,12 +309,15 @@ impl Walls<'_> {
         // as many drops as the map has samples (millions on a finely
         // tessellated part). Every sample of a cell takes its
         // representative's answer; the cells are in a fixed order.
-        let mut cells: BTreeMap<(i64, i64, i64, i8), Vec<usize>> = BTreeMap::new();
+        let mut cells: BTreeMap<(i64, i64, i64, i8, bool), Vec<usize>> = BTreeMap::new();
         for (i, s) in samples.iter().enumerate() {
             if gripped(s.point.x) {
                 continue;
             }
-            cells.entry(self.cell(s)).or_default().push(i);
+            cells
+                .entry(self.cell(s, input.keep_out))
+                .or_default()
+                .push(i);
         }
         let groups: Vec<Vec<usize>> = cells.into_values().collect();
         let reasons: Vec<Option<UnreachedReason>> = parallel::map_in_order(&groups, |g| {
@@ -340,8 +343,10 @@ impl Walls<'_> {
     /// place it is (a wall facing either way, a surface round the axis, and
     /// the rest), so a cell at a wall's foot does not mix the floor with the
     /// wall, and two surfaces at one X and angle but different radii (one
-    /// lobe over another) are checked apart.
-    fn cell(&self, s: &Sample) -> (i64, i64, i64, i8) {
+    /// lobe over another) are checked apart; and whether every place of the
+    /// tool that would reach it is kept out ([`Self::near_held`]), so a cell
+    /// at a keep-out's edge does not mix the two answers.
+    fn cell(&self, s: &Sample, keep_out: &[(f64, f64)]) -> (i64, i64, i64, i8, bool) {
         let p = s.point;
         let radius = p.y.hypot(p.z);
         let around = p.z.atan2(p.y).rem_euclid(std::f64::consts::TAU) * radius;
@@ -355,7 +360,38 @@ impl Walls<'_> {
         };
         #[allow(clippy::cast_possible_truncation)]
         let key = |v: f64| (v / REACH_CELL).floor() as i64;
-        (key(p.x), key(radius), key(around), kind)
+        (
+            key(p.x),
+            key(radius),
+            key(around),
+            kind,
+            self.near_held(s, keep_out),
+        )
+    }
+
+    /// Whether every place of the tool that would reach the sample is inside
+    /// `keep_out`, so [`Self::why`] calls it too near a held region: a wall
+    /// sample whose ring lies on the part and in the keep-out, a sample
+    /// round the axis with no place under the tool's flat outside it.
+    pub(crate) fn near_held(&self, s: &Sample, keep_out: &[(f64, f64)]) -> bool {
+        let (x0, x1) = self.span;
+        match self.place(s) {
+            Place::Wall { x, .. } => x >= x0 && x <= x1 && reaches_in(keep_out, x, x),
+            Place::Round { window } => self.round_tries(s.point.x, window, keep_out).is_empty(),
+            Place::FacesAxis | Place::OnAxis | Place::Unmodelled => false,
+        }
+    }
+
+    /// The places under the flat of a tool of `window` reach that a sample
+    /// round the axis at `x` is tried at, outside `keep_out`: the middle,
+    /// then the ends, then between.
+    fn round_tries(&self, x: f64, window: f64, keep_out: &[(f64, f64)]) -> Vec<f64> {
+        let w = 0.999 * window;
+        ROUND_TRIES
+            .iter()
+            .map(|f| x + f * w)
+            .filter(|&c| !reaches_in(keep_out, c, c))
+            .collect()
     }
 
     /// Why no place of the tool reaches the sample; `None` when one does,
@@ -372,21 +408,15 @@ impl Walls<'_> {
                 if x < x0 || x > x1 {
                     return None;
                 }
-                if reaches_in(input.keep_out, x, x) {
+                if self.near_held(s, input.keep_out) {
                     return Some(UnreachedReason::NearHeldRegion);
                 }
                 x
             }
             Place::Round { window } => {
                 // Anywhere under the tool's flat bottom reaches it, unless
-                // the tool rides up on something beside it there: try the
-                // middle, then the ends, then between.
-                let w = 0.999 * window;
-                let tries: Vec<f64> = ROUND_TRIES
-                    .iter()
-                    .map(|f| p.x + f * w)
-                    .filter(|&c| !reaches_in(input.keep_out, c, c))
-                    .collect();
+                // the tool rides up on something beside it there.
+                let tries = self.round_tries(p.x, window, input.keep_out);
                 if tries.is_empty() {
                     return Some(UnreachedReason::NearHeldRegion);
                 }
@@ -555,6 +585,33 @@ mod tests {
         }
     }
 
+    fn flat_tool() -> RevolvedProfile {
+        Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(3.175),
+            flute_length: Millimetres(20.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(3.175),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap()
+    }
+
+    fn walls_with(tool: &RevolvedProfile) -> Walls<'_> {
+        Walls {
+            grown: tool,
+            span: (0.0, 24.0),
+            stepover: 1.0,
+            target: 0.05,
+            smallest: 0.01,
+            tolerance: 0.01,
+            min_remaining: 0.05,
+        }
+    }
+
     fn mapping(sense: ASense) -> RotaryMapping {
         let mut m = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
         m.sense = sense;
@@ -604,33 +661,37 @@ mod tests {
         // Two faces at the same X and angle, 8 mm apart in radius (two
         // lobes, the outer covering the inner's approach): one drop cannot
         // answer for both, so they are in different cells.
-        let tool = Tool {
-            shape: ToolShape::FlatEnd,
-            diameter: Millimetres(3.175),
-            flute_length: Millimetres(20.0),
-            overall_length: Millimetres(50.0),
-            shank_diameter: Millimetres(3.175),
-            flute_count: 2,
-            material: None,
-            centre_cutting: None,
-        }
-        .profile()
-        .unwrap();
-        let walls = Walls {
-            grown: &tool,
-            span: (0.0, 10.0),
-            stepover: 1.0,
-            target: 0.05,
-            smallest: 0.01,
-            tolerance: 0.01,
-            min_remaining: 0.05,
-        };
+        let tool = flat_tool();
+        let walls = walls_with(&tool);
         let face = |y: f64| Sample {
             point: Point3::new(5.0, y, 0.1),
             normal: Vec3::new(0.0, 1.0, 0.0),
             area: 0.01,
         };
-        assert_ne!(walls.cell(&face(2.0)), walls.cell(&face(10.0)));
+        assert_ne!(walls.cell(&face(2.0), &[]), walls.cell(&face(10.0), &[]));
+    }
+
+    #[test]
+    fn req_op_09_req_set_09_samples_either_side_of_the_keep_out_edge_are_checked_apart() {
+        // A keep-out up to X 11 and a 3.175 mm flat: every place under the
+        // flat of a floor sample at X 9.28 is inside the keep-out (too near
+        // the held region), while one at X 9.44 has a place at X 11. They
+        // are 0.16 mm apart, in one 0.25 mm cell by place alone, so one
+        // drop must not answer for both (the review of #509).
+        let tool = flat_tool();
+        let walls = walls_with(&tool);
+        let keep = [(-100.0, 11.0)];
+        let floor = |x: f64| Sample {
+            point: Point3::new(x, 6.0, 0.0),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            area: 0.01,
+        };
+        assert!(walls.near_held(&floor(9.28), &keep));
+        assert!(!walls.near_held(&floor(9.44), &keep));
+        assert_ne!(
+            walls.cell(&floor(9.28), &keep),
+            walls.cell(&floor(9.44), &keep)
+        );
     }
 
     #[test]
