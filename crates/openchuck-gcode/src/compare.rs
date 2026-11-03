@@ -313,7 +313,10 @@ pub fn compare_with_moves(
         let wanted = machine_of(e.tip, e.a);
         let counter = wanted[3] - coordinate_shift;
         #[allow(clippy::float_cmp)]
+        // Never an inverse-time block: its F word is the whole block's time,
+        // so no part of it can be timed on its own.
         let on_the_way = e.fed.is_some()
+            && !block.inverse_time
             && block.motion == Motion::Linear
             && block
                 .from
