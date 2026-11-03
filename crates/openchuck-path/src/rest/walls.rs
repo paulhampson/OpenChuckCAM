@@ -53,7 +53,7 @@ use crate::cutter::{self, ToolLine};
 use crate::error::Result;
 use crate::parallel;
 use crate::rotary::RotaryMapping;
-use crate::strategy::{HELD_CLEARANCE, StrategyInput, reaches_in};
+use crate::strategy::{HELD_CLEARANCE, KEEP_OUT_SLACK, StrategyInput, reaches_in};
 
 /// Most rings added at walls in one operation; past it the rest are not
 /// added and a warning says so (as adaptive spacing's added passes,
@@ -249,7 +249,11 @@ impl Walls<'_> {
                 } else {
                     (c - reach, c)
                 };
+                // At the keep-out tests' own slack-adjusted edges, so a
+                // place that counts as clear just inside an edge is clipped
+                // there too.
                 for &(a, b) in keep_out {
+                    let (a, b) = (a + KEEP_OUT_SLACK, b - KEEP_OUT_SLACK);
                     if a >= c && a < hi {
                         hi = a;
                     }
@@ -723,6 +727,34 @@ mod tests {
         };
         let (rings, capped) = walls.rings(&[wall], 0.0, &keep);
         assert!(!capped);
+        assert!(!rings.is_empty(), "the wall gets a ring");
+        for r in &rings {
+            assert!(
+                !reaches_in(&keep, *r, *r),
+                "ring at X {r} is inside the keep-out"
+            );
+        }
+    }
+
+    #[test]
+    fn req_op_09_req_set_09_a_wall_ring_within_the_keep_out_slack_stays_clear() {
+        // The keep-out tests allow `KEEP_OUT_SLACK` (1e-6 mm): a tool place
+        // half a micron inside the keep-out's lower edge counts as clear,
+        // and its range must be clipped at the same slack-adjusted edge, or
+        // its ring lands where the pass trimming drops it (the review of
+        // #518).
+        let tool = flat_tool();
+        let walls = walls_with(&tool);
+        let keep = [(12.0, 100.0)];
+        // The tool's edge for a wall facing +X is its radius, plus a tenth
+        // of the tolerance clear of the wall.
+        let place = 12.0 + 0.5e-6;
+        let wall = Sample {
+            point: Point3::new(place - 1.5875 - 0.1 * walls.tolerance, 6.0, 0.0),
+            normal: Vec3::new(1.0, 0.0, 0.0),
+            area: 0.01,
+        };
+        let (rings, _) = walls.rings(&[wall], 0.0, &keep);
         assert!(!rings.is_empty(), "the wall gets a ring");
         for r in &rings {
             assert!(

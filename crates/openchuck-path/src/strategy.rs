@@ -544,7 +544,7 @@ fn generate_with(
 /// How far a position may lie inside a keep-out interval and still count as
 /// clear: rounding in the strategies' positions, far below the written
 /// resolution (millimetres).
-const KEEP_OUT_SLACK: f64 = 1e-6;
+pub(crate) const KEEP_OUT_SLACK: f64 = 1e-6;
 
 /// How far, beyond its largest radius, the tool keeps from a held region
 /// along the axis, in millimetres (decision record 0161): the jaw face is
