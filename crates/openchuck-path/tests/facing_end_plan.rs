@@ -1325,3 +1325,70 @@ fn req_op_24_facing_an_end_flush_with_the_stock_says_there_is_nothing_past_it() 
         "{text}"
     );
 }
+
+#[test]
+fn req_op_24_facing_a_flush_end_with_no_stock_to_leave_says_there_is_nothing_past_it() {
+    // The review of #491: with no stock to leave the target plane is the
+    // stock's own end, so the plan had no layers and no passes and was
+    // returned as if it faced something. It is refused with the owner's N2
+    // words (issue #471) instead.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let flush = EndFacingParameters {
+        allowance: 0.,
+        ..settings()
+    };
+    let text = plan_end(&setup, &flush, &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+    // Stock that does carry on past the end is still faced with no stock to
+    // leave.
+    let longer = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(52., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &longer,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+    // Stock past the end by less than the tolerance is still faced: the
+    // refusal is for an end with nothing to cut, not for a thin skin.
+    let skin = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50.005, 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &skin,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+}
