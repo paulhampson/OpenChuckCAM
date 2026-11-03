@@ -315,7 +315,13 @@ pub fn compare_with_moves(
         #[allow(clippy::float_cmp)]
         let on_the_way = e.fed.is_some()
             && block.motion == Motion::Linear
-            && (0..3).all(|i| block.from[i] == block.to[i] && block.to[i] == wanted[i])
+            && block
+                .from
+                .iter()
+                .zip(&block.to)
+                .zip(&wanted)
+                .take(3)
+                .all(|((start, end), want)| start == end && end == want)
             && ((from[3] < counter && counter < block.to[3])
                 || (block.to[3] < counter && counter < from[3]))
             && (block.to[3] - counter).abs() > tolerances.a_deg;
