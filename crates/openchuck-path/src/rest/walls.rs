@@ -52,6 +52,7 @@ use crate::assemble::{Unreached, UnreachedReason};
 use crate::cutter::{self, ToolLine};
 use crate::error::Result;
 use crate::parallel;
+use crate::rotary::RotaryMapping;
 use crate::strategy::{HELD_CLEARANCE, StrategyInput, reaches_in};
 
 /// Most rings added at walls in one operation; past it the rest are not
@@ -308,7 +309,7 @@ impl Walls<'_> {
         // as many drops as the map has samples (millions on a finely
         // tessellated part). Every sample of a cell takes its
         // representative's answer; the cells are in a fixed order.
-        let mut cells: BTreeMap<(i64, i64, i8), Vec<usize>> = BTreeMap::new();
+        let mut cells: BTreeMap<(i64, i64, i64, i8), Vec<usize>> = BTreeMap::new();
         for (i, s) in samples.iter().enumerate() {
             if gripped(s.point.x) {
                 continue;
@@ -331,16 +332,19 @@ impl Walls<'_> {
                     .filter_map(move |&i| samples.get(i).map(|s| (*s, r)))
             })
             .collect();
-        Ok(group(found, spacing))
+        Ok(group(found, spacing, &input.rotary))
     }
 
     /// The cell of the reach check a sample falls in: [`REACH_CELL`] along
-    /// X and round the axis at its radius, and the kind of place it is (a
-    /// wall facing either way, a surface round the axis, and the rest), so
-    /// a cell at a wall's foot does not mix the floor with the wall.
-    fn cell(&self, s: &Sample) -> (i64, i64, i8) {
+    /// X, out from the axis and round it at its radius, and the kind of
+    /// place it is (a wall facing either way, a surface round the axis, and
+    /// the rest), so a cell at a wall's foot does not mix the floor with the
+    /// wall, and two surfaces at one X and angle but different radii (one
+    /// lobe over another) are checked apart.
+    fn cell(&self, s: &Sample) -> (i64, i64, i64, i8) {
         let p = s.point;
-        let around = p.z.atan2(p.y).rem_euclid(std::f64::consts::TAU) * p.y.hypot(p.z);
+        let radius = p.y.hypot(p.z);
+        let around = p.z.atan2(p.y).rem_euclid(std::f64::consts::TAU) * radius;
         let kind = match self.place(s) {
             Place::Round { .. } => 0,
             Place::Wall { side, .. } if side > 0.0 => 1,
@@ -351,7 +355,7 @@ impl Walls<'_> {
         };
         #[allow(clippy::cast_possible_truncation)]
         let key = |v: f64| (v / REACH_CELL).floor() as i64;
-        (key(p.x), key(around), kind)
+        (key(p.x), key(radius), key(around), kind)
     }
 
     /// Why no place of the tool reaches the sample; `None` when one does,
@@ -453,7 +457,11 @@ const ROUND_TRIES: [f64; 9] = [0.0, -1.0, 1.0, -0.5, 0.5, -0.75, 0.75, -0.25, 0.
 
 /// Samples grouped into areas by reason and by nearness along X; each area
 /// with its X range, A range and area, largest first.
-fn group(mut found: Vec<(Sample, UnreachedReason)>, spacing: f64) -> Vec<Unreached> {
+fn group(
+    mut found: Vec<(Sample, UnreachedReason)>,
+    spacing: f64,
+    rotary: &RotaryMapping,
+) -> Vec<Unreached> {
     let rank = |r: &UnreachedReason| match r {
         UnreachedReason::Blocked => 0,
         UnreachedReason::TooNarrow => 1,
@@ -473,7 +481,7 @@ fn group(mut found: Vec<(Sample, UnreachedReason)>, spacing: f64) -> Vec<Unreach
         if let (Some(r), Some(first), Some(last)) = (reason, run.first(), run.last()) {
             areas.push(Unreached {
                 x: (first.point.x, last.point.x),
-                a: angles(run),
+                a: angles(run, rotary),
                 area: run.iter().map(|s| s.area).sum(),
                 reason: r,
             });
@@ -493,12 +501,16 @@ fn group(mut found: Vec<(Sample, UnreachedReason)>, spacing: f64) -> Vec<Unreach
     areas
 }
 
-/// The A range the samples face, in degrees: `(0, 360)` all round, else
-/// from the end of the widest gap between their angles to its start.
-fn angles(samples: &[Sample]) -> (f64, f64) {
+/// The machine A range at which the tool faces the samples, in degrees, as
+/// [`Unreached::a`] gives it: `(0, 360)` all round, else from the end of the
+/// widest gap between their angles to its start. Each sample is faced
+/// across the axis through it, at `rotary`'s A for its direction from the
+/// axis, which follows the machine's A sense (decision record 0015 item 3).
+fn angles(samples: &[Sample], rotary: &RotaryMapping) -> (f64, f64) {
     let mut a: Vec<f64> = samples
         .iter()
-        .map(|s| s.point.z.atan2(s.point.y).to_degrees().rem_euclid(360.0))
+        .filter_map(|s| rotary.a_facing(Vec3::new(0.0, s.point.y, s.point.z)))
+        .map(|d| d.0.rem_euclid(360.0))
         .collect();
     a.sort_by(f64::total_cmp);
     let (Some(&first), Some(&last)) = (a.first(), a.last()) else {
@@ -529,6 +541,10 @@ fn angles(samples: &[Sample]) -> (f64, f64) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::rotary::RotaryMapping;
+    use openchuck_types::machine::{ASense, MachineProfile};
+    use openchuck_types::tool::{Tool, ToolShape};
+    use openchuck_types::units::Millimetres;
 
     fn at(x: f64, deg: f64) -> Sample {
         let t = deg.to_radians();
@@ -539,23 +555,82 @@ mod tests {
         }
     }
 
-    #[test]
-    fn req_op_09_an_area_all_round_is_said_to_be_all_round() {
-        let s: Vec<Sample> = (0..36).map(|k| at(1.0, f64::from(k) * 10.0)).collect();
-        assert_eq!(angles(&s), (0.0, 360.0));
+    fn mapping(sense: ASense) -> RotaryMapping {
+        let mut m = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
+        m.sense = sense;
+        m
     }
 
     #[test]
-    fn req_op_09_an_area_on_one_side_gives_its_angles_across_zero() {
-        let s: Vec<Sample> = [350.0, 355.0, 0.0, 5.0, 10.0]
+    fn req_op_09_an_area_all_round_is_said_to_be_all_round() {
+        let s: Vec<Sample> = (0..36).map(|k| at(1.0, f64::from(k) * 10.0)).collect();
+        assert_eq!(angles(&s, &mapping(ASense::Positive)), (0.0, 360.0));
+    }
+
+    #[test]
+    fn req_op_09_req_op_20_an_unreached_patch_is_placed_at_machine_a_under_both_senses() {
+        // A patch facing +Y, polar angles -10 to 10 degrees from +Y towards
+        // +Z. The tool faces it at A = sense (90 - phi) (decision record
+        // 0015 item 3; `RotaryMapping::a_facing`), as `Unreached::a` says:
+        // 80 to 100 with A positive, -100 to -80 (260 to 280) with A
+        // negative; never the polar angle itself.
+        let s: Vec<Sample> = [-10.0, -5.0, 0.0, 5.0, 10.0]
             .iter()
             .map(|&d| at(1.0, d))
             .collect();
-        let (lo, hi) = angles(&s);
+        let (lo, hi) = angles(&s, &mapping(ASense::Positive));
         assert!(
-            (lo - 350.0).abs() < 1e-9 && (hi - 370.0).abs() < 1e-9,
+            (lo - 80.0).abs() < 1e-9 && (hi - 100.0).abs() < 1e-9,
             "{lo} {hi}"
         );
+        let (lo, hi) = angles(&s, &mapping(ASense::Negative));
+        assert!(
+            (lo - 260.0).abs() < 1e-9 && (hi - 280.0).abs() < 1e-9,
+            "{lo} {hi}"
+        );
+        // A patch facing +Z is faced at A 0 with either sense, across 360.
+        let up: Vec<Sample> = [85.0, 90.0, 95.0].iter().map(|&d| at(1.0, d)).collect();
+        for sense in [ASense::Positive, ASense::Negative] {
+            let (lo, hi) = angles(&up, &mapping(sense));
+            assert!(
+                (lo - 355.0).abs() < 1e-9 && (hi - 365.0).abs() < 1e-9,
+                "{lo} {hi}"
+            );
+        }
+    }
+
+    #[test]
+    fn req_op_09_req_op_20_surfaces_at_different_radii_are_checked_apart() {
+        // Two faces at the same X and angle, 8 mm apart in radius (two
+        // lobes, the outer covering the inner's approach): one drop cannot
+        // answer for both, so they are in different cells.
+        let tool = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(3.175),
+            flute_length: Millimetres(20.0),
+            overall_length: Millimetres(50.0),
+            shank_diameter: Millimetres(3.175),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        let walls = Walls {
+            grown: &tool,
+            span: (0.0, 10.0),
+            stepover: 1.0,
+            target: 0.05,
+            smallest: 0.01,
+            tolerance: 0.01,
+            min_remaining: 0.05,
+        };
+        let face = |y: f64| Sample {
+            point: Point3::new(5.0, y, 0.1),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            area: 0.01,
+        };
+        assert_ne!(walls.cell(&face(2.0)), walls.cell(&face(10.0)));
     }
 
     #[test]
@@ -566,7 +641,7 @@ mod tests {
             (at(5.0, 0.0), UnreachedReason::TooNarrow),
             (at(1.05, 0.0), UnreachedReason::Blocked),
         ];
-        let areas = group(found, 0.05);
+        let areas = group(found, 0.05, &mapping(ASense::Positive));
         assert_eq!(areas.len(), 3);
         // Largest first: the two samples near X 1.
         assert_eq!(areas[0].reason, UnreachedReason::TooNarrow);
