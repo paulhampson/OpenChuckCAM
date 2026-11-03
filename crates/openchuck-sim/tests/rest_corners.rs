@@ -442,6 +442,87 @@ fn req_op_09_req_set_09_rest_cuts_up_to_a_held_region_and_reports_the_strip_it_c
 }
 
 #[test]
+fn req_op_09_req_op_20_rest_reports_material_under_an_overhang_as_blocked() {
+    // A dovetail groove: 2 mm wide at the top, 4 mm at the bottom, so the
+    // walls lean over the floor and face the rotary axis; no tool across
+    // the axis reaches under them.
+    let rig = Rig::new(&[
+        (0.0, 10.0),
+        (11.0, 10.0),
+        (10.0, 6.0),
+        (14.0, 6.0),
+        (13.0, 10.0),
+        (LENGTH, 10.0),
+    ]);
+    let stock = rig.after_ball();
+    let path = rig
+        .generate(&RestMachining, &flat(), &stock, &rest_values("rings"))
+        .unwrap();
+    let blocked: Vec<_> = path
+        .unreached
+        .iter()
+        .filter(|u| u.reason == UnreachedReason::Blocked)
+        .collect();
+    assert!(!blocked.is_empty(), "{:?}", path.unreached);
+    for u in &blocked {
+        assert!(u.x.0 >= 9.9 && u.x.1 <= 14.1, "{u:?}");
+    }
+    let warning = path
+        .warnings
+        .iter()
+        .map(|w| w.message.as_str())
+        .find(|m| m.contains("cannot reach"))
+        .expect("a warning says what the tool cannot reach");
+    assert!(warning.contains("blocked"), "{warning}");
+}
+
+#[test]
+fn req_op_09_rest_with_a_tool_it_cannot_model_says_so() {
+    use openchuck_types::tool::{ProfilePoint, ProfileSegment, ToolProfile};
+    // A flat with a concave (corner-rounding) arc: no edge point matches a
+    // normal, so no ring is placed at a wall and nothing is called
+    // unreachable, and a note says so (decision record 0644 item 8).
+    let concave = tool(
+        ToolShape::Custom {
+            profile: ToolProfile {
+                segments: vec![
+                    ProfileSegment::Line {
+                        to: ProfilePoint::new(1.0, 0.0),
+                    },
+                    ProfileSegment::Arc {
+                        to: ProfilePoint::new(1.5875, 0.5875),
+                        centre: ProfilePoint::new(1.5875, 0.0),
+                    },
+                ],
+            },
+        },
+        D,
+    )
+    .profile()
+    .unwrap();
+    assert!(!concave.is_convex());
+    let rig = Rig::steep_wall();
+    let stock = rig.after_ball();
+    let path = rig
+        .generate(&RestMachining, &concave, &stock, &rest_values("rings"))
+        .unwrap();
+    assert!(
+        path.notes.iter().any(|n| n.message.contains("not convex")),
+        "{:?}",
+        path.notes
+    );
+    assert!(
+        !path
+            .notes
+            .iter()
+            .any(|n| n.message.contains("where its tool's side meets")),
+        "{:?}",
+        path.notes
+    );
+    assert!(path.unreached.is_empty(), "{:?}", path.unreached);
+}
+
+#[test]
 fn req_op_09_rest_adds_no_wall_ring_where_no_wall_holds_material() {
     // A plain cylinder under a thicker one: material is left all along, on
     // a surface round the axis, with no wall to meet.
