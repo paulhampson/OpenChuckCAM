@@ -1058,7 +1058,7 @@ fn unreached_warning(
 
 /// The areas a tool cannot reach, for a warning: the largest five, each
 /// with where it is, how large and why, then how many more (OP-20; decision
-/// records 0368 and 0644). `max_lean` is named only for an area that needs
+/// records 0368 and 0505). `max_lean` is named only for an area that needs
 /// more lean.
 pub(crate) fn unreached_list(
     areas: &[crate::assemble::Unreached],

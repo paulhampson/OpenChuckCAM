@@ -445,7 +445,7 @@ impl Strategy for RestMachining {
         let spacing = detection_spacing(input.tool, stepover);
         // A flat bottom touches a floor anywhere under it, so its contact
         // can be a whole flat's width from the material it cuts: the reach
-        // spans it too (decision record 0644; 0 for a round end).
+        // spans it too (decision record 0505; 0 for a round end).
         let flat = input
             .tool
             .point_for_normal(-std::f64::consts::FRAC_PI_2 + 1e-6)
@@ -502,7 +502,7 @@ impl Strategy for RestMachining {
         let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
         let turns: Vec<f64> = found.turns.iter().map(|t| t.x).collect();
         // The walls with material left, where the tool's side meets them
-        // (decision record 0644; issue #508).
+        // (decision record 0505; issue #508).
         let walls = walls::Walls {
             grown: &grown,
             span: (x0, x1),
@@ -657,7 +657,7 @@ fn wall_note(rings: &[f64], target: f64) -> Option<String> {
 }
 
 /// The warning for the material the tool cannot reach (decision record
-/// 0644, in the words of OP-20's report); `None` with none.
+/// 0505, in the words of OP-20's report); `None` with none.
 fn unreached_warning(
     areas: &[crate::assemble::Unreached],
     diameter: f64,

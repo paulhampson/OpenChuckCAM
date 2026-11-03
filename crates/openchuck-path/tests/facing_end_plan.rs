@@ -45,6 +45,7 @@ fn settings() -> EndFacingParameters {
         max_angle_step: openchuck_types::units::Degrees(5.),
         allowance: 0.2,
         tolerance: 0.01,
+        approach: 1.,
     }
 }
 
@@ -82,13 +83,26 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
     {
         assert!((actual - expected).abs() < 1e-10);
     }
-    assert_eq!(
-        plan.bands
-            .iter()
-            .map(|band| band.heights)
-            .collect::<Vec<_>>(),
-        vec![(2., 12.), (-8., 2.), (-12., -8.)]
-    );
+    // The bands reach 0.00125 (an eighth of the tolerance) past each edge
+    // and the 10 mm flute steps by 9.9975, so neighbours overlap by at least
+    // that much for the motion the controller reads back (issue #499).
+    let heights = plan
+        .bands
+        .iter()
+        .map(|band| band.heights)
+        .collect::<Vec<_>>();
+    let expected = [
+        (2.00375, 12.00125),
+        (-7.99375, 2.00375),
+        (-12.00125, -7.99375),
+    ];
+    assert_eq!(heights.len(), expected.len());
+    for (actual, expected) in heights.iter().zip(expected) {
+        assert!(
+            (actual.0 - expected.0).abs() < 1e-9 && (actual.1 - expected.1).abs() < 1e-9,
+            "{heights:?}"
+        );
+    }
     assert_eq!(plan.passes.len(), 15);
     for (slice, passes) in plan.passes.chunks(3).enumerate() {
         for (band, pass) in passes.iter().enumerate() {
@@ -707,10 +721,13 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
     let mut unfinished = path.group.clone();
     // A raised final band leaves a thin INTERNAL stripe; plane tolerance is
     // not permission to ignore a ridge running back to the original stock.
+    // Bands overlap by twice the written-motion allowance (issue #499), so
+    // the band is raised by the tolerance, well past that overlap.
+    let top = plan.bands[0].heights.0;
     let mut last_a = unfinished.start;
     for segment in &mut unfinished.segments {
-        if segment.kind.is_fed() && last_a.tip.z == 2. && segment.end.tip.z == 2. {
-            segment.end.tip.z += 0.00001;
+        if segment.kind.is_fed() && last_a.tip.z == top && segment.end.tip.z == top {
+            segment.end.tip.z += 0.01;
         }
         last_a = segment.end;
     }
@@ -889,4 +906,211 @@ fn req_op_24_req_nfr_05_source_error_does_not_change_nominal_end_coordinate_or_l
         assert_eq!(plan.target.length, 40.2);
         assert!((plan.axial_planes.last().unwrap() - cut_x).abs() < 1e-12);
     }
+}
+
+/// The air point beside the end keeps the operation's approach distance from
+/// the stock's end face, as every other rapid keeps it above the stock
+/// (OP-14; issue #499). A rapid that descends beside the end face then has
+/// the same allowance for stock longer than modelled as one that stops
+/// above the stock top.
+#[test]
+fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_face() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    for (held, outer, sign) in [
+        ([Some((0., 5.)), None], 60., 1.),
+        ([None, Some((55., 60.))], 0., -1.),
+    ] {
+        let setup = FacingSetup {
+            part: &part,
+            stock: &stock,
+            tool: &tool,
+            machine: &machine,
+            tabs: &[],
+            protected: &[],
+            held,
+            projection_error: Some(0.),
+        };
+        for approach in [1., 2.5] {
+            let plan = plan_end(
+                &setup,
+                &EndFacingParameters {
+                    approach,
+                    ..settings()
+                },
+                &ctx,
+            )
+            .unwrap();
+            for pass in &plan.passes {
+                for point in [pass.points.first().unwrap(), pass.points.last().unwrap()] {
+                    let gap = sign * (point.tip.x - outer) - 1.5;
+                    assert!(
+                        gap >= approach - 1e-9,
+                        "the tool is {gap} mm from the end face, less than the approach distance {approach}"
+                    );
+                }
+            }
+        }
+        // A zero approach distance still leaves the tool clear of the face.
+        let plan = plan_end(
+            &setup,
+            &EndFacingParameters {
+                approach: 0.,
+                ..settings()
+            },
+            &ctx,
+        )
+        .unwrap();
+        let first = plan.passes[0].points[0].tip.x;
+        assert!(sign * (first - outer) - 1.5 > 0.);
+    }
+}
+
+/// The coordinates a controller reads back from written G-code are not the
+/// planned ones: words are rounded and the Z1 reads single-precision floats.
+/// The outermost End bands therefore reach one eighth of the tolerance past
+/// the requested edge (decision 0252's written-motion share), so the motion
+/// read back still covers it (OP-24, NFR-05; issue #499: the Baluster End
+/// facing could not be exported). A band raised by more still refuses.
+#[test]
+fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowance() {
+    use openchuck_path::facing::coverage::verify_end_coverage;
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let plan = plan_end(&setup, &settings(), &ctx).unwrap();
+    let lowest = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.0)
+        .fold(f64::INFINITY, f64::min);
+    let highest = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.1)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let allowance = 0.125 * settings().tolerance;
+    assert!((lowest - (-12. - allowance)).abs() < 1e-12, "{lowest}");
+    assert!((highest - (12. + allowance)).abs() < 1e-12, "{highest}");
+    // Neighbouring bands overlap by at least the allowance as well.
+    for pair in plan.bands.windows(2) {
+        assert!(pair[1].heights.0 + 10. >= pair[0].heights.0 + 2. * allowance - 1e-12);
+    }
+    let raised = |by: f64| {
+        let mut group = actual_sweeps(&plan.passes, &machine);
+        for segment in &mut group.segments {
+            if segment.end.tip.z == lowest {
+                segment.end.tip.z += by;
+            }
+        }
+        if group.start.tip.z == lowest {
+            group.start.tip.z += by;
+        }
+        group
+    };
+    let check = |group: &openchuck_types::ir::ToolpathGroup| {
+        verify_end_coverage(
+            &setup,
+            plan.end,
+            plan.target,
+            plan.coverage,
+            group,
+            0.01,
+            0.,
+            &ctx,
+        )
+    };
+    check(&raised(0.)).unwrap();
+    // The Baluster's -17.5 read back as -17.499999999999993 through the
+    // LinuxCNC frame, and as -17.4999985 through the Z1's floats; a word
+    // rounded to three places moves by up to 0.0005.
+    for by in [7e-15, 1.5e-6, 0.0005] {
+        check(&raised(by)).unwrap();
+    }
+    let error = check(&raised(allowance + 1e-6)).unwrap_err().to_string();
+    assert!(error.contains("unfinished"), "{error}");
+}
+
+/// Invalid input gives a clear refusal, never a crash (NFR-07): a negative
+/// approach distance, and flutes too short for neighbouring bands to overlap
+/// by the written-motion allowance (issue #499, decision 0501).
+#[test]
+fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let error = plan_end(
+        &setup,
+        &EndFacingParameters {
+            approach: -1.,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("approach distance"), "{error}");
+    let short = Tool {
+        flute_length: Millimetres(0.002),
+        ..tool.clone()
+    };
+    let error = plan_end(
+        &FacingSetup {
+            tool: &short,
+            ..setup
+        },
+        &EndFacingParameters {
+            flute_step: 0.001,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("too short"), "{error}");
 }

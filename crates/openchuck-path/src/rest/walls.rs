@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Rest machining at walls: rings where the tool's side meets the material
 //! left, and what the tool cannot reach (OP-09, with OP-20's reporting;
-//! SET-09; issue #508; decision record 0644).
+//! SET-09; issue #508; decision record 0505).
 //!
 //! **Why.** Rest machining cuts rings (or a spiral) at its stepover, and the
 //! faces square to the axis get a turn each (decision record 0297). A wall

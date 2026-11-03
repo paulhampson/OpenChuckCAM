@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.42.0 (provisional; assigned by the coordinator, applied at the release push)
+## 0.38.0
 
-- RESTCORNERS (issue #508, decision 0644, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
+- RESTCORNERS (issue #508, decision 0505, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
 
 ## 0.34.0
 
@@ -16,6 +16,8 @@
 All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
+
+- TABREGRESS (#511, decision 0503, accepted): a whole-part operation (rotary roughing, rest machining, helical, axial, indexed or simultaneous finishing, with no selections) whose tool has no room to cut down beside a tab between a held region and the part says so when generating: the zone's length less the 0.5 mm held clearance, the stock to leave and any wider shank, under the tool's cutting diameter. The path is unchanged. No schema or API change.
 
 - TABS-CHECK (#438, decision 0494): a retaining tab's length along X, not its diameter, is compared with the tool's diameter, in the refusal when generating, the check findings, the overview and export notes, and `workholding_view::narrowest_line` (now the "Length vs tools" line; name and signature unchanged). Wording is "... is N mm long along X, shorter than the tool ...". No schema or API change. The comparison uses an automatic tab's length where the part, the stock and the held regions put it now (decision 0202 item 3), not its last-applied length; `workholding::narrow_tab_notes` is crate-private and takes the part's extent.
 

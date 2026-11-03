@@ -552,7 +552,7 @@ const KEEP_OUT_SLACK: f64 = 1e-6;
 /// tool flush with it as touching the held stock. A host widens each held
 /// region into [`StrategyInput::keep_out`] by the tool's largest radius and
 /// this; rest machining shrinks an interval back by both to tell the part
-/// under the grip from the part beside it (decision record 0644).
+/// under the grip from the part beside it (decision record 0505).
 pub const HELD_CLEARANCE: f64 = 0.5;
 
 /// The middle of the part along X, which tells the held region at the start

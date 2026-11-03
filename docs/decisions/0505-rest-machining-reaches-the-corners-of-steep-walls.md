@@ -1,10 +1,10 @@
-# 0644: Rest machining reaches the inside corners of steep walls, and says what its tool cannot reach (OP-09, OP-20, SET-09, GC-07, NFR-06, NFR-07, NFR-12; issue #508; lane RESTCORNERS)
+# 0505: Rest machining reaches the inside corners of steep walls, and says what its tool cannot reach (OP-09, OP-20, SET-09, GC-07, NFR-06, NFR-07, NFR-12; issue #508; lane RESTCORNERS)
 
 - **Status:** accepted by the project owner on 3 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane RESTCORNERS on 2 Nov 2026; the approach (D1, option 1: rings at walls from the remaining material, with the unreachable report and the wording of the note) was the owner's choice, relayed the same way.
 - **Date:** 2 Nov 2026.
 - **Issue:** #508, material left after rest machining in sharp inside corners that a flat end mill should reach.
 - **Builds on and amends:** [0044](0044-slice-15-rest-and-pencil.md) (rest machining; item 3, the reach of a wanted point, is amended by item 4 below), [0297](0297-helix-strategies-turn-at-faces-across-the-axis.md) (a turn at each face square to the axis), [0420](0420-rings-for-rest-roughing-and-round-facing.md) (rings, cut only where material is left), [0161](0161-tools-keep-clear-of-the-gripped-length.md) (the keep-out beside a held region), [0368](0368-simultaneous-finishing-of-hidden-surfaces.md) (the report of what a tool cannot reach, OP-20). Related: decision 0633 on lane SIMVIS (material enclosed for every tool; accepted, not yet on `main`) reports material no tool of the machine reaches; this record reports what *this operation's* tool does not.
-- **Numbers:** 0644 and OI-2003, the next free across `main` and every unmerged branch on 2 Nov 2026, confirmed by the coordinator; renumbered at merge if `main` has moved. No project schema number. Library 0.42.0 (assigned by the coordinator; applied at the release push).
+- **Numbers:** first written as 0644 with OI-2003 and library 0.42.0 (provisional); the Merge Manager assigned **0505**, **OI-2013** (the next free across `main` and every unmerged branch) and library **0.38.0** at release on 3 Nov 2026, in merge order after #505. No project schema number.
 
 ## Context
 
@@ -53,7 +53,7 @@ The rings at walls are as many as the walls with material need at the user's thr
 
 ## Not covered
 
-- **The tip of a dome that runs out to the axis at a free end of the part** (the Baluster's finial: 0.2 mm left on surfaces facing along X within about 1.3 mm of the axis): the places that reach it lie beyond the part's end, where the free ends' layers go (decision 0344); neither rings nor the report go there. OI-2003.
+- **The tip of a dome that runs out to the axis at a free end of the part** (the Baluster's finial: 0.2 mm left on surfaces facing along X within about 1.3 mm of the axis): the places that reach it lie beyond the part's end, where the free ends' layers go (decision 0344); neither rings nor the report go there. OI-2013.
 - **"Contact feed 0.0 mm/min" warnings** on the helical family's moves near the axis (269 on the repository's Baluster with rest, 72 of them in helical finishing): not this issue; the coordinator files it separately.
 
 ## Verification
@@ -93,7 +93,7 @@ No new overcut on either (the deepest, 0.05 mm, is one cell and the same as befo
 
 ## Consequences
 
-- **Library (0.42.0, decision 0048):** `openchuck-path` gains `rest::Sample`, `RemainingMap::samples_with_normals`, `HELD_CLEARANCE` and the enum variant `UnreachedReason::NearHeldRegion` (breaking for an exhaustive `match` outside the crate). Rest machining's output changes wherever a wall holds material, a held region is near, or the tool has a flat bottom (item 4), so the workspace minor version is bumped (0239 item 13). Spiral and Rings, the parameters and the project format are unchanged; no golden program uses rest machining.
+- **Library (0.38.0, decision 0048):** `openchuck-path` gains `rest::Sample`, `RemainingMap::samples_with_normals`, `HELD_CLEARANCE` and the enum variant `UnreachedReason::NearHeldRegion` (breaking for an exhaustive `match` outside the crate). Rest machining's output changes wherever a wall holds material, a held region is near, or the tool has a flat bottom (item 4), so the workspace minor version is bumped (0239 item 13). Spiral and Rings, the parameters and the project format are unchanged; no golden program uses rest machining.
 - **Application:** `openchuck_app::HELD_CLEARANCE` is the library's value.
-- **Documents:** the verification plan's OP-09 row, the work breakdown (lane RESTCORNERS), the open-items register (OI-2003), the decision index, the changelogs of `openchuck-path` and `openchuck-app`.
-- **Open item:** OI-2003, the tip of a dome at a free end (Not covered).
+- **Documents:** the verification plan's OP-09 row, the work breakdown (lane RESTCORNERS), the open-items register (OI-2013), the decision index, the changelogs of `openchuck-path` and `openchuck-app`.
+- **Open item:** OI-2013, the tip of a dome at a free end (Not covered).

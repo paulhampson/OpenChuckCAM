@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Rest machining reaches the inside corners of steep walls, and says
 //! plainly what its tool cannot reach (OP-09, with OP-20's reporting; issue
-//! #508; lane RESTCORNERS; decision record 0644).
+//! #508; lane RESTCORNERS; decision record 0505).
 //!
 //! A ball leaves a fillet of its own radius in an inside corner. A flat end
 //! of the same diameter, across the rotary axis, reaches that corner where
@@ -481,7 +481,7 @@ fn req_op_09_rest_with_a_tool_it_cannot_model_says_so() {
     use openchuck_types::tool::{ProfilePoint, ProfileSegment, ToolProfile};
     // A flat with a concave (corner-rounding) arc: no edge point matches a
     // normal, so no ring is placed at a wall and nothing is called
-    // unreachable, and a note says so (decision record 0644 item 8).
+    // unreachable, and a note says so (decision record 0505 item 8).
     let concave = tool(
         ToolShape::Custom {
             profile: ToolProfile {

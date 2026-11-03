@@ -37,6 +37,11 @@ pub struct EndFacingParameters {
     pub allowance: f64,
     /// Total operation geometric tolerance.
     pub tolerance: f64,
+    /// The operation's approach distance: how far the complete tool stays
+    /// from the stock's end face where each band starts and ends, so a rapid
+    /// beside the face keeps the clearance a rapid above the stock keeps
+    /// (OP-14; issue #499). Never less than a quarter of the tolerance.
+    pub approach: f64,
 }
 
 impl EndFacingParameters {
@@ -57,6 +62,7 @@ impl EndFacingParameters {
             max_angle_step: Degrees(parameters.number(roughing::MAX_ANGLE_STEP)?),
             allowance: parameters.number(names::STOCK_TO_LEAVE)?,
             tolerance: parameters.number(names::TOLERANCE)?,
+            approach: parameters.number(names::APPROACH_DISTANCE)?,
         })
     }
 }
@@ -151,6 +157,11 @@ pub fn plan_end(
     {
         return Err(refuse("invalid stock allowance or tolerance"));
     }
+    if !parameters.approach.is_finite() || parameters.approach < 0. {
+        return Err(refuse(
+            "the approach distance must be finite and not negative",
+        ));
+    }
     let source_error = setup
         .projection_error
         .filter(|v| v.is_finite() && *v >= 0.)
@@ -222,8 +233,13 @@ pub fn plan_end(
     });
     // Axial approach/departure are part of each material-removal slice.
     // Shared entry/retract starts at these air points, keeping its selected
-    // style and semantics. This is not a stock-edge cutting extension.
-    let air_x = sign * (outside + radius + 0.25 * parameters.tolerance);
+    // style and semantics. This is not a stock-edge cutting extension. The
+    // complete tool stays the approach distance clear of the end face (and
+    // of any protection beyond it), so the shared rapid descent beside the
+    // face keeps the same allowance as one stopping above the stock (OP-14;
+    // issue #499). It was a quarter of the tolerance, 2.5 um by default.
+    let gap = parameters.approach.max(0.25 * parameters.tolerance);
+    let air_x = sign * (outside + radius + gap);
     if !air_x.is_finite() || sign * air_x - radius <= outside {
         return Err(refuse(
             "cannot establish complete-tool axial air clearance at these coordinates",
