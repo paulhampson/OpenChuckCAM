@@ -746,6 +746,100 @@ mod tests {
     }
 
     #[test]
+    fn req_sim_05_a_small_area_left_on_a_round_end_face_drawn_as_a_fan_is_coloured_only_there() {
+        // Issue #523 (a regression test, written after the code): a round end face (radius 20 mm) drawn as a fan of large
+        // triangles from its centre, with material left only over a small
+        // disc (radius 1 mm) on one wedge. The part's rule colours each piece
+        // by the nearest of its triangle's own samples, and those samples
+        // decide which pieces hold more than one band (decision 0638 item 1).
+        // The colour covers about the small disc, not the whole wedge, for a
+        // fan of a few fat wedges and of many thin ones.
+        let (radius, spot, spot_radius) = (20.0_f64, Point3::new(12.0, 3.0, 0.0), 1.0_f64);
+        let left = |p: Point3| p.distance(spot) <= spot_radius;
+        for wedges in [6_u32, 64] {
+            let mut mesh = TriangleMesh {
+                vertices: vec![Point3::new(0.0, 0.0, 0.0)],
+                triangles: Vec::new(),
+            };
+            for k in 0..wedges {
+                let angle = f64::from(k) * std::f64::consts::TAU / f64::from(wedges);
+                mesh.vertices
+                    .push(Point3::new(radius * angle.cos(), radius * angle.sin(), 0.0));
+                mesh.triangles.push([0, k + 1, (k + 1) % wedges + 1]);
+            }
+            // The comparison's samples: a grid one cell apart, each on the
+            // triangle it falls in.
+            let mut samples: Vec<Vec<Point3>> = vec![Vec::new(); mesh.triangles.len()];
+            let steps = (radius / PITCH).round() as i32;
+            for i in -steps..=steps {
+                for j in -steps..=steps {
+                    let p = Point3::new(
+                        f64::from(i) * PITCH + 0.05,
+                        f64::from(j) * PITCH + 0.05,
+                        0.0,
+                    );
+                    if let Some(t) = (0..mesh.triangles.len())
+                        .find(|t| distance_to_triangle(p, mesh.triangle(*t).unwrap()) <= 1e-9)
+                    {
+                        samples[t].push(p);
+                    }
+                }
+            }
+            let value = |p: Point3| -> Projected {
+                if left(p) {
+                    (Some((2.0, false)), false)
+                } else {
+                    (Some((0.0, false)), false)
+                }
+            };
+            let rule = |t: usize, point: Point3, _: [Point3; 3]| -> Projected {
+                samples[t]
+                    .iter()
+                    .min_by(|a, b| a.distance(point).total_cmp(&b.distance(point)))
+                    .map_or((None, false), |p| value(*p))
+            };
+            let candidate = |t: usize| {
+                let mut bands = samples[t].iter().map(|p| left(*p));
+                let first = bands.next();
+                bands.any(|b| Some(b) != first)
+            };
+            let mixed = |t: usize, piece: [Point3; 3]| {
+                let near: Vec<bool> = samples[t]
+                    .iter()
+                    .filter(|p| distance_to_triangle(**p, piece) <= PITCH)
+                    .map(|p| left(*p))
+                    .collect();
+                near.contains(&true) && near.contains(&false)
+            };
+            let never = CancelToken::new();
+            let pieces = refine(
+                &mesh,
+                &candidate,
+                &rule,
+                Some(&mixed),
+                Limits::for_cell(PITCH),
+                &JobContext::new(&never, &NoProgress),
+            )
+            .unwrap()
+            .expect("the wedge holding the spot is cut");
+            let thick = band_area(&pieces, DeviationBand::Thick);
+            let disc = std::f64::consts::PI * spot_radius * spot_radius;
+            let wedge = std::f64::consts::PI * radius * radius / f64::from(wedges);
+            println!(
+                "{wedges} wedges: {} parents, {} pieces, {thick:.2} mm² coloured against the spot's {disc:.2} mm² (a wedge is {wedge:.1} mm²)",
+                pieces.parents.len(),
+                pieces.parent.len()
+            );
+            // Within two cells all round the spot's edge.
+            let edge = std::f64::consts::TAU * spot_radius * 2.0 * PITCH;
+            assert!(
+                (thick - disc).abs() <= edge,
+                "{wedges} wedges: {thick} against {disc}"
+            );
+        }
+    }
+
+    #[test]
     fn req_nfr_06_the_split_colours_are_the_same_at_any_thread_count() {
         let mut mesh = TriangleMesh::default();
         for k in 0..40u32 {
