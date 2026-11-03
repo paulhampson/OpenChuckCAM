@@ -566,6 +566,7 @@ mod tests {
             value: Some(ParameterValue::Text("retract".into())),
             source: Source::Default,
             section: FormSection::EntryLinksAndRetract,
+            problem: None,
         };
         let mut state = FormState::default();
         let mut output = ctx.run_ui(

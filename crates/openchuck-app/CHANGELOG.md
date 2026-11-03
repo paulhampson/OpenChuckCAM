@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- LINKS-UI (#524, #436; UI-07, OP-14; decision 0496): the form places `link_height` (Links between passes) in Entry, links and retract, not Pattern and tolerance. No change to the project format or to any public item.
+
 - FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
 
 ## 0.38.0

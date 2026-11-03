@@ -37,3 +37,7 @@ Axial finishing cuts passes along the part, alternating direction (zigzag). Betw
 - **Tests:** `crates/openchuck-path/tests/axial_links.rs`, named `req_op_14_...`, `req_set_09_...`, `req_gc_07_...`.
 - **Documents:** the verification plan row OP-14, the work breakdown (lane PATH-TIDY), the open-items register and the decision index.
 - **Open items:** OI-1740, OI-1741, OI-1742.
+
+## Verification note: the control in the inspector (issue #524, lane LINKS-UI)
+
+The owner found that "Links between passes" could not be found in the inspector. The inspector draws every parameter of the strategy's schema, so the option was drawn for axial and indexed finishing (and Facing End and Box, 0501), but in "Pattern and tolerance" and with the stored words "retract" and "low" as its choices, not in "Entry, links and retract" as specification section 8 places retract settings. The parameter now sits in that section and its choices read "Retract to the clearance" and "Stay low where clear" (UI-07, OP-14; decision 0114). The project format, the stored words and the library are unchanged. Tests: `req_ui_07_req_op_14_links_between_passes_is_offered_in_entry_links_and_retract`, `req_ui_07_every_link_parameter_is_in_the_links_section` (`crates/openchuck-app/tests/operation.rs`; both failed on `main` before the change, on the section) and `req_ui_07_req_op_14_links_between_passes_choices_are_in_plain_words` (`form_panel.rs`).
