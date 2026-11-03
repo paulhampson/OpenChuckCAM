@@ -196,6 +196,9 @@ pub(crate) fn free_ends(
     let stepdown = parameters.number(parameter::STEPDOWN).unwrap_or(0.0);
     let radius = grown.cutting_radius();
     let width = 2.0 * input.tool.cutting_radius();
+    // The rings cut down to the axis, as (axis X, face X, far, X span), for
+    // the check that the part stays held on its own side (issue #477).
+    let mut rings: Vec<(f64, f64, bool, f64, f64)> = Vec::new();
     for end in ends {
         let face = end.face;
         // Zero (none given) or NaN: no Stepdown.
@@ -203,9 +206,11 @@ pub(crate) fn free_ends(
             out.warnings.push(PathWarning {
                 message: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
-                     keeps what earlier operations left. Stepdown: Required. Enter the depth \
-                     of each layer, or add cutting data for this tool and material in the \
-                     tool library."
+                     keeps what earlier operations left. Set Stepdown to the depth of each \
+                     layer, or add cutting data for this tool and material in the tool \
+                     library and then choose Update from library in the operation's tool \
+                     section: the project keeps its own copy of the tool, so a change in the \
+                     library reaches it only then."
                 ),
                 parameter: Some(parameter::STEPDOWN.to_owned()),
                 requires_acknowledgement: false,
@@ -317,6 +322,7 @@ pub(crate) fn free_ends(
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
              axis in each{source}"
         ));
+        rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
         // of whether there is any, not of whether it is joined to the rest
         // (OI-1393).
@@ -357,6 +363,41 @@ pub(crate) fn free_ends(
                     requires_acknowledgement: false,
                 });
             }
+        }
+    }
+    // The part's own side of each ring (issue #477, the owner's option A):
+    // the ring down to the axis parts the part from whatever is past it, so
+    // the part stays held only if a held region lies on its side, with no
+    // other ring down to the axis between them. A tab joins the part to the
+    // stock past it, but an end beside a tab is never a free end (decision
+    // record 0344 item 4), so the held regions are what count here.
+    for (i, &(x, face, far, from, to)) in rings.iter().enumerate() {
+        let between = |held: f64| {
+            rings
+                .iter()
+                .enumerate()
+                .any(|(j, &(other, ..))| j != i && (other - x) * (held - other) > 0.0)
+        };
+        let held = input.keep_out.iter().any(|&(a, b)| {
+            if far {
+                b < x && !between(b)
+            } else {
+                a > x && !between(a)
+            }
+        });
+        if !held {
+            out.warnings.push(PathWarning {
+                message: format!(
+                    "the end face at X {face:.3} is faced down to the rotary axis: the tool cuts \
+                     a ring {width:.3} mm wide from X {from:.3} to {to:.3} down to the axis, and \
+                     nothing in this setup holds the part on the other side of the ring (no held \
+                     region at its other end, and no tab joining it to one), so the part can be \
+                     cut free there and thrown while the rotary axis turns. Before running this \
+                     program, check the stock and the workholding on the machine"
+                ),
+                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                requires_acknowledgement: false,
+            });
         }
     }
     Ok(out)

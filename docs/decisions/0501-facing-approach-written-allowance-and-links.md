@@ -1,7 +1,8 @@
-# 0641: End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low (OP-14, OP-24, SET-06, SET-09, NFR-05, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
+# 0501: End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low (OP-14, OP-24, SET-06, SET-09, NFR-05, NFR-07, NFR-12, GC-07, NFR-06; issue #499; lane FACEAPPROACH)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged. Proposed by lane FACEAPPROACH the same day; item 3 is the owner's decision D1 (option iii), relayed by the coordinator; items 1 and 2 fix defects and needed no choice (the coordinator, 2 Nov 2026).
 - **Date:** 2 Nov 2026.
+- **Number:** proposed and accepted as 0641; renumbered 0501 on 3 Nov 2026 at release, under the owner's rule that decision numbers follow on from the highest on `main` (assigned by the Merge Manager). Earlier comments on pull requests #502, #505 and #506 call it 0641.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499), "Facing: the toolpath starts from the safe Z instead of just above the top of the material".
 - **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) (End and Box facing, their completion proofs and the written-motion budget), [0496](0496-low-links-between-finishing-passes.md) (Links between passes), [0495](0495-minimum-clearance-and-clearance-from-stock.md) (the clearance in use), [0033](0033-slice-14-rotary-roughing.md) item 6 (low links against stock), [0048](0048-pre-1-0-api-changes.md) (pre-release API changes).
 - **Open items:** OI-1741 (other strategies that retract between passes) is narrowed; OI-1997 (End facing depth against the flute length) and OI-1998 (the Facing cutter-sweep overlay) are new. No project schema change.
@@ -44,7 +45,7 @@ The export refusal had a measurable cause. The lowest band sat exactly on the co
    - Facing's own proofs still apply to the low links: the continuous rapid clearance, protection, shank and completion proofs. A path that fails any of them refuses (NFR-07).
    - For End, a low link runs beside the end, the approach distance clear of the face.
 4. **The generated G-code is still the user's to verify (NFR-12).** Nothing here says the path or the G-code is safe or verified. The parameter text is 0496's, which says so.
-5. **Library version.** `EndFacingParameters` is a public struct built by literal, and it gains a field. This is a breaking change under 0048: a minor bump, with the number assigned by the coordinator, and a changelog entry.
+5. **Library version.** `EndFacingParameters` is a public struct built by literal, and it gains a field. This is a breaking change under 0048: library family 0.36.0 (assigned by the Merge Manager at release), with a changelog entry.
 
 ## Alternatives considered
 

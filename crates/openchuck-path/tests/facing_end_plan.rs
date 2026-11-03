@@ -1213,7 +1213,7 @@ fn req_nfr_07_req_op_24_an_end_deeper_than_two_sides_reach_refuses_with_remedies
 
 /// Invalid input gives a clear refusal, never a crash (NFR-07): a negative
 /// approach distance, and flutes too short for neighbouring bands to overlap
-/// by the written-motion allowance (issue #499, decision 0641).
+/// by the written-motion allowance (issue #499, decision 0501).
 #[test]
 fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() {
     let part = part();
@@ -1265,7 +1265,7 @@ fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() 
     )
     .unwrap_err()
     .to_string();
-    // With the flute-depth limit (decision 0642) the depth refusal names the
+    // With the flute-depth limit (decision 0504) the depth refusal names the
     // flutes first; either way the operation refuses with a reason.
     assert!(
         error.contains("too short") || error.contains("mm of flute"),
