@@ -241,11 +241,23 @@ impl Walls<'_> {
                 if c < x0 || c > x1 || reaches_in(keep_out, c, c) {
                     continue;
                 }
-                ranges.push(if side > 0.0 {
+                // Clipped to the free interval round `c`, so the ring the
+                // greedy stab picks never stands in a keep-out, where the
+                // pass trimming would drop it (SET-09).
+                let (mut lo, mut hi) = if side > 0.0 {
                     (c, c + reach)
                 } else {
                     (c - reach, c)
-                });
+                };
+                for &(a, b) in keep_out {
+                    if a >= c && a < hi {
+                        hi = a;
+                    }
+                    if b <= c && b > lo {
+                        lo = b;
+                    }
+                }
+                ranges.push((lo, hi));
             }
         }
         ranges.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.total_cmp(&b.0)));
@@ -692,6 +704,32 @@ mod tests {
             walls.cell(&floor(9.28), &keep),
             walls.cell(&floor(9.44), &keep)
         );
+    }
+
+    #[test]
+    fn req_op_09_req_set_09_no_wall_ring_lands_inside_a_keep_out() {
+        // A wall facing +X whose tool place is just clear of a keep-out that
+        // starts above it: its range of good places reaches into the
+        // keep-out, and the ring must still stand outside it, or the pass
+        // trimming drops it and the wall's foot keeps its material (the
+        // review of #509).
+        let tool = flat_tool();
+        let walls = walls_with(&tool);
+        let keep = [(12.0, 100.0)];
+        let wall = Sample {
+            point: Point3::new(12.0 - 1.5875 - 0.03, 6.0, 0.0),
+            normal: Vec3::new(1.0, 0.0, 0.0),
+            area: 0.01,
+        };
+        let (rings, capped) = walls.rings(&[wall], 0.0, &keep);
+        assert!(!capped);
+        assert!(!rings.is_empty(), "the wall gets a ring");
+        for r in &rings {
+            assert!(
+                !reaches_in(&keep, *r, *r),
+                "ring at X {r} is inside the keep-out"
+            );
+        }
     }
 
     #[test]
