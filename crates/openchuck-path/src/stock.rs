@@ -42,6 +42,13 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     fn left_by_earlier_operations(&self) -> bool {
         false
     }
+
+    /// The stock in a few words for a message, such as "a 35.000 x 35.000 mm
+    /// box, its corners 24.749 mm from the rotary axis", if it has a simple
+    /// shape (decision record 0508). `None` by default.
+    fn describe(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box
@@ -159,6 +166,28 @@ impl StockModel for AnalyticStock {
             Self::Cylinder { x_start, x_end, .. } => Some((x_start, x_end)),
             Self::Box(b) => Some((b.min.x, b.max.x)),
         }
+    }
+
+    fn describe(&self) -> Option<String> {
+        Some(match *self {
+            Self::Cylinder { radius, .. } => {
+                format!(
+                    "a {:.3} mm diameter cylinder on the rotary axis",
+                    2.0 * radius
+                )
+            }
+            Self::Box(b) => format!(
+                "a {:.3} x {:.3} mm box (Y {:.3} to {:.3}, Z {:.3} to {:.3}), its farthest \
+                 corner {:.3} mm from the rotary axis",
+                b.max.y - b.min.y,
+                b.max.z - b.min.z,
+                b.min.y,
+                b.max.y,
+                b.min.z,
+                b.max.z,
+                self.max_radius().unwrap_or(0.0)
+            ),
+        })
     }
 
     fn max_radius(&self) -> Option<f64> {

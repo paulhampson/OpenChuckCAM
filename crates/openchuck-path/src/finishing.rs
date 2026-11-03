@@ -260,15 +260,22 @@ pub(crate) fn free_ends(
         }
         // Refused, not skipped (the owner's choice on OI-1396), at the switch
         // the user acts on.
-        if top > input.tool.top() + 1e-6 {
+        // The depth the flutes must reach, by the shared measure over the
+        // tool's width at every half degree (decision record 0508): a box
+        // corner between the readings above is not missed. The layers keep
+        // the reading above, so the path is unchanged.
+        let deepest = crate::flutes::deepest_on_axis(input, end.x);
+        if top.max(deepest) > input.tool.top() + 1e-6 {
             return Err(PathError::Parameter {
                 name: parameter::FACE_FREE_ENDS.to_owned(),
                 reason: format!(
-                    "the end face at X {face:.3} has nothing beyond it and stock {top:.3} mm \
+                    "the end face at X {face:.3} has nothing beyond it and stock {:.3} mm \
                      deep beside it, more than the tool's {:.3} mm of flute, so the tool \
-                     cannot face it. Use a tool with longer flutes, or turn off Face free \
-                     ends for this operation, or face it with Facing",
-                    input.tool.top()
+                     cannot face it; {}. Use a tool with longer flutes, or turn off Face \
+                     free ends for this operation, or face it with Facing",
+                    top.max(deepest),
+                    input.tool.top(),
+                    crate::flutes::stock_words(stock),
                 ),
             });
         }

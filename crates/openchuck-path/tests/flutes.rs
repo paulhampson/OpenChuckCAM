@@ -1,0 +1,446 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The flute length against the deepest cut (TL-04, SET-03, OP-12, NFR-07,
+//! NFR-12; issue #530; decision record 0508).
+//!
+//! The measure is checked against analytic answers: a tool tip at height
+//! `h` above the rotary axis, on a pass that turns a full revolution, has
+//! the stock's farthest point from the axis (along the tool axis) above it
+//! when that point is uppermost: for box stock the corner, its half
+//! diagonal from the axis, not the inscribed radius. Each strategy that
+//! cuts all the stock above it at once is then refused with short flutes.
+#![allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::float_cmp,
+    clippy::print_stderr
+)]
+
+mod support;
+
+use std::collections::BTreeMap;
+
+use openchuck_path::flutes::{Deepest, check, deepest};
+use openchuck_path::params::names;
+use openchuck_path::rotary::AxisPosition;
+use openchuck_path::strategy::{CutPoint, Pass};
+use openchuck_path::{AnalyticStock, MeshSurface, ParameterValue, StockModel};
+use openchuck_testkit::parts::revolve;
+use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
+use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::units::{Degrees, Millimetres};
+use support::{Fixture, run, tool};
+
+/// The part: a round bar of radius 5 from X 0 to 20 on the axis.
+const BAR: f64 = 5.0;
+
+fn bar() -> MeshSurface {
+    MeshSurface::new(&revolve(&[(0.0, BAR), (20.0, BAR)], 96)).unwrap()
+}
+
+/// A flat end mill of 3.175 mm with `flutes` mm of flute.
+fn flat(flutes: f64) -> Tool {
+    let mut t = tool(ToolShape::FlatEnd, 3.175);
+    t.flute_length = Millimetres(flutes);
+    t.overall_length = Millimetres(flutes + 20.0);
+    t
+}
+
+/// Box stock across Y and Z, over X -2 to 22.
+fn boxed(y: (f64, f64), z: (f64, f64)) -> AnalyticStock {
+    AnalyticStock::Box(Aabb {
+        min: Point3::new(-2.0, y.0, z.0),
+        max: Point3::new(22.0, y.1, z.1),
+    })
+}
+
+/// A fixture on the bar with `stock` and a flat tool of `flutes` mm.
+fn fixture(stock: AnalyticStock, flutes: f64) -> Fixture {
+    let mut f = Fixture::new(bar(), 40.0, &flat(flutes));
+    f.stock = stock;
+    f
+}
+
+/// One turn of A at model X 10 with the tip `height` above the axis, every
+/// 10 degrees (the measure reads between the points).
+fn turn(f: &Fixture, height: f64) -> Vec<Pass> {
+    let points = (0..=36)
+        .map(|k| {
+            let a = Degrees(10.0 * f64::from(k));
+            let tip = f.rotary.to_model(
+                AxisPosition {
+                    along: 10.0,
+                    across: 0.0,
+                    height,
+                },
+                a,
+            );
+            CutPoint {
+                tip,
+                a,
+                contact: tip,
+            }
+        })
+        .collect();
+    vec![Pass {
+        points,
+        ..Pass::default()
+    }]
+}
+
+fn deepest_of(f: &Fixture, passes: &[Pass]) -> Deepest {
+    deepest(&f.input(), passes, 0.0).unwrap()
+}
+
+/// The angle of the tool axis at A, degrees from +Y towards +Z, in 0 to 360.
+fn axis_angle(f: &Fixture, a: f64) -> f64 {
+    let v = f.rotary.tool_axis(Degrees(a)).get();
+    v.z.atan2(v.y).to_degrees().rem_euclid(360.0)
+}
+
+#[test]
+fn req_tl_04_req_set_03_a_box_corner_above_the_axis_is_the_deepest_cut() {
+    // 35 x 35 mm box stock (the owner's case): the corner is 24.749 mm from
+    // the axis, the inscribed radius 17.5; the tip at the bar's radius.
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let corner = 17.5_f64.hypot(17.5);
+    let d = deepest_of(&f, &turn(&f, BAR));
+    eprintln!("35 x 35 box: deepest {:.4} mm at A {:.2}", d.depth, d.a);
+    assert!((d.depth - (corner - BAR)).abs() < 1e-3, "{d:?}");
+    // At a corner: the tool axis at 45 degrees plus a quarter turn.
+    let at = axis_angle(&f, d.a);
+    assert!(
+        ((at - 45.0).rem_euclid(90.0)).min((45.0 - at).rem_euclid(90.0)) < 0.5,
+        "{at}"
+    );
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_box_corner_needs_flutes_past_the_half_diagonal() {
+    // The boundary either side of 19.749 mm; the inscribed depth (12.5 mm)
+    // is not enough.
+    let depth = 17.5_f64.hypot(17.5) - BAR;
+    for (flutes, refused) in [(12.6, true), (depth - 0.01, true), (depth + 0.01, false)] {
+        let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
+        let r = check(&f.input(), &turn(&f, BAR), None);
+        assert_eq!(r.is_err(), refused, "flutes {flutes}: {r:?}");
+    }
+}
+
+#[test]
+fn req_tl_04_req_set_03_a_rectangular_box_is_measured_at_its_corner() {
+    // 30 x 50 mm: the corner hypot(15, 25) = 29.155 mm from the axis.
+    let f = fixture(boxed((-15.0, 15.0), (-25.0, 25.0)), 30.0);
+    let d = deepest_of(&f, &turn(&f, BAR));
+    assert!(
+        (d.depth - (15.0_f64.hypot(25.0) - BAR)).abs() < 1e-3,
+        "{d:?}"
+    );
+    let at = axis_angle(&f, d.a);
+    let corner = 25.0_f64.atan2(15.0).to_degrees();
+    let near = [corner, 180.0 - corner, 180.0 + corner, 360.0 - corner]
+        .iter()
+        .map(|c| (at - c).abs())
+        .fold(f64::INFINITY, f64::min);
+    assert!(near < 0.5, "axis at {at}, corner at {corner}");
+}
+
+#[test]
+fn req_tl_04_req_set_03_stock_off_the_axis_is_measured_at_its_farthest_corner() {
+    // Bounding box plus offset stock need not be centred on the axis: Y -10
+    // to 25, Z -17.5 to 17.5; the farthest corner (25, 17.5).
+    let f = fixture(boxed((-10.0, 25.0), (-17.5, 17.5)), 30.0);
+    let d = deepest_of(&f, &turn(&f, BAR));
+    assert!(
+        (d.depth - (25.0_f64.hypot(17.5) - BAR)).abs() < 1e-3,
+        "{d:?}"
+    );
+}
+
+#[test]
+fn req_tl_04_a_tip_below_the_axis_adds_its_depth() {
+    // A tip 2.5 mm below the axis (the side of an off-axis pin facing it,
+    // as on the crankshaft) has the corner 24.749 + 2.5 mm above it.
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let d = deepest_of(&f, &turn(&f, -2.5));
+    assert!(
+        (d.depth - (17.5_f64.hypot(17.5) + 2.5)).abs() < 1e-3,
+        "{d:?}"
+    );
+}
+
+/// Square stock turned about X by `turned` degrees: a box in its own frame.
+#[derive(Debug)]
+struct Turned {
+    inner: AnalyticStock,
+    turned: f64,
+}
+
+impl Turned {
+    fn to_box(&self, v: Vec3) -> Vec3 {
+        let (s, c) = (-self.turned.to_radians()).sin_cos();
+        Vec3::new(v.x, c * v.y - s * v.z, s * v.y + c * v.z)
+    }
+}
+
+impl StockModel for Turned {
+    fn contains(&self, p: Point3) -> bool {
+        self.inner
+            .contains(Point3::ORIGIN + self.to_box(p - Point3::ORIGIN))
+    }
+
+    fn ray_entry(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<f64> {
+        let o = Point3::ORIGIN + self.to_box(origin - Point3::ORIGIN);
+        let d = UnitVec3::new(self.to_box(direction.get())).ok()?;
+        self.inner.ray_entry(o, d, max_distance)
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        self.inner.max_radius()
+    }
+}
+
+#[test]
+fn req_tl_04_stock_turned_about_the_axis_is_measured_as_it_lies() {
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let stock = Turned {
+        inner: f.stock,
+        turned: 30.0,
+    };
+    let input = openchuck_path::StrategyInput {
+        stock: &stock,
+        ..f.input()
+    };
+    let d = deepest(&input, &turn(&f, BAR), 0.0).unwrap();
+    assert!(
+        (d.depth - (17.5_f64.hypot(17.5) - BAR)).abs() < 1e-3,
+        "{d:?}"
+    );
+    // The corners are now at 75, 165, 255 and 345 degrees.
+    let at = axis_angle(&f, d.a);
+    let off = (at - 75.0).rem_euclid(90.0);
+    assert!(off.min(90.0 - off) < 0.5, "{at}");
+}
+
+#[test]
+fn req_tl_04_round_stock_is_measured_at_its_radius() {
+    // A 35 mm cylinder: 17.5 - 5 = 12.5 mm, the same at every A.
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let f = fixture(round, 30.0);
+    let d = deepest_of(&f, &turn(&f, BAR));
+    assert!((d.depth - 12.5).abs() < 1e-3, "{d:?}");
+    for (flutes, refused) in [(12.49, true), (12.51, false)] {
+        let f = fixture(round, flutes);
+        assert_eq!(
+            check(&f.input(), &turn(&f, BAR), None).is_err(),
+            refused,
+            "{flutes}"
+        );
+    }
+}
+
+/// Stock an earlier operation left: a round of radius 5.5 over the bar.
+#[derive(Debug)]
+struct Roughed(AnalyticStock);
+
+impl StockModel for Roughed {
+    fn contains(&self, p: Point3) -> bool {
+        self.0.contains(p)
+    }
+    fn ray_entry(&self, o: Point3, d: UnitVec3, m: f64) -> Option<f64> {
+        self.0.ray_entry(o, d, m)
+    }
+    fn max_radius(&self) -> Option<f64> {
+        self.0.max_radius()
+    }
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn req_tl_04_stock_left_by_earlier_operations_is_measured_not_the_blank() {
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 1.0);
+    let roughed = Roughed(AnalyticStock::Cylinder {
+        radius: BAR + 0.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    });
+    let input = openchuck_path::StrategyInput {
+        stock: &roughed,
+        ..f.input()
+    };
+    check(&input, &turn(&f, BAR), None).unwrap();
+    let thin = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 0.4);
+    let input = openchuck_path::StrategyInput {
+        stock: &roughed,
+        ..thin.input()
+    };
+    let e = check(&input, &turn(&thin, BAR), None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("what the earlier operations in this setup left"),
+        "{e}"
+    );
+}
+
+#[test]
+fn req_nfr_07_req_nfr_12_the_refusal_gives_the_numbers_in_plain_words() {
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 25.0);
+    let e = check(&f.input(), &turn(&f, -2.5), Some("finishing_layers"))
+        .unwrap_err()
+        .to_string();
+    eprintln!("{e}");
+    for words in [
+        "parameter finishing_layers",
+        "27.249 mm above the tool's tip",
+        "25.000 mm of flute",
+        "35.000 x 35.000 mm box",
+        "24.749 mm from the rotary axis",
+        "longer flutes",
+        "turn on Finishing layers",
+    ] {
+        assert!(e.contains(words), "{words:?} in {e}");
+    }
+    // Nothing says the program is safe or checked (NFR-12).
+    for words in ["safe", "verified", "guarantee"] {
+        assert!(!e.to_lowercase().contains(words), "{words:?} in {e}");
+    }
+}
+
+fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> {
+    [
+        (names::STEPOVER, ParameterValue::Number(1.0)),
+        (names::FEED, ParameterValue::Number(600.0)),
+        (names::PLUNGE_FEED, ParameterValue::Number(150.0)),
+        (names::TOLERANCE, ParameterValue::Number(0.05)),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v))
+    .chain(extra.iter().map(|(k, v)| ((*k).to_owned(), v.clone())))
+    .collect()
+}
+
+/// Generates `strategy` on the bar in 35 x 35 box stock with `flutes`.
+fn on_box(
+    strategy: &dyn openchuck_path::Strategy,
+    flutes: f64,
+    extra: &[(&str, ParameterValue)],
+) -> openchuck_path::Result<openchuck_path::GeneratedPath> {
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
+    run(|ctx| support::generate(strategy, &f.input(), &values(extra), ctx))
+}
+
+/// The depth the bar in 35 x 35 box stock needs, mm: the corner less the
+/// bar's radius.
+fn box_depth() -> f64 {
+    17.5_f64.hypot(17.5) - BAR
+}
+
+fn refused_then_accepted(
+    strategy: &dyn openchuck_path::Strategy,
+    extra: &[(&str, ParameterValue)],
+    parameter: Option<&str>,
+) {
+    let e = on_box(strategy, box_depth() - 0.05, extra).unwrap_err();
+    let text = e.to_string();
+    assert!(text.contains("mm of flute"), "{}: {text}", strategy.name());
+    assert!(text.contains("35.000 x 35.000 mm box"), "{text}");
+    if let Some(p) = parameter {
+        assert!(text.starts_with(&format!("parameter {p}:")), "{text}");
+    }
+    on_box(strategy, box_depth() + 0.05, extra)
+        .unwrap_or_else(|e| panic!("{}: {e}", strategy.name()));
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_simultaneous_finishing_is_refused_with_short_flutes() {
+    refused_then_accepted(&openchuck_path::SimultaneousFinishing, &[], None);
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_axial_finishing_is_refused_with_short_flutes() {
+    refused_then_accepted(
+        &openchuck_path::AxialFinishing,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+        Some("finishing_layers"),
+    );
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_helical_finishing_is_refused_with_short_flutes() {
+    refused_then_accepted(
+        &openchuck_path::HelicalFinishing,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+        Some("finishing_layers"),
+    );
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_finishing_layers_hold_each_layer_to_the_flutes_instead() {
+    // With layers on, the Stepdown is what the flutes must reach (0345).
+    let layers = [
+        ("face_free_ends", ParameterValue::Flag(false)),
+        ("finishing_layers", ParameterValue::Flag(true)),
+        ("stepdown", ParameterValue::Number(2.0)),
+    ];
+    on_box(&openchuck_path::AxialFinishing, 5.0, &layers).unwrap();
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_indexed_finishing_is_refused_with_short_flutes() {
+    refused_then_accepted(
+        &openchuck_path::IndexedFinishing,
+        &[],
+        Some("finishing_layers"),
+    );
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_rest_machining_on_the_setups_own_stock_is_refused_with_short_flutes() {
+    refused_then_accepted(
+        &openchuck_path::RestMachining,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+        None,
+    );
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_pencil_finishing_is_refused_with_short_flutes() {
+    // A stepped shaft, radius 5 then 8: one inside corner at X 10; the
+    // corner of the 35 x 35 box stands 24.749 - 5 above the tip there.
+    let stepped = || {
+        MeshSurface::new(&revolve(
+            &[(0.0, BAR), (10.0, BAR), (10.0, 8.0), (20.0, 8.0)],
+            96,
+        ))
+        .unwrap()
+    };
+    let pencil = openchuck_path::PencilFinishing::default();
+    let at = |flutes: f64| {
+        let mut f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
+        f.surface = stepped();
+        run(|ctx| support::generate(&pencil, &f.input(), &values(&[]), ctx))
+    };
+    let e = at(box_depth() - 0.5).unwrap_err().to_string();
+    assert!(e.contains("mm of flute"), "{e}");
+    at(box_depth() + 0.5).unwrap();
+}
+
+#[test]
+fn req_nfr_07_a_roughing_stepdown_past_the_flutes_is_refused() {
+    // OI-153: a layer deeper than the flutes would cut with the shank.
+    let rough = openchuck_path::RotaryRoughing;
+    let e = on_box(&rough, 3.0, &[("stepdown", ParameterValue::Number(3.5))])
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("parameter stepdown:"), "{e}");
+    assert!(e.contains("3.000 mm of flute"), "{e}");
+    // The layers start at the corner, so a Stepdown within the flutes is
+    // all the check roughing needs.
+    on_box(&rough, 3.0, &[("stepdown", ParameterValue::Number(3.0))]).unwrap();
+}

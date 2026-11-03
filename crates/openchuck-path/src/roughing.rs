@@ -237,6 +237,12 @@ fn number(
 }
 
 impl Strategy for RotaryRoughing {
+    fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
+        // The layers start at the stock's farthest point from the axis and
+        // the Stepdown is held to the flutes (decision record 0508).
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -691,6 +697,20 @@ impl<'a> Job<'a> {
                 "rotary roughing needs the stock's size, and the stock model gives none".to_owned(),
             )
         })?;
+        // A layer deeper than the flutes would cut with the shank (OI-153;
+        // decision record 0508): refused, as finishing layers are (0345).
+        let stepdown = p.number(parameter::STEPDOWN)?;
+        let flutes = input.tool.top();
+        if stepdown > flutes + 1e-6 {
+            return Err(PathError::parameter(
+                parameter::STEPDOWN,
+                format!(
+                    "{stepdown} mm is more than the tool's {flutes:.3} mm of flute; a layer \
+                     that deep would cut with the shank. Use a smaller Stepdown or a tool with \
+                     longer flutes"
+                ),
+            ));
+        }
         let bounds = input.surface.bounds();
         // The tool starts clear of the part's ends, with room for an entry,
         // rather than tangent to them.
@@ -711,7 +731,7 @@ impl<'a> Job<'a> {
             radius,
             leave,
             stepover: p.number(names::STEPOVER)?,
-            stepdown: p.number(parameter::STEPDOWN)?,
+            stepdown,
             chord: CHORD_FACTOR * tolerance,
             tolerance,
             min_cut: p.number(parameter::MIN_CUT)?,
