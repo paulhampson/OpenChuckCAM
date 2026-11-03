@@ -409,8 +409,8 @@ impl Application {
             .submit("build scene", self.events_tx.clone(), move |context| {
                 let mut view =
                     scene::build_scene(&document.location, &document.project, setup, context)?;
-                if let Some(run) = run.filter(|r| r.project.as_ref() == &document.project) {
-                    facing::display::add_generated(&mut view, &run, context)?;
+                if let Some(run) = run {
+                    facing::display::add_generated(&mut view, &run, &document.project, context)?;
                 }
                 Ok(view)
             })
