@@ -515,23 +515,41 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             _ => (roles::LINE_WIDTH, LineStyle::Solid),
         };
         scene.add_styled_polyline(&line.points, colour, on_top, width, line_style);
-        // What lies on the workpiece turns with it in the machine view
-        // (SIM-02): the stock, the findings and the Facing diagram, which is
-        // drawn on the part as the path lines are.
-        if matches!(
-            line.role,
-            SceneRole::Stock
-                | SceneRole::Problem
-                | SceneRole::Hole
-                | SceneRole::FacingExtent
-                | SceneRole::FacingMargin
-                | SceneRole::FacingSweep
-        ) && let Some(added) = scene.lines.last_mut()
+        if turns_with_part(line.role)
+            && let Some(added) = scene.lines.last_mut()
         {
             added.slot = Slot::Part;
         }
     }
     scene
+}
+
+/// Whether a line or label of `role` lies on the workpiece, so it turns
+/// with it in the machine view (SIM-02): the stock, the findings and the
+/// Facing diagram, which is drawn on the part as the path lines are. The
+/// guides (the rotary axis, A+ and the work axes) stay where they are.
+fn turns_with_part(role: SceneRole) -> bool {
+    matches!(
+        role,
+        SceneRole::Stock
+            | SceneRole::Problem
+            | SceneRole::Hole
+            | SceneRole::FacingExtent
+            | SceneRole::FacingMargin
+            | SceneRole::FacingSweep
+    )
+}
+
+/// Where a label of `role` at `at` (model frame) is drawn, with the part
+/// turned by `part`: a label on the workpiece turns with it, a guide's
+/// label does not.
+fn label_point(role: SceneRole, at: openchuck_app::setup::Point3, part: &Mat4) -> [f64; 3] {
+    if turns_with_part(role) {
+        let p = transform(part, [at.x, at.y, at.z, 1.0]);
+        [p[0], p[1], p[2]]
+    } else {
+        [at.x, at.y, at.z]
+    }
 }
 
 fn to_color32(c: Colour) -> Color32 {
@@ -1921,7 +1939,8 @@ impl Viewport {
             }
         }
         for label in &self.view.labels {
-            let Some(at) = to_screen([label.at.x, label.at.y, label.at.z]) else {
+            let Some(at) = to_screen(label_point(label.role, label.at, &self.part_transform))
+            else {
                 continue;
             };
             let (colour, _) = style(label.role);
@@ -2691,6 +2710,23 @@ pub(crate) mod tests {
         let guide = to_scene(&view);
         assert_eq!(guide.lines.len(), 1);
         assert_eq!(guide.lines[0].slot, Slot::Fixed);
+        // Its labels turn with it (CodeRabbit on #520); an axis label does
+        // not.
+        let turn = rotation_x(std::f64::consts::FRAC_PI_2);
+        let turned = transform(&turn, [1., 0., 2., 1.]);
+        let at = Point3 {
+            x: 1.,
+            y: 0.,
+            z: 2.,
+        };
+        for role in [SceneRole::FacingExtent, SceneRole::FacingMargin] {
+            assert_eq!(
+                label_point(role, at, &turn),
+                [turned[0], turned[1], turned[2]]
+            );
+        }
+        assert_ne!([turned[0], turned[1], turned[2]], [1., 0., 2.]);
+        assert_eq!(label_point(SceneRole::WorkX, at, &turn), [1., 0., 2.]);
     }
 
     /// The colour the scene gives the cube part with no bands.

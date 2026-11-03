@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep) turns with the workpiece as A turns, as the path lines do.
+- FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep, and the extent and margin labels) turns with the workpiece as A turns, as the path lines do.
 
 - FACEAPPROACH (#499, decision 0507, accepted): the Facing cutter sweep is drawn in its own colour (lime `#c2e07a`, a thin line) instead of the Cut amber, and the path legend lists "Cutter sweep" while one is shown.
 
