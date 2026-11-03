@@ -1376,17 +1376,22 @@ fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_war
         ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
     };
     let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
-    let text = messages(&path);
-    assert_eq!(
-        text.matches("nothing in this setup holds the part on the other side of the ring")
-            .count(),
-        2,
-        "{text}"
-    );
-    assert!(
-        text.contains("X 0.000") && text.contains("X 30.000"),
-        "{text}"
-    );
+    // Each warning names its own face (the review of #490).
+    let warnings: Vec<&str> = path
+        .warnings
+        .iter()
+        .map(|w| w.message.as_str())
+        .filter(|m| {
+            m.contains("nothing in this setup holds the part on the other side of the ring")
+        })
+        .collect();
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    for face in ["the end face at X 0.000", "the end face at X 30.000"] {
+        assert!(
+            warnings.iter().any(|m| m.contains(face)),
+            "{face}: {warnings:?}"
+        );
+    }
 }
 
 #[test]
