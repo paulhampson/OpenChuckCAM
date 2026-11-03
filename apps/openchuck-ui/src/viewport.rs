@@ -515,9 +515,17 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             _ => (roles::LINE_WIDTH, LineStyle::Solid),
         };
         scene.add_styled_polyline(&line.points, colour, on_top, width, line_style);
+        // What lies on the workpiece turns with it in the machine view
+        // (SIM-02): the stock, the findings and the Facing diagram, which is
+        // drawn on the part as the path lines are.
         if matches!(
             line.role,
-            SceneRole::Stock | SceneRole::Problem | SceneRole::Hole
+            SceneRole::Stock
+                | SceneRole::Problem
+                | SceneRole::Hole
+                | SceneRole::FacingExtent
+                | SceneRole::FacingMargin
+                | SceneRole::FacingSweep
         ) && let Some(added) = scene.lines.last_mut()
         {
             added.slot = Slot::Part;
@@ -2651,6 +2659,38 @@ pub(crate) mod tests {
                 .iter()
                 .any(|t| t.starts_with("Deviation colours are not shown"))
         );
+    }
+
+    /// Issue #499 (CodeRabbit on #506): the Facing diagram (the extent, the
+    /// margin and the cutter sweep) is drawn on the workpiece, as the path
+    /// lines are, so in the machine view it turns with A (SIM-02); the
+    /// rotary-axis guide stays where it is.
+    #[test]
+    fn req_sim_02_the_facing_diagram_turns_with_the_workpiece() {
+        let mut view = SceneView::default();
+        let point = Point3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        };
+        let line = |role| ScenePolyline {
+            role,
+            points: vec![point, Point3 { x: 1., ..point }],
+        };
+        for role in [
+            SceneRole::FacingExtent,
+            SceneRole::FacingMargin,
+            SceneRole::FacingSweep,
+        ] {
+            view.lines.push(line(role));
+        }
+        let scene = to_scene(&view);
+        assert_eq!(scene.lines.len(), 3);
+        assert!(scene.lines.iter().all(|l| l.slot == Slot::Part));
+        view.lines = vec![line(SceneRole::RotaryAxis)];
+        let guide = to_scene(&view);
+        assert_eq!(guide.lines.len(), 1);
+        assert_eq!(guide.lines[0].slot, Slot::Fixed);
     }
 
     /// The colour the scene gives the cube part with no bands.

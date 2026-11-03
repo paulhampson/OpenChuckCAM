@@ -202,23 +202,12 @@ fn keys(project: &Project) -> Result<Vec<(OperationId, crate::cache::Key)>, AppE
 /// operation (decision record 0117) can be current. A run that is not
 /// current is not shown again by the playback panel (OI-697).
 pub fn run_is_current(project: &Project, run: &Regeneration) -> bool {
-    let (Ok(then), Ok(now)) = (keys(&run.project), keys(project)) else {
-        return false;
-    };
-    !run.groups.is_empty()
-        && run.groups.iter().all(|g| {
-            let key = |list: &[(OperationId, crate::cache::Key)]| {
-                list.iter()
-                    .find(|(id, _)| *id == g.operation)
-                    .map(|(_, k)| *k)
-            };
-            key(&now).is_some() && key(&now) == key(&then)
-        })
+    !run.groups.is_empty() && current_operations(project, run).len() == run.groups.len()
 }
 
 /// The operations `run` holds that are still current in `project`: present,
-/// enabled, and unchanged with everything before them (the same key as
-/// [`run_is_current`], per operation). Used to show each operation's
+/// enabled, and unchanged with everything before them. The run is current
+/// when every one of its operations is ([`run_is_current`]). Used to show each operation's
 /// Facing sweep on its own (issue #499).
 pub(crate) fn current_operations(project: &Project, run: &Regeneration) -> Vec<OperationId> {
     let (Ok(then), Ok(now)) = (keys(&run.project), keys(project)) else {
