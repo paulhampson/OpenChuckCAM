@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)
+
+- **Fix (OI-2017, CodeRabbit on #518):** rest machining's wall-ring ranges are clipped at the keep-out's slack-adjusted edges, the same edges the keep-out tests use, so a tool place within 1e-6 mm inside a keep-out's lower edge keeps its ring. `KEEP_OUT_SLACK` is `pub(crate)`. No API change.
+
 ## 0.40.0
 
 - **Changed output (0.40.0, RESTCORNERS follow-up #518; OI-2014, CodeRabbit on #509; decision 0505 item 1; a minor bump by decision 0239 item 13):** a rest machining ring at a wall never stands inside a held region's keep-out. A ring's range of places is clipped to the free interval round its own place, so a wall that faces a keep-out just past that place keeps its ring, where before the pass trimming dropped it and the wall's foot kept its material. Rest machining's path changes only next to a held region; no API change.
