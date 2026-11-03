@@ -4,6 +4,10 @@
 
 - FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
 
+## 0.38.0
+
+- RESTCORNERS (issue #508, decision 0505, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
+
 ## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.
