@@ -1239,8 +1239,10 @@ fn req_nfr_12_req_tl_05_a_free_end_with_no_stepdown_is_left_and_said() {
     assert!(
         text.contains("X 0.000")
             && text.contains(
-                "Required. Enter the depth of each layer, or add cutting data \
-                              for this tool and material in the tool library."
+                "Set Stepdown to the depth of each layer, or add cutting data for \
+                 this tool and material in the tool library and then choose Update \
+                 from library in the operation's tool section: the project keeps its \
+                 own copy of the tool, so a change in the library reaches it only then."
             ),
         "{text}"
     );
@@ -1325,19 +1327,9 @@ fn req_op_04_face_free_ends_off_leaves_the_path_as_before() {
     assert!(turns_in_place(&off).iter().all(|t| (t - x).abs() > 1e-6));
 }
 
-#[test]
-fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_warning() {
-    // A held region past the free end grips the stock beyond the ring, so it
-    // cannot be cut free there: the end is faced, with its note, and the
-    // cut-free warning is not given.
-    let job = free_end(true, 12.0);
-    let tag = tags();
-    let keep_out = [(-20.0, -4.9)];
-    let input = StrategyInput {
-        keep_out: &keep_out,
-        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
-    };
-    let values: BTreeMap<String, ParameterValue> = [
+/// The values of a free-end job with a Stepdown of 2 mm.
+fn free_end_values() -> BTreeMap<String, ParameterValue> {
+    [
         (names::STEPOVER, STEPOVER),
         (names::FEED, 600.0),
         (names::PLUNGE_FEED, 150.0),
@@ -1346,8 +1338,98 @@ fn req_set_09_stock_past_a_free_end_that_a_held_region_grips_gets_no_cut_free_wa
     ]
     .into_iter()
     .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
-    .collect();
-    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx)).unwrap();
+    .collect()
+}
+
+#[test]
+fn req_set_09_a_free_end_ring_that_would_part_the_part_from_the_chuck_is_warned() {
+    // Issue #477 (the owner's option A): the held region past the free end
+    // grips the stock beyond the ring, and nothing holds the part on its
+    // other side (its far end is the stock's end). The ring down to the axis
+    // parts the part from the stock the chuck grips, so it is warned about,
+    // and the end is still faced. Before #477 no warning was given here.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = run(|ctx| generate(strategy, &input, &free_end_values(), ctx)).unwrap();
+        let text = messages(&path);
+        assert!(
+            text.contains("in 6 layers of 2 mm"),
+            "{}: {text}",
+            strategy.name()
+        );
+        assert!(
+            text.contains("X 0.000")
+                && text.contains("down to the rotary axis")
+                && text
+                    .contains("nothing in this setup holds the part on the other side of the ring")
+                && text.contains("the part can be cut free there")
+                && text.contains("check the stock and the workholding"),
+            "{}: {text}",
+            strategy.name()
+        );
+        // The stock past the ring is gripped: its own warning is not given.
+        assert!(
+            !text.contains("the stock past the ring is not held"),
+            "{}: {text}",
+            strategy.name()
+        );
+    }
+}
+
+#[test]
+fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_warned() {
+    // Stock past both ends, each gripped by a held region past it: each end
+    // is a free end faced down to the axis, so between the two rings the
+    // part is held by nothing (issue #477). Both rings are warned about.
+    let mut job = free_end(true, 12.0);
+    job.stock = Box::new(Carried(AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 40.0,
+    }));
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9), (34.9, 60.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
+    let text = messages(&path);
+    assert_eq!(
+        text.matches("nothing in this setup holds the part on the other side of the ring")
+            .count(),
+        2,
+        "{text}"
+    );
+    assert!(
+        text.contains("X 0.000") && text.contains("X 30.000"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_set_09_a_free_end_ring_with_the_part_held_past_it_gets_no_cut_free_warning() {
+    // A held region grips the stock past the free end and another grips the
+    // part's far end: neither side of the ring can come loose, so the end is
+    // faced, with its note, and no cut-free warning is given.
+    let job = free_end(true, 12.0);
+    let tag = tags();
+    let keep_out = [(-20.0, -4.9), (26.0, 50.0)];
+    let input = StrategyInput {
+        keep_out: &keep_out,
+        ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
+    };
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
     let text = messages(&path);
     assert!(text.contains("in 6 layers of 2 mm"), "{text}");
     assert!(!text.contains("cut free"), "{text}");

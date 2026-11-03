@@ -675,6 +675,21 @@ fn req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the
 }
 
 #[test]
+fn req_op_04_req_nfr_12_continuous_roughing_with_a_ball_confirms_the_part_end_edges() {
+    // OI-1510: the material steps from none at the part's end edges to a
+    // plateau just under the Allowed excess, so the bound between stations
+    // beside the step stays above it and those places were reported as
+    // unverified. A place the measure cannot bound is refined like one that
+    // holds too much where a line can still be added (the owner's choice,
+    // 2 Nov 2026), so they are confirmed and the excess stays within it.
+    let p = cylinder_with(&ball(4.0));
+    let on = roughed(&p, &continuous_along());
+    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    let after = left(&p, &on, (2.0, 10.0));
+    assert!(after <= 0.012, "on left {after}");
+}
+
+#[test]
 fn req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a() {
     // Measured against the part with its stock to leave only, not each
     // layer's own level (the owner's choice on OI-1453): a ball's cusp on a
