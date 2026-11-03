@@ -138,8 +138,8 @@ pub use simultaneous::SimultaneousFinishing;
 pub use solid::Solid;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup, StrategyInput,
-    StrategyOutput, generate, generate_in_region, generate_in_zones,
+    CutPoint, HELD_CLEARANCE, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup,
+    StrategyInput, StrategyOutput, generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, FaceRef, MeshSurface, ParametricFace, RayHit, SurfacePoint,

@@ -205,7 +205,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | Place | Box | Steps |
 | --- | --- | --- |
 | Top left, under the toolbar strip | Selection tools: a filter, "Pick" (a muted label) with Both, Faces, Edges as one framed segmented control, then a line naming the active mode and what the pointer is over (decision 0153) (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
-| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
+| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Cutter sweep while a Facing cutter sweep is shown (decision 0507); then Held region and Tab when the setup has them (7.5) | Operations |
 | Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149) | All with a 3D view |
 | Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2 places, wrapped into 0 to 360 (360 reads 0), with a tooltip giving the continuous A of the G-code ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)); its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
 | Bottom left | Axes gadget: X red, Y green, Z blue, drawn without a box (decision 0149). On Simulate the colour scale (11.5) sits above it, 8 pixels clear | Gadget: all with a 3D view; colour scale: Simulate |
@@ -238,6 +238,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Link moves | Green `#6fd3a8` | Solid, thinner |
 | Rapid moves | Grey `#9aa6b5` | Dotted |
 | Entry and exit moves | Lilac `#e8b6ff` | Solid |
+| Facing cutter sweep | Lime `#c2e07a` | Thin solid line, along the cutting moves at the tool's tip, shown with its operation (decision 0507) |
 | Tool | Grey body, lilac tip | |
 | Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
@@ -511,6 +512,8 @@ Boards 3 and 3b.
 - Facing: "Round: Spiral turns each layer down in one continuous spiral that moves along the stock as it turns. Rings cuts each layer one full turn at a time at a fixed place along the stock, with a short step along it between turns."
 
 The note saying the rings were cut and how far apart shows in Messages and on the operation as other path notes do.
+
+**Simultaneous finishing ([decision 0497](../decisions/0497-rings-for-the-simultaneous-spiral.md), accepted 1 Nov 2026, relayed).** The same **Passes** control is in Pattern and tolerance for simultaneous finishing when the pattern is the spiral, Spiral for a new operation and for one saved before it; it is not shown for the axial pattern. Its tooltip: "Spiral pattern. Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, A held still while it steps." The rings note shows as the others do.
 
 ### 11.5 Simulate
 

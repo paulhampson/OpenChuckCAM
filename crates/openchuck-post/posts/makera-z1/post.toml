@@ -23,6 +23,9 @@ work_offset = "G54"
 coolant = "off"
 # max_feed is left unset: the machine profile's feed limits already govern every move (decision 0020 item 5).
 feed_mode = "g94"
+# Consecutive A-only moves with nothing else changing are written as one block, so the
+# controller plans one rotation instead of one per step (decision 0506, accepted).
+combine_rotary_runs = true
 comments = true
 file_extension = "nc"
 
