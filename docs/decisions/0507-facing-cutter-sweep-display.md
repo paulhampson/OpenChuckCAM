@@ -1,7 +1,8 @@
-# 0643: The Facing cutter sweep has its own colour and legend entry, follows its own operation, and shows only the cutting sweep (OP-24, SIM-01, UI-03, UI-11, UI-25, NFR-12; issue #499; lane FACEAPPROACH)
+# 0507: The Facing cutter sweep has its own colour and legend entry, follows its own operation, and shows only the cutting sweep (OP-24, SIM-01, UI-03, UI-11, UI-25, NFR-12; issue #499; lane FACEAPPROACH)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged. Proposed by lane FACEAPPROACH the same day; item 3 is the owner's decision S-1, relayed by the coordinator; items 1 and 2 were agreed by the coordinator as following decision 0252's "existing overlay conventions".
 - **Date:** 2 Nov 2026.
+- **Number:** proposed and accepted as 0643; renumbered 0507 on 3 Nov 2026 at release (assigned by the Merge Manager; 0505 and 0506 are reserved for #509 and #517, which merge first). Earlier comments on pull request #506 call it 0643.
 - **Issue:** [#499](https://github.com/paulhampson/OpenChuckCAM/issues/499).
 - **Builds on:** [0252](0252-facing-ends-sides-and-extents.md) ("actual necessary additional cutter sweep … follow existing overlay conventions"; UI specification section 9 on the Facing extent diagram), [0501](0501-facing-approach-written-allowance-and-links.md) and [0504](0504-end-facing-depth-within-the-flutes.md).
 - **Open items:** closes OI-1998. No project schema change. Neither the library family nor the toolpath and G-code change.

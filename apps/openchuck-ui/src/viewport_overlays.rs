@@ -79,7 +79,7 @@ pub enum LegendEntry {
     Selected,
     /// Avoid surfaces.
     Avoid,
-    /// The Facing cutter sweep (decision 0643).
+    /// The Facing cutter sweep (decision 0507).
     CutterSweep,
     /// A held region.
     HeldRegion,
@@ -128,7 +128,7 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
         LegendEntry::Selected,
         LegendEntry::Avoid,
     ];
-    // The Facing cutter sweep, when one is shown (issue #499, decision 0643).
+    // The Facing cutter sweep, when one is shown (issue #499, decision 0507).
     if view.lines.iter().any(|l| l.role == SceneRole::FacingSweep) {
         out.push(LegendEntry::CutterSweep);
     }
