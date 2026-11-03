@@ -193,6 +193,7 @@ impl PostProcessor for TemplatePost {
             decimals: Some((d.options.decimals.pos, d.options.decimals.a)),
             operation_names: job.operation_names.clone(),
             operation_spindle: job.operation_spindle.clone(),
+            combine_rotary_runs: d.options.combine_rotary_runs,
         };
         let mut program = to_machine_program(toolpath, &convert)?;
         for r in &mut program.short_blocks {

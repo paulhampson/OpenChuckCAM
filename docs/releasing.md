@@ -5,6 +5,7 @@ Two kinds of release, each started by a tag: the library family on crates.io (`l
 - [The library family on crates.io](#the-library-family-on-cratesio)
 - [Each application release](#each-application-release)
 - [One-time setup for the documentation site](#one-time-setup-for-the-documentation-site)
+- [Up-to-date rule relaxed](#up-to-date-rule-relaxed)
 
 ## The library family on crates.io
 
@@ -142,3 +143,17 @@ The guide appears after the next Nightly build that publishes the `nightly` pre-
 3. Try to push to `docs-releases` yourself, for example `git push origin HEAD:docs-releases` from any clone. GitHub must refuse it, naming the ruleset. If it is accepted, the ruleset is not working: check that it is **Active** and that only the App is in its bypass list, then remove the branch you created (set the ruleset to **Disabled** for that, and back to **Active** after).
 
 The first application release then creates `docs-releases` with its own folder, and the site lists the version.
+
+## Up-to-date rule relaxed
+
+How pull requests merge ([decision 0499](decisions/0499-up-to-date-rule-relaxed.md), accepted; amends [0055](decisions/0055-push-discipline-and-draft-pull-requests.md) item 4; it supersedes in part [0498](decisions/0498-merge-queue.md), accepted). GitHub's merge queue is not available on a personal-account repository, so it is not used. With "Require branches to be up to date" on, every merge turned the other ready pull requests behind, and each had to merge `main`, push and wait for a full CI run.
+
+**What the owner changes** (Settings, Rules, Rulesets, "Main branch protection"): clear **Require branches to be up to date before merging**. Keep **Require status checks** with `CI required checks`; change nothing else.
+
+**How merges are serialised.** The Merge Manager merges one pull request at a time, in the order it sets. A pull request that is behind `main` merges without being updated or re-run, once `CI required checks` is green on its own head and it has a CodeRabbit review of that head (a process rule; GitHub does not enforce it). A lane merges `main` only for a real conflict or a register check (`cargo xtask records`).
+
+**CI on `main`.** Each merge triggers the push run of `ci.yml`. The Merge Manager looks at it before the next merge, because a pull request merged while behind has not been tested with the ones merged after its last run. The push run is normally a full run: the light run (decision 0358, Option 4) applies only when the merged tree equals a pull request's tested tree (OI-1999).
+
+**If `main` goes red:** the Merge Manager stops merging, finds the pull request that broke it, and has its lane push a fix pull request or has the owner revert it. Merging resumes when `main` is green.
+
+**Merge queue, for a later organisation-owned repository.** `ci.yml` and `cla.yml` already have `merge_group` triggers (decision 0498): a queue run is a ready-pull-request run with the path filters taken against the group's base sha, the fuzz smoke, the user guide check and `cargo semver-checks` included, and `CLA signatures` passing at once. If the repository moves to an organisation, enabling the queue is a ruleset change (**Require merge queue**; squash; build concurrency 1; group size 1; ALLGREEN; a 60-minute timeout), `CodeRabbit` would have to come off the required list because it does not report on a queue commit (not verified), and the first-run checks of OI-2001 apply. Nothing about the queue has been run.
