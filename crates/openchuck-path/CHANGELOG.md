@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.38.0
+
+- **Breaking (0.38.0, RESTCORNERS, issue #508, decision 0505, accepted, relayed by the coordinator):** rest machining reaches the inside corners of steep walls and says what its tool cannot reach.
+  - **Rings at walls.** Where the remaining-material map finds material on a wall, rest machining adds rings (whole turns in the spiral form) where its tool's side meets it, as close as the wall's slope needs for about `min_remaining` to be left between them, with one at each wall's foot and one at the edge of a held region's keep-out; at most 10,000, with a warning past it. A note counts them.
+  - **Reach of a wanted point.** A point is cut when material lies within half a stepover, a sample spacing and the width of the tool's flat bottom of its contact (amends decision 0044 item 3; unchanged for a ball).
+  - **What the tool cannot reach** is in `StrategyOutput::unreached` and one warning, as simultaneous finishing reports it: too narrow, blocked, or the new `UnreachedReason::NearHeldRegion` (breaking for an exhaustive `match`). The part under the grip is not reported.
+  - **Wording.** The note says "passes cut where it is left", not "clean them" (NFR-12).
+  - **API.** Additive: `rest::Sample`, `RemainingMap::samples_with_normals`, `HELD_CLEARANCE` (0.5 mm, moved from `openchuck-app`).
+  - **Output.** Rest machining's path changes wherever a wall holds material, a held region is near, or the tool has a flat bottom. No golden program uses rest machining; every other strategy is unchanged.
+- FACEAPPROACH pull request 2 (#505; no API change of its own, released in 0.38.0):
+  - **Flute depth (decision 0504, accepted; the owner's F1).** Each End view reaches at most the tool's flute length below the stock's top at that view; an end deeper than that is faced from A and A + 180 degrees, and one deeper than two sides reach is refused with the depth, the flutes and the remedies.
+
 ## 0.37.0
 
 - **Changed output with adaptive spacing on (PATHBUGS, issues #462 and #467; decision 0502, accepted, relayed by the coordinator):** helical finishing of the tutorial's turned piece with its defaults now gives a complete path, not a partial one to acknowledge.

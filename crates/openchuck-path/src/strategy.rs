@@ -546,6 +546,15 @@ fn generate_with(
 /// resolution (millimetres).
 const KEEP_OUT_SLACK: f64 = 1e-6;
 
+/// How far, beyond its largest radius, the tool keeps from a held region
+/// along the axis, in millimetres (decision record 0161): the jaw face is
+/// not a surface to cut against, and the simulation's cells would read a
+/// tool flush with it as touching the held stock. A host widens each held
+/// region into [`StrategyInput::keep_out`] by the tool's largest radius and
+/// this; rest machining shrinks an interval back by both to tell the part
+/// under the grip from the part beside it (decision record 0505).
+pub const HELD_CLEARANCE: f64 = 0.5;
+
 /// The middle of the part along X, which tells the held region at the start
 /// of the stock from the one at the end; NaN when the part has no extent.
 pub(crate) fn part_middle(input: &StrategyInput<'_>) -> f64 {
@@ -594,7 +603,7 @@ pub(crate) fn held_names(ends: &BTreeSet<HeldEnd>) -> &'static str {
 
 /// True when a move whose tip spans `lo..=hi` along X reaches into one of
 /// `keep_out`.
-fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
+pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
     keep_out
         .iter()
         .any(|&(a, b)| hi > a + KEEP_OUT_SLACK && lo < b - KEEP_OUT_SLACK)
