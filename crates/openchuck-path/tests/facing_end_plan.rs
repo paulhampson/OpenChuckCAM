@@ -1060,7 +1060,7 @@ fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowan
 
 /// Invalid input gives a clear refusal, never a crash (NFR-07): a negative
 /// approach distance, and flutes too short for neighbouring bands to overlap
-/// by the written-motion allowance (issue #499, decision 0641).
+/// by the written-motion allowance (issue #499, decision 0501).
 #[test]
 fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() {
     let part = part();
