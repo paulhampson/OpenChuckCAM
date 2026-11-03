@@ -139,6 +139,14 @@ pub struct PostOptions {
     pub max_feed: Option<f64>,
     /// The feed word mode; must agree with the post's feed rule.
     pub feed_mode: FeedMode,
+    /// Write a run of consecutive fed moves that turn A only, at the same
+    /// written X, Y and Z, in the same direction, of the same kind and with
+    /// the same written per-minute feed word, as one block (decision 0506,
+    /// proposed). The motion and its time are unchanged; the controller
+    /// plans one move instead of one per step. A post that leaves it out
+    /// writes every step, as before.
+    #[serde(default)]
+    pub combine_rotary_runs: bool,
     /// Write comments.
     pub comments: bool,
     /// The extension of program files, without the dot (`ngc`, `nc`).
