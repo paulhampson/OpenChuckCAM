@@ -477,7 +477,7 @@ pub fn check_for_tool(
 }
 
 /// The tool of an operation as [`uncleared_tab_notes`] needs it (decision
-/// 0647): its cutting radius, its largest radius (profile or shank), which
+/// 0502): its cutting radius, its largest radius (profile or shank), which
 /// keeps it from a held region (decision 0161), the operation's stock to
 /// leave, and the names the note gives.
 #[derive(Debug, Clone, Copy)]
@@ -491,7 +491,7 @@ pub(crate) struct ClearingTool<'a> {
 
 /// A note for each zone between a held region and the part that holds a tab
 /// and is too short for `tool` to cut down in, or none (OP-21, SET-09;
-/// decision 0647; issue #511). The tool's middle keeps its largest radius and
+/// decision 0502; issue #511). The tool's middle keeps its largest radius and
 /// [`HELD_CLEARANCE`] from the held region (decision 0161), and its cutting
 /// radius and the stock to leave from the part's end, so the room it has is
 /// the zone's length less the clearance, the stock to leave and what its
@@ -1517,7 +1517,7 @@ mod tests {
         }
     }
 
-    /// Decision 0647 item 1 (issue #511): between the held region and the
+    /// Decision 0502 item 1 (issue #511): between the held region and the
     /// part there is 4 mm; less the 0.5 mm kept clear of the held region and
     /// the 0.5 mm stock to leave, 3 mm, less than the 3.175 mm tool, so the
     /// tool cannot cut down beside the tab and the operation says so.

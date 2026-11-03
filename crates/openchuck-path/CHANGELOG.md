@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.36.0
+
+- **Breaking (FACEAPPROACH, issue #499, decision 0501, accepted):** End facing keeps the approach distance from the end face, covers the face for written motion, and End and Box facing can keep their links low.
+  - **API.** `facing::end::EndFacingParameters` gains `approach` (the operation's approach distance); struct literals add it. `EndFacingParameters::read` fills it from `approach_distance`.
+  - **Air point.** Where each End band starts and ends, the complete tool is the approach distance (never less than a quarter of the tolerance) from the stock's end face and any protection beyond it, not a quarter of the tolerance.
+  - **Bands.** End bands reach an eighth of the tolerance past the requested top and bottom edges, and the band spacing is at most the flute length less twice that, so neighbouring bands overlap by at least as much; a tab-limited band is not carried further.
+  - **Links.** Facing's schema gains `link_height` (Links between passes, Retract by default, or Low), shown for End and Box; Low sets `Pass::low_link` on every End and Box pass (decision 0496's rule). A saved operation without it is unchanged.
+  - **Output.** Every End facing path changes (air points and band heights). Box, Flat and Round paths are unchanged unless Low is chosen. No golden file changes.
+
 ## 0.35.0 (provisional; the coordinator confirms the number at merge)
 
 - RINGS-ALL pull request 2 (issue #440, decision 0497, accepted, relayed by the coordinator): simultaneous finishing's spiral pattern can cut rings with the same **Passes** setting. Each ring is driven as the spiral is (the smoothed A within the tilt, the lead the way it travels, round the section's own centre where the section does not surround the axis); a face's ring is its own turn (decision 0410 round an off-axis section's centre); the step between rings holds the A the ring ended at and the next ring starts there, so they are one cut, split where holding A would lean the tool beyond the lead and the tilt. Spiral is the default, so every path is unchanged unless rings are chosen; no version bump. Additive API: `simultaneous::parameter::PASS_SHAPE`.
@@ -20,6 +29,7 @@
 
 ## 0.32.0
 
+- **Safety warning (issue #477, decision 0500, accepted; the owner's option A):** helical, axial and rest finishing warn when a free-end ring cut down to the rotary axis (decision 0344) leaves nothing holding the part on its own side of the ring (no held region there, or another such ring between), so the part could be cut free from the stock the chuck grips. The program is still generated and no move changes. Internal; no API change.
 - RINGS-ALL (issue #440, decision 0420, accepted, relayed by the coordinator; pull request 1): rest machining, continuous rotary roughing around the part and round Facing can cut rings instead of a spiral, with helical finishing's **Passes** setting (decision 0390): one whole turn of A at a fixed X, evenly spaced no wider than the stepover with a ring at each end and at each face across the axis, joined by steps along the part at a whole number of turns from the start angle. Rest machining cuts rings and steps only where material is left; roughing and Facing cut each layer in rings with the same layers, remaining stock, smallest cut and region as the spiral (the layer engine is now one function both use, with the spiral's arithmetic unchanged). Spiral is the default for new and saved operations, so every path, golden program and the legacy Facing reference are unchanged unless rings are chosen; no version bump. Additive API: `rest::parameter::PASS_SHAPE` and `roughing::parameter::PASS_SHAPE` (both `helical::parameter::PASS_SHAPE`). A stepover too fine for rings is refused by name before any ring is placed (NFR-07; the review of #447).
 - **Changed output (CRANKEXCESS, decision 0410, proposed; issue #439):** simultaneous finishing's turn at a face across the rotary axis (decision 0297), where the turn lies in a zone whose section does not surround the axis (OP-26), now goes round that section's own centre, like the spiral there, instead of keeping the tool's line through the rotary axis. A flat end then finishes the inside corner between the face and the section: on the crankshaft, at most 0.002 mm left where it left up to 1.15 mm. A tool with a round end gets a note saying it leaves up to `r (sqrt 2 - 1)` in such corners and that a flat end can finish them. Turns on the axis are unchanged, so every part whose sections surround the axis gives byte-identical output. No API, parameter or schema change.
 
