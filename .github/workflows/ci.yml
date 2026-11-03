@@ -34,7 +34,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-  # The merge queue (decision 0498, docs/releasing.md "Merge queue"): GitHub builds each queued pull
+  # Ready for a GitHub merge queue (decision 0498; the queue is not used on this personal-account
+  # repository, decision 0499, docs/releasing.md "Up-to-date rule relaxed"): GitHub builds each queued pull
   # request on top of `main` (and of the entries ahead of it) and waits for `CI required checks` on
   # that commit. A merge_group run has no pull request, so `github.event.pull_request.draft` is empty
   # and the heavy jobs run as on a ready pull request.
