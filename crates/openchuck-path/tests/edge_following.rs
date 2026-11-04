@@ -390,7 +390,8 @@ fn req_op_08_a_width_the_tool_cannot_cut_is_refused() {
     };
     let e = go(&[(p::LINE_WIDTH, num(2.0))]);
     assert!(e.to_string().contains("wider than the tool"), "{e}");
-    let e = go(&[(p::DEPTH, num(15.0))]);
+    // The test ball has 40 mm of flute.
+    let e = go(&[(p::DEPTH, num(41.0))]);
     assert!(e.to_string().contains("flute length"), "{e}");
 }
 

@@ -1272,3 +1272,123 @@ fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() 
         "{error}"
     );
 }
+
+#[test]
+fn req_op_24_facing_an_end_flush_with_the_stock_says_there_is_nothing_past_it() {
+    // Issue #471 (the owner's note N2): the stock ends at the part's far end,
+    // so there is nothing past it to face. The refusal says so in the user's
+    // words, and how to set the stock if the real blank is longer.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let text = plan_end(&setup, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face")
+            && text.contains("If the real blank is longer, set the stock's length to match it"),
+        "{text}"
+    );
+    // The same at the start end, when the far end is the held one.
+    let flush_start = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(10., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let start = FacingSetup {
+        stock: &flush_start,
+        held: [None, Some((55., 60.))],
+        ..setup
+    };
+    let text = plan_end(&start, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 10.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_op_24_facing_a_flush_end_with_no_stock_to_leave_says_there_is_nothing_past_it() {
+    // The review of #491: with no stock to leave the target plane is the
+    // stock's own end, so the plan had no layers and no passes and was
+    // returned as if it faced something. It is refused with the owner's N2
+    // words (issue #471) instead.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let flush = EndFacingParameters {
+        allowance: 0.,
+        ..settings()
+    };
+    let text = plan_end(&setup, &flush, &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+    // Stock that does carry on past the end is still faced with no stock to
+    // leave.
+    let longer = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(52., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &longer,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+    // Stock past the end by less than the tolerance is still faced: the
+    // refusal is for an end with nothing to cut, not for a thin skin.
+    let skin = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50.005, 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &skin,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+}

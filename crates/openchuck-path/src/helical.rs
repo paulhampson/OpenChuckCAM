@@ -92,6 +92,14 @@ impl Strategy for HelicalFinishing {
         true
     }
 
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -512,6 +520,10 @@ fn passes(
             .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
+            .chain(crate::finishing::across_axis_note(
+                region,
+                "Helical finishing",
+            ))
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);

@@ -1589,6 +1589,15 @@ impl StockModel for LeftByEarlier<'_> {
     fn left_by_earlier_operations(&self) -> bool {
         true
     }
+
+    fn top_over_disc(
+        &self,
+        centre: openchuck_types::geometry::Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region

@@ -103,6 +103,14 @@ pub(crate) fn link_height_spec() -> ParameterSpec {
 const MAX_SEEDS: f64 = 5.0e6;
 
 impl Strategy for AxialFinishing {
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -766,6 +774,10 @@ fn passes(
         .chain(spaced_note)
         .chain(layered)
         .chain(free.notes)
+        .chain(crate::finishing::across_axis_note(
+            region,
+            "Axial finishing",
+        ))
         .collect();
     Ok((passes, notes, warnings))
 }
