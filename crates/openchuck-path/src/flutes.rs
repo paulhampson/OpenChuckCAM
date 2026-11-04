@@ -351,10 +351,11 @@ fn deepest_of(
         let mut worst: Option<Deepest> = None;
         let mut previous: Option<&CutPoint> = None;
         for (i, point) in pass.points.iter().enumerate() {
-            // Rapid points of a drilled hole are not cuts; the move to them
-            // is not read, nor the next from them.
+            // The move to a rapid point (of a drilled hole) is not a cut and
+            // is not read; the fed move from it is, from where the rapid left
+            // the tool, as `check_path` reads a fed move after a rapid.
             if pass.rapids.contains(&i) {
-                previous = None;
+                previous = Some(point);
                 continue;
             }
             // A place that is not a number cannot be read (NFR-07): refused,

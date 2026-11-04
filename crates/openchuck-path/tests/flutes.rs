@@ -1659,3 +1659,34 @@ fn req_tl_04_req_nfr_07_a_shank_wider_than_the_flutes_is_read_over_its_width() {
     let e = check(&input, &passes, None).unwrap_err().to_string();
     assert!((named_depth(&e) - 20.0).abs() < 1e-6, "{e}");
 }
+
+#[test]
+fn req_tl_04_req_nfr_07_a_fed_move_after_a_rapid_point_is_read_along_it() {
+    // The adversarial review of #534: in the passes-level form, the fed move
+    // from a rapid point was read at its end only. On 35 x 35 box stock, a
+    // rapid to the tip on the axis at A 0 and then a fed turn to A 90 passes
+    // the corner at A 45 (24.749 mm); with 20 mm of flute it is refused.
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 20.0);
+    let at = |a: f64| {
+        let tip = f.rotary.to_model(
+            AxisPosition {
+                along: 10.0,
+                across: 0.0,
+                height: 0.0,
+            },
+            Degrees(a),
+        );
+        CutPoint {
+            tip,
+            a: Degrees(a),
+            contact: tip,
+        }
+    };
+    let passes = vec![Pass {
+        points: vec![at(0.0), at(0.0), at(90.0)],
+        rapids: vec![1],
+        ..Pass::default()
+    }];
+    let e = check(&f.input(), &passes, None).unwrap_err().to_string();
+    assert!((named_depth(&e) - 17.5_f64.hypot(17.5)).abs() < 1e-3, "{e}");
+}
