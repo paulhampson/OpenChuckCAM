@@ -301,7 +301,7 @@ pub(crate) struct SurfaceSamples {
     /// Each counted node's value, and whether its material left is enclosed.
     values: Vec<Valued>,
     /// Every finite sample, of any kind, for the material behind a face
-    /// beyond the search (decision 0633 item 4).
+    /// beyond the search (decision 0513 item 4).
     all: Tree,
     /// For each node of `all`, its place in `behind` when it stands for the
     /// material behind (a counted part bound, or enclosed), else [`NONE`].
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn req_sim_05_the_material_behind_is_read_from_an_exhaustive_nearest_sample_of_any_kind() {
-        // Decision 0633 item 4: the sample of any kind (part, held region,
+        // Decision 0513 item 4: the sample of any kind (part, held region,
         // tab or inside the part) nearest to the point behind a face, ties to
         // the first in the comparison's order, stands for the material there
         // only when it is a counted part bound or enclosed. The index must

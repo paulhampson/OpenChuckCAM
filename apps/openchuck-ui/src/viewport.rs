@@ -91,7 +91,7 @@ pub(crate) fn cut_part_scene(
 }
 
 /// " · unreachable (enclosed)" for a triangle in that band, for the probe
-/// (decision 0633), else nothing.
+/// (decision 0513), else nothing.
 fn unreachable_words(bands: &DeviationBands, triangle: u32) -> &'static str {
     let unreachable = bands.bands.iter().any(|(band, set)| {
         *band == openchuck_app::pathview::DeviationBand::Unreachable && set.contains(&triangle)
@@ -131,13 +131,13 @@ enum ProbeSource {
 }
 
 /// The colour of a scene item, and whether it is a guide drawn over the part.
-fn style(role: SceneRole) -> (Colour, bool) {
+pub(crate) fn style(role: SceneRole) -> (Colour, bool) {
     match role {
         SceneRole::Part => (roles::PART, false),
         SceneRole::Stock => (roles::STOCK, false),
         SceneRole::FacingExtent => (roles::SELECTED, true),
         SceneRole::FacingMargin => (roles::CLEARANCE, true),
-        SceneRole::FacingSweep => (roles::CUT, false),
+        SceneRole::FacingSweep => (roles::SWEEP, false),
         SceneRole::HeldRegion => (roles::HELD, false),
         SceneRole::Tab => (roles::TAB, false),
         SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
@@ -520,15 +520,41 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             _ => (roles::LINE_WIDTH, LineStyle::Solid),
         };
         scene.add_styled_polyline(&line.points, colour, on_top, width, line_style);
-        if matches!(
-            line.role,
-            SceneRole::Stock | SceneRole::Problem | SceneRole::Hole
-        ) && let Some(added) = scene.lines.last_mut()
+        if turns_with_part(line.role)
+            && let Some(added) = scene.lines.last_mut()
         {
             added.slot = Slot::Part;
         }
     }
     scene
+}
+
+/// Whether a line or label of `role` lies on the workpiece, so it turns
+/// with it in the machine view (SIM-02): the stock, the findings and the
+/// Facing diagram, which is drawn on the part as the path lines are. The
+/// guides (the rotary axis, A+ and the work axes) stay where they are.
+fn turns_with_part(role: SceneRole) -> bool {
+    matches!(
+        role,
+        SceneRole::Stock
+            | SceneRole::Problem
+            | SceneRole::Hole
+            | SceneRole::FacingExtent
+            | SceneRole::FacingMargin
+            | SceneRole::FacingSweep
+    )
+}
+
+/// Where a label of `role` at `at` (model frame) is drawn, with the part
+/// turned by `part`: a label on the workpiece turns with it, a guide's
+/// label does not.
+fn label_point(role: SceneRole, at: openchuck_app::setup::Point3, part: &Mat4) -> [f64; 3] {
+    if turns_with_part(role) {
+        let p = transform(part, [at.x, at.y, at.z, 1.0]);
+        [p[0], p[1], p[2]]
+    } else {
+        [at.x, at.y, at.z]
+    }
 }
 
 fn to_color32(c: Colour) -> Color32 {
@@ -1922,7 +1948,8 @@ impl Viewport {
             }
         }
         for label in &self.view.labels {
-            let Some(at) = to_screen([label.at.x, label.at.y, label.at.z]) else {
+            let Some(at) = to_screen(label_point(label.role, label.at, &self.part_transform))
+            else {
                 continue;
             };
             let (colour, _) = style(label.role);
@@ -2599,7 +2626,7 @@ pub(crate) mod tests {
         assert_eq!(viewport.probe_hover, None);
     }
 
-    /// Issue 478 (decision 0633, OI-1987): the colour scale's legend has a
+    /// Issue 478 (decision 0513, OI-1987): the colour scale's legend has a
     /// row for material no tool can reach, and the probe names it; "Not
     /// measured" is drawn as it is on the part.
     #[test]
@@ -2697,6 +2724,55 @@ pub(crate) mod tests {
                 .iter()
                 .any(|t| t.starts_with("Deviation colours are not shown"))
         );
+    }
+
+    /// Issue #499 (CodeRabbit on #506): the Facing diagram (the extent, the
+    /// margin and the cutter sweep) is drawn on the workpiece, as the path
+    /// lines are, so in the machine view it turns with A (SIM-02); the
+    /// rotary-axis guide stays where it is.
+    #[test]
+    fn req_sim_02_the_facing_diagram_turns_with_the_workpiece() {
+        let mut view = SceneView::default();
+        let point = Point3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        };
+        let line = |role| ScenePolyline {
+            role,
+            points: vec![point, Point3 { x: 1., ..point }],
+        };
+        for role in [
+            SceneRole::FacingExtent,
+            SceneRole::FacingMargin,
+            SceneRole::FacingSweep,
+        ] {
+            view.lines.push(line(role));
+        }
+        let scene = to_scene(&view);
+        assert_eq!(scene.lines.len(), 3);
+        assert!(scene.lines.iter().all(|l| l.slot == Slot::Part));
+        view.lines = vec![line(SceneRole::RotaryAxis)];
+        let guide = to_scene(&view);
+        assert_eq!(guide.lines.len(), 1);
+        assert_eq!(guide.lines[0].slot, Slot::Fixed);
+        // Its labels turn with it (CodeRabbit on #520); an axis label does
+        // not.
+        let turn = rotation_x(std::f64::consts::FRAC_PI_2);
+        let turned = transform(&turn, [1., 0., 2., 1.]);
+        let at = Point3 {
+            x: 1.,
+            y: 0.,
+            z: 2.,
+        };
+        for role in [SceneRole::FacingExtent, SceneRole::FacingMargin] {
+            assert_eq!(
+                label_point(role, at, &turn),
+                [turned[0], turned[1], turned[2]]
+            );
+        }
+        assert_ne!([turned[0], turned[1], turned[2]], [1., 0., 2.]);
+        assert_eq!(label_point(SceneRole::WorkX, at, &turn), [1., 0., 2.]);
     }
 
     /// The colour the scene gives the cube part with no bands.

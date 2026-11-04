@@ -637,7 +637,7 @@ pub(crate) fn generate_with_part(
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(machine),
-        clearance: setup.clearance.unwrap_or(machine.clearance),
+        clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: entry_safety.as_ref(),
@@ -692,6 +692,33 @@ pub(crate) fn generate_with_part(
                  cuts, and a finishing operation cuts each selection to its own"
             ));
         }
+    }
+    // A whole-part operation whose tool cannot cut down beside a tab between
+    // a held region and the part says so; it still generates (OP-21, SET-09;
+    // decision 0503; issue #511).
+    if operation.selections.is_empty()
+        && CLEARS_ROUND_TABS.contains(&operation.strategy.as_str())
+        && !setup.workholding.tabs.is_empty()
+        && let Some(setup_stock) = setup.stock.as_ref()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let leave = match values.get(names::STOCK_TO_LEAVE) {
+            Some(ParameterValue::Number(n)) => *n,
+            _ => operation_leave,
+        };
+        let label = crate::workholding::operation_label(project, operation);
+        leave_notes.extend(crate::workholding::uncleared_tab_notes(
+            &setup.workholding,
+            setup_stock,
+            &part,
+            &crate::workholding::ClearingTool {
+                cutting_radius: profile.cutting_radius(),
+                reach: tool_reach(&profile, &snapshot.tool),
+                leave,
+                tool: &snapshot.name,
+                operation: &label,
+            },
+        ));
     }
     // Edge following on a STEP part follows the B-rep's own edges, with the
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
@@ -1494,12 +1521,7 @@ fn keep_out_of(
     let Some(bounds) = setup.stock.as_ref().and_then(|s| s.bounds(Some(&part))) else {
         return Vec::new();
     };
-    let reach = profile
-        .pieces()
-        .iter()
-        .map(|p| p.end().radius.0)
-        .fold(profile.cutting_radius(), f64::max)
-        .max(tool.shank_diameter.0 / 2.0);
+    let reach = tool_reach(profile, tool);
     let (start, end) = setup
         .workholding
         .held_intervals((bounds.min.x, bounds.max.x));
@@ -1509,6 +1531,33 @@ fn keep_out_of(
         .map(|(lo, hi)| (lo - reach - HELD_CLEARANCE, hi + reach + HELD_CLEARANCE))
         .collect()
 }
+
+/// The largest radius of `tool`, its cutting profile or its shank: how far
+/// its middle keeps from a held region (decision 0161).
+fn tool_reach(
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> f64 {
+    profile
+        .pieces()
+        .iter()
+        .map(|p| p.end().radius.0)
+        .fold(profile.cutting_radius(), f64::max)
+        .max(tool.shank_diameter.0 / 2.0)
+}
+
+/// The strategies that clear the whole part when no selection limits them,
+/// for which a tab zone the tool cannot cut down in is worth a note (decision
+/// 0503). Selections, drilling, swarf, edges and Facing (which has its own
+/// end-zone rules, decision 0252) are left out.
+const CLEARS_ROUND_TABS: [&str; 6] = [
+    roughing::NAME,
+    openchuck_path::rest::NAME,
+    openchuck_path::helical::NAME,
+    openchuck_path::axial::NAME,
+    openchuck_path::indexed::NAME,
+    openchuck_path::simultaneous::NAME,
+];
 
 /// The stock an earlier operation of the setup left, which says so
 /// ([`StockModel::left_by_earlier_operations`]; decision record 0344).
@@ -1540,13 +1589,23 @@ impl StockModel for LeftByEarlier<'_> {
     fn left_by_earlier_operations(&self) -> bool {
         true
     }
+
+    fn top_over_disc(
+        &self,
+        centre: openchuck_types::geometry::Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region
 /// along the axis, in millimetres (decision 0161): the jaw face is not a
 /// surface to cut against, and the simulation's cells would read a tool
-/// flush with it as touching the held stock.
-pub const HELD_CLEARANCE: f64 = 0.5;
+/// flush with it as touching the held stock. The library's value, which
+/// rest machining also uses (decision 0505).
+pub const HELD_CLEARANCE: f64 = openchuck_path::HELD_CLEARANCE;
 
 #[cfg(test)]
 #[allow(

@@ -16,7 +16,7 @@ use openchuck_types::kinematics::{
 };
 use openchuck_types::units::Degrees;
 
-use crate::interp::{Event, Move, Replay, Step};
+use crate::interp::{Axes, Event, Motion, Move, Replay, Step};
 
 /// How the controller turns an F word into time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,19 +280,65 @@ pub fn compare_with_moves(
     let mut steps = replay.steps.iter();
     let mut coordinate_shift = 0.0;
     let mut boundary = None;
+    // A fed move that turns A alone may stand for several consecutive IR
+    // poses (a post's combined pure-A run, decision 0506): the move, and
+    // where along it the last pose was reached.
+    let mut partway: Option<(&Move, Axes)> = None;
     for e in &expected {
-        let Some(mv) = next_move(
-            &mut steps,
-            &mut coordinate_shift,
-            boundary,
-            tolerances.a_deg,
-        )?
-        else {
-            return Err(CompareError::Structure(format!(
-                "the G-code ends before the IR does: group {} needs a move to tip ({:.3}, {:.3}, {:.3}) A {:.3}",
-                e.group, e.tip.x, e.tip.y, e.tip.z, e.a
-            )));
+        let (block, from) = match partway.take() {
+            Some(continuing) => continuing,
+            None => {
+                let Some(mv) = next_move(
+                    &mut steps,
+                    &mut coordinate_shift,
+                    boundary,
+                    tolerances.a_deg,
+                )?
+                else {
+                    return Err(CompareError::Structure(format!(
+                        "the G-code ends before the IR does: group {} needs a move to tip ({:.3}, {:.3}, {:.3}) A {:.3}",
+                        e.group, e.tip.x, e.tip.y, e.tip.z, e.a
+                    )));
+                };
+                (mv, mv.from)
+            }
         };
+        // The pose lies on the block's way, short of its end, only where the
+        // block is a fed pure rotation at exactly the pose's written X, Y and
+        // Z and the pose's A is strictly between where the block was last
+        // reached and where it ends, more than the A tolerance short of the
+        // end (a pose within it is the block's end, compared as before). The
+        // pose is then compared and timed as the part of the block that
+        // reaches it.
+        let wanted = machine_of(e.tip, e.a);
+        let counter = wanted[3] - coordinate_shift;
+        #[allow(clippy::float_cmp)]
+        // Never an inverse-time block: its F word is the whole block's time,
+        // so no part of it can be timed on its own.
+        let on_the_way = e.fed.is_some()
+            && !block.inverse_time
+            && block.motion == Motion::Linear
+            && block
+                .from
+                .iter()
+                .zip(&block.to)
+                .zip(&wanted)
+                .take(3)
+                .all(|((start, end), want)| start == end && end == want)
+            && ((from[3] < counter && counter < block.to[3])
+                || (block.to[3] < counter && counter < from[3]))
+            && (block.to[3] - counter).abs() > tolerances.a_deg;
+        let mut to = block.to;
+        if on_the_way {
+            to[3] = counter;
+            partway = Some((block, to));
+        }
+        let part = Move {
+            from,
+            to,
+            ..block.clone()
+        };
+        let mv = &part;
         let tip = tool_tip_in_model(
             &frame,
             &MachinePosition {
@@ -332,6 +378,12 @@ pub fn compare_with_moves(
             seconds: e.fed.and_then(|_| gcode_seconds(mv, rule, axis)),
         })?;
         boundary = e.boundary_after.then_some(e.a);
+    }
+    if let Some((block, _)) = partway {
+        return Err(CompareError::Structure(format!(
+            "line {}: the move turns A beyond the IR's last pose",
+            block.line
+        )));
     }
     if next_move(
         &mut steps,

@@ -1126,6 +1126,7 @@ pub(crate) fn run_checks(
                     frame: &s.frame,
                     stock: s.stock.as_ref(),
                     clearance: s.clearance.as_ref(),
+                    rules: &s.clearance_rules,
                     part: part.as_ref(),
                 })
             }
@@ -1156,7 +1157,11 @@ pub(crate) fn run_checks(
                 unconfirmed: Vec::new(),
             }),
         );
-        notes.extend(crate::workholding::narrow_tab_notes(project, s));
+        notes.extend(crate::workholding::narrow_tab_notes(
+            project,
+            s,
+            part.as_ref(),
+        ));
         let unbuildable = match (&part, s.workholding.is_empty()) {
             (Some(part), false) => {
                 crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), part)
@@ -1286,6 +1291,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::PartOutsideStock => Some(SetupPart::Stock),
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
         | SetupWarningKind::AutoTabNoRoom { .. }
@@ -1487,12 +1493,20 @@ impl Application {
     /// made. What a run reported about it (such as feeds the machine's
     /// limits lowered) is then still true of the settings on screen.
     pub fn operation_path_is_current(&self, operation: OperationId) -> bool {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        matches!(
-            (keys.iter().find(|(id, _)| *id == operation), record.generated.get(&operation)),
-            (Some((_, key)), Some(made)) if key.chained == made.key.chained
-        )
+        // Asked every frame while the operation is inspected: the keys are
+        // kept per change of the project, and the record is read in place,
+        // not copied with every path warning it holds (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
+            return false;
+        };
+        self.record
+            .with(|s| {
+                s.generated
+                    .get(&operation)
+                    .is_some_and(|made| key.chained == made.key.chained)
+            })
+            .unwrap_or(false)
     }
 
     /// The settings of `operation` its current path's warnings name (the
@@ -1501,24 +1515,28 @@ impl Application {
     /// Empty when the operation is not up to date or its path has no
     /// warning that names one.
     pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        let (Some((_, key)), Some(made)) = (
-            keys.iter().find(|(id, _)| *id == operation),
-            record.generated.get(&operation),
-        ) else {
+        // Asked every frame, as `operation_path_is_current` is (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
             return Vec::new();
         };
-        if key.chained != made.key.chained {
-            return Vec::new();
-        }
-        let mut names: Vec<String> = Vec::new();
-        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        names
+        self.record
+            .with(|s| {
+                let Some(made) = s.generated.get(&operation) else {
+                    return Vec::new();
+                };
+                if key.chained != made.key.chained {
+                    return Vec::new();
+                }
+                let mut names: Vec<String> = Vec::new();
+                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                    if !names.contains(name) {
+                        names.push(name.clone());
+                    }
+                }
+                names
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -1531,7 +1549,7 @@ fn operation_name(index: usize, name: &str) -> String {
 fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview {
     let project = app.project();
     let record = app.record.snapshot();
-    let keys_in_order = status_keys(project);
+    let keys_in_order = app.status_keys();
     let keys: BTreeMap<OperationId, StatusKey> = keys_in_order.iter().copied().collect();
     let summaries: Vec<SelectionSummary> = app.selection_summaries(&file_warnings(project, checks));
     let mut items = BTreeMap::new();
@@ -1879,14 +1897,26 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 // A tool too long for the safe Z on a machine that measures
                 // tool lengths (decision record 0318): once per tool of the
                 // setup's enabled operations, in the tool list's order.
-                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                // The setup's effective clearance, grown from the stock when
+                // Clearance from stock is on (decision record 0495, case a).
+                let part_bounds = s
+                    .part
+                    .and_then(|id| checks.and_then(|c| c.models.get(&id)))
+                    .and_then(|model| model.findings.as_ref().ok())
+                    .and_then(|f| f.extent)
+                    .map(|e| e.in_setup(&s.frame).bounds);
+                let effective = crate::setup::effective_clearance(m, s, part_bounds.as_ref());
+                let safe_z = effective.clearance.safe_z.0;
+                let minimum = effective.minimum.map(|(r, _)| r.0);
                 for snapshot in project.tools().iter().filter(|t| {
                     project
                         .operations()
                         .iter()
                         .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
                 }) {
-                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                    if let Some(found) =
+                        crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
+                    {
                         let text = crate::setup::spindle_height_text(
                             snapshot.controller.number,
                             &snapshot.name,
@@ -1897,7 +1927,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             at(SetupPart::Machine),
                             ItemStatus::new(
                                 ItemState::Warning,
-                                "a tool may take the spindle above the Z travel",
+                                if found.below_minimum.is_some() {
+                                    "a tool may be too long to clear the workholding"
+                                } else {
+                                    "a tool may take the spindle above the Z travel"
+                                },
                             ),
                         );
                         messages.push(Message::new(

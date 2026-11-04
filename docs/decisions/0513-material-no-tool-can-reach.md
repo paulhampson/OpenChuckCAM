@@ -1,4 +1,4 @@
-# 0633: Material no tool can reach: told apart from the material left, warned once per setup, and visible on the cut part (lane SIMVIS; issue #478)
+# 0513: Material no tool can reach: told apart from the material left, warned once per setup, and visible on the cut part (lane SIMVIS; issue #478)
 
 - **Status:** Accepted (2 Nov 2026, by the project owner, relayed by the coordinator; decision 0049), after reading the record in full and seeing the screenshots of the tube stand-in. Proposed 1 Nov 2026 by lane SIMVIS; the owner's answers below (Q1 to Q5) and the SIM-05 amendment were relayed by the coordinator on 1 Nov 2026. The owner's later request to highlight only the area affected, not whole triangles, is new work, not a change to this record.
 - **Date:** 1 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #478 (Simulate: the results report 27% of the part at 1 mm to 3 mm or more of material left, but it is not visible on the cut part).
 - **Requirements:** SIM-05 (amended, item 8), SIM-15, UI-11, NFR-06, NFR-07, NFR-12, NFR-15. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 - **Amends:** decision 0238 item 4 (stock beyond the search, item 4 below); decision 0216 items 7 and 8 for the band "Not measured" (item 5); requirement SIM-05 (item 8, agreed by the owner, relayed).
-- **Numbers:** takes 0633 and OI-1987 and OI-1988, the next free numbers across `main` and every unmerged branch on 2 Nov 2026 as the coordinator assigned them (0632, OI-1985 and OI-1986 are held by lanes PATHBUGS and VIEW-OVERLAYS), by the owner's rule of 1 Nov 2026; renumbered again at merge if `main` has moved. No project schema number. No library-family change (`openchuck-sim` gains public items only; `openchuck-app` and `openchuck-ui` change).
+- **Numbers:** 0513, assigned by the Merge Manager at release on 4 Nov 2026 (main's highest + 1; proposed on the lane as 0633). OI-1987 and OI-1988, which no number on `main` collides with.
 
 ## Context
 
