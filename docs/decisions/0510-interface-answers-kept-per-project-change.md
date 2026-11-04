@@ -1,6 +1,6 @@
 # 0510: Very large toolpaths: the interface asked for the operations' keys every frame; they are now kept per change of the project (lane LARGEPATH; issue #470)
 
-- **Status:** proposed 1 Nov 2026 by lane LARGEPATH. The plan (the measurements and pull request 1, items 1 to 3 below) was approved by the coordinator the same day; only the owner accepts this record (decision 0049).
+- **Status:** accepted by the project owner on 4 Nov 2026, relayed by the coordinator (decision 0049). Proposed 1 Nov 2026 by lane LARGEPATH; the plan (the measurements and pull request 1, items 1 to 3 below) was approved by the coordinator the same day.
 - **Date:** 1 Nov 2026.
 - **Lane:** LARGEPATH, `claude/lane-largepath`.
 - **Issue:** #470 (the application is slow with very large toolpaths; the owner's carving with axial finishing at a 0.03 mm stepover).
