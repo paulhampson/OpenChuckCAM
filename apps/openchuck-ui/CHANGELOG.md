@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SIMVIS (#478, accepted decision 0513): Simulate draws material no tool can reach (enclosed across the rotary axis, such as a bore along it) as "Unreachable (enclosed)", violet `#b652ff` under a dark cross-hatch, on the cut part and the part; "Not measured" is slate under a light hatch instead of the grey of "within"; the colour scale lists both; the probe adds "· unreachable (enclosed)"; the results inspector shows "Unreachable (enclosed)" and "Left, not classified", an "of which unreachable" row under each histogram row that has any, and a "Show unreachable (enclosed)" tick box. The run's warning about it is in Results and in Messages, on the setup.
+
 - FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep, and the extent and margin labels) turns with the workpiece as A turns, as the path lines do.
 
 - FACEAPPROACH (#499, decision 0507, accepted): the Facing cutter sweep is drawn in its own colour (lime `#c2e07a`, a thin line) instead of the Cut amber, and the path legend lists "Cutter sweep" while one is shown.
