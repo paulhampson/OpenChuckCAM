@@ -193,7 +193,7 @@ fn fixture(name: &str, file: &str) -> Fixture {
         tool: Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(4.0),
-            flute_length: Millimetres(10.0),
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(4.0),
             flute_count: 2,
@@ -328,7 +328,7 @@ fn req_ui_10_req_ui_11_req_ui_14_post_and_export_names_the_first_thing_missing()
             tool: Tool {
                 shape: ToolShape::BallEnd,
                 diameter: Millimetres(4.0),
-                flute_length: Millimetres(10.0),
+                flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
                 overall_length: Millimetres(40.0),
                 shank_diameter: Millimetres(4.0),
                 flute_count: 2,

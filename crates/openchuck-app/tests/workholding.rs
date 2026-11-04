@@ -171,7 +171,7 @@ fn build_with_mesh(
         tool: Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(tool_diameter),
-            flute_length: Millimetres(8.0),
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(tool_diameter),
             flute_count: 2,
@@ -329,7 +329,7 @@ fn req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab() {
         &Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(BALL),
-            flute_length: Millimetres(8.0),
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(BALL),
             flute_count: 2,
@@ -412,7 +412,7 @@ fn req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_
         &Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(BALL),
-            flute_length: Millimetres(8.0),
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(BALL),
             flute_count: 2,
