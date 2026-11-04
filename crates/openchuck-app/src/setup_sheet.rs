@@ -971,8 +971,8 @@ fn setup_facts(
                 // which are known (CodeRabbit on #495).
                 None => in_use("; no stock is set"),
                 Some(stock) if stock.radius(extent).is_some() => in_use(""),
-                Some(_) => "not known: the stock's size comes from the part, which could not \
-                            be read (Clearance from stock)"
+                Some(_) => "not known: the stock's size comes from the part, whose extent is \
+                            not available (Clearance from stock)"
                     .to_string(),
             };
             facts.push(("Clearance in use".to_string(), value));
