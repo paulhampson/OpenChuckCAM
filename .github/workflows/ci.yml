@@ -34,6 +34,13 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  # Ready for a GitHub merge queue (decision 0498; the queue is not used on this personal-account
+  # repository, decision 0499, docs/releasing.md "Up-to-date rule relaxed"): GitHub builds each queued pull
+  # request on top of `main` (and of the entries ahead of it) and waits for `CI required checks` on
+  # that commit. A merge_group run has no pull request, so `github.event.pull_request.draft` is empty
+  # and the heavy jobs run as on a ready pull request.
+  merge_group:
+    types: [checks_requested]
   # The nightly full run on `main` (decision 0358, Option 4, OI-1413): a push to `main` may be a light run
   # (below), so the whole matrix, and the `main` caches of every leg that pull requests restore, are
   # refreshed once a day. 04:23 UTC is after the other nightly workflows.
@@ -44,7 +51,8 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# A merge_group run (like a push or a manual run) has its own group, so it is never cancelled by or
+# replaced by a pull request run. A newer push to a pull request cancels the older run of that pull request: the newer commit is the
 # one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
 # replaced while it waits: its group is its own run, so every merged commit keeps a complete result
 # (and its cache), even if several manual runs target one commit
@@ -98,6 +106,9 @@ jobs:
         id: filter
         if: github.event_name != 'schedule'
         with:
+          # A merge_group run diffs the queue commit against the branch tip it was built on (decision
+          # 0498); the paths-filter action has no merge_group handling of its own. Empty elsewhere.
+          base: ${{ github.event.merge_group.base_sha }}
           filters: |
             records:
               - 'docs/requirements.md'
@@ -130,6 +141,7 @@ jobs:
         if: github.event_name != 'schedule'
         with:
           predicate-quantifier: some-with-excludes
+          base: ${{ github.event.merge_group.base_sha }}
           filters: |
             rust:
               - 'crates/**'
@@ -279,6 +291,13 @@ jobs:
         openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
         openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
         openchuck-path::simultaneous openchuck-path::helical_faces
+      # Windows only: three shares instead of two (matrix.shards is 3), dealt from the per-test times of
+      # run 41312032946 (test time was 69 to 75% of the Windows legs). Share 2 is every other test.
+      THREE_WAY_SHARD1_BINARIES: >-
+        openchuck-path::helical_faces openchuck-path::walls openchuck-app
+      THREE_WAY_SHARD3_BINARIES: >-
+        openchuck-path::adaptive openchuck-path::simultaneous openchuck-ui::bin/openchuck-ui
+        openchuck-app::workholding openchuck-app::reference_jobs
     steps:
       - uses: actions/checkout@v7
         with:
@@ -308,33 +327,56 @@ jobs:
         shell: bash
         run: |
           list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
-          shard1=""
-          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
-          total=$(list | wc -l)
-          n1=$(list -E "$shard1" | wc -l)
-          n2=$(list -E "not ($shard1)" | wc -l)
-          echo "full list: $total tests; share 1: $n1; share 2: $n2"
-          for b in $SHARD1_BINARIES; do
+          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
+          if [ "${{ matrix.shards }}" = 3 ]; then
+            bins="$THREE_WAY_SHARD1_BINARIES $THREE_WAY_SHARD3_BINARIES"
+            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
+            total=$(list | wc -l)
+            n1=$(list -E "$s1" | wc -l)
+            n3=$(list -E "$s3" | wc -l)
+            n2=$(list -E "not (($s1) | ($s3))" | wc -l)
+            echo "full list: $total tests; share 1: $n1; share 2: $n2; share 3: $n3"
+            n_empty=0; [ "$n3" -eq 0 ] && n_empty=1
+          else
+            bins="$SHARD1_BINARIES"
+            s1=$(any_of "$SHARD1_BINARIES")
+            total=$(list | wc -l)
+            n1=$(list -E "$s1" | wc -l)
+            n2=$(list -E "not ($s1)" | wc -l)
+            n3=0
+            echo "full list: $total tests; share 1: $n1; share 2: $n2"
+            n_empty=0
+          fi
+          for b in $bins; do
             n=$(list -E "binary_id(=$b)" | wc -l)
             if [ "$n" -eq 0 ]; then
-              echo "::error title=Listed test binary has no tests::$b in SHARD1_BINARIES matches no test; rename or remove it"
+              echo "::error title=Listed test binary has no tests::$b is listed for a share and matches no test; rename or remove it"
               exit 1
             fi
           done
-          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ]; then
-            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2"
+          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ] || [ "$n_empty" -eq 1 ]; then
+            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2, share 3 has $n3"
             exit 1
           fi
-          if [ $((n1 + n2)) -ne "$total" ]; then
-            echo "::error title=Test shares do not add up::$n1 + $n2 is not the full list of $total"
+          if [ $((n1 + n2 + n3)) -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::$n1 + $n2 + $n3 is not the full list of $total"
             exit 1
           fi
       - name: Tests
         shell: bash
         run: |
-          shard1=""
-          for b in $SHARD1_BINARIES; do shard1="${shard1:+$shard1 | }binary_id(=$b)"; done
-          if [ "${{ matrix.shard }}" = 1 ]; then filter="$shard1"; else filter="not ($shard1)"; fi
+          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
+          if [ "${{ matrix.shards }}" = 3 ]; then
+            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
+            case "${{ matrix.shard }}" in
+              1) filter="$s1" ;;
+              3) filter="$s3" ;;
+              *) filter="not (($s1) | ($s3))" ;;
+            esac
+          else
+            s1=$(any_of "$SHARD1_BINARIES")
+            if [ "${{ matrix.shard }}" = 1 ]; then filter="$s1"; else filter="not ($s1)"; fi
+          fi
           cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
       - name: Doctests
         if: matrix.shard == 1
@@ -401,6 +443,19 @@ jobs:
         run: |
           if [ -z "$OPENCHUCK_REQUIRE_ADAPTER" ]; then unset OPENCHUCK_REQUIRE_ADAPTER; fi
           cargo test --locked -p openchuck-viewport --test render -- --nocapture
+      # UI-12, NFR-16 (decision 0493, issue #431): copied text reaches the operating system's
+      # clipboard and pasted text arrives. Linux needs a display, so it runs under Xvfb here;
+      # OPENCHUCK_REQUIRE_DISPLAY makes it fail rather than skip if there is none.
+      - name: Operating-system clipboard test
+        shell: bash
+        env:
+          OPENCHUCK_REQUIRE_DISPLAY: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a cargo test --locked -p openchuck-ui --test os_clipboard -- --nocapture
+          else
+            cargo test --locked -p openchuck-ui --test os_clipboard -- --nocapture
+          fi
       - name: Launch the application (3 s scripted camera path)
         shell: bash
         run: |
@@ -648,10 +703,10 @@ jobs:
       # that do not exist on the base yet are skipped.
       - name: cargo semver-checks
         id: semver
-        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.rust == 'true'
         shell: bash
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
             if git cat-file -e "$BASE:crates/$crate/Cargo.toml" 2>/dev/null; then
@@ -698,7 +753,7 @@ jobs:
           check "cargo deny" "$RUST" "$DENY"
           check "cargo audit" "$RUST" "$AUDIT"
           check "cargo about" "$RUST" "$ABOUT"
-          semver=false; if [ "$RUST" = true ] && [ "$EVENT" = pull_request ]; then semver=true; fi
+          semver=false; if [ "$RUST" = true ] && { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; }; then semver=true; fi
           check "cargo semver-checks" "$semver" "$SEMVER"
           if [ -n "$bad" ]; then
             echo "::error title=Fast checks did not pass::${bad#, }"
@@ -715,7 +770,7 @@ jobs:
   fuzz-smoke:
     name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
+    if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -835,7 +890,7 @@ jobs:
   docs:
     name: User guide
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.docs == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -910,10 +965,10 @@ jobs:
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
           check fast-checks "$fast"
           fuzz=false
-          if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
+          if { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; } && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
           docs=false
-          if [ "$EVENT" = pull_request ] && [ "$(out docs)" = true ]; then docs=true; fi
+          if { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; } && [ "$(out docs)" = true ]; then docs=true; fi
           check docs "$docs"
           for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
             case "$checked" in

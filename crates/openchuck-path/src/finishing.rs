@@ -185,6 +185,20 @@ pub(crate) fn free_ends(
     // of the stock itself is not a free end.
     let extent = stock.x_extent();
     let tolerance = 1e-3;
+    // An end the stock does not carry on past has nothing to face: said, in
+    // the user's words, so the end is not left in silence (issue #471, the
+    // owner's note N2).
+    for e in ends.iter().filter(|e| match extent {
+        Some((_, hi)) if e.far => hi <= e.face + tolerance,
+        Some((lo, _)) => lo >= e.face - tolerance,
+        None => false,
+    }) {
+        out.notes.push(format!(
+            "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
+             face. If the real blank is longer, set the stock's length to match it",
+            e.face
+        ));
+    }
     let ends: Vec<&FreeEnd> = ends
         .iter()
         .filter(|e| match extent {
@@ -196,6 +210,9 @@ pub(crate) fn free_ends(
     let stepdown = parameters.number(parameter::STEPDOWN).unwrap_or(0.0);
     let radius = grown.cutting_radius();
     let width = 2.0 * input.tool.cutting_radius();
+    // The rings cut down to the axis, as (axis X, face X, far, X span), for
+    // the check that the part stays held on its own side (issue #477).
+    let mut rings: Vec<(f64, f64, bool, f64, f64)> = Vec::new();
     for end in ends {
         let face = end.face;
         // Zero (none given) or NaN: no Stepdown.
@@ -203,9 +220,11 @@ pub(crate) fn free_ends(
             out.warnings.push(PathWarning {
                 message: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
-                     keeps what earlier operations left. Stepdown: Required. Enter the depth \
-                     of each layer, or add cutting data for this tool and material in the \
-                     tool library."
+                     keeps what earlier operations left. Set Stepdown to the depth of each \
+                     layer, or add cutting data for this tool and material in the tool \
+                     library and then choose Update from library in the operation's tool \
+                     section: the project keeps its own copy of the tool, so a change in the \
+                     library reaches it only then."
                 ),
                 parameter: Some(parameter::STEPDOWN.to_owned()),
                 requires_acknowledgement: false,
@@ -297,6 +316,7 @@ pub(crate) fn free_ends(
                 .collect();
             out.passes.push(Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points: pass,
                 stock: None,
                 rapids: Vec::new(),
@@ -316,6 +336,7 @@ pub(crate) fn free_ends(
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
              axis in each{source}"
         ));
+        rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
         // of whether there is any, not of whether it is joined to the rest
         // (OI-1393).
@@ -356,6 +377,41 @@ pub(crate) fn free_ends(
                     requires_acknowledgement: false,
                 });
             }
+        }
+    }
+    // The part's own side of each ring (issue #477, the owner's option A):
+    // the ring down to the axis parts the part from whatever is past it, so
+    // the part stays held only if a held region lies on its side, with no
+    // other ring down to the axis between them. A tab joins the part to the
+    // stock past it, but an end beside a tab is never a free end (decision
+    // record 0344 item 4), so the held regions are what count here.
+    for (i, &(x, face, far, from, to)) in rings.iter().enumerate() {
+        let between = |held: f64| {
+            rings
+                .iter()
+                .enumerate()
+                .any(|(j, &(other, ..))| j != i && (other - x) * (held - other) > 0.0)
+        };
+        let held = input.keep_out.iter().any(|&(a, b)| {
+            if far {
+                b < x && !between(b)
+            } else {
+                a > x && !between(a)
+            }
+        });
+        if !held {
+            out.warnings.push(PathWarning {
+                message: format!(
+                    "the end face at X {face:.3} is faced down to the rotary axis: the tool cuts \
+                     a ring {width:.3} mm wide from X {from:.3} to {to:.3} down to the axis, and \
+                     nothing in this setup holds the part on the other side of the ring (no held \
+                     region at its other end, and no tab joining it to one), so the part can be \
+                     cut free there and thrown while the rotary axis turns. Before running this \
+                     program, check the stock and the workholding on the machine"
+                ),
+                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                requires_acknowledgement: false,
+            });
         }
     }
     Ok(out)
@@ -479,9 +535,51 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
     if points.len() >= 2 {
         out.push(Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
         });
     }
+}
+
+/// The note for a selected region that lies wholly on faces across the
+/// rotary axis (issue #471, the owner's note N1): `strategy` cuts with the
+/// tool pointing at the axis, so it reaches such a face only with the side
+/// of the tool. "Wholly" is 99% of the region's area on faces whose normal
+/// is within 10 degrees of the axis.
+pub(crate) fn across_axis_note(
+    region: Option<&crate::region::RegionConstraint<'_>>,
+    strategy: &str,
+) -> Option<String> {
+    let mesh = region?.region?.tessellation();
+    let cos = 10.0_f64.to_radians().cos();
+    let (mut across, mut total) = (0.0, 0.0);
+    for t in &mesh.triangles {
+        let corner = |k: usize| {
+            t.get(k)
+                .and_then(|&i| mesh.vertices.get(i as usize))
+                .copied()
+        };
+        let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) else {
+            continue;
+        };
+        let n = (b - a).cross(c - a);
+        let area = n.length();
+        if !area.is_finite() || area <= 0.0 {
+            continue;
+        }
+        total += area;
+        if n.x.abs() >= cos * area {
+            across += area;
+        }
+    }
+    (total > 0.0 && across >= 0.99 * total).then(|| {
+        format!(
+            "the selected faces lie across the rotary axis. {strategy} cuts with the tool \
+             pointing at the axis, so it reaches such a face only with the side of the tool, in \
+             one turn where the part lies on both sides of it. To face the end of the part or \
+             the stock, use Facing with Shape End"
+        )
+    })
 }

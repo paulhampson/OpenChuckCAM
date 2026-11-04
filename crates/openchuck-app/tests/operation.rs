@@ -72,6 +72,7 @@ impl Strategy for OneRing {
             .collect();
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -1512,6 +1513,29 @@ fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself(
         assert_eq!(app.strategy_description(&c.name), c.description);
     }
     assert_eq!(app.strategy_description("no_such_strategy"), "");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_02_req_op_07_swarf_says_cut_short_lifts_the_tip_first() {
+    // Decision 0491 item 1: on swarf, Cut short lifts the tool's tip clear
+    // of an avoid or check set before it stops the pass, so the Geometry
+    // section's tooltip says so for swarf only; rotary roughing keeps its
+    // own (decision 0043 item 3).
+    let (dir, app, _op) = project("cut-short-lifts");
+    let swarf = app.strategy_set_options("swarf");
+    assert!(swarf.cut_short_lifts_tip && swarf.avoid_and_check && swarf.boundary);
+    assert!(!swarf.check_lifts_tool);
+    let roughing = app.strategy_set_options("rotary_roughing");
+    assert!(roughing.check_lifts_tool && !roughing.cut_short_lifts_tip);
+    for c in app.strategy_choices() {
+        assert_eq!(
+            app.strategy_set_options(&c.name).cut_short_lifts_tip,
+            c.name == "swarf",
+            "{}",
+            c.name
+        );
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

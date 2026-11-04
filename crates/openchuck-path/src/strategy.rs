@@ -71,6 +71,13 @@ pub struct Pass {
     /// fragment separated by a gap. Shared assembly may mark the existing
     /// clear transition for a nonmoving controller reset (decision 0247).
     pub helical_pass_start: bool,
+    /// The link from the pass before this one may stay low: the approach
+    /// distance above the highest stock under the tool along the whole
+    /// link, where that is below the retract height, instead of going up to
+    /// it (OP-14; axial and indexed finishing with `link_height` set to
+    /// `low`; decision 0496). A pass that carries its own `stock` is linked
+    /// that way already. False links at the retract height.
+    pub low_link: bool,
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
     /// The material when this pass starts, if the strategy tracks it. Passes
@@ -537,7 +544,16 @@ fn generate_with(
 /// How far a position may lie inside a keep-out interval and still count as
 /// clear: rounding in the strategies' positions, far below the written
 /// resolution (millimetres).
-const KEEP_OUT_SLACK: f64 = 1e-6;
+pub(crate) const KEEP_OUT_SLACK: f64 = 1e-6;
+
+/// How far, beyond its largest radius, the tool keeps from a held region
+/// along the axis, in millimetres (decision record 0161): the jaw face is
+/// not a surface to cut against, and the simulation's cells would read a
+/// tool flush with it as touching the held stock. A host widens each held
+/// region into [`StrategyInput::keep_out`] by the tool's largest radius and
+/// this; rest machining shrinks an interval back by both to tell the part
+/// under the grip from the part beside it (decision record 0505).
+pub const HELD_CLEARANCE: f64 = 0.5;
 
 /// The middle of the part along X, which tells the held region at the start
 /// of the stock from the one at the end; NaN when the part has no extent.
@@ -587,7 +603,7 @@ pub(crate) fn held_names(ends: &BTreeSet<HeldEnd>) -> &'static str {
 
 /// True when a move whose tip spans `lo..=hi` along X reaches into one of
 /// `keep_out`.
-fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
+pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
     keep_out
         .iter()
         .any(|&(a, b)| hi > a + KEEP_OUT_SLACK && lo < b - KEEP_OUT_SLACK)
@@ -675,6 +691,7 @@ fn keep_clear(
         for points in pieces {
             kept.push(Pass {
                 helical_pass_start: helical_start_pending,
+                low_link: pass.low_link,
                 points,
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
@@ -842,6 +859,7 @@ mod tests {
     fn pass(xs: &[f64]) -> Pass {
         Pass {
             helical_pass_start: false,
+            low_link: false,
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),

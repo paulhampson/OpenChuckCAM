@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
+
+## 0.38.0
+
+- RESTCORNERS (issue #508, decision 0505, accepted, relayed): `HELD_CLEARANCE` is the library's `openchuck_path::HELD_CLEARANCE` (the same 0.5 mm). Rest machining's warnings now say what its tool cannot reach. New example `rest_corners`: the material left after a project's operations by X and kind of surface, numbers only.
+
+## 0.34.0
+
+- **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** `setup::effective_clearance` is the one clearance the toolpaths, links, post and checks use; the minimum clearance radius in the machine form; the setup form's Minimum clearance, Clearance from stock and Margin over stock; the spindle-height check (decision 0318) takes the effective safe Z and gains `minimum` and `SpindleHeight::below_minimum`.
+
 ## 0.22.0
 
 - GC-17 (accepted decision 0222): minimum block-time profile/post fields and deterministic Report mode. The built-in Z1 uses the gate-4 measured 7 ms with window 32. Existing project copies remain Off, and Report leaves G-code unchanged. No Slow down or Merge.
@@ -9,7 +21,12 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
-- LARGEPATH (#470, proposed decision 0631): the status keys of the operations and the unsaved-changes answer are kept per revision of the project (`memo.rs`, `Application::status_keys`, `is_modified`), and `operation_path_is_current` and `operation_warning_settings` read the generation record in place instead of copying it. The interface asked for them every frame; on the owner's carving an inspected operation cost about 117 ms a frame and now about 1 ms. The same answers and the same G-code; no public API change.
+- TABREGRESS (#511, decision 0503, accepted): a whole-part operation (rotary roughing, rest machining, helical, axial, indexed or simultaneous finishing, with no selections) whose tool has no room to cut down beside a tab between a held region and the part says so when generating: the zone's length less the 0.5 mm held clearance, the stock to leave and any wider shank, under the tool's cutting diameter. The path is unchanged. No schema or API change.
+
+- TABS-CHECK (#438, decision 0494): a retaining tab's length along X, not its diameter, is compared with the tool's diameter, in the refusal when generating, the check findings, the overview and export notes, and `workholding_view::narrowest_line` (now the "Length vs tools" line; name and signature unchanged). Wording is "... is N mm long along X, shorter than the tool ...". No schema or API change. The comparison uses an automatic tab's length where the part, the stock and the held regions put it now (decision 0202 item 3), not its last-applied length; `workholding::narrow_tab_notes` is crate-private and takes the part's extent.
+
+- SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
+- LARGEPATH (#470, proposed decision 0510): the status keys of the operations and the unsaved-changes answer are kept per revision of the project (`memo.rs`, `Application::status_keys`, `is_modified`), and `operation_path_is_current` and `operation_warning_settings` read the generation record in place instead of copying it. The interface asked for them every frame; on the owner's carving an inspected operation cost about 117 ms a frame and now about 1 ms. The same answers and the same G-code; no public API change.
 
 - OP20 (issue #413, decision 0368): operations give the strategies the tool's shank where it is wider than the cutting part (`StrategyInput::shank`, from the shank diameter and the flute length), which simultaneous finishing keeps clear of the part on every pass; the strategies' unreached areas reach `Regeneration` through the generated path's warning.
 
@@ -34,6 +51,7 @@ All notable changes to `openchuck-app` are recorded here.
 - OUTPUT2 (accepted decision 0267; #308, #309, #310): the `output_names` module with `FileNameTemplates` (a per-user setting, `UserSettings::file_names`), the template engine, `fields_list`, `template_problem`, `clean_stem`, `Renamed`, `renamed_warning` and `file_hash`; clashing names (letter case ignored, across every output) get `-2`, `-3` with `OutputFiles::renamed` and `warning` (owner option B, OI-1072). `Application::set_file_name_templates`, `file_name_templates` and `output_files(run)` give every final name or the reason there is none; `prepare_output` writes under those names. Defaults keep the existing names and bytes. **Changed:** `Application::setup_sheet_file_names` returns `Result<[String; 2], AppError>`; new `AppError::FileNames`. The same-run setup sheet lists each program file with its setup, size, SHA-256 and operations, tools and tool changes in order; a sheet written without files says so. New dependency `sha2` (NFR-14).
 - #332: every output file is staged in full under a hidden name in the destination folder and published without replacing anything (hard link, or an exclusive claim and rename where hard links are missing); approved replacements stay a staged rename.
 - #331: `OutputReport::text` ends with "End of the export result.", so Messages never adds a full stop to the last path.
+- POLISH (#379): `Application::output_files` is now `run_programs(run)` (the run-only split into program files, kept as `output_names::RunPrograms`) followed by `name_outputs(run, &programs)` (the template step); `output_files` stays as the one-step call. `output_preview_from(run, &programs)` is `output_preview` from the kept split, and `settings::existing_folders` / `UserSettings::forget_missing_in(checked, existing)` (applies an answer only to the list it was asked about) let the application check recent folders off the UI thread. A caller that keeps the `RunPrograms` beside its run names the files and the preview again without splitting the toolpath. Names and G-code are unchanged. **Changed:** the stepdown prompt also says to choose Update from library (#418, TL-07).
 
 - FACING review fix: construct whole-setup verification geometry only for modes/extents that require it. Legacy Whole stock/zero-margin generation keeps the existing composite workholding target and pre-scope output; imported stock retains the existing SET-04 refusal.
 

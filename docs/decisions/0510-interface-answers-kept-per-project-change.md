@@ -1,4 +1,4 @@
-# 0631: Very large toolpaths: the interface asked for the operations' keys every frame; they are now kept per change of the project (lane LARGEPATH; issue #470)
+# 0510: Very large toolpaths: the interface asked for the operations' keys every frame; they are now kept per change of the project (lane LARGEPATH; issue #470)
 
 - **Status:** proposed 1 Nov 2026 by lane LARGEPATH. The plan (the measurements and pull request 1, items 1 to 3 below) was approved by the coordinator the same day; only the owner accepts this record (decision 0049).
 - **Date:** 1 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #470 (the application is slow with very large toolpaths; the owner's carving with axial finishing at a 0.03 mm stepover).
 - **Requirements:** UI-09 and NFR-04 (long work never blocks the interface), UI-11 (the tree's states), PRJ-08 (the unsaved-changes answer the recovery checkpoints and the close guard use), GC-07 and NFR-06 (output unchanged). NFR-12: generated G-code remains the user's to verify before running it on a machine.
 - **Amends:** nothing in the documents. Decision record 0117 (the status keys) and 0040 item 8 (the 17 ms frame budget) are unchanged; this record makes the first cheaper to ask for, to keep the second.
-- **Numbers:** takes 0631 and OI-1981 to OI-1984, the next free numbers across `main` and every unmerged branch on 2 Nov 2026 (the highest were 0630 and OI-1980), by the owner's rule of 1 Nov 2026 that numbers are as monotonic as possible. No project schema number; no library version change (only `openchuck-app` and `openchuck-ui` change, no public API).
+- **Numbers:** 0510 and OI-2020 to OI-2023, given at release on 4 Nov 2026 by the Merge Manager under the owner's rule (`main`'s highest at release plus one). They were 0631 and OI-1981 to OI-1984 while the pull request was a draft. No project schema number; no library version change (only `openchuck-app` and `openchuck-ui` change, no public API).
 
 ## Context
 
@@ -43,7 +43,7 @@ With an operation selected the interface drew about 8 frames a second, everywher
 3. **The Results window** groups all 59,041 notes every frame (`run_panel.rs`), and the export dialog checks the keys of the run's project and the current one every frame (52 ms) while it is open.
 4. The tree's overview is built again for each job event, with the same keys, which is the cost while generating.
 
-The viewport's drawing on a graphics adapter could not be measured here (OI-987, OI-1314 stay open; OI-1981).
+The viewport's drawing on a graphics adapter could not be measured here (OI-987, OI-1314 stay open; OI-2020).
 
 ## Decision
 
@@ -55,9 +55,9 @@ Items 1 to 3 are built (pull request 1). Each leaves every answer as it was; onl
 
 Not built in pull request 1, planned with the coordinator:
 
-4. **The Results window's lines and the simulate results panel's notes**, kept per run and revision (pull request 2, after lanes RESULTS-COPY, POLISH and RESULTS-DOCK, which change `run_panel.rs`; OI-1984).
-5. **The export dialog's checks kept per revision, and writing the output as a job** with progress and cancel (UI-09) (pull request 2, after lane POLISH, which changes `export_panel.rs`; OI-1984).
-6. **Only with the owner's go-ahead:** reusing the posted output when nothing changed (OI-1983); the 38 s helical finishing on a 3,055-triangle region (OI-1982); a cheaper hash of a selection (not needed with item 1, and it would change every key).
+4. **The Results window's lines and the simulate results panel's notes**, kept per run and revision (pull request 2, after lanes RESULTS-COPY, POLISH and RESULTS-DOCK, which change `run_panel.rs`; OI-2023).
+5. **The export dialog's checks kept per revision, and writing the output as a job** with progress and cancel (UI-09) (pull request 2, after lane POLISH, which changes `export_panel.rs`; OI-2023).
+6. **Only with the owner's go-ahead:** reusing the posted output when nothing changed (OI-2022); the 38 s helical finishing on a 3,055-triangle region (OI-2021); a cheaper hash of a selection (not needed with item 1, and it would change every key).
 
 ## Results
 
@@ -75,7 +75,7 @@ Frames of the whole shell drawn headless (median, p95; one run of each):
 | While generating | mean 32 ms, worst 175 ms | mean 1.0 ms, worst 107 ms |
 | The Results window open (item 4, not built) | 90 ms, 125 ms | 82 ms, 133 ms |
 
-`operation_path_is_current` and `operation_warning_settings` went from 49 to 63 ms a call to a lookup in the kept keys; `is_modified` from 5 to 6 ms a call to nothing between changes. The Results window is pull request 2 (OI-1984).
+`operation_path_is_current` and `operation_warning_settings` went from 49 to 63 ms a call to a lookup in the kept keys; `is_modified` from 5 to 6 ms a call to nothing between changes. The Results window is pull request 2 (OI-2023).
 
 The G-code is byte-identical: SHA-256 `fb7f13fa07a4a812...` (first 8 bytes) on the owner's project before and after, and the reference jobs and golden files are unchanged (`openchuck-app`: 688 tests pass).
 
@@ -93,11 +93,11 @@ The G-code is byte-identical: SHA-256 `fb7f13fa07a4a812...` (first 8 bytes) on t
 
 - `crates/openchuck-app`: new private module `memo.rs`; `lib.rs` (`Application::status_keys`, `is_modified`, `save`); `overview.rs` (`operation_path_is_current`, `operation_warning_settings`, the overview's build); `cache.rs` (a test-only count). No public API change.
 - Anything that changes the project must still go through `execute`, `undo` or `redo` (or open a new `Application`); a new way of changing the document without moving the revision would leave the kept answers stale. `req_ui_11_kept_status_keys_equal_fresh_keys_after_every_change` covers the ways there are today.
-- The headless frame times include egui's layout and the shell's own work, not the GPU's drawing or upload; the owner's laptop is the measure for those (OI-1981).
+- The headless frame times include egui's layout and the shell's own work, not the GPU's drawing or upload; the owner's laptop is the measure for those (OI-2020).
 
 ## Open items
 
-- OI-1981: frame times on the owner's laptop with this change, in general use after generating (drawing and upload included).
-- OI-1982: helical finishing on a small region of a large model takes 38 s for 856 moves on the owner's project: profile it.
-- OI-1983: generating again with nothing changed posts the whole program again (6.9 s on the owner's project); reuse it when the keys, the post and the grouping are unchanged, if the owner wants it.
-- OI-1984: pull request 2: the Results window, the simulate results panel and the export dialog keep their answers per run and revision, and the output is written as a job.
+- OI-2020: frame times on the owner's laptop with this change, in general use after generating (drawing and upload included).
+- OI-2021: helical finishing on a small region of a large model takes 38 s for 856 moves on the owner's project: profile it.
+- OI-2022: generating again with nothing changed posts the whole program again (6.9 s on the owner's project); reuse it when the keys, the post and the grouping are unchanged, if the owner wants it.
+- OI-2023: pull request 2: the Results window, the simulate results panel and the export dialog keep their answers per run and revision, and the output is written as a job.
