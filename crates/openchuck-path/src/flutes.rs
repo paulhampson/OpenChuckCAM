@@ -58,9 +58,14 @@ const SLACK: f64 = 1e-6;
 /// this small. Below this the bound is taken as the depth.
 const REFINED: f64 = 1e-6;
 
-/// The most halvings of one step between readings (a step of 0.5 mm and 0.5
-/// degree comes under [`REFINED`] in about 20).
-const MOST_HALVINGS: u32 = 40;
+/// The most readings of the stock over one step between two places read
+/// (CodeRabbit on #534): a top of stock that stands within [`REFINED`] of
+/// the flutes along a cut would otherwise be halved to that reach
+/// everywhere, about a million readings a step. Past the budget the step's
+/// bound is kept as a bound, so the cut is refused, never accepted unread;
+/// 256 readings take a step of 0.5 mm and 0.5 degree to about 0.002 mm, so
+/// only stock that close to the flutes is refused this way.
+const STEP_BUDGET: u32 = 256;
 
 /// Added to the bound from a stock model's farthest radius, mm: that radius
 /// may be measured at cell centres (the simulation's columns), so the bound
@@ -210,16 +215,21 @@ fn keep(
 /// when it stands past `limit`.
 ///
 /// In the machine's frame the tool axis is fixed and the stock turns with
-/// A. Over the step, the tip is within `L / 2` of the middle place (`L` the
-/// step's length) and the stock turns at most half the step's angle about
-/// the middle angle, which moves no material more than `R * angle / 2`
-/// (`R` the stock's farthest radius). Material over the tool's disc at any
-/// place of the step is therefore over a disc `d = L / 2 + R * angle / 2`
-/// wider at the middle place, and stands at most `d` higher above that tip
-/// than above its own: the stock's exact top over the wider disc, plus `d`,
-/// bounds the whole step. Where that bound is past the flutes the step is
+/// A. Over the step, the tip is within `s / 2` across the tool axis and
+/// `h / 2` along it of the middle place (`s` and `h` the step's travel
+/// across and along the axis), and the stock turns at most half the step's
+/// angle about the middle angle, which moves no material more than
+/// `t = R * angle / 2` (`R` the stock's farthest radius). Material over the
+/// tool's disc at any place of the step is therefore over a disc
+/// `s / 2 + t` wider at the middle place, and stands at most `h / 2 + t`
+/// higher above that tip than above its own: the stock's exact top over the
+/// wider disc, plus `h / 2 + t`, bounds the whole step, and a straight cut
+/// at one height with A still under a flat top is bounded exactly, with no
+/// halving. The step's reach is `d = s / 2 + h / 2 + t`. Where that bound is past the flutes the step is
 /// halved, reading its middle exactly, until the bound is within them or
-/// `d` is below [`REFINED`], where the bound is taken as the depth. A stock
+/// `d` is below [`REFINED`], where the bound is taken as the depth, or the
+/// step's [`STEP_BUDGET`] of readings is spent, where it is kept as a bound
+/// (not exact), so the path is refused rather than accepted unread. A stock
 /// model with no exact answer is held to the bound from its farthest radius
 /// at the places themselves, which bounds the step already: that bound is
 /// lowest at the higher tip and does not turn with A.
@@ -231,7 +241,7 @@ fn between(
     limit: f64,
     p: (AxisPosition, Degrees),
     q: (AxisPosition, Degrees),
-    halvings: u32,
+    budget: &mut u32,
 ) {
     // A reading past the flutes already refuses the path.
     if worst.is_some_and(|w| w.depth > limit + SLACK) {
@@ -247,35 +257,42 @@ fn between(
     }
     let middle = lerp(p.0, q.0, 0.5);
     let a = Degrees(0.5 * (p.1.0 + q.1.0));
-    let length = (q.0.along - p.0.along)
-        .hypot(q.0.across - p.0.across)
-        .hypot(q.0.height - p.0.height);
+    // How far the tip moves from the middle across and along the tool axis,
+    // and how far the stock's turn moves any material.
+    let sideways = 0.5 * (q.0.along - p.0.along).hypot(q.0.across - p.0.across);
+    let up = 0.5 * (q.0.height - p.0.height).abs();
     let turn = (q.1.0 - p.1.0).abs().to_radians();
-    let reach = 0.5 * length
-        + if turn > 0.0 {
-            0.5 * farthest * turn
-        } else {
-            0.0
-        };
+    let turned = if turn > 0.0 {
+        0.5 * farthest * turn
+    } else {
+        0.0
+    };
+    let reach = sideways + up + turned;
+    *budget = budget.saturating_sub(1);
     let Some(top) = stock.top_over_disc(
         input.rotary.to_model(middle, a),
         input.rotary.tool_axis(a),
-        radius + reach,
+        radius + sideways + turned,
     ) else {
         return;
     };
-    let bound = top + reach;
+    let bound = top + up + turned;
     if !bound.is_finite() || bound <= limit + SLACK {
         return;
     }
-    if reach <= REFINED || halvings >= MOST_HALVINGS {
+    if reach <= REFINED {
         keep(worst, input, middle, a, bound, true);
         return;
     }
+    if *budget == 0 {
+        keep(worst, input, middle, a, bound, false);
+        return;
+    }
+    *budget -= 1;
     let (depth, exact) = depth_at(stock, input, middle, a, radius);
     keep(worst, input, middle, a, depth, exact);
-    between(worst, input, radius, limit, p, (middle, a), halvings + 1);
-    between(worst, input, radius, limit, (middle, a), q, halvings + 1);
+    between(worst, input, radius, limit, p, (middle, a), budget);
+    between(worst, input, radius, limit, (middle, a), q, budget);
 }
 
 /// The deepest cut `passes` make in `input`'s stock: how far the stock
@@ -324,7 +341,8 @@ fn deepest_of(
                 }
                 // And the stock between the places read.
                 for (&p, &q) in chain.iter().zip(chain.iter().skip(1)) {
-                    between(&mut worst, input, radius, limit, p, q, 0);
+                    let mut budget = STEP_BUDGET;
+                    between(&mut worst, input, radius, limit, p, q, &mut budget);
                 }
             }
             previous = Some(point);
@@ -349,8 +367,9 @@ fn deepest_of(
 /// depth a turn down to the axis there cuts (a free end, decision records
 /// 0344 and 0509). Read as [`deepest`] reads a move, every [`A_STEP`] and
 /// between, so it is exact wherever it is past `limit` (the flutes) and may
-/// be lower elsewhere.
-pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64, limit: f64) -> f64 {
+/// be lower elsewhere; and whether it is exact (false where it is a bound,
+/// as for stock earlier operations left).
+pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64, limit: f64) -> (f64, bool) {
     let points = (0..=4)
         .map(|k| {
             let a = Degrees(90.0 * f64::from(k));
@@ -374,7 +393,7 @@ pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64, limit: f64) -> 
         points,
         ..Pass::default()
     }];
-    deepest_of(input, &turn, limit, true).map_or(0.0, |d| d.depth)
+    deepest_of(input, &turn, limit, true).map_or((0.0, true), |d| (d.depth, d.exact))
 }
 
 /// What the stock is, for a message: its own words when it gives them
@@ -479,8 +498,8 @@ fn refuse_past_flutes(
         let bound = if worst.exact {
             ""
         } else {
-            " (a bound from how far the stock reaches from the rotary axis: that stock is not \
-             measured exactly across the tool)"
+            " (a bound, from how far the stock reaches from the rotary axis or across a step \
+             between readings: that stock is not measured exactly across the tool)"
         };
         format!(
             "the stock {how} {:.3} mm above the tool's tip along its axis{bound} (at X {:.3}, \

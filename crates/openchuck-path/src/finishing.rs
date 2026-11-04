@@ -278,13 +278,23 @@ pub(crate) fn free_ends(
         // tool's width at every half degree and between (decision record
         // 0509): a box corner between the readings above is not missed. The
         // layers keep the reading above, so the path is unchanged.
-        let deepest = crate::flutes::deepest_on_axis(input, end.x, input.tool.top());
+        let (deepest, exact) = crate::flutes::deepest_on_axis(input, end.x, input.tool.top());
         if top.max(deepest) > input.tool.top() + 1e-6 {
+            // A bound, not a measure, is said to be one (CodeRabbit on #534).
+            let (up_to, bound) = if deepest > top && !exact {
+                (
+                    "up to ",
+                    " (a bound, from how far the stock reaches from the rotary axis: that \
+                     stock is not measured exactly across the tool)",
+                )
+            } else {
+                ("", "")
+            };
             return Err(PathError::Parameter {
                 name: parameter::FACE_FREE_ENDS.to_owned(),
                 reason: format!(
-                    "the end face at X {face:.3} has nothing beyond it and stock {:.3} mm \
-                     deep beside it, more than the tool's {:.3} mm of flute, so the tool \
+                    "the end face at X {face:.3} has nothing beyond it and stock {up_to}{:.3} mm \
+                     deep beside it{bound}, more than the tool's {:.3} mm of flute, so the tool \
                      cannot face it; {}. Use a tool with longer flutes, or turn off Face \
                      free ends for this operation, or face it with Facing",
                     top.max(deepest),

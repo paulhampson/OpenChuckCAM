@@ -1189,3 +1189,81 @@ fn req_tl_04_req_nfr_07_fed_moves_deeper_than_the_cut_are_refused_and_rapids_are
     let f13 = fixture(round, 13.0);
     check_path(&f13.input(), &deep, None).unwrap();
 }
+
+#[test]
+fn req_tl_04_req_nfr_07_stock_flush_with_the_flutes_is_settled_in_bounded_work() {
+    // CodeRabbit on #534 (review of 6580f9b): stock whose top stands exactly
+    // as far above the tip as the flutes reach keeps each step's bound
+    // between readings just past the flutes, so halving alone would read a
+    // step about a million times. Decision record 0509: the bound grows
+    // along the tool axis only by the tip's own rise and the stock's turn,
+    // so a straight cut at one height under a flat top is settled with no
+    // halving and accepted; and a step has a budget of readings, past which
+    // its bound is kept and the cut refused as a bound, never accepted
+    // unread. Each case takes well under a second.
+    let timed = |f: &Fixture, passes: &[Pass]| {
+        let started = std::time::Instant::now();
+        let result = check(&f.input(), passes, None);
+        let took = started.elapsed().as_secs_f64();
+        assert!(took < 1.0, "{took} s");
+        result
+    };
+
+    // A straight cut 10 mm along X at A 0 under a flat face 10 mm above the
+    // tip, with 10 mm of flute: flush, accepted.
+    let probe = fixture(boxed((-20.0, 20.0), (-20.0, 20.0)), 10.0);
+    let a = Degrees(0.0);
+    let axis = probe.rotary.tool_axis(a).get();
+    let tip = |along: f64| {
+        probe.rotary.to_model(
+            AxisPosition {
+                along,
+                across: 0.0,
+                height: 2.0,
+            },
+            a,
+        )
+    };
+    let top = tip(0.0) + axis * 10.0;
+    let hi = if axis.z > 0.5 {
+        Point3::new(22.0, 20.0, top.z)
+    } else {
+        assert!(axis.y > 0.5, "{axis:?}");
+        Point3::new(22.0, top.y, 20.0)
+    };
+    let mut f = fixture(boxed((-20.0, 20.0), (-20.0, 20.0)), 10.0);
+    f.stock = AnalyticStock::Box(Aabb {
+        min: Point3::new(-2.0, -20.0, -20.0),
+        max: hi,
+    });
+    let straight = vec![Pass {
+        points: (0..=20)
+            .map(|k| {
+                let tip = tip(0.5 * f64::from(k));
+                CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                }
+            })
+            .collect(),
+        ..Pass::default()
+    }];
+    timed(&f, &straight).unwrap();
+
+    // A turn on round stock of radius 17.5 with the tip 5 above the axis:
+    // the stock stands 12.5 mm above it all round. With 12.5 mm of flute,
+    // flush, the turning steps' bounds stay past the flutes: refused as a
+    // bound within the budget; with 12.51 mm, accepted.
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let f = fixture(round, 12.5);
+    let e = timed(&f, &turn(&f, BAR)).unwrap_err().to_string();
+    assert!(e.contains("may stand up to 12.50"), "{e}");
+    assert!(e.contains("not measured exactly"), "{e}");
+    let f = fixture(round, 12.51);
+    timed(&f, &turn(&f, BAR)).unwrap();
+}

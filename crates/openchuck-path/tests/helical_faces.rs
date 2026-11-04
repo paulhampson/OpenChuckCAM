@@ -1314,6 +1314,71 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
     );
 }
 
+/// Stock left by earlier operations with no exact answer over the tool's
+/// disc (the simulation's cells): the flute check holds it to the bound from
+/// its farthest radius (decision record 0509, OI-2025).
+#[derive(Debug)]
+struct Bounded(AnalyticStock);
+
+impl StockModel for Bounded {
+    fn contains(&self, point: Point3) -> bool {
+        self.0.contains(point)
+    }
+    fn ray_entry(
+        &self,
+        origin: Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<f64> {
+        self.0.ray_entry(origin, direction, max_distance)
+    }
+    fn max_radius(&self) -> Option<f64> {
+        self.0.max_radius()
+    }
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        self.0.x_extent()
+    }
+    fn left_by_earlier_operations(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn req_nfr_07_req_nfr_12_a_free_end_refused_on_a_bound_says_it_is_a_bound() {
+    // CodeRabbit on #534 (review of 6580f9b): where the free end's depth is
+    // the bound from the stock's farthest radius (10.3 + 1 mm over the axis),
+    // not a measure, the refusal says so rather than naming it as the stock's
+    // depth.
+    let mut job = free_end(true, 8.0);
+    job.stock = Box::new(Bounded(AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 30.0,
+    }));
+    let tag = tags();
+    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, STEPOVER),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+        ("stepdown", 2.0),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("face_free_ends")
+            && err.contains("up to 11.300 mm deep")
+            && err.contains("a bound")
+            && err.contains("8.000 mm of flute"),
+        "{err}"
+    );
+}
+
 #[test]
 fn req_op_04_face_free_ends_off_leaves_the_path_as_before() {
     let job = free_end(true, 12.0);
