@@ -88,6 +88,7 @@ mod faces;
 pub mod facing;
 pub mod field;
 pub mod finishing;
+pub mod flutes;
 pub mod helical;
 pub mod holes;
 pub mod indexed;
