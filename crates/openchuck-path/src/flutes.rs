@@ -119,9 +119,11 @@ fn along_move(
     let length = (b.along - a0.along)
         .hypot(b.across - a0.across)
         .hypot(b.height - a0.height);
-    // The shortest way round, as assembly turns A (nearest turn): a pass
-    // given across the 0/360 seam turns a little, not nearly a whole turn.
-    let delta = (to.a.0 - from.a.0 + 180.0).rem_euclid(360.0) - 180.0;
+    // The way assembly turns A (`rotary::nearest_turn`, as
+    // `unwrap_continuous` applies it): a pass given across the 0/360 seam
+    // turns a little, not nearly a whole turn, and an exact half turn goes
+    // the way assembly takes it.
+    let delta = crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0;
     let turn = delta.abs();
     let steps = ((turn / A_STEP).max(length / LENGTH_STEP).ceil() as usize).clamp(1, 10_000);
     (1..=steps)

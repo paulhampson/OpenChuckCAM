@@ -867,3 +867,28 @@ fn req_tl_04_req_nfr_07_a_narrow_round_of_stock_between_readings_is_not_missed()
     );
     assert!(check(&short.input(), &pass, None).is_err());
 }
+
+#[test]
+fn req_tl_04_an_exact_half_turn_goes_the_way_assembly_turns_it() {
+    // CodeRabbit on #534 (second review): an exact half turn is ambiguous;
+    // the reads take the way assembly turns it (`rotary::nearest_turn`): 0
+    // then -180 turns up to +180, and 0 then 180 turns down to -180, so each
+    // reads as the same turn given through 90 degrees does. The stock is off
+    // the axis so the two halves differ.
+    use openchuck_path::rotary::nearest_turn;
+    assert_eq!(nearest_turn(Degrees(-180.0), Degrees(0.0)).0, 180.0);
+    assert_eq!(nearest_turn(Degrees(180.0), Degrees(0.0)).0, -180.0);
+    let f = fixture(boxed((-10.0, 25.0), (-17.5, 17.5)), 30.0);
+    let read = |angles: &[f64]| deepest_of(&f, &at_angles(&f, BAR, angles));
+    for (half, through) in [
+        (read(&[0.0, -180.0]), read(&[0.0, 90.0, 180.0])),
+        (read(&[0.0, 180.0]), read(&[0.0, -90.0, -180.0])),
+    ] {
+        assert!(
+            (half.depth - through.depth).abs() < 1e-9,
+            "{half:?} {through:?}"
+        );
+    }
+    // The two halves do differ for this stock.
+    assert!((read(&[0.0, 90.0, 180.0]).depth - read(&[0.0, -90.0, -180.0]).depth).abs() > 1.0);
+}
