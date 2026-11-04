@@ -121,7 +121,7 @@ The owner's case was reproduced on the public `testdata/stl/crankshaft.stl` with
 No new false refusal of a roughed part, in `crates/openchuck-app/tests/flute_check.rs`, on the public CrankShaft model in the setup's own 35 x 35 mm analytic box stock with a 3.175 mm flat tool of 25 mm flute:
 
 - `req_tl_04_req_nfr_07_finishing_the_crankshaft_blank_with_25_mm_of_flute_is_refused`: simultaneous finishing alone is refused through the application, naming the flute and the box.
-- `req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flute_is_not_refused`: rotary roughing (2 mm Stepdown, 0.3 mm left) and then the same finishing are accepted.
+- `req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flute_is_not_refused`: rotary roughing (4 mm Stepdown, 0.3 mm left) and then the same finishing are accepted.
 
 The golden G-code files are unchanged by the move to the emitted program.
 

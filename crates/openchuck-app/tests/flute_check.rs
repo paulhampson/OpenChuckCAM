@@ -32,7 +32,7 @@ fn crankshaft(name: &str, flute: f64, operations: &[(&str, Vec<(&str, f64)>)]) -
     app.execute(Command::SetMachine(Some(Box::new(machine))))
         .unwrap();
     app.execute(Command::SetSimulation(SimulationSettings {
-        cell: Millimetres(0.25),
+        cell: Millimetres(1.0),
     }))
     .unwrap();
     let setup_id = SetupId::new();
@@ -114,14 +114,18 @@ fn crankshaft(name: &str, flute: f64, operations: &[(&str, Vec<(&str, f64)>)]) -
 fn finish() -> (&'static str, Vec<(&'static str, f64)>) {
     (
         "simultaneous_finishing",
-        vec![("stepover", 0.6), ("tolerance", 0.02)],
+        vec![("stepover", 2.5), ("tolerance", 0.1)],
     )
 }
 
 fn rough() -> (&'static str, Vec<(&'static str, f64)>) {
     (
         "rotary_roughing",
-        vec![("stock_to_leave", 0.3), ("stepdown", 2.0)],
+        vec![
+            ("stock_to_leave", 0.3),
+            ("stepdown", 4.0),
+            ("stepover", 2.5),
+        ],
     )
 }
 
