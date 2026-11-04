@@ -56,7 +56,8 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     /// is no material there. Exact where it is given: the flute check of
     /// decision record 0509 then cannot miss material between readings.
     /// `None`, the default, when the model does not compute it; the check
-    /// then reads the stock with rays across the disc.
+    /// then holds the stock to a conservative bound from
+    /// [`StockModel::max_radius`] (OI-2025).
     fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
         let _ = (centre, axis, radius);
         None

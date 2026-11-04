@@ -1004,6 +1004,91 @@ fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
     let e = on(25.0, carried.clone(), pos, pos).unwrap_err().to_string();
     assert!(e.contains("30.355 mm"), "{e}");
     on(31.0, carried, pos, pos).unwrap();
+    // The owner's Codex review of #534: a first pass given as 270 then 90,
+    // with box stock Y -10 to 25 and Z -25 to 10, is unwrapped by assembly
+    // to -90 then -270 and reaches 30.355 mm (at -225); the raw step's
+    // nearest turn, 270 to 450, reads 21.926 mm only.
+    let codex = (vec![vec![270.0, 90.0]], (-10.0, 25.0), (-25.0, 10.0));
+    let e = on(25.0, codex.0.clone(), codex.1, codex.2)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("30.355 mm"), "{e}");
+    on(31.0, codex.0.clone(), codex.1, codex.2).unwrap();
+    // And the same half turn after a pass that wraps: after 0 to 360, the
+    // pass is carried to 630 and turns up to 810 (90 to 270 on the stock, through 180).
+    let after_wrap = vec![vec![0.0, 90.0, 180.0, 270.0, 360.0], vec![270.0, 90.0]];
+    let raw = on(
+        25.0,
+        vec![vec![0.0, 0.0], vec![270.0, 450.0]],
+        codex.1,
+        codex.2,
+    );
+    let carried = on(25.0, after_wrap, codex.1, codex.2);
+    assert_eq!(raw.is_err(), carried.is_err(), "{raw:?} {carried:?}");
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_stock_between_two_readings_of_a_move_is_not_missed() {
+    // The owner's Codex review of #534: a 3 mm flat tool with 1 mm of flute
+    // moves 0.5 mm along X at A 0, its tip from X 0 to 0.5. A slab of stock
+    // 0.1 mm long in X (0.2 to 0.3), 1.49 to 1.50 mm across the tool axis
+    // and 15 mm tall is out of the tool's 1.5 mm radius at both ends of the
+    // move (1.487 mm reach at 0.2 mm off in X) but inside it at X 0.25, 15
+    // mm above the tip: the move is refused, not read at its ends only.
+    let mut t = tool(ToolShape::FlatEnd, 3.0);
+    t.flute_length = Millimetres(1.0);
+    t.overall_length = Millimetres(20.0);
+    let probe = Fixture::new(bar(), 40.0, &t);
+    let a = Degrees(0.0);
+    let axis = probe.rotary.tool_axis(a).get();
+    let across = Vec3::new(0.0, -axis.z, axis.y);
+    let tip = |along: f64| {
+        probe.rotary.to_model(
+            AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            },
+            a,
+        )
+    };
+    let (start, end) = (tip(0.0), tip(0.5));
+    assert!((end - start - Vec3::new(0.5, 0.0, 0.0)).length() < 1e-12);
+    let corner = |x: f64, w: f64, h: f64| start + Vec3::new(x, 0.0, 0.0) + across * w + axis * h;
+    let (p, q) = (corner(0.2, 1.49, 0.0), corner(0.3, 1.50, 15.0));
+    let slab = AnalyticStock::Box(Aabb {
+        min: Point3::new(p.x.min(q.x), p.y.min(q.y), p.z.min(q.z)),
+        max: Point3::new(p.x.max(q.x), p.y.max(q.y), p.z.max(q.z)),
+    });
+    let mut f = Fixture::new(bar(), 40.0, &t);
+    f.stock = slab;
+    let pass = |points: &[Point3]| {
+        vec![Pass {
+            points: points
+                .iter()
+                .map(|&tip| CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                })
+                .collect(),
+            ..Pass::default()
+        }]
+    };
+    // Neither end alone meets it.
+    assert!(check(&f.input(), &pass(&[start]), None).is_ok());
+    assert!(check(&f.input(), &pass(&[end]), None).is_ok());
+    let e = check(&f.input(), &pass(&[start, end]), None)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("1.000 mm of flute"), "{e}");
+    assert!(named_depth(&e) >= 15.0 - 1e-6, "{e}");
+    // With 15.1 mm of flute the same move is accepted: the bound between
+    // readings is refined, not taken as the depth.
+    t.flute_length = Millimetres(15.1);
+    let mut f = Fixture::new(bar(), 40.0, &t);
+    f.stock = slab;
+    check(&f.input(), &pass(&[start, end]), None).unwrap();
 }
 
 /// An assembled path at A 0, heights above the rotary axis: a rapid to 30

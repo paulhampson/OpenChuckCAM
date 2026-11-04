@@ -275,10 +275,10 @@ pub(crate) fn free_ends(
         // Refused, not skipped (the owner's choice on OI-1396), at the switch
         // the user acts on.
         // The depth the flutes must reach, by the shared measure over the
-        // tool's width at every half degree (decision record 0509): a box
-        // corner between the readings above is not missed. The layers keep
-        // the reading above, so the path is unchanged.
-        let deepest = crate::flutes::deepest_on_axis(input, end.x);
+        // tool's width at every half degree and between (decision record
+        // 0509): a box corner between the readings above is not missed. The
+        // layers keep the reading above, so the path is unchanged.
+        let deepest = crate::flutes::deepest_on_axis(input, end.x, input.tool.top());
         if top.max(deepest) > input.tool.top() + 1e-6 {
             return Err(PathError::Parameter {
                 name: parameter::FACE_FREE_ENDS.to_owned(),
