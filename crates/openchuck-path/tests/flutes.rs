@@ -650,9 +650,11 @@ fn req_tl_04_req_nfr_07_the_crankshaft_in_35_by_35_box_stock_is_refused_with_25_
 }
 
 #[test]
-fn req_tl_04_pencil_finishing_below_the_midpoint_is_measured() {
-    // The crankshaft's inside corners are on the pins' sides facing the
-    // axis (decision record 0410), 2.5 mm from it.
+fn req_tl_04_req_nfr_07_pencil_finishing_on_the_crankshaft_is_refused_at_the_depth_it_measures() {
+    // Pencil's creases on the CrankShaft model in 35 x 35 box stock: its
+    // passes do not go below the axis there (the deepest is 13.5 mm, by the
+    // creases it finds), so this is the refusal boundary at the depth the
+    // shared measure reads, either side by 0.05 mm.
     let pencil = openchuck_path::PencilFinishing::default();
     let on = |flutes: f64| {
         let mut f = Fixture::new(crankshaft(), 40.0, &flat(flutes));
@@ -662,8 +664,9 @@ fn req_tl_04_pencil_finishing_below_the_midpoint_is_measured() {
         });
         run(|ctx| support::generate(&pencil, &f.input(), &values(&[]), ctx))
     };
-    let e = on(15.0).unwrap_err().to_string();
+    let e = on(1.0).unwrap_err().to_string();
     eprintln!("pencil: {e}");
-    assert!(e.contains("15.000 mm of flute"), "{e}");
-    on(29.0).unwrap();
+    let depth = named_depth(&e);
+    assert!(on(depth - 0.05).is_err());
+    on(depth + 0.05).unwrap();
 }

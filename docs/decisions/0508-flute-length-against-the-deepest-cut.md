@@ -71,6 +71,34 @@ Tests in `crates/openchuck-path/tests/flutes.rs`. The analytic cases are a round
 - `req_nfr_07_req_nfr_12_the_refusal_gives_the_numbers_in_plain_words`.
 - One refusal (0.05 mm short) and one acceptance (0.05 mm over) per strategy on the bar in 35 x 35 box stock. Finishing layers on hold only the Stepdown.
 
+**Cuts below the middle of the stock** (the owner's question, relayed). This was the key failure in the owner's case. Where the tip is below the rotary axis, the stock above it is the stock's farthest point from the axis plus the depth below the axis.
+
+- **Measure.** `flutes::deepest` takes the tip's height above the axis, along the tool axis, as a signed number. It comes from `RotaryMapping::to_axis` and is negative below the axis.
+- **Quick bound.** The bound is `max_radius - height`. Below the axis it grows by the depth, so such a place is skipped less, never more. It also keeps 1 mm inside the flutes, because a stock model's farthest radius may be read at cell centres (the simulation's columns).
+- **Exact read.** It starts above the tip by `max_radius + |height| + 1` and reads down along the tool axis to the first material. The depth is therefore from the tip up to the stock's top on the far side, through the axis. It reads over a disc the width of the tool's cutting part, or of its shank where that is wider.
+
+The tests are in `tests/flutes.rs` and `tests/swarf.rs`:
+
+- `req_tl_04_a_cut_below_the_midpoint_adds_its_depth_below_the_axis_in_both_senses_of_a`: tips 5, 10 and 15 mm below the axis, on a 35 mm round and a 35 x 35 box, in both senses of A. The depth is 17.5 or 24.749 plus the depth below; refused 0.01 mm short, accepted 0.01 mm over.
+- `req_tl_04_the_quick_bound_never_skips_a_tip_below_the_axis`: 0.5 to 12.5 mm below, refused 0.02 mm short.
+- An off-axis pin (radius 3, its centre 13 mm from the axis, so its tip goes 10 mm below the axis) in 35 x 35 box stock. Each strategy is refused with 24 mm of flute, naming a depth past the farthest corner (24.749 mm), which only a tip below the axis has, and accepted with 36 mm. The named depths:
+
+  | Strategy | Depth named, mm |
+  | --- | --- |
+  | simultaneous | 32.163 |
+  | axial | 29.458 |
+  | helical | 30.508 |
+  | indexed | 27.500 |
+  | rest | 31.489 |
+
+- `req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stock`: the tip end reversed (A 180), the tip 18 mm below the axis in 22 mm round stock: 40.000 mm, refused at 39.9 and accepted at 40.1.
+- `req_tl_04_req_nfr_07_pencil_finishing_on_the_crankshaft_is_refused_at_the_depth_it_measures`: pencil's creases on the CrankShaft model do not go below the axis (13.474 mm deepest). Its boundary is tested either side by 0.05 mm.
+- `req_tl_04_req_nfr_07_the_crankshaft_in_35_by_35_box_stock_is_refused_with_25_mm_of_flute`: the CrankShaft model with simultaneous finishing.
+  - Centred 35 x 35 box: refused at 25.096 mm and accepted with 28.5 mm.
+  - The same box 2.5 mm off the axis in Z (farthest corner 26.575 mm): refused at 27.231 mm.
+
+Depths approaching 30 mm, as the owner saw, need the tip about 5.25 mm below the axis with a corner of a centred 35 x 35 box uppermost (24.749 + 5.25). Box stock off the axis, as bounding-box stock can be, gives the same. The off-axis-pin tests above, at 29.5 to 32.2 mm, show such depths refused.
+
 The owner's case was reproduced on the public `testdata/stl/crankshaft.stl` with synthetic 35 x 35 box stock and a 3.175 mm flat tool with 25 mm of flute:
 
 - before the change, simultaneous finishing was accepted with no warning;
