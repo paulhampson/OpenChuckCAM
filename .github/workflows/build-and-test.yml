@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Build once, test wide, for one system (decision 0648, option C; called by ci.yml, once per system).
+#
+# `build` builds every test target of the workspace into a nextest archive, runs clippy, checks the
+# test shares, hands the archive on, and runs the doctests and the examples (they need the
+# compiler). `test` runs one share of the tests from that archive on any free runner, compiling
+# nothing: the shares are nextest's `count` partition (every Nth test of the full list), and
+# `tools/ci/check-shares.sh` fails the build if a share is empty or the shares do not hold the full
+# list exactly once, so no test goes unrun. With `shards` 0 (macOS on a pull request) the system
+# builds and runs no share.
+name: Build and test
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: The runner label
+        required: true
+        type: string
+      shards:
+        description: How many test shares; 0 builds only
+        required: true
+        type: number
+      shard_list:
+        description: The share numbers as a JSON array, for the matrix ("[0]" when shards is 0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# A called workflow does not see the caller's `env`, so the settings are repeated (ci.yml).
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Line tables only, not full debug info (decision 0648, OI-2027): a workspace test build was 23 GB
+  # with full debug info and filled the runner's disk. Backtraces keep their files and lines.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  build:
+    name: Build (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: build
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      # The disk use, so a full disk is seen before it fails a job (decision 0648, OI-2027).
+      - name: Disk space before the build
+        shell: bash
+        run: df -h .
+      - name: clippy (deny warnings, unwrap and unchecked indexing)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Build the tests into a nextest archive
+        run: cargo nextest archive --workspace --locked --archive-file nextest-archive.tar.zst
+      - name: Check the test shares
+        if: inputs.shards > 0
+        shell: bash
+        run: bash tools/ci/check-shares.sh "${{ inputs.shards }}"
+      - name: Disk space after the build
+        shell: bash
+        run: |
+          df -h .
+          du -sh target nextest-archive.tar.zst
+      - uses: actions/upload-artifact@v7
+        if: inputs.shards > 0
+        with:
+          name: nextest-archive-${{ inputs.os }}
+          path: nextest-archive.tar.zst
+          # The archive is zstd already.
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - name: Doctests
+        run: cargo test --workspace --doc --locked
+      # bash, so a failing example is not hidden behind the next one on the Windows leg (pwsh
+      # reports only the last command's exit code).
+      - name: Examples run
+        shell: bash
+        run: |
+          cargo run --locked -p openchuck-types --example kinematics
+          cargo run --locked -p openchuck-geom --example check_and_place
+          cargo run --locked -p openchuck-path --example host
+
+  # One share, from the archive. The archive is unpacked into the checkout's own `target/` (the
+  # build ran at the same path on the same system), so the paths tests baked in at compile time
+  # (`CARGO_MANIFEST_DIR`) still point at the checkout. `cargo-nextest` is run directly: running an
+  # archive needs no Rust toolchain, so none is installed here.
+  test:
+    name: Tests (${{ inputs.os }}, share ${{ matrix.shard }} of ${{ inputs.shards }})
+    needs: build
+    if: inputs.shards > 0
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.shard_list) }}
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - uses: actions/download-artifact@v7
+        with:
+          name: nextest-archive-${{ inputs.os }}
+      - name: Tests
+        shell: bash
+        run: >
+          cargo-nextest nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
+          --extract-to . --extract-overwrite
+          --no-fail-fast --no-tests=fail --partition "count:${{ matrix.shard }}/${{ inputs.shards }}"

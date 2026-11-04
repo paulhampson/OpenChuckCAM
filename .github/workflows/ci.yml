@@ -14,11 +14,15 @@
 #
 # Light run on `main` (decision 0358, Option 4): a push to `main` whose commit has exactly the git tree
 # that a full, green pull request run already tested (the `tested-tree` artifact of that run) runs only
-# the fast checks and the Ubuntu legs of Build and test (`mode` = light); every other push, and every
+# the fast checks, the Ubuntu build and tests, and the macOS build, tests and Each library alone (`mode`
+# = light; a pull request does not test on macOS, decision 0648, option C); every other push, and every
 # scheduled or manual run, runs the full matrix. Any error while deciding means full.
 #
+# Build once, test wide (decision 0648, option C): per system, `build-and-test.yml` makes one nextest
+# archive and runs it in shares (Windows 8, Ubuntu 6, macOS 2), Windows first.
+#
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
-# heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
+# heavy jobs (Build, Tests, Gate 3, Each library alone, STEP kernel, UI smoke and
 # fuzz smoke) and the User guide check run when it is marked ready for review. `CI required checks`
 # fails on a draft and, on a ready pull request or a push, requires every heavy job whose filter is
 # true to succeed.
@@ -68,6 +72,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # Line tables only, not full debug info, in every CI build (decision 0648, OI-2027): a workspace
+  # test build was 23 GB with full debug info and 6.4 GB with this on Linux, and filled the runner's
+  # disk. Backtraces keep their files and lines. Local builds and Cargo.toml are unchanged; the
+  # release profile already uses it. Fast checks, which builds only to list and check, uses none.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
   # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
   # cmake_minimum_required; needed once openchuck-import builds the kernel
   # (decision 0003, slice 11).
@@ -85,9 +95,17 @@ jobs:
       actions: read
     outputs:
       mode: ${{ steps.mode.outputs.mode }}
-      bt_matrix: ${{ steps.mode.outputs.bt_matrix }}
+      # Test shares per system for the build-and-test jobs (empty: the system is not built).
+      win_shards: ${{ steps.mode.outputs.win_shards }}
+      win_list: ${{ steps.mode.outputs.win_list }}
+      ubu_shards: ${{ steps.mode.outputs.ubu_shards }}
+      ubu_list: ${{ steps.mode.outputs.ubu_list }}
+      mac_shards: ${{ steps.mode.outputs.mac_shards }}
+      mac_list: ${{ steps.mode.outputs.mac_list }}
+      libs_matrix: ${{ steps.mode.outputs.libs_matrix }}
+      libs: ${{ steps.mode.outputs.libs }}
       rust: ${{ steps.mode.outputs.rust }}
-      # `others`: the jobs that a light run leaves out besides the three below (UI smoke, Each library alone).
+      # `others`: the jobs that a light run leaves out besides the three below (UI smoke).
       others: ${{ steps.mode.outputs.others }}
       records: ${{ steps.mode.outputs.records }}
       any: ${{ steps.mode.outputs.any }}
@@ -227,17 +245,17 @@ jobs:
         run: bash tools/ci/main-run-mode.sh
 
   # The simulator runs in real time. Bounded first-cut fixtures are expanded before
-  # the golden programs and fixtures are dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
-  # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
-  # programs fails, and `needs: gate3` in the aggregator waits for all three.
+  # the golden programs and fixtures are dealt over five runners by expected run time (`cargo xtask replay --shard`, decision 0052,
+  # Option 3; five since decision 0648, option C, so Gate 3 is not the last job). Every program is in exactly one share (unit-tested in xtask), a share with no
+  # programs fails, and `needs: gate3` in the aggregator waits for all five.
   gate3:
-    name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 3)
+    name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 5)
     needs: changes
     if: needs.changes.outputs.gate3 == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -266,7 +284,7 @@ jobs:
       # Every LinuxCNC golden program runs in the headless XYZA simulator and is compared
       # with the replay of the same file (verification plan section 6, gate 3).
       - name: Replay the golden programs in LinuxCNC
-        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/3" --keep-reports target/replay
+        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/5" --keep-reports target/replay
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -274,122 +292,49 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
-  # Every OS splits the test run over two jobs (decision 0052, Option 4; dealt by binary and measured
-  # time since decision 0358, Option 3, see SHARD1_BINARIES below). Shard 1 also runs clippy, the doctests and
-  # the examples, which the other shards would only repeat. The partition check below fails a job whose
-  # shares are empty or do not add up to the full list, so no test goes unrun.
-  build-test:
-    name: Build and test (${{ matrix.os }}, shard ${{ matrix.shard }} of ${{ matrix.shards }})
+  # Build once, test wide (decision 0648, option C), one system at a time in
+  # `.github/workflows/build-and-test.yml`: a build job (clippy, a nextest archive of every test
+  # target, the share check, doctests and examples) and test jobs that run their share from that
+  # archive. Each system is its own job here, so a system's shares wait only for its own build, not
+  # for the slowest system's. The share counts come from `tools/ci/main-run-mode.sh`: Windows 8 and
+  # Ubuntu 6; macOS 2 on a push to `main` (light or full) and on scheduled and manual runs, and 0 on a
+  # pull request (it builds every target, runs no share); an empty count skips the system (Windows on
+  # a light run). Windows is listed first.
+  bt-windows:
+    name: Windows
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.bt_matrix) }}
-    runs-on: ${{ matrix.os }}
-    env:
-      SHARD1_BINARIES: >-
-        openchuck-cli::e2e openchuck-ui::bin/openchuck-ui openchuck-app::held_region
-        openchuck-app::reference_jobs openchuck-path::walls openchuck-path::helical
-        openchuck-path::simultaneous openchuck-path::helical_faces
-      # Windows only: three shares instead of two (matrix.shards is 3), dealt from the per-test times of
-      # run 41312032946 (test time was 69 to 75% of the Windows legs). Share 2 is every other test.
-      THREE_WAY_SHARD1_BINARIES: >-
-        openchuck-path::helical_faces openchuck-path::walls openchuck-app
-      THREE_WAY_SHARD3_BINARIES: >-
-        openchuck-path::adaptive openchuck-path::simultaneous openchuck-ui::bin/openchuck-ui
-        openchuck-app::workholding openchuck-app::reference_jobs
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: shard-${{ matrix.shard }}
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-      - name: clippy (deny warnings, unwrap and unchecked indexing)
-        if: matrix.shard == 1
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      # The two shares are dealt by test binary, by measured time (decision 0358, Option 3, OI-1412):
-      # share 1 runs the binaries listed in SHARD1_BINARIES, share 2 runs every other test (the exact
-      # complement), so a new test or binary always runs, in share 2 unless it is listed. The list was
-      # chosen from the per-test times of run 41096871005 on all three systems so that both shares hold
-      # about half of the test time on each (Ubuntu 18.4 and 18.7 min of 4-thread time, Windows 23.5
-      # and 23.3, macOS 16.5 and 16.6; the hash partition gave 25 and 13 min on Ubuntu). A stale list
-      # only costs balance; the check below fails the job if a listed binary has no tests (renamed or
-      # removed), if either share is empty or if the shares do not add up to the full list.
-      # Re-dealt 1 Nov 2026 (issue #438) from run 41302204775, where share 2 had grown to 149 cpu-minutes
-      # against 90 (Ubuntu 42.5 and 28.1 min, Windows 40.4 and 22.2, macOS 42.4 and 22.9): openchuck-path::simultaneous
-      # and helical_faces moved to share 1, expected about 35 and 36 min on the slowest share.
-      - name: Check the test partition
-        shell: bash
-        run: |
-          list() { cargo nextest list --workspace --locked --message-format oneline "$@"; }
-          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
-          if [ "${{ matrix.shards }}" = 3 ]; then
-            bins="$THREE_WAY_SHARD1_BINARIES $THREE_WAY_SHARD3_BINARIES"
-            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
-            total=$(list | wc -l)
-            n1=$(list -E "$s1" | wc -l)
-            n3=$(list -E "$s3" | wc -l)
-            n2=$(list -E "not (($s1) | ($s3))" | wc -l)
-            echo "full list: $total tests; share 1: $n1; share 2: $n2; share 3: $n3"
-            n_empty=0; [ "$n3" -eq 0 ] && n_empty=1
-          else
-            bins="$SHARD1_BINARIES"
-            s1=$(any_of "$SHARD1_BINARIES")
-            total=$(list | wc -l)
-            n1=$(list -E "$s1" | wc -l)
-            n2=$(list -E "not ($s1)" | wc -l)
-            n3=0
-            echo "full list: $total tests; share 1: $n1; share 2: $n2"
-            n_empty=0
-          fi
-          for b in $bins; do
-            n=$(list -E "binary_id(=$b)" | wc -l)
-            if [ "$n" -eq 0 ]; then
-              echo "::error title=Listed test binary has no tests::$b is listed for a share and matches no test; rename or remove it"
-              exit 1
-            fi
-          done
-          if [ "$n1" -eq 0 ] || [ "$n2" -eq 0 ] || [ "$n_empty" -eq 1 ]; then
-            echo "::error title=Empty test share::share 1 has $n1 tests, share 2 has $n2, share 3 has $n3"
-            exit 1
-          fi
-          if [ $((n1 + n2 + n3)) -ne "$total" ]; then
-            echo "::error title=Test shares do not add up::$n1 + $n2 + $n3 is not the full list of $total"
-            exit 1
-          fi
-      - name: Tests
-        shell: bash
-        run: |
-          any_of() { local f="" b; for b in $1; do f="${f:+$f | }binary_id(=$b)"; done; echo "$f"; }
-          if [ "${{ matrix.shards }}" = 3 ]; then
-            s1=$(any_of "$THREE_WAY_SHARD1_BINARIES"); s3=$(any_of "$THREE_WAY_SHARD3_BINARIES")
-            case "${{ matrix.shard }}" in
-              1) filter="$s1" ;;
-              3) filter="$s3" ;;
-              *) filter="not (($s1) | ($s3))" ;;
-            esac
-          else
-            s1=$(any_of "$SHARD1_BINARIES")
-            if [ "${{ matrix.shard }}" = 1 ]; then filter="$s1"; else filter="not ($s1)"; fi
-          fi
-          cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail -E "$filter"
-      - name: Doctests
-        if: matrix.shard == 1
-        run: cargo test --workspace --doc --locked
-      # bash, so a failing example is not hidden behind the next one on the Windows leg (pwsh
-      # reports only the last command's exit code).
-      - name: Examples run
-        if: matrix.shard == 1
-        shell: bash
-        run: |
-          cargo run --locked -p openchuck-types --example kinematics
-          cargo run --locked -p openchuck-geom --example check_and_place
-          cargo run --locked -p openchuck-path --example host
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true && needs.changes.outputs.win_shards != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-and-test.yml
+    with:
+      os: windows-latest
+      shards: ${{ fromJSON(needs.changes.outputs.win_shards) }}
+      shard_list: ${{ needs.changes.outputs.win_list }}
+
+  bt-ubuntu:
+    name: Ubuntu
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true && needs.changes.outputs.ubu_shards != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-and-test.yml
+    with:
+      os: ubuntu-latest
+      shards: ${{ fromJSON(needs.changes.outputs.ubu_shards) }}
+      shard_list: ${{ needs.changes.outputs.ubu_list }}
+
+  bt-macos:
+    name: macOS
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true && needs.changes.outputs.mac_shards != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-and-test.yml
+    with:
+      os: macos-latest
+      shards: ${{ fromJSON(needs.changes.outputs.mac_shards) }}
+      shard_list: ${{ needs.changes.outputs.mac_list }}
 
   ui-smoke:
     name: UI smoke test (${{ matrix.os }})
@@ -562,14 +507,16 @@ jobs:
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
+  # Windows in two shares (decision 0648, option C): `openchuck-path`, most of the time, is split by
+  # nextest's `count` partition and the other three crates run in share 2. macOS runs on a push to
+  # `main` and on scheduled and manual runs, not on a pull request (tools/ci/main-run-mode.sh).
   libraries-alone:
-    name: Each library alone (${{ matrix.os }})
+    name: Each library alone (${{ matrix.os }}, share ${{ matrix.share }} of ${{ matrix.shares }})
     needs: changes
-    if: needs.changes.outputs.others == 'true' && github.event.pull_request.draft != true
+    if: needs.changes.outputs.libs == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+      matrix: ${{ fromJSON(needs.changes.outputs.libs_matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -584,6 +531,7 @@ jobs:
       # The library family builds and tests on its own, without the C++
       # toolchain, GPU libraries or application crates (architecture section 12).
       - name: Build each library crate on its own
+        if: matrix.share == 1
         run: >
           cargo hack check --no-dev-deps
           --package openchuck-types --package openchuck-path
@@ -594,15 +542,29 @@ jobs:
       # `-p` at a time. nextest does not run doctests, so they follow (decision 0358, Option 2, OI-1411).
       - name: Test each library-family crate on its own
         shell: bash
+        env:
+          SHARE: ${{ matrix.share }}
+          SHARES: ${{ matrix.shares }}
         run: |
-          for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
+          if [ "$SHARES" = 1 ]; then
+            crates="openchuck-types openchuck-path openchuck-post openchuck-gcode"
+          elif [ "$SHARE" = 1 ]; then
+            crates=""
+          else
+            crates="openchuck-types openchuck-post openchuck-gcode"
+          fi
+          # openchuck-path alone, its share of it (all of it when there is one share).
+          cargo nextest run --locked --no-fail-fast --no-tests=fail -p openchuck-path --partition "count:$SHARE/$SHARES"
+          if [ "$SHARE" = "$SHARES" ]; then cargo test --locked --doc -p openchuck-path; fi
+          for crate in $crates; do
+            [ "$crate" = openchuck-path ] && continue
             cargo nextest run --locked --no-fail-fast --no-tests=fail -p "$crate"
             cargo test --locked --doc -p "$crate"
           done
       # The library family packages and builds from its packages alone, as `cargo publish` would
       # (OI-302, decision 0138). Once is enough: packaging does not depend on the platform.
       - name: Publish dry run of the library family
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.share == 1
         run: >
           cargo publish --dry-run --locked
           -p openchuck-types -p openchuck-gcode -p openchuck-path -p openchuck-post
@@ -621,6 +583,10 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true' || needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     env:
+      # No debug info: this job builds the tests only to list them (`xtask trace`); with full debug
+      # info it ran out of disk (run 41756146428, decision 0648).
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       RUST: ${{ needs.changes.outputs.rust }}
       RECORDS: ${{ needs.changes.outputs.records }}
     steps:
@@ -867,7 +833,7 @@ jobs:
 
   # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
   # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
-  # tests (Build and test runs every test, uninstrumented).
+  # tests (the test shares run every test, uninstrumented).
 
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
@@ -911,7 +877,9 @@ jobs:
     needs:
       - changes
       - gate3
-      - build-test
+      - bt-windows
+      - bt-ubuntu
+      - bt-macos
       - ui-smoke
       - step-kernel
       - libraries-alone
@@ -957,9 +925,17 @@ jobs:
             fi
           }
           check gate3 "$(out gate3)"
-          check build-test "$(out rust)"
+          # A system is due when code changed and its share count is set (empty, or absent as `null`,
+          # means the run does not build it: Windows on a light run; decision 0648).
+          due() {
+            local v; v=$(out "$1")
+            if [ "$(out rust)" = true ] && [ -n "$v" ] && [ "$v" != null ]; then echo true; else echo false; fi
+          }
+          check bt-windows "$(due win_shards)"
+          check bt-ubuntu "$(due ubu_shards)"
+          check bt-macos "$(due mac_shards)"
           check ui-smoke "$(out others)"
-          check libraries-alone "$(out others)"
+          check libraries-alone "$(out libs)"
           check step-kernel "$(out step)"
           fast=false
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
