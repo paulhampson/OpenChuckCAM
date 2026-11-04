@@ -31,6 +31,11 @@ The renderer draws each mesh item in one colour, and the deviation bands are set
 
 `openchuck-app`: `pieces.rs` (the cutting, the budget and `with_pieces`); `stock_surface.rs` (the cut part, items 5 and 6) and `stockplay.rs` (the part, from each triangle's own samples) use it; `pathview.rs` `DeviationBands::pieces`, `BandPieces`, `value_at`, `band_at`, `band_of`. `openchuck-sim`: `triangle_samples` (additive). `openchuck-ui`: `viewport.rs` `band_layers` draws the pieces with the bands and the probe reads them; the colour scale's note when the budget ran out; `playback_panel.rs` applies the band filter (SIM-15) to the pieces.
 
+**Also carried: two findings from CodeRabbit's review of #486** (the coordinator's instruction, 4 Nov 2026; decision 0633's Verification lists the tests).
+- **A skipped enclosure test claims nothing (NFR-12).** `openchuck-sim` `Reach` and `openchuck-app` `SetupReach` gain `classified`. It is false when the test was skipped: a tool narrower than two grid pitches, or nothing to cast against. The results then read "not classified" for the share no tool reaches (decision 0633 item 7), not "0.0 %". The colours are unchanged: such samples were Undecided and never in the Unreachable band, so this record's colour rule and the legend stay as they are.
+- **The tick box that hides unreachable material stays while its filter is on**, after a run with nothing enclosed.
+- **Library version.** The new public field is a breaking change to `openchuck-sim` once #486 is on `main`. The Merge Manager assigns the library minor version, in merge order, at this pull request's release.
+
 ## Measurements
 
 All on the owner's carving (kept outside the repository; numbers only) at a 0.1 mm cell, release build. Before any change, a triangle was counted as holding more than one band when its own counted samples (the part) or seven test points (the cut part) fell in more than one band.

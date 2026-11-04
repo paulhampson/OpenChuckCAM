@@ -208,6 +208,33 @@ fn req_sim_05_req_nfr_12_a_tool_narrower_than_two_pitches_leaves_every_leftover_
 }
 
 #[test]
+fn req_nfr_12_a_classification_that_did_not_run_says_so() {
+    // NFR-12: "none enclosed" is a claim only when the test ran. Skipped for
+    // a tool narrower than two pitches, or with nothing to cast against; run
+    // on the tube; and nothing left to decide counts as decided.
+    let part = tube(6.0, 3.0, 0.0, 8.0, 48);
+    let d = measured(&part, &box_stock(8.0, -2.0, 10.0));
+    let never = CancelToken::new();
+    let context = JobContext::new(&never, &NoProgress);
+    let run = |bodies: &[&TriangleMesh], d: &Deviation, tool: f64| {
+        classify_reach(bodies, d, &ReachOptions::for_cell(CELL, tool), &context).unwrap()
+    };
+    assert!(
+        !run(&[&part], &d, 1.5 * CELL).classified,
+        "a tool too narrow"
+    );
+    assert!(!run(&[], &d, 6.0).classified, "nothing to cast against");
+    assert!(run(&[&part], &d, 6.0).classified, "the tube");
+    let mut nothing_left = d.clone();
+    for p in &mut nothing_left.points {
+        p.value = 0.0;
+    }
+    let decided = run(&[&part], &nothing_left, 1.5 * CELL);
+    assert!(decided.classes.iter().all(|c| *c == ReachClass::NotLeft));
+    assert!(decided.classified, "nothing left to decide");
+}
+
+#[test]
 fn req_sim_05_material_within_the_tolerance_or_not_counted_is_not_classed() {
     let part = tube(6.0, 3.0, 0.0, 8.0, 48);
     let mut d = measured(&part, &box_stock(8.0, -2.0, 10.0));

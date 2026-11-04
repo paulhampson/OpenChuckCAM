@@ -426,10 +426,19 @@ impl SetupResults {
                 _ => {}
             }
         }
-        self.unreachable_samples = Some(unreachable);
+        // A share no tool reaches only when the test ran (NFR-12).
+        self.unreachable_samples = reach.classified.then_some(unreachable);
         self.unclassified_samples = Some(unclassified);
         self
     }
+}
+
+/// Whether the results show the tick box that hides material no tool can
+/// reach: when the run has any, and while that filter is on, since the
+/// filter is kept from run to run and the box is the way to turn it off
+/// alone.
+fn unreachable_toggle_shown(r: &SetupResults, filter: &BandFilter) -> bool {
+    r.unreachable_samples.is_some_and(|n| n > 0) || filter.hide_unreachable
 }
 
 /// The share of the part no tool can reach, or "not classified" for a run
@@ -1023,7 +1032,7 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults, filter: &mut BandFilter) 
         .unwrap_or(0)
         .max(1) as f32;
     let last = r.histogram.len() - 1;
-    let classified = r.unreachable_samples.is_some_and(|n| n > 0);
+    let toggle = unreachable_toggle_shown(r, filter);
     egui::Grid::new(("deviation histogram", &r.setup))
         .num_columns(3)
         .spacing([4.0, 2.0])
@@ -1108,7 +1117,7 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults, filter: &mut BandFilter) 
                 }
             }
         });
-    if classified {
+    if toggle {
         let mut show = !filter.hide_unreachable;
         if ui
             .checkbox(&mut show, "Show unreachable (enclosed)")
@@ -1624,8 +1633,47 @@ mod tests {
         openchuck_app::simulation::SetupReach {
             classes: classes.to_vec(),
             pitch: 0.1,
+            classified: true,
             enclosed: None,
         }
+    }
+
+    #[test]
+    fn req_nfr_12_a_classification_that_did_not_run_reads_not_classified() {
+        // NFR-12: when the enclosure test was skipped (a tool too narrow, or
+        // nothing to cast against), the share no tool reaches is not "0.0 %":
+        // nothing was measured. The material left still reads "not
+        // classified" by its share.
+        use openchuck_app::sim::ReachClass::{NotLeft, Undecided};
+        let d = deviation(&[(0.0, false), (2.0, false), (3.0, true)], 0.1, 0);
+        let mut skipped = reach(&[NotLeft, Undecided, Undecided]);
+        skipped.classified = false;
+        let r = SetupResults::new("Setup 1".into(), 0.1, Some(&d), Vec::new())
+            .with_reach(Some(&d), Some(&skipped));
+        assert_eq!(r.unreachable_samples, None);
+        assert_eq!(unreachable_text(&r), "not classified");
+        assert_eq!(r.unclassified_samples, Some(2));
+        assert_eq!(unclassified_text(&r), "66.7 %");
+    }
+
+    #[test]
+    fn req_sim_15_the_unreachable_tick_box_stays_while_its_filter_is_on() {
+        // The filter is kept from run to run: after a run with nothing
+        // enclosed, the tick box that hides unreachable material stays while
+        // that filter is on, so it can be turned off alone, not only by
+        // "Show all".
+        use openchuck_app::sim::ReachClass::{Enclosed, NotLeft};
+        let d = deviation(&[(0.0, false), (2.0, false)], 0.1, 0);
+        let none = SetupResults::new("Setup 1".into(), 0.1, Some(&d), Vec::new())
+            .with_reach(Some(&d), Some(&reach(&[NotLeft, NotLeft])));
+        let some = SetupResults::new("Setup 1".into(), 0.1, Some(&d), Vec::new())
+            .with_reach(Some(&d), Some(&reach(&[NotLeft, Enclosed])));
+        let mut filter = BandFilter::default();
+        assert!(!unreachable_toggle_shown(&none, &filter));
+        assert!(unreachable_toggle_shown(&some, &filter));
+        filter.hide_unreachable = true;
+        assert!(unreachable_toggle_shown(&none, &filter));
+        assert!(unreachable_toggle_shown(&some, &filter));
     }
 
     #[test]
