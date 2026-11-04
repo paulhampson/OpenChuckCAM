@@ -6,6 +6,7 @@
 
 use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 use openchuck_app::playback::ViewFrame;
+use openchuck_viewport::Layer;
 
 use crate::viewport::ViewStep;
 
@@ -19,6 +20,15 @@ pub fn part_turn_shown(step: ViewStep, pose_turn: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+/// Whether the viewport draws `layer` on `step` (issue 535): the cut part
+/// (`Stock`), the tool and the faint trace belong to the playback, so they
+/// show on Simulate only; the toolpath lines show on every step (each
+/// operation's eye, section 6). The layers are kept, not cleared, so Simulate
+/// shows them again at the kept cursor (decision 0238 item 5).
+pub fn layer_drawn_on(step: ViewStep, layer: Layer) -> bool {
+    !matches!(layer, Layer::Stock | Layer::Tool | Layer::Trace) || step == ViewStep::Simulate
 }
 
 /// The frame the view cube's faces refer to: the machine's while the part
@@ -132,6 +142,19 @@ mod tests {
         assert_eq!(part_turn_shown(ViewStep::Simulate, 123.5), 123.5);
         for step in [ViewStep::Model, ViewStep::Setup, ViewStep::Operations] {
             assert_eq!(part_turn_shown(step, 123.5), 0.0, "{step:?}");
+        }
+    }
+
+    #[test]
+    fn req_sim_01_the_cut_part_tool_and_trace_draw_on_simulate_only() {
+        for step in ALL {
+            let simulate = step == ViewStep::Simulate;
+            for layer in [Layer::Stock, Layer::Tool, Layer::Trace] {
+                assert_eq!(layer_drawn_on(step, layer), simulate, "{step:?} {layer:?}");
+            }
+            for layer in [Layer::Scene, Layer::Paths, Layer::Overlay, Layer::Focus] {
+                assert!(layer_drawn_on(step, layer), "{step:?} {layer:?}");
+            }
         }
     }
 

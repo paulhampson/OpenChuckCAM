@@ -952,6 +952,32 @@ fn req_sim_02_the_part_is_at_its_design_orientation_outside_simulate() {
 }
 
 #[test]
+fn req_sim_01_a_run_leaves_no_cut_part_tool_or_trace_on_the_other_steps() {
+    // Issue 535: after a simulation the cut part, the tool and the faint
+    // trace stayed drawn on Model, Setup and Operations. They draw on
+    // Simulate only, and again, at the kept cursor, on return; the toolpath
+    // lines draw on every step.
+    use openchuck_viewport::Layer;
+    let mut rig = simulated("sim-layers-outside");
+    rig.frame(Vec::new());
+    let cursor = rig.shell.play.pose().unwrap().cursor;
+    let drawn = |rig: &Rig, layer| rig.shell.viewport.layer_shown(layer);
+    assert!(drawn(&rig, Layer::Tool), "the tool shows on Simulate");
+    for step in [Step::Operations, Step::Setup, Step::Model] {
+        rig.shell.open_step(step);
+        rig.frame(Vec::new());
+        for layer in [Layer::Stock, Layer::Tool, Layer::Trace] {
+            assert!(!drawn(&rig, layer), "{step:?} {layer:?}");
+        }
+        assert!(drawn(&rig, Layer::Paths), "{step:?}: toolpath lines stay");
+    }
+    rig.shell.open_step(Step::Simulate);
+    rig.frame(Vec::new());
+    assert!(drawn(&rig, Layer::Tool) && drawn(&rig, Layer::Stock));
+    assert_eq!(rig.shell.play.pose().unwrap().cursor, cursor);
+}
+
+#[test]
 fn req_sim_03_a_new_project_takes_the_users_default_for_the_skip() {
     let mut shell = Shell::with_settings(false, None, None);
     shell.settings.simulate.skip_stock_simulation = true;

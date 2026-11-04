@@ -1703,10 +1703,15 @@ impl Viewport {
 
     /// Whether a layer other than the scene is drawn, from the step's
     /// shared Show choices.
-    fn layer_shown(&self, layer: Layer) -> bool {
+    pub(crate) fn layer_shown(&self, layer: Layer) -> bool {
         // The Show choice is Simulate's; it hides nothing on the other steps,
         // where the toolbar does not offer it (7.1).
         let show = self.visibility();
+        // The cut part, the tool and the trace are the playback's: Simulate
+        // only (issue 535).
+        if !crate::orient::layer_drawn_on(self.step(), layer) {
+            return false;
+        }
         match layer {
             Layer::Overlay => show.selections,
             Layer::Paths | Layer::Trace => show.toolpaths,
@@ -1776,7 +1781,7 @@ impl Viewport {
         // The part's own hit, which the probe reads when the part is coloured:
         // the cut part drawn plain behind it is not probed (decision 0492).
         let part_pick = surface;
-        if !self.picking && self.stock_surface.is_some() {
+        if !self.picking && self.stock_surface.is_some() && self.step() == ViewStep::Simulate {
             if !self.part_shown() {
                 surface = None;
             }
@@ -3404,9 +3409,10 @@ pub(crate) mod tests {
         });
         assert_eq!(viewport.simulate_show(), SimulateShow::default());
         // The choice is Simulate's: on Operations, where it is not offered,
-        // the toolpaths, stock and part show (OI-355 wiring, #126 review).
+        // the toolpaths and part show (OI-355 wiring, #126 review); the cut
+        // part is the playback's and shows on Simulate only (issue 535).
         viewport.set_step(Some(ViewStep::Operations));
-        assert!(viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        assert!(viewport.layer_shown(Layer::Paths) && !viewport.layer_shown(Layer::Stock));
         assert!(viewport.part_shown());
         viewport.set_step(None);
         // F fits and V opens the list, from the keyboard.
