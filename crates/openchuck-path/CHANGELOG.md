@@ -2,6 +2,7 @@
 
 ## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)
 
+- **Fix (CodeRabbit on #483):** with rings and a lead, simultaneous finishing's note on the tilt used counted the lead each step holds from its ring as tilt, so it could read up to the lead too high. Steps are now left out of that figure; the path, the step limit and the checks are unchanged.
 - **Fix (OI-2017, CodeRabbit on #518):** rest machining's wall-ring ranges are clipped at the keep-out's slack-adjusted edges, the same edges the keep-out tests use, so a tool place within 1e-6 mm inside a keep-out's lower edge keeps its ring. `KEEP_OUT_SLACK` is `pub(crate)`. No API change.
 
 ## Unreleased (FLUTE-BOX, issue #530; additive API, no version bump)
