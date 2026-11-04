@@ -663,16 +663,19 @@ impl SetupSheet {
             // The held regions and tabs the toolpath was made with (SET-09,
             // OP-21; OI-918), so the stock can be loaded from the sheet.
             // The part is inspected only when something needs it: an
-            // automatic tab, or a held region on offset-stock, whose extent
-            // comes from the part.
+            // automatic tab, or a held region or Clearance from stock on
+            // offset-stock, whose extent comes from the part (decision 0495:
+            // the sheet gives the clearance the program uses).
             let held = setup.workholding.start.is_some() || setup.workholding.end.is_some();
+            let from_stock = setup.clearance_rules.from_stock.is_some();
             let needs_part = setup.workholding.tabs.iter().any(|t| t.auto.is_some())
-                || (held && matches!(setup.stock, Some(Stock::OffsetBoundingBox { .. })));
+                || ((held || from_stock)
+                    && matches!(setup.stock, Some(Stock::OffsetBoundingBox { .. })));
             let extent = if needs_part { part(setup) } else { None };
             let workholding = setup
                 .workholding
                 .resolved(setup.stock.as_ref(), extent.as_ref());
-            let mut facts = setup_facts(project, setup);
+            let mut facts = setup_facts(project, setup, extent.as_ref());
             facts.extend(workholding_facts(setup, &workholding, extent.as_ref()));
             sections.push(SheetSection {
                 heading: format!("Setup: {}", setup.name),
@@ -894,7 +897,11 @@ fn used_tools(project: &Project) -> Vec<&ToolSnapshot> {
         .collect()
 }
 
-fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
+fn setup_facts(
+    project: &Project,
+    setup: &Setup,
+    extent: Option<&PartExtent>,
+) -> Vec<(String, String)> {
     let part = setup
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
@@ -934,6 +941,42 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
             "Clearance".to_string(),
             format!("radius {} mm, safe Z {} mm", mm(c.radius.0), mm(c.safe_z.0)),
         ));
+    }
+    // The clearance the program uses and the minimum it is checked against,
+    // only when the setup sets either rule, so an older sheet is unchanged
+    // (decision record 0495).
+    if !setup.clearance_rules.is_default()
+        && let Some(machine) = project.machine()
+    {
+        let e = crate::setup::effective_clearance(machine, setup, extent.map(|p| &p.bounds));
+        if let Some((minimum, source)) = e.minimum {
+            facts.push((
+                "Minimum clearance".to_string(),
+                format!("radius {} mm ({})", mm(minimum.0), source.name()),
+            ));
+        }
+        if e.from_stock {
+            // Bounding-box stock is measured from the part; without it the
+            // stock's radius is not known, so no clearance is stated as the
+            // one in use (CodeRabbit on #458).
+            let in_use = |note: &str| {
+                format!(
+                    "radius {} mm, safe Z {} mm (Clearance from stock{note})",
+                    mm(e.clearance.radius.0),
+                    mm(e.clearance.safe_z.0)
+                )
+            };
+            let value = match &setup.stock {
+                // With no stock the clearance is the base and the minimum,
+                // which are known (CodeRabbit on #495).
+                None => in_use("; no stock is set"),
+                Some(stock) if stock.radius(extent).is_some() => in_use(""),
+                Some(_) => "not known: the stock's size comes from the part, which could not \
+                            be read (Clearance from stock)"
+                    .to_string(),
+            };
+            facts.push(("Clearance in use".to_string(), value));
+        }
     }
     facts
 }
@@ -1553,6 +1596,72 @@ mod tests {
         );
         assert!(
             matches!(&sheet.sections[0].body, SheetBody::Text(t) if t.starts_with("One program file was"))
+        );
+    }
+
+    /// The setup sheet names the minimum clearance and the clearance in use
+    /// only when the setup sets a clearance rule, so an older project's
+    /// sheet is unchanged (decision 0495; GC-12, GC-07).
+    #[test]
+    fn req_gc_12_req_set_06_the_sheet_gives_the_clearance_in_use_only_with_rules() {
+        use openchuck_types::setup::ClearanceRules;
+        use openchuck_types::units::Millimetres;
+        let mut project = Project::new("sheet");
+        let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+        machine.min_clearance_radius = Some(Millimetres(45.0));
+        project.set_machine(Some(machine)).unwrap();
+        let mut setup = Setup::new(openchuck_project::id::SetupId::from_u128(1), "S");
+        setup.stock = Some(openchuck_types::stock::Stock::Cylinder {
+            diameter: Millimetres(100.0),
+            length: Millimetres(20.0),
+            x_start: Millimetres(0.0),
+        });
+        let names = |facts: Vec<(String, String)>| -> Vec<String> {
+            facts.into_iter().map(|(name, _)| name).collect()
+        };
+        let plain = names(setup_facts(&project, &setup, None));
+        assert!(!plain.iter().any(|n| n.contains("lear")), "{plain:?}");
+        setup.clearance_rules = ClearanceRules {
+            min_radius: None,
+            from_stock: Some(Millimetres(5.0)),
+        };
+        let facts = setup_facts(&project, &setup, None);
+        let get = |name: &str| {
+            facts
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(get("Minimum clearance"), "radius 45 mm (from the machine)");
+        assert_eq!(
+            get("Clearance in use"),
+            "radius 55 mm, safe Z 55 mm (Clearance from stock)"
+        );
+        // Bounding-box stock with no part to measure: the clearance in use is
+        // not known, and the sheet does not state the base one as in use.
+        setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+            offset: Millimetres(1.0),
+        });
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert!(in_use.starts_with("not known"), "{in_use}");
+        // No stock: the base clearance and the minimum are known and given,
+        // saying that no stock is set.
+        setup.stock = None;
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert_eq!(
+            in_use,
+            "radius 45 mm, safe Z 50 mm (Clearance from stock; no stock is set)"
         );
     }
 }

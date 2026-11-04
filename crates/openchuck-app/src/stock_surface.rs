@@ -41,7 +41,7 @@ impl StockSurface {
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
         // A frame shown while playback plays (no picker) is coloured by
-        // whole triangles; a still frame is drawn in pieces (decision 0638,
+        // whole triangles; a still frame is drawn in pieces (decision 0514,
         // the owner's choice B).
         let bands = samples
             .map(|s| s.bands(&mesh, picker, context))
@@ -306,7 +306,7 @@ pub(crate) struct SurfaceSamples {
     /// Each counted node's value, and whether its material left is enclosed.
     values: Vec<Valued>,
     /// Every finite sample, of any kind, for the material behind a face
-    /// beyond the search (decision 0633 item 4).
+    /// beyond the search (decision 0513 item 4).
     all: Tree,
     /// For each node of `all`, its place in `behind` when it stands for the
     /// material behind (a counted part bound, or enclosed), else [`NONE`].
@@ -428,7 +428,7 @@ impl SurfaceSamples {
     /// that triangle alone, so the triangles are shared out over the job's
     /// threads in fixed chunks and the values are the same at any thread
     /// count (NFR-06). With `pieces`, a face holding more than one band is
-    /// drawn in pieces (decision 0638).
+    /// drawn in pieces (decision 0514).
     pub(crate) fn bands(
         &self,
         mesh: &TriangleMesh,
@@ -453,7 +453,7 @@ impl SurfaceSamples {
         if !pieces {
             return Ok(bands);
         }
-        // A face across a band's edge is drawn in pieces (decision 0638).
+        // A face across a band's edge is drawn in pieces (decision 0514).
         let pieces = crate::pieces::refine(
             mesh,
             &|_| true,
@@ -468,7 +468,7 @@ impl SurfaceSamples {
     /// The value of the counted sample nearest to the centroid of
     /// `triangle` within two cells (on the part's surface), and whether its
     /// material left is enclosed. Further off, the face stands for the
-    /// material behind it (decision 0638 amending decision 0633 item 4): the sample of any kind nearest to the point one search distance
+    /// material behind it (decision 0514 amending decision 0513 item 4): the sample of any kind nearest to the point one search distance
     /// behind the face, into the stock, when that is a counted part sample
     /// whose value is only a bound (stock past an end that was not faced:
     /// at least that much is left there) or whose material left is enclosed
@@ -488,7 +488,7 @@ impl SurfaceSamples {
     }
 
     /// [`SurfaceSamples::value_of`] at `point` on a face with the corners
-    /// `[a, b, c]`: the same rule at a point of a piece (decision 0638).
+    /// `[a, b, c]`: the same rule at a point of a piece (decision 0514).
     fn value_at(&self, [a, b, c]: [Point3; 3], point: Point3) -> Projected {
         let near = self.within(point);
         // On the part's surface: within two cells of a counted sample.
@@ -499,7 +499,7 @@ impl SurfaceSamples {
             return (Some(value), enclosed);
         }
         // Off the surface, the face stands for what is behind it (decision
-        // 0638 amending decision 0633 item 4): one search distance behind
+        // 0514 amending decision 0513 item 4): one search distance behind
         // the face, into the stock.
         let normal = (b - a).cross(c - a);
         let length = normal.length();
@@ -548,7 +548,7 @@ mod tests {
         let samples = SurfaceSamples::new(&points, 0.1);
         let mesh = TriangleMesh {
             // Within two cells of the samples at ±1 (on the part's surface,
-            // decision 0638 item 5), between them, and far from both.
+            // decision 0514 item 5), between them, and far from both.
             vertices: [-0.9, 0.9, 0.0, 10.0]
                 .into_iter()
                 .flat_map(|x| {
@@ -859,7 +859,7 @@ mod tests {
 
     #[test]
     fn req_sim_05_the_material_behind_is_read_from_an_exhaustive_nearest_sample_of_any_kind() {
-        // Decision 0633 item 4: the sample of any kind (part, held region,
+        // Decision 0513 item 4: the sample of any kind (part, held region,
         // tab or inside the part) nearest to the point behind a face, ties to
         // the first in the comparison's order, stands for the material there
         // only when it is a counted part bound or enclosed. The index must
@@ -1090,7 +1090,7 @@ mod tests {
 
     #[test]
     fn req_sim_05_a_stock_face_off_the_part_s_surface_takes_the_material_behind_it() {
-        // Decision 0638 amending decision 0633 item 4 (owner, 2 Nov 2026):
+        // Decision 0514 amending decision 0513 item 4 (owner, 2 Nov 2026):
         // a cap over a bore lies within the search of the opening's rim, so
         // the rim's "nothing left" covered most of it. A face more than two
         // cells from every counted sample is off the part's surface and
@@ -1148,7 +1148,7 @@ mod tests {
 
     #[test]
     fn req_sim_05_a_stock_face_across_a_band_edge_is_drawn_in_pieces() {
-        // Decision 0638: a large stock face, half over material on the
+        // Decision 0514: a large stock face, half over material on the
         // surface and half over a bore, is drawn in pieces, each in its band.
         let mut points = Vec::new();
         for i in 0..100 {

@@ -1074,6 +1074,54 @@ fn req_gc_12_req_set_09_offset_stock_held_region_shows_its_x_interval() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Clearance from stock on offset bounding-box stock, with no held region and
+/// no automatic tab: the sheet measures the part, so the clearance in use it
+/// gives is the one generation and posting use (decision 0495; GC-12, SET-06;
+/// review on #458).
+#[test]
+fn req_gc_12_req_set_06_offset_stock_clearance_from_stock_measures_the_part() {
+    let (dir, mut app) = sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+        offset: Millimetres(0.0),
+    });
+    setup.workholding = Default::default();
+    setup.clearance_rules.from_stock = Some(Millimetres(5.0));
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let part = openchuck_types::setup::PartExtent {
+        bounds: openchuck_types::geometry::Aabb {
+            min: openchuck_types::geometry::Point3::new(0.0, -40.0, -40.0),
+            max: openchuck_types::geometry::Point3::new(20.0, 40.0, 40.0),
+        },
+        radius: Millimetres(40.0_f64.hypot(40.0)),
+    };
+    let asked = std::cell::Cell::new(0);
+    let sheet = SetupSheet::with_parts(app.project(), app.strategies(), None, &|_| {
+        asked.set(asked.get() + 1);
+        Some(part)
+    });
+    assert_eq!(asked.get(), 1);
+    let setup = &app.project().setups()[0];
+    let expected = openchuck_app::setup::effective_clearance(
+        app.project().machine().unwrap(),
+        setup,
+        Some(&part.bounds),
+    )
+    .clearance;
+    assert!((expected.radius.0 - 61.569).abs() < 1e-3, "{expected:?}");
+    let facts = facts(&sheet, "Setup: Setup 1");
+    let in_use = &facts
+        .iter()
+        .find(|(k, _)| k == "Clearance in use")
+        .unwrap()
+        .1;
+    assert!(
+        in_use.starts_with("radius 61.569 mm, safe Z 61.569 mm"),
+        "{in_use}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// Inspecting the part costs model I/O; a setup with nothing to place from
 /// the part must not ask for it.
 #[test]

@@ -74,6 +74,7 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         decimals: None,
         operation_names: BTreeMap::new(),
         operation_spindle: BTreeMap::new(),
+        combine_rotary_runs: false,
     }
 }
 

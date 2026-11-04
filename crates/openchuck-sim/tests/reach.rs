@@ -374,7 +374,7 @@ fn req_sim_05_each_triangle_names_the_sample_it_is_coloured_by() {
 
 #[test]
 fn req_sim_05_each_triangle_names_the_range_of_its_samples() {
-    // Decision 0638: a triangle drawn in pieces colours each by its own
+    // Decision 0514: a triangle drawn in pieces colours each by its own
     // samples, which lie together, in triangle order.
     let part = tube(6.0, 3.0, 0.0, 8.0, 12);
     let d = measured(&part, &box_stock(8.0, -2.0, 10.0));

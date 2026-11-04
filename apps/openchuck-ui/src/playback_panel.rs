@@ -796,6 +796,9 @@ impl PlaybackPanel {
             viewport.set_part_turn(0.0);
             viewport.set_tool_readout(None);
         }
+        // The cube's caption and the part's turn follow the frame chosen here
+        // (issue 531).
+        viewport.set_part_frame(self.view);
         busy |= self.poll_data();
         // The cut part is prepared whenever it can be shown, on Simulate,
         // where "Cut part" draws it: the stock simulation is on by default
@@ -807,6 +810,7 @@ impl PlaybackPanel {
         busy |= self.poll_lines(app, viewport);
         busy |= self.poll_trace(app, viewport);
         let Some(data) = self.data.clone() else {
+            viewport.set_part_turn(0.0);
             return busy || self.data_job.is_some();
         };
         if self.playback.advance(&data.timeline, dt) {
@@ -835,7 +839,12 @@ impl PlaybackPanel {
                 return busy;
             };
             self.update_tool(viewport, &data, &pose);
-            viewport.set_part_turn(pose.part_rotation(self.view));
+            // The simulated angle shows on Simulate only: elsewhere the part is
+            // as designed, at A = 0 (issue 531).
+            viewport.set_part_turn(crate::orient::part_turn_shown(
+                viewport.step(),
+                pose.part_rotation(self.view),
+            ));
             let placement = pose.placement(self.view);
             viewport.set_tool_transform(place(placement.origin, placement.axis));
             viewport.set_tool_readout(Some(ToolReadout {
@@ -1437,6 +1446,14 @@ impl PlaybackPanel {
         self.data_job.is_some()
     }
 
+    /// Moves the play head to `fraction` of the program (tests).
+    #[cfg(test)]
+    pub fn seek_to(&mut self, fraction: f64) {
+        if let Some(data) = self.data.clone() {
+            self.playback.seek(&data.timeline, fraction);
+        }
+    }
+
     /// Whether the playback is running.
     #[cfg(test)]
     pub fn is_playing(&self) -> bool {
@@ -1987,7 +2004,7 @@ pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) ->
         }
         shown.bands.retain(|(_, triangles)| !triangles.is_empty());
     }
-    // A triangle's pieces are shown or hidden as triangles are (decision 0638).
+    // A triangle's pieces are shown or hidden as triangles are (decision 0514).
     if let Some(pieces) = &bands.pieces {
         let mut pieces = (**pieces).clone();
         pieces.bands = shown_bands(&pieces.bands, by, filter);
@@ -2245,6 +2262,8 @@ mod tests {
     #[test]
     fn req_sim_02_the_tool_follows_the_cursor_and_the_machine_view_turns_the_part() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-tool");
+        // The part turns on Simulate only (issue 531).
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
         // "Turn part with A" is on at first (issue 203); this test starts in
         // the part's frame.
         assert!(panel.turns_part_with_a());

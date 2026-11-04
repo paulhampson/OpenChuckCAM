@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Deviation colours that cover only the area each band applies to
-//! (decision 0638; issue 488).
+//! (decision 0514; issue 488).
 //!
 //! A triangle is coloured by one value, so a large triangle holding more
 //! than one band (a strip of the cut part across the edge of a bore, a
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn req_nfr_04_req_sim_05_a_long_strip_is_cut_across_its_length() {
         // The cut part's faced end is made of strips one column wide and as
-        // long as the stock is across (decision 0638). Halving a strip along
+        // long as the stock is across (decision 0514). Halving a strip along
         // its longest edge leaves a child as long as the strip, so the
         // pieces spread along it; cut across its length, a band edge costs
         // a few pieces and is still placed to within two cells.
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn req_ui_05_req_sim_05_pieces_leave_the_part_s_triangles_and_their_numbers() {
-        // Decision 0638 item 2: the pieces are an extra layer. The mesh is
+        // Decision 0514 item 2: the pieces are an extra layer. The mesh is
         // not changed, every piece names a triangle of it, the pieces of a
         // parent cover exactly that parent, and the parents are left out of
         // the bands, so selection sets, picking and outlines, which read the
@@ -751,7 +751,7 @@ mod tests {
         // triangles from its centre, with material left only over a small
         // disc (radius 1 mm) on one wedge. The part's rule colours each piece
         // by the nearest of its triangle's own samples, and those samples
-        // decide which pieces hold more than one band (decision 0638 item 1).
+        // decide which pieces hold more than one band (decision 0514 item 1).
         // The colour covers about the small disc, not the whole wedge, for a
         // fan of a few fat wedges and of many thin ones.
         let (radius, spot, spot_radius) = (20.0_f64, Point3::new(12.0, 3.0, 0.0), 1.0_f64);

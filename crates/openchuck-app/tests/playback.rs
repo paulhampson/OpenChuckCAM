@@ -766,7 +766,7 @@ fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
     assert_eq!(model, app.project().models()[0].id);
     let triangles = 12;
     // A triangle holding more than one band is drawn as its pieces
-    // (decision 0638): it is in no band itself, and in the pieces' parents.
+    // (decision 0514): it is in no band itself, and in the pieces' parents.
     let parents = bands.pieces.as_ref().map_or(0, |p| p.parents.len());
     let total: usize = bands.bands.iter().map(|(_, s)| s.len()).sum::<usize>() + parents;
     assert_eq!(

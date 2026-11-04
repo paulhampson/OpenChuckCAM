@@ -1,4 +1,4 @@
-# 0633: Material no tool can reach: told apart from the material left, warned once per setup, and visible on the cut part (lane SIMVIS; issue #478)
+# 0513: Material no tool can reach: told apart from the material left, warned once per setup, and visible on the cut part (lane SIMVIS; issue #478)
 
 - **Status:** Accepted (2 Nov 2026, by the project owner, relayed by the coordinator; decision 0049), after reading the record in full and seeing the screenshots of the tube stand-in. Proposed 1 Nov 2026 by lane SIMVIS; the owner's answers below (Q1 to Q5) and the SIM-05 amendment were relayed by the coordinator on 1 Nov 2026. The owner's later request to highlight only the area affected, not whole triangles, is new work, not a change to this record.
 - **Date:** 1 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #478 (Simulate: the results report 27% of the part at 1 mm to 3 mm or more of material left, but it is not visible on the cut part).
 - **Requirements:** SIM-05 (amended, item 8), SIM-15, UI-11, NFR-06, NFR-07, NFR-12, NFR-15. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 - **Amends:** decision 0238 item 4 (stock beyond the search, item 4 below); decision 0216 items 7 and 8 for the band "Not measured" (item 5); requirement SIM-05 (item 8, agreed by the owner, relayed).
-- **Numbers:** takes 0633 and OI-1987 and OI-1988, the next free numbers across `main` and every unmerged branch on 2 Nov 2026 as the coordinator assigned them (0632, OI-1985 and OI-1986 are held by lanes PATHBUGS and VIEW-OVERLAYS), by the owner's rule of 1 Nov 2026; renumbered again at merge if `main` has moved. No project schema number. No library-family change (`openchuck-sim` gains public items only; `openchuck-app` and `openchuck-ui` change).
+- **Numbers:** 0513, assigned by the Merge Manager at release on 4 Nov 2026 (main's highest + 1; proposed on the lane as 0513). OI-1987 and OI-1988, which no number on `main` collides with.
 
 ## Context
 
@@ -67,7 +67,7 @@ Tests written from the requirement first, named by requirement ID (times uninstr
 - `openchuck-ui` `viewport` `req_sim_05_req_nfr_15_the_legend_and_the_probe_name_unreachable_material` (failed first): the legend row, the Not-measured row and the probe's words, on the part.
 - Screenshots of the stand-in, rendered with the release build on Xvfb and lavapipe, on the throwaway branch `claude/simvis-screens` (`simvis/`), not for merging.
 - On the owner's project (scratch program, not committed): the classification as item 2, 100% of the 1,304,634 leftover samples enclosed.
-- From CodeRabbit's review of #486's release head `d6682194`, fixed in #492 (decision 0638); written before their fixes, which they failed without (they did not build):
+- From CodeRabbit's review of #486's release head `d6682194`, fixed in #492 (decision 0514); written before their fixes, which they failed without (they did not build):
   - `openchuck-sim` `tests/reach.rs` `req_nfr_12_a_classification_that_did_not_run_says_so`: a skipped test (a tool narrower than two pitches, or nothing to cast against) is marked unclassified; the tube, and a part with nothing left, are classified.
   - `openchuck-ui` `results_panel` `req_nfr_12_a_classification_that_did_not_run_reads_not_classified`: the share no tool reaches then reads "not classified", not "0.0 %".
   - `results_panel` `req_sim_15_the_unreachable_tick_box_stays_while_its_filter_is_on`: the tick box stays while its filter is on, after a run with nothing enclosed.

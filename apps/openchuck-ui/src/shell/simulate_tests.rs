@@ -898,6 +898,64 @@ fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_no
     assert_eq!(rig.shell.play.window(), None);
 }
 
+// The turn is the pose's own value or exactly zero.
+#[test]
+#[allow(clippy::float_cmp)]
+fn req_sim_02_the_part_is_at_its_design_orientation_outside_simulate() {
+    // Issue 531: the simulated angle shows on Simulate only; leaving it puts
+    // the part back to A = 0 and the view cube says Part. The turn comes
+    // back, with the cursor kept, on return.
+    let mut rig = simulated("sim-turn-outside");
+    // Leave the play head where A is not zero.
+    let turned = (1..10).map(|i| f64::from(i) / 10.0).find(|&f| {
+        rig.shell.play.seek_to(f);
+        rig.shell
+            .play
+            .pose()
+            .is_some_and(|p| p.part_turn.abs() > 1.0)
+    });
+    assert!(turned.is_some(), "the program turns A somewhere");
+    let pose = rig.shell.play.pose().unwrap();
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.viewport.part_turn(),
+        pose.part_rotation(openchuck_app::playback::ViewFrame::Machine)
+    );
+    assert_eq!(
+        rig.shell.viewport.cube_frame(),
+        openchuck_app::playback::ViewFrame::Machine
+    );
+    for step in [Step::Operations, Step::Setup, Step::Model] {
+        rig.shell.open_step(step);
+        rig.frame(Vec::new());
+        assert_eq!(rig.shell.viewport.part_turn(), 0.0, "{step:?}");
+        assert_eq!(
+            rig.shell.viewport.transforms().0,
+            openchuck_viewport::camera::IDENTITY,
+            "{step:?}"
+        );
+        assert_eq!(
+            rig.shell.viewport.cube_frame(),
+            openchuck_app::playback::ViewFrame::Part,
+            "{step:?}"
+        );
+    }
+    rig.shell.open_step(Step::Simulate);
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.viewport.part_turn(),
+        pose.part_rotation(openchuck_app::playback::ViewFrame::Machine)
+    );
+    // With "Turn part with A" off, nothing turns and the cube names the part.
+    rig.shell.play.set_turn_part_with_a(false);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.part_turn(), 0.0);
+    assert_eq!(
+        rig.shell.viewport.cube_frame(),
+        openchuck_app::playback::ViewFrame::Part
+    );
+}
+
 #[test]
 fn req_sim_03_a_new_project_takes_the_users_default_for_the_skip() {
     let mut shell = Shell::with_settings(false, None, None);
@@ -1819,7 +1877,7 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
                 .count()
         })
         .unwrap();
-    // Of the triangles drawn whole: those drawn in pieces (decision 0638)
+    // Of the triangles drawn whole: those drawn in pieces (decision 0514)
     // are in no band themselves.
     let parents = whole
         .pieces
@@ -1957,7 +2015,7 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         std::thread::sleep(Duration::from_millis(10));
     }
     rig.settle();
-    // Whole triangles and pieces (decision 0638) in the Unreachable band.
+    // Whole triangles and pieces (decision 0514) in the Unreachable band.
     let count = |b: &openchuck_app::pathview::DeviationBands| -> usize {
         b.bands
             .iter()
@@ -1994,7 +2052,7 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
 
 #[test]
 fn req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore() {
-    // Decision 0638 (issue 488): the cut part's faced end is made of strips
+    // Decision 0514 (issue 488): the cut part's faced end is made of strips
     // one column wide across the stock; drawn in pieces, only the bore's
     // disc (Ø14, 153.9 mm²) is Unreachable, not whole strips across the ring.
     let mut rig = simulate(Rig::tube("sim-bite"));

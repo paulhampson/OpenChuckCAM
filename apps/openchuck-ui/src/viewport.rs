@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 
+#[cfg(test)]
+use eframe::egui::vec2;
 use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
 use openchuck_app::pathview::DeviationBands;
@@ -73,7 +75,7 @@ pub(crate) fn cut_part_scene(
 
 /// The meshes the bands of `mesh` are drawn as, with their colours and
 /// hatches: the triangles in no band shown in the hidden-band slate, then
-/// each band; a triangle drawn in pieces (decision 0638) is left out of
+/// each band; a triangle drawn in pieces (decision 0514) is left out of
 /// both and its pieces are drawn instead, slate or in their own band.
 pub(crate) fn band_layers(
     mesh: &TriangleMesh,
@@ -109,7 +111,7 @@ pub(crate) fn band_layers(
 }
 
 /// " · unreachable (enclosed)" for a triangle in that band, for the probe
-/// (decision 0633), else nothing.
+/// (decision 0513), else nothing.
 fn unreachable_words(bands: &DeviationBands, triangle: u32, at: Option<[f64; 3]>) -> &'static str {
     let unreachable = match at {
         Some(at) => {
@@ -145,7 +147,7 @@ pub(crate) const PART_CHANGED_NOTE: &str =
 pub(crate) const TICK_PART_NOTE: &str = "Tick Part to see these colours on the part model.";
 
 /// What the colour scale says when some triangles holding more than one band
-/// are drawn whole because the pieces' budget ran out (decision 0638).
+/// are drawn whole because the pieces' budget ran out (decision 0514).
 pub(crate) const PIECES_CAPPED_NOTE: &str =
     "Some colours are drawn per triangle: too many pieces to draw them finer.";
 
@@ -159,16 +161,18 @@ enum ProbeSource {
 }
 
 /// The colour of a scene item, and whether it is a guide drawn over the part.
-fn style(role: SceneRole) -> (Colour, bool) {
+pub(crate) fn style(role: SceneRole) -> (Colour, bool) {
     match role {
         SceneRole::Part => (roles::PART, false),
         SceneRole::Stock => (roles::STOCK, false),
         SceneRole::FacingExtent => (roles::SELECTED, true),
         SceneRole::FacingMargin => (roles::CLEARANCE, true),
-        SceneRole::FacingSweep => (roles::CUT, false),
+        SceneRole::FacingSweep => (roles::SWEEP, false),
         SceneRole::HeldRegion => (roles::HELD, false),
         SceneRole::Tab => (roles::TAB, false),
-        SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
+        SceneRole::RotaryAxis | SceneRole::ADirection | SceneRole::AZero => {
+            (roles::ROTARY_AXIS, true)
+        }
         SceneRole::WorkX => (roles::WORK_X, true),
         SceneRole::WorkY => (roles::WORK_Y, true),
         SceneRole::WorkZ => (roles::WORK_Z, true),
@@ -505,6 +509,7 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             SceneRole::Stock => show.stock,
             SceneRole::RotaryAxis
             | SceneRole::ADirection
+            | SceneRole::AZero
             | SceneRole::WorkX
             | SceneRole::WorkY
             | SceneRole::WorkZ => show.axes,
@@ -521,7 +526,7 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                 (roles::LINE_WIDTH, LineStyle::Dashed)
             }
             SceneRole::RotaryAxis => (roles::LINE_WIDTH, LineStyle::DashDot),
-            SceneRole::ADirection => (roles::OUTLINE_WIDTH, LineStyle::Solid),
+            SceneRole::ADirection | SceneRole::AZero => (roles::OUTLINE_WIDTH, LineStyle::Solid),
             SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ => {
                 (roles::AXIS_WIDTH, LineStyle::Solid)
             }
@@ -529,15 +534,42 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
             _ => (roles::LINE_WIDTH, LineStyle::Solid),
         };
         scene.add_styled_polyline(&line.points, colour, on_top, width, line_style);
-        if matches!(
-            line.role,
-            SceneRole::Stock | SceneRole::Problem | SceneRole::Hole
-        ) && let Some(added) = scene.lines.last_mut()
+        if turns_with_part(line.role)
+            && let Some(added) = scene.lines.last_mut()
         {
             added.slot = Slot::Part;
         }
     }
     scene
+}
+
+/// Whether a line or label of `role` lies on the workpiece, so it turns
+/// with it in the machine view (SIM-02): the stock, the findings and the
+/// Facing diagram, which is drawn on the part as the path lines are. The
+/// guides (the rotary axis, A+ and the work axes) stay where they are.
+fn turns_with_part(role: SceneRole) -> bool {
+    matches!(
+        role,
+        SceneRole::Stock
+            | SceneRole::AZero
+            | SceneRole::Problem
+            | SceneRole::Hole
+            | SceneRole::FacingExtent
+            | SceneRole::FacingMargin
+            | SceneRole::FacingSweep
+    )
+}
+
+/// Where a label of `role` at `at` (model frame) is drawn, with the part
+/// turned by `part`: a label on the workpiece turns with it, a guide's
+/// label does not.
+fn label_point(role: SceneRole, at: openchuck_app::setup::Point3, part: &Mat4) -> [f64; 3] {
+    if turns_with_part(role) {
+        let p = transform(part, [at.x, at.y, at.z, 1.0]);
+        [p[0], p[1], p[2]]
+    } else {
+        [at.x, at.y, at.z]
+    }
 }
 
 fn to_color32(c: Colour) -> Color32 {
@@ -656,7 +688,7 @@ pub struct Viewport {
     /// in part; decision record 0162).
     pub(crate) probe_hover: Option<u32>,
     /// Where on [`Viewport::probe_hover`] the pointer rests, in its frame:
-    /// the probe reads the piece there (decision 0638).
+    /// the probe reads the piece there (decision 0514).
     probe_hover_at: Option<[f64; 3]>,
     pub(crate) probe_pinned: Option<(u32, [f64; 3])>,
     /// The layers besides the scene: highlights, toolpaths, stock, tool.
@@ -666,6 +698,8 @@ pub struct Viewport {
     tool_transform: Mat4,
     /// The part's turn about the rotary axis, degrees.
     part_turn: f64,
+    /// The frame "Turn part with A" chooses (issue 531).
+    part_frame: openchuck_app::playback::ViewFrame,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
     /// What the pointer may pick (slice 11 item 5).
@@ -780,6 +814,7 @@ impl Viewport {
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
             part_turn: 0.0,
+            part_frame: openchuck_app::playback::ViewFrame::Machine,
             picking: false,
             filter: PickFilter::Both,
             input: PickInput::default(),
@@ -1021,7 +1056,7 @@ impl Viewport {
         if self.part_changed {
             notes.push(PART_CHANGED_NOTE);
         }
-        // The pieces' budget ran out (decision 0638 item 3).
+        // The pieces' budget ran out (decision 0514 item 3).
         if self
             .scale_bands()
             .and_then(|b| b.pieces.as_ref())
@@ -1275,6 +1310,17 @@ impl Viewport {
         } else {
             rotation_x(degrees.to_radians())
         };
+    }
+
+    /// Sets the frame "Turn part with A" chooses (issue 531): the view cube's
+    /// caption names it.
+    pub fn set_part_frame(&mut self, frame: openchuck_app::playback::ViewFrame) {
+        self.part_frame = frame;
+    }
+
+    /// The frame the view cube's faces refer to now (issue 531).
+    pub(crate) fn cube_frame(&self) -> openchuck_app::playback::ViewFrame {
+        crate::orient::cube_frame(self.step(), self.part_frame)
     }
 
     /// The part's turn about the rotary axis, degrees.
@@ -1590,7 +1636,7 @@ impl Viewport {
     }
 
     /// [`Viewport::probe_text`] at the point `at` on the triangle, when known:
-    /// the piece there when the triangle is drawn in pieces (decision 0638).
+    /// the piece there when the triangle is drawn in pieces (decision 0514).
     pub(crate) fn probe_text_at(&self, triangle: u32, at: Option<[f64; 3]>) -> Option<String> {
         let value_of = |bands: &DeviationBands| match at {
             Some(at) => bands.value_at(triangle, at),
@@ -1957,20 +2003,86 @@ impl Viewport {
                 crate::viewport_overlays::arrowhead(&painter, a, b, to_color32(colour));
             }
         }
-        for label in &self.view.labels {
-            let Some(at) = to_screen([label.at.x, label.at.y, label.at.z]) else {
-                continue;
-            };
-            let (colour, _) = style(label.role);
+        for placed in self.guide_labels(rect) {
+            let (colour, _) = style(placed.role);
+            let colour = to_color32(colour);
+            // A label moved off its point keeps a short leader to it.
+            let home = crate::orient::label_home(placed.anchor, placed.rect.size());
+            if (placed.rect.min - home.min).length() > 8.0 {
+                painter.line_segment(
+                    [placed.anchor, placed.rect.clamp(placed.anchor)],
+                    egui::Stroke::new(1.0, colour.gamma_multiply(0.6)),
+                );
+            }
             painter.text(
-                at + egui::vec2(6.0, -4.0),
+                placed.rect.left_bottom(),
                 egui::Align2::LEFT_BOTTOM,
-                &label.text,
+                &placed.text,
                 egui::FontId::monospace(12.0),
-                to_color32(colour),
+                colour,
             );
         }
     }
+
+    /// Where the scene's labels go on screen in `rect`: at their points, then
+    /// moved apart so that no two touch (issue 531). The work axes' labels
+    /// come first, then "A+", then the "A0" of the arc, then the "A0" of the
+    /// part.
+    pub(crate) fn guide_labels(&self, rect: Rect) -> Vec<GuideLabel> {
+        let mut labels: Vec<(u8, GuideLabel)> = Vec::new();
+        for label in &self.view.labels {
+            let at = label_point(label.role, label.at, &self.part_transform);
+            let Some(ndc) = self.camera.project(at, self.aspect) else {
+                continue;
+            };
+            if !(0.0..=1.0).contains(&ndc[2]) {
+                continue;
+            }
+            let anchor = pos2(
+                rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width(),
+                rect.top() + ((1.0 - ndc[1]) * 0.5) as f32 * rect.height(),
+            );
+            let priority = match (label.role, label.text.as_str()) {
+                (SceneRole::AZero, _) => 3,
+                (_, "A0") => 2,
+                (SceneRole::ADirection, _) => 1,
+                _ => 0,
+            };
+            labels.push((
+                priority,
+                GuideLabel {
+                    role: label.role,
+                    text: label.text.clone(),
+                    anchor,
+                    rect: Rect::NOTHING,
+                },
+            ));
+        }
+        labels.sort_by_key(|(priority, _)| *priority);
+        let mut labels: Vec<GuideLabel> = labels.into_iter().map(|(_, l)| l).collect();
+        let wanted: Vec<_> = labels
+            .iter()
+            .map(|l| (l.anchor, crate::orient::label_size(&l.text)))
+            .collect();
+        let places = crate::orient::separate_labels(&wanted, crate::orient::LABEL_GAP);
+        for (label, place) in labels.iter_mut().zip(places) {
+            label.rect = place;
+        }
+        labels
+    }
+}
+
+/// A scene label placed on screen (issue 531).
+#[derive(Debug, Clone)]
+pub(crate) struct GuideLabel {
+    /// What it labels.
+    pub role: SceneRole,
+    /// Its text.
+    pub text: String,
+    /// The screen point it belongs to.
+    pub anchor: egui::Pos2,
+    /// Where its text is drawn.
+    pub rect: Rect,
 }
 
 /// The view's dark gradient, `#2c3139` at the top to `#1b1e23` (14.2), in
@@ -2635,7 +2747,7 @@ pub(crate) mod tests {
         assert_eq!(viewport.probe_hover, None);
     }
 
-    /// Issue 478 (decision 0633, OI-1987): the colour scale's legend has a
+    /// Issue 478 (decision 0513, OI-1987): the colour scale's legend has a
     /// row for material no tool can reach, and the probe names it; "Not
     /// measured" is drawn as it is on the part.
     #[test]
@@ -2672,7 +2784,7 @@ pub(crate) mod tests {
         assert!(text.starts_with("Final result \u{b7} "), "{text}");
     }
 
-    /// Bands whose one triangle is drawn in two pieces (decision 0638): its
+    /// Bands whose one triangle is drawn in two pieces (decision 0514): its
     /// left half on the surface, its right half unreachable.
     fn pieced_bands() -> DeviationBands {
         use openchuck_app::pathview::{BandPieces, deviation_bands_with};
@@ -2706,7 +2818,7 @@ pub(crate) mod tests {
         base
     }
 
-    /// Decision 0638: a triangle drawn in pieces is not drawn whole, slate or
+    /// Decision 0514: a triangle drawn in pieces is not drawn whole, slate or
     /// coloured; its pieces are, each in its band; the probe reads the piece
     /// under the point; the band filter hides pieces as it hides triangles.
     #[test]
@@ -2759,7 +2871,7 @@ pub(crate) mod tests {
         );
     }
 
-    /// Decision 0638 item 3: when the pieces' budget ran out, the scale says
+    /// Decision 0514 item 3: when the pieces' budget ran out, the scale says
     /// some colours are drawn coarser.
     #[test]
     fn req_nfr_04_the_scale_says_when_the_pieces_ran_out() {
@@ -2836,6 +2948,196 @@ pub(crate) mod tests {
                 .iter()
                 .any(|t| t.starts_with("Deviation colours are not shown"))
         );
+    }
+
+    /// Issue #499 (CodeRabbit on #506): the Facing diagram (the extent, the
+    /// margin and the cutter sweep) is drawn on the workpiece, as the path
+    /// lines are, so in the machine view it turns with A (SIM-02); the
+    /// rotary-axis guide stays where it is.
+    #[test]
+    fn req_sim_02_the_facing_diagram_turns_with_the_workpiece() {
+        let mut view = SceneView::default();
+        let point = Point3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        };
+        let line = |role| ScenePolyline {
+            role,
+            points: vec![point, Point3 { x: 1., ..point }],
+        };
+        for role in [
+            SceneRole::FacingExtent,
+            SceneRole::FacingMargin,
+            SceneRole::FacingSweep,
+        ] {
+            view.lines.push(line(role));
+        }
+        let scene = to_scene(&view);
+        assert_eq!(scene.lines.len(), 3);
+        assert!(scene.lines.iter().all(|l| l.slot == Slot::Part));
+        view.lines = vec![line(SceneRole::RotaryAxis)];
+        let guide = to_scene(&view);
+        assert_eq!(guide.lines.len(), 1);
+        assert_eq!(guide.lines[0].slot, Slot::Fixed);
+        // Its labels turn with it (CodeRabbit on #520); an axis label does
+        // not.
+        let turn = rotation_x(std::f64::consts::FRAC_PI_2);
+        let turned = transform(&turn, [1., 0., 2., 1.]);
+        let at = Point3 {
+            x: 1.,
+            y: 0.,
+            z: 2.,
+        };
+        for role in [SceneRole::FacingExtent, SceneRole::FacingMargin] {
+            assert_eq!(
+                label_point(role, at, &turn),
+                [turned[0], turned[1], turned[2]]
+            );
+        }
+        assert_ne!([turned[0], turned[1], turned[2]], [1., 0., 2.]);
+        assert_eq!(label_point(SceneRole::WorkX, at, &turn), [1., 0., 2.]);
+    }
+
+    #[test]
+    fn req_ui_03_req_sim_02_the_a0_mark_turns_with_the_part_and_hides_with_the_axes() {
+        // Issue 531: the mark of A = 0 on the part turns with it; the arc's
+        // start label (a guide) does not; both hide with the axes.
+        let point = Point3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        };
+        let mut view = SceneView::default();
+        view.lines.push(ScenePolyline {
+            role: SceneRole::AZero,
+            points: vec![point, Point3 { z: 5., ..point }],
+        });
+        let scene = to_scene(&view);
+        assert_eq!(scene.lines.len(), 1);
+        assert_eq!(scene.lines[0].slot, Slot::Part);
+        let turn = rotation_x(std::f64::consts::FRAC_PI_2);
+        let at = Point3 {
+            x: 1.,
+            y: 0.,
+            z: 2.,
+        };
+        let turned = transform(&turn, [1., 0., 2., 1.]);
+        assert_eq!(
+            label_point(SceneRole::AZero, at, &turn),
+            [turned[0], turned[1], turned[2]]
+        );
+        assert_eq!(label_point(SceneRole::ADirection, at, &turn), [1., 0., 2.]);
+        let hidden = to_scene_with(
+            &view,
+            &SceneOptions {
+                show: Visibility {
+                    axes: false,
+                    ..Visibility::default()
+                },
+                ..SceneOptions::default()
+            },
+        );
+        assert!(hidden.lines.is_empty());
+    }
+
+    /// The scene of a part on a cylinder stock with the example machine, as
+    /// the application builds it: it has the A+ arrow, both "A0" marks and
+    /// the work axes.
+    fn machine_scene(name: &str) -> SceneView {
+        use openchuck_app::model::TransformStep;
+        use openchuck_app::project::id::SetupId;
+        use openchuck_app::project::{Item, Placement, Setup};
+        use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+        use openchuck_app::{Application, Command, Threads};
+        let dir =
+            std::env::temp_dir().join(format!("openchuck-ui-labels-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        app.execute(Command::SetModelTransform {
+            model,
+            transform: vec![TransformStep::CentreOnRotaryAxis],
+        })
+        .unwrap();
+        let id = SetupId::new();
+        let mut setup = Setup::new(id, "Setup 1");
+        setup.part = Some(model);
+        setup.stock = Some(Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(14.0),
+            x_start: Millimetres(-2.0),
+        });
+        setup.frame.work_offset.x = Millimetres(3.0);
+        app.execute(Command::Add {
+            item: Item::Setup(setup),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(Command::SetMachine(Some(Box::new(
+            MachineProfile::example_x_rotary(),
+        ))))
+        .unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        view
+    }
+
+    #[test]
+    fn req_ui_03_the_guide_labels_never_touch_in_any_view_or_at_any_a() {
+        // Issue 531 (owner: "the crowding needs to be improved"): "A0" of the
+        // arc, "A+", "A0" of the part and the work axes' X, Y and Z keep a
+        // gap of pixels between them in the standard views and obliquely, at
+        // A 0, 90, 180 and 306.5, in a small view and a large one.
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(machine_scene("labels"), true);
+        let mut widest = 0.0_f32;
+        for size in [vec2(764.0, 340.0), vec2(1400.0, 900.0)] {
+            let rect = Rect::from_min_size(pos2(0.0, 0.0), size);
+            viewport.aspect = f64::from(size.x / size.y);
+            for a in [0.0, 90.0, 180.0, 306.5] {
+                viewport.set_part_turn(a);
+                for view in [
+                    Some(StandardView::Front),
+                    Some(StandardView::Top),
+                    Some(StandardView::Right),
+                    Some(StandardView::Left),
+                    Some(StandardView::Isometric),
+                    None,
+                ] {
+                    match view {
+                        Some(v) => viewport.set_view(v),
+                        None => {
+                            viewport.set_view(StandardView::Isometric);
+                            viewport.camera.orbit(40.0, -25.0);
+                        }
+                    }
+                    let labels = viewport.guide_labels(rect);
+                    assert_eq!(labels.len(), 6, "{view:?} at A {a}");
+                    for (i, l) in labels.iter().enumerate() {
+                        for m in &labels[i + 1..] {
+                            let gap = crate::orient::LABEL_GAP;
+                            assert!(
+                                !l.rect.expand(gap).intersects(m.rect),
+                                "{} and {} touch in {view:?} at A {a}, {size:?}: {:?} {:?}",
+                                l.text,
+                                m.text,
+                                l.rect,
+                                m.rect
+                            );
+                        }
+                        let home = crate::orient::label_home(l.anchor, l.rect.size());
+                        widest = widest.max((l.rect.min - home.min).length());
+                    }
+                }
+            }
+        }
+        // None is moved farther than the reach: each stays by its line.
+        assert!(widest <= crate::orient::LABEL_REACH + 0.01, "{widest}");
     }
 
     /// The colour the scene gives the cube part with no bands.
@@ -3442,7 +3744,7 @@ pub(crate) mod tests {
         let small = egui::vec2(900.0, 480.0);
         // Setup: the cube and the triad; the held region and tab legend is
         // the shell's legend strip under the view.
-        check(&mut viewport, large, 2);
+        check(&mut viewport, large, 3);
         // Operations: the path legend and the readout of the point under the
         // pointer join them; in a low view the legend is a button, and it
         // opens below it.
@@ -3454,10 +3756,10 @@ pub(crate) mod tests {
         );
         viewport.set_layer(Layer::Paths, paths);
         viewport.set_view(StandardView::Front);
-        check(&mut viewport, large, 4);
-        check(&mut viewport, small, 4);
-        viewport.legend_open = true;
+        check(&mut viewport, large, 5);
         check(&mut viewport, small, 5);
+        viewport.legend_open = true;
+        check(&mut viewport, small, 6);
         // Simulate: the colour scale with the kept roles, and the tool at
         // its move in the readout.
         let values: Vec<Option<(f64, bool)>> = (0..12)
@@ -3468,10 +3770,10 @@ pub(crate) mod tests {
             work: [1.0, 2.0, 3.0, 4.0],
             move_number: 7,
         }));
-        check(&mut viewport, large, 4);
+        check(&mut viewport, large, 5);
         // A draft shows its chip; the scale stays where it is.
         viewport.set_workholding_draft(Some(WorkholdingDraft::default()));
-        check(&mut viewport, large, 4);
+        check(&mut viewport, large, 5);
         // The toolbar offers Simulate's Show choices, and the scene is drawn.
         assert_eq!(viewport.step(), ViewStep::Simulate);
         assert!(viewport.is_drawn());

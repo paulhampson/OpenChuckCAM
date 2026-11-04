@@ -531,7 +531,7 @@ impl Application {
                 let bands = deviation_bands_with(&values, &unreachable, cell);
                 // A triangle whose own samples fall in more than one band is
                 // drawn in pieces, each by its nearest own sample (decision
-                // 0638).
+                // 0514).
                 let ranges = triangle_samples(deviation, &target, options.spacing)?;
                 let classes = result.reach.as_ref().map(|r| r.classes.as_slice());
                 let enclosed =

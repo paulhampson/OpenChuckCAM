@@ -76,6 +76,7 @@ impl Strategy for Ring {
             points,
             stock: None,
             rapids: Vec::new(),
+            low_link: false,
         }])
     }
 }
@@ -359,7 +360,7 @@ fn req_sim_05_req_nfr_12_enclosed_material_is_a_warning_in_messages_while_the_si
 
 #[test]
 fn req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands() {
-    // Decision 0638: the bore's long strips are enclosed along their length
+    // Decision 0514: the bore's long strips are enclosed along their length
     // but open within a slab of each end; each is drawn in pieces, so the
     // Unreachable colour covers the bore and not the rim at its ends.
     use openchuck_app::pathview::DeviationBand;
@@ -427,7 +428,7 @@ fn req_sim_05_the_part_s_bore_is_drawn_in_pieces_where_its_strips_hold_two_bands
 
 #[test]
 fn req_sim_04_req_sim_05_only_a_still_frame_draws_the_cut_part_in_pieces() {
-    // Decision 0638 (the owner's choice B, 2 Nov 2026): the pieces cost
+    // Decision 0514 (the owner's choice B, 2 Nov 2026): the pieces cost
     // about a second on a large cut part, so a frame shown while playback
     // plays is coloured by whole triangles, as before, and a still frame is
     // drawn in pieces.

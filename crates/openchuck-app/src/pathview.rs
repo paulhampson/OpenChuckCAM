@@ -592,12 +592,12 @@ pub struct DeviationBands {
     /// in part, decision record 0162).
     pub values: std::sync::Arc<[Option<(f64, bool)>]>,
     /// The triangles that hold more than one band, drawn in pieces instead
-    /// of whole (decision 0638); `None` when every triangle holds one.
+    /// of whole (decision 0514); `None` when every triangle holds one.
     pub pieces: Option<std::sync::Arc<BandPieces>>,
 }
 
 /// The pieces that stand in for the triangles holding more than one band
-/// (decision 0638): each such parent is left out of the bands above and
+/// (decision 0514): each such parent is left out of the bands above and
 /// drawn as its pieces, each in its own band.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BandPieces {
