@@ -65,8 +65,9 @@ fn body_radius(input: &StrategyInput<'_>) -> f64 {
 
 /// How far the stock stands above a tip at `position` (fixed to the machine)
 /// at angle `a`, along the tool axis, over a disc of `radius` about the tool
-/// axis; zero where there is none. Read on rings of the disc, then refined
-/// about the highest reading.
+/// axis; zero where there is none. Exact where the stock model gives
+/// [`StockModel::top_over_disc`]; otherwise read on rings of the disc, then
+/// refined about the highest reading.
 pub(crate) fn depth_at(
     stock: &dyn StockModel,
     input: &StrategyInput<'_>,
@@ -74,6 +75,15 @@ pub(crate) fn depth_at(
     a: Degrees,
     radius: f64,
 ) -> f64 {
+    // Exact where the stock model computes it (the setup's own box or
+    // round stock): nothing between readings can be missed.
+    if let Some(top) = stock.top_over_disc(
+        input.rotary.to_model(position, a),
+        input.rotary.tool_axis(a),
+        radius,
+    ) {
+        return top.max(0.0);
+    }
     let axis = input.rotary.tool_axis(a).get();
     let Ok(down) = UnitVec3::new(axis * -1.0) else {
         return 0.0;
@@ -144,7 +154,10 @@ fn along_move(
     let length = (b.along - a0.along)
         .hypot(b.across - a0.across)
         .hypot(b.height - a0.height);
-    let turn = (to.a.0 - from.a.0).abs();
+    // The shortest way round, as assembly turns A (nearest turn): a pass
+    // given across the 0/360 seam turns a little, not nearly a whole turn.
+    let delta = (to.a.0 - from.a.0 + 180.0).rem_euclid(360.0) - 180.0;
+    let turn = delta.abs();
     let steps = ((turn / A_STEP).max(length / LENGTH_STEP).ceil() as usize).clamp(1, 10_000);
     (1..=steps)
         .map(|i| {
@@ -156,7 +169,7 @@ fn along_move(
                     across: lerp(a0.across, b.across),
                     height: lerp(a0.height, b.height),
                 },
-                Degrees(lerp(from.a.0, to.a.0)),
+                Degrees(from.a.0 + t * delta),
             )
         })
         .collect()

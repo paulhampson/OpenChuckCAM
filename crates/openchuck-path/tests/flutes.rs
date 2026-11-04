@@ -671,3 +671,85 @@ fn req_tl_04_req_nfr_07_pencil_finishing_on_the_crankshaft_is_refused_at_the_dep
     assert!(on(depth - 0.05).is_err());
     on(depth + 0.05).unwrap();
 }
+
+/// A pass of points at X 10, the tip `height` above the axis, at the given A
+/// values (degrees, as a strategy gives them).
+fn at_angles(f: &Fixture, height: f64, angles: &[f64]) -> Vec<Pass> {
+    let points = angles
+        .iter()
+        .map(|&a| {
+            let a = Degrees(a);
+            let tip = f.rotary.to_model(
+                AxisPosition {
+                    along: 10.0,
+                    across: 0.0,
+                    height,
+                },
+                a,
+            );
+            CutPoint {
+                tip,
+                a,
+                contact: tip,
+            }
+        })
+        .collect();
+    vec![Pass {
+        points,
+        ..Pass::default()
+    }]
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_narrow_strip_of_stock_between_readings_is_not_missed() {
+    // CodeRabbit on #534: a strip of stock 0.1 mm wide, 0.7 mm across the
+    // tool axis from it (between rings of readings at 0.79 and 1.59 mm on a
+    // 3.175 mm tool) and 15 mm above the tip, is read exactly for box stock
+    // (`StockModel::top_over_disc`, decision record 0509).
+    let probe = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let a = Degrees(30.0);
+    let axis = probe.rotary.tool_axis(a).get();
+    let across = Vec3::new(0.0, -axis.z, axis.y);
+    let tip = probe.rotary.to_model(
+        AxisPosition {
+            along: 10.0,
+            across: 0.0,
+            height: BAR,
+        },
+        a,
+    );
+    let centre = tip + axis * 15.0 + across * 0.7;
+    let strip = AnalyticStock::Box(Aabb {
+        min: Point3::new(-2.0, centre.y - 0.05, centre.z - 0.05),
+        max: Point3::new(22.0, centre.y + 0.05, centre.z + 0.05),
+    });
+    let f = fixture(strip, 30.0);
+    let d = deepest_of(&f, &at_angles(&f, BAR, &[30.0, 30.0]));
+    // The strip's highest corner along the axis: 15 mm and a little more,
+    // as the square is turned to the axis.
+    assert!(d.depth > 15.0 && d.depth < 15.08, "{d:?}");
+    let f = fixture(strip, 14.9);
+    assert!(check(&f.input(), &at_angles(&f, BAR, &[30.0, 30.0]), None).is_err());
+}
+
+#[test]
+fn req_tl_04_a_pass_across_the_0_360_seam_turns_the_short_way() {
+    // CodeRabbit on #534: A given as 350 then 10 turns 20 degrees, as
+    // assembly turns it, not 340 the other way round (which would read the
+    // box's corner at 45 degrees and refuse a valid path).
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let raw = deepest_of(&f, &at_angles(&f, BAR, &[340.0, 350.0, 0.0, 10.0, 20.0]));
+    let unwrapped = deepest_of(
+        &f,
+        &at_angles(&f, BAR, &[340.0, 350.0, 360.0, 370.0, 380.0]),
+    );
+    assert!(
+        (raw.depth - unwrapped.depth).abs() < 1e-9,
+        "{raw:?} {unwrapped:?}"
+    );
+    // Within 20 degrees of a face, short of the corner's 19.749 mm.
+    assert!(
+        raw.depth < 17.5 / 20.0_f64.to_radians().cos() - BAR + 1.0,
+        "{raw:?}"
+    );
+}

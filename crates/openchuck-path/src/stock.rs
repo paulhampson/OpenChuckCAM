@@ -49,6 +49,18 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     fn describe(&self) -> Option<String> {
         None
     }
+
+    /// The highest any material stands along `axis` above `centre`, within
+    /// `radius` of the line through `centre` along `axis`, as
+    /// `dot(p - centre, axis)` at its largest; negative infinity where there
+    /// is no material there. Exact where it is given: the flute check of
+    /// decision record 0509 then cannot miss material between readings.
+    /// `None`, the default, when the model does not compute it; the check
+    /// then reads the stock with rays across the disc.
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        let _ = (centre, axis, radius);
+        None
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box
@@ -166,6 +178,71 @@ impl StockModel for AnalyticStock {
             Self::Cylinder { x_start, x_end, .. } => Some((x_start, x_end)),
             Self::Box(b) => Some((b.min.x, b.max.x)),
         }
+    }
+
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        let a = axis.get();
+        // The tool axis of a 4-axis machine is across the rotary axis.
+        if a.x.abs() > 1e-9 || !(radius >= 0.0) {
+            return None;
+        }
+        // Coordinates across X: `w` across the tool axis, `h` along it.
+        let e = Vec3::new(0.0, -a.z, a.y);
+        let (wc, hc) = (
+            e.y * centre.y + e.z * centre.z,
+            a.y * centre.y + a.z * centre.z,
+        );
+        let (x0, x1) = match *self {
+            Self::Cylinder { x_start, x_end, .. } => (x_start, x_end),
+            Self::Box(b) => (b.min.x, b.max.x),
+        };
+        // The nearest X of the material to the centre's; what is left of the
+        // radius is the half width across the tool axis there.
+        let dx = (x0 - centre.x).max(centre.x - x1).max(0.0);
+        if dx > radius {
+            return Some(f64::NEG_INFINITY);
+        }
+        let s = (radius * radius - dx * dx).sqrt();
+        let (lo, hi) = (wc - s, wc + s);
+        let top = match *self {
+            Self::Cylinder { radius: r, .. } => {
+                // The section is a disc about the axis: highest at the `w`
+                // nearest zero within the slab.
+                let w = 0.0_f64.clamp(lo, hi);
+                if w.abs() > r {
+                    f64::NEG_INFINITY
+                } else {
+                    (r * r - w * w).sqrt()
+                }
+            }
+            Self::Box(b) => {
+                // The section is a rectangle; the highest point of it within
+                // the slab is a corner inside it or where an edge crosses
+                // one of its sides.
+                let corners = [
+                    (b.min.y, b.min.z),
+                    (b.max.y, b.min.z),
+                    (b.max.y, b.max.z),
+                    (b.min.y, b.max.z),
+                ]
+                .map(|(y, z)| (e.y * y + e.z * z, a.y * y + a.z * z));
+                let mut top = f64::NEG_INFINITY;
+                for (k, &(w0, h0)) in corners.iter().enumerate() {
+                    if (lo..=hi).contains(&w0) {
+                        top = top.max(h0);
+                    }
+                    let (w1, h1) = corners[(k + 1) % 4];
+                    for side in [lo, hi] {
+                        if (w0 - side) * (w1 - side) < 0.0 {
+                            let t = (side - w0) / (w1 - w0);
+                            top = top.max(h0 + t * (h1 - h0));
+                        }
+                    }
+                }
+                top
+            }
+        };
+        Some(top - hc)
     }
 
     fn describe(&self) -> Option<String> {
