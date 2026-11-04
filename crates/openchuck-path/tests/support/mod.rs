@@ -357,6 +357,16 @@ impl openchuck_path::StockModel for Bare {
         Some(self.radius)
     }
 
+    fn top_over_disc(
+        &self,
+        _centre: openchuck_types::geometry::Point3,
+        _axis: openchuck_types::geometry::UnitVec3,
+        _radius: f64,
+    ) -> Option<f64> {
+        // No material anywhere: known exactly.
+        Some(f64::NEG_INFINITY)
+    }
+
     fn left_by_earlier_operations(&self) -> bool {
         true
     }

@@ -198,6 +198,12 @@ impl StockModel for Turned {
     fn max_radius(&self) -> Option<f64> {
         self.inner.max_radius()
     }
+
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        let c = Point3::ORIGIN + self.to_box(centre - Point3::ORIGIN);
+        let a = UnitVec3::new(self.to_box(axis.get())).ok()?;
+        self.inner.top_over_disc(c, a, radius)
+    }
 }
 
 #[test]
@@ -256,6 +262,9 @@ impl StockModel for Roughed {
     }
     fn max_radius(&self) -> Option<f64> {
         self.0.max_radius()
+    }
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
     }
     fn left_by_earlier_operations(&self) -> bool {
         true
@@ -702,9 +711,11 @@ fn at_angles(f: &Fixture, height: f64, angles: &[f64]) -> Vec<Pass> {
 
 #[test]
 fn req_tl_04_req_nfr_07_a_narrow_strip_of_stock_between_readings_is_not_missed() {
-    // CodeRabbit on #534: a strip of stock 0.1 mm wide, 0.7 mm across the
-    // tool axis from it (between rings of readings at 0.79 and 1.59 mm on a
-    // 3.175 mm tool) and 15 mm above the tip, is read exactly for box stock
+    // CodeRabbit on #534: a strip of stock 0.1 mm wide, 0.95 mm across the
+    // tool axis from it (between the rings of readings at 0.79 and 1.59 mm on
+    // a 3.175 mm tool, where no reading of a ring lies across 0.90 to 1.00
+    // mm, and out of reach of the search about an empty centre) and 15 mm
+    // above the tip, is read exactly for box stock
     // (`StockModel::top_over_disc`, decision record 0509).
     let probe = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
     let a = Degrees(30.0);
@@ -718,7 +729,7 @@ fn req_tl_04_req_nfr_07_a_narrow_strip_of_stock_between_readings_is_not_missed()
         },
         a,
     );
-    let centre = tip + axis * 15.0 + across * 0.7;
+    let centre = tip + axis * 15.0 + across * 0.95;
     let strip = AnalyticStock::Box(Aabb {
         min: Point3::new(-2.0, centre.y - 0.05, centre.z - 0.05),
         max: Point3::new(22.0, centre.y + 0.05, centre.z + 0.05),
@@ -752,4 +763,107 @@ fn req_tl_04_a_pass_across_the_0_360_seam_turns_the_short_way() {
         raw.depth < 17.5 / 20.0_f64.to_radians().cos() - BAR + 1.0,
         "{raw:?}"
     );
+}
+
+/// Stock with no exact answer over the tool's disc: the round of radius
+/// `0.5` mm past the bar, as a simulation's cells might hold it, known only
+/// by rays and its farthest radius, or by nothing at all.
+#[derive(Debug)]
+struct Unmeasured {
+    inner: AnalyticStock,
+    radius_known: bool,
+}
+
+impl StockModel for Unmeasured {
+    fn contains(&self, p: Point3) -> bool {
+        self.inner.contains(p)
+    }
+    fn ray_entry(&self, o: Point3, d: UnitVec3, m: f64) -> Option<f64> {
+        self.inner.ray_entry(o, d, m)
+    }
+    fn max_radius(&self) -> Option<f64> {
+        self.radius_known.then(|| self.inner.max_radius()).flatten()
+    }
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_stock_with_no_exact_answer_is_held_to_a_conservative_bound() {
+    // Decision record 0509 (CodeRabbit on #534): a stock model that does not
+    // give `top_over_disc` is never read by sampling. Its bound is its
+    // farthest radius less the tip's height plus 1 mm: 5.5 - 5 + 1 = 1.5 mm
+    // over the bar, past the 0.5 mm the round really stands.
+    let round = AnalyticStock::Cylinder {
+        radius: BAR + 0.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let bounded = Unmeasured {
+        inner: round,
+        radius_known: true,
+    };
+    let at = |flutes: f64, stock: &dyn StockModel| {
+        let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
+        let input = openchuck_path::StrategyInput { stock, ..f.input() };
+        check(&input, &turn(&f, BAR), None).map_err(|e| e.to_string())
+    };
+    // Exact for the same round: 0.5 mm.
+    assert!(at(0.6, &round).is_ok());
+    // Bounded: refused at 1.4 mm, though the round stands 0.5 mm; the words
+    // say it is a bound.
+    let e = at(1.4, &bounded).unwrap_err();
+    assert!(e.contains("may stand up to 1.500 mm"), "{e}");
+    assert!(e.contains("not measured exactly"), "{e}");
+    assert!(at(1.6, &bounded).is_ok());
+    // No farthest radius either: refused, whatever the flutes.
+    let blind = Unmeasured {
+        inner: round,
+        radius_known: false,
+    };
+    let e = at(100.0, &blind).unwrap_err();
+    assert!(e.contains("the stock's size is not known"), "{e}");
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_narrow_round_of_stock_between_readings_is_not_missed() {
+    // The same for round stock: a rod of radius 0.06 mm along X, 0.7 mm
+    // across the tool axis and 15 mm above the tip at A 0, would sit
+    // between rings of readings; `top_over_disc` reads it exactly. A
+    // cylinder of stock is on the rotary axis, so the rod is the stock's
+    // whole section seen from a tip 15.06 mm below its top and 0.7 mm aside.
+    let f = fixture(
+        AnalyticStock::Cylinder {
+            radius: 0.06,
+            x_start: -2.0,
+            x_end: 22.0,
+        },
+        30.0,
+    );
+    let a = Degrees(0.0);
+    let axis = f.rotary.tool_axis(a).get();
+    let across = Vec3::new(0.0, -axis.z, axis.y);
+    // The tip 15 mm below the rod and 0.7 mm aside of it.
+    let tip = Point3::ORIGIN + axis * -15.0 + across * 0.7;
+    let tip = f.rotary.to_axis(Point3::new(10.0, tip.y, tip.z), a);
+    let pass = vec![Pass {
+        points: vec![
+            CutPoint {
+                tip: f.rotary.to_model(tip, a),
+                a,
+                contact: f.rotary.to_model(tip, a),
+            };
+            2
+        ],
+        ..Pass::default()
+    }];
+    let d = deepest(&f.input(), &pass, 0.0).unwrap();
+    assert!(d.exact && (d.depth - 15.06).abs() < 1e-6, "{d:?}");
+    let short = fixture(
+        AnalyticStock::Cylinder {
+            radius: 0.06,
+            x_start: -2.0,
+            x_end: 22.0,
+        },
+        15.0,
+    );
+    assert!(check(&short.input(), &pass, None).is_err());
 }

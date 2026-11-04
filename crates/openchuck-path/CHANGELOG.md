@@ -9,7 +9,7 @@
 - **Changed output (decision 0509, accepted, relayed by the coordinator):** every strategy that cuts all the stock above it at once is refused when the stock stands deeper above the tool's tip, along the tool axis over the tool's width, than its flutes.
   - **Measure.** `flutes::deepest` reads the stock itself with `StockModel::ray_entry` at every cut point and in between, so box stock is measured at its corner, off-axis and turned stock as they lie, tips below the rotary axis with the far half of the stock, and stock left by earlier operations rather than the blank.
   - **Where.** In the shared generation, for every strategy whose `Strategy::cuts_in_layers` is false (the default). Rotary roughing, Facing, and finishing with Finishing layers on keep their per-layer checks; rotary roughing now refuses a Stepdown past the flutes (OI-153 narrowed). Free ends use the same measure for their refusal; their layers are unchanged.
-  - **API.** Additive: module `flutes` (`deepest`, `check`, `Deepest`), defaulted `StockModel::describe`, `StockModel::top_over_disc` (exact for `AnalyticStock`) and `Strategy::cuts_in_layers`.
+  - **API.** Additive: module `flutes` (`deepest`, `check`, `Deepest`), defaulted `StockModel::describe`, `StockModel::top_over_disc` (exact for `AnalyticStock`; any other stock model is held to a conservative bound from its farthest radius, OI-2025) and `Strategy::cuts_in_layers`.
   - **Output.** A path within the flutes is byte-identical; one past them is refused with the depth, the place, the flute length and the stock. The goldens are unchanged.
 
 ## 0.40.0

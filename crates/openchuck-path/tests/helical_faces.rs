@@ -1136,6 +1136,16 @@ impl StockModel for Carried {
     fn x_extent(&self) -> Option<(f64, f64)> {
         self.0.x_extent()
     }
+    // The wrapped stock's exact answer over the tool's disc (decision record
+    // 0509), as the application's wrapper passes it on.
+    fn top_over_disc(
+        &self,
+        centre: Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
     fn left_by_earlier_operations(&self) -> bool {
         true
     }

@@ -5,7 +5,7 @@
 - **Number:** proposed and accepted as 0508 (provisional); renumbered 0509 on 4 Nov 2026 at release (assigned by the Merge Manager; 0508 went to lane LARGEPATH, #471). Earlier comments on pull request #534 call it 0508.
 - **Issue:** [#530](https://github.com/paulhampson/OpenChuckCAM/issues/530) (sev1).
 - **Builds on:** [0033](0033-slice-14-rotary-roughing.md) item 8 (OI-153), [0344](0344-finishing-stepdown-and-free-ends.md) item 7, [0345](0345-finishing-layers.md) item 5, [0504](0504-end-facing-depth-within-the-flutes.md) items 1, 3 and 5, and [0161](0161-tools-keep-clear-of-the-gripped-length.md) item 3 ("said and refused, never silent").
-- **Open items:** OI-153 narrowed: roughing's Stepdown is now held to the flutes, while the shank, the holder and the links stay with COL-05. OI-2024 new: the stock earlier operations left is read by sampling, not exactly. No project schema change. The library change is additive: a new public module `flutes`, and defaulted trait methods `StockModel::describe`, `StockModel::top_over_disc` and `Strategy::cuts_in_layers`.
+- **Open items:** OI-153 narrowed: roughing's Stepdown is now held to the flutes, while the shank, the holder and the links stay with COL-05. OI-2025 new: the stock earlier operations left has no exact answer and is held to a conservative bound. No project schema change. The library change is additive: a new public module `flutes`, and defaulted trait methods `StockModel::describe`, `StockModel::top_over_disc` and `Strategy::cuts_in_layers`.
 
 ## Context
 
@@ -36,9 +36,9 @@ Rotary roughing did not refuse a Stepdown longer than the flutes (OI-153).
 1. **One measure (`openchuck_path::flutes::deepest`).**
    - **What it measures.** How far the stock stands above the tool's tip along the tool axis, over a disc the width of the tool's body: the cutting radius, or the shank's where the shank is wider.
    - **Where it reads.** At every cut point, and between points so that no step is more than 0.5 degree of A or 0.5 mm of travel. Between two points A turns the short way round, as assembly turns it (a pass given as 350 then 10 degrees turns 20 degrees).
-   - **How it reads.** For the setup's own box or round stock, exactly: `StockModel::top_over_disc` gives the highest material over the disc in closed form, so nothing between readings is missed. For any other stock model, including the stock earlier operations left, it reads with `ray_entry` on two rings of the disc and refines about the highest reading. A strip narrower than the readings' spacing can lie between them there (OI-2024).
+   - **How it reads.** For the setup's own box or round stock, exactly: `StockModel::top_over_disc` gives the highest material over the disc in closed form, so nothing can lie between readings. Any other stock model, including the stock earlier operations left, is never read by sampling: it is held to the conservative bound below, plus 1 mm because a farthest radius may be measured at cell centres, and the message says it is a bound. A stock with no farthest radius is refused (its size is not known). The bound can refuse finishing after roughing that the real stock would allow (OI-2025).
    - **What that covers.** Box stock is measured where a corner is uppermost over the axis. Stock off the axis (bounding box plus offset) and stock turned about X are measured as they lie. The stock earlier operations left is measured rather than the blank, so a roughed part is not refused.
-   - **The quick bound.** No material is further from the axis than `max_radius`, so at a tip `h` above the axis the stock stands at most `max_radius - h` above it. A place is read only where that bound is past the flutes. A tip below the axis adds its depth (the pin sides of the crankshaft).
+   - **The quick bound.** No material is further from the axis than `max_radius`, so at a tip `h` above the axis the stock stands at most `max_radius - h` above it. The exact answer is asked for only where that bound is past the flutes. A tip below the axis adds its depth (the pin sides of the crankshaft).
 2. **Applied to every strategy by default.**
    - The shared generation (`generate_with`) runs the check on the passes as they will be cut, after the keep-out trimming, for every strategy whose `Strategy::cuts_in_layers` is false. That is the default, so a new strategy is checked unless it says otherwise.
    - The strategies that hold each layer to the flutes themselves return true:
@@ -70,8 +70,10 @@ Tests in `crates/openchuck-path/tests/flutes.rs`. The analytic cases are a round
 - `req_tl_04_round_stock_is_measured_at_its_radius`: 12.5 mm, refused at 12.49 and accepted at 12.51.
 - `req_tl_04_stock_left_by_earlier_operations_is_measured_not_the_blank`.
 - `req_nfr_07_req_nfr_12_the_refusal_gives_the_numbers_in_plain_words`.
-- `req_tl_04_req_nfr_07_a_narrow_strip_of_stock_between_readings_is_not_missed`: a strip 0.1 mm wide, 0.7 mm across the tool axis and 15 mm above the tip, between the rings of readings, is measured (15.0 to 15.08 mm) and refused with 14.9 mm of flute (CodeRabbit on #534).
-- `req_tl_04_a_pass_across_the_0_360_seam_turns_the_short_way`: A given as 340 to 20 through 0 reads as 340 to 380 does (CodeRabbit on #534).
+- `req_tl_04_req_nfr_07_a_narrow_strip_of_stock_between_readings_is_not_missed`: a box strip 0.1 mm wide, 0.95 mm across the tool axis and 15 mm above the tip, which the sampled read of the first version missed entirely (it failed on that code, accepting any flute), is measured exactly (15.0 to 15.08 mm) and refused with 14.9 mm of flute (CodeRabbit on #534).
+- `req_tl_04_a_pass_across_the_0_360_seam_turns_the_short_way`: A given as 340 to 20 through 0 reads as 340 to 380 does (CodeRabbit on #534). On the code before the fix it read the box's corner (19.749 mm at A 135) for a pass that turns 40 degrees about a face (14.201 mm).
+- `req_tl_04_req_nfr_07_a_narrow_round_of_stock_between_readings_is_not_missed`: the same for round stock (a rod of radius 0.06 mm): 15.06 mm, exact.
+- `req_tl_04_req_nfr_07_stock_with_no_exact_answer_is_held_to_a_conservative_bound`: a stock model without `top_over_disc` (a round 0.5 mm over the bar) is held to 5.5 - 5 + 1 = 1.5 mm, refused at 1.4 mm of flute although it stands 0.5 mm, with words that say it is a bound; with no farthest radius either it is refused whatever the flutes.
 - One refusal (0.05 mm short) and one acceptance (0.05 mm over) per strategy on the bar in 35 x 35 box stock. Finishing layers on hold only the Stepdown.
 
 **Cuts below the middle of the stock** (the owner's question, relayed). This was the key failure in the owner's case. Where the tip is below the rotary axis, the stock above it is the stock's farthest point from the axis plus the depth below the axis.

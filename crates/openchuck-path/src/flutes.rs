@@ -6,20 +6,26 @@
 //! not cut in layers) needs flutes at least as long as the stock stands
 //! above the tool's tip along the tool axis, over the tool's whole width:
 //! past the flutes the shank, not a cutting edge, would meet the stock. The
-//! depth is read from the stock itself, along the tool axis, at every cut
+//! depth is taken from the stock itself, along the tool axis, at every cut
 //! point and between them, so the worst case of box stock (a corner
 //! uppermost over the rotary axis, its half diagonal from the axis), stock
-//! not centred on the axis and stock left by earlier operations are all
-//! measured as they are. [`deepest`] is the one measure every check uses;
+//! not centred on the axis or turned about it, and tips below the axis are
+//! all measured as they are. [`deepest`] is the one measure every check uses;
 //! [`check`] refuses a path whose deepest cut is past the flutes, saying
 //! where, by how much and on which stock.
 //!
-//! A quick bound comes first: no material is further from the rotary axis
-//! than [`StockModel::max_radius`], so at a tip `h` above the axis the stock
-//! stands at most `max_radius - h` above it, whatever the stock's shape or
-//! where it sits. Only where that bound is past the flutes is the stock read.
+//! The depth is exact where the stock model gives it
+//! ([`StockModel::top_over_disc`]: the setup's own box or round stock, in
+//! closed form). Any other stock model, such as the stock earlier
+//! operations left, gets a conservative bound instead, never a sampled read:
+//! no material is further from the axis than [`StockModel::max_radius`], so
+//! at a tip `h` above the axis the stock stands at most `max_radius - h`
+//! above it. A stock with neither is refused (OI-2025).
+//!
+//! The same bound comes first everywhere: only where it is past the flutes
+//! is the exact answer asked for.
 
-use openchuck_types::geometry::{Point3, UnitVec3};
+use openchuck_types::geometry::Point3;
 use openchuck_types::units::Degrees;
 
 use crate::error::{PathError, Result};
@@ -37,9 +43,9 @@ const LENGTH_STEP: f64 = 0.5;
 /// refused: rounding only.
 const SLACK: f64 = 1e-6;
 
-/// How far inside the flutes, mm, the quick bound must be before a place is
-/// left unread: a stock model's farthest radius may be measured at cell
-/// centres (the simulation's columns), so the bound is not trusted closer.
+/// Added to the bound from a stock model's farthest radius, mm: that radius
+/// may be measured at cell centres (the simulation's columns), so the bound
+/// is not trusted closer.
 const BOUND_MARGIN: f64 = 1.0;
 
 /// The deepest cut a set of passes makes: how far the stock stands above
@@ -52,6 +58,9 @@ pub struct Deepest {
     pub x: f64,
     /// A, degrees, in 0 to 360.
     pub a: f64,
+    /// True when the depth is the stock model's exact answer; false when it
+    /// is the conservative bound from the stock's farthest radius.
+    pub exact: bool,
 }
 
 /// The radius of the tool's body above its tip: the cutting radius, or the
@@ -65,77 +74,33 @@ fn body_radius(input: &StrategyInput<'_>) -> f64 {
 
 /// How far the stock stands above a tip at `position` (fixed to the machine)
 /// at angle `a`, along the tool axis, over a disc of `radius` about the tool
-/// axis; zero where there is none. Exact where the stock model gives
-/// [`StockModel::top_over_disc`]; otherwise read on rings of the disc, then
-/// refined about the highest reading.
+/// axis, zero where there is none, and whether that is exact.
+///
+/// Exact where the stock model gives [`StockModel::top_over_disc`] (the
+/// setup's own box or round stock). Any other stock model is never read by
+/// sampling, which could miss material between readings (CodeRabbit on #534):
+/// it gets the conservative bound `max_radius - height` plus
+/// [`BOUND_MARGIN`], since no material is further from the axis than its
+/// farthest radius. A stock model with no farthest radius has no bound:
+/// infinity, which [`check`] refuses.
 pub(crate) fn depth_at(
     stock: &dyn StockModel,
     input: &StrategyInput<'_>,
     position: AxisPosition,
     a: Degrees,
     radius: f64,
-) -> f64 {
-    // Exact where the stock model computes it (the setup's own box or
-    // round stock): nothing between readings can be missed.
+) -> (f64, bool) {
     if let Some(top) = stock.top_over_disc(
         input.rotary.to_model(position, a),
         input.rotary.tool_axis(a),
         radius,
     ) {
-        return top.max(0.0);
+        return (top.max(0.0), true);
     }
-    let axis = input.rotary.tool_axis(a).get();
-    let Ok(down) = UnitVec3::new(axis * -1.0) else {
-        return 0.0;
-    };
-    let reach = stock.max_radius().unwrap_or(0.0).max(0.0) + position.height.abs() + 1.0;
-    let read = |along: f64, across: f64| -> f64 {
-        let tip = input.rotary.to_model(
-            AxisPosition {
-                along: position.along + along,
-                across: position.across + across,
-                height: position.height,
-            },
-            a,
-        );
-        let from: Point3 = tip + axis * reach;
-        stock
-            .ray_entry(from, down, 2.0 * reach)
-            .map_or(0.0, |d| (reach - d).max(0.0))
-    };
-    const AROUND: usize = 16;
-    let mut best = (read(0.0, 0.0), 0.0, 0.0);
-    for ring in [0.5, 1.0] {
-        for k in 0..AROUND {
-            let t = std::f64::consts::TAU * k as f64 / AROUND as f64;
-            let (u, v) = (ring * radius * t.cos(), ring * radius * t.sin());
-            let d = read(u, v);
-            if d > best.0 {
-                best = (d, u, v);
-            }
-        }
+    match stock.max_radius() {
+        Some(r) => ((r - position.height + BOUND_MARGIN).max(0.0), false),
+        None => (f64::INFINITY, false),
     }
-    // A pattern search about the highest reading, kept in the disc: the top
-    // of a box over the disc peaks at an edge between the readings.
-    let mut step = 0.25 * radius;
-    for _ in 0..12 {
-        let mut moved = false;
-        for (du, dv) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
-            let (u, v) = (best.1 + du, best.2 + dv);
-            if u.hypot(v) > radius {
-                continue;
-            }
-            let d = read(u, v);
-            if d > best.0 {
-                best = (d, u, v);
-                moved = true;
-            }
-        }
-        if !moved {
-            step *= 0.5;
-        }
-    }
-    best.0
 }
 
 /// The places along the move from `from` to `to` the stock is read at: the
@@ -201,10 +166,11 @@ pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option
                 if bound.is_some_and(|r| r - position.height + BOUND_MARGIN <= limit) {
                     continue;
                 }
-                let depth = depth_at(stock, input, position, a, radius);
+                let (depth, exact) = depth_at(stock, input, position, a, radius);
                 if worst.is_none_or(|w| depth > w.depth) {
                     worst = Some(Deepest {
                         depth,
+                        exact,
                         x: input.rotary.to_model(position, a).x,
                         a: a.0.rem_euclid(360.0),
                     });
@@ -242,7 +208,7 @@ pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64) -> f64 {
                 across: 0.0,
                 height: 0.0,
             };
-            depth_at(input.stock, input, position, a, radius)
+            depth_at(input.stock, input, position, a, radius).0
         })
         .fold(0.0, f64::max)
 }
@@ -279,15 +245,36 @@ pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>
     } else {
         ""
     };
-    let reason = format!(
-        "the stock stands up to {:.3} mm above the tool's tip along its axis (at X {:.3}, A \
-         {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank would meet the \
-         stock; {}. Use a tool with longer flutes, or rough the part first in this setup{layers}",
-        worst.depth,
-        worst.x,
-        worst.a,
-        stock_words(input.stock),
-    );
+    let reason = if !worst.depth.is_finite() {
+        format!(
+            "the stock's size is not known, so the tool's {flutes:.3} mm of flute cannot be \
+             checked against how deep it stands above the tool (at X {:.3}, A {:.1}). Define \
+             the setup's stock",
+            worst.x, worst.a,
+        )
+    } else {
+        let how = if worst.exact {
+            "stands up to"
+        } else {
+            "may stand up to"
+        };
+        let bound = if worst.exact {
+            ""
+        } else {
+            " (a bound from how far the stock reaches from the rotary axis: that stock is not \
+             measured exactly across the tool)"
+        };
+        format!(
+            "the stock {how} {:.3} mm above the tool's tip along its axis{bound} (at X {:.3}, \
+             A {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank would meet \
+             the stock; {}. Use a tool with longer flutes, or rough the part first in this \
+             setup{layers}",
+            worst.depth,
+            worst.x,
+            worst.a,
+            stock_words(input.stock),
+        )
+    };
     Err(match parameter {
         Some(name) => PathError::parameter(name, reason),
         None => PathError::Strategy(reason),
