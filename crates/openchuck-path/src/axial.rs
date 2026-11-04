@@ -774,6 +774,10 @@ fn passes(
         .chain(spaced_note)
         .chain(layered)
         .chain(free.notes)
+        .chain(crate::finishing::across_axis_note(
+            region,
+            "Axial finishing",
+        ))
         .collect();
     Ok((passes, notes, warnings))
 }
