@@ -721,35 +721,58 @@ fn build_first_cut(root: &Path) -> PathBuf {
 mod first_cut {
     use super::*;
 
-    /// The committed folder validates and, regenerated in separate processes
-    /// at 1, 2 and N threads, writes the same program each time with both
-    /// posts, passing gates 1 and 2 and matching its golden programs (GC-07,
-    /// NFR-06, NFR-08). `OPENCHUCK_BLESS_PROJECTS=1` first rewrites the
-    /// folder, as for the reference jobs.
-    #[test]
-    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads()
-     {
-        if std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some() {
+    /// The committed folder validates and, regenerated in a separate process at
+    /// one thread count with both posts, passes gates 1 and 2 and matches its
+    /// golden programs (GC-07, NFR-06, NFR-08). One test per thread count, 1, 2
+    /// and N (owner's decision on OI-2036, decision 0516): the three together
+    /// were one test of 31 minutes on a Windows runner, and apart they run side
+    /// by side in different CI shares. Each is compared with the same golden
+    /// program, so the three are byte-identical to one another in the golden
+    /// form (NFR-06); the lines that form masks, the software version and the
+    /// operation ids, come from the binary and the committed folder, not from the
+    /// thread count. `OPENCHUCK_BLESS_PROJECTS=1` rewrites the folder from the
+    /// 1-thread test only, so the three never rewrite it at once.
+    fn committed_first_cut_at(threads: usize, tag: &str) {
+        let bless = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
+        if bless && threads != 1 {
+            eprintln!(
+                "bless run: the 1-thread test rewrites the first-cut folder; skipped at {tag}"
+            );
+            return;
+        }
+        if bless {
             bless_project(FIRST_CUT);
         }
-        let root = scratch("first-cut-threads");
+        let root = scratch(&format!("first-cut-{tag}"));
         let project = &write_projects(&root, &[FIRST_CUT.to_owned()]).unwrap()[0];
         cli_ok(&["validate".as_ref(), project.as_os_str()]);
         for (post, ext) in POSTS {
-            let mut first: Option<String> = None;
-            for threads in thread_counts() {
-                let out = root.join(format!("{post}-{threads}"));
-                let program = regenerate(project, post, threads, &out);
-                match &first {
-                    None => first = Some(program),
-                    Some(f) => assert!(&program == f, "{post} at {threads} threads (NFR-06)"),
-                }
-            }
-            let program = first.unwrap();
+            let out = root.join(format!("{post}-{threads}"));
+            let program = regenerate(project, post, threads, &out);
             openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &stable(&program))
-                .unwrap_or_else(|m| panic!("first_cut / {post} (NFR-08): {m}"));
+                .unwrap_or_else(|m| {
+                    panic!("first_cut / {post} at {threads} threads (NFR-06, NFR-08): {m}")
+                });
         }
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_thread()
+     {
+        committed_first_cut_at(thread_counts()[0], "1-thread");
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_2_threads()
+     {
+        committed_first_cut_at(thread_counts()[1], "2-threads");
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_n_threads()
+     {
+        committed_first_cut_at(thread_counts()[2], "n-threads");
     }
 
     /// The material removal simulation finds no overcut and no rapid move
