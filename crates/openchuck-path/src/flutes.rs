@@ -35,7 +35,11 @@ use crate::strategy::{CutPoint, Pass, StrategyInput};
 
 /// How near half a turn, degrees, a step between two cut points must be for
 /// both ways round to be read: there whole turns carried by assembly decide
-/// the way, so neither can be assumed.
+/// the way, so neither can be assumed. Only an exact tie is ambiguous: any
+/// other step has one nearest turn whatever whole turns are added, and
+/// `rotary::nearest_turn` rounds the same quotient assembly rounds, so
+/// rounding (a few ulp of 360) is all the width needs. Generation itself
+/// checks the assembled path ([`check_path`]), where no tie arises.
 const HALF_TURN_SLACK: f64 = 1e-9;
 
 /// The largest step in A, degrees, between the places a move is read at.
