@@ -9,6 +9,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- SIMVIS (#523, accepted decision 0633): the cut part's sample index is two compact k-d trees, one of the counted samples and one of every sample for the lookup behind a face, with the same results. On a 3.4-million-sample project the index takes about 860 MB of process memory after playback starts instead of 1,196 MB, near main's 829 MB. Internal; no API or output change.
+
 - SIMVIS (#478, accepted decision 0633): `SetupSimulation` gains `reach` (**changed:** a new public field), with `SetupReach` and `EnclosedSummary`; a run with enclosed material left gives one warning per setup in its notes (`simulation::ENCLOSED_WORDS`), which the overview's messages also hold, on the setup, while that simulation is current; `DeviationBand::Unreachable` (**changed:** a new variant; `ALL` has seven bands) and `pathview::deviation_bands_with`; `DeviationTarget::bodies`. The cut part's faces beyond the comparison's search take the class of the material behind them instead of Not measured (amends decision 0238 item 4). Not in the library family; no output changes.
 
 - SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
