@@ -1404,17 +1404,22 @@ fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_war
         ..input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag)
     };
     let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
-    let text = messages(&path);
-    assert_eq!(
-        text.matches("nothing in this setup holds the part on the other side of the ring")
-            .count(),
-        2,
-        "{text}"
-    );
-    assert!(
-        text.contains("X 0.000") && text.contains("X 30.000"),
-        "{text}"
-    );
+    // Each warning names its own face (the review of #490).
+    let warnings: Vec<&str> = path
+        .warnings
+        .iter()
+        .map(|w| w.message.as_str())
+        .filter(|m| {
+            m.contains("nothing in this setup holds the part on the other side of the ring")
+        })
+        .collect();
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    for face in ["the end face at X 0.000", "the end face at X 30.000"] {
+        assert!(
+            warnings.iter().any(|m| m.contains(face)),
+            "{face}: {warnings:?}"
+        );
+    }
 }
 
 #[test]
@@ -1463,5 +1468,116 @@ fn req_nfr_06_req_gc_07_free_end_turns_are_identical_at_1_2_and_n_threads() {
         })
         .unwrap();
         assert_eq!(runs.len(), 4, "{}", strategy.name());
+    }
+}
+
+/// A closed radius 10 cylinder from X 0 to X 30, with its end faces.
+fn closed_bar() -> TriangleMesh {
+    revolve(&[(0.0, 0.0), (0.0, 10.0), (30.0, 10.0), (30.0, 0.0)], 360)
+}
+
+/// The triangles of `mesh` whose normal lies within `degrees` of the X axis.
+fn across_the_axis(mesh: &TriangleMesh, degrees: f64) -> TriangleMesh {
+    let triangles = mesh
+        .triangles
+        .iter()
+        .copied()
+        .filter(|t| {
+            let [a, b, c] = t.map(|i| mesh.vertices[i as usize]);
+            let n = (b - a).cross(c - a);
+            n.length() > 0.0 && n.x.abs() / n.length() >= degrees.to_radians().cos()
+        })
+        .collect();
+    TriangleMesh {
+        vertices: mesh.vertices.clone(),
+        triangles,
+    }
+}
+
+#[test]
+fn req_op_04_a_region_of_faces_across_the_axis_gets_the_facing_note() {
+    // Issue #471 (the owner's note N1): a region that selects only faces
+    // across the rotary axis (the part's end faces) is reached by helical or
+    // axial finishing only with the side of the tool; the operation says so
+    // and points at Facing with Shape End. A region of the round surface
+    // gets no such note.
+    let bar = closed_bar();
+    let surface = MeshSurface::new(&bar).unwrap();
+    let ends = MeshSurface::new(&across_the_axis(&bar, 10.0)).unwrap();
+    let stock = Carried(AnalyticStock::Cylinder {
+        radius: 10.3,
+        x_start: -5.0,
+        x_end: 35.0,
+    });
+    let profile = tool(ToolShape::FlatEnd, DIAMETER).profile().unwrap();
+    let tag = tags();
+    let input = input_for(&surface, &stock, &profile, &tag);
+    let values: BTreeMap<String, ParameterValue> = [
+        (names::STEPOVER, 2.0),
+        (names::FEED, 600.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::TOLERANCE, TOLERANCE),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect();
+    let note = "the selected faces lie across the rotary axis";
+    for strategy in [&HelicalFinishing as &dyn Strategy, &AxialFinishing] {
+        let region = openchuck_path::RegionConstraint {
+            region: Some(&ends),
+            ..Default::default()
+        };
+        let path = run(|ctx| support::generate_in_region(strategy, &input, &region, &values, ctx))
+            .unwrap();
+        let text = messages(&path);
+        assert!(
+            text.contains(note)
+                && text.contains("reaches such a face only with the side of the tool")
+                && text.contains("use Facing with Shape End"),
+            "{}: {text}",
+            strategy.name()
+        );
+        let round = MeshSurface::new(&TriangleMesh {
+            vertices: bar.vertices.clone(),
+            triangles: bar
+                .triangles
+                .iter()
+                .copied()
+                .filter(|t| !across_the_axis(&bar, 10.0).triangles.contains(t))
+                .collect(),
+        })
+        .unwrap();
+        let region = openchuck_path::RegionConstraint {
+            region: Some(&round),
+            ..Default::default()
+        };
+        let path = run(|ctx| support::generate_in_region(strategy, &input, &region, &values, ctx))
+            .unwrap();
+        assert!(!messages(&path).contains(note), "{}", strategy.name());
+    }
+}
+
+#[test]
+fn req_op_04_a_free_end_flush_with_the_stock_says_there_is_nothing_past_it() {
+    // Issue #471 (the owner's note N2): the free-end search finds the part's
+    // far end, but the stock ends there, so there is nothing past it to face;
+    // the operation says so instead of leaving the end in silence.
+    let job = free_end(true, 12.0);
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = job.path(strategy, &[("stepdown", 2.0)]);
+        let text = messages(&path);
+        assert!(
+            text.contains(
+                "the stock ends at the part's end at X 30.000: there is no stock past this \
+                 end to face. If the real blank is longer, set the stock's length to match it"
+            ),
+            "{}: {text}",
+            strategy.name()
+        );
+        assert!(!text.contains("at X 0.000: there is no stock"), "{text}");
     }
 }
