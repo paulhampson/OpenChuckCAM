@@ -33,6 +33,11 @@ use crate::rotary::AxisPosition;
 use crate::stock::StockModel;
 use crate::strategy::{CutPoint, Pass, StrategyInput};
 
+/// How near half a turn, degrees, a step between two cut points must be for
+/// both ways round to be read: there whole turns carried by assembly decide
+/// the way, so neither can be assumed.
+const HALF_TURN_SLACK: f64 = 1e-9;
+
 /// The largest step in A, degrees, between the places a move is read at.
 const A_STEP: f64 = 0.5;
 
@@ -119,25 +124,35 @@ fn along_move(
     let length = (b.along - a0.along)
         .hypot(b.across - a0.across)
         .hypot(b.height - a0.height);
-    // The way assembly turns A (`rotary::nearest_turn`, as
-    // `unwrap_continuous` applies it): a pass given across the 0/360 seam
-    // turns a little, not nearly a whole turn, and an exact half turn goes
-    // the way assembly takes it.
+    // The way assembly turns A: the nearest equivalent of the next angle
+    // (`rotary::nearest_turn`), so a pass given across the 0/360 seam turns
+    // a little, not nearly a whole turn. Whole turns carried from earlier
+    // points and passes, or fitted to the A range, never change which way a
+    // step turns, except at an exact half turn, where they decide it. There
+    // both ways round are read, so the way assembly takes is always among
+    // them (CodeRabbit on #534).
     let delta = crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0;
+    let ways: &[f64] = if (delta.abs() - 180.0).abs() <= HALF_TURN_SLACK {
+        &[1.0, -1.0]
+    } else {
+        &[1.0]
+    };
     let turn = delta.abs();
     let steps = ((turn / A_STEP).max(length / LENGTH_STEP).ceil() as usize).clamp(1, 10_000);
-    (1..=steps)
-        .map(|i| {
-            let t = i as f64 / steps as f64;
-            let lerp = |p: f64, q: f64| p + t * (q - p);
-            (
-                AxisPosition {
-                    along: lerp(a0.along, b.along),
-                    across: lerp(a0.across, b.across),
-                    height: lerp(a0.height, b.height),
-                },
-                Degrees(from.a.0 + t * delta),
-            )
+    ways.iter()
+        .flat_map(|&way| {
+            (1..=steps).map(move |i| {
+                let t = i as f64 / steps as f64;
+                let lerp = |p: f64, q: f64| p + t * (q - p);
+                (
+                    AxisPosition {
+                        along: lerp(a0.along, b.along),
+                        across: lerp(a0.across, b.across),
+                        height: lerp(a0.height, b.height),
+                    },
+                    Degrees(from.a.0 + t * way * delta),
+                )
+            })
         })
         .collect()
 }

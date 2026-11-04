@@ -869,32 +869,50 @@ fn req_tl_04_req_nfr_07_a_narrow_round_of_stock_between_readings_is_not_missed()
 }
 
 #[test]
-fn req_tl_04_an_exact_half_turn_goes_the_way_assembly_turns_it() {
-    // CodeRabbit on #534 (second review): an exact half turn is ambiguous;
-    // the reads take the way assembly turns it (`rotary::nearest_turn`): 0
-    // then -180 turns up to +180, and 0 then 180 turns down to -180, so each
-    // reads as the same turn given through 90 degrees does. The stock is off
-    // the axis in Y and Z so the two halves differ for each.
-    use openchuck_path::rotary::nearest_turn;
-    assert_eq!(nearest_turn(Degrees(-180.0), Degrees(0.0)).0, 180.0);
-    assert_eq!(nearest_turn(Degrees(180.0), Degrees(0.0)).0, -180.0);
-    // The coordinator's case: 90 then -90 (a pencil crease's neighbouring
-    // points could give it); assembly cuts 90 -> 270, the + half turn.
-    assert_eq!(nearest_turn(Degrees(-90.0), Degrees(90.0)).0, 270.0);
+fn req_tl_04_an_exact_half_turn_reads_both_ways_round() {
+    // CodeRabbit on #534 (second and third reviews): at an exact half turn
+    // the way assembly turns A depends on whole turns it carries from earlier
+    // points and passes (it unwraps from 0 and carries the angle across
+    // passes) and on its fit to the A range, so the check reads both ways
+    // round and takes the deeper. Each case below has box stock off the axis
+    // whose deeper half is the one assembly cuts, the other half 8.4 mm
+    // shallower, so reading only the raw step's nearest turn would accept.
+    use openchuck_path::rotary::{nearest_turn, unwrap_continuous};
+    let read = |f: &Fixture, passes: &[&[f64]]| {
+        let all: Vec<Pass> = passes
+            .iter()
+            .flat_map(|angles| at_angles(f, BAR, angles))
+            .collect();
+        deepest(&f.input(), &all, 0.0).unwrap().depth
+    };
+
+    // The first pass of a path given as 350 then 170: assembly unwraps it
+    // from 0 to -10 then -190, down through 260; the raw step's nearest turn
+    // goes up through 80.
+    let cut = unwrap_continuous(&[Degrees(350.0), Degrees(170.0)], Degrees(0.0));
+    assert_eq!((cut[0].0, cut[1].0), (-10.0, -190.0));
+    assert_eq!(nearest_turn(Degrees(170.0), Degrees(350.0)).0, 530.0);
+    let f = fixture(boxed((-25.0, 10.0), (-25.0, 10.0)), 30.0);
+    let cut_way = read(&f, &[&[350.0, 260.0, 170.0]]);
+    let other_way = read(&f, &[&[350.0, 80.0, 170.0]]);
+    assert!(cut_way > other_way + 8.0, "{cut_way} {other_way}");
+    assert!((read(&f, &[&[350.0, 170.0]]) - cut_way).abs() < 1e-9);
+
+    // A later pass whose carried angle differs from its first raw angle by a
+    // whole turn: after a pass ending at 360, a pass given as 10 then 190 is
+    // cut from 370 up to 550, while from 10 alone the nearest turn of 190
+    // goes down to -170.
+    let carried = unwrap_continuous(&[Degrees(10.0), Degrees(190.0)], Degrees(360.0));
+    assert_eq!((carried[0].0, carried[1].0), (370.0, 550.0));
+    assert_eq!(nearest_turn(Degrees(190.0), Degrees(10.0)).0, -170.0);
     let f = fixture(boxed((-10.0, 25.0), (-10.0, 25.0)), 30.0);
-    let read = |angles: &[f64]| deepest_of(&f, &at_angles(&f, BAR, angles));
-    for (half, through) in [
-        (read(&[90.0, -90.0]), read(&[90.0, 180.0, 270.0])),
-        (read(&[0.0, -180.0]), read(&[0.0, 90.0, 180.0])),
-        (read(&[0.0, 180.0]), read(&[0.0, -90.0, -180.0])),
-    ] {
-        assert!(
-            (half.depth - through.depth).abs() < 1e-9,
-            "{half:?} {through:?}"
-        );
-    }
-    // The two halves do differ for this stock, so reading the other half
-    // could accept a cut the half assembly cuts would refuse.
-    assert!((read(&[0.0, 90.0, 180.0]).depth - read(&[0.0, -90.0, -180.0]).depth).abs() > 1.0);
-    assert!((read(&[90.0, 180.0, 270.0]).depth - read(&[90.0, 0.0, -90.0]).depth).abs() > 1.0);
+    let cut_way = read(&f, &[&[10.0, 100.0, 190.0]]);
+    let other_way = read(&f, &[&[10.0, -80.0, -170.0]]);
+    assert!(cut_way > other_way + 8.0, "{cut_way} {other_way}");
+    // The first pass stays clear of the deepest corner, so the second pass's
+    // half turn decides the answer.
+    let first: &[f64] = &[0.0, 0.0];
+    assert!(read(&f, &[first]) < cut_way);
+    let both = read(&f, &[first, &[10.0, 190.0]]);
+    assert!((both - cut_way).abs() < 1e-9, "{both} {cut_way}");
 }
