@@ -72,10 +72,10 @@ if [ "$mode" = light ]; then
   others=false step=false gate3=false
 elif [ "$pre" = true ]; then
   win=$WIN_SHARDS ubu=$UBU_SHARDS mac=0
-  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":1}]}'
+  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":2},{"os":"ubuntu-latest","share":2,"shares":2}]}'
 else
   win=$WIN_SHARDS ubu=$UBU_SHARDS mac=$MAC_SHARDS
-  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":1},{"os":"macos-latest","share":1,"shares":1}]}'
+  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":2},{"os":"ubuntu-latest","share":2,"shares":2},{"os":"macos-latest","share":1,"shares":1}]}'
 fi
 win_list="" ubu_list="" mac_list=""
 [ -n "$win" ] && win_list=$(list "$win")

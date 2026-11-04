@@ -100,6 +100,7 @@ grep -qx 'mode=full' "$out" && grep -qx 'others=true' "$out" && grep -qx 'libs=t
   && [ "$(line mac_shards)" = 0 ] && [ "$(line mac_list)" = '[0]' ] \
   && ! line libs_matrix | grep -q macos && [ "$(line libs_matrix | jq -r '.include[0].os')" = windows-latest ] \
   && [ "$(line libs_matrix | jq '[.include[] | select(.os == "windows-latest")] | length')" = 2 ] \
+  && [ "$(line libs_matrix | jq '[.include[] | select(.os == "ubuntu-latest")] | length')" = 2 ] \
   && echo "ok   pull request runs the Windows and Ubuntu shares, Windows first, and builds macOS only" \
   || { echo "FAIL pull request outputs"; cat "$out"; fail=1; }
 exit $fail

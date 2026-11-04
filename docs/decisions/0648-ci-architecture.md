@@ -5,7 +5,7 @@
 - **Lane:** CI-ARCH. Record branch `docs/decision-0648-ci-architecture`, docs only.
 - **Requirements:** none change. GC-07 and NFR-06 (deterministic output) are kept: no option changes a test, a golden file or a release build flag (see *What stays fixed*). NFR-10 and NFR-14 are untouched (no new dependency).
 - **Builds on:** [0052](0052-ci-speed-up.md), [0055](0055-push-discipline-and-draft-pull-requests.md) (draft gate, one push), [0102](0102-coverage-off-pull-requests.md) (coverage nightly, 95% per crate), [0358](0358-ci-time-where-it-goes-and-what-to-change.md) (the 20-job rule, caches on `main`, shards by binary, the light run on `main`), [0498](0498-merge-queue.md) and [0499](0499-up-to-date-rule-relaxed.md) (merges behind `main`, the Merge Manager serialises), [0244](0244-bounded-first-cut-linuxcnc-replay.md) (Gate 3 first-cut chunks).
-- **Open items:** OI-2026 to OI-2035 (new; OI-2026, OI-2029 and OI-2032 closed by this pull request). Relies on, and does not close: OI-1414 (folded into OI-2028), OI-1415, OI-1416, OI-1999, OI-225, OI-1060.
+- **Open items:** OI-2026 to OI-2036 (new; OI-2026, OI-2029 and OI-2032 closed by this pull request). Relies on, and does not close: OI-1414 (folded into OI-2028), OI-1415, OI-1416, OI-1999, OI-225, OI-1060.
 
 ## The owner's rules this record keeps
 
@@ -242,13 +242,26 @@ The owner chose option C, asked for it to be built in this lane, in the same pul
 - **C1** for `openchuck-app` (47 files into `integration`, 8 kernel files kept) and `openchuck-path` (58 files into `integration`); `.config/nextest.toml` filters renamed to the new binary and module names; `cargo xtask trace` reports a test file that no target builds (tests `req_nfr_08_…`); `AGENTS.md` says how to add a test file to these crates.
 - **C2 and C3** in `.github/workflows/build-and-test.yml`, a reusable workflow that `ci.yml` calls once per system (jobs `Windows`, `Ubuntu`, `macOS`, in place of `Build and test`): `build` (clippy, the archive, the share check `tools/ci/check-shares.sh`, the archive upload, doctests, examples) and `test` (one job per share, from the archive). One caller per system, not one matrix job, because a job that `needs` a matrix job waits for every leg of it: the Windows shares would wait for the macOS build. Windows 8 shares, Ubuntu 6, macOS 2; Windows listed first.
 - **The macOS tier** in `tools/ci/main-run-mode.sh` (and its test): a pull request or merge-queue run builds on macOS and runs no macOS test share and no macOS Each library alone; a push to `main`, light or full, and a scheduled or manual run, run them. `CI required checks` checks the three systems' jobs (due when code changed and the run builds that system) and `libraries-alone` against the run's due flags as before.
-- **Each library alone** in 2 shares on Windows (`openchuck-path` by `count` partition, the other three crates in share 2).
+- **Each library alone** in 2 shares on Windows and Ubuntu (`openchuck-path` by `count` partition, the other three crates in share 2; Ubuntu added after the first run, where its one share took 32.7 min).
 - **Gate 3** in 5 shares instead of 3.
 - **Coverage**: `--no-fail-fast` and no debug info.
 
 Not built here: Gate 3 sampling in the servo thread (OI-2030, needs a lane that can run LinuxCNC), the timing-budget policy under coverage (OI-2031), `cargo xtask prepush` (OI-2033), and dealing shares by measured time (OI-2028, only if the `count` shares prove unbalanced).
 
-**First run.** The new jobs cannot run on a draft pull request (decision 0055), so the first ready run of this pull request, or a manual run of `ci.yml` on its branch, is their first test; OI-2035 records the measurements to take over the first 10 runs.
+**First run.** The new jobs cannot run on a draft pull request (decision 0055), so they were first run by hand: `ci.yml` run 41902118150 on this branch (4 Nov 2026, head `c418c31e`, `workflow_dispatch`, so the full layout with the macOS shares). Every job passed. OI-2035 keeps measuring over the next runs.
+
+| | Windows | Ubuntu | macOS |
+| --- | --- | --- | --- |
+| Free disk before / after the build | 147 / 143 GB (D:) | **19 / 12 GB** | 95 / 91 GiB |
+| `target/` after the build; archive | 4.2 GB; 111 MB | 5.4 GB; 446 MB | 3.7 GB; 160 MB |
+| Build job (cargo build of the tests alone) | 13.1 min (7.1); clippy 2.2, examples 2.3 | 5.2 min (2.8) | 8.9 min (5.0), after 4.4 min in the queue |
+| Archive download in a share | under 0.6 min | under 0.6 min | 0.3 min |
+| Test shares (job minutes) | 5.8, 6.1, 8.2, 9.7, 10.1, 10.7, 15.4, **33.0** | 7.7, 8.6, 10.0, 11.1, 14.8, **23.6** | both still running after 25 min (1,472 and 1,440 tests; main and nightly only, OI-2035) |
+| Build start to last share | 46.1 min | 30.7 min | over 45 min at the time of writing |
+| Each library alone | 21.1 and 18.8 (2 shares) | **32.7** (1 share) | 30.6 (1 share; not on a pull request) |
+| Other jobs | UI smoke 5.8, STEP kernel 12.2 | Gate 3 shares 11.3 to 14.8, STEP kernel 7.8, UI smoke 2.9, Fast checks 6.0 | UI smoke 4.3, STEP kernel 6.0 after 10.2 in the queue |
+
+Reading: the Ubuntu runner had 19 GB free, so today's 23 GB build could not fit, which is the disk-full cause of M3; at 5.4 GB it now has 12 GB to spare. Windows has room either way. The Windows build is 13 min against about 10 min of build and partition check in each of today's three legs, and seven of the eight Windows shares take 6 to 15 min; the last share is one test: `first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads` took 30.8 min on Windows and 19.5 min on Ubuntu, over the 10-minute limit of `AGENTS.md`, so it is flagged for the owner (OI-2036) and is what keeps Windows at 46 min instead of about 29. Each library alone on Ubuntu (32.7 min) was the next longest job on a pull request, so it now has 2 shares as Windows has. The `count` shares hold even numbers of tests (389 to 333 on Windows) but not even times, as expected; dealing by time stays the fallback (OI-2028). The runner minutes of the 36 jobs other than the macOS shares were 415; a pull request run has no macOS shares or macOS Each library alone, about 385 runner minutes in this run, against a median of 442 today. Windows lists 2,906 tests and Ubuntu and macOS 2,912, presumably tests that exist only on some systems (not checked).
 
 ## Risks
 
@@ -274,3 +287,4 @@ Not built here: Gate 3 sampling in the servo thread (OI-2030, needs a lane that 
 | OI-2033 | `cargo xtask prepush`. |
 | OI-2034 | The two Ubuntu `Build and test` jobs lost about 3 min into the first test build (runs 41656760962, 41596929921): confirm or rule out disk from the `df` figures. |
 | OI-2035 | First runs of the option C layout: over 10 runs, record per system the build time, archive size and transfer time, the slowest and fastest share, wall time, runner minutes, peak jobs and queue, against M1; adjust the share counts (Windows 8, Ubuntu 6, macOS 2, Gate 3 5) if a share is idle or a system is last. |
+| OI-2036 | The first-cut committed-project determinism test (`openchuck-cli::e2e first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads`) took 30.8 min on Windows and 19.5 min on Ubuntu in a test share of run 41902118150 (413 s alone in a 4-vCPU container), over the 10-minute limit of `AGENTS.md`; it alone sets the Windows time (46 min, about 29 without it). The owner decides: split it into one test per thread count (each against the golden files, so the shares run them side by side; keeps GC-07 and NFR-06 on every pull request), give it a share of its own, or accept it in the nightly run only (as OI-506 did for one test; a check leaves the pull request). |

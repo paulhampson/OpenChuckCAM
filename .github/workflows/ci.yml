@@ -507,8 +507,9 @@ jobs:
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
-  # Windows in two shares (decision 0648, option C): `openchuck-path`, most of the time, is split by
-  # nextest's `count` partition and the other three crates run in share 2. macOS runs on a push to
+  # Windows and Ubuntu in two shares (decision 0648, option C; one share took 32.7 min on Ubuntu in
+  # run 41902118150): `openchuck-path`, most of the time, is split by nextest's `count` partition and
+  # the other three crates run in share 2. macOS runs on a push to
   # `main` and on scheduled and manual runs, not on a pull request (tools/ci/main-run-mode.sh).
   libraries-alone:
     name: Each library alone (${{ matrix.os }}, share ${{ matrix.share }} of ${{ matrix.shares }})
