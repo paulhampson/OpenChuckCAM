@@ -3,7 +3,7 @@
 - **Status:** proposed by lane VIEW-ORIENT on 3 Nov 2026. The owner's answers (A0 line on the part plus the arc start relabelled; the cube caption always shown) were relayed by the coordinator. Not accepted until the owner says so (decision 0049).
 - **Date:** 3 Nov 2026.
 - **Number:** provisional 0646; assigned by the Merge Manager at release.
-- **Issue:** [#531](https://github.com/paulhampson/OpenChuckCAM/issues/531).
+- **Issues:** [#531](https://github.com/paulhampson/OpenChuckCAM/issues/531) (A0 mark and cube caption); [#532](https://github.com/paulhampson/OpenChuckCAM/issues/532) (the stale part turn outside Simulate, item 4).
 - **Builds on:** [0149](0149-view-gadget-and-cube-labels.md) (view cube), [0168](0168-simulate-controls-and-stock-simulation.md) ("Turn part with A"), [0238](0238-simulate-display-and-operation-navigation.md) item 5 (the cursor is kept on leaving Simulate).
 - **Open items:** none opened. No project schema change; no change to toolpaths or G-code. One new `SceneRole` variant in `openchuck-app` (the enum is `#[non_exhaustive]`).
 
