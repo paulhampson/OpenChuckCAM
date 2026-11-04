@@ -183,7 +183,7 @@ impl StockModel for AnalyticStock {
     fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
         let a = axis.get();
         // The tool axis of a 4-axis machine is across the rotary axis.
-        if a.x.abs() > 1e-9 || !(radius >= 0.0) {
+        if a.x.abs() > 1e-9 || radius.is_nan() || radius < 0.0 {
             return None;
         }
         // Coordinates across X: `w` across the tool axis, `h` along it.
@@ -227,11 +227,11 @@ impl StockModel for AnalyticStock {
                 ]
                 .map(|(y, z)| (e.y * y + e.z * z, a.y * y + a.z * z));
                 let mut top = f64::NEG_INFINITY;
-                for (k, &(w0, h0)) in corners.iter().enumerate() {
+                let next = corners.iter().cycle().skip(1);
+                for (&(w0, h0), &(w1, h1)) in corners.iter().zip(next) {
                     if (lo..=hi).contains(&w0) {
                         top = top.max(h0);
                     }
-                    let (w1, h1) = corners[(k + 1) % 4];
                     for side in [lo, hi] {
                         if (w0 - side) * (w1 - side) < 0.0 {
                             let t = (side - w0) / (w1 - w0);
