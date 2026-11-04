@@ -520,8 +520,13 @@ fn generate_with(
     context.check_cancelled()?;
     let mid = part_middle(input);
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
+    let mut path = {
+        let _timing = context.time_stage("assembly");
+        assemble_with_entry(&passes, input, &common, &entry, context)?
+    };
     // The flutes against the deepest cut (TL-04, NFR-07; decision record
-    // 0509), on the passes as they will be cut.
+    // 0509), on the path as assembly wrote it: its angles are the ones the
+    // tool turns through.
     if !strategy.cuts_in_layers(&parameters) {
         let _timing = context.time_stage("flute check");
         let layers = strategy
@@ -529,12 +534,8 @@ fn generate_with(
             .get(crate::finishing::parameter::FINISHING_LAYERS)
             .is_some()
             .then_some(crate::finishing::parameter::FINISHING_LAYERS);
-        crate::flutes::check(input, &passes, layers)?;
+        crate::flutes::check_path(input, &path, layers)?;
     }
-    let mut path = {
-        let _timing = context.time_stage("assembly");
-        assemble_with_entry(&passes, input, &common, &entry, context)?
-    };
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes
     // still says it (decision record 0175).

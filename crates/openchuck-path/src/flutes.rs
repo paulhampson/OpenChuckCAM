@@ -110,11 +110,15 @@ pub(crate) fn depth_at(
 
 /// The places along the move from `from` to `to` the stock is read at: the
 /// end, and enough between that A and the tip step at most [`A_STEP`] and
-/// [`LENGTH_STEP`]; each fixed to the machine, with its A.
+/// [`LENGTH_STEP`]; each fixed to the machine, with its A. With `emitted`,
+/// the angles are the ones assembly wrote (unwrapped, carried across passes
+/// and fitted to the A range), so the move turns by exactly their
+/// difference.
 fn along_move(
     input: &StrategyInput<'_>,
     from: Option<&CutPoint>,
     to: &CutPoint,
+    emitted: bool,
 ) -> Vec<(AxisPosition, Degrees)> {
     let b = input.rotary.to_axis(to.tip, to.a);
     let Some(from) = from else {
@@ -131,8 +135,12 @@ fn along_move(
     // step turns, except at an exact half turn, where they decide it. There
     // both ways round are read, so the way assembly takes is always among
     // them (CodeRabbit on #534).
-    let delta = crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0;
-    let ways: &[f64] = if (delta.abs() - 180.0).abs() <= HALF_TURN_SLACK {
+    let delta = if emitted {
+        to.a.0 - from.a.0
+    } else {
+        crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0
+    };
+    let ways: &[f64] = if !emitted && (delta.abs() - 180.0).abs() <= HALF_TURN_SLACK {
         &[1.0, -1.0]
     } else {
         &[1.0]
@@ -162,6 +170,17 @@ fn along_move(
 /// at its worst; `None` when the passes never meet the stock, or the stock
 /// can be shown to stand at most `limit` above every tip without reading it.
 pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option<Deepest> {
+    deepest_of(input, passes, limit, false)
+}
+
+/// [`deepest`] over passes whose angles are `emitted` by assembly (see
+/// [`along_move`]) or given by a strategy.
+fn deepest_of(
+    input: &StrategyInput<'_>,
+    passes: &[Pass],
+    limit: f64,
+    emitted: bool,
+) -> Option<Deepest> {
     let stock = input.stock;
     let radius = body_radius(input);
     let bound = stock.max_radius();
@@ -175,7 +194,7 @@ pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option
                 previous = None;
                 continue;
             }
-            for (position, a) in along_move(input, previous, point) {
+            for (position, a) in along_move(input, previous, point, emitted) {
                 // Nothing is further from the axis than the bound, so the
                 // stock stands at most this far above the tip. The height is
                 // signed: a tip below the axis (a cut past the middle of the
@@ -251,7 +270,61 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
 /// stock.
 pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>) -> Result<()> {
     let flutes = input.tool.top();
-    let Some(worst) = deepest(input, passes, flutes) else {
+    refuse_past_flutes(input, deepest(input, passes, flutes), parameter)
+}
+
+/// [`check`] on the path as assembly wrote it: every fed move (cuts, plunges,
+/// leads and fed links; rapids are not cuts), from the pose before it, with
+/// the angles assembly emitted. The generation checks this, not the passes
+/// a strategy gives: the way A turns between two points (at an exact half
+/// turn, decided by the turns assembly carries from earlier points and
+/// passes and by its fit to the A range) is then the way the tool turns,
+/// not a prediction of it (CodeRabbit on #534).
+pub fn check_path(
+    input: &StrategyInput<'_>,
+    path: &crate::assemble::GeneratedPath,
+    parameter: Option<&str>,
+) -> Result<()> {
+    let flutes = input.tool.top();
+    let point = |pose: &openchuck_types::ir::ToolPose| CutPoint {
+        tip: pose.tip,
+        a: pose.a,
+        contact: pose.tip,
+    };
+    // Runs of fed moves, each from the pose it starts at.
+    let mut runs: Vec<Pass> = Vec::new();
+    let mut run = vec![point(&path.group.start)];
+    for segment in &path.group.segments {
+        if segment.kind.is_fed() {
+            run.push(point(&segment.end));
+        } else {
+            if run.len() > 1 {
+                runs.push(Pass {
+                    points: std::mem::take(&mut run),
+                    ..Pass::default()
+                });
+            }
+            run = vec![point(&segment.end)];
+        }
+    }
+    if run.len() > 1 {
+        runs.push(Pass {
+            points: run,
+            ..Pass::default()
+        });
+    }
+    refuse_past_flutes(input, deepest_of(input, &runs, flutes, true), parameter)
+}
+
+/// The refusal of [`check`] and [`check_path`] when `worst` is past the
+/// flutes.
+fn refuse_past_flutes(
+    input: &StrategyInput<'_>,
+    worst: Option<Deepest>,
+    parameter: Option<&str>,
+) -> Result<()> {
+    let flutes = input.tool.top();
+    let Some(worst) = worst else {
         return Ok(());
     };
     if worst.depth <= flutes + SLACK {

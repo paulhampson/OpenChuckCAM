@@ -916,3 +916,92 @@ fn req_tl_04_an_exact_half_turn_reads_both_ways_round() {
     let both = read(&f, &[first, &[10.0, 190.0]]);
     assert!((both - cut_way).abs() < 1e-9, "{both} {cut_way}");
 }
+
+/// A strategy for the half-turn tests: it gives the passes it holds, tips
+/// on the bar at X 10, at the angles given (as a strategy gives them, not
+/// unwrapped), and leaves the rest to the shared generation and assembly.
+#[derive(Debug)]
+struct Given(Vec<Vec<f64>>);
+
+impl openchuck_path::Strategy for Given {
+    fn name(&self) -> &str {
+        "test_given"
+    }
+    fn label(&self) -> &str {
+        "Given passes (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _p: &openchuck_path::Parameters,
+        _context: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        Ok(self
+            .0
+            .iter()
+            .map(|angles| Pass {
+                points: angles
+                    .iter()
+                    .map(|&a| {
+                        let a = Degrees(a);
+                        let tip = input.rotary.to_model(
+                            AxisPosition {
+                                along: 10.0,
+                                across: 0.0,
+                                height: BAR,
+                            },
+                            a,
+                        );
+                        CutPoint {
+                            tip,
+                            a,
+                            contact: tip,
+                        }
+                    })
+                    .collect(),
+                ..Pass::default()
+            })
+            .collect())
+    }
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
+    // CodeRabbit on #534 (third review): the generation checks the path as
+    // assembly wrote it, so at an exact half turn the arc read is the arc
+    // cut, whatever the whole turns assembly carries. A first pass given as
+    // 350 then 170 is cut down through 260; with box stock Y and Z -25 to 10
+    // that half stands 30.355 mm above the tip and the other 21.926 mm, so
+    // 25 mm of flute is refused and 31 mm is accepted.
+    let on = |flutes: f64, passes: Vec<Vec<f64>>, y: (f64, f64), z: (f64, f64)| {
+        let f = fixture(boxed(y, z), flutes);
+        run(|ctx| support::generate(&Given(passes), &f.input(), &values(&[]), ctx)).map(|p| p.group)
+    };
+    let first = vec![vec![350.0, 170.0]];
+    let neg = (-25.0, 10.0);
+    let e = on(25.0, first.clone(), neg, neg).unwrap_err().to_string();
+    assert!(e.contains("30.355 mm"), "{e}");
+    let cut = on(31.0, first, neg, neg).unwrap();
+    // The path written turns down: its fed moves go from -10 to -190.
+    let fed: Vec<f64> = cut
+        .segments
+        .iter()
+        .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+        .map(|s| s.end.a.0)
+        .collect();
+    assert!(fed.iter().any(|a| (*a + 190.0).abs() < 1e-9), "{fed:?}");
+    // A later pass given as 10 then 190 after one ending at 360 is cut up
+    // from 370 to 550; with box stock Y and Z -10 to 25 that half is the
+    // deeper.
+    let pos = (-10.0, 25.0);
+    let carried = vec![vec![0.0, 90.0, 180.0, 270.0, 360.0], vec![10.0, 190.0]];
+    let e = on(25.0, carried.clone(), pos, pos).unwrap_err().to_string();
+    assert!(e.contains("30.355 mm"), "{e}");
+    on(31.0, carried, pos, pos).unwrap();
+}
