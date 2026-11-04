@@ -10,7 +10,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-# The integration tests are one binary (tests/integration.rs, decision 0648, option C);
+# The integration tests are one binary (tests/integration.rs, decision 0516, option C);
 # the files behind the `kernel-tests` feature stay one binary each, as the STEP kernel
 # job runs them by name.
 autotests = false

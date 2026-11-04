@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Every integration test file of this crate, built as one test binary (decision 0648, option C):
+//! Every integration test file of this crate, built as one test binary (decision 0516, option C):
 //! one binary links the dependencies once instead of once per file, which cuts the build's disk
 //! space and link time. Each file stays where it was and is a module here, so its tests are named
 //! `<file>::<test>`. A new file under `tests/` must be added below (or declared as its own

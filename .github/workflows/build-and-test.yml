@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Build once, test wide, for one system (decision 0648, option C; called by ci.yml, once per system).
+# Build once, test wide, for one system (decision 0516, option C; called by ci.yml, once per system).
 #
 # `build` builds every test target of the workspace into a nextest archive, runs clippy, checks the
 # test shares, hands the archive on, and runs the doctests and the examples (they need the
@@ -34,7 +34,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  # Line tables only, not full debug info (decision 0648, OI-2027): a workspace test build was 23 GB
+  # Line tables only, not full debug info (decision 0516, OI-2027): a workspace test build was 23 GB
   # with full debug info and filled the runner's disk. Backtraces keep their files and lines.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
@@ -55,7 +55,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      # The disk use, so a full disk is seen before it fails a job (decision 0648, OI-2027).
+      # The disk use, so a full disk is seen before it fails a job (decision 0516, OI-2027).
       - name: Disk space before the build
         shell: bash
         run: df -h .

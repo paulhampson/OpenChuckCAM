@@ -91,7 +91,7 @@ grep -qx 'others=true' "$out" && grep -qx 'step=true' "$out" && grep -qx 'gate3=
   && [ "$(line ubu_shards)" = 6 ] && [ "$(line ubu_list)" = '[1,2,3,4,5,6]' ] \
   && [ "$(line mac_shards)" = 2 ] && line libs_matrix | grep -q macos \
   && echo "ok   scheduled run is due everywhere, macOS tests included" || { echo "FAIL scheduled outputs"; cat "$out"; fail=1; }
-# A pull request: Windows and Ubuntu test shares, macOS built only (decision 0648, option C).
+# A pull request: Windows and Ubuntu test shares, macOS built only (decision 0516, option C).
 : > "$out"
 ( export EVENT=pull_request REPO=o/r SHA=$sha F_RUST=true F_STEP=true F_GATE3=true F_FUZZ=true F_RECORDS=true F_ANY=true \
     F_IMAGE=false GITHUB_OUTPUT=$out; bash "$here/main-run-mode.sh" > /dev/null )

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Checks the test shares of one system before the archive is handed to the test jobs (ci.yml, job
-# `build`; decision 0648, option C): each of the N shares (`--partition count:K/N`) holds at least
+# `build`; decision 0516, option C): each of the N shares (`--partition count:K/N`) holds at least
 # one test, and together they hold every test of the full list exactly once, so no test goes unrun
 # and none runs twice. Run from the workspace after the tests are built.
 # Usage: tools/ci/check-shares.sh N

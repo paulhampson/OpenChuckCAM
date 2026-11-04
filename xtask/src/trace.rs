@@ -334,7 +334,7 @@ pub fn gated_tests(root: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// The integration test files of one crate that no test target builds (decision 0648, option C).
+/// The integration test files of one crate that no test target builds (decision 0516, option C).
 ///
 /// With `autotests = false` in `[package]`, cargo builds only the `[[test]]` targets the manifest
 /// declares; the crate's other files under `tests/` are compiled only as modules of a declared
@@ -420,7 +420,7 @@ pub fn test_layout(root: &Path) -> Result<Findings> {
                 findings.push(format!(
                     "{group}/{crate_name}/tests/{name} is not built: the crate has `autotests = false`, \
                      so add it as a module of tests/integration.rs (`#[path = \"{name}\"] mod ...;`) \
-                     or as its own `[[test]]` in Cargo.toml (decision 0648)"
+                     or as its own `[[test]]` in Cargo.toml (decision 0516)"
                 ));
             }
         }

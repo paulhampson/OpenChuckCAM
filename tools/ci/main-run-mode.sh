@@ -55,7 +55,7 @@ fi
 others=$rust
 libs=$rust
 
-# The build and test layout (decision 0648, option C): one build job per system makes a nextest
+# The build and test layout (decision 0516, option C): one build job per system makes a nextest
 # archive, and the test shares run from it. Windows first in every list. A pull request (or a
 # merge-queue entry) builds on macOS, which compiles every target, but runs no macOS test shares
 # and no macOS Each library alone: those run on every push to `main`, light or full, and on

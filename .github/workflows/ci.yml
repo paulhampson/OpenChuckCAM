@@ -15,10 +15,10 @@
 # Light run on `main` (decision 0358, Option 4): a push to `main` whose commit has exactly the git tree
 # that a full, green pull request run already tested (the `tested-tree` artifact of that run) runs only
 # the fast checks, the Ubuntu build and tests, and the macOS build, tests and Each library alone (`mode`
-# = light; a pull request does not test on macOS, decision 0648, option C); every other push, and every
+# = light; a pull request does not test on macOS, decision 0516, option C); every other push, and every
 # scheduled or manual run, runs the full matrix. Any error while deciding means full.
 #
-# Build once, test wide (decision 0648, option C): per system, `build-and-test.yml` makes one nextest
+# Build once, test wide (decision 0516, option C): per system, `build-and-test.yml` makes one nextest
 # archive and runs it in shares (Windows 8, Ubuntu 6, macOS 2), Windows first.
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
@@ -72,7 +72,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  # Line tables only, not full debug info, in every CI build (decision 0648, OI-2027): a workspace
+  # Line tables only, not full debug info, in every CI build (decision 0516, OI-2027): a workspace
   # test build was 23 GB with full debug info and 6.4 GB with this on Linux, and filled the runner's
   # disk. Backtraces keep their files and lines. Local builds and Cargo.toml are unchanged; the
   # release profile already uses it. Fast checks, which builds only to list and check, uses none.
@@ -246,7 +246,7 @@ jobs:
 
   # The simulator runs in real time. Bounded first-cut fixtures are expanded before
   # the golden programs and fixtures are dealt over five runners by expected run time (`cargo xtask replay --shard`, decision 0052,
-  # Option 3; five since decision 0648, option C, so Gate 3 is not the last job). Every program is in exactly one share (unit-tested in xtask), a share with no
+  # Option 3; five since decision 0516, option C, so Gate 3 is not the last job). Every program is in exactly one share (unit-tested in xtask), a share with no
   # programs fails, and `needs: gate3` in the aggregator waits for all five.
   gate3:
     name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 5)
@@ -292,7 +292,7 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
-  # Build once, test wide (decision 0648, option C), one system at a time in
+  # Build once, test wide (decision 0516, option C), one system at a time in
   # `.github/workflows/build-and-test.yml`: a build job (clippy, a nextest archive of every test
   # target, the share check, doctests and examples) and test jobs that run their share from that
   # archive. Each system is its own job here, so a system's shares wait only for its own build, not
@@ -507,7 +507,7 @@ jobs:
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
-  # Windows and Ubuntu in two shares (decision 0648, option C; one share took 32.7 min on Ubuntu in
+  # Windows and Ubuntu in two shares (decision 0516, option C; one share took 32.7 min on Ubuntu in
   # run 41902118150): `openchuck-path`, most of the time, is split by nextest's `count` partition and
   # the other three crates run in share 2. macOS runs on a push to
   # `main` and on scheduled and manual runs, not on a pull request (tools/ci/main-run-mode.sh).
@@ -585,7 +585,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # No debug info: this job builds the tests only to list them (`xtask trace`); with full debug
-      # info it ran out of disk (run 41756146428, decision 0648).
+      # info it ran out of disk (run 41756146428, decision 0516).
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       RUST: ${{ needs.changes.outputs.rust }}
@@ -927,7 +927,7 @@ jobs:
           }
           check gate3 "$(out gate3)"
           # A system is due when code changed and its share count is set (empty, or absent as `null`,
-          # means the run does not build it: Windows on a light run; decision 0648).
+          # means the run does not build it: Windows on a light run; decision 0516).
           due() {
             local v; v=$(out "$1")
             if [ "$(out rust)" = true ] && [ -n "$v" ] && [ "$v" != null ]; then echo true; else echo false; fi
