@@ -13,14 +13,14 @@ After a simulation the cut part, the tool and the faint trace of the path stayed
 ## Decision
 
 1. **The cut part (the Stock layer), the tool and the trace draw on Simulate only** (`orient::layer_drawn_on`). On every other step they are not drawn. The toolpath lines still draw on every step, as each operation's eye says (section 6), and the stock outline and the guides, which belong to the scene, are unchanged.
-2. **The layers are kept, not cleared**, so returning to Simulate shows them again at the kept cursor (decision 0238 item 5); nothing is rebuilt.
+2. **The tool and trace layers are kept, not cleared**, so returning to Simulate shows them again at the kept cursor (decision 0238 item 5). The cut part's surface is not kept by this change: the playback panel already drops it when Simulate is left (`stock.show` is off outside Simulate) and prepares it again on return, as before; this decision only stops the viewport drawing what is held. (Found while checking CodeRabbit's nit on #536, which assumed the surface is kept; the nit's assertion cannot hold, so it was not added.)
 3. **The cut part is not picked outside Simulate**: hovering a surface on Operations reads the part, not a stale cut part. The readout box was already Simulate's for the tool's position (Operations reads the pointer).
 
 4. **The A0 mark of decision 0511 is at the far end of the part, not of the stock** (CodeRabbit on #533, carried here by the coordinator's ruling): with stock longer than the part the mark stayed on the stock end, off the part it identifies. It uses the part's own extent, and the scene's end only when no part is readable; the part, not the shorter of part and stock, so it is on the workpiece whichever is longer.
 
 ## Alternatives considered
 
-- **Clear the layers on leaving Simulate.** Rebuilding the cut part costs a preparation and would lose the kept Simulate state (0238 item 5).
+- **Clear the tool and trace layers on leaving Simulate.** They cost nothing to keep, and keeping them keeps the Simulate state (0238 item 5).
 - **Keep the faint trace on Operations.** It is the playback window's trace, with no meaning outside Simulate.
 
 ## Consequences
