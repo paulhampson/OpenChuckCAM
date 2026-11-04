@@ -120,11 +120,17 @@ pub(crate) fn depth_at(
         input.rotary.tool_axis(a),
         radius,
     ) {
+        // An answer that is not a number is no answer (NFR-07).
+        if top.is_nan() {
+            return (f64::INFINITY, false);
+        }
         return (top.max(0.0), true);
     }
     match stock.max_radius() {
-        Some(r) => ((r - position.height + BOUND_MARGIN).max(0.0), false),
-        None => (f64::INFINITY, false),
+        Some(r) if r.is_finite() && position.height.is_finite() => {
+            ((r - position.height + BOUND_MARGIN).max(0.0), false)
+        }
+        _ => (f64::INFINITY, false),
     }
 }
 
@@ -199,6 +205,9 @@ fn keep(
     depth: f64,
     exact: bool,
 ) {
+    // A depth that is not a number is no bound: it refuses as stock of
+    // unknown size, never drops out of the comparison below.
+    let depth = if depth.is_nan() { f64::INFINITY } else { depth };
     if worst.is_none_or(|w| depth > w.depth) {
         *worst = Some(Deepest {
             depth,
@@ -284,10 +293,22 @@ fn between(
         input.rotary.tool_axis(a),
         radius + sideways + turned,
     ) else {
+        // No exact answer over the wider disc: the step is held to the bound
+        // from the farthest radius at its lower tip, as the places are
+        // (equal to theirs where the model gives no exact answer at all).
+        let low = p.0.height.min(q.0.height);
+        let bound = farthest.map_or(f64::INFINITY, |r| r - low + BOUND_MARGIN);
+        keep(worst, input, middle, a, bound, false);
         return;
     };
     let bound = top + up + turned;
-    if !bound.is_finite() || bound <= limit + SLACK {
+    // No material over the wider disc: nothing to read.
+    if bound == f64::NEG_INFINITY || bound <= limit + SLACK {
+        return;
+    }
+    // An answer that is not a number, or no bound, refuses (NFR-07).
+    if !bound.is_finite() {
+        keep(worst, input, middle, a, f64::INFINITY, false);
         return;
     }
     if reach <= REFINED {
@@ -335,6 +356,16 @@ fn deepest_of(
             if pass.rapids.contains(&i) {
                 previous = None;
                 continue;
+            }
+            // A place that is not a number cannot be read (NFR-07): refused,
+            // and said to be the path's, not the stock's.
+            if !point.tip.is_finite() || !point.a.0.is_finite() {
+                return Ok(Some(Deepest {
+                    depth: f64::INFINITY,
+                    exact: false,
+                    x: f64::NAN,
+                    a: f64::NAN,
+                }));
             }
             // Cancel is polled at each move (UI-09; architecture section
             // 5.1; the owner's Codex review of #534): a move's work is
@@ -509,7 +540,13 @@ fn refuse_past_flutes(
     } else {
         ""
     };
-    let reason = if !worst.depth.is_finite() {
+    let reason = if !worst.x.is_finite() || !worst.a.is_finite() {
+        format!(
+            "the path has a tool position that is not a finite number, so the tool's \
+             {flutes:.3} mm of flute cannot be checked against the stock there. Regenerate \
+             the operation, and report it if it happens again"
+        )
+    } else if !worst.depth.is_finite() {
         format!(
             "the stock's size is not known, so the tool's {flutes:.3} mm of flute cannot be \
              checked against how deep it stands above the tool (at X {:.3}, A {:.1}). Define \

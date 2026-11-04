@@ -1454,3 +1454,208 @@ fn req_ui_09_req_tl_04_a_cancelled_flute_check_stops() {
     let e = check_path(&f.input(), &path, None, &context).unwrap_err();
     assert!(matches!(e, PathError::Cancelled), "{e:?}");
 }
+
+/// A stock model whose answers are not numbers: its top over the disc, or
+/// (with no top) its farthest radius.
+#[derive(Debug)]
+struct NotANumber {
+    top: bool,
+}
+
+impl StockModel for NotANumber {
+    fn contains(&self, _: Point3) -> bool {
+        true
+    }
+
+    fn ray_entry(&self, _: Point3, _: UnitVec3, _: f64) -> Option<f64> {
+        Some(0.0)
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        if self.top { Some(20.0) } else { Some(f64::NAN) }
+    }
+
+    fn top_over_disc(&self, _: Point3, _: UnitVec3, _: f64) -> Option<f64> {
+        self.top.then_some(f64::NAN)
+    }
+}
+
+#[test]
+fn req_nfr_07_req_tl_04_a_place_or_answer_that_is_not_a_number_is_refused() {
+    // NFR-07 (the coordinator's review of #534): the check never accepts
+    // what it cannot read. A tool position or angle that is not a finite
+    // number is refused as the path's; a stock answer that is not a number
+    // is refused as stock of unknown size.
+    let f = fixture(boxed((-10.0, 10.0), (-10.0, 10.0)), 30.0);
+    let at = |along: f64| {
+        f.rotary.to_model(
+            AxisPosition {
+                along,
+                across: 0.0,
+                height: BAR,
+            },
+            Degrees(0.0),
+        )
+    };
+    for (tip, a) in [
+        (Point3::new(f64::NAN, 0.0, BAR), Degrees(0.0)),
+        (Point3::new(5.0, f64::INFINITY, BAR), Degrees(0.0)),
+        (at(5.0), Degrees(f64::NAN)),
+    ] {
+        let passes = vec![Pass {
+            points: [at(0.0), tip]
+                .iter()
+                .zip([Degrees(0.0), a])
+                .map(|(&tip, a)| CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                })
+                .collect(),
+            ..Pass::default()
+        }];
+        let e = check(&f.input(), &passes, None).unwrap_err().to_string();
+        assert!(e.contains("not a finite number"), "{e}");
+    }
+    // With 10 mm of flute, so the farthest radius (20 mm) does not settle
+    // it first.
+    let f = fixture(boxed((-10.0, 10.0), (-10.0, 10.0)), 10.0);
+    for top in [true, false] {
+        let stock = NotANumber { top };
+        let input = openchuck_path::StrategyInput {
+            stock: &stock,
+            ..f.input()
+        };
+        let e = check(&input, &through(&[at(0.0), at(5.0)], Degrees(0.0)), None)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("the stock's size is not known"), "{top}: {e}");
+    }
+}
+
+#[test]
+fn req_tl_04_a_move_of_no_length_is_read_where_it_stands() {
+    // A move that neither travels nor turns reads the stock where it
+    // stands, as a single place does: 35 x 35 box stock with its corner up
+    // at A 45, the tip 5 mm above the axis, 19.749 mm.
+    let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 30.0);
+    let a = Degrees(45.0);
+    let tip = f.rotary.to_model(
+        AxisPosition {
+            along: 10.0,
+            across: 0.0,
+            height: BAR,
+        },
+        a,
+    );
+    let one = deepest_of(&f, &through(&[tip], a));
+    let still = deepest_of(&f, &through(&[tip, tip, tip], a));
+    assert!(
+        (one.depth - 17.5_f64.hypot(17.5) + BAR).abs() < 1e-9,
+        "{one:?}"
+    );
+    assert_eq!(one.depth.to_bits(), still.depth.to_bits(), "{still:?}");
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_move_of_many_turns_is_read_all_round() {
+    // A fed move that turns A many times at one place (as assembly may
+    // write it, its angles unwrapped) is read all round, even past the
+    // 10,000 readings a move is split into: on 35 x 35 box stock with the
+    // tip 5 mm above the axis, 10 and 30 turns are both refused at the
+    // corner (19.749 mm) with 19.7 mm of flute and accepted with 19.8 mm.
+    use openchuck_path::flutes::check_path;
+    use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
+    let many = |f: &Fixture, turns: f64| {
+        let pose = |a: Degrees| ToolPose {
+            tip: f.rotary.to_model(
+                AxisPosition {
+                    along: 10.0,
+                    across: 0.0,
+                    height: BAR,
+                },
+                a,
+            ),
+            axis: f.rotary.tool_axis(a),
+            a,
+        };
+        openchuck_path::GeneratedPath {
+            group: ToolpathGroup {
+                rotary_reset_after: Vec::new(),
+                tags: PathTags {
+                    operation: "op".to_owned(),
+                    setup: "setup".to_owned(),
+                    tool: "tool".to_owned(),
+                },
+                start: pose(Degrees(0.0)),
+                segments: vec![Segment {
+                    kind: MoveKind::Cutting,
+                    end: pose(Degrees(360.0 * turns)),
+                    contact_feed: Some(openchuck_types::units::FeedRate(300.0)),
+                    duration: openchuck_types::units::Seconds(1.0),
+                    contact_length: Millimetres(1.0),
+                }],
+            },
+            notes: Vec::new(),
+            warnings: Vec::new(),
+            unreached: Vec::new(),
+            shank_breaks: Vec::new(),
+        }
+    };
+    let square = boxed((-17.5, 17.5), (-17.5, 17.5));
+    for turns in [10.0, 30.0] {
+        let f = fixture(square, 19.7);
+        let e = run(|ctx| check_path(&f.input(), &many(&f, turns), None, ctx))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            (named_depth(&e) - (17.5_f64.hypot(17.5) - BAR)).abs() < 1e-3,
+            "{turns}: {e}"
+        );
+        let f = fixture(square, 19.8);
+        run(|ctx| check_path(&f.input(), &many(&f, turns), None, ctx)).unwrap();
+    }
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_shank_wider_than_the_flutes_is_read_over_its_width() {
+    // The tool's body above the tip is as wide as its shank where that is
+    // wider than the cutting part: a 3 mm tool with 5 mm of flute and a
+    // 6 mm shank moves along X at A 0 beside a strip of stock 2.0 to 2.1 mm
+    // across the tool axis and 20 mm tall. The cutting part (1.5 mm) misses
+    // it; the shank (3 mm) is over it, so the move is refused at 20 mm.
+    let mut t = tool(ToolShape::FlatEnd, 3.0);
+    t.flute_length = Millimetres(5.0);
+    t.overall_length = Millimetres(40.0);
+    let mut f = Fixture::new(bar(), 40.0, &t);
+    let a = Degrees(0.0);
+    let axis = f.rotary.tool_axis(a).get();
+    let across = Vec3::new(0.0, -axis.z, axis.y);
+    let at = |along: f64| {
+        f.rotary.to_model(
+            AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            },
+            a,
+        )
+    };
+    let (start, end) = (at(0.0), at(5.0));
+    let (p, q) = (start + across * 2.0, end + across * 2.1 + axis * 20.0);
+    f.stock = AnalyticStock::Box(Aabb {
+        min: Point3::new(p.x.min(q.x), p.y.min(q.y), p.z.min(q.z)),
+        max: Point3::new(p.x.max(q.x), p.y.max(q.y), p.z.max(q.z)),
+    });
+    let passes = through(&[start, end], a);
+    check(&f.input(), &passes, None).unwrap();
+    let input = openchuck_path::StrategyInput {
+        shank: Some(openchuck_path::strategy::Shank {
+            radius: 3.0,
+            height: 5.0,
+        }),
+        ..f.input()
+    };
+    let e = check(&input, &passes, None).unwrap_err().to_string();
+    assert!((named_depth(&e) - 20.0).abs() < 1e-6, "{e}");
+}
