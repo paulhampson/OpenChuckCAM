@@ -16,6 +16,8 @@ After a simulation the cut part, the tool and the faint trace of the path stayed
 2. **The layers are kept, not cleared**, so returning to Simulate shows them again at the kept cursor (decision 0238 item 5); nothing is rebuilt.
 3. **The cut part is not picked outside Simulate**: hovering a surface on Operations reads the part, not a stale cut part. The readout box was already Simulate's for the tool's position (Operations reads the pointer).
 
+4. **The A0 mark of decision 0646 (0511 after release) is at the far end of the part, not of the stock** (CodeRabbit on #533, carried here by the coordinator's ruling): with stock longer than the part the mark stayed on the stock end, off the part it identifies. It uses the part's own extent, and the scene's end only when no part is readable; the part, not the shorter of part and stock, so it is on the workpiece whichever is longer.
+
 ## Alternatives considered
 
 - **Clear the layers on leaving Simulate.** Rebuilding the cut part costs a preparation and would lose the kept Simulate state (0238 item 5).
@@ -28,4 +30,4 @@ After a simulation the cut part, the tool and the faint trace of the path stayed
 
 ## Verification
 
-Tests, uninstrumented, written first: `req_sim_01_the_cut_part_tool_and_trace_draw_on_simulate_only` (pure); `req_sim_01_a_run_leaves_no_cut_part_tool_or_trace_on_the_other_steps` (a real run: the cut part showed on Operations before the fix; not drawn on Operations, Setup or Model after, toolpath lines still drawn, drawn again on Simulate at the same cursor); `req_ui_02_req_sim_01_operations_reads_the_pointer_not_the_old_tool_move`. Not seen on screen by a person.
+Tests, uninstrumented, written first: `req_sim_01_the_cut_part_tool_and_trace_draw_on_simulate_only` (pure); `req_sim_01_a_run_leaves_no_cut_part_tool_or_trace_on_the_other_steps` (a real run: the cut part showed on Operations before the fix; not drawn on Operations, Setup or Model after, toolpath lines still drawn, drawn again on Simulate at the same cursor); `req_ui_02_req_sim_01_operations_reads_the_pointer_not_the_old_tool_move`. `req_ui_03_the_a0_mark_is_at_the_far_end_of_the_part_not_of_the_stock` (stock reaching X 12 past a part ending at X 10: the mark was at 12 before the change, 10 after). The tool is not drawn outside Simulate (the first tests above), which also settles CodeRabbit's second finding on #533 (the tool placed with the machine-view frame outside Simulate). Not seen on screen by a person.

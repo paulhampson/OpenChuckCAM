@@ -183,6 +183,37 @@ fn req_ui_03_req_sim_02_the_a0_mark_runs_from_the_axis_up_past_the_stock() {
 }
 
 #[test]
+fn req_ui_03_the_a0_mark_is_at_the_far_end_of_the_part_not_of_the_stock() {
+    // CodeRabbit on #533: with stock longer than the part (here the stock
+    // reaches X 12 and the part ends at X 5) the mark of A = 0 stays on the
+    // part, at its far end.
+    let (_dir, mut app, _) = project("a0-part-end");
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    let view = scene(&app);
+    let part_end = view.part_extent.expect("the part is readable").bounds.max.x;
+    let mark = lines(&view, SceneRole::AZero)[0];
+    assert!(
+        (mark[0].x - part_end).abs() < 1e-9,
+        "{:?} {part_end}",
+        mark[0]
+    );
+    let stock_end = view
+        .lines
+        .iter()
+        .filter(|l| l.role == SceneRole::Stock)
+        .flat_map(|l| &l.points)
+        .map(|p| p.x)
+        .fold(f64::MIN, f64::max);
+    assert!(
+        stock_end > part_end + 1.0,
+        "stock {stock_end} part {part_end}"
+    );
+}
+
+#[test]
 fn req_ui_03_missing_machine_and_part_are_noted_not_errors() {
     let (_dir, mut app, id) = project("notes");
     // No machine: no arrow, a note.
