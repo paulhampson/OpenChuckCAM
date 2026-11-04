@@ -24,7 +24,7 @@ use openchuck_path::params::names;
 use openchuck_path::rotary::AxisPosition;
 use openchuck_path::strategy::{CutPoint, Pass};
 use openchuck_path::{AnalyticStock, MeshSurface, ParameterValue, StockModel};
-use openchuck_testkit::parts::revolve;
+use openchuck_testkit::parts::{RadialPart, revolve};
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::tool::{Tool, ToolShape};
 use openchuck_types::units::{Degrees, Millimetres};
