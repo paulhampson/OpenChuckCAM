@@ -1736,3 +1736,109 @@ fn req_nfr_07_req_tl_04_a_rapid_point_that_is_not_a_number_is_refused_not_a_pani
         );
     }
 }
+
+/// Values that are not numbers, are infinite, huge, zero or negative.
+const AWKWARD: [f64; 8] = [
+    f64::NAN,
+    f64::INFINITY,
+    f64::NEG_INFINITY,
+    1e300,
+    -1e300,
+    0.0,
+    -1.0,
+    f64::MAX,
+];
+
+#[test]
+fn req_nfr_07_req_tl_04_awkward_values_never_panic_and_never_accept_unread() {
+    // NFR-07 (the coordinator's sweep after the owner's Codex review of
+    // 7a54a61): every f64 the public check takes, as a place, an angle, a
+    // radius or a stock's size, is tried with values that are not numbers,
+    // infinite, huge, zero or negative. Nothing panics, and a value that is
+    // not finite is never accepted.
+    let square = boxed((-17.5, 17.5), (-17.5, 17.5));
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let f = fixture(square, 10.0);
+    let finite = f.rotary.to_model(
+        AxisPosition {
+            along: 10.0,
+            across: 0.0,
+            height: BAR,
+        },
+        Degrees(0.0),
+    );
+    let up = UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap();
+    for v in AWKWARD {
+        // `check`, `deepest` and `check_path` with each coordinate and the
+        // angle of the second point set to it.
+        for k in 0..4 {
+            let mut tip = finite;
+            let mut a = Degrees(0.0);
+            match k {
+                0 => tip.x = v,
+                1 => tip.y = v,
+                2 => tip.z = v,
+                _ => a = Degrees(v),
+            }
+            let passes = vec![Pass {
+                points: vec![
+                    CutPoint {
+                        tip: finite,
+                        a: Degrees(0.0),
+                        contact: finite,
+                    },
+                    CutPoint {
+                        tip,
+                        a,
+                        contact: tip,
+                    },
+                ],
+                ..Pass::default()
+            }];
+            for stock in [square, round] {
+                let mut f = fixture(stock, 10.0);
+                f.stock = stock;
+                let result = check(&f.input(), &passes, None);
+                let _ = deepest(&f.input(), &passes, 10.0);
+                if !v.is_finite() {
+                    assert!(result.is_err(), "{k} {v}");
+                }
+            }
+        }
+        // `top_over_disc` with each argument set to it, on both shapes, and
+        // on stock whose own size is set to it.
+        for stock in [square, round] {
+            let _ = stock.top_over_disc(Point3::new(v, 0.0, 0.0), up, 1.5);
+            let _ = stock.top_over_disc(Point3::new(10.0, v, v), up, 1.5);
+            let r = stock.top_over_disc(Point3::new(10.0, 0.0, 0.0), up, v);
+            if !v.is_finite() || v < 0.0 {
+                assert_eq!(r, None, "{v}");
+            }
+        }
+        let odd = [
+            AnalyticStock::Cylinder {
+                radius: v,
+                x_start: -2.0,
+                x_end: 22.0,
+            },
+            AnalyticStock::Box(Aabb {
+                min: Point3::new(-2.0, -10.0, v.min(0.0)),
+                max: Point3::new(22.0, 10.0, v),
+            }),
+        ];
+        for stock in odd {
+            let r = stock.top_over_disc(Point3::new(10.0, 0.0, 0.0), up, 1.5);
+            if !v.is_finite() {
+                assert_eq!(r, None, "{stock:?}");
+                let mut f = fixture(stock, 10.0);
+                f.stock = stock;
+                let passes = through(&[finite], Degrees(0.0));
+                assert!(check(&f.input(), &passes, None).is_err(), "{stock:?}");
+            }
+        }
+    }
+}

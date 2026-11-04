@@ -126,6 +126,20 @@ impl AnalyticStock {
     }
 }
 
+impl AnalyticStock {
+    /// True when every size and place of the stock is a finite number.
+    fn is_finite(&self) -> bool {
+        match *self {
+            Self::Cylinder {
+                radius,
+                x_start,
+                x_end,
+            } => radius.is_finite() && x_start.is_finite() && x_end.is_finite(),
+            Self::Box(b) => b.min.is_finite() && b.max.is_finite(),
+        }
+    }
+}
+
 impl StockModel for AnalyticStock {
     fn contains(&self, p: Point3) -> bool {
         match *self {
@@ -196,7 +210,7 @@ impl StockModel for AnalyticStock {
         // The tool axis of a 4-axis machine is across the rotary axis.
         // A centre, axis or radius that is not a finite number has no
         // answer (NFR-07): the caller then holds the stock to its bound.
-        if !centre.is_finite() || !a.is_finite() || !radius.is_finite() {
+        if !centre.is_finite() || !a.is_finite() || !radius.is_finite() || !self.is_finite() {
             return None;
         }
         if a.x.abs() > 1e-9 || radius < 0.0 {
@@ -218,8 +232,16 @@ impl StockModel for AnalyticStock {
         if dx > radius {
             return Some(f64::NEG_INFINITY);
         }
+        // The half width, at most `radius`; where its square overflows,
+        // `radius` itself, which is wider and so still contains the disc.
         let s = (radius * radius - dx * dx).sqrt();
+        let s = if s.is_finite() { s } else { radius };
         let (lo, hi) = (wc - s, wc + s);
+        // Coordinates too large to compare have no answer (NFR-07): `clamp`
+        // below needs ordered bounds.
+        if lo.is_nan() || hi.is_nan() || hc.is_nan() {
+            return None;
+        }
         let top = match *self {
             Self::Cylinder { radius: r, .. } => {
                 // The section is a disc about the axis: highest at the `w`
@@ -258,7 +280,8 @@ impl StockModel for AnalyticStock {
                 top
             }
         };
-        Some(top - hc)
+        let above = top - hc;
+        (!above.is_nan()).then_some(above)
     }
 
     fn describe(&self) -> Option<String> {
@@ -288,6 +311,11 @@ impl StockModel for AnalyticStock {
     }
 
     fn max_radius(&self) -> Option<f64> {
+        // A size that is not a finite number has no farthest radius
+        // (NFR-07): `f64::max` would otherwise drop the NaN.
+        if !self.is_finite() {
+            return None;
+        }
         Some(match *self {
             Self::Cylinder { radius, .. } => radius,
             Self::Box(b) => {
