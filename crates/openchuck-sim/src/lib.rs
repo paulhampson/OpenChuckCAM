@@ -29,16 +29,19 @@
 mod deviation;
 mod dexel;
 mod display;
+mod reach;
 mod sample;
 mod simulation;
 mod span;
 
 pub use deviation::{
     Classify, Deviation, DeviationOptions, DeviationPoint, Leftover, MAX_DEVIATION_SAMPLES,
-    SampleOn, compare, compare_cancellable, compare_classified, triangle_values,
+    SampleOn, compare, compare_cancellable, compare_classified, sample_areas, triangle_values,
+    triangle_worst,
 };
 pub use dexel::{DexelStock, MAX_COLUMNS, PackedStock, Pose};
 pub use display::stock_mesh;
+pub use reach::{Reach, ReachClass, ReachOptions, classify_reach};
 pub use sample::{MAX_SAMPLES_PER_MOVE, Sampling, sample_move};
 pub use simulation::{BATCH_POSES, Checkpoint, GroupResult, RapidCut, Simulator};
 pub use span::{MAX_SPANS, Spans, ToolSolid, cut_spans};
