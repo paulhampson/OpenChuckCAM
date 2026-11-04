@@ -62,6 +62,16 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
         let _ = (centre, axis, radius);
         None
     }
+
+    /// True when the material is the same at every angle of A: it is
+    /// symmetric about the rotary axis, as round stock on the axis is. The
+    /// flute check of decision record 0509 then adds nothing for the
+    /// stock's turn between two readings, so stock flush with the flutes
+    /// through a turn is measured exactly. False, the default, when the
+    /// model does not say so.
+    fn turns_unchanged(&self) -> bool {
+        false
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box
@@ -266,6 +276,10 @@ impl StockModel for AnalyticStock {
                 self.max_radius().unwrap_or(0.0)
             ),
         })
+    }
+
+    fn turns_unchanged(&self) -> bool {
+        matches!(self, Self::Cylinder { .. })
     }
 
     fn max_radius(&self) -> Option<f64> {

@@ -219,7 +219,9 @@ fn keep(
 /// `h / 2` along it of the middle place (`s` and `h` the step's travel
 /// across and along the axis), and the stock turns at most half the step's
 /// angle about the middle angle, which moves no material more than
-/// `t = R * angle / 2` (`R` the stock's farthest radius). Material over the
+/// `t = R * angle / 2` (`R` the stock's farthest radius; none where the
+/// stock is the same at every A, [`StockModel::turns_unchanged`], as round
+/// stock is). Material over the
 /// tool's disc at any place of the step is therefore over a disc
 /// `s / 2 + t` wider at the middle place, and stands at most `h / 2 + t`
 /// higher above that tip than above its own: the stock's exact top over the
@@ -262,7 +264,7 @@ fn between(
     let sideways = 0.5 * (q.0.along - p.0.along).hypot(q.0.across - p.0.across);
     let up = 0.5 * (q.0.height - p.0.height).abs();
     let turn = (q.1.0 - p.1.0).abs().to_radians();
-    let turned = if turn > 0.0 {
+    let turned = if turn > 0.0 && !stock.turns_unchanged() {
         0.5 * farthest * turn
     } else {
         0.0

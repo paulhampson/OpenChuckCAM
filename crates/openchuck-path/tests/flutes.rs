@@ -1252,18 +1252,40 @@ fn req_tl_04_req_nfr_07_stock_flush_with_the_flutes_is_settled_in_bounded_work()
     timed(&f, &straight).unwrap();
 
     // A turn on round stock of radius 17.5 with the tip 5 above the axis:
-    // the stock stands 12.5 mm above it all round. With 12.5 mm of flute,
-    // flush, the turning steps' bounds stay past the flutes: refused as a
-    // bound within the budget; with 12.51 mm, accepted.
+    // the stock stands 12.5 mm above it all round. Round stock on the axis
+    // is the same at every A (`StockModel::turns_unchanged`), so a turn
+    // adds nothing to a step's bound: with 12.5 mm of flute, flush, it is
+    // settled with no halving and accepted, as a free end turned flush
+    // with the flutes on round stock is.
     let round = AnalyticStock::Cylinder {
         radius: 17.5,
         x_start: -2.0,
         x_end: 22.0,
     };
     let f = fixture(round, 12.5);
-    let e = timed(&f, &turn(&f, BAR)).unwrap_err().to_string();
+    timed(&f, &turn(&f, BAR)).unwrap();
+
+    // The same stock as a model that does not say a turn leaves it
+    // unchanged: the turning steps' bounds stay past the flutes, so it is
+    // refused as a bound within the budget; with 12.51 mm, accepted.
+    let bounded = |flutes: f64| {
+        let f = fixture(round, flutes);
+        let stock = Turned {
+            inner: f.stock,
+            turned: 0.0,
+        };
+        let started = std::time::Instant::now();
+        let input = openchuck_path::StrategyInput {
+            stock: &stock,
+            ..f.input()
+        };
+        let result = check(&input, &turn(&f, BAR), None).map_err(|e| e.to_string());
+        let took = started.elapsed().as_secs_f64();
+        assert!(took < 1.0, "{took} s");
+        result
+    };
+    let e = bounded(12.5).unwrap_err();
     assert!(e.contains("may stand up to 12.50"), "{e}");
     assert!(e.contains("not measured exactly"), "{e}");
-    let f = fixture(round, 12.51);
-    timed(&f, &turn(&f, BAR)).unwrap();
+    bounded(12.51).unwrap();
 }

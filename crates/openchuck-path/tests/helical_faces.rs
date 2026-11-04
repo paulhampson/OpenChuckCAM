@@ -1314,6 +1314,24 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
     );
 }
 
+#[test]
+fn req_nfr_07_req_tl_04_a_free_end_flush_with_the_flutes_on_round_stock_is_faced() {
+    // Decision record 0509: round stock on the axis stands 10.3 mm above
+    // the axis at every A, so a tool with exactly 10.3 mm of flute faces
+    // the free end down to the axis; the turn is measured exactly, not
+    // refused as a bound, and quickly.
+    let job = free_end(false, 10.3);
+    let started = std::time::Instant::now();
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    assert!(started.elapsed().as_secs_f64() < 5.0);
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    let turns = turns_in_place(&path)
+        .into_iter()
+        .filter(|t| (t - x).abs() < 1e-6)
+        .count();
+    assert_eq!(turns, 6);
+}
+
 /// Stock left by earlier operations with no exact answer over the tool's
 /// disc (the simulation's cells): the flute check holds it to the bound from
 /// its farthest radius (decision record 0509, OI-2025).
