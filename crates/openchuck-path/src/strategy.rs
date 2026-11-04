@@ -534,7 +534,7 @@ fn generate_with(
             .get(crate::finishing::parameter::FINISHING_LAYERS)
             .is_some()
             .then_some(crate::finishing::parameter::FINISHING_LAYERS);
-        crate::flutes::check_path(input, &path, layers)?;
+        crate::flutes::check_path(input, &path, layers, context)?;
     }
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes

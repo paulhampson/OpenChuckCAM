@@ -1173,21 +1173,29 @@ fn req_tl_04_req_nfr_07_fed_moves_deeper_than_the_cut_are_refused_and_rapids_are
         MoveKind::Linking,
         MoveKind::Cutting,
     ] {
-        let e = check_path(&f.input(), &written(&f, kind, 5.0, 15.0), None)
+        let e = run(|ctx| check_path(&f.input(), &written(&f, kind, 5.0, 15.0), None, ctx))
             .unwrap_err()
             .to_string();
         assert!(e.contains("stands up to 12.500 mm"), "{kind:?}: {e}");
         assert!(e.contains("10.000 mm of flute"), "{kind:?}: {e}");
     }
     // The same depth reached at a rapid is not read: only the 2.5 mm cut.
-    check_path(&f.input(), &written(&f, MoveKind::Rapid, 5.0, 15.0), None).unwrap();
+    run(|ctx| {
+        check_path(
+            &f.input(),
+            &written(&f, MoveKind::Rapid, 5.0, 15.0),
+            None,
+            ctx,
+        )
+    })
+    .unwrap();
     // And the cut alone is within 10 mm of flute; the deep plunge is past it
     // with 12 mm and within it with 13 mm.
     let deep = written(&f, MoveKind::Plunge, 5.0, 15.0);
     let f12 = fixture(round, 12.0);
-    assert!(check_path(&f12.input(), &deep, None).is_err());
+    assert!(run(|ctx| check_path(&f12.input(), &deep, None, ctx)).is_err());
     let f13 = fixture(round, 13.0);
-    check_path(&f13.input(), &deep, None).unwrap();
+    run(|ctx| check_path(&f13.input(), &deep, None, ctx)).unwrap();
 }
 
 #[test]
@@ -1288,4 +1296,161 @@ fn req_tl_04_req_nfr_07_stock_flush_with_the_flutes_is_settled_in_bounded_work()
     assert!(e.contains("may stand up to 12.50"), "{e}");
     assert!(e.contains("not measured exactly"), "{e}");
     bounded(12.51).unwrap();
+}
+
+/// A stock model that gives its exact top but not its farthest radius, as
+/// the `StockModel` contract allows (the owner's Codex review of 6580f9b).
+#[derive(Debug)]
+struct NoRadius(AnalyticStock);
+
+impl StockModel for NoRadius {
+    fn contains(&self, p: Point3) -> bool {
+        self.0.contains(p)
+    }
+
+    fn ray_entry(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<f64> {
+        self.0.ray_entry(origin, direction, max_distance)
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        None
+    }
+
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
+}
+
+/// One pass through `points` at `a`.
+fn through(points: &[Point3], a: Degrees) -> Vec<Pass> {
+    vec![Pass {
+        points: points
+            .iter()
+            .map(|&tip| CutPoint {
+                tip,
+                a,
+                contact: tip,
+            })
+            .collect(),
+        ..Pass::default()
+    }]
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_stock_of_unknown_reach_between_readings_is_not_missed() {
+    // The owner's Codex review of 6580f9b: a stock model that gives its
+    // exact top but no farthest radius skipped the stock between readings.
+    // Codex's slab (as in the test above: 3 mm tool, 1 mm of flute, a move
+    // 0.5 mm along X at A 0, a slab 15 mm tall between its ends) is read
+    // between the ends with no radius: a move at one A needs none.
+    let mut t = tool(ToolShape::FlatEnd, 3.0);
+    t.flute_length = Millimetres(1.0);
+    t.overall_length = Millimetres(20.0);
+    let f = Fixture::new(bar(), 40.0, &t);
+    let a = Degrees(0.0);
+    let axis = f.rotary.tool_axis(a).get();
+    let across = Vec3::new(0.0, -axis.z, axis.y);
+    let at = |along: f64| {
+        f.rotary.to_model(
+            AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            },
+            a,
+        )
+    };
+    let (start, end) = (at(0.0), at(0.5));
+    let corner = |x: f64, w: f64, h: f64| start + Vec3::new(x, 0.0, 0.0) + across * w + axis * h;
+    let (p, q) = (corner(0.2, 1.49, 0.0), corner(0.3, 1.50, 15.0));
+    let stock = NoRadius(AnalyticStock::Box(Aabb {
+        min: Point3::new(p.x.min(q.x), p.y.min(q.y), p.z.min(q.z)),
+        max: Point3::new(p.x.max(q.x), p.y.max(q.y), p.z.max(q.z)),
+    }));
+    let input = openchuck_path::StrategyInput {
+        stock: &stock,
+        ..f.input()
+    };
+    assert!(check(&input, &through(&[start], a), None).is_ok());
+    assert!(check(&input, &through(&[end], a), None).is_ok());
+    let e = check(&input, &through(&[start, end], a), None)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("1.000 mm of flute"), "{e}");
+    assert!(named_depth(&e) >= 15.0 - 1e-6, "{e}");
+
+    // A turn moves the stock by how far it reaches from the axis, which is
+    // not known: the step cannot be bounded, so it is refused as stock of
+    // unknown size, never accepted unread.
+    let f = fixture(boxed((-10.0, 10.0), (-10.0, 10.0)), 30.0);
+    let stock = NoRadius(f.stock);
+    let input = openchuck_path::StrategyInput {
+        stock: &stock,
+        ..f.input()
+    };
+    let e = check(&input, &turn(&f, BAR), None).unwrap_err().to_string();
+    assert!(e.contains("the stock's size is not known"), "{e}");
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_a_cut_exactly_at_the_flutes_is_read_in_bounded_work() {
+    // The owner's Codex review of 6580f9b: round stock of radius 17.5 over X
+    // -2 to 102, a 3 mm flat tool with 10 mm of flute, and a cut at A 0 with
+    // the tip 7.5 mm above the axis from X 0 to 100: the stock stands
+    // exactly 10 mm above the tip all along. On 6580f9b each 0.5 mm step was
+    // halved to about 2^18 readings. A move along the tool's side under the
+    // top of round stock adds nothing to the step's bound, so it is settled
+    // with no halving: accepted, in well under a second. With 9.99 mm of
+    // flute it is refused at 10 mm.
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 102.0,
+    };
+    let a = Degrees(0.0);
+    let cut = |flutes: f64| {
+        let mut t = tool(ToolShape::FlatEnd, 3.0);
+        t.flute_length = Millimetres(flutes);
+        t.overall_length = Millimetres(flutes + 20.0);
+        let mut f = Fixture::new(bar(), 40.0, &t);
+        f.stock = round;
+        let at = |along: f64| {
+            f.rotary.to_model(
+                AxisPosition {
+                    along,
+                    across: 0.0,
+                    height: 7.5,
+                },
+                a,
+            )
+        };
+        let passes = through(&[at(0.0), at(100.0)], a);
+        let started = std::time::Instant::now();
+        let result = check(&f.input(), &passes, None).map_err(|e| e.to_string());
+        let took = started.elapsed().as_secs_f64();
+        assert!(took < 1.0, "{took} s");
+        result
+    };
+    cut(10.0).unwrap();
+    let e = cut(9.99).unwrap_err();
+    assert!((named_depth(&e) - 10.0).abs() < 1e-6, "{e}");
+}
+
+#[test]
+fn req_ui_09_req_tl_04_a_cancelled_flute_check_stops() {
+    // UI-09 and architecture section 5.1 (the owner's Codex review of
+    // 6580f9b): the check polls Cancel as it reads the path, so a cancelled
+    // job stops with the cancel error, not a refusal or an acceptance.
+    use openchuck_path::PathError;
+    use openchuck_path::flutes::check_path;
+    use openchuck_types::ir::MoveKind;
+    use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+    let f = fixture(boxed((-10.0, 10.0), (-10.0, 10.0)), 30.0);
+    let path = written(&f, MoveKind::Cutting, 5.0, 15.0);
+    let cancel = CancelToken::new();
+    let context = JobContext::new(&cancel, &NoProgress);
+    check_path(&f.input(), &path, None, &context).unwrap();
+    cancel.cancel();
+    let e = check_path(&f.input(), &path, None, &context).unwrap_err();
+    assert!(matches!(e, PathError::Cancelled), "{e:?}");
 }

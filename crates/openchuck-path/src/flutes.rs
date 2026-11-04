@@ -26,6 +26,7 @@
 //! is the exact answer asked for.
 
 use openchuck_types::geometry::Point3;
+use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
 
 use crate::error::{PathError, Result};
@@ -250,11 +251,9 @@ fn between(
         return;
     }
     let stock = input.stock;
-    let Some(farthest) = stock.max_radius() else {
-        return;
-    };
+    let farthest = stock.max_radius();
     // The quick bound: nothing is further from the axis than `farthest`.
-    if farthest - p.0.height.min(q.0.height) + BOUND_MARGIN <= limit {
+    if farthest.is_some_and(|r| r - p.0.height.min(q.0.height) + BOUND_MARGIN <= limit) {
         return;
     }
     let middle = lerp(p.0, q.0, 0.5);
@@ -265,7 +264,16 @@ fn between(
     let up = 0.5 * (q.0.height - p.0.height).abs();
     let turn = (q.1.0 - p.1.0).abs().to_radians();
     let turned = if turn > 0.0 && !stock.turns_unchanged() {
-        0.5 * farthest * turn
+        match farthest {
+            Some(r) => 0.5 * r * turn,
+            // How far a turn moves the stock is not known (the owner's
+            // Codex review of #534): the step cannot be bounded, so it is
+            // refused as a stock of unknown size, never accepted unread.
+            None => {
+                keep(worst, input, middle, a, f64::INFINITY, false);
+                return;
+            }
+        }
     } else {
         0.0
     };
@@ -302,7 +310,8 @@ fn between(
 /// at its worst; `None` when the passes never meet the stock, or the stock
 /// can be shown to stand at most `limit` above every tip without reading it.
 pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option<Deepest> {
-    deepest_of(input, passes, limit, false)
+    // With no token to cancel, reading cannot fail.
+    deepest_of(input, passes, limit, false, None).unwrap_or_default()
 }
 
 /// [`deepest`] over passes whose angles are `emitted` by assembly (see
@@ -312,11 +321,12 @@ fn deepest_of(
     passes: &[Pass],
     limit: f64,
     emitted: bool,
-) -> Option<Deepest> {
+    cancel: Option<&CancelToken>,
+) -> Result<Option<Deepest>> {
     let stock = input.stock;
     let radius = body_radius(input);
     let bound = stock.max_radius();
-    let found = crate::parallel::map_each_in_order(passes, |pass| {
+    let found = crate::parallel::map_each_in_order(passes, |pass| -> Result<Option<Deepest>> {
         let mut worst: Option<Deepest> = None;
         let mut previous: Option<&CutPoint> = None;
         for (i, point) in pass.points.iter().enumerate() {
@@ -325,6 +335,12 @@ fn deepest_of(
             if pass.rapids.contains(&i) {
                 previous = None;
                 continue;
+            }
+            // Cancel is polled at each move (UI-09; architecture section
+            // 5.1; the owner's Codex review of #534): a move's work is
+            // bounded by its readings and their budget.
+            if let Some(cancel) = cancel {
+                cancel.check()?;
             }
             for chain in along_move(input, previous, point, emitted) {
                 // The start of a move was read as the end of the one before.
@@ -349,19 +365,19 @@ fn deepest_of(
             }
             previous = Some(point);
         }
-        worst
+        Ok(worst)
     });
-    found
-        .into_iter()
-        .flatten()
-        .filter(|d| d.depth > 0.0)
-        .fold(None, |best: Option<Deepest>, d| {
+    let found = found.into_iter().collect::<Result<Vec<_>>>()?;
+    Ok(found.into_iter().flatten().filter(|d| d.depth > 0.0).fold(
+        None,
+        |best: Option<Deepest>, d| {
             if best.is_none_or(|b| d.depth > b.depth) {
                 Some(d)
             } else {
                 best
             }
-        })
+        },
+    ))
 }
 
 /// How far the stock stands above the rotary axis over the tool's width
@@ -395,7 +411,11 @@ pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64, limit: f64) -> 
         points,
         ..Pass::default()
     }];
-    deepest_of(input, &turn, limit, true).map_or((0.0, true), |d| (d.depth, d.exact))
+    // One turn, its work bounded by its readings and their budget, needs no
+    // token to cancel; with none, reading cannot fail.
+    deepest_of(input, &turn, limit, true, None)
+        .unwrap_or_default()
+        .map_or((0.0, true), |d| (d.depth, d.exact))
 }
 
 /// What the stock is, for a message: its own words when it gives them
@@ -429,10 +449,14 @@ pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>
 /// turn, decided by the turns assembly carries from earlier points and
 /// passes and by its fit to the A range) is then the way the tool turns,
 /// not a prediction of it (CodeRabbit on #534).
+///
+/// Cancel is polled at each move (UI-09): a long path is read in bounded
+/// work between polls, and a cancelled job returns [`PathError::Cancelled`].
 pub fn check_path(
     input: &StrategyInput<'_>,
     path: &crate::assemble::GeneratedPath,
     parameter: Option<&str>,
+    context: &JobContext<'_>,
 ) -> Result<()> {
     let flutes = input.tool.top();
     let point = |pose: &openchuck_types::ir::ToolPose| CutPoint {
@@ -462,7 +486,8 @@ pub fn check_path(
             ..Pass::default()
         });
     }
-    refuse_past_flutes(input, deepest_of(input, &runs, flutes, true), parameter)
+    let worst = deepest_of(input, &runs, flutes, true, Some(context.cancel))?;
+    refuse_past_flutes(input, worst, parameter)
 }
 
 /// The refusal of [`check`] and [`check_path`] when `worst` is past the
