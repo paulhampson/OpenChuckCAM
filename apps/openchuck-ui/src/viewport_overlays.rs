@@ -21,6 +21,9 @@ use crate::viewport::{ViewStep, Viewport};
 const MARGIN: f32 = 12.0;
 /// The view cube's box.
 const CUBE: f32 = 84.0;
+/// The height of the caption under the view cube, and its gap from the cube.
+const CUBE_CAPTION: f32 = 18.0;
+const CUBE_CAPTION_GAP: f32 = 4.0;
 /// The size of the view cube's labels, in pixels at a face seen square-on.
 const CUBE_LABEL: f32 = 8.0;
 /// How squarely a cube face must face the eye for its label to show: the
@@ -39,6 +42,8 @@ const ROW: f32 = 18.0;
 #[derive(Debug, Default)]
 pub(crate) struct Boxes {
     cube: Option<Rect>,
+    /// The caption naming the frame the cube's faces refer to (issue 531).
+    cube_caption: Option<Rect>,
     triad: Option<Rect>,
     legend: Option<Rect>,
     legend_button: Option<Rect>,
@@ -56,6 +61,7 @@ impl Boxes {
             self.legend_button,
             self.readout,
             self.scale,
+            self.cube_caption,
         ]
         .into_iter()
         .flatten()
@@ -363,6 +369,12 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         pos2(right - CUBE, rect.top() + MARGIN),
         vec2(CUBE, CUBE),
     ));
+    if let Some(cube) = b.cube {
+        b.cube_caption = Some(Rect::from_min_size(
+            pos2(cube.left(), cube.bottom() + CUBE_CAPTION_GAP),
+            vec2(CUBE, CUBE_CAPTION),
+        ));
+    }
     // The axes gadget: bottom left of every 3D view, drawn without a box
     // (decision 0149).
     b.triad = Some(Rect::from_min_size(
@@ -566,6 +578,23 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     if let Some(cube) = b.cube {
         frame(&painter, cube);
         paint_cube(&painter, cube, &viewport.camera);
+    }
+    if let Some(caption) = b.cube_caption {
+        let frame_of_cube = viewport.cube_frame();
+        frame(&painter, caption);
+        painter.text(
+            caption.center(),
+            egui::Align2::CENTER_CENTER,
+            crate::orient::cube_caption(frame_of_cube),
+            font.clone(),
+            roles::OVERLAY_TEXT,
+        );
+        ui.interact(
+            caption,
+            ui.scope_id().with("cube caption"),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(crate::orient::cube_tooltip(frame_of_cube));
     }
     if let Some(triad) = b.triad {
         let (right, up, _) = viewport.camera.basis();
