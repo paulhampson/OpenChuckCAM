@@ -288,7 +288,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// pass cuts all the stock above it at once, so the generation refuses a
     /// path whose deepest cut, read along the tool axis from the stock, is
     /// past the tool's flutes ([`crate::flutes::check`]; decision record
-    /// 0508). A strategy that returns true makes its own flute check.
+    /// 0509). A strategy that returns true makes its own flute check.
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         false
     }
@@ -521,7 +521,7 @@ fn generate_with(
     let mid = part_middle(input);
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
     // The flutes against the deepest cut (TL-04, NFR-07; decision record
-    // 0508), on the passes as they will be cut.
+    // 0509), on the passes as they will be cut.
     if !strategy.cuts_in_layers(&parameters) {
         let _timing = context.time_stage("flute check");
         let layers = strategy

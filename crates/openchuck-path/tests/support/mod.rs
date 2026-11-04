@@ -123,7 +123,7 @@ pub fn ball(diameter: f64) -> Tool {
         shape: ToolShape::BallEnd,
         diameter: Millimetres(diameter),
         // Long enough for the fixtures' stock above the part, which the
-        // flute check reads (decision record 0508): for a ball whose shank
+        // flute check reads (decision record 0509): for a ball whose shank
         // is no wider, the body above the flutes is the same cylinder.
         flute_length: Millimetres(40.0),
         overall_length: Millimetres(50.0),
@@ -333,7 +333,7 @@ pub fn generate_in_zones(
 /// Stock that earlier operations have cut back to the part: no material
 /// outside it, within `radius` of the rotary axis. For a test of a tool
 /// whose flutes are shorter than the setup's stock stands above the part
-/// (decision record 0508).
+/// (decision record 0509).
 #[derive(Debug, Clone, Copy)]
 pub struct Bare {
     pub radius: f64,

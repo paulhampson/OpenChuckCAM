@@ -138,7 +138,7 @@ fn blisk(
         oversize: 2.0,
         holding: Vec::new(),
         // The stock stands up to 12 mm above the hub between the blades,
-        // past the reference ball's 8 mm of flute (decision record 0508).
+        // past the reference ball's 8 mm of flute (decision record 0509).
         // The flute length is not in the program, so the goldens hold.
         flute: 16.0,
     }

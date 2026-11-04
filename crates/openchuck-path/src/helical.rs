@@ -94,7 +94,7 @@ impl Strategy for HelicalFinishing {
 
     fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
         // With Finishing layers on, each layer is held to the flutes by the
-        // Stepdown check (decision records 0345 and 0508).
+        // Stepdown check (decision records 0345 and 0509).
         parameters
             .flag(crate::finishing::parameter::FINISHING_LAYERS)
             .unwrap_or(false)

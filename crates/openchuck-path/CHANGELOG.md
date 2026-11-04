@@ -4,6 +4,14 @@
 
 - **Fix (OI-2017, CodeRabbit on #518):** rest machining's wall-ring ranges are clipped at the keep-out's slack-adjusted edges, the same edges the keep-out tests use, so a tool place within 1e-6 mm inside a keep-out's lower edge keeps its ring. `KEEP_OUT_SLACK` is `pub(crate)`. No API change.
 
+## Unreleased (FLUTE-BOX, issue #530; additive API, no version bump)
+
+- **Changed output (decision 0509, accepted, relayed by the coordinator):** every strategy that cuts all the stock above it at once is refused when the stock stands deeper above the tool's tip, along the tool axis over the tool's width, than its flutes.
+  - **Measure.** `flutes::deepest` reads the stock itself with `StockModel::ray_entry` at every cut point and in between, so box stock is measured at its corner, off-axis and turned stock as they lie, tips below the rotary axis with the far half of the stock, and stock left by earlier operations rather than the blank.
+  - **Where.** In the shared generation, for every strategy whose `Strategy::cuts_in_layers` is false (the default). Rotary roughing, Facing, and finishing with Finishing layers on keep their per-layer checks; rotary roughing now refuses a Stepdown past the flutes (OI-153 narrowed). Free ends use the same measure for their refusal; their layers are unchanged.
+  - **API.** Additive: module `flutes` (`deepest`, `check`, `Deepest`), defaulted `StockModel::describe` and `Strategy::cuts_in_layers`.
+  - **Output.** A path within the flutes is byte-identical; one past them is refused with the depth, the place, the flute length and the stock. The goldens are unchanged.
+
 ## 0.40.0
 
 - **Changed output (0.40.0, RESTCORNERS follow-up #518; OI-2014, CodeRabbit on #509; decision 0505 item 1; a minor bump by decision 0239 item 13):** a rest machining ring at a wall never stands inside a held region's keep-out. A ring's range of places is clipped to the free interval round its own place, so a wall that faces a keep-out just past that place keeps its ring, where before the pass trimming dropped it and the wall's foot kept its material. Rest machining's path changes only next to a held region; no API change.

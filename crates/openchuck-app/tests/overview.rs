@@ -1528,7 +1528,7 @@ fn calm(name: &str) -> Fixture {
         .unwrap();
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
     // Within the 10 mm ball's flutes above the 10 mm cube: a ring cut in
-    // deeper stock is refused (decision record 0508).
+    // deeper stock is refused (decision record 0509).
     setup.stock = Some(Stock::Cylinder {
         diameter: Millimetres(24.0),
         length: Millimetres(60.0),

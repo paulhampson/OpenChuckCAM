@@ -658,7 +658,7 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
             height: 1.5,
         }),
         // The slot and the stock above the part already cut: the 1.5 mm
-        // flutes stand in none (decision record 0508).
+        // flutes stand in none (decision record 0509).
         stock: &BARE,
         ..f.input()
     };
@@ -735,7 +735,7 @@ fn req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing() {
             height: 1.5,
         }),
         // The slot and the stock above the part already cut: the 1.5 mm
-        // flutes stand in none (decision record 0508).
+        // flutes stand in none (decision record 0509).
         stock: &BARE,
         ..f.input()
     };

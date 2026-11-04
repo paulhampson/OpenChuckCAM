@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The flute length against the deepest cut (TL-04, SET-03, OP-12, NFR-07,
-//! NFR-12; issue #530; decision record 0508).
+//! NFR-12; issue #530; decision record 0509).
 //!
 //! The measure is checked against analytic answers: a tool tip at height
 //! `h` above the rotary axis, on a pass that turns a full revolution, has

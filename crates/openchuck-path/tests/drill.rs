@@ -686,7 +686,7 @@ fn req_nfr_07_an_empty_or_cancelled_drilling_job_is_a_clear_error() {
 
 #[test]
 fn req_op_10_req_tl_04_req_nfr_07_a_hole_deeper_than_the_flutes_is_refused() {
-    // Decision record 0508: a drill whose flutes do not reach the bottom of
+    // Decision record 0509: a drill whose flutes do not reach the bottom of
     // the hole from the top of the stock would put its shank in the hole.
     let rig = Rig::new(&several());
     let short = Tool {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The flute length against the depth of the cut (TL-04, SET-03, OP-12,
-//! NFR-07, NFR-12; issue #530; decision record 0508).
+//! NFR-07, NFR-12; issue #530; decision record 0509).
 //!
 //! A pass that cuts all the stock above it in one go (any strategy that does
 //! not cut in layers) needs flutes at least as long as the stock stands
@@ -217,7 +217,7 @@ pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option
 /// How far the stock stands above the rotary axis over the tool's width
 /// with the tool centred at model X `x`, at its worst over a turn of A read
 /// every [`A_STEP`]: the depth a turn down to the axis there cuts (a free
-/// end, decision records 0344 and 0508).
+/// end, decision records 0344 and 0509).
 pub(crate) fn deepest_on_axis(input: &StrategyInput<'_>, x: f64) -> f64 {
     let radius = body_radius(input);
     let steps = (360.0 / A_STEP).round() as usize;
@@ -248,7 +248,7 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
 }
 
 /// Refuses `passes` when the stock stands above the tool's tip, along the
-/// tool axis, further than the tool's flutes reach (decision record 0508):
+/// tool axis, further than the tool's flutes reach (decision record 0509):
 /// past the flutes the shank would meet the stock. `parameter` names the
 /// setting the user acts on (Finishing layers, where the strategy has
 /// them); the message gives the depth, where, the flute length and the

@@ -45,7 +45,7 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
 
     /// The stock in a few words for a message, such as "a 35.000 x 35.000 mm
     /// box, its corners 24.749 mm from the rotary axis", if it has a simple
-    /// shape (decision record 0508). `None` by default.
+    /// shape (decision record 0509). `None` by default.
     fn describe(&self) -> Option<String> {
         None
     }

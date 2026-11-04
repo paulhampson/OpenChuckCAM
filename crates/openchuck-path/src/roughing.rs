@@ -239,7 +239,7 @@ fn number(
 impl Strategy for RotaryRoughing {
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         // The layers start at the stock's farthest point from the axis and
-        // the Stepdown is held to the flutes (decision record 0508).
+        // the Stepdown is held to the flutes (decision record 0509).
         true
     }
 
@@ -698,7 +698,7 @@ impl<'a> Job<'a> {
             )
         })?;
         // A layer deeper than the flutes would cut with the shank (OI-153;
-        // decision record 0508): refused, as finishing layers are (0345).
+        // decision record 0509): refused, as finishing layers are (0345).
         let stepdown = p.number(parameter::STEPDOWN)?;
         let flutes = input.tool.top();
         if stepdown > flutes + 1e-6 {

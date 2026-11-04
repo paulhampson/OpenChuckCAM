@@ -159,7 +159,7 @@ impl Fixture {
 
     /// The fixture with the stock just the part's bounding box: what the
     /// earlier operations left, so the tool's flutes need reach only the
-    /// face (decision record 0508; the 22 mm round would stand past them).
+    /// face (decision record 0509; the 22 mm round would stand past them).
     fn snug(mut self) -> Self {
         self.stock = AnalyticStock::Box(self.surface.bounds());
         self
@@ -2586,7 +2586,7 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
 
 #[test]
 fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall_is_refused() {
-    // Decision record 0508: the 8 mm wall fits 11 mm of flank, but the
+    // Decision record 0509: the 8 mm wall fits 11 mm of flank, but the
     // 22 mm round stock stands 4 mm above the wall's top, so the shank
     // would meet it; 13 mm of flute reaches.
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
@@ -2602,7 +2602,7 @@ fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall
 fn req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stock() {
     // The tip end reversed: the tool comes from below (A 180), its tip on
     // the wall's top 18 mm from the axis on the far side, so the 22 mm
-    // round stands 22 + 18 = 40 mm above it (decision record 0508).
+    // round stands 22 + 18 = 40 mm above it (decision record 0509).
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let reversed = [(swarf::parameter::TIP_END, text("reversed"))];
     let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 39.9));

@@ -223,7 +223,7 @@ fn build(
         tool: Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(BALL),
-            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0508)
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0509)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(BALL),
             flute_count: 2,
