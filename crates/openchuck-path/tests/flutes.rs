@@ -1690,3 +1690,49 @@ fn req_tl_04_req_nfr_07_a_fed_move_after_a_rapid_point_is_read_along_it() {
     let e = check(&f.input(), &passes, None).unwrap_err().to_string();
     assert!((named_depth(&e) - 17.5_f64.hypot(17.5)).abs() < 1e-3, "{e}");
 }
+
+#[test]
+fn req_nfr_07_req_tl_04_a_rapid_point_that_is_not_a_number_is_refused_not_a_panic() {
+    // The owner's Codex review of 7a54a61: a rapid point that is not a
+    // number, followed by a finite cut, was kept as the start of the cut
+    // unchecked, and its NaN reached the round stock's closed form and
+    // panicked. It is refused as the path's, with a clear error (NFR-07).
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let mut t = tool(ToolShape::FlatEnd, 3.0);
+    t.flute_length = Millimetres(10.0);
+    t.overall_length = Millimetres(30.0);
+    let mut f = Fixture::new(bar(), 40.0, &t);
+    f.stock = round;
+    let point = |tip: Point3| CutPoint {
+        tip,
+        a: Degrees(0.0),
+        contact: tip,
+    };
+    let passes = vec![Pass {
+        points: vec![
+            point(Point3::new(f64::NAN, 0.0, 0.0)),
+            point(Point3::new(0.0, 0.0, 5.0)),
+        ],
+        rapids: vec![0],
+        ..Pass::default()
+    }];
+    let e = check(&f.input(), &passes, None).unwrap_err().to_string();
+    assert!(e.contains("not a finite number"), "{e}");
+    // The closed forms give no answer for a place that is not a number,
+    // rather than panicking.
+    let up = UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap();
+    for stock in [round, boxed((-10.0, 10.0), (-10.0, 10.0))] {
+        assert_eq!(
+            stock.top_over_disc(Point3::new(f64::NAN, 0.0, 0.0), up, 1.5),
+            None
+        );
+        assert_eq!(
+            stock.top_over_disc(Point3::new(1.0, 0.0, 0.0), up, f64::NAN),
+            None
+        );
+    }
+}

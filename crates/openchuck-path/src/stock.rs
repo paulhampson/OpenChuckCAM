@@ -194,7 +194,12 @@ impl StockModel for AnalyticStock {
     fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
         let a = axis.get();
         // The tool axis of a 4-axis machine is across the rotary axis.
-        if a.x.abs() > 1e-9 || radius.is_nan() || radius < 0.0 {
+        // A centre, axis or radius that is not a finite number has no
+        // answer (NFR-07): the caller then holds the stock to its bound.
+        if !centre.is_finite() || !a.is_finite() || !radius.is_finite() {
+            return None;
+        }
+        if a.x.abs() > 1e-9 || radius < 0.0 {
             return None;
         }
         // Coordinates across X: `w` across the tool axis, `h` along it.

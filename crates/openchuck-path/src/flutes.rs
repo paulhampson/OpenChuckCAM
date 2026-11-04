@@ -351,13 +351,6 @@ fn deepest_of(
         let mut worst: Option<Deepest> = None;
         let mut previous: Option<&CutPoint> = None;
         for (i, point) in pass.points.iter().enumerate() {
-            // The move to a rapid point (of a drilled hole) is not a cut and
-            // is not read; the fed move from it is, from where the rapid left
-            // the tool, as `check_path` reads a fed move after a rapid.
-            if pass.rapids.contains(&i) {
-                previous = Some(point);
-                continue;
-            }
             // A place that is not a number cannot be read (NFR-07): refused,
             // and said to be the path's, not the stock's.
             if !point.tip.is_finite() || !point.a.0.is_finite() {
@@ -367,6 +360,13 @@ fn deepest_of(
                     x: f64::NAN,
                     a: f64::NAN,
                 }));
+            }
+            // The move to a rapid point (of a drilled hole) is not a cut and
+            // is not read; the fed move from it is, from where the rapid left
+            // the tool, as `check_path` reads a fed move after a rapid.
+            if pass.rapids.contains(&i) {
+                previous = Some(point);
+                continue;
             }
             // Cancel is polled at each move (UI-09; architecture section
             // 5.1; the owner's Codex review of #534): a move's work is
