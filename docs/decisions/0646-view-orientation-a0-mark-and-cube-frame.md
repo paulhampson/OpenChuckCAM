@@ -1,6 +1,6 @@
 # 0646: The viewport marks A0 on the part, names the frame of the view cube, and shows the part as designed outside Simulate (UI-02, UI-03, SIM-02; issue #531; lane VIEW-ORIENT)
 
-- **Status:** proposed by lane VIEW-ORIENT on 3 Nov 2026. The owner's answers (A0 line on the part plus the arc start relabelled; the cube caption always shown) were relayed by the coordinator. Not accepted until the owner says so (decision 0049).
+- **Status:** accepted by the project owner on 4 Nov 2026, relayed by the coordinator (decision 0049), with a change: the crowding of the guide labels is to be improved (item 5). Proposed by lane VIEW-ORIENT on 3 Nov 2026; the owner's earlier answers (A0 line on the part plus the arc start relabelled; the cube caption always shown) were relayed by the coordinator.
 - **Date:** 3 Nov 2026.
 - **Number:** provisional 0646; assigned by the Merge Manager at release.
 - **Issues:** [#531](https://github.com/paulhampson/OpenChuckCAM/issues/531) (A0 mark and cube caption); [#532](https://github.com/paulhampson/OpenChuckCAM/issues/532) (the stale part turn outside Simulate, item 4).
@@ -17,12 +17,14 @@ After a simulation, with the part turned with respect to the machine, it is easy
 2. **The arc start is labelled "A0" too.** The fixed A+ arrow starts at machine A = 0; its start carries the label "A0". In the part view, or at A = 0, the two marks coincide; in the machine view they are apart by the current A.
 3. **Caption under the view cube (UI-02).** A small box under the cube always says "Machine" or "Part", with a tooltip in plain words. "Machine" while the part turns inside the view (Simulate with "Turn part with A" on): "Machine view: the faces are the machine's, and Top is toward the tool. The part turns inside the box as A changes." "Part" otherwise: "Part view: the faces are the part's and stay with it. Where the tool moves round the part, the part does not turn ("Turn part with A" is off, or this is not Simulate)."
 4. **The part is shown as designed outside Simulate (SIM-02).** This was a defect: the playback head's A was applied to the part on every step, so Model, Setup and Operations showed the part, stock and path turned to the last simulated angle, while the fixed guides stayed at design orientation. The turn now applies on Simulate only; every other step puts the part at A = 0. The cursor is still kept (0238 item 5), so returning to Simulate shows the same angle. One rule (`orient::part_turn_shown`, `orient::cube_frame`) feeds the turn, the caption and the tooltip.
+5. **The guide labels never touch (UI-03).** The owner saw the arc-start "A0" next to the work "Z" and the "A+" label in the Iso view and asked for less crowding. The viewport now places the labels of the guides ("X", "Y", "Z", "A+", the arc's "A0", the part's "A0") on screen so that no two come within 3 pixels of each other, in every view and at every A. Each keeps its usual place (just right of and above its point) unless that would touch a label already placed; then it takes the nearest free place, trying eight directions at growing distances, never farther than 48 pixels from its point, and a label moved more than 8 pixels keeps a thin leader line to its point so it stays attributable. The order of placing is: the work axes' labels (their arrowheads already attribute them), then "A+", then the arc's "A0", then the part's "A0". The rule is a pure function (`orient::separate_labels`), so it is deterministic: the same view gives the same places.
 
 ## Alternatives considered
 
 - **A0 tick on the part's end face or rim.** Needs end-face geometry; fails for imported stock.
 - **A dashed A0 plane or ring.** Heavy, and reads like the clearance cylinder.
 - **Caption on Simulate only.** The owner chose always shown.
+- **Smaller or dimmer labels, or a fixed offset along the arc's tangent.** A fixed offset fails in some views (the labels of the axes and of the arc cross as the camera turns); the de-overlap works in any view.
 - **A different frame colour for the cube.** Colour alone does not carry meaning (specification section 16); not used.
 
 ## Consequences
@@ -38,6 +40,7 @@ Tests, uninstrumented, written first:
 - `req_ui_02_the_cube_names_the_machine_only_where_the_part_turns`, `req_ui_02_the_cube_caption_and_tooltip_are_plain_words`.
 - `req_ui_03_req_sim_02_the_a0_mark_runs_from_the_axis_up_past_the_stock` (both senses of A; the two "A0" labels), in `openchuck-app/tests/scene.rs`.
 - `req_ui_03_req_sim_02_the_a0_mark_turns_with_the_part_and_hides_with_the_axes`.
+- `req_ui_03_the_guide_labels_never_touch_in_any_view_or_at_any_a` (the six labels of a part on cylinder stock with the example machine, in Front, Top, Right, Left, Iso and an orbited view, at A 0, 90, 180 and 306.5, in a 764 x 340 and a 1400 x 900 view: no two within 3 pixels, none moved farther than 48 pixels); it failed first on the layout without the rule ("A+" and "A0" overlapped in the Front view), and `req_ui_03_separate_labels_keeps_a_free_label_home_and_moves_a_touching_one`.
 - `req_ui_02_req_ui_16_the_overlays_never_overlap_on_any_step` now counts the caption box (at 1100 x 760 and 900 x 480).
 
-Not verified by a person looking at the screen: the owner views the application to check the labels' look and position (crowding with "Y" in an end view is possible).
+The owner viewed screenshots of the first layout on 4 Nov 2026 and found the labels crowded (item 5); screenshots of the new layout are staged on the throwaway branch `claude/view-orient-shots` for the owner's check.

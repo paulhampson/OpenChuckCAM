@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 
+#[cfg(test)]
+use eframe::egui::vec2;
 use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
 use openchuck_app::pathview::DeviationBands;
@@ -1956,21 +1958,86 @@ impl Viewport {
                 crate::viewport_overlays::arrowhead(&painter, a, b, to_color32(colour));
             }
         }
-        for label in &self.view.labels {
-            let Some(at) = to_screen(label_point(label.role, label.at, &self.part_transform))
-            else {
-                continue;
-            };
-            let (colour, _) = style(label.role);
+        for placed in self.guide_labels(rect) {
+            let (colour, _) = style(placed.role);
+            let colour = to_color32(colour);
+            // A label moved off its point keeps a short leader to it.
+            let home = crate::orient::label_home(placed.anchor, placed.rect.size());
+            if (placed.rect.min - home.min).length() > 8.0 {
+                painter.line_segment(
+                    [placed.anchor, placed.rect.clamp(placed.anchor)],
+                    egui::Stroke::new(1.0, colour.gamma_multiply(0.6)),
+                );
+            }
             painter.text(
-                at + egui::vec2(6.0, -4.0),
+                placed.rect.left_bottom(),
                 egui::Align2::LEFT_BOTTOM,
-                &label.text,
+                &placed.text,
                 egui::FontId::monospace(12.0),
-                to_color32(colour),
+                colour,
             );
         }
     }
+
+    /// Where the scene's labels go on screen in `rect`: at their points, then
+    /// moved apart so that no two touch (issue 531). The work axes' labels
+    /// come first, then "A+", then the "A0" of the arc, then the "A0" of the
+    /// part.
+    pub(crate) fn guide_labels(&self, rect: Rect) -> Vec<GuideLabel> {
+        let mut labels: Vec<(u8, GuideLabel)> = Vec::new();
+        for label in &self.view.labels {
+            let at = label_point(label.role, label.at, &self.part_transform);
+            let Some(ndc) = self.camera.project(at, self.aspect) else {
+                continue;
+            };
+            if !(0.0..=1.0).contains(&ndc[2]) {
+                continue;
+            }
+            let anchor = pos2(
+                rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width(),
+                rect.top() + ((1.0 - ndc[1]) * 0.5) as f32 * rect.height(),
+            );
+            let priority = match (label.role, label.text.as_str()) {
+                (SceneRole::AZero, _) => 3,
+                (_, "A0") => 2,
+                (SceneRole::ADirection, _) => 1,
+                _ => 0,
+            };
+            labels.push((
+                priority,
+                GuideLabel {
+                    role: label.role,
+                    text: label.text.clone(),
+                    anchor,
+                    rect: Rect::NOTHING,
+                },
+            ));
+        }
+        labels.sort_by_key(|(priority, _)| *priority);
+        let mut labels: Vec<GuideLabel> = labels.into_iter().map(|(_, l)| l).collect();
+        let wanted: Vec<_> = labels
+            .iter()
+            .map(|l| (l.anchor, crate::orient::label_size(&l.text)))
+            .collect();
+        let places = crate::orient::separate_labels(&wanted, crate::orient::LABEL_GAP);
+        for (label, place) in labels.iter_mut().zip(places) {
+            label.rect = place;
+        }
+        labels
+    }
+}
+
+/// A scene label placed on screen (issue 531).
+#[derive(Debug, Clone)]
+pub(crate) struct GuideLabel {
+    /// What it labels.
+    pub role: SceneRole,
+    /// Its text.
+    pub text: String,
+    /// The screen point it belongs to.
+    pub anchor: egui::Pos2,
+    /// Where its text is drawn.
+    pub rect: Rect,
 }
 
 /// The view's dark gradient, `#2c3139` at the top to `#1b1e23` (14.2), in
@@ -2787,6 +2854,105 @@ pub(crate) mod tests {
             },
         );
         assert!(hidden.lines.is_empty());
+    }
+
+    /// The scene of a part on a cylinder stock with the example machine, as
+    /// the application builds it: it has the A+ arrow, both "A0" marks and
+    /// the work axes.
+    fn machine_scene(name: &str) -> SceneView {
+        use openchuck_app::model::TransformStep;
+        use openchuck_app::project::id::SetupId;
+        use openchuck_app::project::{Item, Placement, Setup};
+        use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+        use openchuck_app::{Application, Command, Threads};
+        let dir =
+            std::env::temp_dir().join(format!("openchuck-ui-labels-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        app.execute(Command::SetModelTransform {
+            model,
+            transform: vec![TransformStep::CentreOnRotaryAxis],
+        })
+        .unwrap();
+        let id = SetupId::new();
+        let mut setup = Setup::new(id, "Setup 1");
+        setup.part = Some(model);
+        setup.stock = Some(Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(14.0),
+            x_start: Millimetres(-2.0),
+        });
+        setup.frame.work_offset.x = Millimetres(3.0);
+        app.execute(Command::Add {
+            item: Item::Setup(setup),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(Command::SetMachine(Some(Box::new(
+            MachineProfile::example_x_rotary(),
+        ))))
+        .unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        view
+    }
+
+    #[test]
+    fn req_ui_03_the_guide_labels_never_touch_in_any_view_or_at_any_a() {
+        // Issue 531 (owner: "the crowding needs to be improved"): "A0" of the
+        // arc, "A+", "A0" of the part and the work axes' X, Y and Z keep a
+        // gap of pixels between them in the standard views and obliquely, at
+        // A 0, 90, 180 and 306.5, in a small view and a large one.
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(machine_scene("labels"), true);
+        let mut widest = 0.0_f32;
+        for size in [vec2(764.0, 340.0), vec2(1400.0, 900.0)] {
+            let rect = Rect::from_min_size(pos2(0.0, 0.0), size);
+            viewport.aspect = f64::from(size.x / size.y);
+            for a in [0.0, 90.0, 180.0, 306.5] {
+                viewport.set_part_turn(a);
+                for view in [
+                    Some(StandardView::Front),
+                    Some(StandardView::Top),
+                    Some(StandardView::Right),
+                    Some(StandardView::Left),
+                    Some(StandardView::Isometric),
+                    None,
+                ] {
+                    match view {
+                        Some(v) => viewport.set_view(v),
+                        None => {
+                            viewport.set_view(StandardView::Isometric);
+                            viewport.camera.orbit(40.0, -25.0);
+                        }
+                    }
+                    let labels = viewport.guide_labels(rect);
+                    assert_eq!(labels.len(), 6, "{view:?} at A {a}");
+                    for (i, l) in labels.iter().enumerate() {
+                        for m in &labels[i + 1..] {
+                            let gap = crate::orient::LABEL_GAP;
+                            assert!(
+                                !l.rect.expand(gap).intersects(m.rect),
+                                "{} and {} touch in {view:?} at A {a}, {size:?}: {:?} {:?}",
+                                l.text,
+                                m.text,
+                                l.rect,
+                                m.rect
+                            );
+                        }
+                        let home = crate::orient::label_home(l.anchor, l.rect.size());
+                        widest = widest.max((l.rect.min - home.min).length());
+                    }
+                }
+            }
+        }
+        // None is moved farther than the reach: each stays by its line.
+        assert!(widest <= crate::orient::LABEL_REACH + 0.01, "{widest}");
     }
 
     /// The colour the scene gives the cube part with no bands.

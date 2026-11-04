@@ -4,6 +4,7 @@
 //! faces refer to. One rule feeds the part's turn, the cube's caption and its
 //! tooltip, so they cannot disagree.
 
+use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 use openchuck_app::playback::ViewFrame;
 
 use crate::viewport::ViewStep;
@@ -54,6 +55,65 @@ pub fn cube_tooltip(frame: ViewFrame) -> &'static str {
     }
 }
 
+/// The least gap between two guide labels, pixels (issue 531).
+pub const LABEL_GAP: f32 = 3.0;
+/// The farthest a label is moved from where its point puts it, pixels.
+pub const LABEL_REACH: f32 = 48.0;
+/// How far from its point a label usually starts, right and up (7.3).
+const LABEL_NUDGE: Vec2 = vec2(6.0, -4.0);
+
+/// A guide label's size in pixels (12-point monospace).
+pub fn label_size(text: &str) -> Vec2 {
+    vec2(7.3 * text.chars().count() as f32, 14.0)
+}
+
+/// Where a guide label at the screen point `anchor` is drawn before any
+/// moving: its lower left corner a little right of and above the point.
+pub fn label_home(anchor: Pos2, size: Vec2) -> Rect {
+    let corner = anchor + LABEL_NUDGE;
+    Rect::from_min_size(pos2(corner.x, corner.y - size.y), size)
+}
+
+/// Where each guide label goes so that no two touch (issue 531): each, in
+/// the order given (the axis labels first, which their arrowheads already
+/// attribute), keeps its home unless it lies within `gap` of one already
+/// placed; then it takes the nearest free place, trying eight directions at
+/// growing distances up to [`LABEL_REACH`]. With no free place it stays home.
+pub fn separate_labels(labels: &[(Pos2, Vec2)], gap: f32) -> Vec<Rect> {
+    let mut placed: Vec<Rect> = Vec::with_capacity(labels.len());
+    for &(anchor, size) in labels {
+        let home = label_home(anchor, size);
+        let free = |r: Rect| placed.iter().all(|p| !p.expand(gap).intersects(r));
+        let mut spot = home;
+        if !free(home) {
+            let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+            let directions = [
+                vec2(1.0, 0.0),
+                vec2(-1.0, 0.0),
+                vec2(0.0, -1.0),
+                vec2(0.0, 1.0),
+                vec2(diagonal, -diagonal),
+                vec2(-diagonal, -diagonal),
+                vec2(diagonal, diagonal),
+                vec2(-diagonal, diagonal),
+            ];
+            let mut distance = 3.0;
+            'search: while distance <= LABEL_REACH {
+                for d in directions {
+                    let r = home.translate(d * distance);
+                    if free(r) {
+                        spot = r;
+                        break 'search;
+                    }
+                }
+                distance += 3.0;
+            }
+        }
+        placed.push(spot);
+    }
+    placed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +147,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn req_ui_03_separate_labels_keeps_a_free_label_home_and_moves_a_touching_one() {
+        let size = label_size("A0");
+        let a = pos2(100.0, 100.0);
+        // A label with nothing near it stays at its home.
+        let alone = separate_labels(&[(a, size)], LABEL_GAP);
+        assert_eq!(alone, vec![label_home(a, size)]);
+        // Two at one point: the first keeps its home, the second moves, by no
+        // more than the reach, and they do not touch.
+        let two = separate_labels(&[(a, size), (a, size)], LABEL_GAP);
+        assert_eq!(two[0], label_home(a, size));
+        assert!(!two[0].expand(LABEL_GAP).intersects(two[1]));
+        assert!((two[1].min - two[0].min).length() <= LABEL_REACH);
+        // The same input gives the same places.
+        assert_eq!(two, separate_labels(&[(a, size), (a, size)], LABEL_GAP));
     }
 
     #[test]

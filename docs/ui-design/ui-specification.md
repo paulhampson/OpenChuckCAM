@@ -215,7 +215,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 ### 7.3 Scene and camera
 
-- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the held regions and retaining tabs (7.5), the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The "A0" mark runs from the axis along the model's up direction at the part's far end and turns with the part in the machine view; the arc's start is labelled "A0" too (decision 0646). The simulated angle shows on Simulate only; elsewhere the part is at A = 0. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
+- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the held regions and retaining tabs (7.5), the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The "A0" mark runs from the axis along the model's up direction at the part's far end and turns with the part in the machine view; the arc's start is labelled "A0" too (decision 0646). The labels of the guides (X, Y, Z, A+, A0) are placed so that none touches another, with a thin leader when one is moved off its point (decision 0646 item 5). The simulated angle shows on Simulate only; elsewhere the part is at A = 0. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
 - **Camera** (decision 0029 item 6):
   - Z-up, model X along the rotary axis.
   - Standard views as that record's table.
