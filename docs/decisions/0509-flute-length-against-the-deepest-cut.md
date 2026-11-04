@@ -35,12 +35,12 @@ Rotary roughing did not refuse a Stepdown longer than the flutes (OI-153).
 
 1. **One measure (`openchuck_path::flutes::deepest`).**
    - **What it measures.** How far the stock stands above the tool's tip along the tool axis, over a disc the width of the tool's body: the cutting radius, or the shank's where the shank is wider.
-   - **Where it reads.** At every cut point, and between points so that no step is more than 0.5 degree of A or 0.5 mm of travel. Between two points A turns the way assembly turns it, by `rotary::nearest_turn`: a pass given as 350 then 10 degrees turns 20 degrees. At an exact half turn the way assembly takes depends on the whole turns it carries from earlier points and passes and on its fit to the A range, so both ways round are read and the deeper is taken.
+   - **Where it reads.** At every point, and between points so that no step is more than 0.5 degree of A or 0.5 mm of travel. In production (item 2) the points are the emitted program's, so A turns exactly as written. The passes-level form (`flutes::check`, `flutes::deepest`), which a strategy may call before assembly, predicts the turn by `rotary::nearest_turn` (a pass given as 350 then 10 degrees turns 20 degrees) and, at an exact half turn, where the way assembly takes depends on the whole turns it carries and on its fit to the A range, reads both ways round and takes the deeper.
    - **How it reads.** For the setup's own box or round stock, exactly: `StockModel::top_over_disc` gives the highest material over the disc in closed form, so nothing can lie between readings. Any other stock model, including the stock earlier operations left, is never read by sampling: it is held to the conservative bound below, plus 1 mm because a farthest radius may be measured at cell centres, and the message says it is a bound. A stock with no farthest radius is refused (its size is not known). The bound can refuse finishing after roughing that the real stock would allow (OI-2025).
    - **What that covers.** Box stock is measured where a corner is uppermost over the axis. Stock off the axis (bounding box plus offset) and stock turned about X are measured as they lie. The stock earlier operations left is measured rather than the blank, so a roughed part is not refused.
    - **The quick bound.** No material is further from the axis than `max_radius`, so at a tip `h` above the axis the stock stands at most `max_radius - h` above it. The exact answer is asked for only where that bound is past the flutes. A tip below the axis adds its depth (the pin sides of the crankshaft).
 2. **Applied to every strategy by default.**
-   - The shared generation (`generate_with`) runs the check (`flutes::check_path`) on the path as assembly wrote it, for every strategy whose `Strategy::cuts_in_layers` is false: every fed move from the pose before it, with the angles assembly emitted (unwrapped, carried across passes and fitted to the A range), so the arc read is the arc the tool turns through, not a prediction of it (CodeRabbit on #534, third review). That is the default, so a new strategy is checked unless it says otherwise.
+   - **The production check reads the emitted program.** The shared generation (`generate_with`) runs the check (`flutes::check_path`) after assembly, on the path as it will be posted, for every strategy whose `Strategy::cuts_in_layers` is false. It reads every fed move from the pose before it: the cuts, and also the leads in and out, the plunges and the fed links, which can go deeper than the passes. Rapids are not read: a rapid is not a cut, and the fed move after it is read from where the rapid left the tool. The angles are the ones assembly emitted (unwrapped, carried across passes and fitted to the A range), so the arc read is the arc the tool turns through, not a prediction of it (CodeRabbit on #534, third review). That is the default, so a new strategy is checked unless it says otherwise.
    - The strategies that hold each layer to the flutes themselves return true:
      - rotary roughing: its layers start at `max_radius`, and its Stepdown is now refused past the flutes (OI-153);
      - Facing (0252, 0504);
@@ -56,6 +56,10 @@ Rotary roughing did not refuse a Stepdown longer than the flutes (OI-153).
 5. **Unchanged.**
    - End facing keeps its support reading (0504 item 1), which already measures the box at each view's A.
    - The real stick-out and the holder are still not modelled (0504 item 5, OI-1782). The limit is the flute length.
+6. **Not covered by this check.**
+   - The stock earlier operations left has no exact answer: it is held to the conservative bound of item 1, which can refuse a finish the real stock would allow (OI-2025).
+   - The shank above the flutes, the stick-out and the holder meeting the stock or the part stay with COL-05 (OI-153, OI-1782). This check compares the stock's depth with the flute length only.
+   - Strategies that return `cuts_in_layers` true (item 2) are held per layer by their own Stepdown checks, not by this one.
 
 ## Verification
 
@@ -74,6 +78,7 @@ Tests in `crates/openchuck-path/tests/flutes.rs`. The analytic cases are a round
 - `req_tl_04_a_pass_across_the_0_360_seam_turns_the_short_way`: A given as 340 to 20 through 0 reads as 340 to 380 does (CodeRabbit on #534). On the code before the fix it read the box's corner (19.749 mm at A 135) for a pass that turns 40 degrees about a face (14.201 mm).
 - `req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes`: through the shared generation, a first pass given as 350 then 170 (cut down through 260) and a later pass given as 10 then 190 after one ending at 360 (cut up from 370 to 550), each on box stock whose cut half stands 30.355 mm above the tip and the other 21.926 mm: 25 mm of flute is refused and 31 mm accepted. It failed on the code that checked the passes before assembly, which accepted 25 mm.
 - `req_tl_04_an_exact_half_turn_reads_both_ways_round`: at an exact half turn both ways round are read (CodeRabbit on #534, second and third reviews). A first pass given as 350 then 170 is cut by assembly down through 260 (it unwraps from 0), and a later pass given as 10 then 190 after one ending at 360 is cut up through 100 (the carried turn). In each case, with box stock off the axis, the half assembly cuts is 8.4 mm deeper than the half the raw step's nearest turn would read. The test fails on the code that read one way only, which would have accepted.
+- `req_tl_04_req_nfr_07_fed_moves_deeper_than_the_cut_are_refused_and_rapids_are_not_read`: a written program on round stock of radius 17.5 whose cuts stand 10 mm deep: a plunge, a lead in, a lead out, a fed link or a cut 2.5 mm deeper is refused with 10 mm of flute naming 12.500 mm, while the same move as a rapid is accepted; the deeper lead is refused at 12 mm and accepted at 13 mm.
 - `req_tl_04_req_nfr_07_a_narrow_round_of_stock_between_readings_is_not_missed`: the same for round stock (a rod of radius 0.06 mm): 15.06 mm, exact.
 - `req_tl_04_req_nfr_07_stock_with_no_exact_answer_is_held_to_a_conservative_bound`: a stock model without `top_over_disc` (a round 0.5 mm over the bar) is held to 5.5 - 5 + 1 = 1.5 mm, refused at 1.4 mm of flute although it stands 0.5 mm, with words that say it is a bound; with no farthest radius either it is refused whatever the flutes.
 - One refusal (0.05 mm short) and one acceptance (0.05 mm over) per strategy on the bar in 35 x 35 box stock. Finishing layers on hold only the Stepdown.
@@ -111,5 +116,12 @@ The owner's case was reproduced on the public `testdata/stl/crankshaft.stl` with
 - before the change, simultaneous finishing was accepted with no warning;
 - the stock stood 25.096 mm above the tip at X 39.416, A 212.5;
 - the quick bound was 27.251 mm, because the tip goes 2.502 mm below the axis on the pins.
+
+No new false refusal of a roughed part, in `crates/openchuck-app/tests/flute_check.rs`, on the public CrankShaft model in the setup's own 35 x 35 mm analytic box stock with a 3.175 mm flat tool of 25 mm flute:
+
+- `req_tl_04_req_nfr_07_finishing_the_crankshaft_blank_with_25_mm_of_flute_is_refused`: simultaneous finishing alone is refused through the application, naming the flute and the box.
+- `req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flute_is_not_refused`: rotary roughing (2 mm Stepdown, 0.3 mm left) and then the same finishing are accepted.
+
+The golden G-code files are unchanged by the move to the emitted program.
 
 The owner's project is private and not used: numbers only.

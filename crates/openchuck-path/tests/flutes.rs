@@ -1005,3 +1005,102 @@ fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
     assert!(e.contains("30.355 mm"), "{e}");
     on(31.0, carried, pos, pos).unwrap();
 }
+
+/// An assembled path at A 0, heights above the rotary axis: a rapid to 30
+/// mm at X 10, then `kind` down to `deep` and back up to 30, then a plunge
+/// to `cut` and a cut along X at that height to X 14.
+fn written(
+    f: &Fixture,
+    kind: openchuck_types::ir::MoveKind,
+    deep: f64,
+    cut: f64,
+) -> openchuck_path::GeneratedPath {
+    use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
+    let a = Degrees(0.0);
+    let pose = |x: f64, height: f64| ToolPose {
+        tip: f.rotary.to_model(
+            AxisPosition {
+                along: x,
+                across: 0.0,
+                height,
+            },
+            a,
+        ),
+        axis: f.rotary.tool_axis(a),
+        a,
+    };
+    let segment = |kind: MoveKind, end: ToolPose| Segment {
+        kind,
+        end,
+        contact_feed: kind
+            .is_fed()
+            .then_some(openchuck_types::units::FeedRate(300.0)),
+        duration: openchuck_types::units::Seconds(1.0),
+        contact_length: Millimetres(1.0),
+    };
+    openchuck_path::GeneratedPath {
+        group: ToolpathGroup {
+            rotary_reset_after: Vec::new(),
+            tags: PathTags {
+                operation: "op".to_owned(),
+                setup: "setup".to_owned(),
+                tool: "tool".to_owned(),
+            },
+            start: pose(10.0, 40.0),
+            // Down to `deep` and back up by `kind`, then a plunge to the
+            // cut, the cut, and away.
+            segments: vec![
+                segment(MoveKind::Rapid, pose(10.0, 30.0)),
+                segment(kind, pose(10.0, deep)),
+                segment(kind, pose(10.0, 30.0)),
+                segment(MoveKind::Plunge, pose(10.0, cut)),
+                segment(MoveKind::Cutting, pose(14.0, cut)),
+                segment(MoveKind::Rapid, pose(14.0, 40.0)),
+            ],
+        },
+        notes: Vec::new(),
+        warnings: Vec::new(),
+        unreached: Vec::new(),
+        shank_breaks: Vec::new(),
+    }
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_fed_moves_deeper_than_the_cut_are_refused_and_rapids_are_not_read() {
+    // Decision record 0509 (the coordinator's conditions on #534): the
+    // generation reads every fed move of the path as assembly wrote it, so
+    // a plunge, a lead or a fed link that goes deeper than the cut is held
+    // to the flutes too, with the numbers; a rapid is not a cut and is not
+    // read. Round stock of radius 17.5: the cut at 15 over the axis stands
+    // 2.5 mm under the stock's top, the deep move at 5 over it 12.5 mm.
+    use openchuck_path::flutes::check_path;
+    use openchuck_types::ir::MoveKind;
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let f = fixture(round, 10.0);
+    for kind in [
+        MoveKind::Plunge,
+        MoveKind::LeadIn,
+        MoveKind::LeadOut,
+        MoveKind::Linking,
+        MoveKind::Cutting,
+    ] {
+        let e = check_path(&f.input(), &written(&f, kind, 5.0, 15.0), None)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("stands up to 12.500 mm"), "{kind:?}: {e}");
+        assert!(e.contains("10.000 mm of flute"), "{kind:?}: {e}");
+    }
+    // The same depth reached at a rapid is not read: only the 2.5 mm cut.
+    check_path(&f.input(), &written(&f, MoveKind::Rapid, 5.0, 15.0), None).unwrap();
+    // And the cut alone is within 10 mm of flute; the deep plunge is past it
+    // with 12 mm and within it with 13 mm.
+    let deep = written(&f, MoveKind::Plunge, 5.0, 15.0);
+    let f12 = fixture(round, 12.0);
+    assert!(check_path(&f12.input(), &deep, None).is_err());
+    let f13 = fixture(round, 13.0);
+    check_path(&f13.input(), &deep, None).unwrap();
+}
