@@ -1,8 +1,8 @@
 # 0508: Every strategy that cuts all the stock above it at once is refused when the stock stands deeper above the tool's tip than its flutes, measured from the stock itself, so box stock is measured at its corner (TL-04, SET-03, OP-12, NFR-07, NFR-12; issue #530; lane FLUTE-BOX)
 
-- **Status:** proposed by lane FLUTE-BOX on 3 Nov 2026. Refusing rather than warning is the project owner's answer, relayed by the coordinator (decision 0049). The record as a whole awaits the owner's acceptance.
+- **Status:** accepted by the project owner on 4 Nov 2026, relayed by the coordinator (decision 0049), with refusal as the behaviour (the owner's answer, relayed on 3 Nov 2026). Proposed by lane FLUTE-BOX on 3 Nov 2026.
 - **Date:** 3 Nov 2026.
-- **Number:** provisional. The Merge Manager assigns the number at release.
+- **Number:** provisional (0508 is taken by decision 0508 of lane LARGEPATH). The Merge Manager assigns the number at release.
 - **Issue:** [#530](https://github.com/paulhampson/OpenChuckCAM/issues/530) (sev1).
 - **Builds on:** [0033](0033-slice-14-rotary-roughing.md) item 8 (OI-153), [0344](0344-finishing-stepdown-and-free-ends.md) item 7, [0345](0345-finishing-layers.md) item 5, [0504](0504-end-facing-depth-within-the-flutes.md) items 1, 3 and 5, and [0161](0161-tools-keep-clear-of-the-gripped-length.md) item 3 ("said and refused, never silent").
 - **Open items:** OI-153 narrowed: roughing's Stepdown is now held to the flutes, while the shank, the holder and the links stay with COL-05. No new item. No project schema change. The library change is additive: a new public module `flutes`, and defaulted trait methods `StockModel::describe` and `Strategy::cuts_in_layers`.
