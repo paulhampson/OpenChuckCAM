@@ -59,7 +59,10 @@ Rotary roughing did not refuse a Stepdown longer than the flutes (OI-153).
 6. **Not covered by this check.**
    - The stock earlier operations left has no exact answer: it is held to the conservative bound of item 1, which can refuse a finish the real stock would allow (OI-2025). The owner accepted the bound (4 Nov 2026, relayed); the more accurate answer, with an investigation of its performance, is a Phase 2 enhancement, issue [#540](https://github.com/paulhampson/OpenChuckCAM/issues/540).
    - The shank above the flutes, the stick-out and the holder meeting the stock or the part stay with COL-05 (OI-153, OI-1782). This check compares the stock's depth with the flute length only.
-   - Strategies that return `cuts_in_layers` true (item 2) are held per layer by their own Stepdown checks, not by this one.
+   - Strategies that return `cuts_in_layers` true (item 2: roughing, Facing, and finishing with Finishing layers on) are held per layer by their own Stepdown checks, not by this one. Their leads, plunges and fed links are not held to the flutes; that is by design, and stays with COL-05 (OI-153).
+   - Rounding when the program is written. The post writes positions to 0.001 mm and rounds A, so at a cut exactly flush with the flutes the written tip can stand about 0.0007 mm deeper than the check's 0.000001 mm allowance. The user verifies the program before running it (NFR-12).
+   - A machine that turns A the short way. The posts write A unwrapped, so the arc the check reads is the arc written. A controller set to wrap A to 0 to 360 and turn the short way is a machine setting the user checks (NFR-12).
+   - The `StockModel` contract. A model whose farthest radius is more than 1 mm short of its material (the margin of item 1) would make the quick bounds unsound; no model in the workspace does so (the simulation's columns are at most 0.5 mm short, with cells of at most 1 mm). The passes-level form (`flutes::check`) reads an exact half turn both ways round within 0.000000001 degree, so at angles of hundreds of millions of degrees, where rounding is coarser, it could read one way only; generation reads the emitted program, where no half turn is predicted.
 
 ## Verification
 
