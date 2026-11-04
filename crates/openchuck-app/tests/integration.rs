@@ -58,6 +58,8 @@ mod picking;
 mod playback;
 #[path = "posting.rs"]
 mod posting;
+#[path = "reach.rs"]
+mod reach;
 #[path = "reference_jobs.rs"]
 mod reference_jobs;
 #[path = "rotary_pass_resets.rs"]

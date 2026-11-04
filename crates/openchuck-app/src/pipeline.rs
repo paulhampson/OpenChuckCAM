@@ -478,7 +478,18 @@ pub(crate) fn regenerate(
             // compared with (SET-09, OP-21). A final stock taken from the
             // cache keeps its comparison, so the part is read and compared
             // only for a stock this run left (OI-627).
-            let (deviation, compared) = state.compare(
+            // The setup's tools, which decide whether its material left can
+            // be classified (issue 478).
+            let smallest_tool = crate::simulation::smallest_tool(
+                state
+                    .operation_ids()
+                    .iter()
+                    .filter_map(|id| project.operation(*id))
+                    .filter_map(|o| o.tool)
+                    .filter_map(|t| project.tools().iter().find(|s| s.id == t))
+                    .map(|s| &s.tool),
+            );
+            let (compared_now, compared) = state.compare(
                 || match (part, setup) {
                     (Some(model), Some(setup)) => {
                         Ok(Some(crate::workholding::setup_deviation_target(
@@ -489,6 +500,7 @@ pub(crate) fn regenerate(
                     _ => Ok(None),
                 },
                 settings,
+                smallest_tool,
                 &within,
             )?;
             if compared {
@@ -496,13 +508,19 @@ pub(crate) fn regenerate(
                 // Kept with the stock only after the part files are checked
                 // below, so a comparison made from a file that changed during
                 // the run is never kept under a key made from the old one.
-                if let (true, Some(deviation)) = (caching, &deviation) {
-                    comparisons.push((Arc::clone(&state), deviation.clone()));
+                if let (true, Some(made)) = (caching, &compared_now) {
+                    comparisons.push((Arc::clone(&state), made.clone()));
                 }
             }
             let mut state = Arc::unwrap_or_clone(state);
             state.rename(project);
-            report.setups.push(state.finish(deviation));
+            let finished = state.finish(compared_now);
+            // Material no tool can reach is a warning, once per setup
+            // (SIM-05, NFR-12; issue 478).
+            if let Some(summary) = finished.reach.as_ref().and_then(|r| r.enclosed.as_ref()) {
+                regeneration.notes.push(summary.warning(&finished.setup));
+            }
+            report.setups.push(finished);
             own.finish();
         }
         regeneration.simulation = Some(report);
@@ -515,8 +533,8 @@ pub(crate) fn regenerate(
             "a model file changed while regenerating; regenerate again".to_owned(),
         ));
     }
-    for (state, deviation) in comparisons {
-        state.keep_comparison(deviation);
+    for (state, compared) in comparisons {
+        state.keep_comparison(compared);
     }
     regeneration.toolpath.validate()?;
     if let Some((selection, grouping)) = post {

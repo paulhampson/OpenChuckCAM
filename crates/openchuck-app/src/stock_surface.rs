@@ -2,10 +2,10 @@
 //! Display-only projection of final simulation samples onto playback stock.
 
 use crate::AppError;
-use crate::pathview::{DeviationBands, deviation_bands};
+use crate::pathview::{DeviationBands, deviation_bands_with};
 use openchuck_geom::pick::MeshPicker;
 use openchuck_project::id::{ModelId, SetupId};
-use openchuck_sim::DeviationPoint;
+use openchuck_sim::{DeviationPoint, ReachClass, SampleOn};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
@@ -89,21 +89,226 @@ impl StockSurface {
     }
 }
 
-struct Node {
-    point: Point3,
-    value: (f64, bool),
-    min: Point3,
-    max: Point3,
-    original: usize,
-    axis: usize,
-    left: Option<usize>,
-    right: Option<usize>,
+/// A balanced k-d tree kept implicitly: the samples in median order, so
+/// that the node of the run `[low, high)` is its middle and its children
+/// are the runs on either side, split along the depth modulo three. It
+/// holds only each sample's point and number, a few bytes each, where a
+/// tree of linked nodes with boxes holds more than a hundred (issue 523:
+/// 3.4 million samples took 490 MB).
+struct Tree {
+    points: Vec<Point3>,
+    /// Each node's sample, by its place in the comparison's points.
+    samples: Vec<u32>,
+    /// The tight bounds of each run of at least [`BOXED`] samples, by the
+    /// run's place in heap order (the root 0, the children of `h` at
+    /// `2h + 1` and `2h + 2`): a few per cent of the samples, so a query far
+    /// from every sample is turned away near the root.
+    boxes: Vec<(Point3, Point3)>,
 }
 
-/// A balanced spatial index made once per setup, off the UI thread.
+/// The fewest samples in a run that keeps its bounds.
+const BOXED: usize = 64;
+
+/// Records the bounds of the run `[low, high)` of `points` at `heap`, and
+/// of the runs below it, while they hold at least [`BOXED`] samples.
+fn bound(
+    points: &[Point3],
+    low: usize,
+    high: usize,
+    heap: usize,
+    boxes: &mut Vec<(Point3, Point3)>,
+) {
+    if high.saturating_sub(low) < BOXED {
+        return;
+    }
+    let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in points.get(low..high).unwrap_or_default() {
+        min = Point3::new(min.x.min(p.x), min.y.min(p.y), min.z.min(p.z));
+        max = Point3::new(max.x.max(p.x), max.y.max(p.y), max.z.max(p.z));
+    }
+    if boxes.len() <= heap {
+        boxes.resize(heap + 1, (min, max));
+    }
+    if let Some(slot) = boxes.get_mut(heap) {
+        *slot = (min, max);
+    }
+    let middle = low + (high - low) / 2;
+    bound(points, low, middle, 2 * heap + 1, boxes);
+    bound(points, middle + 1, high, 2 * heap + 2, boxes);
+}
+
+impl Tree {
+    /// The tree over `ids`, numbers of `points`.
+    fn new(points: &[DeviationPoint], mut ids: Vec<u32>) -> Self {
+        fn arrange(points: &[DeviationPoint], ids: &mut [u32], depth: usize) {
+            if ids.len() < 2 {
+                return;
+            }
+            let axis = depth % 3;
+            let middle = ids.len() / 2;
+            let at = |id: u32| {
+                points
+                    .get(id as usize)
+                    .map_or(f64::NAN, |p| coordinate(p.point, axis))
+            };
+            ids.select_nth_unstable_by(middle, |a, b| at(*a).total_cmp(&at(*b)).then(a.cmp(b)));
+            let (left, rest) = ids.split_at_mut(middle);
+            arrange(points, left, depth + 1);
+            if let Some((_, right)) = rest.split_first_mut() {
+                arrange(points, right, depth + 1);
+            }
+        }
+        arrange(points, &mut ids, 0);
+        let points: Vec<Point3> = ids
+            .iter()
+            .map(|id| {
+                points
+                    .get(*id as usize)
+                    .map_or(Point3::new(0.0, 0.0, 0.0), |p| p.point)
+            })
+            .collect();
+        let mut boxes = Vec::new();
+        bound(&points, 0, points.len(), 0, &mut boxes);
+        Self {
+            points,
+            samples: ids,
+            boxes,
+        }
+    }
+
+    /// The node nearest to `point` within `limit` (squared), as (squared
+    /// distance, sample, node): ties to the first sample in the
+    /// comparison's order.
+    fn nearest(&self, point: Point3, limit: f64) -> Option<(f64, u32, usize)> {
+        let mut best = None;
+        let mut query = Query {
+            point,
+            limit,
+            best: &mut best,
+        };
+        self.search(0, self.points.len(), (0, 0), [0.0; 3], 0.0, &mut query);
+        best
+    }
+
+    /// Searches the run `[low, high)` at `depth`. `offsets` are the query's
+    /// distances from the run's cell along each axis, and `reach` the
+    /// squared distance from the query to the cell (their sum of squares):
+    /// a cell further than the best so far, or the limit, is skipped, as a
+    /// bounding box would allow, without storing one (Arya and Mount's
+    /// incremental distance).
+    fn search(
+        &self,
+        low: usize,
+        high: usize,
+        (depth, heap): (usize, usize),
+        offsets: [f64; 3],
+        reach: f64,
+        query: &mut Query<'_>,
+    ) {
+        if low >= high || reach > query.bound() {
+            return;
+        }
+        if high - low >= BOXED
+            && let Some((min, max)) = self.boxes.get(heap)
+        {
+            let p = query.point;
+            let to_box = Vec3::new(
+                (min.x - p.x).max(0.0).max(p.x - max.x),
+                (min.y - p.y).max(0.0).max(p.y - max.y),
+                (min.z - p.z).max(0.0).max(p.z - max.z),
+            );
+            if to_box.dot(to_box) > query.bound() {
+                return;
+            }
+        }
+        let middle = low + (high - low) / 2;
+        let (Some(&node), Some(&sample)) = (self.points.get(middle), self.samples.get(middle))
+        else {
+            return;
+        };
+        let offset = query.point - node;
+        let squared = offset.dot(offset);
+        if squared <= query.limit
+            && query
+                .best
+                .as_ref()
+                .is_none_or(|b| squared < b.0 || (squared.total_cmp(&b.0).is_eq() && sample < b.1))
+        {
+            *query.best = Some((squared, sample, middle));
+        }
+        let axis = depth % 3;
+        let delta = coordinate(query.point, axis) - coordinate(node, axis);
+        let left = (low, middle, 2 * heap + 1);
+        let right = (middle + 1, high, 2 * heap + 2);
+        let (near, far) = if delta <= 0.0 {
+            (left, right)
+        } else {
+            (right, left)
+        };
+        self.search(near.0, near.1, (depth + 1, near.2), offsets, reach, query);
+        let old = offsets.get(axis).copied().unwrap_or(0.0);
+        let far_reach = reach - old * old + delta * delta;
+        let mut far_offsets = offsets;
+        if let Some(o) = far_offsets.get_mut(axis) {
+            *o = delta;
+        }
+        self.search(
+            far.0,
+            far.1,
+            (depth + 1, far.2),
+            far_offsets,
+            far_reach,
+            query,
+        );
+    }
+}
+
+/// A nearest-sample search under way.
+struct Query<'a> {
+    point: Point3,
+    limit: f64,
+    best: &'a mut Option<(f64, u32, usize)>,
+}
+
+impl Query<'_> {
+    /// The squared distance beyond which a cell is skipped: the best so far,
+    /// or the limit, with a margin of a few rounding errors so that a sample
+    /// as near as the best (a tie, which goes to the first sample) is never
+    /// skipped.
+    fn bound(&self) -> f64 {
+        let bound = self.best.as_ref().map_or(self.limit, |b| b.0);
+        bound + bound.abs() * 1e-9
+    }
+}
+
+/// A triangle's projected value (signed, and whether a bound), if any, and
+/// whether its material left is enclosed.
+type Projected = (Option<(f64, bool)>, bool);
+
+/// A sample's value, and whether its material left is enclosed.
+type Valued = ((f64, bool), bool);
+
+/// No sample of the behind table.
+const NONE: u32 = u32::MAX;
+
+/// Two spatial indexes over the final comparison, made once per setup, off
+/// the UI thread.
 pub(crate) struct SurfaceSamples {
-    nodes: Vec<Node>,
-    root: Option<usize>,
+    /// The counted samples (decision 0194), which colour the stock within
+    /// the search.
+    counted: Tree,
+    /// Each counted node's value, and whether its material left is enclosed.
+    values: Vec<Valued>,
+    /// Every finite sample, of any kind, for the material behind a face
+    /// beyond the search (decision 0513 item 4).
+    all: Tree,
+    /// For each node of `all`, its place in `behind` when it stands for the
+    /// material behind (a counted part bound, or enclosed), else [`NONE`].
+    slots: Vec<u32>,
+    /// The value of each sample that stands for the material behind, and
+    /// whether it is enclosed.
+    behind: Vec<Valued>,
     cell: f64,
     limit_squared: f64,
 }
@@ -117,113 +322,100 @@ fn coordinate(point: Point3, axis: usize) -> f64 {
 }
 
 impl SurfaceSamples {
+    #[cfg(test)]
     pub(crate) fn new(points: &[DeviationPoint], cell: f64) -> Self {
-        let mut points: Vec<_> = points
+        Self::with_reach(points, None, cell)
+    }
+
+    /// The indexes over the finite samples of the final comparison, with the
+    /// class of each one's material left when known (`classes[i]` for
+    /// `points[i]`). Samples are numbered in 32 bits; a comparison has far
+    /// fewer (one sample takes 64 bytes).
+    pub(crate) fn with_reach(
+        points: &[DeviationPoint],
+        classes: Option<&[ReachClass]>,
+        cell: f64,
+    ) -> Self {
+        let enclosed = |id: usize| {
+            classes
+                .and_then(|c| c.get(id))
+                .is_some_and(|c| *c == ReachClass::Enclosed)
+        };
+        let finite: Vec<u32> = points
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.point.is_finite() && p.value.is_finite())
+            .filter_map(|(id, _)| u32::try_from(id).ok())
+            .collect();
+        let counted_ids: Vec<u32> = finite
             .iter()
             .copied()
-            .enumerate()
-            .filter(|(_, p)| p.counts() && p.point.is_finite() && p.value.is_finite())
+            .filter(|id| points.get(*id as usize).is_some_and(DeviationPoint::counts))
+            .collect();
+        let counted = Tree::new(points, counted_ids);
+        let values = counted
+            .samples
+            .iter()
+            .map(|id| {
+                let p = points.get(*id as usize);
+                (
+                    p.map_or((0.0, false), |p| (p.value, p.at_least)),
+                    enclosed(*id as usize),
+                )
+            })
+            .collect();
+        let all = Tree::new(points, finite);
+        let mut behind = Vec::new();
+        let slots = all
+            .samples
+            .iter()
+            .map(|id| {
+                let Some(p) = points.get(*id as usize) else {
+                    return NONE;
+                };
+                let inside = enclosed(*id as usize);
+                if (p.counts() && p.on == SampleOn::Part && p.at_least) || inside {
+                    behind.push(((p.value, p.at_least), inside));
+                    u32::try_from(behind.len() - 1).unwrap_or(NONE)
+                } else {
+                    NONE
+                }
+            })
             .collect();
         let limit = openchuck_sim::DeviationOptions::for_cell(cell).max_distance + cell;
-        let mut index = Self {
-            nodes: Vec::with_capacity(points.len()),
-            root: None,
+        Self {
+            counted,
+            values,
+            all,
+            slots,
+            behind,
             cell,
             limit_squared: limit * limit,
-        };
-        index.root = index.build(&mut points, 0);
-        index
+        }
     }
 
-    fn build(&mut self, points: &mut [(usize, DeviationPoint)], depth: usize) -> Option<usize> {
-        if points.is_empty() {
-            return None;
-        }
-        let axis = depth % 3;
-        let middle = points.len() / 2;
-        points.select_nth_unstable_by(middle, |a, b| {
-            coordinate(a.1.point, axis)
-                .total_cmp(&coordinate(b.1.point, axis))
-                .then(a.0.cmp(&b.0))
-        });
-        let (left, rest) = points.split_at_mut(middle);
-        let ((original, point), right) = rest.split_first_mut()?;
-        let id = self.nodes.len();
-        self.nodes.push(Node {
-            point: point.point,
-            value: (point.value, point.at_least),
-            min: point.point,
-            max: point.point,
-            original: *original,
-            axis,
-            left: None,
-            right: None,
-        });
-        let left = self.build(left, depth + 1);
-        let right = self.build(right, depth + 1);
-        let mut min = point.point;
-        let mut max = point.point;
-        for child in [left, right]
-            .into_iter()
-            .flatten()
-            .filter_map(|id| self.nodes.get(id))
-        {
-            min = Point3::new(
-                min.x.min(child.min.x),
-                min.y.min(child.min.y),
-                min.z.min(child.min.z),
-            );
-            max = Point3::new(
-                max.x.max(child.max.x),
-                max.y.max(child.max.y),
-                max.z.max(child.max.z),
-            );
-        }
-        if let Some(node) = self.nodes.get_mut(id) {
-            node.left = left;
-            node.right = right;
-            node.min = min;
-            node.max = max;
-        }
-        Some(id)
+    /// The counted sample nearest to `point` within the search, ties to the
+    /// first in the comparison's order, as (squared distance, sample,
+    /// value, whether enclosed).
+    fn within(&self, point: Point3) -> Option<(f64, usize, (f64, bool), bool)> {
+        let (squared, sample, node) = self.counted.nearest(point, self.limit_squared)?;
+        let (value, enclosed) = *self.values.get(node)?;
+        Some((squared, sample as usize, value, enclosed))
     }
 
-    fn nearest(
-        &self,
-        id: Option<usize>,
-        point: Point3,
-        best: &mut Option<(f64, usize, (f64, bool))>,
-    ) {
-        let Some(node) = id.and_then(|id| self.nodes.get(id)) else {
-            return;
-        };
-        let to_box = Vec3::new(
-            (node.min.x - point.x).max(0.0).max(point.x - node.max.x),
-            (node.min.y - point.y).max(0.0).max(point.y - node.max.y),
-            (node.min.z - point.z).max(0.0).max(point.z - node.max.z),
-        );
-        if to_box.dot(to_box) > best.as_ref().map_or(self.limit_squared, |b| b.0) {
-            return;
-        }
-        let offset = point - node.point;
-        let squared = offset.dot(offset);
-        if squared <= self.limit_squared
-            && best.as_ref().is_none_or(|b| {
-                squared < b.0 || (squared.total_cmp(&b.0).is_eq() && node.original < b.1)
-            })
-        {
-            *best = Some((squared, node.original, node.value));
-        }
-        let delta = coordinate(point, node.axis) - coordinate(node.point, node.axis);
-        let (near, far) = if delta <= 0.0 {
-            (node.left, node.right)
-        } else {
-            (node.right, node.left)
-        };
-        self.nearest(near, point, best);
-        if delta * delta <= best.as_ref().map_or(self.limit_squared, |b| b.0) {
-            self.nearest(far, point, best);
-        }
+    /// The sample of any kind nearest to `point`, with no limit, ties to the
+    /// first in the comparison's order, as (squared distance, sample) with
+    /// its value and whether enclosed when it stands for the material
+    /// behind a face (a counted part bound, or enclosed).
+    fn behind(&self, point: Point3) -> Option<(f64, usize, Option<Valued>)> {
+        let (squared, sample, node) = self.all.nearest(point, f64::INFINITY)?;
+        let stands = self
+            .slots
+            .get(node)
+            .filter(|slot| **slot != NONE)
+            .and_then(|slot| self.behind.get(*slot as usize))
+            .copied();
+        Some((squared, sample as usize, stands))
     }
 
     /// The final comparison's value nearest to each triangle of `mesh`, in
@@ -239,7 +431,7 @@ impl SurfaceSamples {
         context.check_cancelled()?;
         mesh.validate()?;
         let chunks = mesh.triangles.len().div_ceil(CHUNK);
-        let chunks: Vec<Vec<Option<(f64, bool)>>> = (0..chunks)
+        let chunks: Vec<Vec<Projected>> = (0..chunks)
             .into_par_iter()
             .map(|chunk| {
                 context.check_cancelled()?;
@@ -249,17 +441,20 @@ impl SurfaceSamples {
                     .collect()
             })
             .collect::<Result<_, AppError>>()?;
-        let values: Vec<_> = chunks.into_iter().flatten().collect();
-        Ok(deviation_bands(&values, self.cell))
+        let (values, unreachable): (Vec<_>, Vec<_>) = chunks.into_iter().flatten().unzip();
+        Ok(deviation_bands_with(&values, &unreachable, self.cell))
     }
 
-    /// The value of the sample nearest to the centroid of `triangle`, if
-    /// one is near enough.
-    fn value_of(
-        &self,
-        mesh: &TriangleMesh,
-        triangle: usize,
-    ) -> Result<Option<(f64, bool)>, AppError> {
+    /// The value of the counted sample nearest to the centroid of
+    /// `triangle` within the search, and whether its material left is
+    /// enclosed. Beyond the search, the face stands for the material behind
+    /// it: the sample of any kind nearest to the point one search distance
+    /// behind the face, into the stock, when that is a counted part sample
+    /// whose value is only a bound (stock past an end that was not faced:
+    /// at least that much is left there) or whose material left is enclosed
+    /// (a bore full of stock behind its cap at the part's end, however thin
+    /// its wall) (issue 478). Else none: not measured.
+    fn value_of(&self, mesh: &TriangleMesh, triangle: usize) -> Result<Projected, AppError> {
         let [a, b, c] = mesh.triangle(triangle).ok_or_else(|| {
             AppError::Playback("the stock surface has an invalid triangle".to_owned())
         })?;
@@ -268,9 +463,21 @@ impl SurfaceSamples {
             a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
             a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
         );
-        let mut best = None;
-        self.nearest(self.root, point, &mut best);
-        Ok(best.map(|b| b.2))
+        if let Some((_, _, value, enclosed)) = self.within(point) {
+            return Ok((Some(value), enclosed));
+        }
+        // One search distance behind the face, into the stock.
+        let normal = (b - a).cross(c - a);
+        let length = normal.length();
+        let behind = if length.is_finite() && length > 0.0 {
+            point + normal * (-self.limit_squared.sqrt() / length)
+        } else {
+            point
+        };
+        Ok(self
+            .behind(behind)
+            .and_then(|(_, _, stands)| stands)
+            .map_or((None, false), |(value, enclosed)| (Some(value), enclosed)))
     }
 }
 
@@ -278,7 +485,7 @@ impl SurfaceSamples {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use openchuck_sim::SampleOn;
+    use crate::pathview::DeviationBand;
     use openchuck_types::geometry::{Point3, Vec3};
     use openchuck_types::job::{CancelToken, NoProgress};
 
@@ -451,23 +658,17 @@ mod tests {
     fn req_sim_05_req_nfr_06_stock_colours_are_the_same_at_any_thread_count() {
         let (points, mesh) = many_samples_and_triangles();
         let samples = SurfaceSamples::new(&points, 0.1);
-        // The rule, one triangle after another: the nearest sample to the
-        // triangle's centroid, as the one-thread mapping gave it.
+        // The rule, one triangle after another: the nearest counted sample
+        // to the triangle's centroid within the search, else the nearest
+        // sample when it is a bound on the part (issue 478).
         let expected: Vec<_> = (0..mesh.triangles.len())
-            .map(|t| {
-                let [a, b, c] = mesh.triangle(t).unwrap();
-                let point = Point3::new(
-                    a.x / 3.0 + b.x / 3.0 + c.x / 3.0,
-                    a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
-                    a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
-                );
-                let mut best = None;
-                samples.nearest(samples.root, point, &mut best);
-                best.map(|b| b.2)
-            })
+            .map(|t| samples.value_of(&mesh, t).unwrap())
             .collect();
-        assert!(expected.iter().any(Option::is_none) && expected.iter().any(Option::is_some));
-        let expected = deviation_bands(&expected, 0.1);
+        assert!(
+            expected.iter().any(|(v, _)| v.is_none()) && expected.iter().any(|(v, _)| v.is_some())
+        );
+        let (values, unreachable): (Vec<_>, Vec<_>) = expected.into_iter().unzip();
+        let expected = crate::pathview::deviation_bands_with(&values, &unreachable, 0.1);
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
         for threads in [1, 2, 4] {
@@ -569,9 +770,278 @@ mod tests {
                 })
                 .filter(|(d, _, _)| *d <= 3.1 * 3.1)
                 .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-            let mut actual = None;
-            index.nearest(index.root, query, &mut actual);
+            let actual = index.within(query).map(|(d, id, value, _)| (d, id, value));
             assert_eq!(actual, reference);
         }
+    }
+
+    /// Samples of every kind on a small grid, some at the same point (the
+    /// tie rule), some counted, some bounds and some enclosed.
+    fn mixed_samples() -> (Vec<DeviationPoint>, Vec<ReachClass>) {
+        let kinds = [
+            SampleOn::Part,
+            SampleOn::Workholding,
+            SampleOn::Inside,
+            SampleOn::Part,
+        ];
+        let mut points = Vec::new();
+        let mut classes = Vec::new();
+        for i in 0..600_i32 {
+            let x = f64::from(i % 7) * 0.3;
+            let y = f64::from((i / 7) % 9) * 0.25;
+            let z = f64::from(i % 5) * 0.4 - 0.8;
+            let mut p = sample(
+                x,
+                f64::from(i % 11) * 0.3 - 0.5,
+                i % 3 == 0,
+                kinds[(i % 4) as usize],
+            );
+            p.point.y = y;
+            p.point.z = z;
+            points.push(p);
+            classes.push(match i % 6 {
+                0 => ReachClass::Enclosed,
+                1 => ReachClass::Open,
+                2 => ReachClass::NotLeft,
+                _ => ReachClass::Undecided,
+            });
+        }
+        // A sample that is not finite is never in the index.
+        let mut bad = sample(0.0, f64::NAN, false, SampleOn::Part);
+        bad.point.x = 0.15;
+        points.push(bad);
+        classes.push(ReachClass::Enclosed);
+        (points, classes)
+    }
+
+    #[test]
+    fn req_sim_05_the_material_behind_is_read_from_an_exhaustive_nearest_sample_of_any_kind() {
+        // Decision 0513 item 4: the sample of any kind (part, held region,
+        // tab or inside the part) nearest to the point behind a face, ties to
+        // the first in the comparison's order, stands for the material there
+        // only when it is a counted part bound or enclosed. The index must
+        // give what an exhaustive search over every finite sample gives.
+        let (points, classes) = mixed_samples();
+        let index = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        let mut checked = (0, 0);
+        for k in 0..400_i32 {
+            let query = Point3::new(
+                f64::from(k % 13) * 0.17 - 0.4,
+                f64::from(k % 17) * 0.15 - 0.3,
+                f64::from(k % 7) * 0.5 - 1.6,
+            );
+            let reference = points
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.point.is_finite() && p.value.is_finite())
+                .map(|(id, p)| {
+                    let d = query - p.point;
+                    (d.dot(d), id)
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
+                .map(|(d, id)| {
+                    let p = &points[id];
+                    let enclosed = classes[id] == ReachClass::Enclosed;
+                    let stands = (p.counts() && p.on == SampleOn::Part && p.at_least) || enclosed;
+                    (d, id, stands.then_some(((p.value, p.at_least), enclosed)))
+                });
+            let actual = index.behind(query);
+            assert_eq!(actual, reference, "query {query:?}");
+            if reference.is_some_and(|r| r.2.is_some()) {
+                checked.0 += 1;
+            } else {
+                checked.1 += 1;
+            }
+        }
+        assert!(checked.0 > 20 && checked.1 > 20, "{checked:?}");
+        // Within the search, the counted samples only, with their class.
+        for k in 0..400_i32 {
+            let query = Point3::new(
+                f64::from(k % 13) * 0.17,
+                f64::from(k % 17) * 0.15,
+                f64::from(k % 5) * 0.9,
+            );
+            let reference = points
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.counts() && p.point.is_finite() && p.value.is_finite())
+                .map(|(id, p)| {
+                    let d = query - p.point;
+                    (d.dot(d), id, (p.value, p.at_least))
+                })
+                .filter(|(d, _, _)| *d <= 3.1 * 3.1)
+                .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
+                .map(|(d, id, v)| (d, id, v, classes[id] == ReachClass::Enclosed));
+            assert_eq!(index.within(query), reference, "query {query:?}");
+        }
+    }
+
+    #[test]
+    fn req_sim_05_material_left_that_no_tool_reaches_is_its_own_band() {
+        let values = [
+            Some((2.0, false)),
+            Some((3.0, true)),
+            Some((0.05, false)),
+            Some((-0.4, false)),
+            None,
+            Some((2.0, false)),
+        ];
+        let bands = crate::pathview::deviation_bands_with(
+            &values,
+            &[true, true, true, true, true, false],
+            0.1,
+        );
+        let band_of = |t: u32| {
+            bands
+                .bands
+                .iter()
+                .find(|(_, set)| set.contains(&t))
+                .map(|(b, _)| *b)
+        };
+        assert_eq!(band_of(0), Some(DeviationBand::Unreachable));
+        assert_eq!(band_of(1), Some(DeviationBand::Unreachable));
+        // Only material left is unreachable; the rest keep their bands.
+        assert_eq!(band_of(2), Some(DeviationBand::OnTarget));
+        assert_eq!(band_of(3), Some(DeviationBand::Overcut));
+        assert_eq!(band_of(4), Some(DeviationBand::Unmeasured));
+        assert_eq!(band_of(5), Some(DeviationBand::Thick));
+        assert_eq!(&*bands.values, &values, "the probe's values are unchanged");
+    }
+
+    /// One tiny triangle round `x` on the axis.
+    fn triangle_at(mesh: &mut TriangleMesh, x: f64) {
+        let first = u32::try_from(mesh.vertices.len()).unwrap();
+        mesh.vertices.extend([
+            Point3::new(x, -0.01, 0.0),
+            Point3::new(x, 0.01, 0.0),
+            Point3::new(x, 0.0, 0.01),
+        ]);
+        mesh.triangles.push([first, first + 1, first + 2]);
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_12_stock_beyond_the_search_takes_the_class_of_a_bound_part_sample() {
+        // Stock left far from the part (a bore full of it, or stock past an
+        // end that was not faced) is far from every sample; when the nearest
+        // is on the part and its value is only a bound, the stock has at
+        // least that much left: it is not "not measured" (issue 478).
+        let points = vec![
+            sample(0.0, 3.0, true, SampleOn::Part),
+            sample(100.0, 3.0, true, SampleOn::Part),
+            sample(50.0, 5.0, true, SampleOn::Workholding),
+            sample(-50.0, 8.0, true, SampleOn::Inside),
+            sample(200.0, 0.5, false, SampleOn::Part),
+        ];
+        let classes = [
+            ReachClass::Open,
+            ReachClass::Enclosed,
+            ReachClass::NotLeft,
+            ReachClass::NotLeft,
+            ReachClass::Undecided,
+        ];
+        let samples = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        let mut mesh = TriangleMesh::default();
+        for x in [10.0, 95.0, 45.0, -45.0, 190.0, 1.0] {
+            triangle_at(&mut mesh, x);
+        }
+        let cancel = CancelToken::new();
+        let bands = samples
+            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        let band_of = |t: u32| {
+            bands
+                .bands
+                .iter()
+                .find(|(_, set)| set.contains(&t))
+                .map(|(b, _)| *b)
+        };
+        assert_eq!(bands.values[0], Some((3.0, true)));
+        assert_eq!(band_of(0), Some(DeviationBand::Thick));
+        assert_eq!(band_of(1), Some(DeviationBand::Unreachable));
+        // Nearest a held region or tab, or a face inside the part: not
+        // measured, as before (decision 0194).
+        assert_eq!(bands.values[2], None);
+        assert_eq!(bands.values[3], None);
+        // Nearest a part sample that is not a bound: the stock is further
+        // than its value, so nothing is claimed.
+        assert_eq!(bands.values[4], None);
+        // Within the search, the nearest counted sample, as before.
+        assert_eq!(bands.values[5], Some((3.0, true)));
+        assert_eq!(band_of(5), Some(DeviationBand::Thick));
+    }
+
+    #[test]
+    fn req_sim_05_a_stock_face_over_a_bore_takes_the_class_of_the_material_behind_it() {
+        // Issue 478: the stock's cap over a bore full of stock, at the part's
+        // faced end, is beyond the search from every sample, and nearest to
+        // the rim of the opening, where nothing is left. The material behind
+        // the cap is in the bore: the face takes the class of what lies one
+        // search distance behind it, into the stock.
+        let points = vec![
+            // The rim of the opening, at the end X 0: nothing left there.
+            sample(0.0, 0.02, false, SampleOn::Part),
+            // The bore wall 3.1 mm in from the end: a bound, enclosed.
+            sample(-3.1, 3.0, true, SampleOn::Part),
+        ];
+        let mut points = points;
+        points[0].point.y = 6.0;
+        points[1].point.y = 6.5;
+        let classes = [ReachClass::NotLeft, ReachClass::Enclosed];
+        let samples = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        // A cap triangle at X 0 on the axis, facing +X (out of the stock).
+        let mesh = TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, -0.01, -0.01),
+                Point3::new(0.0, 0.01, -0.01),
+                Point3::new(0.0, 0.0, 0.01),
+            ],
+            triangles: vec![[0, 1, 2]],
+        };
+        let cancel = CancelToken::new();
+        let bands = samples
+            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], Some((3.0, true)));
+        assert!(
+            bands
+                .bands
+                .iter()
+                .any(|(b, set)| *b == DeviationBand::Unreachable && set.contains(&0)),
+            "{:?}",
+            bands.bands
+        );
+        // A thin wall: the bore's material left is the wall's thickness, not
+        // a bound; still enclosed, still the bore's.
+        let mut thin = points.clone();
+        thin[1].value = 2.0;
+        thin[1].at_least = false;
+        let thin_samples = SurfaceSamples::with_reach(&thin, Some(&classes), 0.1);
+        let bands = thin_samples
+            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], Some((2.0, false)));
+        assert!(
+            bands
+                .bands
+                .iter()
+                .any(|(b, set)| *b == DeviationBand::Unreachable && set.contains(&0))
+        );
+        // Not enclosed and not a bound: nothing is claimed.
+        let open =
+            SurfaceSamples::with_reach(&thin, Some(&[ReachClass::NotLeft, ReachClass::Open]), 0.1);
+        let bands = open
+            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], None);
+        // The same face turned to face -X has the open end behind it, the
+        // rim nearest: not measured.
+        let flipped = TriangleMesh {
+            vertices: mesh.vertices.clone(),
+            triangles: vec![[0, 2, 1]],
+        };
+        let bands = samples
+            .bands(&flipped, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], None);
     }
 }
