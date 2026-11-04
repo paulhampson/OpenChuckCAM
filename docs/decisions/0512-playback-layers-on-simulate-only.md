@@ -1,9 +1,9 @@
-# 0647: The cut part, the tool and the trace draw on Simulate only (SIM-01, SIM-02, UI-03; issue #535; lane VIEW-ORIENT)
+# 0512: The cut part, the tool and the trace draw on Simulate only (SIM-01, SIM-02, UI-03; issue #535; lane VIEW-ORIENT)
 
 - **Status:** accepted by the project owner on 4 Nov 2026, relayed by the coordinator (decision 0049), including the two small calls: the tool hidden outside Simulate and the faint trace hidden outside Simulate. Proposed by lane VIEW-ORIENT the same day.
 - **Date:** 4 Nov 2026.
-- **Number:** provisional 0647; assigned by the Merge Manager at release.
-- **Issue:** [#535](https://github.com/paulhampson/OpenChuckCAM/issues/535). Stacked on [0646](0646-view-orientation-a0-mark-and-cube-frame.md) (same code: `orient.rs`).
+- **Number:** proposed as 0647; renumbered 0512 on 4 Nov 2026 at release (assigned by the Merge Manager).
+- **Issue:** [#535](https://github.com/paulhampson/OpenChuckCAM/issues/535). Stacked on [0511](0511-view-orientation-a0-mark-and-cube-frame.md) (same code: `orient.rs`).
 - **Open items:** none. No project schema change, no library change, no toolpath or G-code change.
 
 ## Context
@@ -16,7 +16,7 @@ After a simulation the cut part, the tool and the faint trace of the path stayed
 2. **The layers are kept, not cleared**, so returning to Simulate shows them again at the kept cursor (decision 0238 item 5); nothing is rebuilt.
 3. **The cut part is not picked outside Simulate**: hovering a surface on Operations reads the part, not a stale cut part. The readout box was already Simulate's for the tool's position (Operations reads the pointer).
 
-4. **The A0 mark of decision 0646 (0511 after release) is at the far end of the part, not of the stock** (CodeRabbit on #533, carried here by the coordinator's ruling): with stock longer than the part the mark stayed on the stock end, off the part it identifies. It uses the part's own extent, and the scene's end only when no part is readable; the part, not the shorter of part and stock, so it is on the workpiece whichever is longer.
+4. **The A0 mark of decision 0511 is at the far end of the part, not of the stock** (CodeRabbit on #533, carried here by the coordinator's ruling): with stock longer than the part the mark stayed on the stock end, off the part it identifies. It uses the part's own extent, and the scene's end only when no part is readable; the part, not the shorter of part and stock, so it is on the workpiece whichever is longer.
 
 ## Alternatives considered
 

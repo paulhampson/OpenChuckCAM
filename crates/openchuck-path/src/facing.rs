@@ -64,6 +64,12 @@ pub mod parameter {
 pub struct Facing;
 
 impl Strategy for Facing {
+    fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
+        // Facing holds its Stepdown and each End view to the flutes itself
+        // (decision records 0252 and 0504).
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }

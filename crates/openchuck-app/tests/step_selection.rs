@@ -231,7 +231,7 @@ fn ball() -> ToolSnapshot {
         tool: Tool {
             shape: ToolShape::BallEnd,
             diameter: Millimetres(3.0),
-            flute_length: Millimetres(8.0),
+            flute_length: Millimetres(30.0), // reaches the stock it cuts (decision record 0509)
             overall_length: Millimetres(40.0),
             shank_diameter: Millimetres(3.0),
             flute_count: 2,

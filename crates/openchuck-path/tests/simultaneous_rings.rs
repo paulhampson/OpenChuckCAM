@@ -442,3 +442,44 @@ fn req_nfr_07_rings_refuse_an_absurd_stepover_by_name() {
         assert!(e.contains(names::STEPOVER), "{stepover}: {e}");
     }
 }
+
+#[test]
+fn req_op_06_the_tilt_note_does_not_count_the_lead_a_step_holds() {
+    // A step holds the A its ring ended at, lead and all, by design (the
+    // owner's D3); the note on smoothing reports how far A left the normal
+    // plus the lead, so a step's lead is not tilt. On a cylinder the rings
+    // follow the normal exactly, so no tilt is used (review of #483).
+    let f = fixture(
+        &Cylinder {
+            radius: 15.0,
+            length: 10.0,
+        },
+        3,
+        720,
+    );
+    let p = path(
+        &f,
+        &ringed(values(
+            1.0,
+            &[
+                (parameter::LEAD_ANGLE, num(5.0)),
+                (parameter::MAX_TILT, num(2.0)),
+            ],
+        )),
+    )
+    .unwrap();
+    let note = p
+        .notes
+        .iter()
+        .map(|n| n.message.as_str())
+        .find(|m| m.contains("largest tilt used"))
+        .unwrap();
+    let used: f64 = note
+        .split("largest tilt used is ")
+        .nth(1)
+        .and_then(|s| s.split(' ').next())
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(used <= 2.0 + 1e-9, "{note}");
+}

@@ -282,6 +282,17 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         None
     }
 
+    /// Whether these settings cut the stock in layers no deeper than a
+    /// Stepdown the strategy itself holds to the tool's flutes (roughing,
+    /// Facing, finishing with Finishing layers on). False, the default: each
+    /// pass cuts all the stock above it at once, so the generation refuses a
+    /// path whose deepest cut, read along the tool axis from the stock, is
+    /// past the tool's flutes ([`crate::flutes::check`]; decision record
+    /// 0509). A strategy that returns true makes its own flute check.
+    fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
+        false
+    }
+
     /// Whether the strategy works on the material earlier operations left
     /// (rest machining, pencil clean-up; OP-09). The host says so in the
     /// operation's notes when no earlier operation of the setup has made the
@@ -513,6 +524,18 @@ fn generate_with(
         let _timing = context.time_stage("assembly");
         assemble_with_entry(&passes, input, &common, &entry, context)?
     };
+    // The flutes against the deepest cut (TL-04, NFR-07; decision record
+    // 0509), on the path as assembly wrote it: its angles are the ones the
+    // tool turns through.
+    if !strategy.cuts_in_layers(&parameters) {
+        let _timing = context.time_stage("flute check");
+        let layers = strategy
+            .schema()
+            .get(crate::finishing::parameter::FINISHING_LAYERS)
+            .is_some()
+            .then_some(crate::finishing::parameter::FINISHING_LAYERS);
+        crate::flutes::check_path(input, &path, layers, context)?;
+    }
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes
     // still says it (decision record 0175).
