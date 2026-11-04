@@ -67,6 +67,18 @@ Tests written from the requirement first, named by requirement ID (times uninstr
 - `openchuck-ui` `viewport` `req_sim_05_req_nfr_15_the_legend_and_the_probe_name_unreachable_material` (failed first): the legend row, the Not-measured row and the probe's words, on the part.
 - Screenshots of the stand-in, rendered with the release build on Xvfb and lavapipe, on the throwaway branch `claude/simvis-screens` (`simvis/`), not for merging.
 - On the owner's project (scratch program, not committed): the classification as item 2, 100% of the 1,304,634 leftover samples enclosed.
+- Memory, issue #523 (the owner's crankshaft, private: numbers only; scratch programs, not committed; release builds, 4 threads, 0.1 mm cell, 3,400,004 samples of which 988,878 counted).
+  - **The cause.** Item 4's lookup behind a face needs samples of every kind, so the cut part's sample index held all 3.4 million samples in linked nodes of 144 bytes (490 MB), against main's 988,878 counted samples (134 MB). Building it copied every sample (245 MB).
+  - **The fix.** `stock_surface.rs` keeps two implicit balanced k-d trees, built from sample numbers. One holds the counted samples, for the lookup within the search; the other holds every finite sample, as a point, a number and a slot, for the lookup behind a face. Tight bounds are kept only for runs of 64 samples or more. The tie rule is unchanged.
+  - **Same answers.** The cut part's values and bands, hashed at three frames, are byte-identical before and after, on the crankshaft and on the public baluster example (`testdata/examples`). `req_sim_05_the_material_behind_is_read_from_an_exhaustive_nearest_sample_of_any_kind` was written first and passed on the old index; it checks both lookups against an exhaustive search over samples of every kind, ties included.
+
+| Crankshaft, cut part at the end | main | old index | new index |
+| --- | --- | --- | --- |
+| Memory after playback starts (RSS, peak) | 829, 896 MB | 1,196, 1,429 MB | 862, 862 MB |
+| Peak memory at the end | 1,323 MB | 1,680 MB | 1,373 to 1,429 MB |
+| Still frame | 2.2 to 2.5 s | 3.2 to 3.9 s | 2.5 to 4.0 s |
+| Playing frame | 0.83 to 0.97 s | 1.1 to 1.3 s | 1.03 to 1.09 s |
+
 
 ## Open items
 
