@@ -1,6 +1,6 @@
 # 0647: The cut part, the tool and the trace draw on Simulate only (SIM-01, SIM-02, UI-03; issue #535; lane VIEW-ORIENT)
 
-- **Status:** proposed by lane VIEW-ORIENT on 4 Nov 2026. The choices (the tool hidden on every step but Simulate; the faint trace hidden outside Simulate; the toolpath lines kept) were made by the coordinator as small UI calls the owner can overrule. Not accepted until the owner says so (decision 0049).
+- **Status:** accepted by the project owner on 4 Nov 2026, relayed by the coordinator (decision 0049), including the two small calls: the tool hidden outside Simulate and the faint trace hidden outside Simulate. Proposed by lane VIEW-ORIENT the same day.
 - **Date:** 4 Nov 2026.
 - **Number:** provisional 0647; assigned by the Merge Manager at release.
 - **Issue:** [#535](https://github.com/paulhampson/OpenChuckCAM/issues/535). Stacked on [0646](0646-view-orientation-a0-mark-and-cube-frame.md) (same code: `orient.rs`).
