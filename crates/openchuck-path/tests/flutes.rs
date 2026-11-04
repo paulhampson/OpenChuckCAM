@@ -476,3 +476,194 @@ fn req_op_08_req_tl_04_req_nfr_07_edge_following_counts_the_stock_above_the_surf
     let need = 17.5_f64.hypot(17.5) - (BAR - 0.3);
     refused_and_accepted_at(&edges, &depth, None, (need - 0.05, need + 0.05));
 }
+
+// Cuts below the middle of the stock (the owner's question on #530): a tip
+// below the rotary axis has the stock's far side above it, the farthest
+// point's radius plus the depth below the axis.
+
+#[test]
+fn req_tl_04_a_cut_below_the_midpoint_adds_its_depth_below_the_axis_in_both_senses_of_a() {
+    let round = AnalyticStock::Cylinder {
+        radius: 17.5,
+        x_start: -2.0,
+        x_end: 22.0,
+    };
+    let square = boxed((-17.5, 17.5), (-17.5, 17.5));
+    for sense in [
+        openchuck_types::machine::ASense::Positive,
+        openchuck_types::machine::ASense::Negative,
+    ] {
+        for (stock, top) in [(round, 17.5), (square, 17.5_f64.hypot(17.5))] {
+            for below in [5.0, 10.0, 15.0] {
+                let want = top + below;
+                let mut f = fixture(stock, 50.0);
+                f.rotary.sense = sense;
+                let d = deepest_of(&f, &turn(&f, -below));
+                assert!(
+                    (d.depth - want).abs() < 1e-3,
+                    "{sense:?} {stock:?} {below} below: {d:?}"
+                );
+                for (flutes, refused) in [(want - 0.01, true), (want + 0.01, false)] {
+                    let mut f = fixture(stock, flutes);
+                    f.rotary.sense = sense;
+                    assert_eq!(
+                        check(&f.input(), &turn(&f, -below), None).is_err(),
+                        refused,
+                        "{sense:?} {stock:?} {below} below, flutes {flutes}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn req_tl_04_the_quick_bound_never_skips_a_tip_below_the_axis() {
+    // The bound is the farthest radius less the signed tip height: below
+    // the axis it grows, so the place is read. Flutes just short of the
+    // real depth are refused at every depth below the axis.
+    for below in [0.5, 2.5, 7.5, 12.5] {
+        let want = 17.5_f64.hypot(17.5) + below;
+        let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), want - 0.02);
+        assert!(
+            check(&f.input(), &turn(&f, -below), None).is_err(),
+            "{below}"
+        );
+    }
+}
+
+/// A pin of radius 3 whose centre is 13 mm from the axis, X 0 to 20: its
+/// side facing the axis is 10 mm from it, so with the pin under the axis
+/// the tool's tip is 10 mm below it.
+fn pin() -> MeshSurface {
+    let mut mesh = openchuck_testkit::parts::Cylinder {
+        radius: 3.0,
+        length: 20.0,
+    }
+    .mesh(41, 180);
+    for v in &mut mesh.vertices {
+        *v = Point3::new(v.x, v.y, v.z - 13.0);
+    }
+    MeshSurface::new(&mesh).unwrap()
+}
+
+/// The depth a refusal names: "stands up to D mm".
+fn named_depth(message: &str) -> f64 {
+    let rest = message.split("stands up to ").nth(1).unwrap();
+    rest.split(' ').next().unwrap().parse().unwrap()
+}
+
+/// `strategy` on the pin in 35 x 35 box stock: refused with 24 mm of flute,
+/// naming a depth past the box's farthest corner (24.749 mm), which only a
+/// tip below the axis has; accepted with 36 mm, past the bound 24.749 + 10.
+fn below_the_axis(strategy: &dyn openchuck_path::Strategy, extra: &[(&str, ParameterValue)]) {
+    let on = |flutes: f64| {
+        let mut f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
+        f.surface = pin();
+        run(|ctx| support::generate(strategy, &f.input(), &values(extra), ctx))
+    };
+    let e = on(24.0).unwrap_err().to_string();
+    let depth = named_depth(&e);
+    eprintln!("{}: {e}", strategy.name());
+    assert!(
+        depth > 17.5_f64.hypot(17.5) + 1.0,
+        "{}: {e}",
+        strategy.name()
+    );
+    assert!(depth <= 17.5_f64.hypot(17.5) + 10.0 + 1e-6, "{e}");
+    on(36.0).unwrap_or_else(|e| panic!("{}: {e}", strategy.name()));
+}
+
+#[test]
+fn req_tl_04_simultaneous_finishing_below_the_midpoint_is_measured() {
+    below_the_axis(&openchuck_path::SimultaneousFinishing, &[]);
+}
+
+#[test]
+fn req_tl_04_axial_finishing_below_the_midpoint_is_measured() {
+    below_the_axis(
+        &openchuck_path::AxialFinishing,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+    );
+}
+
+#[test]
+fn req_tl_04_helical_finishing_below_the_midpoint_is_measured() {
+    below_the_axis(
+        &openchuck_path::HelicalFinishing,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+    );
+}
+
+#[test]
+fn req_tl_04_indexed_finishing_below_the_midpoint_is_measured() {
+    below_the_axis(&openchuck_path::IndexedFinishing, &[]);
+}
+
+#[test]
+fn req_tl_04_rest_machining_below_the_midpoint_is_measured() {
+    below_the_axis(
+        &openchuck_path::RestMachining,
+        &[("face_free_ends", ParameterValue::Flag(false))],
+    );
+}
+
+fn crankshaft() -> MeshSurface {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/stl/crankshaft.stl");
+    MeshSurface::new(&support::read_binary_stl(&path)).unwrap()
+}
+
+/// The owner's case on the public CrankShaft model: simultaneous finishing
+/// with a 3.175 mm flat tool, in 35 x 35 mm box stock over the part, and
+/// the same box 2.5 mm off the axis in Z.
+fn crank(flutes: f64, z: (f64, f64)) -> openchuck_path::Result<openchuck_path::GeneratedPath> {
+    let mut f = Fixture::new(crankshaft(), 40.0, &flat(flutes));
+    f.stock = AnalyticStock::Box(Aabb {
+        min: Point3::new(-1.0, -17.5, z.0),
+        max: Point3::new(41.0, 17.5, z.1),
+    });
+    let v = values(&[
+        (names::STEPOVER, ParameterValue::Number(0.45)),
+        (names::TOLERANCE, ParameterValue::Number(0.01)),
+    ]);
+    run(|ctx| support::generate(&openchuck_path::SimultaneousFinishing, &f.input(), &v, ctx))
+}
+
+#[test]
+fn req_tl_04_req_nfr_07_the_crankshaft_in_35_by_35_box_stock_is_refused_with_25_mm_of_flute() {
+    // The pins' sides facing the axis are 2.5 mm from it: with a pin under
+    // the axis the tip is 2.5 mm below it (bound 24.749 + 2.502).
+    let e = crank(25.0, (-17.5, 17.5)).unwrap_err().to_string();
+    eprintln!("centred: {e}");
+    assert!(e.contains("25.000 mm of flute"), "{e}");
+    assert!(e.contains("35.000 x 35.000 mm box"), "{e}");
+    assert!(named_depth(&e) > 25.0, "{e}");
+    crank(28.5, (-17.5, 17.5)).unwrap();
+    // The same box 2.5 mm off the axis in Z, as bounding-box stock can be:
+    // its farthest corner is hypot(17.5, 20) = 26.575 mm from the axis, and
+    // the cut approaches 30 mm (the owner's report).
+    let e = crank(25.0, (-15.0, 20.0)).unwrap_err().to_string();
+    eprintln!("off the axis: {e}");
+    assert!(e.contains("26.575 mm from the rotary axis"), "{e}");
+    assert!(named_depth(&e) > 26.0, "{e}");
+}
+
+#[test]
+fn req_tl_04_pencil_finishing_below_the_midpoint_is_measured() {
+    // The crankshaft's inside corners are on the pins' sides facing the
+    // axis (decision record 0410), 2.5 mm from it.
+    let pencil = openchuck_path::PencilFinishing::default();
+    let on = |flutes: f64| {
+        let mut f = Fixture::new(crankshaft(), 40.0, &flat(flutes));
+        f.stock = AnalyticStock::Box(Aabb {
+            min: Point3::new(-1.0, -17.5, -17.5),
+            max: Point3::new(41.0, 17.5, 17.5),
+        });
+        run(|ctx| support::generate(&pencil, &f.input(), &values(&[]), ctx))
+    };
+    let e = on(15.0).unwrap_err().to_string();
+    eprintln!("pencil: {e}");
+    assert!(e.contains("15.000 mm of flute"), "{e}");
+    on(29.0).unwrap();
+}

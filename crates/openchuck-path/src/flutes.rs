@@ -37,6 +37,11 @@ const LENGTH_STEP: f64 = 0.5;
 /// refused: rounding only.
 const SLACK: f64 = 1e-6;
 
+/// How far inside the flutes, mm, the quick bound must be before a place is
+/// left unread: a stock model's farthest radius may be measured at cell
+/// centres (the simulation's columns), so the bound is not trusted closer.
+const BOUND_MARGIN: f64 = 1.0;
+
 /// The deepest cut a set of passes makes: how far the stock stands above
 /// the tool's tip along the tool axis, mm, and where (model X and A).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -177,8 +182,10 @@ pub fn deepest(input: &StrategyInput<'_>, passes: &[Pass], limit: f64) -> Option
             }
             for (position, a) in along_move(input, previous, point) {
                 // Nothing is further from the axis than the bound, so the
-                // stock stands at most this far above the tip.
-                if bound.is_some_and(|r| r - position.height <= limit + SLACK) {
+                // stock stands at most this far above the tip. The height is
+                // signed: a tip below the axis (a cut past the middle of the
+                // stock) adds its depth below it, so it is skipped less.
+                if bound.is_some_and(|r| r - position.height + BOUND_MARGIN <= limit) {
                     continue;
                 }
                 let depth = depth_at(stock, input, position, a, radius);

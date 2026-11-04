@@ -2597,3 +2597,17 @@ fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall
     let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 13.0));
     assert!(generated(&f, &[]).group.segments.len() > 10);
 }
+
+#[test]
+fn req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stock() {
+    // The tip end reversed: the tool comes from below (A 180), its tip on
+    // the wall's top 18 mm from the axis on the far side, so the 22 mm
+    // round stands 22 + 18 = 40 mm above it (decision record 0508).
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let reversed = [(swarf::parameter::TIP_END, text("reversed"))];
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 39.9));
+    let message = refused(&f, &reversed);
+    assert!(message.contains("stands up to 40.000 mm"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 40.1));
+    assert!(generated(&f, &reversed).group.segments.len() > 10);
+}
