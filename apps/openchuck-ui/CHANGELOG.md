@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep, and the extent and margin labels) turns with the workpiece as A turns, as the path lines do.
+
+- FACEAPPROACH (#499, decision 0507, accepted): the Facing cutter sweep is drawn in its own colour (lime `#c2e07a`, a thin line) instead of the Cut amber, and the path legend lists "Cutter sweep" while one is shown.
+
 - POLISH (#381, #379, #418): File > Open recent lists the recent projects by folder name (full path on hover) with Clear recent list; a folder that is gone is dropped from the list; a choice goes through the ordinary Open command and fills the Open dialog with that folder. Typing in an export file-name template no longer splits the toolpath again (the split is kept for the run). Results keeps every feed-limit note of an operation name that two operations share. Whether the recent folders still exist is checked off the UI thread, so a dead network share cannot stall the menu (a late answer never forgets a project added meanwhile). The export Preview is rebuilt from the same kept split. The click log records a recent project as "Open recent project", not its folder name.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.

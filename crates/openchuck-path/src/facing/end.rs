@@ -37,6 +37,11 @@ pub struct EndFacingParameters {
     pub allowance: f64,
     /// Total operation geometric tolerance.
     pub tolerance: f64,
+    /// The operation's approach distance: how far the complete tool stays
+    /// from the stock's end face where each band starts and ends, so a rapid
+    /// beside the face keeps the clearance a rapid above the stock keeps
+    /// (OP-14; issue #499). Never less than a quarter of the tolerance.
+    pub approach: f64,
 }
 
 impl EndFacingParameters {
@@ -57,6 +62,7 @@ impl EndFacingParameters {
             max_angle_step: Degrees(parameters.number(roughing::MAX_ANGLE_STEP)?),
             allowance: parameters.number(names::STOCK_TO_LEAVE)?,
             tolerance: parameters.number(names::TOLERANCE)?,
+            approach: parameters.number(names::APPROACH_DISTANCE)?,
         })
     }
 }
@@ -151,6 +157,11 @@ pub fn plan_end(
     {
         return Err(refuse("invalid stock allowance or tolerance"));
     }
+    if !parameters.approach.is_finite() || parameters.approach < 0. {
+        return Err(refuse(
+            "the approach distance must be finite and not negative",
+        ));
+    }
     let source_error = setup
         .projection_error
         .filter(|v| v.is_finite() && *v >= 0.)
@@ -169,7 +180,25 @@ pub fn plan_end(
     // Keep the displayed target and length model-derived. A source bound
     // reserves cutting accuracy inside tolerance, not another allowance.
     let cutting_x = target.x + sign * source_error;
+    // The stock ends at (or inside) the part's end: nothing is past it to face
+    // (issue #471, the owner's note N2), said in the user's words.
+    let (part_end, stock_end) = match end {
+        FacingEnd::Far => (part_x.1, stock_x.1),
+        FacingEnd::Start => (part_x.0, stock_x.0),
+    };
+    let flush = part_end.is_finite()
+        && stock_end.is_finite()
+        && sign * (stock_end - part_end) <= parameters.tolerance;
+    let nothing_past = || {
+        refuse(&format!(
+            "the stock ends at the part's end at X {part_end:.3}: there is no stock past this \
+             end to face. If the real blank is longer, set the stock's length to match it"
+        ))
+    };
     if !cutting_x.is_finite() || cutting_x < stock_x.0 || cutting_x > stock_x.1 {
+        if flush {
+            return Err(nothing_past());
+        }
         return Err(refuse("the target end plane is outside supplied stock"));
     }
     let coverage = parameters.extent.planar(
@@ -203,6 +232,12 @@ pub fn plan_end(
         .into_iter()
         .map(|h| sign * h)
         .collect::<Vec<_>>();
+    // With no stock to leave the target is the flush stock end itself, so no
+    // layer is cut (the review of #491): refused the same way, not returned
+    // as an empty plan. Stock past the end by any depth still gets its layer.
+    if axial_planes.is_empty() && flush {
+        return Err(nothing_past());
+    }
     let (bands, tab_residual_bound) =
         routing::bands(setup, parameters, coverage, end, cutting_x, context)?;
     let count = axial_planes
@@ -222,8 +257,13 @@ pub fn plan_end(
     });
     // Axial approach/departure are part of each material-removal slice.
     // Shared entry/retract starts at these air points, keeping its selected
-    // style and semantics. This is not a stock-edge cutting extension.
-    let air_x = sign * (outside + radius + 0.25 * parameters.tolerance);
+    // style and semantics. This is not a stock-edge cutting extension. The
+    // complete tool stays the approach distance clear of the end face (and
+    // of any protection beyond it), so the shared rapid descent beside the
+    // face keeps the same allowance as one stopping above the stock (OP-14;
+    // issue #499). It was a quarter of the tolerance, 2.5 um by default.
+    let gap = parameters.approach.max(0.25 * parameters.tolerance);
+    let air_x = sign * (outside + radius + gap);
     if !air_x.is_finite() || sign * air_x - radius <= outside {
         return Err(refuse(
             "cannot establish complete-tool axial air clearance at these coordinates",

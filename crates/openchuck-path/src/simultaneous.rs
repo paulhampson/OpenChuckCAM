@@ -1037,10 +1037,36 @@ fn unreached_warning(
     max_lean: f64,
 ) -> Option<crate::assemble::PathWarning> {
     use crate::assemble::UnreachedReason;
-    const LISTED: usize = 5;
     if areas.is_empty() {
         return None;
     }
+    let plural = if areas.len() == 1 { "" } else { "s" };
+    let lean = areas
+        .iter()
+        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
+             uncut: {}; check them in the simulation before running the program",
+            areas.len(),
+            unreached_list(areas, diameter, max_lean)
+        ),
+        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+        requires_acknowledgement: false,
+    })
+}
+
+/// The areas a tool cannot reach, for a warning: the largest five, each
+/// with where it is, how large and why, then how many more (OP-20; decision
+/// records 0368 and 0505). `max_lean` is named only for an area that needs
+/// more lean.
+pub(crate) fn unreached_list(
+    areas: &[crate::assemble::Unreached],
+    diameter: f64,
+    max_lean: f64,
+) -> String {
+    use crate::assemble::UnreachedReason;
+    const LISTED: usize = 5;
     let listed: Vec<String> = areas
         .iter()
         .take(LISTED)
@@ -1063,6 +1089,10 @@ fn unreached_warning(
                     "needs a lean of {degrees:.0} degrees from the surface normal, more than the \
                      largest lean on hidden surfaces ({max_lean} degrees)"
                 ),
+                UnreachedReason::NearHeldRegion => "too near a held region: the tool keeps its \
+                                                    radius clear of the gripped length of the \
+                                                    stock"
+                    .to_owned(),
             };
             format!(
                 "X {:.3} to {:.3} {place} ({:.1} mm2), {why}",
@@ -1076,20 +1106,7 @@ fn unreached_warning(
     } else {
         String::new()
     };
-    let plural = if areas.len() == 1 { "" } else { "s" };
-    let lean = areas
-        .iter()
-        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
-    Some(crate::assemble::PathWarning {
-        message: format!(
-            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
-             uncut: {}{more}; check them in the simulation before running the program",
-            areas.len(),
-            listed.join("; ")
-        ),
-        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
-        requires_acknowledgement: false,
-    })
+    format!("{}{more}", listed.join("; "))
 }
 
 /// The tool-axis plan along a contour (OP-20): the reachable axis nearest

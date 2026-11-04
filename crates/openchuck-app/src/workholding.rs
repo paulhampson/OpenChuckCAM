@@ -25,6 +25,7 @@ use openchuck_types::workholding::{
 };
 
 use crate::AppError;
+use crate::operation::HELD_CLEARANCE;
 
 /// The largest diameter of a default tab, in millimetres (decision 0035,
 /// owner's answers to OI-158).
@@ -213,19 +214,20 @@ pub fn selection_reach_notes(
 
 /// The note for the first tab shorter along X than a tool of `tool_diameter`
 /// is wide, naming the tool and the operation that uses it, or `None`
-/// (OI-159; decision 0494; interface specification 11.7). With `skip_auto`,
-/// automatic tabs are left out, as their stored length is not where they are
-/// until the stock and the part are known (decision 0202 item 3).
+/// (OI-159; decision 0494; interface specification 11.7). The tabs of `skip`,
+/// by their place in the list, are left out: automatic tabs whose stored
+/// length is not where they are, because the stock or the part is unknown or
+/// the end has no room for them (decision 0202 item 3).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
     tool_name: &str,
     operation: &str,
-    skip_auto: bool,
+    skip: &[usize],
 ) -> Option<WorkholdingFinding> {
     workholding.tabs.iter().enumerate().find_map(|(i, tab)| {
         let d = tab.length.0;
-        let counts = !(skip_auto && tab.auto.is_some());
+        let counts = !skip.contains(&i);
         (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
             text: format!(
@@ -336,6 +338,30 @@ fn narrow_tab_findings(
     )
 }
 
+/// The automatic tabs of `workholding` whose stored length says nothing about
+/// where they are, by their place in the list: all of them while the stock or
+/// the part is unknown, else those that find no room at their end (listed by
+/// [`Workholding::auto_tabs_without_room`]; only a warning of the zone check).
+fn unresolved_tabs(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> Vec<usize> {
+    if stock.is_none() || part.is_none() {
+        return workholding
+            .tabs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| t.auto.map(|_| i))
+            .collect();
+    }
+    workholding
+        .auto_tabs_without_room(stock, part)
+        .into_iter()
+        .map(|(i, _)| i)
+        .collect()
+}
+
 /// The first note for each tool of `tools` that a tab of `workholding` is too
 /// short for, with the tabs where they are (automatic ones resolved against
 /// the stock and the part; decision 0202 item 3).
@@ -346,12 +372,10 @@ fn narrow_findings(
     tools: &[SetupTool],
 ) -> Vec<WorkholdingFinding> {
     let resolved = workholding.resolved(stock, part);
-    // With no stock or no part the automatic tabs keep their stored lengths,
-    // which say nothing: leave them for when they can be resolved.
-    let skip_auto = stock.is_none() || part.is_none();
+    let skip = unresolved_tabs(workholding, stock, part);
     tools
         .iter()
-        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, skip_auto))
+        .filter_map(|t| narrow_tab_note(&resolved, t.diameter, &t.tool, &t.operation, &skip))
         .collect()
 }
 
@@ -462,9 +486,10 @@ pub fn check_for_tool(
     // (decision 0202 item 3): compare the length it has now, as the target
     // is built from it.
     let resolved = workholding.resolved(stock, Some(part));
+    let skip = unresolved_tabs(workholding, stock, Some(part));
     for (i, tab) in resolved.tabs.iter().enumerate() {
         let d = tab.length.0;
-        if d < tool_diameter - 1e-9 {
+        if d < tool_diameter - 1e-9 && !skip.contains(&i) {
             return Err(refuse(format!(
                 "tab {} is {d:.3} mm long along X, shorter than the tool \
                  '{tool_name}' ({tool_diameter:.3} mm); make the tab longer or use a smaller tool",
@@ -473,6 +498,92 @@ pub fn check_for_tool(
         }
     }
     Ok(())
+}
+
+/// The tool of an operation as [`uncleared_tab_notes`] needs it (decision
+/// 0503): its cutting radius, its largest radius (profile or shank), which
+/// keeps it from a held region (decision 0161), the operation's stock to
+/// leave, and the names the note gives.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ClearingTool<'a> {
+    pub(crate) cutting_radius: f64,
+    pub(crate) reach: f64,
+    pub(crate) leave: f64,
+    pub(crate) tool: &'a str,
+    pub(crate) operation: &'a str,
+}
+
+/// A note for each zone between a held region and the part that holds a tab
+/// and is too short for `tool` to cut down in, or none (OP-21, SET-09;
+/// decision 0503; issue #511). The tool's middle keeps its largest radius and
+/// [`HELD_CLEARANCE`] from the held region (decision 0161), and its cutting
+/// radius and the stock to leave from the part's end, so the room it has is
+/// the zone's length less the clearance, the stock to leave and what its
+/// largest radius has over its cutting radius. Under the tool's cutting
+/// diameter the tool lands on the part's end everywhere in the zone, and the
+/// stock round the tab is left above it. A zone with no held region is not
+/// reported: the tool can pass off the end of the stock there.
+pub(crate) fn uncleared_tab_notes(
+    workholding: &Workholding,
+    stock: &Stock,
+    part: &PartExtent,
+    tool: &ClearingTool<'_>,
+) -> Vec<String> {
+    let Some(bounds) = stock.bounds(Some(part)) else {
+        return Vec::new();
+    };
+    let (held_start, held_end) = workholding.held_intervals((bounds.min.x, bounds.max.x));
+    let (part_lo, part_hi) = (part.bounds.min.x, part.bounds.max.x);
+    let resolved = workholding.resolved(Some(stock), Some(part));
+    let diameter = 2.0 * tool.cutting_radius;
+    let zones = [
+        held_start.map(|(_, hi)| (hi, part_lo)),
+        held_end.map(|(lo, _)| (part_hi, lo)),
+    ];
+    zones
+        .into_iter()
+        .flatten()
+        .filter(|(lo, hi)| hi > lo)
+        .filter_map(|(lo, hi)| {
+            let tabs: Vec<String> = resolved
+                .tabs
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.x_start.0 < hi && t.x_start.0 + t.length.0 > lo)
+                .map(|(i, _)| (i + 1).to_string())
+                .collect();
+            let (last, rest) = tabs.split_last()?;
+            let wider = (tool.reach - tool.cutting_radius).max(0.0);
+            let room = (hi - lo) - HELD_CLEARANCE - tool.leave - wider;
+            if room >= diameter - 1e-9 {
+                return None;
+            }
+            let (word, list) = if rest.is_empty() {
+                ("tab", last.clone())
+            } else {
+                ("tabs", format!("{} and {last}", rest.join(", ")))
+            };
+            let clearance = format!("the {HELD_CLEARANCE:.3} mm it keeps from the held region");
+            let leave = format!("the {:.3} mm stock to leave", tool.leave);
+            let taken = if wider > 0.0 {
+                format!(
+                    "{clearance}, {leave} and the {wider:.3} mm its shank or body is wider \
+                     than its cut"
+                )
+            } else {
+                format!("{clearance} and {leave}")
+            };
+            Some(format!(
+                "{} cannot cut down beside {word} {list}: between the held region and the \
+                 part (X {lo:.3} to {hi:.3} mm) the tool {} ({diameter:.3} mm) has {room:.3} mm \
+                 of room, once {taken} are taken off. It leaves the stock round the tab \
+                 above it there. Use a smaller tool or less stock to leave, shorten the held \
+                 region or move the part away from it, or clear it with a later operation. \
+                 Check the program and the simulation before running it.",
+                tool.operation, tool.tool
+            ))
+        })
+        .collect()
 }
 
 /// The radius of the part's section by the plane at `x`: the farthest from
@@ -1290,6 +1401,46 @@ mod tests {
         assert_eq!(notes[0].tab, Some(1));
     }
 
+    /// CodeRabbit finding on pull request 460: an automatic tab with no room
+    /// (the held region reaches the part) keeps its stored length, which says
+    /// nothing; it is only a warning of the zone check and is not compared with
+    /// the tool, when generating or in the findings. A tab by hand still is.
+    #[test]
+    fn req_op_21_an_automatic_tab_with_no_room_is_not_compared_with_the_tool() {
+        let mut w = auto_head_tab(2.0);
+        // The grip runs to X 20 and the part starts at X 18: no head gap.
+        w.start = Some(HeldRegion {
+            length: Millimetres(20.0),
+            diameter: None,
+        });
+        let part = part(18.0, 70.0);
+        assert_eq!(
+            w.auto_tabs_without_room(Some(&stock()), Some(&part)),
+            vec![(0, TabEnd::Head)]
+        );
+        assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").is_ok());
+        let tools = one_ball_tool();
+        assert!(narrow_findings(&w, Some(&stock()), Some(&part), &tools).is_empty());
+        // A short tab placed by hand, in the tail zone, is still refused.
+        w.tabs.push(Tab {
+            auto: None,
+            x_start: Millimetres(72.0),
+            length: Millimetres(3.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(6.0),
+            },
+            layout: TabLayout::OnAxis,
+        });
+        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        assert!(
+            error.to_string().contains("tab 2 is 3.000 mm long"),
+            "{error}"
+        );
+        let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert_eq!(notes[0].tab, Some(1));
+    }
+
     /// The reverse: a thin tab that is long enough is accepted, for a
     /// cylinder and a frustum, on the axis and around it.
     #[test]
@@ -1317,8 +1468,8 @@ mod tests {
                 // Length equal to the tool is long enough.
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
                 assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
-                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", false).is_none());
-                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", false).unwrap();
+                assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", &[]).is_none());
+                let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", &[]).unwrap();
                 assert_eq!(
                     note.text,
                     "Tab 1 is 4.000 mm long along X, shorter than the tool T1 Flat \
@@ -1391,5 +1542,158 @@ mod tests {
         let over = part(12.0, 78.0);
         let error = check_for_tool(&w, Some(&stock()), &over, 1.0, "a").unwrap_err();
         assert!(error.to_string().contains("tab 1"), "{error}");
+    }
+
+    /// The owner's blisk setup in numbers (issue #511): box stock X -8 to
+    /// 56, 8 mm held at the start, an automatic head tab, the part from X 4.
+    fn blisk_like() -> (Workholding, Stock, PartExtent) {
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(8.0),
+                diameter: None,
+            }),
+            tabs: vec![Tab {
+                auto: Some(TabEnd::Head),
+                x_start: Millimetres(0.0),
+                length: Millimetres(4.0),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(10.0),
+                },
+                layout: TabLayout::OnAxis,
+            }],
+            ..Workholding::default()
+        };
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(42.0),
+            length: Millimetres(64.0),
+            x_start: Millimetres(-8.0),
+        };
+        (w, stock, part(4.0, 54.0))
+    }
+
+    fn flat(leave: f64, reach: f64) -> ClearingTool<'static> {
+        ClearingTool {
+            cutting_radius: 1.5875,
+            reach,
+            leave,
+            tool: "T104 Flat 3.175",
+            operation: "1 Roughing",
+        }
+    }
+
+    /// Decision 0503 item 1 (issue #511): between the held region and the
+    /// part there is 4 mm; less the 0.5 mm kept clear of the held region and
+    /// the 0.5 mm stock to leave, 3 mm, less than the 3.175 mm tool, so the
+    /// tool cannot cut down beside the tab and the operation says so.
+    #[test]
+    fn req_op_21_req_set_09_a_tool_with_no_room_beside_a_tab_is_reported() {
+        let (w, stock, part) = blisk_like();
+        let notes = uncleared_tab_notes(&w, &stock, &part, &flat(0.5, 1.5875));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        let text = &notes[0];
+        for want in [
+            "1 Roughing",
+            "tab 1",
+            "X 0.000 to 4.000 mm",
+            "3.000 mm",
+            "T104 Flat 3.175 (3.175 mm)",
+            "0.500 mm stock to leave",
+            "smaller tool",
+            "Check the program",
+        ] {
+            assert!(text.contains(want), "{want:?} not in {text}");
+        }
+    }
+
+    /// With no stock to leave there is 3.5 mm, and the tool fits; with
+    /// exactly the tool's width it fits too.
+    #[test]
+    fn req_op_21_req_set_09_a_tool_that_fits_beside_a_tab_is_not_reported() {
+        let (w, stock, part) = blisk_like();
+        assert!(uncleared_tab_notes(&w, &stock, &part, &flat(0.0, 1.5875)).is_empty());
+        // 4 - 0.5 - leave = 3.175 exactly.
+        let leave = 4.0 - HELD_CLEARANCE - 3.175;
+        assert!(uncleared_tab_notes(&w, &stock, &part, &flat(leave, 1.5875)).is_empty());
+    }
+
+    /// A shank or profile wider than the cutting radius keeps the tool
+    /// farther from the held region (decision 0161), so it takes room too.
+    #[test]
+    fn req_op_21_req_set_09_a_wider_shank_takes_room_beside_a_tab() {
+        let (w, stock, part) = blisk_like();
+        let notes = uncleared_tab_notes(&w, &stock, &part, &flat(0.0, 2.0875));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        // 4 - 0.5 - 0 - (2.0875 - 1.5875) = 3.
+        assert!(notes[0].contains("has 3.000 mm of room"), "{notes:?}");
+        assert!(
+            notes[0].contains("stock to leave and the 0.500 mm its shank"),
+            "{notes:?}"
+        );
+    }
+
+    /// Two tabs in one zone (two short ones side by side) are named together
+    /// in one note.
+    #[test]
+    fn req_op_21_req_set_09_tabs_sharing_a_zone_are_named_together() {
+        let (mut w, stock, part) = blisk_like();
+        let short = |x: f64| Tab {
+            auto: None,
+            x_start: Millimetres(x),
+            length: Millimetres(2.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(10.0),
+            },
+            layout: TabLayout::OnAxis,
+        };
+        w.tabs = vec![short(0.0), short(2.0)];
+        let notes = uncleared_tab_notes(&w, &stock, &part, &flat(0.5, 1.5875));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(notes[0].contains("beside tabs 1 and 2:"), "{notes:?}");
+    }
+
+    /// The tail zone the same way, and no note where no held region bounds
+    /// the zone (the tool can pass off the end of the stock) or where the
+    /// zone has no tab.
+    #[test]
+    fn req_op_21_req_set_09_only_a_held_zone_with_a_tab_is_reported() {
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(42.0),
+            length: Millimetres(64.0),
+            x_start: Millimetres(0.0),
+        };
+        let part = part(10.0, 54.0);
+        let tail_tab = Tab {
+            auto: None,
+            x_start: Millimetres(54.0),
+            length: Millimetres(4.0),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(10.0),
+            },
+            layout: TabLayout::OnAxis,
+        };
+        let held_end = Some(HeldRegion {
+            length: Millimetres(6.0),
+            diameter: None,
+        });
+        let tail = Workholding {
+            end: held_end,
+            tabs: vec![tail_tab],
+            ..Workholding::default()
+        };
+        let notes = uncleared_tab_notes(&tail, &stock, &part, &flat(0.5, 1.5875));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(notes[0].contains("X 54.000 to 58.000 mm"), "{notes:?}");
+        // No held region at the end: nothing keeps the tool back.
+        let free = Workholding {
+            tabs: vec![tail_tab],
+            ..Workholding::default()
+        };
+        assert!(uncleared_tab_notes(&free, &stock, &part, &flat(0.5, 1.5875)).is_empty());
+        // A held region but no tab in its zone: not this check's business.
+        let bare = Workholding {
+            end: held_end,
+            ..Workholding::default()
+        };
+        assert!(uncleared_tab_notes(&bare, &stock, &part, &flat(0.5, 1.5875)).is_empty());
     }
 }
