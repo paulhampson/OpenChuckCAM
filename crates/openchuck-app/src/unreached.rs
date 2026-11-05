@@ -34,9 +34,22 @@ use crate::{AppError, Application, JobHandle, Regeneration};
 /// groove's undercut) is not marked.
 pub const MATCH_TOLERANCE: f64 = 0.5;
 
-/// The start of the warning that lists the areas (`unreached_warning` of the
-/// strategy), by which Messages finds it among an operation's warnings.
+/// The start of the warning that lists the areas (`unreached_warning` of
+/// simultaneous finishing), by which Messages finds it among an operation's
+/// warnings.
 pub const WARNING_START: &str = "simultaneous finishing cannot reach ";
+
+/// The start of rest machining's warning that lists its areas, in the same
+/// words and order as simultaneous finishing's (decision 0505).
+pub const REST_WARNING_START: &str = "rest machining cannot reach ";
+
+/// Whether `message` is a warning that lists unreached areas, largest first,
+/// so that Messages offers "Show in view N" for each (decision record 0515
+/// item 5).
+#[must_use]
+pub fn lists_areas(message: &str) -> bool {
+    message.starts_with(WARNING_START) || message.starts_with(REST_WARNING_START)
+}
 
 /// The most areas Messages offers "Show in view" for: the warning lists the
 /// largest five.

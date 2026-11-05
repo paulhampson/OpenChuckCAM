@@ -1764,7 +1764,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
-                let views = if warning.message.starts_with(crate::unreached::WARNING_START) {
+                let views = if crate::unreached::lists_areas(&warning.message) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())
                         .map(|area| MessageAction::ShowInView {

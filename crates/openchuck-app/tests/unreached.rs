@@ -502,6 +502,27 @@ fn req_op_20_the_areas_go_with_their_toolpath() {
     let _ = std::fs::remove_dir_all(&b.dir);
 }
 
+/// UI-12, decision 0515 item 5 with decision 0505: rest machining's
+/// warning lists its areas in the same words and order as simultaneous
+/// finishing's, so Messages offers "Show in view N" on either; no other
+/// warning is taken for one.
+#[test]
+fn req_ui_12_both_warnings_that_list_areas_offer_show_in_view() {
+    use openchuck_app::unreached::{REST_WARNING_START, WARNING_START, lists_areas};
+    assert!(lists_areas(&format!(
+        "{WARNING_START}2 hidden areas of the part"
+    )));
+    assert!(lists_areas(&format!(
+        "{REST_WARNING_START}2 areas of the part where material is left"
+    )));
+    assert!(!lists_areas(
+        "rest machining found material left but the tool cannot reach any of it"
+    ));
+    assert!(!lists_areas(
+        "rest machining added 3 rings between X 1 and 2"
+    ));
+}
+
 /// UI-12, decision 0515 item 5: the warning that lists unreachable areas
 /// offers "Show in view N" for each area it lists (at most five, as it
 /// lists), in its order; no other message does.
