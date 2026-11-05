@@ -1,4 +1,4 @@
-# 0620: An operation whose own steps are done in a run that has not ended shows "Finalising", not stale (lane STATUSICON; issue #474)
+# 0517: An operation whose own steps are done in a run that has not ended shows "Finalising", not stale (lane STATUSICON; issue #474)
 
 - **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner chose the state's name and icon (option 1) and agreed the UI-11 amendment the same day, relayed the same way.
 - **Date:** 1 Nov 2026.
@@ -6,7 +6,7 @@
 - **Issue:** #474.
 - **Requirements:** UI-11 (amended below), UI-16, NFR-12, NFR-15.
 - **Amends:** UI-11 in `docs/requirements.md` (adds "finalising" to the state list, agreed by the owner) and the status-marks table of `docs/ui-design/ui-specification.md` section 6 (one row). [Decision 0238](0238-simulate-display-and-operation-navigation.md) (the "Simulation out of date" banner) is not changed.
-- **Numbers:** takes 0620 and OI-1960. No project schema number. No library-family change, so no version bump (only `openchuck-app` and `openchuck-ui` change).
+- **Numbers:** takes 0517 and OI-2039. No project schema number. No library-family change, so no version bump (only `openchuck-app` and `openchuck-ui` change).
 
 ## Context
 
@@ -25,7 +25,7 @@ After one operation's own toolpath the run still does: the link to the previous 
 
 ## Open items
 
-- OI-1960: optionally commit each operation's record as it finishes, so it is up to date before the run ends. This needs a rollback for the end-of-run refusal and a way to show it.
+- OI-2039: optionally commit each operation's record as it finishes, so it is up to date before the run ends. This needs a rollback for the end-of-run refusal and a way to show it.
 - Decision 0520 (VIEW-OVERLAYS, #472) was not on `main` when this was written; it only reads `ItemState`, and a new variant may need a match arm in its code after it merges.
 
 ## Verification

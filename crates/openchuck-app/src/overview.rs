@@ -231,7 +231,7 @@ pub enum ItemState {
     /// Its own toolpath, link and checks are done in a run that has not
     /// ended: a blue circle, the left half filled. It counts as up to date
     /// only when the run is committed, and goes back to stale if the run is
-    /// cancelled, fails or is refused (decision record 0620).
+    /// cancelled, fails or is refused (decision record 0517).
     Finalising,
     /// It can be used, with a caveat: an amber triangle outline.
     Warning,
@@ -898,7 +898,7 @@ struct RecordState {
     last_run: Option<Vec<OperationId>>,
     /// The operations the run in progress has finished (path, link, checks
     /// and stock), by the chained key they were finished with. They are not
-    /// up to date until the run is committed (decision record 0620).
+    /// up to date until the run is committed (decision record 0517).
     finished_in_run: BTreeMap<OperationId, Key>,
     /// The operations a run finished but did not keep because it was
     /// cancelled, failed or was refused, with why, to say so in their cause.
@@ -2671,7 +2671,7 @@ mod tests {
 
     #[test]
     fn req_ui_11_req_nfr_12_a_finished_operation_is_finalising_until_the_run_is_committed() {
-        // Decision 0620: finished in a run that has not ended is finalising,
+        // Decision 0517: finished in a run that has not ended is finalising,
         // never up to date; the commit makes it up to date.
         let (app, op, dir) = one_operation_app("finalising-commit");
         assert_eq!(state_of(&app, op).state, ItemState::Stale);

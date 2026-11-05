@@ -2229,7 +2229,7 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
 }
 
 /// How far along a run an operation's state is, for the order check: an
-/// operation only ever moves forward through a run (decision 0620).
+/// operation only ever moves forward through a run (decision 0517).
 fn run_rank(state: ItemState) -> u8 {
     match state {
         ItemState::Stale => 0,
