@@ -129,6 +129,20 @@ pub const LEFT_MEDIUM: Colour = hex(0x4bb7fc);
 /// `#4e71ea`, the darkest that keeps 3:1 against the view (section 16).
 pub const LEFT_MORE: Colour = hex(0x4e71ea);
 
+/// Deviation: material left that no tool on this machine can reach
+/// (SIM-05; issue 478), violet `#b652ff`, drawn with a cross-hatch of
+/// [`UNREACHABLE_HATCH`]: for red-green colour vision it is told apart
+/// from the blues of material left by the cross-hatch, not the hue (NFR-15;
+/// the measured margins are in the decision record).
+pub const UNREACHABLE: Colour = hex(0xb652ff);
+/// The cross-hatch of [`UNREACHABLE`]: dark `#15171a`, 4.8:1 on it.
+pub const UNREACHABLE_HATCH: Colour = hex(0x15171a);
+/// Deviation: not measured, dark slate `#5d6570` under a light single hatch
+/// of [`UNMEASURED_HATCH`], so it never reads as "within tolerance" (issue
+/// 478); the hatch tells it apart from a band the user hid, which is the
+/// same slate, solid.
+pub const NOT_MEASURED: Colour = hex(0x5d6570);
+
 /// A deviation band the user hid (SIM-15): solid dark slate `#5d6570`, a
 /// colour of its own, so a hidden band never reads as "within tolerance" or
 /// as the part's grey; solid, so it reads apart from "not measured", which
@@ -145,9 +159,10 @@ pub const SET_FRAME: Colour = hex(0x15171a);
 /// The width of [`SET_FRAME`].
 pub const SET_FRAME_WIDTH: f32 = 4.0;
 
-/// The colour a deviation band is drawn in: decision 0040's six bands in
-/// the colours of section 11.5 (D12, until OI-194 is decided). Not measured
-/// is the grey of "within", hatched (see [`band_hatched`]).
+/// The colour a deviation band is drawn in: decision 0040's bands in the
+/// colours of section 11.5 (D12, until OI-194 is decided), with
+/// "Unreachable" and the slate of "Not measured" (issue 478). The two
+/// patterned bands are hatched (see [`band_hatch`]).
 pub fn band_colour(band: DeviationBand) -> Colour {
     match band {
         DeviationBand::Overcut => OVERCUT,
@@ -155,25 +170,45 @@ pub fn band_colour(band: DeviationBand) -> Colour {
         DeviationBand::Thin => LEFT_SMALL,
         DeviationBand::Medium => LEFT_MEDIUM,
         DeviationBand::Thick => LEFT_MORE,
-        _ => WITHIN,
+        DeviationBand::Unreachable => UNREACHABLE,
+        _ => NOT_MEASURED,
     }
 }
 
-/// Whether a band is drawn hatched: the triangles not measured, so they
-/// read apart from "within tolerance" without hue (D12).
-pub fn band_hatched(band: DeviationBand) -> bool {
-    !matches!(
-        band,
-        DeviationBand::Overcut
-            | DeviationBand::OnTarget
-            | DeviationBand::Thin
-            | DeviationBand::Medium
-            | DeviationBand::Thick
-    )
+/// The hatch a band is drawn with, if any: a cross-hatch on "Unreachable"
+/// and a single hatch on "Not measured", so both read apart from the plain
+/// bands without hue (NFR-15).
+pub fn band_hatch(band: DeviationBand) -> Option<openchuck_viewport::Hatch> {
+    match band {
+        DeviationBand::Unreachable => Some(openchuck_viewport::Hatch {
+            colour: UNREACHABLE_HATCH,
+            kind: openchuck_viewport::HatchKind::Cross,
+        }),
+        DeviationBand::Unmeasured => Some(openchuck_viewport::Hatch {
+            colour: UNMEASURED_HATCH,
+            kind: openchuck_viewport::HatchKind::Single,
+        }),
+        _ => None,
+    }
 }
 
-/// The hatch of a band that is not measured: dark lines on the grey.
-pub const UNMEASURED_HATCH: Colour = hex(0x5d6570);
+/// The hatch of a band that is not measured: light lines `#e3e7ec` on the
+/// slate, 4.7:1 on it and 10.5:1 on the view.
+pub const UNMEASURED_HATCH: Colour = hex(0xe3e7ec);
+
+/// The core of a dot marking a surface the tool could not reach, near
+/// black `#0c0e12` (decision record 0515 item 4): 3:1 or more against every
+/// deviation band, the part's grey and the hidden slate, in normal vision and
+/// each simulated colour vision type (see the test of this module).
+pub const AREA_DOT_CORE: Colour = hex(0x0c0e12);
+/// The ring round a dot's core, white `#ffffff`: the core against the ring
+/// reads on the darkest ground, and the ring against the core on the
+/// lightest.
+pub const AREA_DOT_RING: Colour = hex(0xffffff);
+/// The ground of a numbered marker's badge: the dot's core.
+pub const AREA_MARKER_FILL: Colour = AREA_DOT_CORE;
+/// The ring of a numbered marker's badge and its number: the dot's ring.
+pub const AREA_MARKER_TEXT: Colour = AREA_DOT_RING;
 
 /// The top of the view's gradient, `#2c3139` (14.2).
 pub const VIEW_TOP: Color32 = theme::VIEWPORT_GRADIENT.0;
@@ -267,9 +302,12 @@ pub(crate) mod tests {
         assert!(left[0] > left[1] && left[1] > left[2], "{left:?}");
         // Overcut is the darkest of all.
         assert!(light(band_colour(DeviationBand::Overcut)) < left[2]);
-        // Every band but "not measured" is a plain fill.
+        // Every band but "not measured" and "unreachable" is a plain fill.
         for band in DeviationBand::ALL {
-            assert_eq!(band_hatched(band), band == DeviationBand::Unmeasured);
+            assert_eq!(
+                band_hatch(band).is_some(),
+                matches!(band, DeviationBand::Unmeasured | DeviationBand::Unreachable)
+            );
         }
     }
 
@@ -421,6 +459,19 @@ pub(crate) mod tests {
                 .fold(f64::INFINITY, f64::min)
         }
 
+        /// The smallest WCAG contrast ratio of `a` and `b` over the simulated
+        /// kinds of dichromacy.
+        pub fn worst_contrast(a: Colour, b: Colour) -> f64 {
+            let y = |c: [f64; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+            KINDS
+                .iter()
+                .map(|k| {
+                    let (ya, yb) = (y(seen(a, k)), y(seen(b, k)));
+                    (ya.max(yb) + 0.05) / (ya.min(yb) + 0.05)
+                })
+                .fold(f64::INFINITY, f64::min)
+        }
+
         /// The WCAG contrast ratio of `a` and `b`.
         pub fn contrast(a: Colour, b: Colour) -> f64 {
             let y = |c: Colour| {
@@ -476,7 +527,12 @@ pub(crate) mod tests {
         );
         let view = token(VIEW_TOP);
         for band in DeviationBand::ALL {
-            let c = contrast(band_colour(band), view);
+            // "Not measured" is read by its hatch (issue 478): its lines
+            // keep the contrast on the view, its slate base need not.
+            let c = match band {
+                DeviationBand::Unmeasured => contrast(UNMEASURED_HATCH, view),
+                _ => contrast(band_colour(band), view),
+            };
             assert!(c >= 3.0, "{band:?}: {c:.2}:1");
         }
     }
@@ -488,10 +544,141 @@ pub(crate) mod tests {
         // "within tolerance" and the part's grey in normal vision.
         use measure::{difference, worst_difference};
         for band in DeviationBand::ALL {
+            if band == DeviationBand::Unmeasured {
+                // The same slate, told apart by its hatch (issue 478).
+                assert!(band_hatch(band).is_some());
+                continue;
+            }
             let w = worst_difference(HIDDEN_BAND, band_colour(band));
             assert!(w >= 18.0, "{band:?}: {w:.1}");
         }
         assert!(difference(HIDDEN_BAND, WITHIN) >= 20.0);
         assert!(difference(HIDDEN_BAND, PART) >= 20.0);
+    }
+
+    /// The grounds a dot of the unreachable areas lies over: every deviation
+    /// band, the part's grey and the hidden slate.
+    fn dot_grounds() -> Vec<(String, Colour)> {
+        let mut out: Vec<(String, Colour)> = DeviationBand::ALL
+            .iter()
+            .map(|b| (format!("{b:?}"), band_colour(*b)))
+            .collect();
+        out.push(("part grey".to_owned(), PART));
+        out.push(("hidden slate".to_owned(), HIDDEN_BAND));
+        out
+    }
+
+    /// Decision 0515 item 4, NFR-15: a dot's core reads at 3:1 or more
+    /// against every ground it can lie over, the ring against the core at
+    /// 3:1, so the dot as a whole reads on dark and light grounds alike;
+    /// under normal vision and each simulated colour vision type. The
+    /// colours do not change with the interface scale, so the result holds
+    /// at 100 % and 120 %.
+    #[test]
+    fn req_nfr_15_unreachable_dots_read_on_every_band_and_the_part() {
+        use measure::{contrast, difference, worst_contrast, worst_difference};
+        let (core, ring) = (AREA_DOT_CORE, AREA_DOT_RING);
+        let grounds = dot_grounds();
+        assert!(grounds.len() >= 7);
+        for (name, ground) in &grounds {
+            let (cn, cw) = (contrast(core, *ground), worst_contrast(core, *ground));
+            let (rn, rw) = (contrast(ring, *ground), worst_contrast(ring, *ground));
+            let (dn, dw) = (difference(core, *ground), worst_difference(core, *ground));
+            eprintln!(
+                "{name:12} core {cn:5.2}:1 (worst {cw:5.2}) ring {rn:5.2}:1 (worst {rw:5.2}) \
+                 core dE {dn:5.1} (worst {dw:5.1})"
+            );
+            // The core on its own reads on every ground; so does the dot as
+            // a whole (the better of its tones) in every vision.
+            assert!(cn >= 3.0 && cw >= 3.0, "{name}: core {cn:.2} / {cw:.2}");
+            assert!(
+                cn.max(rn) >= 3.0 && cw.max(rw) >= 3.0,
+                "{name}: dot {:.2} / {:.2}",
+                cn.max(rn),
+                cw.max(rw)
+            );
+        }
+        // The two tones against each other.
+        let (n, w) = (contrast(core, ring), worst_contrast(core, ring));
+        eprintln!("core against ring {n:.2}:1 (worst {w:.2})");
+        assert!(n >= 3.0 && w >= 3.0, "{n:.2} / {w:.2}");
+        // A badge's number is the dot's ring on its core.
+        assert_eq!(AREA_MARKER_FILL, AREA_DOT_CORE);
+        assert_eq!(AREA_MARKER_TEXT, AREA_DOT_RING);
+        // And no other role uses these two colours.
+        for other in [
+            PART,
+            FEATURE_EDGES,
+            STOCK,
+            ROTARY_AXIS,
+            CUT,
+            LINK,
+            RAPID,
+            ENTRY,
+            SELECTED,
+            HOVER,
+            AVOID,
+            CLEARANCE,
+            HOLE,
+            HELD_LINE,
+            TAB,
+            TAB_LINE,
+            SET_FRAME,
+            HIDDEN_BAND,
+            UNMEASURED_HATCH,
+        ] {
+            assert_ne!(other, core);
+            assert_ne!(other, ring);
+        }
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_unreachable_has_its_own_colour_and_cross_hatch() {
+        // Issue 478: in normal vision at least 20 (CIEDE2000) from every
+        // other band; for every simulated colour vision type at least 25
+        // from overcut and 16 from "within" and the hidden slate. From the
+        // blues of material left it is told apart by its cross-hatch, whose
+        // lines keep 3:1 on it; on the view it keeps 3:1 itself.
+        use measure::{contrast, difference, worst_difference};
+        let unreachable = band_colour(DeviationBand::Unreachable);
+        for band in DeviationBand::ALL {
+            if band != DeviationBand::Unreachable {
+                let n = difference(unreachable, band_colour(band));
+                assert!(n >= 15.0, "{band:?}: {n:.1}");
+            }
+        }
+        for band in [
+            DeviationBand::Overcut,
+            DeviationBand::OnTarget,
+            DeviationBand::Thin,
+        ] {
+            let n = difference(unreachable, band_colour(band));
+            assert!(n >= 20.0, "{band:?}: {n:.1}");
+        }
+        assert!(worst_difference(unreachable, OVERCUT) >= 25.0);
+        assert!(worst_difference(unreachable, WITHIN) >= 16.0);
+        assert!(worst_difference(unreachable, HIDDEN_BAND) >= 16.0);
+        let hatch = band_hatch(DeviationBand::Unreachable).unwrap();
+        assert!(
+            matches!(hatch.kind, openchuck_viewport::HatchKind::Cross),
+            "a cross-hatch, apart from not measured's single hatch"
+        );
+        assert!(contrast(hatch.colour, unreachable) >= 3.0);
+        assert!(contrast(unreachable, token(VIEW_TOP)) >= 3.0);
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_not_measured_never_reads_as_on_the_surface() {
+        // Issue 478 (cause c): "not measured" was the grey of "within" under
+        // a faint hatch. Its base is now at least 20 (CIEDE2000) from
+        // "within" in normal vision and 16 for every colour vision type, and
+        // its single hatch keeps 3:1 on its base.
+        use measure::{contrast, difference, worst_difference};
+        let base = band_colour(DeviationBand::Unmeasured);
+        assert!(difference(base, WITHIN) >= 20.0);
+        assert!(worst_difference(base, WITHIN) >= 16.0);
+        let hatch = band_hatch(DeviationBand::Unmeasured).unwrap();
+        assert!(matches!(hatch.kind, openchuck_viewport::HatchKind::Single));
+        assert!(contrast(hatch.colour, base) >= 3.0);
     }
 }

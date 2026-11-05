@@ -53,14 +53,44 @@ else
   records=${F_RECORDS:-} any=${F_ANY:-} image=${F_IMAGE:-}
 fi
 others=$rust
-matrix='{"include":[{"os":"ubuntu-latest","shard":1,"shards":2},{"os":"ubuntu-latest","shard":2,"shards":2},{"os":"windows-latest","shard":1,"shards":3},{"os":"windows-latest","shard":2,"shards":3},{"os":"windows-latest","shard":3,"shards":3},{"os":"macos-latest","shard":1,"shards":2},{"os":"macos-latest","shard":2,"shards":2}]}'
+libs=$rust
+
+# The build and test layout (decision 0516, option C): one build job per system makes a nextest
+# archive, and the test shares run from it. Windows first in every list. A pull request (or a
+# merge-queue entry) builds on macOS, which compiles every target, but runs no macOS test shares
+# and no macOS Each library alone: those run on every push to `main`, light or full, and on
+# scheduled and manual runs (owner's choice of option C, 4 Nov 2026).
+WIN_SHARDS=8 UBU_SHARDS=6 MAC_SHARDS=2
+pre=false
+if [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; then pre=true; fi
+# list N: the share numbers 1..N as a JSON array ("[0]" for none, so a matrix is never empty).
+list() { if [ "$1" -gt 0 ]; then printf '[%s]' "$(seq -s, 1 "$1")"; else printf '[0]'; fi; }
 if [ "$mode" = light ]; then
-  matrix='{"include":[{"os":"ubuntu-latest","shard":1,"shards":2},{"os":"ubuntu-latest","shard":2,"shards":2}]}'
+  # The merged tree was tested on Windows and Ubuntu; macOS was only built, so it runs here.
+  win="" ubu=$UBU_SHARDS mac=$MAC_SHARDS
+  libs_matrix='{"include":[{"os":"macos-latest","share":1,"shares":1}]}'
   others=false step=false gate3=false
+elif [ "$pre" = true ]; then
+  win=$WIN_SHARDS ubu=$UBU_SHARDS mac=0
+  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":2},{"os":"ubuntu-latest","share":2,"shares":2}]}'
+else
+  win=$WIN_SHARDS ubu=$UBU_SHARDS mac=$MAC_SHARDS
+  libs_matrix='{"include":[{"os":"windows-latest","share":1,"shares":2},{"os":"windows-latest","share":2,"shares":2},{"os":"ubuntu-latest","share":1,"shares":2},{"os":"ubuntu-latest","share":2,"shares":2},{"os":"macos-latest","share":1,"shares":1}]}'
 fi
+win_list="" ubu_list="" mac_list=""
+[ -n "$win" ] && win_list=$(list "$win")
+[ -n "$ubu" ] && ubu_list=$(list "$ubu")
+[ -n "$mac" ] && mac_list=$(list "$mac")
 {
   echo "mode=$mode"
-  echo "bt_matrix=$matrix"
+  echo "win_shards=$win"
+  echo "win_list=$win_list"
+  echo "ubu_shards=$ubu"
+  echo "ubu_list=$ubu_list"
+  echo "mac_shards=$mac"
+  echo "mac_list=$mac_list"
+  echo "libs_matrix=$libs_matrix"
+  echo "libs=$libs"
   echo "rust=$rust"
   echo "others=$others"
   echo "records=$records"

@@ -956,14 +956,26 @@ fn setup_facts(
             ));
         }
         if e.from_stock {
-            facts.push((
-                "Clearance in use".to_string(),
+            // Bounding-box stock is measured from the part; without it the
+            // stock's radius is not known, so no clearance is stated as the
+            // one in use (CodeRabbit on #458).
+            let in_use = |note: &str| {
                 format!(
-                    "radius {} mm, safe Z {} mm (Clearance from stock)",
+                    "radius {} mm, safe Z {} mm (Clearance from stock{note})",
                     mm(e.clearance.radius.0),
                     mm(e.clearance.safe_z.0)
-                ),
-            ));
+                )
+            };
+            let value = match &setup.stock {
+                // With no stock the clearance is the base and the minimum,
+                // which are known (CodeRabbit on #495).
+                None => in_use("; no stock is set"),
+                Some(stock) if stock.radius(extent).is_some() => in_use(""),
+                Some(_) => "not known: the stock's size comes from the part, which could not \
+                            be read (Clearance from stock)"
+                    .to_string(),
+            };
+            facts.push(("Clearance in use".to_string(), value));
         }
     }
     facts
@@ -1625,6 +1637,31 @@ mod tests {
         assert_eq!(
             get("Clearance in use"),
             "radius 55 mm, safe Z 55 mm (Clearance from stock)"
+        );
+        // Bounding-box stock with no part to measure: the clearance in use is
+        // not known, and the sheet does not state the base one as in use.
+        setup.stock = Some(openchuck_types::stock::Stock::OffsetBoundingBox {
+            offset: Millimetres(1.0),
+        });
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert!(in_use.starts_with("not known"), "{in_use}");
+        // No stock: the base clearance and the minimum are known and given,
+        // saying that no stock is set.
+        setup.stock = None;
+        let facts = setup_facts(&project, &setup, None);
+        let in_use = &facts
+            .iter()
+            .find(|(n, _)| n == "Clearance in use")
+            .unwrap()
+            .1;
+        assert_eq!(
+            in_use,
+            "radius 45 mm, safe Z 50 mm (Clearance from stock; no stock is set)"
         );
     }
 }

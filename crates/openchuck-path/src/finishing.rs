@@ -185,6 +185,20 @@ pub(crate) fn free_ends(
     // of the stock itself is not a free end.
     let extent = stock.x_extent();
     let tolerance = 1e-3;
+    // An end the stock does not carry on past has nothing to face: said, in
+    // the user's words, so the end is not left in silence (issue #471, the
+    // owner's note N2).
+    for e in ends.iter().filter(|e| match extent {
+        Some((_, hi)) if e.far => hi <= e.face + tolerance,
+        Some((lo, _)) => lo >= e.face - tolerance,
+        None => false,
+    }) {
+        out.notes.push(format!(
+            "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
+             face. If the real blank is longer, set the stock's length to match it",
+            e.face
+        ));
+    }
     let ends: Vec<&FreeEnd> = ends
         .iter()
         .filter(|e| match extent {
@@ -260,15 +274,32 @@ pub(crate) fn free_ends(
         }
         // Refused, not skipped (the owner's choice on OI-1396), at the switch
         // the user acts on.
-        if top > input.tool.top() + 1e-6 {
+        // The depth the flutes must reach, by the shared measure over the
+        // tool's width at every half degree and between (decision record
+        // 0509): a box corner between the readings above is not missed. The
+        // layers keep the reading above, so the path is unchanged.
+        let (deepest, exact) = crate::flutes::deepest_on_axis(input, end.x, input.tool.top());
+        if top.max(deepest) > input.tool.top() + 1e-6 {
+            // A bound, not a measure, is said to be one (CodeRabbit on #534).
+            let (up_to, bound) = if deepest > top && !exact {
+                (
+                    "up to ",
+                    " (a bound, from how far the stock reaches from the rotary axis: that \
+                     stock is not measured exactly across the tool)",
+                )
+            } else {
+                ("", "")
+            };
             return Err(PathError::Parameter {
                 name: parameter::FACE_FREE_ENDS.to_owned(),
                 reason: format!(
-                    "the end face at X {face:.3} has nothing beyond it and stock {top:.3} mm \
-                     deep beside it, more than the tool's {:.3} mm of flute, so the tool \
-                     cannot face it. Use a tool with longer flutes, or turn off Face free \
-                     ends for this operation, or face it with Facing",
-                    input.tool.top()
+                    "the end face at X {face:.3} has nothing beyond it and stock {up_to}{:.3} mm \
+                     deep beside it{bound}, more than the tool's {:.3} mm of flute, so the tool \
+                     cannot face it; {}. Use a tool with longer flutes, or turn off Face \
+                     free ends for this operation, or face it with Facing",
+                    top.max(deepest),
+                    input.tool.top(),
+                    crate::flutes::stock_words(stock),
                 ),
             });
         }
@@ -527,4 +558,45 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
             rapids: Vec::new(),
         });
     }
+}
+
+/// The note for a selected region that lies wholly on faces across the
+/// rotary axis (issue #471, the owner's note N1): `strategy` cuts with the
+/// tool pointing at the axis, so it reaches such a face only with the side
+/// of the tool. "Wholly" is 99% of the region's area on faces whose normal
+/// is within 10 degrees of the axis.
+pub(crate) fn across_axis_note(
+    region: Option<&crate::region::RegionConstraint<'_>>,
+    strategy: &str,
+) -> Option<String> {
+    let mesh = region?.region?.tessellation();
+    let cos = 10.0_f64.to_radians().cos();
+    let (mut across, mut total) = (0.0, 0.0);
+    for t in &mesh.triangles {
+        let corner = |k: usize| {
+            t.get(k)
+                .and_then(|&i| mesh.vertices.get(i as usize))
+                .copied()
+        };
+        let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) else {
+            continue;
+        };
+        let n = (b - a).cross(c - a);
+        let area = n.length();
+        if !area.is_finite() || area <= 0.0 {
+            continue;
+        }
+        total += area;
+        if n.x.abs() >= cos * area {
+            across += area;
+        }
+    }
+    (total > 0.0 && across >= 0.99 * total).then(|| {
+        format!(
+            "the selected faces lie across the rotary axis. {strategy} cuts with the tool \
+             pointing at the axis, so it reaches such a face only with the side of the tool, in \
+             one turn where the part lies on both sides of it. To face the end of the part or \
+             the stock, use Facing with Shape End"
+        )
+    })
 }

@@ -42,6 +42,7 @@ pub mod machine_edit;
 pub mod machine_library;
 pub mod machine_view;
 pub mod materials;
+mod memo;
 pub mod model;
 pub mod note_groups;
 pub mod operation;
@@ -52,6 +53,7 @@ mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
+mod pieces;
 mod pipeline;
 pub mod playback;
 mod posting;
@@ -74,6 +76,7 @@ mod test_project;
 pub mod tool_edit;
 pub mod tool_library;
 pub mod tools;
+pub mod unreached;
 pub mod workholding;
 pub mod workholding_view;
 
@@ -202,6 +205,18 @@ struct Document {
     project: Project,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread compared the project with the saved one.
+    static MODIFIED_COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread compared the project with the saved one.
+#[cfg(test)]
+pub(crate) fn modified_compared() -> usize {
+    MODIFIED_COMPARED.with(std::cell::Cell::get)
+}
+
 thread_local! {
     /// How many runs this thread has split into program files (tests).
     static RUN_SPLITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -225,6 +240,8 @@ pub struct Application {
     events_rx: Receiver<Event>,
     /// Changes with every command, undo and redo ([`Application::revision`]).
     revision: u64,
+    /// Answers the interface asks every frame, kept per revision (issue #470).
+    memo: memo::Answers,
     /// What generation has made, for the item states (decision record 0117).
     record: std::sync::Arc<overview::GenerationRecord>,
     /// The lines for the user-action log not yet drained (NFR-18).
@@ -329,6 +346,7 @@ impl Application {
             events_tx,
             events_rx,
             revision: 0,
+            memo: memo::Answers::default(),
             record: std::sync::Arc::default(),
             actions: Vec::new(),
             clock: Box::new(SystemClock),
@@ -344,6 +362,9 @@ impl Application {
         if let Ok(mut saved) = self.saved.lock() {
             saved.clone_from(&self.document.project);
         }
+        self.memo
+            .saves
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.recovered_unsaved
             .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
@@ -352,13 +373,38 @@ impl Application {
     /// Whether the project differs from what was last opened, created or
     /// saved, so a front end can ask before discarding changes. Undoing back
     /// to the saved state makes it unmodified again.
+    ///
+    /// Asked every frame (the window title, the recovery checkpoints), so
+    /// the comparison is kept per revision and per save (issue #470).
     pub fn is_modified(&self) -> bool {
-        self.recovered_unsaved
-            .load(std::sync::atomic::Ordering::Relaxed)
-            || self
-                .saved
-                .lock()
-                .map_or(true, |saved| *saved != self.document.project)
+        use std::sync::atomic::Ordering::Relaxed;
+        if self.recovered_unsaved.load(Relaxed) {
+            return true;
+        }
+        let stamp = (self.revision, self.memo.saves.load(Relaxed));
+        *self.memo.modified.get(stamp, || {
+            self.saved.lock().map_or(true, |saved| {
+                #[cfg(test)]
+                MODIFIED_COMPARED.with(|c| c.set(c.get() + 1));
+                *saved != self.document.project
+            })
+        })
+    }
+
+    /// The status keys of the project's enabled operations (decision record
+    /// 0117), in machining order, made once per revision: the project
+    /// changes only through `execute`, `undo` and `redo`, and the keys read
+    /// nothing but the project (issue #470).
+    pub(crate) fn status_keys(&self) -> std::sync::Arc<Vec<(OperationId, cache::StatusKey)>> {
+        self.memo
+            .keys
+            .get(self.revision, || cache::status_keys(&self.document.project))
+    }
+
+    /// The project as last saved, for tests.
+    #[cfg(test)]
+    pub(crate) fn saved_for_tests(&self) -> Project {
+        self.saved.lock().unwrap().clone()
     }
 
     /// One sentence per model file that has changed or is missing since it

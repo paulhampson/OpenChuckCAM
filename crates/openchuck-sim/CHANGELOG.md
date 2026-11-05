@@ -6,7 +6,15 @@
 
 All notable changes to `openchuck-sim` are recorded here.
 
+## 0.41.0
+
+- **Breaking (0.41.0, lane SIMVIS #492, CodeRabbit on #486; decision 0514, accepted):** `Reach` gains `classified` (a new public field, so code that builds a `Reach` must set it). It is false when the enclosure test was skipped (a tool narrower than two grid pitches, or nothing to cast against), so a run that did not classify says so and claims no share as unreachable (NFR-12; decision 0513 item 7). The workspace minor version moves to 0.41.0 (decision 0048).
+
 ## Unreleased
+
+- SIMVIS (#488, accepted decision 0514): `triangle_samples` gives the samples each target triangle holds, in the comparison's order. Additive only.
+
+- SIMVIS (#478, accepted decision 0513): `classify_reach` with `ReachOptions`, `ReachClass` and `Reach` tells a counted part sample's material left as enclosed (no tool across the rotary axis reaches it), open or undecided; `triangle_worst` (the sample each triangle is coloured by) and `sample_areas` (the surface each sample stands for). Additive only; `triangle_values` now uses `triangle_worst`, with the same results.
 
 - SIMPERF (#382, accepted decision 0322): `Simulator::stock_at_from` replays from a kept stock, `with_checkpoint_budget` and `checkpoint_bytes` bound the checkpoints' memory, checkpoints hold a `PackedStock` (`DexelStock::pack`, the same stock bit for bit), and a jump reports its replay against one total.
 
