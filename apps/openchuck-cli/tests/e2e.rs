@@ -734,6 +734,56 @@ mod first_cut {
     /// another. A bless run (`OPENCHUCK_BLESS_PROJECTS=1` for the folder,
     /// `OPENCHUCK_BLESS=1` for the golden programs) writes from the 1-thread test
     /// only.
+    /// Whether `program` is byte for byte the program the golden text fixes: the
+    /// golden text with its one mask, the software version, filled back in with
+    /// this build's version (the generator writes `env!("CARGO_PKG_VERSION")` of
+    /// the workspace). Nothing else is masked, so the operation lines (with their
+    /// computed time estimates) and the line endings are compared too, which the
+    /// sample projects' golden form ([`stable`]) does not do (CodeRabbit on #542).
+    fn exact_first_cut(golden: &str, program: &str) -> Result<(), String> {
+        let masked = format!(
+            "(OpenChuckCAM {})",
+            openchuck_testkit::golden::VERSION_PLACEHOLDER
+        );
+        let expected = golden.replace(
+            &masked,
+            &format!("(OpenChuckCAM {})", env!("CARGO_PKG_VERSION")),
+        );
+        openchuck_testkit::golden::compare(&expected, program)
+    }
+
+    /// The exact check fails on each difference the golden form hides: an
+    /// operation line (its time estimate), the line endings and the version. The
+    /// golden form ([`stable`]) of each of these programs equals that of the
+    /// right one, so only the exact check can tell them apart (NFR-06).
+    #[test]
+    fn req_nfr_06_the_first_cut_check_fails_on_a_difference_the_golden_form_masks() {
+        let golden = "(first_cut - Setup 1)\n(OpenChuckCAM <version>)\nG90 G21 G17\n(operation Rough, tool T1 Z1 O-flute 3.175x25, about 1923 s)\nG0 X70.469\n";
+        let right = golden.replace("<version>", env!("CARGO_PKG_VERSION"));
+        assert_eq!(exact_first_cut(golden, &right), Ok(()));
+        for (what, wrong) in [
+            (
+                "operation line",
+                right.replace("about 1923 s", "about 1924 s"),
+            ),
+            ("line endings", right.replace('\n', "\r\n")),
+            (
+                "version",
+                right.replace(env!("CARGO_PKG_VERSION"), "0.0.0-other"),
+            ),
+        ] {
+            assert_eq!(
+                stable(&wrong),
+                stable(&right),
+                "{what}: the golden form already tells them apart"
+            );
+            assert!(
+                exact_first_cut(golden, &wrong).is_err(),
+                "{what}: the exact check passed a program that differs"
+            );
+        }
+    }
+
     fn committed_first_cut_at(threads: usize, tag: &str) {
         let bless_projects = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
         let blessing = bless_projects || openchuck_testkit::golden::blessing();
@@ -752,10 +802,13 @@ mod first_cut {
         for (post, ext) in POSTS {
             let out = root.join(format!("{post}-{threads}"));
             let program = regenerate(project, post, threads, &out);
-            openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &program)
-                .unwrap_or_else(|m| {
-                    panic!("first_cut / {post} at {threads} threads (NFR-06, NFR-08): {m}")
-                });
+            let golden = golden_path(FIRST_CUT, post, ext);
+            openchuck_testkit::golden::check(&golden, &program).unwrap_or_else(|m| {
+                panic!("first_cut / {post} at {threads} threads (NFR-06, NFR-08): {m}")
+            });
+            exact_first_cut(&std::fs::read_to_string(&golden).unwrap(), &program).unwrap_or_else(
+                |m| panic!("first_cut / {post} at {threads} threads (NFR-06): {m}"),
+            );
         }
         std::fs::remove_dir_all(root).ok();
     }

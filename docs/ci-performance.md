@@ -37,7 +37,7 @@ A check moves off the pull request run only by an owner's decision recorded in a
 ## Keep each test short
 
 - A test over about a minute uninstrumented is listed in both profiles of `.config/nextest.toml` (excluded from `coverage`, selected by `long`), with its time (AGENTS.md). A test over 10 minutes is flagged for an owner's decision before it is kept.
-- The longest test in a share sets that share's time. Split a long test by case where the cases are independent, keeping the requirement IDs in each name and the same checks: the first-cut golden-programs test became one test per thread count, each compared with the golden programs (OI-2036). A determinism test split this way still proves the outputs equal, because each is compared with the same golden file.
+- The longest test in a share sets that share's time. Split a long test by case where the cases are independent, keeping the requirement IDs in each name and the same checks: the first-cut golden-programs test became one test per thread count, each compared with the golden programs (OI-2036). A determinism test split this way still proves the outputs equal only if each compares its raw output byte for byte with the same golden file: a normalised comparison (such as the samples' `stable`, which masks the operation lines) would hide a thread-dependent difference in what it masks.
 - Contention on a 4-core runner makes a long test 1.6 to 3.8 times slower than alone (0052); the times in CI are what count.
 
 ## Build size and disk
