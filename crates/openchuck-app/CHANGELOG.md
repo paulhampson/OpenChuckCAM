@@ -4,6 +4,7 @@
 
 - VIEW-ORIENT (#535, decision 0512, accepted): the `SceneRole::AZero` mark is at the part's far end (the scene's end only when no part is readable), not at the stock's.
 - VIEW-ORIENT (#531, decision 0511, accepted): `SceneRole::AZero` marks A = 0 on the part (a line from the rotary axis along the model's up direction, and an "A0" label); the A+ arrow's start is labelled "A0".
+- LINKS-UI (#524, #436; UI-07, OP-14; decision 0496): the form places `link_height` (Links between passes) in Entry, links and retract, not Pattern and tolerance. No change to the project format or to any public item.
 
 - FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
 
