@@ -49,6 +49,14 @@ impl Strategy for IndexedFinishing {
         true
     }
 
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -113,6 +121,7 @@ impl Strategy for IndexedFinishing {
         let own = super::axial::AxialFinishing.schema();
         for name in [
             axial_parameter::DIRECTION,
+            axial_parameter::LINK_HEIGHT,
             axial_parameter::MAX_X_STEP,
             crate::extend::parameter::EXTEND,
             crate::extend::parameter::EXTEND_DISTANCE,
@@ -311,7 +320,8 @@ fn passes(
     };
     // Finishing layers above them, when on; each layer keeps the pass's A
     // (decision record 0345).
-    let (passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    let (mut passes, layered) = crate::finishing::layers(input, passes, parameters)?;
+    along.mark_low_links(&mut passes);
     Ok(Made {
         passes,
         range: along.range(),

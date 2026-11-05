@@ -664,6 +664,10 @@ fn req_op_20_a_wall_needing_more_lean_than_the_limit_is_reported_with_its_parame
     assert!(most > 0.1, "{most}");
 }
 
+/// Stock cut back to the part by earlier operations, within the fixtures'
+/// 14 mm.
+const BARE: support::Bare = support::Bare { radius: 14.0 };
+
 /// A 1 mm ball whose flutes are 1.5 mm long, on a 3.175 mm shank.
 fn small_ball() -> (openchuck_types::tool::Tool, RevolvedProfile) {
     let small = openchuck_types::tool::Tool {
@@ -705,6 +709,9 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
             radius: 0.5 * DIAMETER,
             height: 1.5,
         }),
+        // The slot and the stock above the part already cut: the 1.5 mm
+        // flutes stand in none (decision record 0509).
+        stock: &BARE,
         ..f.input()
     };
     let path = generate_on(&f, &input, &[(names::STEPOVER, 0.15)]);
@@ -779,11 +786,25 @@ fn req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing() {
             radius: 0.5 * DIAMETER,
             height: 1.5,
         }),
+        // The slot and the stock above the part already cut: the 1.5 mm
+        // flutes stand in none (decision record 0509).
+        stock: &BARE,
         ..f.input()
     };
     let v = values(&[(names::STEPOVER, 1.0)]);
     let a = run(|ctx| generate(&SimultaneousFinishing, &with, &v, ctx)).unwrap();
-    let b = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    let b = run(|ctx| {
+        generate(
+            &SimultaneousFinishing,
+            &StrategyInput {
+                stock: &BARE,
+                ..f.input()
+            },
+            &v,
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(a.shank_breaks.is_empty());
     assert!(a.warnings.is_empty(), "{:?}", a.warnings);
     assert_eq!(a.group, b.group);

@@ -117,6 +117,9 @@ pub struct Bin {
     /// Where the bin lies among the fixed edges ([`bin_slot`]), which names
     /// it for its "Show" tick box whatever its ends in this run (SIM-15).
     pub slot: usize,
+    /// Of `count`, the samples whose material left no tool can reach
+    /// (issue 478); zero when the run did not classify them.
+    pub unreachable: usize,
 }
 
 /// How many bins the histogram can have: four below the surface band, the
@@ -193,12 +196,18 @@ pub struct BandFilter {
     pub from: Option<f64>,
     /// The high end of the range, millimetres; `None` for no limit.
     pub to: Option<f64>,
+    /// Whether the material no tool can reach is hidden (its own tick box;
+    /// issue 478): its triangles then keep the part's own colour.
+    pub hide_unreachable: bool,
 }
 
 impl BandFilter {
     /// Whether anything is hidden: a bin is unticked or a range is set.
     pub fn hides_any(&self) -> bool {
-        self.hidden.iter().any(|h| *h) || self.from.is_some() || self.to.is_some()
+        self.hidden.iter().any(|h| *h)
+            || self.from.is_some()
+            || self.to.is_some()
+            || self.hide_unreachable
     }
 
     /// Whether the value lies in the range set.
@@ -249,6 +258,9 @@ impl BandFilter {
     /// How much of a colour band is shown, for the colour scale: all of it
     /// when every slot of the band is shown whole, none when no slot is.
     pub fn band_shown(&self, band: DeviationBand, tolerance: f64) -> Shown {
+        if band == DeviationBand::Unreachable && self.hide_unreachable {
+            return Shown::Hidden;
+        }
         let mut all = true;
         let mut any = false;
         for slot in 0..SLOTS {
@@ -321,6 +333,12 @@ pub struct SetupResults {
     /// The histogram's bins, from the deepest overcut to the most material
     /// left (see [`histogram`]).
     pub histogram: Vec<Bin>,
+    /// Counted samples whose material left no tool can reach (issue 478);
+    /// `None` when the run did not classify the material left.
+    pub unreachable_samples: Option<usize>,
+    /// Counted samples with material left that is not proven unreachable:
+    /// not classified (the tool-fit test is to come, OI below).
+    pub unclassified_samples: Option<usize>,
     /// The operations, in machining order.
     pub operations: Vec<OperationRow>,
 }
@@ -345,6 +363,8 @@ impl SetupResults {
             overcut_samples: 0,
             overcut_places: 0,
             histogram: Vec::new(),
+            unreachable_samples: None,
+            unclassified_samples: None,
             operations,
         };
         let Some(d) = deviation else {
@@ -371,6 +391,62 @@ impl SetupResults {
         r.overcut_is_bound = d.worst_overcut.is_some_and(|p| p.at_least);
         r.left_is_bound = d.worst_remaining.is_some_and(|p| p.at_least);
         r
+    }
+}
+
+impl SetupResults {
+    /// The numbers with the material left told apart by whether a tool can
+    /// reach it (issue 478), from the comparison and its classes; unchanged
+    /// when the run has none.
+    #[must_use]
+    pub fn with_reach(
+        mut self,
+        deviation: Option<&Deviation>,
+        reach: Option<&openchuck_app::simulation::SetupReach>,
+    ) -> Self {
+        let (Some(d), Some(reach)) = (deviation, reach) else {
+            return self;
+        };
+        let (mut unreachable, mut unclassified) = (0, 0);
+        for (p, class) in d.points.iter().zip(&reach.classes) {
+            if !p.counts() || !p.value.is_finite() {
+                continue;
+            }
+            match class {
+                openchuck_app::sim::ReachClass::Enclosed => {
+                    unreachable += 1;
+                    if let Some(bin) = bin_index(&self.histogram, p.value, self.tolerance)
+                        .and_then(|i| self.histogram.get_mut(i))
+                    {
+                        bin.unreachable += 1;
+                    }
+                }
+                openchuck_app::sim::ReachClass::Open
+                | openchuck_app::sim::ReachClass::Undecided => unclassified += 1,
+                _ => {}
+            }
+        }
+        self.unreachable_samples = Some(unreachable);
+        self.unclassified_samples = Some(unclassified);
+        self
+    }
+}
+
+/// The share of the part no tool can reach, or "not classified" for a run
+/// that did not classify it (issue 478).
+pub fn unreachable_text(r: &SetupResults) -> String {
+    share_text(r, r.unreachable_samples)
+}
+
+/// The share of the part with material left that is not classified.
+pub fn unclassified_text(r: &SetupResults) -> String {
+    share_text(r, r.unclassified_samples)
+}
+
+fn share_text(r: &SetupResults, count: Option<usize>) -> String {
+    match count {
+        Some(n) if r.samples > 0 => format!("{:.1} %", n as f64 / r.samples as f64 * 100.0),
+        _ => "not classified".to_owned(),
     }
 }
 
@@ -433,23 +509,28 @@ pub fn histogram(values: &[f64], tolerance: f64) -> Vec<Bin> {
             count: 0,
             band: band_between(low, high, tolerance),
             slot: bin_slot((low + high) / 2.0, tolerance),
+            unreachable: 0,
         })
         .collect();
     for v in finite() {
-        let index = bins.iter().position(|b| {
-            if b.high <= -tolerance {
-                b.low <= v && v < b.high
-            } else if b.low < tolerance {
-                (-tolerance..=tolerance).contains(&v)
-            } else {
-                b.low < v && v <= b.high
-            }
-        });
-        if let Some(bin) = index.and_then(|i| bins.get_mut(i)) {
+        if let Some(bin) = bin_index(&bins, v, tolerance).and_then(|i| bins.get_mut(i)) {
             bin.count += 1;
         }
     }
     bins
+}
+
+/// The bin of `bins` (from [`histogram`]) that counts `v`.
+fn bin_index(bins: &[Bin], v: f64, tolerance: f64) -> Option<usize> {
+    bins.iter().position(|b| {
+        if b.high <= -tolerance {
+            b.low <= v && v < b.high
+        } else if b.low < tolerance {
+            (-tolerance..=tolerance).contains(&v)
+        } else {
+            b.low < v && v <= b.high
+        }
+    })
 }
 
 /// A bin's range, millimetres at three decimals, negative below the surface (the column header
@@ -487,6 +568,7 @@ pub fn summarise(run: &Regeneration) -> Vec<SetupResults> {
                     })
                     .collect(),
             )
+            .with_reach(setup.deviation.as_ref(), setup.reach.as_ref())
         })
         .collect()
 }
@@ -870,6 +952,17 @@ fn result_block(ui: &mut egui::Ui, r: &SetupResults, titled: bool, filter: &mut 
             .map_or_else(|| "n/a".to_owned(), |v| format!("{:.1} %", v * 100.0)),
         None,
     );
+    // Material left that no tool can reach, and the rest of it, which is
+    // not classified (issue 478).
+    row(
+        ui,
+        "Unreachable (enclosed)",
+        unreachable_text(r),
+        r.unreachable_samples
+            .filter(|n| *n > 0)
+            .map(|_| tint(DeviationBand::Unreachable)),
+    );
+    row(ui, "Left, not classified", unclassified_text(r), None);
     ui.add_space(6.0);
     ui.label(
         RichText::new("DEVIATION DISTRIBUTION")
@@ -930,6 +1023,7 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults, filter: &mut BandFilter) 
         .unwrap_or(0)
         .max(1) as f32;
     let last = r.histogram.len() - 1;
+    let classified = r.unreachable_samples.is_some_and(|n| n > 0);
     egui::Grid::new(("deviation histogram", &r.setup))
         .num_columns(3)
         .spacing([4.0, 2.0])
@@ -986,8 +1080,47 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults, filter: &mut BandFilter) 
                         .monospace(),
                 );
                 ui.end_row();
+                if bin.unreachable > 0 {
+                    // Of the bin, the samples no tool can reach (issue 478):
+                    // a row of its own, so the table keeps its width.
+                    let violet = tint(DeviationBand::Unreachable).gamma_multiply(opacity);
+                    ui.label(
+                        RichText::new("    of which unreachable")
+                            .small()
+                            .color(violet),
+                    );
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::new(BAR_WIDTH, 10.0), Sense::hover());
+                    let w = rect.width() * bin.unreachable as f32 / peak;
+                    let bar = egui::Rect::from_min_size(rect.min, Vec2::new(w.max(1.0), 10.0));
+                    ui.painter().rect_filled(bar, 0.0, violet);
+                    ui.painter().line_segment(
+                        [rect.left_top(), rect.left_bottom()],
+                        Stroke::new(1.0, DARK.line),
+                    );
+                    let share = bin.unreachable as f64 / r.samples.max(1) as f64 * 100.0;
+                    ui.label(
+                        RichText::new(format!("{} {share:.1}%", bin.unreachable))
+                            .small()
+                            .monospace(),
+                    );
+                    ui.end_row();
+                }
             }
         });
+    if classified {
+        let mut show = !filter.hide_unreachable;
+        if ui
+            .checkbox(&mut show, "Show unreachable (enclosed)")
+            .on_hover_text(
+                "Material no tool on this machine can reach: closed off from the outside across \
+                 the rotary axis. Untick to show the part's own colour there.",
+            )
+            .changed()
+        {
+            filter.hide_unreachable = !show;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1187,6 +1320,7 @@ mod tests {
             count: 1,
             band: DeviationBand::Overcut,
             slot: 0,
+            unreachable: 0,
         };
         assert_eq!(bin_range(&bin, false, false), "-1.020 to -1.000");
         assert_eq!(bin_range(&bin, true, false), "≤-1.020 to -1.000");
@@ -1196,6 +1330,7 @@ mod tests {
             count: 1,
             band: DeviationBand::Thick,
             slot: 8,
+            unreachable: 0,
         };
         assert_eq!(bin_range(&top, false, true), "1.000 to ≥3.000");
         let tolerance = 0.1;
@@ -1296,7 +1431,22 @@ mod tests {
         if let Some(p) = d.worst_overcut.as_mut() {
             p.at_least = true;
         }
-        let r = SetupResults::new("Setup 1".into(), 0.025, Some(&d), Vec::new());
+        // With material no tool reaches, so its column and tick box are drawn.
+        let classes: Vec<_> = values
+            .iter()
+            .map(|(v, _)| {
+                if *v >= 3.0 {
+                    openchuck_app::sim::ReachClass::Enclosed
+                } else if *v > 0.025 {
+                    openchuck_app::sim::ReachClass::Undecided
+                } else {
+                    openchuck_app::sim::ReachClass::NotLeft
+                }
+            })
+            .collect();
+        let r = SetupResults::new("Setup 1".into(), 0.025, Some(&d), Vec::new())
+            .with_reach(Some(&d), Some(&reach(&classes)));
+        assert_eq!(r.unreachable_samples, Some(1));
         let ctx = egui::Context::default();
         crate::theme::install_fonts(&ctx);
         crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
@@ -1467,5 +1617,109 @@ mod tests {
             range.band_shown(DeviationBand::Thick, tolerance),
             Shown::Hidden
         );
+    }
+
+    /// The reach of `classes`, as the pipeline keeps it.
+    fn reach(classes: &[openchuck_app::sim::ReachClass]) -> openchuck_app::simulation::SetupReach {
+        openchuck_app::simulation::SetupReach {
+            classes: classes.to_vec(),
+            pitch: 0.1,
+            enclosed: None,
+        }
+    }
+
+    #[test]
+    fn req_sim_05_unreachable_material_is_counted_per_bin_and_in_all() {
+        // Issue 478: the table tells material no tool can reach apart from
+        // the rest of the material left, bin by bin and in all; what is not
+        // proven either way is "not classified", never "excess".
+        use openchuck_app::sim::ReachClass::{Enclosed, NotLeft, Open, Undecided};
+        let values = [
+            (0.0, false),
+            (0.0, false),
+            (0.0, false),
+            (0.0, false),
+            (2.0, false),
+            (3.0, true),
+            (3.0, true),
+            (0.5, false),
+            (2.0, false),
+            (0.0, false),
+        ];
+        let classes = [
+            NotLeft, NotLeft, NotLeft, NotLeft, Enclosed, Enclosed, Enclosed, Open, Undecided,
+            NotLeft,
+        ];
+        let d = deviation(&values, 0.1, 0);
+        let r = SetupResults::new("Setup 1".into(), 0.1, Some(&d), Vec::new())
+            .with_reach(Some(&d), Some(&reach(&classes)));
+        assert_eq!(r.unreachable_samples, Some(3));
+        assert_eq!(r.unclassified_samples, Some(2));
+        let unreachable: usize = r.histogram.iter().map(|b| b.unreachable).sum();
+        assert_eq!(unreachable, 3);
+        let top = r.histogram.last().unwrap();
+        assert_eq!((top.count, top.unreachable), (4, 3), "{top:?}");
+        // The rest of the table is that of the whole part, as before.
+        let plain = SetupResults::new("Setup 1".into(), 0.1, Some(&d), Vec::new());
+        assert_eq!(r.samples, plain.samples);
+        assert_eq!(
+            r.histogram.iter().map(|b| b.count).collect::<Vec<_>>(),
+            plain.histogram.iter().map(|b| b.count).collect::<Vec<_>>()
+        );
+        // A run made without the classification says so; it claims nothing.
+        assert_eq!(plain.unreachable_samples, None);
+        assert_eq!(plain.unclassified_samples, None);
+        assert!(plain.histogram.iter().all(|b| b.unreachable == 0));
+        assert_eq!(unreachable_text(&r), "30.0 %");
+        assert_eq!(unclassified_text(&r), "20.0 %");
+        assert_eq!(unreachable_text(&plain), "not classified");
+    }
+
+    #[test]
+    fn req_sim_15_the_unreachable_band_can_be_hidden_and_the_counts_stay_whole() {
+        let tolerance = 0.1;
+        let mut filter = BandFilter::default();
+        assert_eq!(
+            filter.band_shown(DeviationBand::Unreachable, tolerance),
+            Shown::All
+        );
+        filter.hide_unreachable = true;
+        assert!(filter.hides_any(), "the note says something is hidden");
+        assert_eq!(
+            filter.band_shown(DeviationBand::Unreachable, tolerance),
+            Shown::Hidden
+        );
+        assert_eq!(
+            filter.band_shown(DeviationBand::Thick, tolerance),
+            Shown::All
+        );
+        // On the part: the unreachable triangles keep the part's own colour,
+        // the others keep theirs.
+        let bands = openchuck_app::pathview::deviation_bands_with(
+            &[Some((2.0, false)), Some((2.0, false))],
+            &[true, false],
+            tolerance,
+        );
+        let shown = crate::playback_panel::shown_bands(&bands, ColourBy::Deviation, &filter);
+        assert!(
+            shown
+                .bands
+                .iter()
+                .all(|(b, _)| *b != DeviationBand::Unreachable)
+        );
+        assert!(
+            shown
+                .bands
+                .iter()
+                .any(|(b, set)| *b == DeviationBand::Thick && set.contains(&1))
+        );
+        assert_eq!(*shown.values, *bands.values, "the probe's values stay");
+        // "Show all" shows it again.
+        let mut panel = ResultsPanel {
+            filter,
+            ..ResultsPanel::default()
+        };
+        panel.show_all();
+        assert!(!panel.filter.hide_unreachable);
     }
 }

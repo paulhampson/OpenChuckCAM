@@ -56,10 +56,10 @@
 # `default-filter = 'all()'` so that the nightly Coverage run still counts it. Only this
 # test is excepted; the filter names it exactly, so the helical oracle-parts test of the
 # same prefix still runs in the pull request. `cargo nextest run -p openchuck-path -E
-# 'test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'`
+# 'test(=simultaneous::req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'`
 # does not select it either: run it with `--profile long`.
 [profile.default]
-default-filter = 'not test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
+default-filter = 'not test(=simultaneous::req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
 
 # The STEP kernel tests run only with `--features kernel-tests`, in CI's STEP
 # kernel job (not in the Tests, Coverage or nightly long runs), so their entry
@@ -84,7 +84,7 @@ filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_03_req_sim_05_fi
 priority = 100
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
 priority = 99
 
 [[profile.coverage-full.overrides]]
@@ -92,15 +92,15 @@ filter = 'binary_id(=openchuck-sim::simulation) & test(=req_nfr_06_simulation_is
 priority = 98
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)'
 priority = 97
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::helical) & test(=req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts)'
+filter = 'binary_id(=openchuck-path::integration) & test(=helical::req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts)'
 priority = 96
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-app::reference_jobs) & test(=req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)'
+filter = 'binary_id(=openchuck-app::integration) & test(=reference_jobs::req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)'
 priority = 95
 
 # Lane TE (decision 0096): 117 s in a full uninstrumented run, beside `reference_jobs`.
@@ -109,7 +109,7 @@ filter = 'binary_id(=openchuck-cli::e2e) & test(=lobed::req_gc_07_req_nfr_06_req
 priority = 95
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)'
 priority = 94
 
 [[profile.coverage-full.overrides]]
@@ -117,7 +117,7 @@ filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_07_finer_resolut
 priority = 93
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)'
 priority = 92
 
 [[profile.coverage-full.overrides]]
@@ -142,7 +142,7 @@ filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_02_roughing_a_cone_
 priority = 87
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::unroll) & test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)'
+filter = 'binary_id(=openchuck-path::integration) & test(=unroll::req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)'
 priority = 86
 
 [[profile.coverage-full.overrides]]
@@ -154,24 +154,24 @@ filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_03_roughing_follows
 priority = 84
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::unroll) & test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)'
+filter = 'binary_id(=openchuck-path::integration) & test(=unroll::req_op_04_every_hand_made_case_offsets_correctly_from_the_original)'
 priority = 83
 
 # Lane FIT (decision 0133): 176, 113, 73 and 70 s in a full uninstrumented run.
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)'
 priority = 82
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)'
 priority = 81
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)'
 priority = 80
 
 [[profile.coverage-full.overrides]]
-filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)'
+filter = 'binary_id(=openchuck-path::integration) & test(=simultaneous::req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)'
 priority = 79
 
 # STEPALL-M / #324, 24 Oct 2026, 4-core quota, uninstrumented with
@@ -221,6 +221,10 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# PATHBUGS 2 Nov 2026 (issue #462): the tutorial piece's helical finishing with adaptive
+# spacing on, 123.607 s uninstrumented alone on four cores. Default runs it; coverage excludes
+# it and the nightly long run selects it. Found unlisted in the same run: held_region's
+# simultaneous finishing beside a held start with tabs, 78.678 s alone, the same on main 484e4b2.
 # OP20 (decision 0368, 31 Oct 2026, 4 vCPU), alone on one test thread,
 # uninstrumented: blades without a hub 79.3 s, the keyway's walls 69.3 s, a
 # shank wider than the cutter (every pass checked, OI-1456) 105.4 s.
@@ -317,30 +321,32 @@ priority = 79
 #     64.2 s  openchuck-path::brep_outline_drop req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | (binary_id(=openchuck-app::integration) & test(=adaptive_example::req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_op_05_simultaneous_finishing_beside_a_held_start_with_tabs_generates))
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
-  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | test(=feed_limits::req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
-  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
-  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
-  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
-  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
-  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | (binary_id(=openchuck-app::integration) & test(=workholding::req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::integration) & test(=output_options::req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
+  | test(=held_region::req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=workholding::req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=workholding::req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
   | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
-  | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
-  | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
+  | (binary_id(=openchuck-app::integration) & test(=selection::req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
+  | (binary_id(=openchuck-app::integration) & test(=workholding::req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
-  | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
-  | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
-  | test(=req_op_02_a_region_and_an_avoid_surface_combine)
+  | test(=region::req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
+  | test(=fit_interior::req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
+  | test(=region::req_op_02_a_region_and_an_avoid_surface_combine)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
@@ -360,45 +366,47 @@ default-filter = '''not (
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
-  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
-  | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
-  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
-  | test(=req_op_21_default_tabs_follow_the_owners_answers)
-  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
-  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
-  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
-  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
-  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
-  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
-  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=walls::req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
+  | test(=unroll::req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
+  | test(=reference_jobs::req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=workholding::req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=workholding::req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=workholding::req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=held_region::req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=workholding::req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=workholding::req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=workholding::req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=unroll::req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
   | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_blades_without_a_hub_are_finished_on_both_sides))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_14_links_stay_below_the_clearance_cylinder_without_cutting))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_axial_passes_are_added_only_where_needed))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
-  | (binary_id(=openchuck-path::indexed) & test(=req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_two_pins_side_by_side_are_cut_all_round))
-  | (binary_id(=openchuck-path::helical_rings) & test(=req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
-  | (binary_id(=openchuck-path::brep_outline_drop) & test(=req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_axial_passes_are_added_only_where_needed))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
+  | (binary_id(=openchuck-path::integration) & test(=indexed::req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_two_pins_side_by_side_are_cut_all_round))
+  | (binary_id(=openchuck-path::integration) & test(=helical_rings::req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
+  | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
 )'''
 
 [profile.long]
+# PATHBUGS 2 Nov 2026: the tutorial piece with adaptive spacing, 123.607 s, and held_region's
+# simultaneous finishing beside a held start, 78.678 s (see the coverage profile).
 # SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
 # Existing app both-direction roughing regression: 92.703 s, also above.
 # Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
@@ -406,30 +414,32 @@ default-filter = '''not (
 # TABS-CHECK 1 Nov 2026: the sixteen tests added to the coverage profile above (times there).
 default-filter = '''
     test(~finest_setting_is_within)
+  | (binary_id(=openchuck-app::integration) & test(=adaptive_example::req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_op_05_simultaneous_finishing_beside_a_held_start_with_tabs_generates))
   | test(=facing::tests::req_op_24_req_op_21_unheld_cylindrical_tab_is_preserved_through_both_posts)
-  | test(=req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
+  | test(=feed_limits::req_op_13_req_gc_09_req_gc_10_square_and_spline_parts_pass_gates_1_and_2_on_both_posts)
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope))
-  | (binary_id(=openchuck-app::workholding) & test(=req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
-  | (binary_id(=openchuck-app::output_options) & test(=req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
-  | test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
-  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
-  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
-  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | (binary_id(=openchuck-app::integration) & test(=workholding::req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left))
+  | (binary_id(=openchuck-app::integration) & test(=output_options::req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end))
+  | test(=held_region::req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=held_region::req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=workholding::req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=workholding::req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
   | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
-  | (binary_id(=openchuck-app::selection) & test(=req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
-  | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
+  | (binary_id(=openchuck-app::integration) & test(=selection::req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own))
+  | (binary_id(=openchuck-app::integration) & test(=workholding::req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
-  | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
-  | test(=req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
-  | test(=req_op_02_a_region_and_an_avoid_surface_combine)
+  | test(=region::req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
+  | test(=fit_interior::req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance_between_its_points)
+  | test(=region::req_op_02_a_region_and_an_avoid_surface_combine)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
@@ -449,40 +459,40 @@ default-filter = '''
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
-  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
-  | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
-  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
-  | test(=req_op_21_default_tabs_follow_the_owners_answers)
-  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
-  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
-  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
-  | test(=req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
-  | test(=req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
-  | test(=req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
-  | test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
+  | test(=walls::req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
+  | test(=unroll::req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
+  | test(=reference_jobs::req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=workholding::req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=workholding::req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=workholding::req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=held_region::req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=workholding::req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock)
+  | test(=workholding::req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab)
+  | test(=workholding::req_set_09_req_op_21_the_deviation_report_counts_them_as_part)
+  | test(=unroll::req_op_04_every_hand_made_case_offsets_correctly_from_the_original)
   | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
-  | (binary_id(=openchuck-app::held_region) & test(=req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_axial_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_indexed_finishing_keeps_clear_of_the_held_region))
+  | (binary_id(=openchuck-app::integration) & test(=held_region::req_set_09_req_nfr_12_helical_finishing_keeps_clear_of_the_held_region))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_axial::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_blades_without_a_hub_are_finished_on_both_sides))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_blades_without_a_hub_are_finished_on_both_sides))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_a_gap_narrower_than_the_tool_between_two_pins_is_reported))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spacing))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a))
   | (binary_id(=openchuck-sim::roughing) & test(=req_op_14_links_stay_below_the_clearance_cylinder_without_cutting))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_axial_passes_are_added_only_where_needed))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
-  | (binary_id(=openchuck-path::indexed) & test(=req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
-  | (binary_id(=openchuck-path::adaptive) & test(=req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
-  | (binary_id(=openchuck-path::simultaneous_hidden) & test(=req_op_20_two_pins_side_by_side_are_cut_all_round))
-  | (binary_id(=openchuck-path::helical_rings) & test(=req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
-  | (binary_id(=openchuck-path::brep_outline_drop) & test(=req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_axial_passes_are_added_only_where_needed))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_11_roughing_keeps_its_stock_to_leave))
+  | (binary_id(=openchuck-path::integration) & test(=indexed::req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-path::integration) & test(=adaptive::req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met))
+  | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_two_pins_side_by_side_are_cut_all_round))
+  | (binary_id(=openchuck-path::integration) & test(=helical_rings::req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
+  | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
 '''

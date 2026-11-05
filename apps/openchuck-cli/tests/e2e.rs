@@ -96,6 +96,9 @@ struct Sample {
     oversize: f64,
     /// Workholding options of `openchuck-cli setup` (SET-09, OP-21).
     holding: Vec<&'static str>,
+    /// The tool's flute length, in millimetres: the reference ball's 8 mm,
+    /// or longer where the stock stands deeper above the part.
+    flute: f64,
 }
 
 fn cone() -> Box<dyn RadialPart> {
@@ -116,6 +119,7 @@ fn sample(name: &'static str, part: Box<dyn RadialPart>, radius: f64) -> Sample 
         margin: 1.0,
         oversize: 2.0,
         holding: Vec::new(),
+        flute: 8.0,
     }
 }
 
@@ -133,6 +137,10 @@ fn blisk(
         margin: 1.0,
         oversize: 2.0,
         holding: Vec::new(),
+        // The stock stands up to 12 mm above the hub between the blades,
+        // past the reference ball's 8 mm of flute (decision record 0509).
+        // The flute length is not in the program, so the goldens hold.
+        flute: 16.0,
     }
 }
 
@@ -313,7 +321,14 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
 
     let library = root.join(format!("{}-library", sample.name));
     std::fs::create_dir_all(&library).unwrap();
-    std::fs::write(library.join("3-mm-ball.toml"), BALL).unwrap();
+    std::fs::write(
+        library.join("3-mm-ball.toml"),
+        BALL.replace(
+            "flute_length = 8.0",
+            &format!("flute_length = {:.1}", sample.flute),
+        ),
+    )
+    .unwrap();
     let out = cli_ok(&[
         "tool".as_ref(),
         p,
@@ -1038,6 +1053,7 @@ fn req_gc_17_req_gc_12_cli_writes_same_run_short_block_reports() {
         margin: 1.0,
         oversize: 2.0,
         holding: Vec::new(),
+        flute: 8.0,
     };
     let project = build(&sample, &root);
     let mut app = Application::open(&project, Threads::Exactly(1)).unwrap();

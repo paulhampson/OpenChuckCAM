@@ -1235,6 +1235,7 @@ impl Plan<'_> {
             UnreachedReason::Blocked => 0,
             UnreachedReason::TooNarrow => 1,
             UnreachedReason::NeedsLean { .. } => 2,
+            UnreachedReason::NearHeldRegion => 3,
         };
         // Neighbours: the same reason, on the same or a neighbouring
         // section, near enough.

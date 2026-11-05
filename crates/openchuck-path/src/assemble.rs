@@ -123,6 +123,10 @@ pub enum UnreachedReason {
         /// The least lean that reaches it, in degrees.
         degrees: f64,
     },
+    /// The tool could reach it only by coming over the gripped length of
+    /// the stock, which every tool keeps clear of by its radius (SET-09;
+    /// decision records 0161 and 0505).
+    NearHeldRegion,
 }
 
 /// A place where a strategy broke a pass because the tool's shank, wider
@@ -413,6 +417,7 @@ pub fn assemble_with_entry(
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut rapids: Vec<Vec<usize>> = Vec::new();
     let mut helical_starts = Vec::new();
+    let mut low_links = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -454,6 +459,7 @@ pub fn assemble_with_entry(
         stocks.push(pass.stock.clone());
         rapids.push(pass.rapids.clone());
         helical_starts.push(pass.helical_pass_start);
+        low_links.push(pass.low_link);
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -489,6 +495,7 @@ pub fn assemble_with_entry(
     let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
+    let (mut asked_low, mut kept_high) = (0_usize, 0_usize);
     let mut rotary_reset_after = Vec::new();
     for (i, points) in placed.iter().enumerate() {
         context.check_cancelled()?;
@@ -505,41 +512,83 @@ pub fn assemble_with_entry(
                 Some(_) if !reversing_ramp => {
                     local_link_height(&b, stock.stock, common, head, link_height)
                 }
+                // A pass without its own stock that asks for low links is
+                // linked against the setup's stock, and only where no held
+                // region lies in the way (decision 0496).
+                None if low_links.get(i).copied().unwrap_or(false) => {
+                    asked_low += 1;
+                    // A reversing ramp is linked at the retract height; the
+                    // request is still counted, so the note says so.
+                    let low = if reversing_ramp {
+                        None
+                    } else {
+                        local_link_height(&b, input.stock, common, head, link_height)
+                            .filter(|_| !crosses_keep_out(input.keep_out, &b, head))
+                    };
+                    if low.is_none() {
+                        kept_high += 1;
+                    }
+                    low
+                }
                 _ => None,
             };
             let height = local.unwrap_or(link_height);
-            leave(&mut b, view(&stocks, i - 1, input), common, height)?;
-            b.retract(height)?;
-            if helical_starts.get(i).copied().unwrap_or(false)
-                && rotary.range == openchuck_types::machine::ARange::Continuous
-                && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
-            {
-                let before = index
-                    .checked_sub(1)
-                    .and_then(|s| b.segments.get(s))
-                    .map_or(start, |s| s.end);
-                // A pass already at clearance may need no retract. Preserve
-                // its valid motion without inventing a reset boundary. A
-                // pass that adds no motion leaves the same segment last, so
-                // it is recorded once and the list stays strictly increasing.
-                if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
-                    && segment.end.a == before.a
-                    && rotary_reset_after.last() != Some(&index)
+            let link = |b: &mut Builder<'_>, resets: &mut Vec<usize>, height: f64| -> Result<()> {
+                leave(b, view(&stocks, i - 1, input), common, height)?;
+                b.retract(height)?;
+                if helical_starts.get(i).copied().unwrap_or(false)
+                    && rotary.range == openchuck_types::machine::ARange::Continuous
+                    && let Some((index, segment)) = b.segments.iter().enumerate().next_back()
                 {
-                    rotary_reset_after.push(index);
+                    let before = index
+                        .checked_sub(1)
+                        .and_then(|s| b.segments.get(s))
+                        .map_or(start, |s| s.end);
+                    // A pass already at clearance may need no retract. Preserve
+                    // its valid motion without inventing a reset boundary. A
+                    // pass that adds no motion leaves the same segment last, so
+                    // it is recorded once and the list stays strictly increasing.
+                    if matches!(segment.kind, MoveKind::Rapid | MoveKind::Linking)
+                        && segment.end.a == before.a
+                        && resets.last() != Some(&index)
+                    {
+                        resets.push(index);
+                    }
                 }
-            }
-            let target = rotary.to_axis(head.tip, head.a);
-            let at = b.at().height.max(height);
-            let tip = rotary.to_model(
-                AxisPosition {
-                    height: at,
-                    ..target
-                },
-                head.a,
+                let target = rotary.to_axis(head.tip, head.a);
+                let at = b.at().height.max(height);
+                let tip = rotary.to_model(
+                    AxisPosition {
+                        height: at,
+                        ..target
+                    },
+                    head.a,
+                );
+                let end = b.pose(tip, head.a);
+                b.push(MoveKind::Rapid, end, None, None)
+            };
+            // A low link the collision oracle refuses goes up to the retract
+            // height instead, and is counted with those that could not be
+            // lowered (COL-08, NFR-12; CodeRabbit on #459).
+            let lowered_here = local.is_some() && stocks.get(i).and_then(Option::as_ref).is_none();
+            let mark = (
+                b.segments.len(),
+                b.notes.len(),
+                b.pose,
+                b.contact,
+                rotary_reset_after.len(),
             );
-            let end = b.pose(tip, head.a);
-            b.push(MoveKind::Rapid, end, None, None)?;
+            let mut linked = link(&mut b, &mut rotary_reset_after, height);
+            if linked.is_err() && lowered_here {
+                b.segments.truncate(mark.0);
+                b.notes.truncate(mark.1);
+                b.pose = mark.2;
+                b.contact = mark.3;
+                rotary_reset_after.truncate(mark.4);
+                kept_high += 1;
+                linked = link(&mut b, &mut rotary_reset_after, link_height);
+            }
+            linked?;
         }
         entry.enter(&mut b, input, stock, common, i, points, context)?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
@@ -569,6 +618,21 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
+    if kept_high > 0 {
+        // Said against the first segment, as a strategy's notes are
+        // (NFR-07).
+        b.notes.insert(
+            0,
+            PathNote {
+                segment: 0,
+                message: format!(
+                    "{kept_high} of {asked_low} links between passes could not be lowered \
+                     (stock, a held region or the retract height leaves no room) and retract \
+                     as usual"
+                ),
+            },
+        );
+    }
     context.report("assemble passes", total, Some(total));
     Ok(GeneratedPath {
         group: ToolpathGroup {
@@ -761,6 +825,16 @@ fn leave(
     );
     let end = b.pose(tip, b.pose.a);
     b.push(MoveKind::Linking, end, None, Some(common.plunge_feed))
+}
+
+/// True when the straight link from where the tool is to `head` lies over
+/// any of the intervals `keep_out` (SET-09), the held regions widened by
+/// the tool's radius, so it is not kept low there.
+fn crosses_keep_out(keep_out: &[(f64, f64)], b: &Builder<'_>, head: &CutPoint) -> bool {
+    let from = b.at().along;
+    let to = b.rotary.to_axis(head.tip, head.a).along;
+    let (lo, hi) = (from.min(to), from.max(to));
+    keep_out.iter().any(|&(a, c)| lo < c && hi > a)
 }
 
 /// The stock a pass sees: the setup's stock, probed along the tool axis only
