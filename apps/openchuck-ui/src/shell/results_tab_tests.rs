@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The Results tab of the dock (UI-12, UI-16; issue 475; decision 0630): the
+//! The Results tab of the dock (UI-12, UI-16; issue 475; decision 0519): the
 //! Results window is a tab after Jobs on every step, opened by a click or by a
 //! failed run, with no entry in the Project or View menu.
 

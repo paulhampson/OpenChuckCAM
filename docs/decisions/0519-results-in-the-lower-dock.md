@@ -1,6 +1,6 @@
-# 0630: The Results window becomes a tab of the dock, with a count and level filters (UI-12, UI-16, NFR-12; issue #475; lane RESULTS-DOCK)
+# 0519: The Results window becomes a tab of the dock, with a count and level filters (UI-12, UI-16, NFR-12; issue #475; lane RESULTS-DOCK)
 
-- **Status:** accepted by the project owner on 1 Nov 2026, relayed by the coordinator (decision 0049). The owner's answers of 1 Nov 2026 (items 1 to 5 below), also relayed by the coordinator, are recorded in the decision.
+- **Status:** accepted by the project owner on 1 Nov 2026 (about 23:06Z), relayed by the coordinator (decision 0049). The owner's answers of 1 Nov 2026 (items 1 to 5 below), also relayed by the coordinator, are recorded in the decision.
 - **Date:** 1 Nov 2026.
 - **Issue:** #475.
 - **Requirements:** UI-12, UI-16, UI-14, NFR-12.

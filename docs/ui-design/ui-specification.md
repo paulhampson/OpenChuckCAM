@@ -330,7 +330,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 **Tabs:** Messages, Jobs and Results, on every step (Results once a project is open). Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
 
-**Results** *(UI-12, UI-16; decision 0630, replacing the Results window of decision 0430)*:
+**Results** *(UI-12, UI-16; decision 0519, replacing the Results window of decision 0430)*:
 
 - The tab sits after Jobs and has no menu entry. Its label is "Results (n)", n being the warning and error lines of the latest run, one more for a failed run, a grouped line once; information is not counted and the chips do not change it. A failed run selects the tab and opens the dock.
 - A wrapping top row holds the summary line, "Copy all" and the chips Errors, Warnings and Information with their counts (all on, kept for the session only). Below it one scroll area holds the error of a failed run, the changed-project line, the lines (a group opens on its moves), "Results as plain text" and the verify-G-code notice, so a dock 120 pt high reaches everything.

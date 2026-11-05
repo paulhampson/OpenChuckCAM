@@ -978,7 +978,7 @@ impl RunPanel {
 }
 
 /// Which levels the Results tab shows (the chips), as in Messages. Session
-/// only (decision 0630).
+/// only (decision 0519).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LevelFilter {
     /// Errors.
