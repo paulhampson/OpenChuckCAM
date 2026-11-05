@@ -195,7 +195,8 @@ priority = 79
 # The first-cut committed-project determinism test is three tests since decision 0516 (OI-2036, the
 # owner's decision): one per thread count, `..._at_1_thread`, `_at_2_threads` and `_at_n_threads`;
 # together they took 30.8 min in one Windows CI share (run 41902118150). The filters below select
-# all three by the shared prefix.
+# all three by the shared prefix. Uninstrumented, 4 vCPU (5 Nov 2026): alone 401 s (1 thread), 376 s
+# (2 threads) and 352 s (N threads); the three side by side 395 s.
 # First-cut committed-project determinism, focused rerun after reviewed main golden update:
 # 293.759 s uninstrumented (both posts at 1, 2 and N threads); remains long/coverage-excluded.
 # ROUGHPATH 24 Oct 2026, four test workers: req_op_21_default_tabs_follow_the_owners_answers, 62.697 s uninstrumented.
