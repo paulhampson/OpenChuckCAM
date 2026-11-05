@@ -33,8 +33,40 @@ pub(crate) type Projected = (Option<(f64, bool)>, bool);
 /// parent's corners.
 pub(crate) type Rule<'a> = dyn Fn(usize, Point3, [Point3; 3]) -> Projected + Sync + 'a;
 
-/// A parent and its pieces with their values.
-type CutParent = (usize, Vec<([Point3; 3], Projected)>);
+/// A piece and its value.
+type Piece = ([Point3; 3], Projected);
+
+/// A parent and its pieces with their values, or `None` when cutting it
+/// passed its limit, so that it is drawn whole; and the pieces cut, kept or
+/// not (the work spent).
+type CutParent = (usize, Option<Vec<Piece>>, usize);
+
+/// The pieces of one parent as they are cut, at most `limit` of them: past
+/// it, cutting stops and the parent is drawn whole (NFR-04).
+struct Out {
+    pieces: Vec<Piece>,
+    limit: usize,
+    over: bool,
+}
+
+impl Out {
+    fn push(&mut self, piece: Piece) {
+        if self.pieces.len() >= self.limit {
+            self.over = true;
+        } else {
+            self.pieces.push(piece);
+        }
+    }
+}
+
+/// Parents cut at once, in mesh order: the room left in the budget is read
+/// between batches, so the cutting stops, the same at any thread count, soon
+/// after the budget is spent.
+const BATCH: usize = 8;
+
+/// The most work, in pieces cut whether kept or not, as a multiple of the
+/// budget: past it the remaining parents are drawn whole.
+const WORK: usize = 2;
 
 /// The bands' tolerance, the simulation cell and the most pieces.
 #[derive(Debug, Clone, Copy)]
@@ -118,9 +150,13 @@ pub fn distance_to_triangle(p: Point3, [a, b, c]: [Point3; 3]) -> f64 {
 /// `mixed`'s answer when given, else the rule's at seven test points. `pitch` is the simulation cell: no piece is
 /// cut finer than about two of them, and a triangle no longer than that is
 /// never cut. At most `budget` pieces: the parents in triangle order take
-/// their pieces while they fit, and the rest are drawn whole. Each parent
-/// is cut on its own, in fixed chunks, so the pieces are the same at any
-/// thread count (NFR-06). `None` when no triangle needs it.
+/// their pieces while they fit, and the rest are drawn whole. The budget
+/// bounds the work too (NFR-04): the parents are cut in batches of [`BATCH`],
+/// each only up to the room left at its batch's start (a parent past it
+/// would not fit), and cutting stops once the pieces cut, kept or not, pass
+/// [`WORK`] budgets. Each parent is cut on its own, and the batches follow
+/// the mesh's order, so the pieces are the same at any thread count
+/// (NFR-06). `None` when no triangle needs it.
 pub(crate) fn refine(
     mesh: &TriangleMesh,
     candidate: &(dyn Fn(usize) -> bool + Sync),
@@ -136,52 +172,80 @@ pub(crate) fn refine(
     } = limits;
     context.check_cancelled()?;
     let finest = 2.0 * pitch.max(1e-6);
+    let one_band_of = |t: usize, corners: [Point3; 3], piece: [Point3; 3]| match mixed {
+        Some(mixed) => !mixed(t, piece),
+        None => uniform(piece, &|p: Point3| rule(t, p, corners), tolerance),
+    };
+    // The parents to cut, in mesh order: cheap tests, in fixed chunks.
     let chunks = mesh.triangles.len().div_ceil(CHUNK);
-    let cut: Vec<Vec<CutParent>> = (0..chunks)
+    let candidates: Vec<usize> = (0..chunks)
         .into_par_iter()
         .map(|chunk| {
             context.check_cancelled()?;
             let end = ((chunk + 1) * CHUNK).min(mesh.triangles.len());
             Ok((chunk * CHUNK..end)
                 .filter(|t| candidate(*t))
-                .filter_map(|t| {
-                    let corners = mesh.triangle(t)?;
-                    if longest(corners) <= finest {
-                        return None;
-                    }
-                    let parent_rule = |p: Point3| rule(t, p, corners);
-                    let one_band = |piece: [Point3; 3]| match mixed {
-                        Some(mixed) => !mixed(t, piece),
-                        None => uniform(piece, &parent_rule, tolerance),
-                    };
-                    if one_band(corners) {
-                        return None;
-                    }
-                    let mut out = Vec::new();
-                    cut_piece(
-                        corners,
-                        &parent_rule,
-                        &one_band,
-                        (finest, tolerance),
-                        0,
-                        &mut out,
-                    );
-                    Some((t, out))
+                .filter(|t| {
+                    mesh.triangle(*t).is_some_and(|corners| {
+                        longest(corners) > finest && !one_band_of(*t, corners, corners)
+                    })
                 })
-                .collect())
+                .collect::<Vec<_>>())
         })
-        .collect::<Result<_, AppError>>()?;
+        .collect::<Result<Vec<_>, AppError>>()?
+        .concat();
+    // Cut them in batches, each parent up to the room left at its batch's
+    // start: a parent past it would not fit, so it is drawn whole, as
+    // before; and stop once the work spent passes `WORK` budgets.
+    let (mut room, mut spent, mut capped) = (budget, 0_usize, false);
+    let mut kept: Vec<(usize, Vec<Piece>)> = Vec::new();
+    for batch in candidates.chunks(BATCH) {
+        context.check_cancelled()?;
+        if room == 0 || spent >= WORK.saturating_mul(budget) {
+            capped = true;
+            break;
+        }
+        let limit = room;
+        let cut: Vec<CutParent> = batch
+            .par_iter()
+            .filter_map(|&t| {
+                let corners = mesh.triangle(t)?;
+                let parent_rule = |p: Point3| rule(t, p, corners);
+                let one_band = |piece: [Point3; 3]| one_band_of(t, corners, piece);
+                let mut out = Out {
+                    pieces: Vec::new(),
+                    limit,
+                    over: false,
+                };
+                cut_piece(
+                    corners,
+                    &parent_rule,
+                    &one_band,
+                    (finest, tolerance),
+                    0,
+                    &mut out,
+                );
+                let work = out.pieces.len();
+                Some((t, (!out.over).then_some(out.pieces), work))
+            })
+            .collect();
+        for (t, out, work) in cut {
+            spent = spent.saturating_add(work);
+            match out {
+                Some(out) if out.len() <= room => {
+                    room -= out.len();
+                    kept.push((t, out));
+                }
+                _ => capped = true,
+            }
+        }
+    }
     let mut parents = TriangleSet::default();
     let mut pieces = TriangleMesh::default();
     let mut parent = Vec::new();
     let mut values = Vec::new();
     let mut enclosed = Vec::new();
-    let mut capped = false;
-    for (t, out) in cut.into_iter().flatten() {
-        if parent.len() + out.len() > budget {
-            capped = true;
-            continue;
-        }
+    for (t, out) in kept {
         parents.insert(u32::try_from(t).unwrap_or(u32::MAX));
         for (corners, (value, encl)) in out {
             let first = u32::try_from(pieces.vertices.len()).unwrap_or(u32::MAX);
@@ -253,8 +317,11 @@ fn cut_piece(
     one_band: &dyn Fn([Point3; 3]) -> bool,
     (finest, tolerance): (f64, f64),
     depth: u32,
-    out: &mut Vec<([Point3; 3], Projected)>,
+    out: &mut Out,
 ) {
+    if out.over {
+        return;
+    }
     let [a, b, c] = corners;
     if depth >= MAX_DEPTH || longest(corners) <= finest || (depth > 0 && one_band(corners)) {
         let g = Point3::new(
@@ -368,8 +435,11 @@ fn cut_strip(
     one_band: &dyn Fn([Point3; 3]) -> bool,
     (finest, tolerance): (f64, f64),
     depth: u32,
-    out: &mut Vec<([Point3; 3], Projected)>,
+    out: &mut Out,
 ) {
+    if out.over {
+        return;
+    }
     let [a, b, _] = corners;
     let shortest = finest.max(width(corners));
     let centre = |[p, q, r]: [Point3; 3]| {
@@ -896,6 +966,42 @@ mod tests {
         assert!(capped.capped);
         assert!(capped.parent.len() <= first + 1);
         assert!(capped.parents.contains(&0) && !capped.parents.contains(&1));
+    }
+
+    #[test]
+    fn req_nfr_04_the_budget_bounds_the_cutting_work_not_only_the_pieces_kept() {
+        // CodeRabbit on #492: the budget bounded the pieces kept, but every
+        // parent was cut in full first. A hundred large triangles whose
+        // bands alternate finer than two cells would each be cut to the
+        // finest pieces before any was dropped. The work, here the calls to
+        // the colour rule, now stays within a fixed multiple of the budget.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let mut mesh = TriangleMesh::default();
+        for k in 0..100_u32 {
+            let x = f64::from(k) * 20.0;
+            mesh.vertices.extend([
+                Point3::new(x, 0.0, 0.0),
+                Point3::new(x + 10.0, 0.0, 0.0),
+                Point3::new(x, 10.0, 0.0),
+            ]);
+            mesh.triangles.push([3 * k, 3 * k + 1, 3 * k + 2]);
+        }
+        let calls = AtomicUsize::new(0);
+        let ragged = |_: usize, p: Point3, _: [Point3; 3]| -> Projected {
+            calls.fetch_add(1, Ordering::Relaxed);
+            if ((p.x / 0.03).floor() + (p.y / 0.03).floor()) as i64 % 2 == 0 {
+                (Some((0.0, false)), false)
+            } else {
+                (Some((2.0, false)), false)
+            }
+        };
+        let budget = 2000;
+        let pieces = run(&mesh, &ragged, budget);
+        let made = pieces.as_ref().map_or(0, |p| p.parent.len());
+        assert!(made <= budget, "{made} pieces");
+        assert!(pieces.as_ref().is_none_or(|p| p.capped));
+        let calls = calls.load(Ordering::Relaxed);
+        assert!(calls <= 200 * budget, "{calls} calls to the rule");
     }
 
     #[test]
