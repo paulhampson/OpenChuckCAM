@@ -235,6 +235,10 @@ struct PartColours {
     /// What the job found for each setup: the part's bands, or `None` when
     /// the model file is no longer the one the run was made with.
     done: Vec<(SetupId, Option<(ModelId, DeviationBands)>)>,
+    /// The setups whose colours could not be found (the file could not be
+    /// read): drawn plain, and not measured again until the run or the
+    /// scene changes.
+    failed: Vec<SetupId>,
     /// What the viewport shows, and for which run (its address; the run is
     /// kept alive in `run`), so a frame sends it only a change.
     pushed: (usize, PartShown),
@@ -1232,6 +1236,7 @@ impl PlaybackPanel {
                 job.cancel();
             }
             self.part.done.clear();
+            self.part.failed.clear();
             self.part.run = Some(Arc::clone(&run));
         }
         // A scene read again is checked again: the job reads the file and
@@ -1241,6 +1246,7 @@ impl PlaybackPanel {
                 job.cancel();
             }
             self.part.done.clear();
+            self.part.failed.clear();
             self.part.scene = viewport.scene_count();
         }
         // The job on a setup the playback has left is not wanted now.
@@ -1273,13 +1279,22 @@ impl PlaybackPanel {
                             self.part.done.push((setup, None));
                         }
                         Err(e) if e.is_cancelled() => {}
+                        // The part's colours cannot be found: it is drawn
+                        // plain and the reason is said, but the deviation
+                        // colours stay on for the cut part (decision 0492
+                        // items 1 and 2; only a cut part that cannot be
+                        // prepared turns every colour off, #330).
                         Err(e) => {
                             self.error = Some(e.to_string());
-                            self.bands_on = false;
+                            self.part.failed.push(setup);
                         }
                     }
                 }
             }
+        }
+        if self.part.failed.contains(&setup) {
+            self.push_part(viewport, PartShown::Plain);
+            return busy;
         }
         let found = self.part.done.iter().find(|(id, _)| *id == setup);
         match found {
@@ -2003,6 +2018,12 @@ pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) ->
             });
         }
         shown.bands.retain(|(_, triangles)| !triangles.is_empty());
+    }
+    // A triangle's pieces are shown or hidden as triangles are (decision 0514).
+    if let Some(pieces) = &bands.pieces {
+        let mut pieces = (**pieces).clone();
+        pieces.bands = shown_bands(&pieces.bands, by, filter);
+        shown.pieces = Some(std::sync::Arc::new(pieces));
     }
     shown
 }
@@ -3243,6 +3264,48 @@ mod tests {
         settle_panel(&app, &mut panel, &mut viewport);
         assert_eq!(viewport.part_bands(), Some(&before));
         assert!(!viewport.part_changed());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Decision 0492 items 1 and 2 (review of #472): when the part's colours
+    /// cannot be found (the file cannot be read), the part is drawn plain and
+    /// the error is said, but "Deviation colours" stays on, so the cut part
+    /// keeps its own colours: only a cut part that cannot be prepared turns
+    /// every colour off (#330). The failed job is not started again every
+    /// frame.
+    #[test]
+    fn req_sim_05_a_part_that_cannot_be_read_leaves_the_cut_part_coloured() {
+        let (app, mut panel, mut viewport, dir) = part_only("panel-part-unreadable");
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: true,
+            toolpath: false,
+        });
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(
+            viewport.part_bands().is_some(),
+            "the part is coloured first"
+        );
+        let cut = viewport.bands().is_some();
+        std::fs::remove_file(dir.join("models/cube.stl")).unwrap();
+        // A new scene, so the part's colours are found again.
+        let view = viewport.view().clone();
+        viewport.set_scene(view, false);
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(viewport.part_bands().is_none());
+        assert!(panel.error.is_some(), "the reason is said");
+        assert!(panel.bands_on, "the deviation colours stay on");
+        assert_eq!(
+            viewport.bands().is_some(),
+            cut,
+            "the cut part keeps its colours"
+        );
+        for _ in 0..3 {
+            assert!(
+                !panel.frame(&app, &mut viewport, 0.0),
+                "not measured again every frame"
+            );
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

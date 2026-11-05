@@ -176,3 +176,144 @@ fn model_project(name: &str, stl: &str) -> (PathBuf, Application, OperationId, S
     app.set_post(Some(PostSelection::parse("linuxcnc")));
     (dir, app, op, setup_id)
 }
+
+/// A revolved dovetail along X (two lips of radius 10 with a groove between
+/// them, undercut at both ends), as ASCII STL text: simultaneous finishing
+/// cannot reach the groove's floor and walls, and the lips' outsides lie in
+/// the same X and A range (decision 0515).
+fn dovetail_stl() -> String {
+    const PROFILE: [(f64, f64); 6] = [
+        (0.0, 10.0),
+        (11.0, 10.0),
+        (10.0, 6.0),
+        (20.0, 6.0),
+        (19.0, 10.0),
+        (30.0, 10.0),
+    ];
+    const AROUND: usize = 72;
+    let ring = |i: usize, k: usize| {
+        let (x, r) = PROFILE[i];
+        let t = std::f64::consts::TAU * (k % AROUND) as f64 / AROUND as f64;
+        [x, r * t.cos(), r * t.sin()]
+    };
+    let mut triangles: Vec<[[f64; 3]; 3]> = Vec::new();
+    for i in 0..PROFILE.len() - 1 {
+        for k in 0..AROUND {
+            let (a, b, c, d) = (
+                ring(i, k),
+                ring(i, k + 1),
+                ring(i + 1, k + 1),
+                ring(i + 1, k),
+            );
+            triangles.push([a, b, c]);
+            triangles.push([a, c, d]);
+        }
+    }
+    let (first, last) = (PROFILE[0].0, PROFILE[PROFILE.len() - 1].0);
+    for k in 0..AROUND {
+        triangles.push([[first, 0.0, 0.0], ring(0, k + 1), ring(0, k)]);
+        triangles.push([
+            [last, 0.0, 0.0],
+            ring(PROFILE.len() - 1, k),
+            ring(PROFILE.len() - 1, k + 1),
+        ]);
+    }
+    let mut text = String::from("solid dovetail\n");
+    for [a, b, c] in triangles {
+        text.push_str("facet normal 0 0 0\n outer loop\n");
+        for p in [a, b, c] {
+            text.push_str(&format!("  vertex {:e} {:e} {:e}\n", p[0], p[1], p[2]));
+        }
+        text.push_str(" endloop\nendfacet\n");
+    }
+    text.push_str("endsolid dovetail\n");
+    text
+}
+
+/// A project with the dovetail, the Makera Z1, a 3 mm ball tool and one
+/// simultaneous finishing operation, "Finish": its generation reports
+/// areas it cannot reach (OP-20; decision 0515).
+pub fn dovetail_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) {
+    let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    std::fs::write(dir.join("models/part.stl"), dovetail_stl()).unwrap();
+    let (model, _) = app.add_model(&dir.join("models/part.stl"), None).unwrap();
+    let machine = openchuck_app::setup::builtin("makera-z1").unwrap().unwrap();
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let setup_id = SetupId::new();
+    let mut setup = Setup::new(setup_id, "Setup 1");
+    setup.part = Some(model);
+    setup.material = Some("oak".into());
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(22.0),
+        length: Millimetres(32.0),
+        x_start: Millimetres(-1.0),
+    });
+    let tool_id = ToolId::new();
+    let cutting_data = BTreeMap::from([(
+        "oak".to_owned(),
+        CuttingData {
+            spindle_speed: SpindleSpeed(12000.0),
+            feed_per_tooth: Millimetres(0.02),
+            plunge_feed: FeedRate(150.0),
+            stepover: Millimetres(0.5),
+            stepdown: Millimetres(1.0),
+        },
+    )]);
+    let snapshot = ToolSnapshot {
+        id: tool_id,
+        order: OrderKey::default(),
+        name: "3 mm ball".into(),
+        tool: Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(3.0),
+            flute_length: Millimetres(8.0),
+            overall_length: Millimetres(40.0),
+            shank_diameter: Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        },
+        controller: ControllerMapping {
+            number: 1,
+            length_offset: None,
+            diameter_offset: None,
+        },
+        cutting_data,
+    };
+    let op = OperationId::new();
+    for item in [
+        Item::Setup(setup),
+        Item::Tool(snapshot),
+        Item::Operation(Operation {
+            enabled: true,
+            id: op,
+            order: OrderKey::default(),
+            name: "Finish".into(),
+            setup: setup_id,
+            strategy: "simultaneous_finishing".into(),
+            tool: Some(tool_id),
+            selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            restriction_options: Default::default(),
+            spindle_speed: None,
+            material: None,
+            parameters: BTreeMap::from([
+                ("adaptive_spacing".to_owned(), ParameterValue::Flag(false)),
+                ("stepover".to_owned(), ParameterValue::Number(0.5)),
+            ]),
+        }),
+    ] {
+        app.execute(Command::Add {
+            item,
+            placement: Placement::End,
+        })
+        .unwrap();
+    }
+    (dir, app, op, setup_id)
+}

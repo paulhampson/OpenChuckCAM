@@ -40,7 +40,12 @@ impl StockSurface {
         context: &JobContext<'_>,
     ) -> Result<Self, AppError> {
         context.check_cancelled()?;
-        let bands = samples.map(|s| s.bands(&mesh, context)).transpose()?;
+        // A frame shown while playback plays (no picker) is coloured by
+        // whole triangles; a still frame is drawn in pieces (decision 0514,
+        // the owner's choice B).
+        let bands = samples
+            .map(|s| s.bands(&mesh, picker, context))
+            .transpose()?;
         let picker = if !picker || mesh.triangles.is_empty() {
             None
         } else {
@@ -422,10 +427,12 @@ impl SurfaceSamples {
     /// triangle order, sorted into bands. Each triangle's value depends on
     /// that triangle alone, so the triangles are shared out over the job's
     /// threads in fixed chunks and the values are the same at any thread
-    /// count (NFR-06).
+    /// count (NFR-06). With `pieces`, a face holding more than one band is
+    /// drawn in pieces (decision 0514).
     pub(crate) fn bands(
         &self,
         mesh: &TriangleMesh,
+        pieces: bool,
         context: &JobContext<'_>,
     ) -> Result<DeviationBands, AppError> {
         context.check_cancelled()?;
@@ -442,18 +449,32 @@ impl SurfaceSamples {
             })
             .collect::<Result<_, AppError>>()?;
         let (values, unreachable): (Vec<_>, Vec<_>) = chunks.into_iter().flatten().unzip();
-        Ok(deviation_bands_with(&values, &unreachable, self.cell))
+        let bands = deviation_bands_with(&values, &unreachable, self.cell);
+        if !pieces {
+            return Ok(bands);
+        }
+        // A face across a band's edge is drawn in pieces (decision 0514).
+        let pieces = crate::pieces::refine(
+            mesh,
+            &|_| true,
+            &|_, point, corners| self.value_at(corners, point),
+            None,
+            crate::pieces::Limits::for_cell(self.cell),
+            context,
+        )?;
+        Ok(crate::pieces::with_pieces(bands, pieces))
     }
 
     /// The value of the counted sample nearest to the centroid of
-    /// `triangle` within the search, and whether its material left is
-    /// enclosed. Beyond the search, the face stands for the material behind
-    /// it: the sample of any kind nearest to the point one search distance
+    /// `triangle` within two cells (on the part's surface), and whether its
+    /// material left is enclosed. Further off, the face stands for the
+    /// material behind it (decision 0514 amending decision 0513 item 4): the sample of any kind nearest to the point one search distance
     /// behind the face, into the stock, when that is a counted part sample
     /// whose value is only a bound (stock past an end that was not faced:
     /// at least that much is left there) or whose material left is enclosed
     /// (a bore full of stock behind its cap at the part's end, however thin
-    /// its wall) (issue 478). Else none: not measured.
+    /// its wall) (issue 478). Else the nearest counted sample within the
+    /// search, and beyond it none: not measured.
     fn value_of(&self, mesh: &TriangleMesh, triangle: usize) -> Result<Projected, AppError> {
         let [a, b, c] = mesh.triangle(triangle).ok_or_else(|| {
             AppError::Playback("the stock surface has an invalid triangle".to_owned())
@@ -463,10 +484,23 @@ impl SurfaceSamples {
             a.y / 3.0 + b.y / 3.0 + c.y / 3.0,
             a.z / 3.0 + b.z / 3.0 + c.z / 3.0,
         );
-        if let Some((_, _, value, enclosed)) = self.within(point) {
-            return Ok((Some(value), enclosed));
+        Ok(self.value_at([a, b, c], point))
+    }
+
+    /// [`SurfaceSamples::value_of`] at `point` on a face with the corners
+    /// `[a, b, c]`: the same rule at a point of a piece (decision 0514).
+    fn value_at(&self, [a, b, c]: [Point3; 3], point: Point3) -> Projected {
+        let near = self.within(point);
+        // On the part's surface: within two cells of a counted sample.
+        let surface = 2.0 * self.cell;
+        if let Some((squared, _, value, enclosed)) = near
+            && squared <= surface * surface
+        {
+            return (Some(value), enclosed);
         }
-        // One search distance behind the face, into the stock.
+        // Off the surface, the face stands for what is behind it (decision
+        // 0514 amending decision 0513 item 4): one search distance behind
+        // the face, into the stock.
         let normal = (b - a).cross(c - a);
         let length = normal.length();
         let behind = if length.is_finite() && length > 0.0 {
@@ -474,10 +508,14 @@ impl SurfaceSamples {
         } else {
             point
         };
-        Ok(self
-            .behind(behind)
-            .and_then(|(_, _, stands)| stands)
-            .map_or((None, false), |(value, enclosed)| (Some(value), enclosed)))
+        if let Some((value, enclosed)) = self.behind(behind).and_then(|(_, _, stands)| stands) {
+            return (Some(value), enclosed);
+        }
+        // Nothing bound or enclosed behind it: the nearest counted sample
+        // within the search, else not measured.
+        near.map_or((None, false), |(_, _, value, enclosed)| {
+            (Some(value), enclosed)
+        })
     }
 }
 
@@ -509,7 +547,9 @@ mod tests {
         let before = points.clone();
         let samples = SurfaceSamples::new(&points, 0.1);
         let mesh = TriangleMesh {
-            vertices: [-0.8, 0.8, 0.0, 10.0]
+            // Within two cells of the samples at ±1 (on the part's surface,
+            // decision 0514 item 5), between them, and far from both.
+            vertices: [-0.9, 0.9, 0.0, 10.0]
                 .into_iter()
                 .flat_map(|x| {
                     [
@@ -523,7 +563,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(
             &*bands.values,
@@ -550,6 +590,7 @@ mod tests {
             samples
                 .bands(
                     &TriangleMesh::default(),
+                    true,
                     &JobContext::new(&cancel, &NoProgress)
                 )
                 .is_err()
@@ -676,7 +717,9 @@ mod tests {
                 .num_threads(threads)
                 .build()
                 .unwrap();
-            let bands = pool.install(|| samples.bands(&mesh, &context)).unwrap();
+            let bands = pool
+                .install(|| samples.bands(&mesh, true, &context))
+                .unwrap();
             assert_eq!(bands, expected, "{threads} threads");
         }
     }
@@ -946,7 +989,7 @@ mod tests {
         }
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         let band_of = |t: u32| {
             bands
@@ -999,7 +1042,7 @@ mod tests {
         };
         let cancel = CancelToken::new();
         let bands = samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((3.0, true)));
         assert!(
@@ -1017,7 +1060,7 @@ mod tests {
         thin[1].at_least = false;
         let thin_samples = SurfaceSamples::with_reach(&thin, Some(&classes), 0.1);
         let bands = thin_samples
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], Some((2.0, false)));
         assert!(
@@ -1030,7 +1073,7 @@ mod tests {
         let open =
             SurfaceSamples::with_reach(&thin, Some(&[ReachClass::NotLeft, ReachClass::Open]), 0.1);
         let bands = open
-            .bands(&mesh, &JobContext::new(&cancel, &NoProgress))
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], None);
         // The same face turned to face -X has the open end behind it, the
@@ -1040,8 +1083,114 @@ mod tests {
             triangles: vec![[0, 2, 1]],
         };
         let bands = samples
-            .bands(&flipped, &JobContext::new(&cancel, &NoProgress))
+            .bands(&flipped, true, &JobContext::new(&cancel, &NoProgress))
             .unwrap();
         assert_eq!(bands.values[0], None);
+    }
+
+    #[test]
+    fn req_sim_05_a_stock_face_off_the_part_s_surface_takes_the_material_behind_it() {
+        // Decision 0514 amending decision 0513 item 4 (owner, 2 Nov 2026):
+        // a cap over a bore lies within the search of the opening's rim, so
+        // the rim's "nothing left" covered most of it. A face more than two
+        // cells from every counted sample is off the part's surface and
+        // takes the material behind it when that is a bound or enclosed.
+        let mut points = vec![
+            // The rim of the opening, at the end X 0: nothing left there.
+            sample(0.0, 0.02, false, SampleOn::Part),
+            // The bore wall 3.1 mm in from the end: a bound, enclosed.
+            sample(-3.1, 3.0, true, SampleOn::Part),
+        ];
+        points[0].point.y = 0.5;
+        points[1].point.y = 0.6;
+        let classes = [ReachClass::NotLeft, ReachClass::Enclosed];
+        let samples = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        // Cap faces at X 0 facing +X: 0.5 mm (five cells) from the rim, and
+        // 0.15 mm (one and a half cells) from it.
+        let cap = |y: f64| {
+            [
+                Point3::new(0.0, y - 0.01, -0.01),
+                Point3::new(0.0, y + 0.01, -0.01),
+                Point3::new(0.0, y, 0.01),
+            ]
+        };
+        let mesh = TriangleMesh {
+            vertices: cap(0.0).into_iter().chain(cap(0.35)).collect(),
+            triangles: vec![[0, 1, 2], [3, 4, 5]],
+        };
+        let cancel = CancelToken::new();
+        let bands = samples
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], Some((3.0, true)), "off the surface");
+        assert!(
+            bands
+                .bands
+                .iter()
+                .any(|(b, set)| *b == DeviationBand::Unreachable && set.contains(&0))
+        );
+        // Within two cells of a counted sample: on the surface, as before.
+        assert_eq!(bands.values[1], Some((0.02, false)), "on the surface");
+        // Off the surface, with nothing bound or enclosed behind it: the
+        // nearest counted sample within the search, as before.
+        let mut open_points = points.clone();
+        open_points[1].at_least = false;
+        let open = SurfaceSamples::with_reach(
+            &open_points,
+            Some(&[ReachClass::NotLeft, ReachClass::Open]),
+            0.1,
+        );
+        let bands = open
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        assert_eq!(bands.values[0], Some((0.02, false)));
+    }
+
+    #[test]
+    fn req_sim_05_a_stock_face_across_a_band_edge_is_drawn_in_pieces() {
+        // Decision 0514: a large stock face, half over material on the
+        // surface and half over a bore, is drawn in pieces, each in its band.
+        let mut points = Vec::new();
+        for i in 0..100 {
+            let x = f64::from(i) * 0.1;
+            let left = x < 5.0;
+            let mut p = sample(x, if left { 0.0 } else { 3.0 }, !left, SampleOn::Part);
+            p.point.z = -0.05;
+            points.push(p);
+        }
+        let classes: Vec<_> = points
+            .iter()
+            .map(|p| {
+                if p.value > 0.1 {
+                    ReachClass::Enclosed
+                } else {
+                    ReachClass::NotLeft
+                }
+            })
+            .collect();
+        let samples = SurfaceSamples::with_reach(&points, Some(&classes), 0.1);
+        let mesh = TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, -0.05, 0.0),
+                Point3::new(10.0, -0.05, 0.0),
+                Point3::new(5.0, 0.05, 0.0),
+            ],
+            triangles: vec![[0, 1, 2]],
+        };
+        let cancel = CancelToken::new();
+        let bands = samples
+            .bands(&mesh, true, &JobContext::new(&cancel, &NoProgress))
+            .unwrap();
+        let pieces = bands.pieces.as_ref().expect("drawn in pieces");
+        assert!(pieces.parents.contains(&0));
+        assert_eq!(
+            bands.band_at(0, [1.0, 0.0, 0.0]),
+            Some(DeviationBand::OnTarget)
+        );
+        assert_eq!(
+            bands.band_at(0, [9.0, -0.04, 0.0]),
+            Some(DeviationBand::Unreachable)
+        );
+        assert!(bands.bands.iter().all(|(_, set)| !set.contains(&0)));
     }
 }

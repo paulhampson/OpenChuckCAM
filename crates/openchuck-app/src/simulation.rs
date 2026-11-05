@@ -83,6 +83,10 @@ pub struct SetupReach {
     pub classes: Vec<ReachClass>,
     /// The grid pitch the classes were found at, millimetres.
     pub pitch: f64,
+    /// Whether the classes are the result of the enclosure test (NFR-12):
+    /// false when it was skipped and the material left is undecided for
+    /// that reason alone ([`openchuck_sim::Reach::classified`]).
+    pub classified: bool,
     /// The material left that is enclosed, when any is.
     pub enclosed: Option<EnclosedSummary>,
 }
@@ -413,6 +417,7 @@ impl SetupState {
         let reach = SetupReach {
             classes: reach.classes,
             pitch: reach.pitch,
+            classified: reach.classified,
             enclosed,
         };
         Ok((Some((deviation, reach)), true))

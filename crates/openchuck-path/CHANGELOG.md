@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.42.0
+
+- **Breaking (VIEW-OVERLAYS; issue #416; 0.42.0, decision 0515, accepted):** an unreached area carries its surface points.
+  - **API.** `Unreached` gains `points`: the surface points the strategy sampled and could not reach, in its order, taken evenly to at most the new `MAX_UNREACHED_POINTS` (4,096) per area (struct literals add it).
+  - **Both strategies.** Simultaneous finishing and rest machining (decision 0505) both fill `points`.
+  - **Output.** Toolpaths, warnings and the other fields of `Unreached` are unchanged.
+
 ## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)
 
 - **Fix (CodeRabbit on #483):** with rings and a lead, simultaneous finishing's note on the tilt used counted the lead each step holds from its ring as tilt, so it could read up to the lead too high. Steps are now left out of that figure; the path, the step limit and the checks are unchanged.

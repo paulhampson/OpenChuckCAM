@@ -48,7 +48,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
 use super::Sample;
-use crate::assemble::{Unreached, UnreachedReason};
+use crate::assemble::{MAX_UNREACHED_POINTS, Unreached, UnreachedReason};
 use crate::cutter::{self, ToolLine};
 use crate::error::Result;
 use crate::parallel;
@@ -525,11 +525,15 @@ fn group(
     let mut reason = None;
     let mut flush = |run: &mut Vec<Sample>, reason: Option<UnreachedReason>| {
         if let (Some(r), Some(first), Some(last)) = (reason, run.first(), run.last()) {
+            // The samples taken evenly, in their order along X, to the cap
+            // (decision 0515 item 1, as simultaneous finishing gives them).
+            let stride = run.len().div_ceil(MAX_UNREACHED_POINTS).max(1);
             areas.push(Unreached {
                 x: (first.point.x, last.point.x),
                 a: angles(run, rotary),
                 area: run.iter().map(|s| s.area).sum(),
                 reason: r,
+                points: run.iter().step_by(stride).map(|s| s.point).collect(),
             });
         }
         run.clear();
@@ -669,6 +673,76 @@ mod tests {
                 (lo - 355.0).abs() < 1e-9 && (hi - 365.0).abs() < 1e-9,
                 "{lo} {hi}"
             );
+        }
+    }
+
+    #[test]
+    fn req_op_09_req_op_20_rest_areas_carry_their_surface_points() {
+        // Decisions 0505 and 0515 item 1: rest machining reports what its
+        // tool cannot reach as simultaneous finishing does, so each area
+        // carries the surface points it could not reach, in their order
+        // along X, taken evenly to at most MAX_UNREACHED_POINTS, and each
+        // point lies within the area's X range.
+        let rotary = mapping(ASense::Positive);
+        let few: Vec<(Sample, UnreachedReason)> = (0..5)
+            .map(|k| (at_x(f64::from(k) * 0.1), UnreachedReason::Blocked))
+            .collect();
+        let areas = group(few, 0.1, &rotary);
+        assert_eq!(areas.len(), 1);
+        let xs: Vec<f64> = areas[0].points.iter().map(|p| p.x).collect();
+        assert_eq!(xs.len(), 5);
+        assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+        let many_count = 3 * MAX_UNREACHED_POINTS + 1;
+        let many: Vec<(Sample, UnreachedReason)> = (0..many_count)
+            .map(|k| {
+                #[allow(clippy::cast_precision_loss)]
+                let x = k as f64 * 1e-4;
+                (at_x(x), UnreachedReason::TooNarrow)
+            })
+            .collect();
+        let areas = group(many, 1e-4, &rotary);
+        assert_eq!(areas.len(), 1);
+        let area = &areas[0];
+        assert!(!area.points.is_empty());
+        assert!(area.points.len() <= MAX_UNREACHED_POINTS);
+        assert!(
+            area.points
+                .iter()
+                .all(|p| p.x >= area.x.0 - 1e-12 && p.x <= area.x.1 + 1e-12)
+        );
+    }
+
+    #[test]
+    fn req_op_09_req_ui_12_the_rest_warning_lists_its_areas_in_the_words_of_op_20() {
+        // Messages finds the warning by its start ("rest machining cannot
+        // reach ", `openchuck_app::unreached::REST_WARNING_START`) to offer
+        // "Show in view N" (decision 0515 item 5), and it lists the areas
+        // with simultaneous finishing's list, largest first (decision 0505).
+        let rotary = mapping(ASense::Positive);
+        let found: Vec<(Sample, UnreachedReason)> = (0..5)
+            .map(|k| (at_x(f64::from(k) * 0.1), UnreachedReason::Blocked))
+            .collect();
+        let areas = group(found, 0.1, &rotary);
+        let warning = crate::rest::unreached_warning(&areas, 3.175).unwrap();
+        assert!(
+            warning.message.starts_with("rest machining cannot reach "),
+            "{}",
+            warning.message
+        );
+        assert!(
+            warning
+                .message
+                .contains(&crate::simultaneous::unreached_list(&areas, 3.175, 0.0)),
+            "{}",
+            warning.message
+        );
+    }
+
+    fn at_x(x: f64) -> Sample {
+        Sample {
+            point: Point3::new(x, 6.0, 0.0),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            area: 0.01,
         }
     }
 

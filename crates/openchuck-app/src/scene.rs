@@ -458,7 +458,7 @@ pub(crate) fn build_scene(
                 text: "A0".to_owned(),
             });
             // A = 0 on the part: from the axis along the model's up direction,
-            // out past the part and the stock, at the part's far end. It turns
+            // out past the part and the stock, at the part's far end (CodeRabbit on #533). It turns
             // with the part in the machine view; the arc's start does not.
             let up = model_up(&frame);
             let rim = [
@@ -470,7 +470,10 @@ pub(crate) fn build_scene(
             .into_iter()
             .fold(0.08 * size, f64::max)
                 * 1.05;
-            let at = |k: f64| Point3::new(bounds.max.x, up.y * k, up.z * k);
+            // At the part's far end, so it stays on the part when the stock
+            // reaches past it; the scene's end when no part is readable.
+            let end = view.part_extent.map_or(bounds.max.x, |p| p.bounds.max.x);
+            let at = |k: f64| Point3::new(end, up.y * k, up.z * k);
             view.lines.push(ScenePolyline {
                 role: SceneRole::AZero,
                 points: vec![at(0.0), at(rim)],

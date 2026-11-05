@@ -24,9 +24,15 @@ use openchuck_app::selection::TriangleSet;
 use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, Colour, DisplayMode, Frame, Hatch, Layer, LineItem, LineStyle, Outline, Projection,
-    Renderer, Scene, Slot, StandardView,
+    Camera, Colour, DisplayMode, Frame, Hatch, HatchKind, Layer, LineItem, LineStyle, Outline,
+    Projection, Renderer, Scene, Slot, StandardView,
 };
+
+#[cfg(test)]
+mod area_tests;
+mod areas;
+
+pub use areas::{ShownArea, ShownOperation};
 
 use crate::results_panel::ColourBy;
 use crate::roles;
@@ -64,27 +70,8 @@ pub(crate) fn cut_part_scene(
         }
     };
     if let Some(bands) = bands {
-        let shown: TriangleSet = bands
-            .bands
-            .iter()
-            .flat_map(|(_, set)| set.iter().copied())
-            .collect();
-        let hidden: TriangleSet = (0..surface.mesh.triangles.len() as u32)
-            .filter(|t| !shown.contains(t))
-            .collect();
-        if !hidden.is_empty() {
-            add(
-                &triangles_mesh(&surface.mesh, &hidden),
-                roles::HIDDEN_BAND,
-                None,
-            );
-        }
-        for (band, set) in &bands.bands {
-            add(
-                &triangles_mesh(&surface.mesh, set),
-                band_colour(*band),
-                roles::band_hatch(*band),
-            );
+        for (mesh, colour, hatch) in band_layers(&surface.mesh, bands) {
+            add(&mesh, colour, hatch);
         }
     } else {
         add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], None);
@@ -92,12 +79,54 @@ pub(crate) fn cut_part_scene(
     scene
 }
 
+/// The meshes the bands of `mesh` are drawn as, with their colours and
+/// hatches: the triangles in no band shown in the hidden-band slate, then
+/// each band; a triangle drawn in pieces (decision 0514) is left out of
+/// both and its pieces are drawn instead, slate or in their own band.
+pub(crate) fn band_layers(
+    mesh: &TriangleMesh,
+    bands: &DeviationBands,
+) -> Vec<(TriangleMesh, Colour, Option<Hatch>)> {
+    let mut layers = Vec::new();
+    let mut add = |mesh: &TriangleMesh, bands: &DeviationBands, skip: Option<&TriangleSet>| {
+        let banded: TriangleSet = bands
+            .bands
+            .iter()
+            .flat_map(|(_, set)| set.iter().copied())
+            .chain(skip.into_iter().flat_map(|s| s.iter().copied()))
+            .collect();
+        let plain: TriangleSet = (0..mesh.triangles.len() as u32)
+            .filter(|t| !banded.contains(t))
+            .collect();
+        if !plain.is_empty() {
+            layers.push((triangles_mesh(mesh, &plain), roles::HIDDEN_BAND, None));
+        }
+        for (band, set) in &bands.bands {
+            layers.push((
+                triangles_mesh(mesh, set),
+                band_colour(*band),
+                roles::band_hatch(*band),
+            ));
+        }
+    };
+    add(mesh, bands, bands.pieces.as_ref().map(|p| &p.parents));
+    if let Some(pieces) = &bands.pieces {
+        add(&pieces.mesh, &pieces.bands, None);
+    }
+    layers
+}
+
 /// " · unreachable (enclosed)" for a triangle in that band, for the probe
 /// (decision 0513), else nothing.
-fn unreachable_words(bands: &DeviationBands, triangle: u32) -> &'static str {
-    let unreachable = bands.bands.iter().any(|(band, set)| {
-        *band == openchuck_app::pathview::DeviationBand::Unreachable && set.contains(&triangle)
-    });
+fn unreachable_words(bands: &DeviationBands, triangle: u32, at: Option<[f64; 3]>) -> &'static str {
+    let unreachable = match at {
+        Some(at) => {
+            bands.band_at(triangle, at) == Some(openchuck_app::pathview::DeviationBand::Unreachable)
+        }
+        None => bands.bands.iter().any(|(band, set)| {
+            *band == openchuck_app::pathview::DeviationBand::Unreachable && set.contains(&triangle)
+        }),
+    };
     if unreachable {
         " \u{b7} unreachable (enclosed)"
     } else {
@@ -122,6 +151,11 @@ pub(crate) const PART_CHANGED_NOTE: &str =
 /// The colour scale's note when only the cut part is coloured (NFR-15;
 /// decision 0492).
 pub(crate) const TICK_PART_NOTE: &str = "Tick Part to see these colours on the part model.";
+
+/// What the colour scale says when some triangles holding more than one band
+/// are drawn whole because the pieces' budget ran out (decision 0514).
+pub(crate) const PIECES_CAPPED_NOTE: &str =
+    "Some colours are drawn per triangle: too many pieces to draw them finer.";
 
 /// Whose values the probe reads (decision 0492).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,6 +206,10 @@ pub struct Visibility {
     pub toolpaths: bool,
     /// What the mesh check found (the Model step's "Show findings").
     pub findings: bool,
+    /// The surfaces simultaneous finishing could not reach (decision 0515):
+    /// menu only, like held regions and tabs, and on by default. They are
+    /// drawn while their operation's toolpath is.
+    pub unreachable: bool,
 }
 
 impl Default for Visibility {
@@ -184,6 +222,7 @@ impl Default for Visibility {
             selections: true,
             toolpaths: true,
             findings: true,
+            unreachable: true,
         }
     }
 }
@@ -332,7 +371,7 @@ fn add_solid(scene: &mut Scene, mesh: &TriangleMesh, role: SceneRole, look: Soli
             added.translucent = held;
             added.hatch = held.then_some(Hatch {
                 colour: roles::HELD_LINE,
-                cross: true,
+                kind: HatchKind::Cross,
             });
             added.outline = Some(outline(line, LineStyle::Solid));
         }
@@ -395,29 +434,10 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                 // are drawn in a slate of their own, never the part's grey,
                 // which could read as "within tolerance" (SIM-15; decision
                 // 0216 item 8, OI-882).
-                let banded: TriangleSet = bands
-                    .bands
-                    .iter()
-                    .flat_map(|(_, triangles)| triangles.iter().copied())
-                    .collect();
-                let plain: TriangleSet = (0..mesh.mesh.triangles.len() as u32)
-                    .filter(|t| !banded.contains(t))
-                    .collect();
-                if !plain.is_empty() {
-                    scene.add_mesh(
-                        &triangles_mesh(&mesh.mesh, &plain),
-                        &[],
-                        roles::HIDDEN_BAND,
-                        roles::FEATURE_EDGES,
-                    );
-                }
-                for (band, triangles) in &bands.bands {
-                    let part = triangles_mesh(&mesh.mesh, triangles);
-                    scene.add_mesh(&part, &[], band_colour(*band), roles::FEATURE_EDGES);
-                    if let Some(hatch) = roles::band_hatch(*band)
-                        && let Some(added) = scene.meshes.last_mut()
-                    {
-                        added.hatch = Some(hatch);
+                for (part, colour, hatch) in band_layers(&mesh.mesh, bands) {
+                    scene.add_mesh(&part, &[], colour, roles::FEATURE_EDGES);
+                    if let Some(added) = scene.meshes.last_mut() {
+                        added.hatch = hatch;
                     }
                 }
             }
@@ -678,6 +698,9 @@ pub struct Viewport {
     /// one a click kept, with the point clicked in the part's frame (SIM-11
     /// in part; decision record 0162).
     pub(crate) probe_hover: Option<u32>,
+    /// Where on [`Viewport::probe_hover`] the pointer rests, in its frame:
+    /// the probe reads the piece there (decision 0514).
+    probe_hover_at: Option<[f64; 3]>,
     pub(crate) probe_pinned: Option<(u32, [f64; 3])>,
     /// The layers besides the scene: highlights, toolpaths, stock, tool.
     layers: Vec<(Layer, Arc<Scene>, u64)>,
@@ -721,6 +744,9 @@ pub struct Viewport {
     pub(crate) tool_readout: Option<ToolReadout>,
     /// The path legend is open while the view is too low to show it (7.2).
     pub(crate) legend_open: bool,
+    /// The unreachable areas drawn, the camera's steps back and its move
+    /// (decision 0515).
+    areas: areas::AreaState,
     /// The selection set drawn in its own colour, by name and colour, for a
     /// row of the legends (decision 0216 item 5).
     pub(crate) legend_set: Option<(String, [u8; 3])>,
@@ -796,6 +822,7 @@ impl Viewport {
             band_filter: crate::results_panel::BandFilter::default(),
             rest: None,
             probe_hover: None,
+            probe_hover_at: None,
             probe_pinned: None,
             layers: Vec::new(),
             part_transform: IDENTITY,
@@ -818,6 +845,7 @@ impl Viewport {
             cursor_point: None,
             tool_readout: None,
             legend_open: false,
+            areas: areas::AreaState::default(),
             legend_set: None,
             show_menu_open: false,
             last_rect: Rect::NOTHING,
@@ -960,6 +988,8 @@ impl Viewport {
         self.probe_hover = None;
         self.hover_solid = None;
         self.rebuild();
+        // The triangles of the areas are of the part this scene holds.
+        self.rebuild_areas();
         self.fit_pending |= fit;
     }
 
@@ -1042,6 +1072,14 @@ impl Viewport {
         let mut notes = Vec::new();
         if self.part_changed {
             notes.push(PART_CHANGED_NOTE);
+        }
+        // The pieces' budget ran out (decision 0514 item 3).
+        if self
+            .scale_bands()
+            .and_then(|b| b.pieces.as_ref())
+            .is_some_and(|p| p.capped)
+        {
+            notes.push(PIECES_CAPPED_NOTE);
         }
         // Only the cut part is coloured, and the part is not ticked.
         if self.bands.is_some() && !self.part_changed && !self.simulate_show.model {
@@ -1178,6 +1216,7 @@ impl Viewport {
             self.show.workholding = show.workholding;
             self.show.selections = show.selections;
             self.show.findings = show.findings;
+            self.show.unreachable = show.unreachable;
         } else {
             self.show = show;
         }
@@ -1424,17 +1463,24 @@ impl Viewport {
         (mm.is_finite() && mm > 0.0).then_some(mm)
     }
 
-    /// Fits the camera to the scene.
+    /// Fits the camera to the scene: one step, which
+    /// [`Viewport::undo_camera`] undoes.
     pub fn fit(&mut self) {
+        self.remember_camera();
+        self.fit_unrecorded();
+    }
+
+    fn fit_unrecorded(&mut self) {
         if let Some((min, max)) = self.scene.bounds() {
             self.camera.fit(min, max, self.aspect);
         }
     }
 
-    /// Turns to a standard view and fits the scene.
+    /// Turns to a standard view and fits the scene: one step.
     pub fn set_view(&mut self, view: StandardView) {
+        self.remember_camera();
         self.camera.set_view(view);
-        self.fit();
+        self.fit_unrecorded();
     }
 
     /// Sets the projection.
@@ -1476,8 +1522,12 @@ impl Viewport {
             (rect.height() * scale).round() as u32,
         ];
         if self.fit_pending && self.scene.bounds().is_some() {
-            self.fit();
+            self.fit_unrecorded();
             self.fit_pending = false;
+        }
+        let now = ui.input(|i| i.time);
+        if self.advance_motion(now) {
+            ui.ctx().request_repaint();
         }
         self.keys(ui);
 
@@ -1488,6 +1538,7 @@ impl Viewport {
         let delta = response.drag_delta();
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         if response.dragged_by(PointerButton::Primary) {
+            self.stop_motion();
             self.camera
                 .orbit(dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL);
         } else if response.dragged_by(PointerButton::Secondary)
@@ -1526,12 +1577,16 @@ impl Viewport {
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
         self.draw_pinned(ui, rect);
+        self.draw_area_markers(ui, rect, now);
         if let Some(solid) = self.hovered_solid() {
             let text = solid.description.clone();
             response.on_hover_ui_at_pointer(|ui| {
                 ui.label(text);
             });
-        } else if let Some(text) = self.probe_hover.and_then(|t| self.probe_text(t)) {
+        } else if let Some(text) = self
+            .probe_hover
+            .and_then(|t| self.probe_text_at(t, self.probe_hover_at))
+        {
             response.on_hover_ui_at_pointer(|ui| {
                 ui.label(text);
             });
@@ -1598,6 +1653,7 @@ impl Viewport {
         let rested = self.rest.map_or(0.0, |(_, since)| now - since);
         if rested >= PROBE_PAUSE {
             self.probe_hover = on_part.map(|h| h.triangle);
+            self.probe_hover_at = on_part.map(|h| [h.point.x, h.point.y, h.point.z]);
         } else {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_secs_f64(PROBE_PAUSE - rested));
@@ -1605,22 +1661,33 @@ impl Viewport {
     }
 
     /// The probe's text for a triangle of the coloured part.
+    #[cfg(test)]
     pub(crate) fn probe_text(&self, triangle: u32) -> Option<String> {
+        self.probe_text_at(triangle, None)
+    }
+
+    /// [`Viewport::probe_text`] at the point `at` on the triangle, when known:
+    /// the piece there when the triangle is drawn in pieces (decision 0514).
+    pub(crate) fn probe_text_at(&self, triangle: u32, at: Option<[f64; 3]>) -> Option<String> {
+        let value_of = |bands: &DeviationBands| match at {
+            Some(at) => bands.value_at(triangle, at),
+            None => bands.values.get(triangle as usize).copied().flatten(),
+        };
         if self.probe_source == Some(ProbeSource::Part) {
             // The part's own triangles: a real measurement, not the nearest
             // sample to a projected point (decision 0492).
             let (_, bands) = self.part_bands.as_ref()?;
-            let value = bands.values.get(triangle as usize).copied().flatten();
-            let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
+            let text =
+                crate::results_panel::probe_text(self.colour_by, value_of(bands), bands.tolerance);
             return Some(format!(
                 "Final result · {text}{}",
-                unreachable_words(bands, triangle)
+                unreachable_words(bands, triangle, at)
             ));
         }
         let (_, bands) = self.bands.as_ref()?;
-        let value = bands.values.get(triangle as usize).copied().flatten();
-        let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
-        let unreachable = unreachable_words(bands, triangle);
+        let text =
+            crate::results_panel::probe_text(self.colour_by, value_of(bands), bands.tolerance);
+        let unreachable = unreachable_words(bands, triangle, at);
         Some(if self.stock_surface.is_some() {
             format!("Final result · {text} (nearest target sample){unreachable}")
         } else {
@@ -1636,7 +1703,7 @@ impl Viewport {
         if !self.probe_surface_shown() {
             return;
         }
-        let Some(text) = self.probe_text(triangle) else {
+        let Some(text) = self.probe_text_at(triangle, Some(at)) else {
             return;
         };
         let world = transform(&self.part_transform, [at[0], at[1], at[2], 1.0]);
@@ -1712,12 +1779,18 @@ impl Viewport {
 
     /// Whether a layer other than the scene is drawn, from the step's
     /// shared Show choices.
-    fn layer_shown(&self, layer: Layer) -> bool {
+    pub(crate) fn layer_shown(&self, layer: Layer) -> bool {
         // The Show choice is Simulate's; it hides nothing on the other steps,
         // where the toolbar does not offer it (7.1).
         let show = self.visibility();
+        // The cut part, the tool and the trace are the playback's: Simulate
+        // only (issue 535).
+        if !crate::orient::layer_drawn_on(self.step(), layer) {
+            return false;
+        }
         match layer {
             Layer::Overlay => show.selections,
+            Layer::Areas => show.unreachable,
             Layer::Paths | Layer::Trace => show.toolpaths,
             Layer::Stock => show.stock,
             _ => true,
@@ -1785,7 +1858,7 @@ impl Viewport {
         // The part's own hit, which the probe reads when the part is coloured:
         // the cut part drawn plain behind it is not probed (decision 0492).
         let part_pick = surface;
-        if !self.picking && self.stock_surface.is_some() {
+        if !self.picking && self.stock_surface.is_some() && self.step() == ViewStep::Simulate {
             if !self.part_shown() {
                 surface = None;
             }
@@ -2167,7 +2240,7 @@ pub(crate) mod tests {
             held.hatch,
             Some(Hatch {
                 colour: HELD_LINE,
-                cross: true
+                kind: HatchKind::Cross
             })
         );
         assert_eq!(tab.hatch, None);
@@ -2746,6 +2819,109 @@ pub(crate) mod tests {
         let text = viewport.probe_text(t).unwrap();
         assert!(text.ends_with(" \u{b7} unreachable (enclosed)"), "{text}");
         assert!(text.starts_with("Final result \u{b7} "), "{text}");
+    }
+
+    /// Bands whose one triangle is drawn in two pieces (decision 0514): its
+    /// left half on the surface, its right half unreachable.
+    fn pieced_bands() -> DeviationBands {
+        use openchuck_app::pathview::{BandPieces, deviation_bands_with};
+        let mut base = deviation_bands_with(&[Some((3.0, true)); 12], &[true; 12], 0.1);
+        let parent = 0u32;
+        let pieces = BandPieces {
+            parents: [parent].into_iter().collect(),
+            mesh: openchuck_app::scene::Mesh {
+                vertices: vec![
+                    Point3::new(0.0, 0.0, 0.0),
+                    Point3::new(1.0, 0.0, 0.0),
+                    Point3::new(0.0, 1.0, 0.0),
+                    Point3::new(1.0, 0.0, 0.0),
+                    Point3::new(1.0, 1.0, 0.0),
+                    Point3::new(0.0, 1.0, 0.0),
+                ],
+                triangles: vec![[0, 1, 2], [3, 4, 5]],
+            },
+            parent: vec![parent, parent],
+            bands: deviation_bands_with(
+                &[Some((0.0, false)), Some((3.0, true))],
+                &[false, true],
+                0.1,
+            ),
+            capped: false,
+        };
+        for (_, set) in &mut base.bands {
+            set.remove(&parent);
+        }
+        base.pieces = Some(std::sync::Arc::new(pieces));
+        base
+    }
+
+    /// Decision 0514: a triangle drawn in pieces is not drawn whole, slate or
+    /// coloured; its pieces are, each in its band; the probe reads the piece
+    /// under the point; the band filter hides pieces as it hides triangles.
+    #[test]
+    fn req_sim_05_req_sim_15_a_triangle_in_pieces_is_drawn_and_read_by_its_pieces() {
+        use crate::results_panel::{BandFilter, ColourBy};
+        let bands = pieced_bands();
+        let layers = band_layers(&cube_scene("pieces").meshes[0].mesh, &bands);
+        let triangles = |colour: Colour| -> usize {
+            layers
+                .iter()
+                .filter(|(_, c, _)| *c == colour)
+                .map(|(m, _, _)| m.triangles.len())
+                .sum()
+        };
+        let mesh_triangles = cube_scene("pieces-count").meshes[0].mesh.triangles.len();
+        // The parent is neither slate nor violet; the other eleven are violet,
+        // and the pieces add one on-surface and one violet triangle.
+        assert_eq!(triangles(roles::HIDDEN_BAND), mesh_triangles - 12);
+        assert_eq!(triangles(roles::UNREACHABLE), 11 + 1);
+        assert_eq!(triangles(roles::WITHIN), 1);
+        // The probe reads the piece under the point.
+        let mut viewport = Viewport::new(true);
+        viewport.set_step(Some(ViewStep::Simulate));
+        viewport.set_bands(Some((ModelId::new(), bands.clone())));
+        let left = viewport.probe_text_at(0, Some([0.2, 0.2, 0.0])).unwrap();
+        let right = viewport.probe_text_at(0, Some([0.8, 0.8, 0.0])).unwrap();
+        assert!(!left.contains("unreachable"), "{left}");
+        assert!(right.ends_with(" \u{b7} unreachable (enclosed)"), "{right}");
+        // Hiding Unreachable hides the violet piece too: it is drawn slate.
+        let filter = BandFilter {
+            hide_unreachable: true,
+            ..BandFilter::default()
+        };
+        let shown = crate::playback_panel::shown_bands(&bands, ColourBy::Deviation, &filter);
+        let pieces = shown.pieces.as_ref().unwrap();
+        assert!(
+            pieces
+                .bands
+                .bands
+                .iter()
+                .all(|(b, _)| *b != openchuck_app::pathview::DeviationBand::Unreachable)
+        );
+        let layers = band_layers(&cube_scene("pieces-hidden").meshes[0].mesh, &shown);
+        assert_eq!(
+            layers
+                .iter()
+                .filter(|(_, c, _)| *c == roles::UNREACHABLE)
+                .count(),
+            0
+        );
+    }
+
+    /// Decision 0514 item 3: when the pieces' budget ran out, the scale says
+    /// some colours are drawn coarser.
+    #[test]
+    fn req_nfr_04_the_scale_says_when_the_pieces_ran_out() {
+        let mut bands = pieced_bands();
+        let mut pieces = (*bands.pieces.take().unwrap()).clone();
+        pieces.capped = true;
+        bands.pieces = Some(std::sync::Arc::new(pieces));
+        let mut viewport = Viewport::new(true);
+        viewport.set_step(Some(ViewStep::Simulate));
+        viewport.set_bands(Some((ModelId::new(), bands)));
+        assert!(viewport.scale_notes().contains(&PIECES_CAPPED_NOTE));
+        viewport.set_bands(Some((ModelId::new(), pieced_bands())));
+        assert!(!viewport.scale_notes().contains(&PIECES_CAPPED_NOTE));
     }
 
     /// Decision 0492 item 3 and UI-11: the colour scale says what it colours.
@@ -3450,9 +3626,10 @@ pub(crate) mod tests {
         });
         assert_eq!(viewport.simulate_show(), SimulateShow::default());
         // The choice is Simulate's: on Operations, where it is not offered,
-        // the toolpaths, stock and part show (OI-355 wiring, #126 review).
+        // the toolpaths and part show (OI-355 wiring, #126 review); the cut
+        // part is the playback's and shows on Simulate only (issue 535).
         viewport.set_step(Some(ViewStep::Operations));
-        assert!(viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        assert!(viewport.layer_shown(Layer::Paths) && !viewport.layer_shown(Layer::Stock));
         assert!(viewport.part_shown());
         viewport.set_step(None);
         // F fits and V opens the list, from the keyboard.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- VIEW-ORIENT (#535, decision 0512, accepted): the `SceneRole::AZero` mark is at the part's far end (the scene's end only when no part is readable), not at the stock's.
 - VIEW-ORIENT (#531, decision 0511, accepted): `SceneRole::AZero` marks A = 0 on the part (a line from the rotary axis along the model's up direction, and an "A0" label); the A+ arrow's start is labelled "A0".
 
 - FACEAPPROACH (#499, decision 0507, accepted): a Facing operation's cutter sweep is shown while that operation's path is current and its eye is on (`export::current_operations`), not only while the whole project equals the last run, and it draws only the cutting moves at the tool's tip.
@@ -22,6 +23,8 @@
 All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
+
+- SIMVIS (#488, accepted decision 0514): a deviation-coloured triangle that holds more than one band is drawn in pieces, each in its own band: `DeviationBands::pieces` (**changed:** a new public field) with `BandPieces`, and `DeviationBands::value_at`, `band_at` and `pathview::band_of`. A long strip is cut across its length, with one cut at each clean band edge. The parents keep their triangle numbers, and the pieces are capped at `PIECE_BUDGET`. The cut part is drawn in pieces on a still frame only (`start_stock_surface`); a playing frame (`start_playing_stock_surface`) is coloured by whole triangles. A cut-part face more than two cells from every counted sample takes the material behind it when that is a bound or enclosed (decision 0514 item 5, amending decision 0513 item 4). Not in the library family; no output changes.
 
 - SIMVIS (#523, accepted decision 0513): the cut part's sample index is two compact k-d trees, one of the counted samples and one of every sample for the lookup behind a face, with the same results. On a 3.4-million-sample project the index takes about 860 MB of process memory after playback starts instead of 1,196 MB, near main's 829 MB. Internal; no API or output change.
 

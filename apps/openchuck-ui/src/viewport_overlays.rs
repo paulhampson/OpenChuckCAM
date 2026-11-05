@@ -144,7 +144,22 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
 
 /// The path legend's rows: its entries, and the shown set when there is one.
 fn legend_rows(viewport: &Viewport) -> f32 {
-    path_legend(viewport.view()).len() as f32 + f32::from(u8::from(viewport.legend_set.is_some()))
+    path_legend(viewport.view()).len() as f32
+        + f32::from(u8::from(viewport.legend_set.is_some()))
+        + viewport.unreached_legend().len() as f32
+}
+
+/// A legend swatch for the surfaces the tool could not reach: the part's
+/// grey with one dot, a core in a ring, as the view draws them (decision
+/// 0515 item 4).
+pub fn dot_swatch(painter: &egui::Painter, r: Rect) {
+    painter.rect_filled(r, 0.0, to_color32(roles::PART));
+    let clipped = painter.with_clip_rect(r);
+    for x in [r.left() + r.width() * 0.3, r.left() + r.width() * 0.7] {
+        let at = pos2(x, r.center().y);
+        clipped.circle_filled(at, 3.5, to_color32(roles::AREA_DOT_RING));
+        clipped.circle_filled(at, 2.0, to_color32(roles::AREA_DOT_CORE));
+    }
 }
 
 /// A shown selection set's legend swatch, drawn the way the set is drawn
@@ -415,8 +430,13 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         }
     }
     let held = workholding_entries(viewport.view()).len() as f32
-        + f32::from(u8::from(viewport.legend_set.is_some()));
-    if step == ViewStep::Simulate && (viewport.scale_bands().is_some() || viewport.part_changed()) {
+        + f32::from(u8::from(viewport.legend_set.is_some()))
+        + viewport.unreached_legend().len() as f32;
+    if step == ViewStep::Simulate
+        && (viewport.scale_bands().is_some()
+            || viewport.part_changed()
+            || !viewport.unreached_legend().is_empty())
+    {
         let notes = scale_note_height(&ui.painter_at(rect), viewport);
         let height = scale_held_top(viewport, notes) + 4.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
@@ -701,6 +721,13 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             set_swatch(&painter, swatch, *rgb);
             fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
+        let first = path_legend(viewport.view()).len() + usize::from(viewport.legend_set.is_some());
+        for (i, name) in viewport.unreached_legend().iter().enumerate() {
+            let y = r.top() + 6.0 + ROW * (first + i) as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
+            dot_swatch(&painter, swatch);
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
+        }
     }
     if let Some(r) = b.scale {
         frame(&painter, r);
@@ -754,6 +781,14 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             set_swatch(&painter, swatch, *rgb);
             let label = format!("Selection set “{name}”");
             fitted_label(&painter, swatch, &label, &font, r.right() - 8.0);
+        }
+        let first =
+            workholding_entries(viewport.view()).len() + usize::from(viewport.legend_set.is_some());
+        for (i, name) in viewport.unreached_legend().iter().enumerate() {
+            let y = r.top() + held_top + ROW * (first + i) as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(18.0, 12.0));
+            dot_swatch(&painter, swatch);
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }
     if viewport.shows_unapplied() {
@@ -932,7 +967,7 @@ fn colour_scale(
                 painter,
                 at,
                 to_color32(h.colour).gamma_multiply(dim),
-                h.cross,
+                matches!(h.kind, openchuck_viewport::HatchKind::Cross),
             );
         }
         painter.text(
@@ -1351,6 +1386,23 @@ mod tests {
             strokes.contains(&Color32::from_rgb(0x23, 0x96, 0x88)),
             "{strokes:?}"
         );
+    }
+
+    #[test]
+    fn req_ui_02_req_sim_01_operations_reads_the_pointer_not_the_old_tool_move() {
+        // Issue 535: a tool position kept from a simulation is not the
+        // readout of any other step.
+        let mut viewport = Viewport::new(true);
+        viewport.set_tool_readout(Some(crate::viewport::ToolReadout {
+            work: [1.0, 2.0, 3.0, 4.0],
+            move_number: 7,
+        }));
+        viewport.set_step(Some(ViewStep::Operations));
+        assert!(readout(&viewport).is_none(), "no pointer on the surface");
+        viewport.cursor_point = Some([5.0, 0.0, 0.0]);
+        assert_eq!(readout(&viewport).unwrap().1, "Cursor on surface");
+        viewport.set_step(Some(ViewStep::Simulate));
+        assert_eq!(readout(&viewport).unwrap().1, "Tool at move 7");
     }
 
     #[test]

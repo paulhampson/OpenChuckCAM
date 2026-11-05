@@ -106,6 +106,12 @@ pub struct Reach {
     /// The grid pitch used, in millimetres: the option's, or coarser for a
     /// part wider than a thousand of them.
     pub pitch: f64,
+    /// Whether every sample's class is the result of a test (NFR-12):
+    /// false when the enclosure test was skipped, for a tool narrower than
+    /// two pitches or with nothing to cast against, and the material left
+    /// is undecided for that reason alone. True when the test ran, or when
+    /// nothing was left to decide.
+    pub classified: bool,
 }
 
 /// The crossings along X of one body's rays, one ray per grid point.
@@ -229,14 +235,30 @@ pub fn classify_reach(
     let pitch = if ylo.is_finite() && zlo.is_finite() && yhi.is_finite() && zhi.is_finite() {
         options.pitch.max((yhi - ylo).max(zhi - zlo) / MAX_GRID)
     } else {
-        // Nothing to cast against: nothing is enclosed.
+        // Nothing to cast against: the test does not run.
+        let classified = !classes.contains(&ReachClass::Undecided);
         return Ok(Reach {
             classes,
             pitch: options.pitch,
+            classified,
         });
     };
-    if options.smallest_tool < 2.0 * pitch || !classes.contains(&ReachClass::Undecided) {
-        return Ok(Reach { classes, pitch });
+    if !classes.contains(&ReachClass::Undecided) {
+        // Nothing left to decide.
+        return Ok(Reach {
+            classes,
+            pitch,
+            classified: true,
+        });
+    }
+    if options.smallest_tool < 2.0 * pitch {
+        // A tool that could pass an opening the grid reads as closed: the
+        // test does not run.
+        return Ok(Reach {
+            classes,
+            pitch,
+            classified: false,
+        });
     }
     // Two empty grid points round the bodies, so the border is outside.
     let grid = Grid {
@@ -303,7 +325,11 @@ pub fn classify_reach(
             *slot = class;
         }
     }
-    Ok(Reach { classes, pitch })
+    Ok(Reach {
+        classes,
+        pitch,
+        classified: true,
+    })
 }
 
 /// A grid point's state in one slab.
