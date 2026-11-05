@@ -373,6 +373,7 @@ fn req_gc_17_neutral_conversion_checks_unrounded_block_durations() {
         decimals: None,
         operation_names: job.operation_names,
         operation_spindle: job.operation_spindle,
+        combine_rotary_runs: false,
     };
     let p = path(&[0.001]);
     let program = openchuck_post::to_machine_program(&p, &options).unwrap();

@@ -75,6 +75,7 @@ impl Strategy for OneRing {
             .collect();
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -912,6 +913,82 @@ fn req_ui_11_req_ui_12_a_missing_model_file_is_an_error_that_blocks_setup() {
 }
 
 #[test]
+fn req_ui_11_req_ui_12_a_new_setups_missing_stock_is_attention_not_an_error() {
+    // Decision 0518 (issue 463 item 3, amending 0173 item 3): Add setup gives
+    // a setup with a part and no stock. Choosing the stock is the user's next
+    // step, so the Setup step reads "Needs attention: Set the stock", the same
+    // as a missing machine, and Messages count no error for it.
+    let (dir, mut app) = empty("new-setup-no-stock");
+    add_model(&dir, &mut app, "cube_ascii.stl");
+    let add = openchuck_app::new_setup(app.project()).unwrap();
+    app.execute(add).unwrap();
+    let setup = app.project().setups().first().unwrap().id;
+    assert!(app.project().setups().first().unwrap().stock.is_none());
+    assert!(app.project().machine().is_none());
+
+    // No machine yet: the stock is still the first thing the step names.
+    let o = app.overview(None, &JobLog::default());
+    let step = o.step(Step::Setup);
+    assert_eq!(step.health, StepHealth::Attention, "{:?}", step.reason);
+    assert_eq!(step.reason.as_deref(), Some("Set the stock"));
+    assert!(o.health() < StepHealth::Error);
+    assert_eq!(
+        o.messages
+            .iter()
+            .filter(|m| m.severity == openchuck_app::overview::Severity::Error)
+            .count(),
+        0
+    );
+    // The value is still required: it is listed, and it stops generation.
+    assert!(
+        o.missing_for(ItemRef::Setup(setup))
+            .iter()
+            .any(|r| r.text == "Set the stock")
+    );
+
+    // With a machine chosen the step still reads the stock, not "Choose a machine".
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    let o = app.overview(None, &JobLog::default());
+    assert_eq!(o.step(Step::Setup).health, StepHealth::Attention);
+    assert_eq!(o.step(Step::Setup).reason.as_deref(), Some("Set the stock"));
+}
+
+#[test]
+fn req_ui_11_req_ui_12_a_missing_part_is_attention_and_a_missing_tool_stays_an_error() {
+    // Decision 0518 item 1 and 2: a setup with no part is a to-do too; an
+    // enabled operation with no tool is still an error that turns the bar red.
+    let mut f = calm("missing-part-and-tool");
+    let op = f.add_operation("Ring", "one_ring");
+    let mut setup = f.app.project().setups().first().unwrap().clone();
+    setup.part = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let o = f.overview();
+    let step = o.step(Step::Setup);
+    assert_eq!(step.health, StepHealth::Attention, "{:?}", step.reason);
+    assert_eq!(step.reason.as_deref(), Some("Choose the part"));
+
+    let setup_id = f.app.project().setups().first().unwrap().id;
+    assert!(
+        f.overview()
+            .missing_for(ItemRef::Setup(setup_id))
+            .iter()
+            .any(|r| r.text == "Choose the part")
+    );
+    // A missing tool on an operation stays red (decision 0173 item 3).
+    let mut operation = f.app.project().operation(op).unwrap().clone();
+    operation.tool = None;
+    f.app
+        .execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let o = f.overview();
+    assert_eq!(o.step(Step::Operations).health, StepHealth::Error);
+    assert_eq!(o.health(), StepHealth::Error);
+}
+
+#[test]
 fn req_ui_11_req_ui_12_a_missing_machine_is_attention_not_an_error() {
     // Decision 0173 (owner's answer, FIRSTRUN item 1): choosing a machine is
     // a to-do. The bar reads "Needs attention", never "Error to fix", so it
@@ -1526,8 +1603,10 @@ fn calm(name: &str) -> Fixture {
         .execute(Command::SetMachine(Some(Box::new(machine))))
         .unwrap();
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    // Within the 10 mm ball's flutes above the 10 mm cube: a ring cut in
+    // deeper stock is refused (decision record 0509).
     setup.stock = Some(Stock::Cylinder {
-        diameter: Millimetres(60.0),
+        diameter: Millimetres(24.0),
         length: Millimetres(60.0),
         x_start: Millimetres(-30.0),
     });
@@ -1582,9 +1661,10 @@ fn req_ui_11_the_bar_is_green_only_when_nothing_is_stale_or_missing() {
 }
 
 #[test]
-fn req_ui_11_a_missing_tool_or_stock_is_red_and_agrees_with_the_marks() {
-    // The owner's answer on issue 210: an incomplete setup (a missing tool
-    // or stock) is red. The same list gives the marks in the inspector
+fn req_ui_11_a_missing_tool_is_red_and_a_missing_stock_needs_attention() {
+    // The owner's answer on issue 210: a missing tool is red. A setup's
+    // missing stock was red too; decision 0518 (issue 463) makes it a to-do
+    // (Needs attention). The same list gives the marks in the inspector
     // (issue 224) and the Post and export blocker (issue 140).
     let mut f = calm("health-red");
     let op = f.add_operation("Ring", "one_ring");
@@ -1634,8 +1714,8 @@ fn req_ui_11_a_missing_tool_or_stock_is_red_and_agrees_with_the_marks() {
     setup.stock = None;
     f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let o = f.overview();
-    assert_eq!(health(&o, Step::Setup), StepHealth::Error);
-    assert_eq!(o.health(), StepHealth::Error);
+    assert_eq!(health(&o, Step::Setup), StepHealth::Attention);
+    assert_eq!(o.health(), StepHealth::Attention);
     let needs = f.app.setup_requirements(f.setup);
     assert_eq!(needs.len(), 1);
     assert_eq!(needs[0].field, RequirementField::Stock);
@@ -2226,4 +2306,190 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
         out.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     }
     out
+}
+
+/// How far along a run an operation's state is, for the order check: an
+/// operation only ever moves forward through a run (decision 0517).
+fn run_rank(state: ItemState) -> u8 {
+    match state {
+        ItemState::Stale => 0,
+        ItemState::Running => 1,
+        ItemState::Finalising => 2,
+        ItemState::UpToDate => 3,
+        other => panic!("unexpected state {other:?} during a run"),
+    }
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_a_made_operation_shows_finalising_until_the_run_ends() {
+    // Issue 474: the first operation's toolpath is done while the second is
+    // still being made. It is not up to date (the run may still be refused
+    // or cancelled) and not stale (it was just made): finalising.
+    let mut f = fixture("finalising", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Forever", "until_cancelled");
+    let mut log = JobLog::default();
+    let handle = f.app.start_regenerate();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last = 0;
+    loop {
+        log.update(f.app.drain_events());
+        let o = f.app.overview(None, &log);
+        let rank = run_rank(f.state(&o, one));
+        assert!(rank >= last, "operation one moved backwards to {rank}");
+        assert_ne!(f.state(&o, one), ItemState::UpToDate, "before the run ends");
+        last = rank;
+        if f.state(&o, two) == ItemState::Running {
+            assert_eq!(f.state(&o, one), ItemState::Finalising);
+            let cause = &o.status(ItemRef::Operation(one)).unwrap().cause;
+            assert!(cause.starts_with("Finalising: "), "{cause}");
+            // The Generate stale offer does not count a finalising operation.
+            assert!(!o.stale.contains(&one), "{:?}", o.stale);
+            break;
+        }
+        assert!(Instant::now() < deadline, "operation two never ran");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    // Cancel: nothing of the run is kept, and the operation says why.
+    assert!(f.app.cancel_job(handle.id()));
+    assert!(handle.wait().unwrap_err().is_cancelled());
+    log.update(f.app.drain_events());
+    let o = f.app.overview(None, &log);
+    assert_eq!(f.state(&o, one), ItemState::Stale);
+    assert_eq!(f.state(&o, two), ItemState::Stale);
+    let cause = &o.status(ItemRef::Operation(one)).unwrap().cause;
+    assert!(cause.contains("cancelled"), "{cause}");
+    assert!(o.stale.contains(&one));
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_every_operation_becomes_up_to_date_when_the_run_ends() {
+    let mut f = fixture("finalising-done", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    let mut log = JobLog::default();
+    let handle = f.app.start_regenerate();
+    let mut seen = [0u8; 2];
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let result = loop {
+        log.update(f.app.drain_events());
+        let o = f.app.overview(None, &log);
+        for (at, op) in [one, two].into_iter().enumerate() {
+            let rank = run_rank(f.state(&o, op));
+            assert!(rank >= seen[at], "operation {at} moved backwards");
+            seen[at] = rank;
+        }
+        if let Some(result) = handle.try_result() {
+            break result;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    result.unwrap();
+    log.update(f.app.drain_events());
+    let o = f.app.overview(None, &log);
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::UpToDate);
+    assert!(o.stale.is_empty());
+}
+
+/// The highest Z word of a program, in its own coordinates.
+fn highest_z(program: &str) -> f64 {
+    program
+        .split_whitespace()
+        .filter_map(|w| w.strip_prefix('Z'))
+        .filter_map(|v| v.parse::<f64>().ok())
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// A machine minimum clearance above the setup's safe cylinder warns in the
+/// setup checks and Messages, naming both values, and generation still runs
+/// (decision 0495, D1 and D2; NFR-12). Clearance from stock grows the
+/// clearance to the minimum, which clears the warning and lifts the
+/// program's safe Z; switched off again, the program is byte-identical to
+/// the one before (GC-07, NFR-06).
+#[test]
+fn req_set_06_req_gc_07_the_minimum_clearance_warns_and_clearance_from_stock_grows_it() {
+    let mut f = fixture("min-clearance", "cube_ascii.stl");
+    let mut machine = MachineProfile::example_x_rotary(); // radius 40, safe Z 50
+    machine.min_clearance_radius = Some(Millimetres(60.0));
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    f.add_operation("Ring", "one_ring");
+    let below = |o: &Overview| -> Vec<String> {
+        o.messages
+            .iter()
+            .filter(|m| m.text.contains("inside the minimum clearance"))
+            .map(|m| m.text.clone())
+            .collect()
+    };
+    let o = f.overview();
+    let found = below(&o);
+    assert_eq!(found.len(), 1, "{found:?}");
+    for words in [
+        "radius 40.000 mm",
+        "radius 60.000 mm, from the machine",
+        "Clearance from stock",
+        "on your machine before running",
+        "minimum clearance radius",
+    ] {
+        assert!(found[0].contains(words), "{words}: {}", found[0]);
+    }
+    assert!(
+        o.setup_checks
+            .iter()
+            .any(|c| !c.passed && c.text.contains("inside the minimum clearance"))
+    );
+    // A warning, not a refusal: the program is still written.
+    f.app
+        .set_post(Some(PostSelection::Builtin("linuxcnc".into())));
+    let before = f.app.regenerate().unwrap().gcode;
+    assert!(!before.is_empty());
+
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance_rules.from_stock = Some(openchuck_app::setup::DEFAULT_STOCK_MARGIN);
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(below(&f.overview()).is_empty());
+    let grown = f.app.regenerate().unwrap().gcode;
+    assert_ne!(grown, before);
+    let (low, high) = (highest_z(&before[0].1), highest_z(&grown[0].1));
+    assert!((high - low - 10.0).abs() < 1e-6, "{low} -> {high}");
+
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.clearance_rules.from_stock = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert_eq!(f.app.regenerate().unwrap().gcode, before);
+}
+
+/// Case b of decision 0495 on the Makera Z1: a tool whose highest tip is
+/// inside the minimum clearance radius warns that it may be too long to
+/// clear the workholding within the Z travel, and does not advise lowering
+/// the safe Z (NFR-12).
+#[test]
+fn req_set_06_req_nfr_12_a_tool_too_long_for_the_minimum_clearance_warns_on_the_z1() {
+    let mut f = fixture("too-long-min", "cube_ascii.stl");
+    let mut z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    // Flute 10: the tip reaches 58.1 above the axis.
+    z1.min_clearance_radius = Some(Millimetres(60.0));
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    f.add_operation("Ring", "one_ring");
+    let o = f.overview();
+    let found: Vec<&str> = o
+        .messages
+        .iter()
+        .filter(|m| m.text.contains("too long to clear the workholding"))
+        .map(|m| m.text.as_str())
+        .collect();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("58.100 mm"), "{}", found[0]);
+    assert!(
+        !found[0].contains("Lower the setup's safe Z"),
+        "{}",
+        found[0]
+    );
 }

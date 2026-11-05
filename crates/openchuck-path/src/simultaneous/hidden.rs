@@ -40,7 +40,7 @@ use openchuck_types::tool::RevolvedProfile;
 use openchuck_types::tool::profile::{ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile};
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{Unreached, UnreachedReason};
+use crate::assemble::{MAX_UNREACHED_POINTS, Unreached, UnreachedReason};
 use crate::cutter::{self, ToolLine};
 use crate::parallel;
 use crate::rotary::TURN;
@@ -425,7 +425,7 @@ pub(super) struct Contour {
     /// The section's index, for the order of the passes.
     pub section: usize,
     /// The area of hidden surface it is on: contours of one area are cut
-    /// one after another (decision record 0639).
+    /// one after another (decision record 0520).
     pub area: usize,
     /// The chain's points along the pass, and their lengths from its start.
     points: Vec<Point3>,
@@ -1240,6 +1240,7 @@ impl Plan<'_> {
             UnreachedReason::Blocked => 0,
             UnreachedReason::TooNarrow => 1,
             UnreachedReason::NeedsLean { .. } => 2,
+            UnreachedReason::NearHeldRegion => 3,
         };
         // Neighbours: the same reason, on the same or a neighbouring
         // section, near enough.
@@ -1331,6 +1332,14 @@ impl Plan<'_> {
                     angles.push(a);
                     area += dx * c.length() / (c.samples.len().saturating_sub(1).max(1)) as f64;
                 }
+                // The surface points, in the strategy's order, taken evenly
+                // when there are more than a viewer needs (decision 0515).
+                let stride = members.len().div_ceil(MAX_UNREACHED_POINTS).max(1);
+                let points = members
+                    .iter()
+                    .step_by(stride)
+                    .map(|(_, s)| s.point)
+                    .collect();
                 Some(Unreached {
                     x: (
                         (x0 - 0.5 * dx).max(settings.x0),
@@ -1339,6 +1348,7 @@ impl Plan<'_> {
                     a: arc_of(&mut angles),
                     area,
                     reason,
+                    points,
                 })
             })
             .collect();

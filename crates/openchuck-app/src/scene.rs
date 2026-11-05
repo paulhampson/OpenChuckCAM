@@ -53,6 +53,9 @@ pub enum SceneRole {
     RotaryAxis,
     /// The arrow showing which way the part turns for positive A.
     ADirection,
+    /// Where A = 0 is on the part: a mark from the rotary axis along the
+    /// model's up direction, which turns with the part (issue 531).
+    AZero,
     /// The work coordinate system's X axis.
     WorkX,
     /// The work coordinate system's Y axis.
@@ -447,6 +450,39 @@ pub(crate) fn build_scene(
                 at: label_at,
                 text: "A+".to_owned(),
             });
+            // The arc's start is machine A = 0, on the fixed frame.
+            let start = a_start(&frame, x0 + 0.3 * margin, radius);
+            view.labels.push(SceneLabel {
+                role: SceneRole::ADirection,
+                at: start,
+                text: "A0".to_owned(),
+            });
+            // A = 0 on the part: from the axis along the model's up direction,
+            // out past the part and the stock, at the part's far end (CodeRabbit on #533). It turns
+            // with the part in the machine view; the arc's start does not.
+            let up = model_up(&frame);
+            let rim = [
+                bounds.min.y.abs(),
+                bounds.max.y.abs(),
+                bounds.min.z.abs(),
+                bounds.max.z.abs(),
+            ]
+            .into_iter()
+            .fold(0.08 * size, f64::max)
+                * 1.05;
+            // At the part's far end, so it stays on the part when the stock
+            // reaches past it; the scene's end when no part is readable.
+            let end = view.part_extent.map_or(bounds.max.x, |p| p.bounds.max.x);
+            let at = |k: f64| Point3::new(end, up.y * k, up.z * k);
+            view.lines.push(ScenePolyline {
+                role: SceneRole::AZero,
+                points: vec![at(0.0), at(rim)],
+            });
+            view.labels.push(SceneLabel {
+                role: SceneRole::AZero,
+                at: at(rim * 1.08),
+                text: "A0".to_owned(),
+            });
             view.a_direction = Some(crate::setup::a_direction(profile));
         }
         None => view.notes.push(
@@ -493,6 +529,12 @@ pub(crate) fn build_scene(
     }
     view.bounds = Some(bounds);
     Ok(view)
+}
+
+/// Just outside the start of the A+ arrow, where machine A = 0 is.
+fn a_start(frame: &RotaryFrame, x: f64, radius: f64) -> Point3 {
+    let d = facing_at(frame, model_up(frame), Degrees(0.0));
+    Point3::new(x, d.y * radius * 1.15, d.z * radius * 1.15)
 }
 
 /// The arrow for positive A: an arc of 270 degrees around the axis at `x`,

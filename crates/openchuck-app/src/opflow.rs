@@ -245,7 +245,7 @@ impl Application {
         }
         // A strategy that can cut its extra passes beside their region
         // starts with that order, written into the operation; one saved
-        // without it keeps the order it had (decision record 0639).
+        // without it keeps the order it had (decision record 0520).
         if self
             .strategies
             .get(strategy)

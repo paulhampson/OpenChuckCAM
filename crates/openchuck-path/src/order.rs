@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The order of an operation's passes (OP-14, OP-15, SIM-08; issue #469;
-//! decision record 0639).
+//! decision record 0520).
 //!
 //! A strategy that cuts extra passes after its main ones (the turns at faces
 //! across the rotary axis, decision record 0297, and the contours on surfaces
@@ -23,7 +23,7 @@
 //! time to leave, retract and enter: only the travel between passes does.
 //! The new order is kept only when its links travel less along X in all, and
 //! take no more than one hundredth of the operation's estimated time longer
-//! than before (the owner's choice, decision record 0639; SIM-08): the
+//! than before (the owner's choice, decision record 0520; SIM-08): the
 //! links' travel from the machine's rapid rates along X and in A, moving
 //! together, and the estimate from the cutting at the programmed feed plus
 //! each link out to the clearance radius and back. Otherwise the order is
@@ -43,7 +43,7 @@ pub const PARAMETER: &str = "pass_order";
 /// default, so an operation saved without the parameter is unchanged.
 pub const AFTER_MAIN: &str = "after_main";
 /// Each extra pass is cut beside the main passes of its region, where that
-/// saves time. A new operation is given this (decision record 0639).
+/// saves time. A new operation is given this (decision record 0520).
 pub const BY_REGION: &str = "by_region";
 
 /// The parameter, for the strategies that have extra passes.
@@ -138,7 +138,7 @@ fn ends(passes: &[Pass]) -> Option<(End, End)> {
 const TIE: f64 = 1e-4;
 
 /// How much longer the links may take in all, as a share of the cutting
-/// time (the owner's choice: one per cent, decision record 0639).
+/// time (the owner's choice: one per cent, decision record 0520).
 const ALLOWANCE: f64 = 0.01;
 
 impl End {

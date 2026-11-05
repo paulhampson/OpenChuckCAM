@@ -1,4 +1,4 @@
-# 0639: Face turns and hidden-surface passes are cut beside their region (OP-14, OP-15, SIM-08, OP-12, SET-09, GC-07, NFR-06, NFR-12; issue #469; lane PATHORDER)
+# 0520: Face turns and hidden-surface passes are cut beside their region (OP-14, OP-15, SIM-08, OP-12, SET-09, GC-07, NFR-06, NFR-12; issue #469; lane PATHORDER)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after the owner read it in full. Proposed the same day by lane PATHORDER. The owner's answers were relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7) on 1 and 2 Nov 2026 (decision 0049):
   - D1: ordering (this record, pull request C) first, then low links for helical, rest and simultaneous finishing as a separate pull request (D, OI-1741).
@@ -13,7 +13,7 @@
   - [0034](0034-slice-12-baseline-finishing.md) and [0036](0036-slice-13-simultaneous-finishing.md): links, continuity and the unwind stay with the shared services.
   - [0390](0390-helical-finishing-in-rings.md) item 4: rings already put a face's ring in X order.
   - [0410](0410-face-turns-round-an-off-axis-section.md): turns round an off-axis section.
-- **Open items:** new OI-1995 (the order inside one hidden area). OI-1741 (low links for these strategies) is pull request D.
+- **Open items:** new OI-2042 (the order inside one hidden area). OI-1741 (low links for these strategies) is pull request D.
 
 ## Context
 
@@ -56,7 +56,7 @@ In the code:
    - The passes are the same, so the material left is the same: a finishing surface is the envelope of the tool's sweeps, whatever their order. The test checks this cut for cut.
    - The generated G-code remains the user's to verify (NFR-12).
 5. **The user is told (SIM-08).** With by region, a path note says what the order did: "the tool travels N mm along the part between passes instead of M mm, and the moves between passes take about ±s". Or it says why the old order was kept, with the seconds and the one per cent. The estimated time shows the result as before.
-6. **Library.** Additive API: the module `order` (`PARAMETER`, `BY_REGION`, `AFTER_MAIN`, `spec`). No struct changes. The default for a new operation changes its output, so the coordinator assigns a minor version at merge (as 0.31.0 did for adaptive spacing).
+6. **Library.** Additive API: the module `order` (`PARAMETER`, `BY_REGION`, `AFTER_MAIN`, `spec`). No struct changes. The default for a new operation changes its written order, not the cut geometry, so the library family takes a minor bump: 0.43.0, assigned by the Merge Manager at release (decision 0048).
 
 ## Alternatives considered
 
@@ -64,7 +64,7 @@ In the code:
 - **A strict "never longer" objective.** Measured (Context). It moves groups by A and leaves the back-and-forth. The owner chose (b).
 - **Order by X with no time bound.** It could add 5 per cent where a turn's fixed start angle makes A reposition. The bound keeps (b) within one per cent.
 - **A turn starts where the tool arrives** (D4: its start angle, or any of its pieces, chosen per place). Measured with X ordering on the crankshaft: within 3 s of a fixed start. Dropped. It would also amend 0297 and 0410's "start angle as before" for no gain.
-- **Reordering inside a hidden area.** On the blisk the back-and-forth is within one area's contours, which move as one group here: OI-1995.
+- **Reordering inside a hidden area.** On the blisk the back-and-forth is within one area's contours, which move as one group here: OI-2042.
 
 ## Consequences
 
@@ -84,9 +84,9 @@ In the code:
   - this record and the decision index;
   - the verification plan's OP-14 and SIM-08 rows;
   - the work breakdown (lane PATHORDER);
-  - the open-items register (OI-1995);
+  - the open-items register (OI-2042);
   - the changelogs of `openchuck-path` and `openchuck-app`.
-- **Open items:** OI-1995. Low links for these strategies are OI-1741, pull request D.
+- **Open items:** OI-2042. Low links for these strategies are OI-1741, pull request D.
 
 ## Verification
 
@@ -118,7 +118,7 @@ All use the Z1 profile with machine clearance radius 40 and a 3.175 mm ball for 
 **Reading the table.**
 - On the crankshaft, the face turns and the web contours now come with their region. Helical finishing no longer goes back along the part (no reversals), and the simultaneous spiral's back-and-forth halves.
 - The time changes by between −0.1 and +0.5 per cent.
-- The remaining reversals of the simultaneous patterns are inside the web contour groups and the axial zigzag; on the blisk they are inside one hidden area (OI-1995).
+- The remaining reversals of the simultaneous patterns are inside the web contour groups and the axial zigzag; on the blisk they are inside one hidden area (OI-2042).
 - Time is the larger saving, and it waits for pull request D (low links), measured in the lane plan: a lower link height saved 10 to 14 per cent on these operations.
 
 **Golden files and reference projects (D3).** None changes: no saved operation has the parameter, so all of them use after main passes. The goldens and reference programs are byte-identical, checked by the existing golden tests on this branch. Only operations created from now on use by region.

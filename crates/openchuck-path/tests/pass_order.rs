@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The order of the passes (OP-12, OP-14, OP-15, SET-09, SIM-08, GC-07,
-//! NFR-06; issue #469; decision record 0639): with "by region" the turns at
+//! NFR-06; issue #469; decision record 0520): with "by region" the turns at
 //! faces across the axis and the passes on hidden surfaces are cut beside
 //! the passes of their region instead of after them all. The checks are on
 //! the crankshaft (`stl/crankshaft.stl`), whose webs have faces across the
@@ -166,7 +166,7 @@ fn sweep(path: &GeneratedPath) -> f64 {
 
 #[test]
 fn req_op_14_req_sim_08_the_crankshaft_extra_passes_are_cut_beside_their_region() {
-    // The owner's choice (decision record 0639): by region the tool goes
+    // The owner's choice (decision record 0520): by region the tool goes
     // back along the part less, and the estimated time is at most one per
     // cent longer.
     for strategy in [
