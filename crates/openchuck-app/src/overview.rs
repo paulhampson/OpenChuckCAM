@@ -2454,7 +2454,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     };
     // A missing machine, and a setup's missing stock or part, are to-dos, not
     // errors: the Setup step reads them as needing attention (decision 0173,
-    // FIRSTRUN item 1; decision 0636). A missing tool or an operation's
+    // FIRSTRUN item 1; decision 0518). A missing tool or an operation's
     // missing value is still an error.
     let is_to_do = |m: &Missing| {
         use crate::requirements::RequirementField as F;
@@ -2527,7 +2527,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && m.requirement.field != crate::requirements::RequirementField::Machine
     }) {
         // A setup's missing stock or part: the user has not reached it yet
-        // (decision 0636). It is named before the machine, as it is the
+        // (decision 0518). It is named before the machine, as it is the
         // nearer step once a setup exists.
         (StepHealth::Attention, Some(todo.requirement.text.clone()))
     } else if project.machine().is_none() {

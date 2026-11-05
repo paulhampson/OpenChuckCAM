@@ -914,7 +914,7 @@ fn req_ui_11_req_ui_12_a_missing_model_file_is_an_error_that_blocks_setup() {
 
 #[test]
 fn req_ui_11_req_ui_12_a_new_setups_missing_stock_is_attention_not_an_error() {
-    // Decision 0636 (issue 463 item 3, amending 0173 item 3): Add setup gives
+    // Decision 0518 (issue 463 item 3, amending 0173 item 3): Add setup gives
     // a setup with a part and no stock. Choosing the stock is the user's next
     // step, so the Setup step reads "Needs attention: Set the stock", the same
     // as a missing machine, and Messages count no error for it.
@@ -958,7 +958,7 @@ fn req_ui_11_req_ui_12_a_new_setups_missing_stock_is_attention_not_an_error() {
 
 #[test]
 fn req_ui_11_req_ui_12_a_missing_part_is_attention_and_a_missing_tool_stays_an_error() {
-    // Decision 0636 item 1 and 2: a setup with no part is a to-do too; an
+    // Decision 0518 item 1 and 2: a setup with no part is a to-do too; an
     // enabled operation with no tool is still an error that turns the bar red.
     let mut f = calm("missing-part-and-tool");
     let op = f.add_operation("Ring", "one_ring");
@@ -1663,7 +1663,7 @@ fn req_ui_11_the_bar_is_green_only_when_nothing_is_stale_or_missing() {
 #[test]
 fn req_ui_11_a_missing_tool_is_red_and_a_missing_stock_needs_attention() {
     // The owner's answer on issue 210: a missing tool is red. A setup's
-    // missing stock was red too; decision 0636 (issue 463) makes it a to-do
+    // missing stock was red too; decision 0518 (issue 463) makes it a to-do
     // (Needs attention). The same list gives the marks in the inspector
     // (issue 224) and the Post and export blocker (issue 140).
     let mut f = calm("health-red");

@@ -1,4 +1,4 @@
-# 0636: A setup's missing stock or part reads "Needs attention", not "Error to fix" (lane UIBUGS, issue #463 item 3)
+# 0518: A setup's missing stock or part reads "Needs attention", not "Error to fix" (lane UIBUGS, issue #463 item 3)
 
 - **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator session (decision 0049), unchanged, after reading it in full. The owner's answer it records (a setup's missing stock or part reads "Needs attention", a missing tool or operation value stays red) was relayed the same way.
 - **Date:** 2 Nov 2026.
