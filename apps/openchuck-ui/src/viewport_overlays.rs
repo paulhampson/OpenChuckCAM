@@ -1354,6 +1354,23 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_02_req_sim_01_operations_reads_the_pointer_not_the_old_tool_move() {
+        // Issue 535: a tool position kept from a simulation is not the
+        // readout of any other step.
+        let mut viewport = Viewport::new(true);
+        viewport.set_tool_readout(Some(crate::viewport::ToolReadout {
+            work: [1.0, 2.0, 3.0, 4.0],
+            move_number: 7,
+        }));
+        viewport.set_step(Some(ViewStep::Operations));
+        assert!(readout(&viewport).is_none(), "no pointer on the surface");
+        viewport.cursor_point = Some([5.0, 0.0, 0.0]);
+        assert_eq!(readout(&viewport).unwrap().1, "Cursor on surface");
+        viewport.set_step(Some(ViewStep::Simulate));
+        assert_eq!(readout(&viewport).unwrap().1, "Tool at move 7");
+    }
+
+    #[test]
     fn req_ui_02_inside_tests_a_convex_polygon() {
         let square = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
         assert!(inside([0.0, 0.0], &square));
