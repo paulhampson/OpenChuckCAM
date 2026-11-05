@@ -211,6 +211,11 @@ pub struct OperationPath {
     /// finished surface deeper than the tolerance (NFR-12; decision record
     /// 0175). Each is in `notes` too.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// The areas of the part the strategy could not reach, with the surface
+    /// points in each (OP-20; decision record 0515): what the viewport marks
+    /// on the part. They go with the path, so a path from the cache brings
+    /// the areas it was made with.
+    pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,
     /// Immutable whole-setup inputs for Facing's actual connected-path checks.
     /// None preserves legacy default Facing and every other strategy.
     pub facing: Option<crate::facing::FacingVerification>,
@@ -637,7 +642,7 @@ pub(crate) fn generate_with_part(
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(machine),
-        clearance: setup.clearance.unwrap_or(machine.clearance),
+        clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: entry_safety.as_ref(),
@@ -692,6 +697,33 @@ pub(crate) fn generate_with_part(
                  cuts, and a finishing operation cuts each selection to its own"
             ));
         }
+    }
+    // A whole-part operation whose tool cannot cut down beside a tab between
+    // a held region and the part says so; it still generates (OP-21, SET-09;
+    // decision 0503; issue #511).
+    if operation.selections.is_empty()
+        && CLEARS_ROUND_TABS.contains(&operation.strategy.as_str())
+        && !setup.workholding.tabs.is_empty()
+        && let Some(setup_stock) = setup.stock.as_ref()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let leave = match values.get(names::STOCK_TO_LEAVE) {
+            Some(ParameterValue::Number(n)) => *n,
+            _ => operation_leave,
+        };
+        let label = crate::workholding::operation_label(project, operation);
+        leave_notes.extend(crate::workholding::uncleared_tab_notes(
+            &setup.workholding,
+            setup_stock,
+            &part,
+            &crate::workholding::ClearingTool {
+                cutting_radius: profile.cutting_radius(),
+                reach: tool_reach(&profile, &snapshot.tool),
+                leave,
+                tool: &snapshot.name,
+                operation: &label,
+            },
+        ));
     }
     // Edge following on a STEP part follows the B-rep's own edges, with the
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
@@ -814,6 +846,7 @@ pub(crate) fn generate_with_part(
             warnings.extend(path.warnings);
             warnings
         },
+        unreached: path.unreached.into(),
     })
 }
 
@@ -1494,12 +1527,7 @@ fn keep_out_of(
     let Some(bounds) = setup.stock.as_ref().and_then(|s| s.bounds(Some(&part))) else {
         return Vec::new();
     };
-    let reach = profile
-        .pieces()
-        .iter()
-        .map(|p| p.end().radius.0)
-        .fold(profile.cutting_radius(), f64::max)
-        .max(tool.shank_diameter.0 / 2.0);
+    let reach = tool_reach(profile, tool);
     let (start, end) = setup
         .workholding
         .held_intervals((bounds.min.x, bounds.max.x));
@@ -1509,6 +1537,33 @@ fn keep_out_of(
         .map(|(lo, hi)| (lo - reach - HELD_CLEARANCE, hi + reach + HELD_CLEARANCE))
         .collect()
 }
+
+/// The largest radius of `tool`, its cutting profile or its shank: how far
+/// its middle keeps from a held region (decision 0161).
+fn tool_reach(
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> f64 {
+    profile
+        .pieces()
+        .iter()
+        .map(|p| p.end().radius.0)
+        .fold(profile.cutting_radius(), f64::max)
+        .max(tool.shank_diameter.0 / 2.0)
+}
+
+/// The strategies that clear the whole part when no selection limits them,
+/// for which a tab zone the tool cannot cut down in is worth a note (decision
+/// 0503). Selections, drilling, swarf, edges and Facing (which has its own
+/// end-zone rules, decision 0252) are left out.
+const CLEARS_ROUND_TABS: [&str; 6] = [
+    roughing::NAME,
+    openchuck_path::rest::NAME,
+    openchuck_path::helical::NAME,
+    openchuck_path::axial::NAME,
+    openchuck_path::indexed::NAME,
+    openchuck_path::simultaneous::NAME,
+];
 
 /// The stock an earlier operation of the setup left, which says so
 /// ([`StockModel::left_by_earlier_operations`]; decision record 0344).
@@ -1540,13 +1595,23 @@ impl StockModel for LeftByEarlier<'_> {
     fn left_by_earlier_operations(&self) -> bool {
         true
     }
+
+    fn top_over_disc(
+        &self,
+        centre: openchuck_types::geometry::Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region
 /// along the axis, in millimetres (decision 0161): the jaw face is not a
 /// surface to cut against, and the simulation's cells would read a tool
-/// flush with it as touching the held stock.
-pub const HELD_CLEARANCE: f64 = 0.5;
+/// flush with it as touching the held stock. The library's value, which
+/// rest machining also uses (decision 0505).
+pub const HELD_CLEARANCE: f64 = openchuck_path::HELD_CLEARANCE;
 
 #[cfg(test)]
 #[allow(
@@ -2581,6 +2646,87 @@ mod tests {
             err.contains("'Op'")
                 && err.contains("face 0 is in the face set it cuts and in the check set 'chosen'"),
             "{err}"
+        );
+    }
+
+    /// The fixture of the swarf floor (decision 0491, issue #435): the flat
+    /// wall of [`swarf_limits_fixture`] (face 0) and the floor at its foot
+    /// (face 1, `z = FOOT`, facing +Z), cut by a flat end mill.
+    fn swarf_floor_fixture(parameters: &[(&str, Value)]) -> Fixture {
+        use openchuck_testkit::ruled::{floor_plane, wall_plane};
+        let mut brep = wall_plane(8.0, 22.0, 38.0, FOOT, TOP);
+        let mut floor = floor_plane(FOOT, 15.0, 45.0, 8.0, 18.0);
+        for face in &mut floor.faces {
+            face.id = FaceId(1);
+        }
+        brep.faces.extend(floor.faces);
+        let flat = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(FLAT),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(FLAT),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            swarf::NAME,
+            parameters,
+            brep,
+            Vec::new(),
+            "wall.step",
+            flat,
+            20.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f
+    }
+
+    #[test]
+    fn req_op_02_req_op_07_req_op_12_swarf_lifts_the_tool_clear_of_a_floor_in_an_avoid_set() {
+        // A tip extension of 0.5 mm reaches into the floor; with the floor in
+        // an avoid set on Cut short the tool is lifted back off it, the whole
+        // wall is still cut, and the note says so (decision 0491 item 1).
+        // Before decision 0491 the face was refused (issue #435).
+        let reach = [(swarf::parameter::TIP_EXTENSION, Value::Number(0.5))];
+        let plain = swarf_floor_fixture(&reach).run().unwrap();
+        assert!(
+            plain.notes.iter().any(
+                |n| n.contains("The tool's end reaches 0.500 mm beyond the end of the rulings")
+            ),
+            "{:?}",
+            plain.notes
+        );
+        let mut f = swarf_floor_fixture(&reach);
+        f.select_as(
+            SelectionTarget::Faces([FaceId(1)].into()),
+            f.hash,
+            f.model,
+            Role::Avoid,
+        );
+        let path = f.run().unwrap();
+        assert!((furthest_cut(&path) - 38.0).abs() < 0.02);
+        assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("The tool is lifted up to 0.50")
+                    && n.contains("to keep clear of the avoid surfaces")),
+            "{:?}",
+            path.notes
+        );
+        // A negative tip extension is taken through the application and
+        // pulls the tool up the wall (decision 0491 item 2).
+        let up = swarf_floor_fixture(&[(swarf::parameter::TIP_EXTENSION, Value::Number(-1.0))])
+            .run()
+            .unwrap();
+        assert!(
+            up.notes
+                .iter()
+                .any(|n| n.contains("The tip sits 1.000 mm up the rulings")),
+            "{:?}",
+            up.notes
         );
     }
 

@@ -245,6 +245,7 @@ fn req_op_15_shared_retract_retains_both_turn_directions_and_limited_position() 
         let path = openchuck_path::assemble::assemble(
             &[Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),

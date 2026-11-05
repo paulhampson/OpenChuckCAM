@@ -78,11 +78,29 @@ out="$work/out"; : > "$out"
 ( export EVENT=push REPO=o/r SHA=$sha F_RUST=true F_STEP=true F_GATE3=true F_FUZZ=false F_RECORDS=true F_ANY=true F_IMAGE=false \
     GITHUB_OUTPUT=$out RUNNER_TEMP=$work PATH="$work/bin:$PATH" FAKE_PRS=$good_prs FAKE_TREE=tree1 FAKE_RUNS=$good_runs \
     FAKE_ARTIFACTS=$good_arts FAKE_ZIP=$work/good.zip; bash "$here/main-run-mode.sh" > /dev/null )
+line() { sed -n "s/^$1=//p" "$out"; }
 grep -qx 'others=false' "$out" && grep -qx 'step=false' "$out" && grep -qx 'gate3=false' "$out" && grep -qx 'rust=true' "$out" \
-  && ! grep -q windows "$out" && echo "ok   light run leaves out the other jobs and the Windows and macOS legs" \
+  && [ -z "$(line win_shards)" ] && [ "$(line ubu_shards)" = 6 ] && [ "$(line mac_shards)" = 2 ] \
+  && [ "$(line mac_list)" = '[1,2]' ] && line libs_matrix | grep -q macos && ! line libs_matrix | grep -q windows \
+  && echo "ok   light run leaves out the other jobs and Windows, and runs the macOS tests" \
   || { echo "FAIL light run outputs"; cat "$out"; fail=1; }
 : > "$out"
 ( export EVENT=schedule REPO=o/r SHA=$sha GITHUB_OUTPUT=$out; bash "$here/main-run-mode.sh" > /dev/null )
-grep -qx 'others=true' "$out" && grep -qx 'step=true' "$out" && grep -qx 'gate3=true' "$out" && grep -q windows "$out" \
-  && echo "ok   scheduled run is due everywhere" || { echo "FAIL scheduled outputs"; cat "$out"; fail=1; }
+grep -qx 'others=true' "$out" && grep -qx 'step=true' "$out" && grep -qx 'gate3=true' "$out" \
+  && [ "$(line win_shards)" = 8 ] && [ "$(line win_list)" = '[1,2,3,4,5,6,7,8]' ] \
+  && [ "$(line ubu_shards)" = 6 ] && [ "$(line ubu_list)" = '[1,2,3,4,5,6]' ] \
+  && [ "$(line mac_shards)" = 2 ] && line libs_matrix | grep -q macos \
+  && echo "ok   scheduled run is due everywhere, macOS tests included" || { echo "FAIL scheduled outputs"; cat "$out"; fail=1; }
+# A pull request: Windows and Ubuntu test shares, macOS built only (decision 0516, option C).
+: > "$out"
+( export EVENT=pull_request REPO=o/r SHA=$sha F_RUST=true F_STEP=true F_GATE3=true F_FUZZ=true F_RECORDS=true F_ANY=true \
+    F_IMAGE=false GITHUB_OUTPUT=$out; bash "$here/main-run-mode.sh" > /dev/null )
+grep -qx 'mode=full' "$out" && grep -qx 'others=true' "$out" && grep -qx 'libs=true' "$out" \
+  && [ "$(line win_shards)" = 8 ] && [ "$(line ubu_shards)" = 6 ] \
+  && [ "$(line mac_shards)" = 0 ] && [ "$(line mac_list)" = '[0]' ] \
+  && ! line libs_matrix | grep -q macos && [ "$(line libs_matrix | jq -r '.include[0].os')" = windows-latest ] \
+  && [ "$(line libs_matrix | jq '[.include[] | select(.os == "windows-latest")] | length')" = 2 ] \
+  && [ "$(line libs_matrix | jq '[.include[] | select(.os == "ubuntu-latest")] | length')" = 2 ] \
+  && echo "ok   pull request runs the Windows and Ubuntu shares, Windows first, and builds macOS only" \
+  || { echo "FAIL pull request outputs"; cat "$out"; fail=1; }
 exit $fail

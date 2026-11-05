@@ -68,6 +68,8 @@ mod checkpoint_tests;
 mod open_recovery_tests;
 #[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -102,6 +104,10 @@ const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
+
+/// The answer to a check of which recent folders exist: the list that was
+/// looked at, and the folders among them that exist.
+type RecentCheck = std::sync::mpsc::Receiver<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)>;
 
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +197,19 @@ pub struct Shell {
     /// The folder the next Open dialog starts with: a recovery line's
     /// project (decision 0460).
     open_hint: Option<String>,
+    /// The recent project chosen in this frame, so the action log can leave
+    /// its folder name out (NFR-18).
+    recent_clicked: Option<std::path::PathBuf>,
+    /// The running check of which recent folders exist, and when it last
+    /// started (the check is off the UI thread; issue 381).
+    recent_check: Option<RecentCheck>,
+    recent_checked_at: Option<std::time::Instant>,
+    /// Held by a test to keep the check from answering.
+    #[cfg(test)]
+    recent_gate: Option<std::sync::Arc<std::sync::Mutex<()>>>,
+    /// The click lines the action log was given (tests).
+    #[cfg(test)]
+    logged_clicks: Vec<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -256,6 +275,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The unreachable areas of the latest run on screen (decision 0515).
+    areas: crate::unreached_view::Areas,
     /// The Simulate camera to restore while its run remains available.
     simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
     /// The results inspector of the Simulate step (SIM-05, SIM-07).
@@ -331,6 +352,13 @@ impl Shell {
             recovery_project: None,
             edit_context: None,
             open_hint: None,
+            recent_clicked: None,
+            recent_check: None,
+            recent_checked_at: None,
+            #[cfg(test)]
+            recent_gate: None,
+            #[cfg(test)]
+            logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),
@@ -363,6 +391,7 @@ impl Shell {
             export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
+            areas: crate::unreached_view::Areas::default(),
             simulate_camera: None,
             step: Step::Model,
             jobs: JobLog::default(),
@@ -1376,6 +1405,9 @@ impl Shell {
             MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
                 self.recovery_action(action);
             }
+            MessageAction::ShowInView { operation, area } => {
+                self.show_area_in_view(operation, usize::from(area));
+            }
             MessageAction::ShowSetting(op) => {
                 self.show_item(ItemRef::Operation(op));
                 self.setting_jump = self
@@ -1385,6 +1417,33 @@ impl Shell {
                     .map(|name| (op, name));
             }
         }
+    }
+
+    /// "Show in view N" (decision 0515 item 5): goes to the step the user is
+    /// on when it is Operations or Simulate, else to Operations, selects the
+    /// operation, and turns the view to its area as soon as the areas are
+    /// found. The part's placement and the playback are not touched.
+    fn show_area_in_view(&mut self, operation: OperationId, number: usize) {
+        if self.defer(move |s| s.show_area_in_view(operation, number)) {
+            return;
+        }
+        if !matches!(self.step, Step::Operations | Step::Simulate) {
+            self.open_step(Step::Operations);
+        }
+        self.show_item(ItemRef::Operation(operation));
+        // The view shows the setup the operation is in.
+        let setup = self
+            .app
+            .as_ref()
+            .and_then(|app| app.project().operation(operation))
+            .map(|o| o.setup);
+        if let Some(setup) = setup
+            && self.setup != Some(setup)
+        {
+            self.setup = Some(setup);
+            self.rebuild_scene(true);
+        }
+        self.areas.request(operation, number);
     }
 
     /// Takes the user to the first problem: the step it belongs to, the item
@@ -1626,6 +1685,15 @@ impl Shell {
             }
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
+                ctx.request_repaint();
+            }
+            // The unreachable areas, and a "Show in view" waiting for them.
+            if self.areas.frame(app, &mut self.viewport, self.run.last()) {
+                ctx.request_repaint();
+            }
+            if let Some((operation, area)) = self.areas.take_request(app, self.run.last()) {
+                let now = ctx.input(|i| i.time);
+                self.viewport.look_at_area(operation, &area, now);
                 ctx.request_repaint();
             }
         }
@@ -2889,6 +2957,8 @@ mod tests {
 #[cfg(test)]
 mod keys_tests;
 
+#[cfg(test)]
+mod area_view_tests;
 #[cfg(test)]
 mod four_step_tests;
 #[cfg(test)]

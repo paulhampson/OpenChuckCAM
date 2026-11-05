@@ -339,7 +339,26 @@ pub enum MessageAction {
     /// Find the new folder of a moved project whose recovery data was kept
     /// (PRJ-08; decisions 0243 and 0460). Same index as `OpenRecovery`.
     LocateRecovery(usize),
+    /// Turn the view to an area simultaneous finishing could not reach,
+    /// numbered from 1 as the warning and the markers number them: go to the
+    /// operation's step, select the operation, look at the area and frame it
+    /// (OP-20, UI-12; decision record 0515 item 5).
+    ShowInView {
+        /// The operation whose warning lists the area.
+        operation: OperationId,
+        /// The area's number, from 1.
+        area: u8,
+    },
 }
+
+/// The words of "Show in view N" for the areas a warning offers it for.
+const SHOW_IN_VIEW: [&str; crate::unreached::LISTED_AREAS] = [
+    "Show in view 1",
+    "Show in view 2",
+    "Show in view 3",
+    "Show in view 4",
+    "Show in view 5",
+];
 
 impl MessageAction {
     /// The link's words.
@@ -354,6 +373,11 @@ impl MessageAction {
             Self::ShowSetting(_) => "Show setting",
             Self::OpenRecovery(_) => "Open project",
             Self::LocateRecovery(_) => "Locate folder",
+            Self::ShowInView { area, .. } => usize::from(area)
+                .checked_sub(1)
+                .and_then(|i| SHOW_IN_VIEW.get(i))
+                .copied()
+                .unwrap_or("Show in view"),
         }
     }
 }
@@ -371,6 +395,9 @@ pub struct Message {
     pub source_name: String,
     /// The action that fixes it, if one does.
     pub action: Option<MessageAction>,
+    /// Further links beside `action`: one "Show in view N" for each area a
+    /// warning of unreachable areas lists (decision record 0515 item 5).
+    pub views: Vec<MessageAction>,
 }
 
 impl Message {
@@ -391,7 +418,15 @@ impl Message {
             source,
             source_name,
             action,
+            views: Vec::new(),
         }
+    }
+
+    /// This message with the links `views`.
+    #[must_use]
+    pub fn with_views(mut self, views: Vec<MessageAction>) -> Self {
+        self.views = views;
+        self
     }
 }
 
@@ -903,6 +938,9 @@ struct RecordState {
     /// The operations a run finished but did not keep because it was
     /// cancelled, failed or was refused, with why, to say so in their cause.
     interrupted: BTreeMap<OperationId, (Key, String)>,
+    /// Each setup's warning about material no tool can reach, from the last
+    /// simulation of it (issue 478); shown while that simulation is current.
+    enclosed: BTreeMap<SetupId, String>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -943,6 +981,8 @@ struct Made {
     before: Vec<(OperationId, Key)>,
     /// The path's warnings when it was made (decision record 0175).
     warnings: Vec<openchuck_path::PathWarning>,
+    /// How many areas its strategy could not reach (decision record 0515).
+    unreached: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -1031,12 +1071,19 @@ impl GenerationRecord {
                     .filter(|g| g.operation == *id)
                     .flat_map(|g| g.warnings.iter().cloned())
                     .collect();
+                let unreached = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .map(|g| g.unreached.len())
+                    .sum();
                 s.generated.insert(
                     *id,
                     Made {
                         key: *key,
                         before,
                         warnings,
+                        unreached,
                     },
                 );
                 if simulated {
@@ -1044,6 +1091,18 @@ impl GenerationRecord {
                 }
             }
             s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
+            // Material no tool can reach, by setup (issue 478): a simulated
+            // run replaces what its setups said before.
+            for setup in run.simulation.iter().flat_map(|r| r.setups.iter()) {
+                match setup.reach.as_ref().and_then(|r| r.enclosed.as_ref()) {
+                    Some(summary) => {
+                        s.enclosed.insert(setup.id, summary.warning(&setup.setup));
+                    }
+                    None => {
+                        s.enclosed.remove(&setup.id);
+                    }
+                }
+            }
             s.failure = None;
             s.current = None;
             s.finished_in_run.clear();
@@ -1162,6 +1221,7 @@ pub(crate) fn run_checks(
                     frame: &s.frame,
                     stock: s.stock.as_ref(),
                     clearance: s.clearance.as_ref(),
+                    rules: &s.clearance_rules,
                     part: part.as_ref(),
                 })
             }
@@ -1192,7 +1252,11 @@ pub(crate) fn run_checks(
                 unconfirmed: Vec::new(),
             }),
         );
-        notes.extend(crate::workholding::narrow_tab_notes(project, s));
+        notes.extend(crate::workholding::narrow_tab_notes(
+            project,
+            s,
+            part.as_ref(),
+        ));
         let unbuildable = match (&part, s.workholding.is_empty()) {
             (Some(part), false) => {
                 crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), part)
@@ -1322,6 +1386,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::PartOutsideStock => Some(SetupPart::Stock),
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
+        | SetupWarningKind::ClearanceBelowMinimum { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
         | SetupWarningKind::AutoTabNoRoom { .. }
@@ -1523,12 +1588,48 @@ impl Application {
     /// made. What a run reported about it (such as feeds the machine's
     /// limits lowered) is then still true of the settings on screen.
     pub fn operation_path_is_current(&self, operation: OperationId) -> bool {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        matches!(
-            (keys.iter().find(|(id, _)| *id == operation), record.generated.get(&operation)),
-            (Some((_, key)), Some(made)) if key.chained == made.key.chained
-        )
+        // Asked every frame while the operation is inspected: the keys are
+        // kept per change of the project, and the record is read in place,
+        // not copied with every path warning it holds (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
+            return false;
+        };
+        self.record
+            .with(|s| {
+                s.generated
+                    .get(&operation)
+                    .is_some_and(|made| key.chained == made.key.chained)
+            })
+            .unwrap_or(false)
+    }
+
+    /// The areas `operation`'s strategy could not reach in `run`, while the
+    /// path `run` made for it is the one the project would make now: the
+    /// operation and everything before it are as they were (OP-20; decision
+    /// record 0515 item 3). Empty for an operation that is out of date, was
+    /// turned off or is not in the run, so what is marked on the part always
+    /// goes with the toolpath it was found for. A generation that failed
+    /// brings no run, and the last run's operation is out of date by then.
+    pub fn operation_unreached<'a>(
+        &self,
+        run: &'a crate::Regeneration,
+        operation: OperationId,
+    ) -> &'a [openchuck_path::Unreached] {
+        let chained = |project: &Project| {
+            status_keys(project)
+                .into_iter()
+                .find(|(id, _)| *id == operation)
+                .map(|(_, key)| key.chained)
+        };
+        let now = chained(self.project());
+        if now.is_none() || now != chained(&run.project) {
+            return &[];
+        }
+        run.groups
+            .iter()
+            .find(|g| g.operation == operation)
+            .map_or(&[], |g| &g.unreached)
     }
 
     /// The settings of `operation` its current path's warnings name (the
@@ -1537,24 +1638,28 @@ impl Application {
     /// Empty when the operation is not up to date or its path has no
     /// warning that names one.
     pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        let (Some((_, key)), Some(made)) = (
-            keys.iter().find(|(id, _)| *id == operation),
-            record.generated.get(&operation),
-        ) else {
+        // Asked every frame, as `operation_path_is_current` is (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
             return Vec::new();
         };
-        if key.chained != made.key.chained {
-            return Vec::new();
-        }
-        let mut names: Vec<String> = Vec::new();
-        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        names
+        self.record
+            .with(|s| {
+                let Some(made) = s.generated.get(&operation) else {
+                    return Vec::new();
+                };
+                if key.chained != made.key.chained {
+                    return Vec::new();
+                }
+                let mut names: Vec<String> = Vec::new();
+                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                    if !names.contains(name) {
+                        names.push(name.clone());
+                    }
+                }
+                names
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -1567,7 +1672,7 @@ fn operation_name(index: usize, name: &str) -> String {
 fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview {
     let project = app.project();
     let record = app.record.snapshot();
-    let keys_in_order = status_keys(project);
+    let keys_in_order = app.status_keys();
     let keys: BTreeMap<OperationId, StatusKey> = keys_in_order.iter().copied().collect();
     let summaries: Vec<SelectionSummary> = app.selection_summaries(&file_warnings(project, checks));
     let mut items = BTreeMap::new();
@@ -1722,16 +1827,32 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         {
             status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
             for warning in &made.warnings {
-                messages.push(Message::new(
-                    Severity::Warning,
-                    warning.message.clone(),
-                    Some((item, label.clone())),
-                    Some(if warning.parameter.is_some() {
-                        MessageAction::ShowSetting(o.id)
-                    } else {
-                        MessageAction::Show(item)
-                    }),
-                ));
+                // The warning of unreachable areas offers a link for each
+                // area it lists (decision record 0515 item 5).
+                let views = if crate::unreached::lists_areas(&warning.message) {
+                    (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
+                        .filter_map(|n| u8::try_from(n).ok())
+                        .map(|area| MessageAction::ShowInView {
+                            operation: o.id,
+                            area,
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                messages.push(
+                    Message::new(
+                        Severity::Warning,
+                        warning.message.clone(),
+                        Some((item, label.clone())),
+                        Some(if warning.parameter.is_some() {
+                            MessageAction::ShowSetting(o.id)
+                        } else {
+                            MessageAction::Show(item)
+                        }),
+                    )
+                    .with_views(views),
+                );
             }
         }
         // A strategy that needs a STEP part on a mesh part: said at once,
@@ -1854,6 +1975,31 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     for s in project.setups() {
         let setup = ItemRef::Setup(s.id);
         let at = |part| ItemRef::SetupPart(s.id, part);
+        // Material no tool can reach, while the simulation that found it is
+        // current for every enabled operation of the setup (issue 478;
+        // NFR-12): a warning in Messages, on the setup.
+        if let Some(text) = record.enclosed.get(&s.id) {
+            let mut operations = project
+                .operations()
+                .iter()
+                .filter(|o| o.setup == s.id && o.enabled)
+                .peekable();
+            let current = operations.peek().is_some()
+                && operations.all(|o| {
+                    matches!(
+                        (keys.get(&o.id), record.simulated.get(&o.id)),
+                        (Some(k), Some(simulated)) if k.chained == *simulated
+                    )
+                });
+            if current {
+                messages.push(Message::new(
+                    Severity::Warning,
+                    text.clone(),
+                    Some((setup, s.name.clone())),
+                    Some(MessageAction::ReviewSetup(s.id)),
+                ));
+            }
+        }
         match project.machine() {
             None => {
                 let text = "The project has no machine profile, so the setup is not checked. Choose one in the setup's machine section.";
@@ -1904,14 +2050,26 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 // A tool too long for the safe Z on a machine that measures
                 // tool lengths (decision record 0318): once per tool of the
                 // setup's enabled operations, in the tool list's order.
-                let safe_z = s.clearance.unwrap_or(m.clearance).safe_z.0;
+                // The setup's effective clearance, grown from the stock when
+                // Clearance from stock is on (decision record 0495, case a).
+                let part_bounds = s
+                    .part
+                    .and_then(|id| checks.and_then(|c| c.models.get(&id)))
+                    .and_then(|model| model.findings.as_ref().ok())
+                    .and_then(|f| f.extent)
+                    .map(|e| e.in_setup(&s.frame).bounds);
+                let effective = crate::setup::effective_clearance(m, s, part_bounds.as_ref());
+                let safe_z = effective.clearance.safe_z.0;
+                let minimum = effective.minimum.map(|(r, _)| r.0);
                 for snapshot in project.tools().iter().filter(|t| {
                     project
                         .operations()
                         .iter()
                         .any(|o| o.setup == s.id && o.enabled && o.tool == Some(t.id))
                 }) {
-                    if let Some(found) = crate::setup::spindle_height(m, safe_z, &snapshot.tool) {
+                    if let Some(found) =
+                        crate::setup::spindle_height(m, safe_z, minimum, &snapshot.tool)
+                    {
                         let text = crate::setup::spindle_height_text(
                             snapshot.controller.number,
                             &snapshot.name,
@@ -1922,7 +2080,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             at(SetupPart::Machine),
                             ItemStatus::new(
                                 ItemState::Warning,
-                                "a tool may take the spindle above the Z travel",
+                                if found.below_minimum.is_some() {
+                                    "a tool may be too long to clear the workholding"
+                                } else {
+                                    "a tool may take the spindle above the Z travel"
+                                },
                             ),
                         );
                         messages.push(Message::new(
@@ -2682,6 +2844,7 @@ mod tests {
         assert!(status.cause.starts_with("Finalising: "), "{}", status.cause);
         let run = crate::Regeneration {
             groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
                 facing: None,
                 operation: op,
                 setup: app.project().operations()[0].setup,
@@ -2800,6 +2963,7 @@ mod tests {
                        (40.330, -5.370, -9.425), more than this operation's tolerance of 0.01 mm.";
         let run = crate::Regeneration {
             groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
                 facing: None,
                 operation: op,
                 setup,

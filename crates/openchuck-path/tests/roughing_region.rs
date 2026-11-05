@@ -368,3 +368,40 @@ fn req_op_02_roughing_takes_sets_that_only_warn() {
         }
     }
 }
+
+/// Rings (decision record 0420) keep to a selected region as the spiral
+/// does: nothing is cut before the region begins, and the step that crosses
+/// its edge starts on the edge itself.
+#[test]
+fn req_op_02_req_op_03_roughing_rings_stay_on_the_selected_region() {
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let upper = MeshSurface::new(&pick(&mesh, |c| c.x >= 10.0 - 1e-9)).unwrap();
+    let region = RegionConstraint {
+        region: Some(&upper),
+        ..Default::default()
+    };
+    let mut v = values("continuous");
+    v.insert(
+        openchuck_path::helical::parameter::PASS_SHAPE.to_owned(),
+        ParameterValue::Text("rings".to_owned()),
+    );
+    let path =
+        run(|ctx| generate_in_region(&RotaryRoughing, &f.input(), &region, &v, ctx)).unwrap();
+    let tips = cut_tips(&path);
+    assert!(!tips.is_empty());
+    let lo = tips.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+    assert!(lo >= 10.0 - 1e-3, "lowest cut at x = {lo}");
+    assert!(lo <= 10.0 + 1.0, "the cut stops short at x = {lo}");
+    let first = path
+        .group
+        .segments
+        .iter()
+        .filter(|s| s.kind != MoveKind::Rapid)
+        .map(|s| s.end.tip.x)
+        .fold(f64::MAX, f64::min);
+    assert!(
+        (10.0 - 1e-3..=10.0 + 0.01).contains(&first),
+        "nearest point to the edge at x = {first}"
+    );
+}
