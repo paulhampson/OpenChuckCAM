@@ -935,7 +935,7 @@ pub fn number(value: f64, places: Option<usize>) -> String {
         .map(|p| format!("{value:.p$}"))
         .find(|t| {
             t.parse::<f64>()
-                .is_ok_and(|v| (v - value).abs() <= 1e-9 * value.abs().max(1.0))
+                .is_ok_and(|v| (v - value).abs() <= 1e-9 * value.abs())
         })
         .unwrap_or_else(|| format!("{value}"))
 }
@@ -1148,6 +1148,18 @@ mod tests {
         assert_eq!(number(14.3, places("mm/min")), "14.3");
         assert_eq!(number(500.0004, places("mm/min")), "500.0004");
         assert_eq!(number(0.0004, places("mm")), "0.0004");
+    }
+
+    #[test]
+    fn req_ui_07_a_tiny_nonzero_value_is_never_shown_as_zero() {
+        // CodeRabbit on #494: the noise tolerance is relative to the value, with
+        // no absolute floor, so 4e-10 is not shown as "0.000" (a misread), while
+        // zero itself still shows as zero.
+        assert_eq!(number(4e-10, Some(3)), "0.0000000004");
+        assert_eq!(number(0.0, Some(3)), "0.000");
+        assert_eq!(number(-4e-10, Some(3)), "-0.0000000004");
+        // The feed's float noise is still rounded away (1.6e-10 relative).
+        assert_eq!(number(499.99999992, Some(0)), "500");
     }
 
     /// The label's position and the field's rectangle in one frame of a row.
