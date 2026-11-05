@@ -1470,9 +1470,15 @@ fn req_ui_11_a_setup_without_stock_says_so_under_its_section_and_in_the_bar() {
     setup.stock = None;
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     rig.settle();
+    // A to-do, not an error (decision 0518, issue 463): the bar says it needs
+    // attention and names the value; it is still listed under the section.
     assert_eq!(
         rig.shell.overview.step(Step::Setup).health,
-        openchuck_app::overview::StepHealth::Error
+        openchuck_app::overview::StepHealth::Attention
+    );
+    assert_eq!(
+        rig.shell.overview.step(Step::Setup).reason.as_deref(),
+        Some("Set the stock")
     );
     rig.shell.go_to_first_problem();
     assert_eq!(rig.shell.step, Step::Setup);

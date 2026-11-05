@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- UIBUGS (issue #463 item 3, decision 0518): the Setup step's health reads "Needs attention" (reason "Set the stock" or "Choose the part") for a setup missing only its stock or part, in place of "Error to fix"; a missing tool or an operation's missing value is still an error. `overview()` output only; no API change; the values stay in the list of required values and generation still refuses them.
 - VIEW-ORIENT (#535, decision 0512, accepted): the `SceneRole::AZero` mark is at the part's far end (the scene's end only when no part is readable), not at the stock's.
 - VIEW-ORIENT (#531, decision 0511, accepted): `SceneRole::AZero` marks A = 0 on the part (a line from the rotary axis along the model's up direction, and an "A0" label); the A+ arrow's start is labelled "A0".
 - LINKS-UI (#524, #436; UI-07, OP-14; decision 0496): the form places `link_height` (Links between passes) in Entry, links and retract, not Pattern and tolerance. No change to the project format or to any public item.
