@@ -282,7 +282,7 @@ Reading: the Ubuntu runner had 19 GB free, so today's 23 GB build could not fit,
 | OI-2028 | Deal the test shares by measured time (from the nightly run's per-test times) only if the `count` shares prove unbalanced in the first runs. Takes over OI-1414's measurement. |
 | OI-2029 | Closed 4 Nov 2026: Each library alone in 2 shares on Windows, built here. |
 | OI-2030 | Gate 3: sample in the servo thread (`sampler`/`halsampler`); find whether the `first_cut` chunk 8 failure at A about 83,500 degrees (run 41760111114, both attempts) is timing or real; then pack the shares. (Now 5 shares.) |
-| OI-2031 | Coverage nightly: debug info 0 and `--no-fail-fast` are built here; open: how timing-budget tests (`req_ui_04_picking_edges_of_a_million_triangle_part_stays_within_its_budget`) are treated under instrumentation, and confirm `openchuck-buildinfo` is listed in `xtask/coverage.toml`. |
+| OI-2031 | Coverage nightly: debug info 0 and `--no-fail-fast` are built here, and #542 makes the report steps run after a failing test; open: how timing-budget tests (`req_ui_04_picking_edges_of_a_million_triangle_part_stays_within_its_budget`) are treated under instrumentation, and confirm `openchuck-buildinfo` is listed in `xtask/coverage.toml`. |
 | OI-2032 | Closed 4 Nov 2026: option C1 and C2 built here. |
 | OI-2033 | `cargo xtask prepush`. |
 | OI-2034 | The two Ubuntu `Build and test` jobs lost about 3 min into the first test build (runs 41656760962, 41596929921): confirm or rule out disk from the `df` figures. |
