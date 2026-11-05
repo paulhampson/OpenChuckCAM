@@ -1618,6 +1618,50 @@ fn req_op_14_req_sim_08_a_new_finishing_operation_keeps_its_links_low() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[test]
+fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
+    // Decision 0640 (confirmed by the project owner on 5 Nov 2026, relayed):
+    // an operation saved before the option has no `link_height`, so when its
+    // project is opened again it keeps retracting, and its toolpath, and so
+    // its G-code, is what it was: the same as with Retract chosen.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, RETRACT};
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+    ] {
+        let (dir, mut app, op) = project(&format!("saved-links-{strategy}"));
+        // As an older version saved it: the strategy's own values only. The
+        // cube's free ends are not what this test is about (decision 0344).
+        let free_ends = [("face_free_ends", ParameterValue::Flag(false))];
+        let values: &[(&str, ParameterValue)] = if strategy == "simultaneous_finishing" {
+            &[]
+        } else {
+            &free_ends
+        };
+        set_strategy(&mut app, op, strategy, values);
+        app.save().unwrap();
+        drop(app);
+        let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        assert_eq!(
+            app.project()
+                .operation(op)
+                .unwrap()
+                .parameters
+                .get(LINK_HEIGHT),
+            None,
+            "{strategy}"
+        );
+        let saved = app.regenerate().unwrap();
+        app.set_parameter(op, LINK_HEIGHT, Some(ParameterValue::Text(RETRACT.into())))
+            .unwrap();
+        let retract = app.regenerate().unwrap();
+        assert!(!saved.toolpath.groups.is_empty(), "{strategy}");
+        assert_eq!(saved.toolpath, retract.toolpath, "{strategy}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,
