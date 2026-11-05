@@ -38,6 +38,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 - SWARF-FLOOR (issue #435, decision 0491): `SetOptionsShown::cut_short_lifts_tip`, true for swarf, whose Cut short first lifts the tool's tip off an avoid or check set; the Geometry section's tooltip says so. The example `swarf_floor` measures how far swarf cuts into the floor below a STEP part's faces, with and without the floor in an avoid set.
 - LARGEPATH (#470, decision 0510): the status keys of the operations and the unsaved-changes answer are kept per revision of the project (`memo.rs`, `Application::status_keys`, `is_modified`), and `operation_path_is_current` and `operation_warning_settings` read the generation record in place instead of copying it. The interface asked for them every frame; on the owner's carving an inspected operation cost about 117 ms a frame and now about 1 ms. The same answers and the same G-code; no public API change.
+- LARGEPATH follow-up (#470, OI-2041): after a recovered panic the kept status keys and unsaved-changes answer are kept again (the memo's lock poison is cleared when its slot is reset), instead of being made on every read. No API change.
 
 - OP20 (issue #413, decision 0368): operations give the strategies the tool's shank where it is wider than the cutting part (`StrategyInput::shank`, from the shank diameter and the flute length), which simultaneous finishing keeps clear of the part on every pass; the strategies' unreached areas reach `Regeneration` through the generated path's warning.
 

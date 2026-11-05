@@ -52,11 +52,12 @@ impl<S: PartialEq + Copy, T> Memo<S, T> {
     /// The answer at `stamp`: the kept one when it was made at `stamp`,
     /// otherwise `make()`, kept for the next call. A poisoned lock (a panic
     /// while making an answer elsewhere) is cleared, never trusted: the
-    /// answer is made again.
+    /// answer is made again and then kept as usual.
     pub(crate) fn get(&self, stamp: S, make: impl FnOnce() -> T) -> Arc<T> {
         let mut slot = self.slot.lock().unwrap_or_else(|poisoned| {
             let mut slot = poisoned.into_inner();
             *slot = None;
+            self.slot.clear_poison();
             slot
         });
         if let Some((kept, answer)) = slot.as_ref()
@@ -114,6 +115,8 @@ mod tests {
             panic!("poison the lock");
         }));
         assert_eq!(*memo.get(1, || 8), 8);
+        // Once made again, the answer is kept: the lock is no longer poisoned.
+        assert_eq!(*memo.get(1, || 9), 8);
     }
 
     /// Issue #470: with an operation selected the inspector asked for the
