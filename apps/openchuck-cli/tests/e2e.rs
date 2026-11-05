@@ -721,35 +721,114 @@ fn build_first_cut(root: &Path) -> PathBuf {
 mod first_cut {
     use super::*;
 
-    /// The committed folder validates and, regenerated in separate processes
-    /// at 1, 2 and N threads, writes the same program each time with both
-    /// posts, passing gates 1 and 2 and matching its golden programs (GC-07,
-    /// NFR-06, NFR-08). `OPENCHUCK_BLESS_PROJECTS=1` first rewrites the
-    /// folder, as for the reference jobs.
+    /// The committed folder validates and, regenerated in a separate process at
+    /// one thread count with both posts, passes gates 1 and 2 and is byte for
+    /// byte its golden program, only the software version masked (GC-07, NFR-06,
+    /// NFR-08). Unlike the sample projects, the first-cut golden files keep the
+    /// operation lines (name, tool and time estimate), which the folder fixes,
+    /// so nothing in the program escapes the comparison, line endings included.
+    /// One test per thread count, 1, 2 and N (owner's decision on OI-2036,
+    /// decision 0516): together they were one test of 31 minutes on a Windows
+    /// runner; apart they run side by side in different CI shares, and each is
+    /// held to the same golden bytes, so the three are byte-identical to one
+    /// another. A bless run (`OPENCHUCK_BLESS_PROJECTS=1` for the folder,
+    /// `OPENCHUCK_BLESS=1` for the golden programs) writes from the 1-thread test
+    /// only.
+    /// Whether `program` is byte for byte the program the golden text fixes: the
+    /// golden text with its one mask, the software version, filled back in with
+    /// this build's version (the generator writes `env!("CARGO_PKG_VERSION")` of
+    /// the workspace). Nothing else is masked, so the operation lines (with their
+    /// computed time estimates) and the line endings are compared too, which the
+    /// sample projects' golden form ([`stable`]) does not do (CodeRabbit on #542).
+    fn exact_first_cut(golden: &str, program: &str) -> Result<(), String> {
+        let masked = format!(
+            "(OpenChuckCAM {})",
+            openchuck_testkit::golden::VERSION_PLACEHOLDER
+        );
+        let expected = golden.replace(
+            &masked,
+            &format!("(OpenChuckCAM {})", env!("CARGO_PKG_VERSION")),
+        );
+        openchuck_testkit::golden::compare(&expected, program)
+    }
+
+    /// The exact check fails on each difference the golden form hides: an
+    /// operation line (its time estimate), the line endings and the version. The
+    /// golden form ([`stable`]) of each of these programs equals that of the
+    /// right one, so only the exact check can tell them apart (NFR-06).
     #[test]
-    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads()
-     {
-        if std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some() {
+    fn req_nfr_06_the_first_cut_check_fails_on_a_difference_the_golden_form_masks() {
+        let golden = "(first_cut - Setup 1)\n(OpenChuckCAM <version>)\nG90 G21 G17\n(operation Rough, tool T1 Z1 O-flute 3.175x25, about 1923 s)\nG0 X70.469\n";
+        let right = golden.replace("<version>", env!("CARGO_PKG_VERSION"));
+        assert_eq!(exact_first_cut(golden, &right), Ok(()));
+        for (what, wrong) in [
+            (
+                "operation line",
+                right.replace("about 1923 s", "about 1924 s"),
+            ),
+            ("line endings", right.replace('\n', "\r\n")),
+            (
+                "version",
+                right.replace(env!("CARGO_PKG_VERSION"), "0.0.0-other"),
+            ),
+        ] {
+            assert_eq!(
+                stable(&wrong),
+                stable(&right),
+                "{what}: the golden form already tells them apart"
+            );
+            assert!(
+                exact_first_cut(golden, &wrong).is_err(),
+                "{what}: the exact check passed a program that differs"
+            );
+        }
+    }
+
+    fn committed_first_cut_at(threads: usize, tag: &str) {
+        let bless_projects = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
+        let blessing = bless_projects || openchuck_testkit::golden::blessing();
+        // The 2- and N-thread tests do nothing in a bless run, so only one test
+        // writes the folder and the golden files, and none reads them while they
+        // are rewritten. A normal run checks all three.
+        if blessing && threads != 1 {
+            return;
+        }
+        if bless_projects {
             bless_project(FIRST_CUT);
         }
-        let root = scratch("first-cut-threads");
+        let root = scratch(&format!("first-cut-{tag}"));
         let project = &write_projects(&root, &[FIRST_CUT.to_owned()]).unwrap()[0];
         cli_ok(&["validate".as_ref(), project.as_os_str()]);
         for (post, ext) in POSTS {
-            let mut first: Option<String> = None;
-            for threads in thread_counts() {
-                let out = root.join(format!("{post}-{threads}"));
-                let program = regenerate(project, post, threads, &out);
-                match &first {
-                    None => first = Some(program),
-                    Some(f) => assert!(&program == f, "{post} at {threads} threads (NFR-06)"),
-                }
-            }
-            let program = first.unwrap();
-            openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &stable(&program))
-                .unwrap_or_else(|m| panic!("first_cut / {post} (NFR-08): {m}"));
+            let out = root.join(format!("{post}-{threads}"));
+            let program = regenerate(project, post, threads, &out);
+            let golden = golden_path(FIRST_CUT, post, ext);
+            openchuck_testkit::golden::check(&golden, &program).unwrap_or_else(|m| {
+                panic!("first_cut / {post} at {threads} threads (NFR-06, NFR-08): {m}")
+            });
+            exact_first_cut(&std::fs::read_to_string(&golden).unwrap(), &program).unwrap_or_else(
+                |m| panic!("first_cut / {post} at {threads} threads (NFR-06): {m}"),
+            );
         }
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_thread()
+     {
+        committed_first_cut_at(thread_counts()[0], "1-thread");
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_2_threads()
+     {
+        committed_first_cut_at(thread_counts()[1], "2-threads");
+    }
+
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_n_threads()
+     {
+        committed_first_cut_at(thread_counts()[2], "n-threads");
     }
 
     /// The material removal simulation finds no overcut and no rapid move
