@@ -88,6 +88,12 @@ pub struct GroupInfo {
     /// it sets (decision record 0175). They make the operation's state a
     /// warning and are listed in Messages and the results.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// The areas of the part the operation's strategy could not reach, with
+    /// the surface points in each, largest first (OP-20; decision record
+    /// 0515). They belong to this generation as its warnings do: a run that
+    /// failed has none, and one that is out of date is not drawn from
+    /// ([`crate::Application::operation_unreached`]).
+    pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,
     /// Facing inputs captured with this generation, shared with its cache.
     pub facing: Option<crate::facing::FacingVerification>,
 }
@@ -448,6 +454,7 @@ pub(crate) fn regenerate(
             tool: path.tool.clone(),
             part_bounds: path.part_bounds,
             warnings: path.warnings.clone(),
+            unreached: std::sync::Arc::clone(&path.unreached),
             facing: path.facing.clone(),
         });
         share(STAGE_GENERATE, i, 0.0, 1.0).finish();

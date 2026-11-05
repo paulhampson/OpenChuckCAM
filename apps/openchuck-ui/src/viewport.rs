@@ -24,9 +24,15 @@ use openchuck_app::selection::TriangleSet;
 use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, Colour, DisplayMode, Frame, Hatch, Layer, LineItem, LineStyle, Outline, Projection,
-    Renderer, Scene, Slot, StandardView,
+    Camera, Colour, DisplayMode, Frame, Hatch, HatchKind, Layer, LineItem, LineStyle, Outline,
+    Projection, Renderer, Scene, Slot, StandardView,
 };
+
+#[cfg(test)]
+mod area_tests;
+mod areas;
+
+pub use areas::{ShownArea, ShownOperation};
 
 use crate::results_panel::ColourBy;
 use crate::roles;
@@ -200,6 +206,10 @@ pub struct Visibility {
     pub toolpaths: bool,
     /// What the mesh check found (the Model step's "Show findings").
     pub findings: bool,
+    /// The surfaces simultaneous finishing could not reach (decision 0515):
+    /// menu only, like held regions and tabs, and on by default. They are
+    /// drawn while their operation's toolpath is.
+    pub unreachable: bool,
 }
 
 impl Default for Visibility {
@@ -212,6 +222,7 @@ impl Default for Visibility {
             selections: true,
             toolpaths: true,
             findings: true,
+            unreachable: true,
         }
     }
 }
@@ -360,7 +371,7 @@ fn add_solid(scene: &mut Scene, mesh: &TriangleMesh, role: SceneRole, look: Soli
             added.translucent = held;
             added.hatch = held.then_some(Hatch {
                 colour: roles::HELD_LINE,
-                cross: true,
+                kind: HatchKind::Cross,
             });
             added.outline = Some(outline(line, LineStyle::Solid));
         }
@@ -733,6 +744,9 @@ pub struct Viewport {
     pub(crate) tool_readout: Option<ToolReadout>,
     /// The path legend is open while the view is too low to show it (7.2).
     pub(crate) legend_open: bool,
+    /// The unreachable areas drawn, the camera's steps back and its move
+    /// (decision 0515).
+    areas: areas::AreaState,
     /// The selection set drawn in its own colour, by name and colour, for a
     /// row of the legends (decision 0216 item 5).
     pub(crate) legend_set: Option<(String, [u8; 3])>,
@@ -831,6 +845,7 @@ impl Viewport {
             cursor_point: None,
             tool_readout: None,
             legend_open: false,
+            areas: areas::AreaState::default(),
             legend_set: None,
             show_menu_open: false,
             last_rect: Rect::NOTHING,
@@ -973,6 +988,8 @@ impl Viewport {
         self.probe_hover = None;
         self.hover_solid = None;
         self.rebuild();
+        // The triangles of the areas are of the part this scene holds.
+        self.rebuild_areas();
         self.fit_pending |= fit;
     }
 
@@ -1199,6 +1216,7 @@ impl Viewport {
             self.show.workholding = show.workholding;
             self.show.selections = show.selections;
             self.show.findings = show.findings;
+            self.show.unreachable = show.unreachable;
         } else {
             self.show = show;
         }
@@ -1445,17 +1463,24 @@ impl Viewport {
         (mm.is_finite() && mm > 0.0).then_some(mm)
     }
 
-    /// Fits the camera to the scene.
+    /// Fits the camera to the scene: one step, which
+    /// [`Viewport::undo_camera`] undoes.
     pub fn fit(&mut self) {
+        self.remember_camera();
+        self.fit_unrecorded();
+    }
+
+    fn fit_unrecorded(&mut self) {
         if let Some((min, max)) = self.scene.bounds() {
             self.camera.fit(min, max, self.aspect);
         }
     }
 
-    /// Turns to a standard view and fits the scene.
+    /// Turns to a standard view and fits the scene: one step.
     pub fn set_view(&mut self, view: StandardView) {
+        self.remember_camera();
         self.camera.set_view(view);
-        self.fit();
+        self.fit_unrecorded();
     }
 
     /// Sets the projection.
@@ -1497,8 +1522,12 @@ impl Viewport {
             (rect.height() * scale).round() as u32,
         ];
         if self.fit_pending && self.scene.bounds().is_some() {
-            self.fit();
+            self.fit_unrecorded();
             self.fit_pending = false;
+        }
+        let now = ui.input(|i| i.time);
+        if self.advance_motion(now) {
+            ui.ctx().request_repaint();
         }
         self.keys(ui);
 
@@ -1509,6 +1538,7 @@ impl Viewport {
         let delta = response.drag_delta();
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         if response.dragged_by(PointerButton::Primary) {
+            self.stop_motion();
             self.camera
                 .orbit(dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL);
         } else if response.dragged_by(PointerButton::Secondary)
@@ -1547,6 +1577,7 @@ impl Viewport {
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
         self.draw_pinned(ui, rect);
+        self.draw_area_markers(ui, rect, now);
         if let Some(solid) = self.hovered_solid() {
             let text = solid.description.clone();
             response.on_hover_ui_at_pointer(|ui| {
@@ -1759,6 +1790,7 @@ impl Viewport {
         }
         match layer {
             Layer::Overlay => show.selections,
+            Layer::Areas => show.unreachable,
             Layer::Paths | Layer::Trace => show.toolpaths,
             Layer::Stock => show.stock,
             _ => true,
@@ -2208,7 +2240,7 @@ pub(crate) mod tests {
             held.hatch,
             Some(Hatch {
                 colour: HELD_LINE,
-                cross: true
+                kind: HatchKind::Cross
             })
         );
         assert_eq!(tab.hatch, None);
