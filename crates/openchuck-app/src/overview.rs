@@ -2531,6 +2531,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
+    let finalising = count_state(ItemState::Finalising, &on_ops);
     let operations_health = if let Some(text) = first_missing(true) {
         (StepHealth::Error, Some(text))
     } else if count_state(ItemState::Error, &on_ops) > 0 {
@@ -2546,6 +2547,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             Some(format!(
                 "{} stale: generate again",
                 plural(stale.len(), "operation")
+            )),
+        )
+    } else if finalising > 0 {
+        // Made in a run that has not ended: not committed yet (NFR-12).
+        (
+            StepHealth::Attention,
+            Some(format!(
+                "{} finalising: the run has not finished",
+                plural(finalising, "operation")
             )),
         )
     } else if count_state(ItemState::Warning, &on_ops) > 0 {
@@ -2584,7 +2594,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         state(
             Step::Operations,
             (!has_machine_and_stock).then_some("Set up the machine and stock first"),
-            any_enabled && stale.is_empty(),
+            any_enabled && stale.is_empty() && finalising == 0,
             operations_health,
         ),
         state(
@@ -2826,6 +2836,7 @@ mod tests {
         (app, op, dir)
     }
 
+    /// The status the overview gives `op`, with no jobs running.
     fn state_of(app: &Application, op: OperationId) -> ItemStatus {
         let overview = app.overview(None, &JobLog::default());
         overview.items[&ItemRef::Operation(op)].clone()
@@ -2900,6 +2911,25 @@ mod tests {
         // A new run starts from a clean slate: nothing carries over.
         app.record.begin_run();
         assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_the_operations_step_is_not_complete_while_an_operation_is_finalising() {
+        // CodeRabbit on #482: a finalising operation is not in the stale
+        // list, but nothing of the run is committed, so the step is not
+        // complete and does not read good.
+        let (app, op, dir) = one_operation_app("finalising-step");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        let overview = app.overview(None, &JobLog::default());
+        assert_eq!(
+            overview.items[&ItemRef::Operation(op)].state,
+            ItemState::Finalising
+        );
+        assert!(overview.stale.is_empty());
+        let step = overview.step(Step::Operations);
+        assert!(!step.complete, "{step:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
