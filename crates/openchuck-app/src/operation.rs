@@ -211,6 +211,11 @@ pub struct OperationPath {
     /// finished surface deeper than the tolerance (NFR-12; decision record
     /// 0175). Each is in `notes` too.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// The areas of the part the strategy could not reach, with the surface
+    /// points in each (OP-20; decision record 0515): what the viewport marks
+    /// on the part. They go with the path, so a path from the cache brings
+    /// the areas it was made with.
+    pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,
     /// Immutable whole-setup inputs for Facing's actual connected-path checks.
     /// None preserves legacy default Facing and every other strategy.
     pub facing: Option<crate::facing::FacingVerification>,
@@ -841,6 +846,7 @@ pub(crate) fn generate_with_part(
             warnings.extend(path.warnings);
             warnings
         },
+        unreached: path.unreached.into(),
     })
 }
 
@@ -1588,6 +1594,15 @@ impl StockModel for LeftByEarlier<'_> {
 
     fn left_by_earlier_operations(&self) -> bool {
         true
+    }
+
+    fn top_over_disc(
+        &self,
+        centre: openchuck_types::geometry::Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
     }
 }
 

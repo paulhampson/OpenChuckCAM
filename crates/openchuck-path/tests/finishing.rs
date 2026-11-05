@@ -270,8 +270,8 @@ fn req_nfr_07_a_finish_allowance_not_below_the_stepdown_or_a_stepdown_past_the_f
     assert!(err.contains(FINISH_ALLOWANCE), "{err}");
     let err = layered(&f, &HelicalFinishing, &layers_on(0.8, -0.1)).unwrap_err();
     assert!(err.contains(FINISH_ALLOWANCE), "{err}");
-    // The test tool has 12 mm of flute.
-    let err = layered(&f, &HelicalFinishing, &layers_on(13.0, 0.1)).unwrap_err();
+    // The test tool has 40 mm of flute.
+    let err = layered(&f, &HelicalFinishing, &layers_on(41.0, 0.1)).unwrap_err();
     assert!(err.contains("flute"), "{err}");
 }
 

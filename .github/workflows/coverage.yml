@@ -34,6 +34,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # No debug info (decision 0516, OI-2031): coverage instrumentation writes its own mapping and needs
+  # none, and full debug info on top of the instrumented build is the largest build of the project.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   coverage:
@@ -63,13 +67,21 @@ jobs:
       # ones included, and starts the slowest first: instrumentation makes the long tests 6 to 11
       # times slower and one test cannot be split across cores. There is no timeout: the run is
       # expected to take well over half an hour (an estimate; the first run is the first timing).
+      # `--no-fail-fast` (decision 0516, OI-2031): one failing test no longer stops the rest (a
+      # timing-budget test that failed under instrumentation left about 1,900 of 2,857 tests unrun),
+      # and the report, upload and per-crate steps below run unless the run was cancelled, so the
+      # report covers the whole suite while the failed test step still fails the job.
       - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov nextest --profile coverage-full --workspace --locked --no-report
+        id: tests
+        run: cargo llvm-cov nextest --profile coverage-full --workspace --locked --no-report --no-fail-fast
       - name: HTML report (browsable, per file and per line)
+        if: ${{ !cancelled() }}
         run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
       - name: lcov data (trend tracking)
+        if: ${{ !cancelled() }}
         run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
       - name: Summary on the run page
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           {
@@ -82,16 +94,19 @@ jobs:
             echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
           name: coverage-html
           path: target/coverage
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
           name: coverage-lcov
           path: lcov.info
       # The target per crate. The table is also printed in the log. It enforces on every run
       # once `enforce = true` is set in xtask/coverage.toml, and a failure here fails the job.
       - name: Line coverage per crate
+        if: ${{ !cancelled() }}
         run: cargo xtask coverage lcov.info --report coverage-summary.md --enforce
       - name: Per-crate table on the run page and for the issue
         id: table
