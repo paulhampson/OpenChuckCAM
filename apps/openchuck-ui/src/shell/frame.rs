@@ -810,6 +810,19 @@ impl Shell {
                     self.viewport.fit();
                     ui.close();
                 }
+                let back = ui.add_enabled(
+                    self.viewport.can_undo_camera(),
+                    egui::Button::new("Previous view"),
+                );
+                if back
+                    .on_hover_text(
+                        "Back to the view before the last Fit, standard view or Show in view",
+                    )
+                    .clicked()
+                {
+                    self.viewport.undo_camera();
+                    ui.close();
+                }
                 ui.menu_button("Projection", |ui| {
                     let mut projection = self.viewport.camera.projection;
                     ui.radio_value(&mut projection, Projection::Perspective, "Perspective");
@@ -872,14 +885,6 @@ impl Shell {
                 let cancel = egui::Button::new("Cancel").shortcut_text("Esc");
                 if ui.add_enabled(!idle, cancel).clicked() {
                     self.run.cancel();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(open, egui::Button::new("Results…"))
-                    .clicked()
-                {
-                    self.show_results();
                     ui.close();
                 }
             });

@@ -95,7 +95,18 @@ pub struct Unreached {
     pub area: f64,
     /// Why the tool cannot reach it.
     pub reason: UnreachedReason,
+    /// The points of the part's surface in it that the tool cannot reach,
+    /// as the strategy sampled them, in its order: so a viewer marks those
+    /// surfaces and not the reached ones in the same X and A range (issue
+    /// #416, decision record 0515). At most [`MAX_UNREACHED_POINTS`], taken
+    /// evenly through the area's samples when it has more.
+    pub points: Vec<Point3>,
 }
+
+/// The most surface points an [`Unreached`] area carries (decision record
+/// 0515): enough to find every triangle of the area on a fine mesh, few
+/// enough that a large area costs little memory.
+pub const MAX_UNREACHED_POINTS: usize = 4096;
 
 /// Why a tool cannot reach an area of the part.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -112,6 +123,10 @@ pub enum UnreachedReason {
         /// The least lean that reaches it, in degrees.
         degrees: f64,
     },
+    /// The tool could reach it only by coming over the gripped length of
+    /// the stock, which every tool keeps clear of by its radius (SET-09;
+    /// decision records 0161 and 0505).
+    NearHeldRegion,
 }
 
 /// A place where a strategy broke a pass because the tool's shank, wider

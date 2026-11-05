@@ -89,7 +89,7 @@ pub(crate) fn low_links_asked(parameters: &Parameters) -> bool {
 
 /// Marks every one of `passes` linkable low when `parameters` ask for it
 /// (decision 0496): the strategies that have no fit of their own call it on
-/// their complete pass list (decision 0640).
+/// their complete pass list (decision 0521).
 pub(crate) fn mark_low_links_if_asked(parameters: &Parameters, passes: &mut [Pass]) {
     if low_links_asked(parameters) {
         for pass in passes {
@@ -100,7 +100,7 @@ pub(crate) fn mark_low_links_if_asked(parameters: &Parameters, passes: &mut [Pas
 
 /// The `link_height` choice, shared with indexed finishing (decision 0496),
 /// helical finishing, rest machining and simultaneous finishing (decision
-/// 0640).
+/// 0521).
 pub(crate) fn link_height_spec() -> ParameterSpec {
     ParameterSpec {
         name: parameter::LINK_HEIGHT.to_owned(),
@@ -125,6 +125,14 @@ pub(crate) fn link_height_spec() -> ParameterSpec {
 const MAX_SEEDS: f64 = 5.0e6;
 
 impl Strategy for AxialFinishing {
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -784,6 +792,10 @@ fn passes(
         .chain(spaced_note)
         .chain(layered)
         .chain(free.notes)
+        .chain(crate::finishing::across_axis_note(
+            region,
+            "Axial finishing",
+        ))
         .collect();
     Ok((passes, notes, warnings))
 }

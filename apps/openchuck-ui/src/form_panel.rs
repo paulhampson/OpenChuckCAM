@@ -439,6 +439,8 @@ fn choice_label<'a>(name: &str, value: &'a str) -> &'a str {
         ("layer_distribution", "equal") => "Equal stepdowns",
         ("pass_shape", "helix") => "Spiral",
         ("pass_shape", "rings") => "Rings",
+        ("link_height", "retract") => "Retract to the clearance",
+        ("link_height", "low") => "Stay low where clear",
         _ => value,
     }
 }
@@ -545,6 +547,53 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Links between passes (decision 0496, issue #524) shows its two
+    /// choices in plain words, not the stored words "retract" and "low"
+    /// (UI-07, section 8; decision 0114).
+    #[test]
+    fn req_ui_07_req_op_14_links_between_passes_choices_are_in_plain_words() {
+        let ctx = egui::Context::default();
+        let field = Field {
+            name: "link_height".into(),
+            label: "Links between passes".into(),
+            description: String::new(),
+            kind: FieldKind::Choice {
+                options: vec!["retract".into(), "low".into()],
+            },
+            set: None,
+            value: Some(ParameterValue::Text("retract".into())),
+            source: Source::Default,
+            section: FormSection::EntryLinksAndRetract,
+            problem: None,
+        };
+        let mut state = FormState::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900., 300.),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                row(ui, &field, true, &mut state, None, None, false, None);
+            },
+        );
+        output.textures_delta.clear();
+        let shown = texts(&output.shapes);
+        for want in [
+            "Links between passes",
+            "Retract to the clearance",
+            "Stay low where clear",
+        ] {
+            assert!(shown.iter().any(|s| s == want), "Missing {want}: {shown:?}");
+        }
+        assert!(
+            !shown.iter().any(|s| s == "retract" || s == "low"),
+            "{shown:?}"
+        );
     }
 
     #[test]

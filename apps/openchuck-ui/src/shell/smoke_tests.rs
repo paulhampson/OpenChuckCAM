@@ -202,7 +202,7 @@ fn req_ui_01_req_ui_16_the_results_and_playback_draw_after_a_run() {
     draw(&mut rig);
     assert_eq!(rig.shell.step, Step::Simulate);
     assert!(rig.shell.play.open);
-    rig.shell.run.show_results();
+    rig.shell.show_results_tab();
     draw(&mut rig);
 }
 

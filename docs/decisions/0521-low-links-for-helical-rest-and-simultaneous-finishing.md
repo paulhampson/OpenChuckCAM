@@ -1,6 +1,6 @@
-# 0640: Helical finishing, rest machining and simultaneous finishing can keep the links between passes low, and new finishing operations start with low links (OP-14, SET-06, SET-09, SIM-08, NFR-07, NFR-12, GC-07, NFR-06; issue #469; OI-1741; lane PATHORDER)
+# 0521: Helical finishing, rest machining and simultaneous finishing can keep the links between passes low, and new finishing operations start with low links (OP-14, SET-06, SET-09, SIM-08, NFR-07, NFR-12, GC-07, NFR-06; issue #469; OI-1741; lane PATHORDER)
 
-- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after the owner read it in full. Proposed the same day by lane PATHORDER (pull request D). The owner chose the scope on 1 Nov 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7; decision 0049): low links for helical, rest and simultaneous finishing, as a pull request of its own after the pass order (decision 0639, pull request #496). On 2 Nov 2026 the owner chose, relayed the same way, that new operations of these strategies and of axial and indexed finishing start with `low` (Decision item 6). The default for new operations was confirmed by the project owner on 5 Nov 2026, relayed by the coordinator (decision 0049), for the strategies named in this record (item 6: helical finishing, rest machining, simultaneous finishing, axial finishing and indexed finishing): a new operation starts with `low`, and operations already saved keep `retract`, so their G-code does not change.
+- **Status:** accepted by the project owner on 2 Nov 2026, relayed by the coordinator (decision 0049), unchanged, after the owner read it in full. Proposed the same day by lane PATHORDER (pull request D). The owner chose the scope on 1 Nov 2026, relayed by the coordinator session (session_01CFw3bzew7zizFQ91L5tvT7; decision 0049): low links for helical, rest and simultaneous finishing, as a pull request of its own after the pass order (decision 0520, pull request #496). On 2 Nov 2026 the owner chose, relayed the same way, that new operations of these strategies and of axial and indexed finishing start with `low` (Decision item 6). The default for new operations was confirmed by the project owner on 5 Nov 2026, relayed by the coordinator (decision 0049), for the strategies named in this record (item 6: helical finishing, rest machining, simultaneous finishing, axial finishing and indexed finishing): a new operation starts with `low`, and operations already saved keep `retract`, so their G-code does not change.
 - **Date:** 2 Nov 2026.
 - **Issue:** #469, "Optimise toolpath order for all strategies: avoid going back and forth, and extra machining time".
 - **Amends:** [0496](0496-low-links-between-finishing-passes.md) item 1 for new operations: a new axial or indexed finishing operation is written with `low` (item 6). The default for an operation saved without the parameter stays `retract`.
@@ -14,7 +14,7 @@
 
 Decision 0496 gave axial and indexed finishing **Links between passes**. With `low`, a link stays the approach distance above the setup's stock where the whole link is clear of it and of the held regions, and otherwise retracts as before. OI-1741 asked for the same option on the other strategies that retract between passes.
 
-The lane's measurement for issue #469 (decision 0639, Context) found that on the Z1 most of the time between cuts is the retract and approach at the rapid Z of 600 mm/min:
+The lane's measurement for issue #469 (decision 0520, Context) found that on the Z1 most of the time between cuts is the retract and approach at the rapid Z of 600 mm/min:
 - The order of the passes changes it by seconds.
 - A lower link height changes it by minutes.
 
@@ -41,9 +41,9 @@ The strategies with the most links are helical finishing, rest machining and sim
    The setup's stock is the blank, not what earlier operations left. So after roughing, the links are higher than they need be and never lower (OI-1740 keeps the lower height open).
 3. **The cuts are unchanged.** Only the moves between passes differ (OP-12): the tests compare the cutting moves move for move.
 4. **The generated G-code remains the user's to verify (NFR-12).** The parameter text says the stock is checked at sampled points along each link. It does not claim the links were verified on a machine.
-5. **Library.** The API change is additive: the parameter is in three more schemas, and `Pass::low_link` already exists (0496). The default for a new operation changes its output (item 6), so it takes a minor version bump. The number is assigned by the Merge Manager at release, in merge order.
+5. **Library.** The API change is additive: the parameter is in three more schemas, and `Pass::low_link` already exists (0496). The default for a new operation changes its output (item 6), so the library family takes a minor bump: 0.44.0, assigned by the Merge Manager at release, in merge order (decision 0048).
 6. **New operations start with low links (the owner's choice, relayed 2 Nov 2026).**
-   - `Application::add_operation_on` writes `link_height = low` into a new operation of every strategy that has the parameter: helical finishing, rest machining, simultaneous finishing, axial finishing and indexed finishing. This is the way decision 0205 writes roughing's stock to leave and 0639 the pass order.
+   - `Application::add_operation_on` writes `link_height = low` into a new operation of every strategy that has the parameter: helical finishing, rest machining, simultaneous finishing, axial finishing and indexed finishing. This is the way decision 0205 writes roughing's stock to leave and 0520 the pass order.
    - An operation saved without the parameter keeps `retract`, so saved projects, the golden files and the reference programs are unchanged. None of them is made from a new operation.
    - A link that cannot be lowered retracts, and the note says how many did, as 0496 says.
 

@@ -92,6 +92,14 @@ impl Strategy for HelicalFinishing {
         true
     }
 
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -168,6 +176,7 @@ impl Strategy for HelicalFinishing {
             .chain(crate::extend::specs(false))
             .chain(crate::finishing::specs(true, true))
             .chain(adaptive::specs())
+            .chain(std::iter::once(crate::order::spec()))
             .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
@@ -475,14 +484,17 @@ fn passes(
             spaced_warning =
                 outcome.warning(&settings, &adaptive::Limits::OWNER, parameter::SCALLOP);
         }
-        // One whole turn at each face across the axis, cut after the helix
-        // as its own pass, so the helix is as before (decision record 0297).
-        // Rings already have them in order.
+        // One whole turn at each face across the axis, as its own pass, so
+        // the helix is as before (decision record 0297), cut after the helix
+        // or beside its region (decision record 0520). Rings already have
+        // them in order.
+        let mut order_note = None;
         if !rings {
+            let mut groups = Vec::with_capacity(turns.len());
             for &x in &turns {
                 context.check_cancelled()?;
                 let at = start + sign * 360.0 * (x - x0) / pitch;
-                passes.extend(turn_passes(
+                groups.push(turn_passes(
                     input,
                     region,
                     (&grown, leave, &zone_fits),
@@ -493,6 +505,15 @@ fn passes(
                     context,
                 )?);
             }
+            let arranged = crate::order::arrange(
+                parameters.text(crate::order::PARAMETER)?,
+                passes,
+                groups,
+                crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+                parameters.number(names::FEED)?,
+            );
+            passes = arranged.passes;
+            order_note = arranged.note;
         }
         // Finishing layers above the passes made so far, when on (decision
         // record 0345).
@@ -509,14 +530,19 @@ fn passes(
         let notes = ring_note
             .into_iter()
             .chain(faces::note(&turns))
+            .chain(order_note)
             .chain(faces::held_note(&found.held))
             .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
+            .chain(crate::finishing::across_axis_note(
+                region,
+                "Helical finishing",
+            ))
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);
-        // Every pass may be linked low when asked (decision 0640).
+        // Every pass may be linked low when asked (decision 0521).
         crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok((passes, notes, warnings))
     }

@@ -132,6 +132,7 @@ impl FormSection {
                 Self::ToolAxisAndA
             }
             "retract"
+            | "link_height"
             | "approach_distance"
             | "entry"
             | "ramp_back_and_forth"

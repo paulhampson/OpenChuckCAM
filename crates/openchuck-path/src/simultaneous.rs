@@ -300,6 +300,7 @@ impl Strategy for SimultaneousFinishing {
         ]
         .into_iter()
         .chain(adaptive::specs())
+        .chain(std::iter::once(crate::order::spec()))
         .chain(std::iter::once(crate::axial::link_height_spec()))
         .collect())
     }
@@ -763,6 +764,9 @@ fn run(
     // corner between them (decision record 0410, issue #439).
     let mut turned: Vec<f64> = face_turns.iter().map(|t| t.0).collect();
     let mut corners: Vec<f64> = Vec::new();
+    // Each turn, and the contours of each hidden area, is a group cut after
+    // the drive's passes or beside its region (decision record 0520).
+    let mut groups: Vec<Vec<Pass>> = Vec::with_capacity(face_turns.len());
     for (k, turn) in face_turns.into_iter().enumerate() {
         context.check_cancelled()?;
         if let Some(zone) = zones
@@ -781,7 +785,7 @@ fn run(
                 contour: None,
             };
             let axis = plan.axis_plan(&track, 0.0, max_tilt, &mut findings);
-            passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+            groups.push(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
             if !plan.flat_bottom {
                 let up = face_up.get(k).copied().unwrap_or(true);
                 corners.push(faces::face_of(
@@ -793,7 +797,7 @@ fn run(
             }
             continue;
         }
-        passes.extend(crate::helical::turn_passes(
+        groups.push(crate::helical::turn_passes(
             input,
             region,
             (&grown, leave, &[]),
@@ -853,6 +857,7 @@ fn run(
     plan.contours = found.contours;
     let hidden_count = plan.contours.len() as u64;
     let mut hidden_x = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut area = None;
     for k in 0..plan.contours.len() {
         context.check_cancelled()?;
         context.report(
@@ -875,10 +880,24 @@ fn run(
             contour: Some(k),
         };
         let axis = contour_axis_plan(c);
-        passes.extend(plan.track_passes(&track, &axis, 0.0, &mut findings, context)?);
+        let cut = plan.track_passes(&track, &axis, 0.0, &mut findings, context)?;
+        match groups.last_mut() {
+            Some(group) if area == Some(c.area) => group.extend(cut),
+            _ => groups.push(cut),
+        }
+        area = Some(c.area);
     }
+    let arranged = crate::order::arrange(
+        parameters.text(crate::order::PARAMETER)?,
+        passes,
+        groups,
+        crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+        parameters.number(names::FEED)?,
+    );
+    let passes = arranged.passes;
 
     let mut notes = Vec::new();
+    notes.extend(arranged.note);
     if let Some(at) = findings.slope_at
         && findings.slope > 0.05
     {
@@ -958,7 +977,7 @@ fn run(
         notes.push(outcome.note(settings));
         warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
     }
-    // Every pass may be linked low when asked (decision 0640).
+    // Every pass may be linked low when asked (decision 0521).
     let mut passes = passes;
     crate::axial::mark_low_links_if_asked(parameters, &mut passes);
     Ok(StrategyOutput {
@@ -1041,10 +1060,36 @@ fn unreached_warning(
     max_lean: f64,
 ) -> Option<crate::assemble::PathWarning> {
     use crate::assemble::UnreachedReason;
-    const LISTED: usize = 5;
     if areas.is_empty() {
         return None;
     }
+    let plural = if areas.len() == 1 { "" } else { "s" };
+    let lean = areas
+        .iter()
+        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
+    Some(crate::assemble::PathWarning {
+        message: format!(
+            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
+             uncut: {}; check them in the simulation before running the program",
+            areas.len(),
+            unreached_list(areas, diameter, max_lean)
+        ),
+        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+        requires_acknowledgement: false,
+    })
+}
+
+/// The areas a tool cannot reach, for a warning: the largest five, each
+/// with where it is, how large and why, then how many more (OP-20; decision
+/// records 0368 and 0505). `max_lean` is named only for an area that needs
+/// more lean.
+pub(crate) fn unreached_list(
+    areas: &[crate::assemble::Unreached],
+    diameter: f64,
+    max_lean: f64,
+) -> String {
+    use crate::assemble::UnreachedReason;
+    const LISTED: usize = 5;
     let listed: Vec<String> = areas
         .iter()
         .take(LISTED)
@@ -1067,6 +1112,10 @@ fn unreached_warning(
                     "needs a lean of {degrees:.0} degrees from the surface normal, more than the \
                      largest lean on hidden surfaces ({max_lean} degrees)"
                 ),
+                UnreachedReason::NearHeldRegion => "too near a held region: the tool keeps its \
+                                                    radius clear of the gripped length of the \
+                                                    stock"
+                    .to_owned(),
             };
             format!(
                 "X {:.3} to {:.3} {place} ({:.1} mm2), {why}",
@@ -1080,20 +1129,7 @@ fn unreached_warning(
     } else {
         String::new()
     };
-    let plural = if areas.len() == 1 { "" } else { "s" };
-    let lean = areas
-        .iter()
-        .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
-    Some(crate::assemble::PathWarning {
-        message: format!(
-            "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
-             uncut: {}{more}; check them in the simulation before running the program",
-            areas.len(),
-            listed.join("; ")
-        ),
-        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
-        requires_acknowledgement: false,
-    })
+    format!("{}{more}", listed.join("; "))
 }
 
 /// The tool-axis plan along a contour (OP-20): the reachable axis nearest
@@ -1566,10 +1602,12 @@ fn ring_passes(
         };
         for piece in &pieces {
             let axis = plan.held_plan(piece, phi, r.lead.abs() + r.max_tilt, findings);
-            crate::helical::join(
-                &mut passes,
-                plan.track_passes(piece, &axis, 0.0, findings, context)?,
-            );
+            // A step leans by the lead it holds from its ring, by design; that
+            // is not smoothing, so it is kept out of the note on the tilt used.
+            let tilt = findings.tilt;
+            let cut = plan.track_passes(piece, &axis, 0.0, findings, context);
+            findings.tilt = tilt;
+            crate::helical::join(&mut passes, cut?);
         }
     }
     let note = format!(

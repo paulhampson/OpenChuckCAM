@@ -334,6 +334,100 @@ pub fn gated_tests(root: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
+/// The integration test files of one crate that no test target builds (decision 0516, option C).
+///
+/// With `autotests = false` in `[package]`, cargo builds only the `[[test]]` targets the manifest
+/// declares; the crate's other files under `tests/` are compiled only as modules of a declared
+/// target (`#[path = "file.rs"] mod file;`). A file added beside them and declared nowhere would
+/// never be built, and its tests would neither run nor count here, so it is reported. A crate
+/// without `autotests = false` builds every file, and gives none. `files` maps each top-level file
+/// name under `tests/` to its text.
+pub fn unbuilt_test_files(manifest: &str, files: &BTreeMap<String, String>) -> Result<Vec<String>> {
+    let value: toml::Value = toml::from_str(manifest).context("cannot parse the manifest")?;
+    let autotests = value
+        .get("package")
+        .and_then(|p| p.get("autotests"))
+        .and_then(toml::Value::as_bool);
+    if autotests != Some(false) {
+        return Ok(Vec::new());
+    }
+    let mut built = BTreeSet::new();
+    let targets = value
+        .get("test")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for target in &targets {
+        let Some(path) = target.get("path").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        let Some(name) = path.strip_prefix("tests/") else {
+            continue;
+        };
+        built.insert(name.to_owned());
+        if let Some(text) = files.get(name) {
+            for line in text.lines().map(str::trim) {
+                let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+                if let Some(module) = compact
+                    .strip_prefix("#[path=\"")
+                    .and_then(|rest| rest.strip_suffix("\"]"))
+                {
+                    built.insert(module.to_owned());
+                }
+            }
+        }
+    }
+    Ok(files
+        .keys()
+        .filter(|name| !built.contains(*name))
+        .cloned()
+        .collect())
+}
+
+/// [`unbuilt_test_files`] for every crate under `crates/` and `apps/`, as findings.
+pub fn test_layout(root: &Path) -> Result<Findings> {
+    let mut findings = Findings::new();
+    for group in ["crates", "apps"] {
+        let Ok(members) = std::fs::read_dir(root.join(group)) else {
+            continue;
+        };
+        let mut dirs: Vec<_> = members.filter_map(|m| m.ok().map(|m| m.path())).collect();
+        dirs.sort();
+        for dir in dirs {
+            let Ok(manifest) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+                continue;
+            };
+            let mut files = BTreeMap::new();
+            if let Ok(entries) = std::fs::read_dir(dir.join("tests")) {
+                for entry in entries {
+                    let path = entry?.path();
+                    if path.is_file() && path.extension().is_some_and(|e| e == "rs") {
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_default()
+                            .to_owned();
+                        let text = std::fs::read_to_string(&path)
+                            .with_context(|| format!("cannot read {}", path.display()))?;
+                        files.insert(name, text);
+                    }
+                }
+            }
+            let crate_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            for name in unbuilt_test_files(&manifest, &files)
+                .with_context(|| format!("{}", dir.join("Cargo.toml").display()))?
+            {
+                findings.push(format!(
+                    "{group}/{crate_name}/tests/{name} is not built: the crate has `autotests = false`, \
+                     so add it as a module of tests/integration.rs (`#[path = \"{name}\"] mod ...;`) \
+                     or as its own `[[test]]` in Cargo.toml (decision 0516)"
+                ));
+            }
+        }
+    }
+    Ok(findings)
+}
+
 /// Runs the traceability check.
 pub fn check(root: &Path, tests_from: Option<&Path>, report: Option<&Path>) -> Result<Findings> {
     let requirements = parse_requirements(
@@ -363,7 +457,8 @@ pub fn check(root: &Path, tests_from: Option<&Path>, report: Option<&Path>) -> R
             all
         }
     };
-    let (rows, findings) = evaluate(&requirements, &slices, &config, &tests);
+    let (rows, mut findings) = evaluate(&requirements, &slices, &config, &tests);
+    findings.extend(test_layout(root)?);
     let report_path = report.map_or_else(|| root.join("target/traceability.md"), Path::to_path_buf);
     if let Some(parent) = report_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -514,5 +609,51 @@ mod tests {
                 .any(|n| n == "req_nfr_13_the_worker_exits_cleanly"),
             "{names:?}"
         );
+    }
+    fn files(names: &[(&str, &str)]) -> BTreeMap<String, String> {
+        names
+            .iter()
+            .map(|(n, t)| ((*n).to_owned(), (*t).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn req_nfr_08_a_test_file_no_target_builds_is_reported() {
+        let manifest = "[package]\nname = \"c\"\nautotests = false\n\n[[test]]\nname = \"integration\"\npath = \"tests/integration.rs\"\n\n[[test]]\nname = \"step\"\npath = \"tests/step.rs\"\n";
+        let tree = files(&[
+            (
+                "integration.rs",
+                "#[path = \"a.rs\"]\nmod a;\n#[path=\"b.rs\"]\nmod b;\n",
+            ),
+            ("a.rs", "#[test]\nfn req_nfr_08_a() {}\n"),
+            ("b.rs", ""),
+            ("step.rs", ""),
+            ("forgotten.rs", "#[test]\nfn req_nfr_08_lost() {}\n"),
+        ]);
+        assert_eq!(
+            unbuilt_test_files(manifest, &tree).expect("parse"),
+            vec!["forgotten.rs".to_owned()]
+        );
+    }
+
+    #[test]
+    fn req_nfr_08_a_crate_that_builds_every_test_file_reports_none() {
+        let tree = files(&[("a.rs", ""), ("b.rs", "")]);
+        assert!(
+            unbuilt_test_files("[package]\nname = \"c\"\n", &tree)
+                .expect("parse")
+                .is_empty()
+        );
+        assert!(
+            unbuilt_test_files("[package]\nname = \"c\"\nautotests = true\n", &tree)
+                .expect("parse")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn req_nfr_08_every_test_file_of_this_repository_is_built() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        assert_eq!(test_layout(&root).expect("walk"), Findings::new());
     }
 }

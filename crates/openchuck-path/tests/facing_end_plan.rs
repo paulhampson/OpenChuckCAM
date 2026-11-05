@@ -23,12 +23,15 @@ fn part() -> TriangleMesh {
         triangles: vec![[0, 1, 2]],
     }
 }
+const FLUTE: f64 = 25.;
 fn tool() -> Tool {
     Tool {
         shape: ToolShape::FlatEnd,
         diameter: Millimetres(3.),
-        flute_length: Millimetres(10.),
-        overall_length: Millimetres(30.),
+        // Long enough to reach the 24 mm ends below from one view: an end
+        // deeper than the flutes is faced from two (the owner's F1, #499).
+        flute_length: Millimetres(FLUTE),
+        overall_length: Millimetres(40.),
         shank_diameter: Millimetres(3.),
         flute_count: 2,
         material: None,
@@ -45,6 +48,7 @@ fn settings() -> EndFacingParameters {
         max_angle_step: openchuck_types::units::Degrees(5.),
         allowance: 0.2,
         tolerance: 0.01,
+        approach: 1.,
     }
 }
 
@@ -82,13 +86,25 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
     {
         assert!((actual - expected).abs() < 1e-10);
     }
-    assert_eq!(
-        plan.bands
-            .iter()
-            .map(|band| band.heights)
-            .collect::<Vec<_>>(),
-        vec![(2., 12.), (-8., 2.), (-12., -8.)]
-    );
+    // The bands reach 0.00125 (an eighth of the tolerance) past each edge
+    // (issue #499); the 10 mm flute step leaves the 25 mm flutes overlapping.
+    let heights = plan
+        .bands
+        .iter()
+        .map(|band| band.heights)
+        .collect::<Vec<_>>();
+    let expected = [
+        (2.00125, 12.00125),
+        (-7.99875, 2.00125),
+        (-12.00125, -7.99875),
+    ];
+    assert_eq!(heights.len(), expected.len());
+    for (actual, expected) in heights.iter().zip(expected) {
+        assert!(
+            (actual.0 - expected.0).abs() < 1e-9 && (actual.1 - expected.1).abs() < 1e-9,
+            "{heights:?}"
+        );
+    }
     assert_eq!(plan.passes.len(), 15);
     for (slice, passes) in plan.passes.chunks(3).enumerate() {
         for (band, pass) in passes.iter().enumerate() {
@@ -106,7 +122,7 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
                 assert!((point.tip.x - plan.axial_planes[slice] - 1.5).abs() < 1e-12);
                 assert_eq!(point.tip.z, plan.bands[band].heights.0);
                 assert!((point.contact.x - plan.axial_planes[slice]).abs() < 1e-12);
-                assert!(point.contact.z >= point.tip.z && point.contact.z <= point.tip.z + 10.);
+                assert!(point.contact.z >= point.tip.z && point.contact.z <= point.tip.z + FLUTE);
             }
         }
     }
@@ -384,7 +400,7 @@ fn req_op_24_req_op_21_cylindrical_tab_flanks_stay_outside_and_cover_the_remaini
                     let h = y * ny + z * nz;
                     let u = y * nz - z * ny;
                     h >= height - 1e-10
-                        && h <= height + 10. + 1e-10
+                        && h <= height + FLUTE + 1e-10
                         && u >= u0 - 1e-10
                         && u <= u1 + 1e-10
                 }),
@@ -518,16 +534,18 @@ fn req_op_24_stored_end_settings_control_axial_depth_flute_spacing_and_start_vie
     let plan = plan_end(&setup, &p, &ctx).unwrap();
     assert_eq!(plan.target.x, 50.2);
     assert_eq!(plan.axial_planes.len(), 5);
-    assert!(
-        plan.bands
-            .iter()
-            .all(|b| b.heights.1 - b.heights.0 <= 1. + 1e-12 && b.angle.0 == 30.)
-    );
+    // At A 30 the stock's bounding square is about 32.8 mm deep across the
+    // tool's axis, more than the 25 mm flutes reach from one view, so the
+    // end is faced from A 30 and A 210 (the owner's F1, issue #499).
+    assert!(plan.bands.iter().all(
+        |b| b.heights.1 - b.heights.0 <= 1. + 1e-12 && (b.angle.0 == 30. || b.angle.0 == 210.)
+    ));
+    assert!(plan.bands.iter().any(|b| b.angle.0 == 30.));
     assert!(
         plan.passes
             .iter()
             .flat_map(|pass| &pass.points)
-            .all(|p| p.a.0 == 30.)
+            .all(|p| p.a.0 == 30. || p.a.0 == 210.)
     );
 }
 
@@ -707,10 +725,17 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
     let mut unfinished = path.group.clone();
     // A raised final band leaves a thin INTERNAL stripe; plane tolerance is
     // not permission to ignore a ridge running back to the original stock.
+    // The lowest band reaches the written-motion allowance below the edge
+    // (issue #499), so it is raised by the tolerance, well past that.
+    let top = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.0)
+        .fold(f64::INFINITY, f64::min);
     let mut last_a = unfinished.start;
     for segment in &mut unfinished.segments {
-        if segment.kind.is_fed() && last_a.tip.z == 2. && segment.end.tip.z == 2. {
-            segment.end.tip.z += 0.00001;
+        if segment.kind.is_fed() && last_a.tip.z == top && segment.end.tip.z == top {
+            segment.end.tip.z += 0.01;
         }
         last_a = segment.end;
     }
@@ -889,4 +914,481 @@ fn req_op_24_req_nfr_05_source_error_does_not_change_nominal_end_coordinate_or_l
         assert_eq!(plan.target.length, 40.2);
         assert!((plan.axial_planes.last().unwrap() - cut_x).abs() < 1e-12);
     }
+}
+
+/// The air point beside the end keeps the operation's approach distance from
+/// the stock's end face, as every other rapid keeps it above the stock
+/// (OP-14; issue #499). A rapid that descends beside the end face then has
+/// the same allowance for stock longer than modelled as one that stops
+/// above the stock top.
+#[test]
+fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_face() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    for (held, outer, sign) in [
+        ([Some((0., 5.)), None], 60., 1.),
+        ([None, Some((55., 60.))], 0., -1.),
+    ] {
+        let setup = FacingSetup {
+            part: &part,
+            stock: &stock,
+            tool: &tool,
+            machine: &machine,
+            tabs: &[],
+            protected: &[],
+            held,
+            projection_error: Some(0.),
+        };
+        for approach in [1., 2.5] {
+            let plan = plan_end(
+                &setup,
+                &EndFacingParameters {
+                    approach,
+                    ..settings()
+                },
+                &ctx,
+            )
+            .unwrap();
+            for pass in &plan.passes {
+                for point in [pass.points.first().unwrap(), pass.points.last().unwrap()] {
+                    let gap = sign * (point.tip.x - outer) - 1.5;
+                    assert!(
+                        gap >= approach - 1e-9,
+                        "the tool is {gap} mm from the end face, less than the approach distance {approach}"
+                    );
+                }
+            }
+        }
+        // A zero approach distance still leaves the tool clear of the face.
+        let plan = plan_end(
+            &setup,
+            &EndFacingParameters {
+                approach: 0.,
+                ..settings()
+            },
+            &ctx,
+        )
+        .unwrap();
+        let first = plan.passes[0].points[0].tip.x;
+        assert!(sign * (first - outer) - 1.5 > 0.);
+    }
+}
+
+/// The coordinates a controller reads back from written G-code are not the
+/// planned ones: words are rounded and the Z1 reads single-precision floats.
+/// The outermost End bands therefore reach one eighth of the tolerance past
+/// the requested edge (decision 0252's written-motion share), so the motion
+/// read back still covers it (OP-24, NFR-05; issue #499: the Baluster End
+/// facing could not be exported). A band raised by more still refuses.
+#[test]
+fn req_op_24_req_nfr_05_end_bands_cover_the_edge_with_the_written_motion_allowance() {
+    use openchuck_path::facing::coverage::verify_end_coverage;
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let plan = plan_end(&setup, &settings(), &ctx).unwrap();
+    let lowest = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.0)
+        .fold(f64::INFINITY, f64::min);
+    let highest = plan
+        .bands
+        .iter()
+        .map(|b| b.heights.1)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let allowance = 0.125 * settings().tolerance;
+    assert!((lowest - (-12. - allowance)).abs() < 1e-12, "{lowest}");
+    assert!((highest - (12. + allowance)).abs() < 1e-12, "{highest}");
+    // Neighbouring bands overlap by at least the allowance as well.
+    for pair in plan.bands.windows(2) {
+        assert!(pair[1].heights.0 + FLUTE >= pair[0].heights.0 + 2. * allowance - 1e-12);
+    }
+    let raised = |by: f64| {
+        let mut group = actual_sweeps(&plan.passes, &machine);
+        for segment in &mut group.segments {
+            if segment.end.tip.z == lowest {
+                segment.end.tip.z += by;
+            }
+        }
+        if group.start.tip.z == lowest {
+            group.start.tip.z += by;
+        }
+        group
+    };
+    let check = |group: &openchuck_types::ir::ToolpathGroup| {
+        verify_end_coverage(
+            &setup,
+            plan.end,
+            plan.target,
+            plan.coverage,
+            group,
+            0.01,
+            0.,
+            &ctx,
+        )
+    };
+    check(&raised(0.)).unwrap();
+    // The Baluster's -17.5 read back as -17.499999999999993 through the
+    // LinuxCNC frame, and as -17.4999985 through the Z1's floats; a word
+    // rounded to three places moves by up to 0.0005.
+    for by in [7e-15, 1.5e-6, 0.0005] {
+        check(&raised(by)).unwrap();
+    }
+    let error = check(&raised(allowance + 1e-6)).unwrap_err().to_string();
+    assert!(error.contains("unfinished"), "{error}");
+}
+
+fn end_setup<'a>(
+    part: &'a TriangleMesh,
+    stock: &'a Stock,
+    tool: &'a Tool,
+    machine: &'a MachineProfile,
+) -> FacingSetup<'a> {
+    FacingSetup {
+        part,
+        stock,
+        tool,
+        machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    }
+}
+
+/// The owner's decision F1 on issue #499: one view reaches at most the flute
+/// length below the stock's top at that view. An end the flutes reach from
+/// one view is faced from one, as before.
+#[test]
+fn req_op_24_an_end_the_flutes_reach_is_faced_from_one_view() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let plan = plan_end(
+        &end_setup(&part, &stock, &tool, &machine),
+        &settings(),
+        &ctx,
+    )
+    .unwrap();
+    assert!(plan.bands.iter().all(|b| b.angle.0 == 0.));
+    assert!(plan.bands.iter().all(|b| 12. - b.heights.0 <= FLUTE));
+}
+
+/// F1: an end taller than the flutes reach from one view is faced from A and
+/// A + 180 degrees, each view no deeper than the flute length below the
+/// stock's top there and down past the axis, and the two together finish
+/// the whole end; each axial slice turns A once (decision 0252's alternating
+/// view order).
+#[test]
+fn req_op_24_req_nfr_12_an_end_deeper_than_the_flutes_is_faced_from_both_sides() {
+    use openchuck_path::facing::coverage::verify_end_coverage;
+    let part = part();
+    let tool = Tool {
+        flute_length: Millimetres(15.),
+        ..tool()
+    };
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = end_setup(&part, &stock, &tool, &machine);
+    let plan = plan_end(&setup, &settings(), &ctx).unwrap();
+    let mut angles = plan.bands.iter().map(|b| b.angle.0).collect::<Vec<_>>();
+    angles.dedup();
+    assert_eq!(angles, [0., 180.], "{angles:?}");
+    for band in &plan.bands {
+        assert!(
+            12. - band.heights.0 <= 15.,
+            "{band:?} reaches past the flutes"
+        );
+    }
+    for angle in [0., 180.] {
+        let lowest = plan
+            .bands
+            .iter()
+            .filter(|b| b.angle.0 == angle)
+            .map(|b| b.heights.0)
+            .fold(f64::INFINITY, f64::min);
+        assert!(lowest < 0., "A {angle} reaches past the axis: {lowest}");
+    }
+    // One A flip per axial slice: the passes of a slice are all at one A
+    // before they turn, and the next slice starts where the last one ended.
+    let mut turns = 0;
+    for pair in plan.passes.windows(2) {
+        if pair[0].points[0].a != pair[1].points[0].a {
+            turns += 1;
+        }
+    }
+    assert_eq!(turns, plan.axial_planes.len(), "one A turn per slice");
+    verify_end_coverage(
+        &setup,
+        plan.end,
+        plan.target,
+        plan.coverage,
+        &actual_sweeps(&plan.passes, &machine),
+        0.01,
+        0.,
+        &ctx,
+    )
+    .unwrap();
+}
+
+/// F1: an end deeper than twice the flutes cannot be faced from two sides,
+/// and the operation refuses, naming the place, the depth, the flutes and
+/// each remedy (decision 0344 item 7's style; NFR-07).
+#[test]
+fn req_nfr_07_req_op_24_an_end_deeper_than_two_sides_reach_refuses_with_remedies() {
+    let part = part();
+    let tool = Tool {
+        flute_length: Millimetres(10.),
+        ..tool()
+    };
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let error = plan_end(
+        &end_setup(&part, &stock, &tool, &machine),
+        &settings(),
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    for words in [
+        "X 50.200",
+        "10.000 mm of flute",
+        "A 0.000 and A 180.000",
+        "longer flutes",
+        "Box facing",
+    ] {
+        assert!(error.contains(words), "{words:?} missing from: {error}");
+    }
+}
+
+/// Invalid input gives a clear refusal, never a crash (NFR-07): a negative
+/// approach distance, and flutes too short for neighbouring bands to overlap
+/// by the written-motion allowance (issue #499, decision 0501).
+#[test]
+fn req_nfr_07_end_refuses_a_negative_approach_and_flutes_too_short_to_overlap() {
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let error = plan_end(
+        &setup,
+        &EndFacingParameters {
+            approach: -1.,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("approach distance"), "{error}");
+    let short = Tool {
+        flute_length: Millimetres(0.002),
+        ..tool.clone()
+    };
+    let error = plan_end(
+        &FacingSetup {
+            tool: &short,
+            ..setup
+        },
+        &EndFacingParameters {
+            flute_step: 0.001,
+            ..settings()
+        },
+        &ctx,
+    )
+    .unwrap_err()
+    .to_string();
+    // With the flute-depth limit (decision 0504) the depth refusal names the
+    // flutes first; either way the operation refuses with a reason.
+    assert!(
+        error.contains("too short") || error.contains("mm of flute"),
+        "{error}"
+    );
+}
+
+#[test]
+fn req_op_24_facing_an_end_flush_with_the_stock_says_there_is_nothing_past_it() {
+    // Issue #471 (the owner's note N2): the stock ends at the part's far end,
+    // so there is nothing past it to face. The refusal says so in the user's
+    // words, and how to set the stock if the real blank is longer.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let text = plan_end(&setup, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face")
+            && text.contains("If the real blank is longer, set the stock's length to match it"),
+        "{text}"
+    );
+    // The same at the start end, when the far end is the held one.
+    let flush_start = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(10., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let start = FacingSetup {
+        stock: &flush_start,
+        held: [None, Some((55., 60.))],
+        ..setup
+    };
+    let text = plan_end(&start, &settings(), &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 10.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_op_24_facing_a_flush_end_with_no_stock_to_leave_says_there_is_nothing_past_it() {
+    // The review of #491: with no stock to leave the target plane is the
+    // stock's own end, so the plan had no layers and no passes and was
+    // returned as if it faced something. It is refused with the owner's N2
+    // words (issue #471) instead.
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let flush = EndFacingParameters {
+        allowance: 0.,
+        ..settings()
+    };
+    let text = plan_end(&setup, &flush, &ctx).unwrap_err().to_string();
+    assert!(
+        text.contains("the stock ends at the part's end at X 50.000")
+            && text.contains("there is no stock past this end to face"),
+        "{text}"
+    );
+    // Stock that does carry on past the end is still faced with no stock to
+    // leave.
+    let longer = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(52., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &longer,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
+    // Stock past the end by less than the tolerance is still faced: the
+    // refusal is for an end with nothing to cut, not for a thin skin.
+    let skin = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(50.005, 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        stock: &skin,
+        ..setup
+    };
+    let plan = plan_end(&setup, &flush, &ctx).unwrap();
+    assert!(!plan.passes.is_empty());
 }

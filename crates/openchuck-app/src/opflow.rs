@@ -243,9 +243,24 @@ impl Application {
                 )),
             );
         }
+        // A strategy that can cut its extra passes beside their region
+        // starts with that order, written into the operation; one saved
+        // without it keeps the order it had (decision record 0520).
+        if self
+            .strategies
+            .get(strategy)
+            .is_ok_and(|s| s.schema().get(openchuck_path::order::PARAMETER).is_some())
+        {
+            parameters.insert(
+                openchuck_path::order::PARAMETER.to_owned(),
+                openchuck_project::ParameterValue::Text(
+                    openchuck_path::order::BY_REGION.to_owned(),
+                ),
+            );
+        }
         // A strategy that can keep its links between passes low starts with
         // them low, written into the operation; one saved without it keeps
-        // retracting (the owner's choice, decision record 0640, which
+        // retracting (the owner's choice, decision record 0521, which
         // amends 0496 for new operations).
         if self.strategies.get(strategy).is_ok_and(|s| {
             s.schema()

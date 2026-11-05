@@ -2,7 +2,7 @@
 //! Links between passes of helical finishing, rest machining and
 //! simultaneous finishing: the option to keep them low, as axial and indexed
 //! finishing have it (OP-14, SET-06, SET-09, SIM-08, NFR-07, NFR-12, GC-07,
-//! NFR-06; issue #469; OI-1741; decisions 0496 and 0640). The checks are on
+//! NFR-06; issue #469; OI-1741; decisions 0496 and 0521). The checks are on
 //! the crankshaft (`stl/crankshaft.stl`), where the helix crosses the
 //! off-axis pins in pieces and the face turns and hidden passes add links.
 #![allow(clippy::unwrap_used, clippy::float_cmp, clippy::indexing_slicing)]

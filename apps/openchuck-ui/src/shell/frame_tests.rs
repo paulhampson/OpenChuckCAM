@@ -44,6 +44,18 @@ impl Rig {
         rig
     }
 
+    /// The tube project open (a bore no tool can reach; issue 478), its
+    /// scene built and its checks done.
+    pub(super) fn tube(name: &str) -> Self {
+        let (dir, app, _, _) = crate::testing::tube_project(name);
+        app.save().unwrap();
+        drop(app);
+        let shell = Shell::with_settings(false, Some(dir.clone()), None);
+        let mut rig = Self::new(shell, vec![dir]);
+        rig.settle();
+        rig
+    }
+
     /// The cube project open, its scene built and its checks done.
     pub(super) fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
         let (dir, app, _, _) = cube_project(name);
@@ -1458,9 +1470,15 @@ fn req_ui_11_a_setup_without_stock_says_so_under_its_section_and_in_the_bar() {
     setup.stock = None;
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     rig.settle();
+    // A to-do, not an error (decision 0518, issue 463): the bar says it needs
+    // attention and names the value; it is still listed under the section.
     assert_eq!(
         rig.shell.overview.step(Step::Setup).health,
-        openchuck_app::overview::StepHealth::Error
+        openchuck_app::overview::StepHealth::Attention
+    );
+    assert_eq!(
+        rig.shell.overview.step(Step::Setup).reason.as_deref(),
+        Some("Set the stock")
     );
     rig.shell.go_to_first_problem();
     assert_eq!(rig.shell.step, Step::Setup);

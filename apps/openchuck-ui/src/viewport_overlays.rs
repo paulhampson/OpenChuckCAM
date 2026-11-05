@@ -21,6 +21,9 @@ use crate::viewport::{ViewStep, Viewport};
 const MARGIN: f32 = 12.0;
 /// The view cube's box.
 const CUBE: f32 = 84.0;
+/// The height of the caption under the view cube, and its gap from the cube.
+const CUBE_CAPTION: f32 = 18.0;
+const CUBE_CAPTION_GAP: f32 = 4.0;
 /// The size of the view cube's labels, in pixels at a face seen square-on.
 const CUBE_LABEL: f32 = 8.0;
 /// How squarely a cube face must face the eye for its label to show: the
@@ -39,6 +42,8 @@ const ROW: f32 = 18.0;
 #[derive(Debug, Default)]
 pub(crate) struct Boxes {
     cube: Option<Rect>,
+    /// The caption naming the frame the cube's faces refer to (issue 531).
+    cube_caption: Option<Rect>,
     triad: Option<Rect>,
     legend: Option<Rect>,
     legend_button: Option<Rect>,
@@ -56,6 +61,7 @@ impl Boxes {
             self.legend_button,
             self.readout,
             self.scale,
+            self.cube_caption,
         ]
         .into_iter()
         .flatten()
@@ -79,6 +85,8 @@ pub enum LegendEntry {
     Selected,
     /// Avoid surfaces.
     Avoid,
+    /// The Facing cutter sweep (decision 0507).
+    CutterSweep,
     /// A held region.
     HeldRegion,
     /// A tab.
@@ -95,6 +103,7 @@ impl LegendEntry {
             Self::Entry => "Entry",
             Self::Selected => "Selected",
             Self::Avoid => "Avoid",
+            Self::CutterSweep => "Cutter sweep",
             Self::HeldRegion => "Held region",
             Self::Tab => "Tab",
         }
@@ -125,13 +134,32 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
         LegendEntry::Selected,
         LegendEntry::Avoid,
     ];
+    // The Facing cutter sweep, when one is shown (issue #499, decision 0507).
+    if view.lines.iter().any(|l| l.role == SceneRole::FacingSweep) {
+        out.push(LegendEntry::CutterSweep);
+    }
     out.extend(workholding_entries(view));
     out
 }
 
 /// The path legend's rows: its entries, and the shown set when there is one.
 fn legend_rows(viewport: &Viewport) -> f32 {
-    path_legend(viewport.view()).len() as f32 + f32::from(u8::from(viewport.legend_set.is_some()))
+    path_legend(viewport.view()).len() as f32
+        + f32::from(u8::from(viewport.legend_set.is_some()))
+        + viewport.unreached_legend().len() as f32
+}
+
+/// A legend swatch for the surfaces the tool could not reach: the part's
+/// grey with one dot, a core in a ring, as the view draws them (decision
+/// 0515 item 4).
+pub fn dot_swatch(painter: &egui::Painter, r: Rect) {
+    painter.rect_filled(r, 0.0, to_color32(roles::PART));
+    let clipped = painter.with_clip_rect(r);
+    for x in [r.left() + r.width() * 0.3, r.left() + r.width() * 0.7] {
+        let at = pos2(x, r.center().y);
+        clipped.circle_filled(at, 3.5, to_color32(roles::AREA_DOT_RING));
+        clipped.circle_filled(at, 2.0, to_color32(roles::AREA_DOT_CORE));
+    }
 }
 
 /// A shown selection set's legend swatch, drawn the way the set is drawn
@@ -348,6 +376,39 @@ fn cube_face_at(camera: &Camera, cube: Rect, p: Pos2) -> Option<StandardView> {
 }
 
 /// Where the overlays go in the view `rect` this frame (7.2).
+/// The width a box needs to show each "Unreachable (operation name)" row
+/// whole: the swatch with its margins and the longest label in the legend's
+/// font (decision record 0515 item 4), no wider than the view allows.
+fn area_rows_width(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> f32 {
+    let font = egui::FontId::proportional(12.0);
+    let label = viewport
+        .unreached_legend()
+        .iter()
+        .map(|name| {
+            ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), font.clone(), roles::OVERLAY_TEXT))
+                .size()
+                .x
+        })
+        .fold(0.0_f32, f32::max);
+    if label <= 0.0 {
+        return 0.0;
+    }
+    // Left margin, swatch, gap, the label, right margin; and a point to
+    // spare, so rounding never cuts the last letter.
+    (8.0 + 18.0 + 8.0 + label + 8.0 + 1.0).min(rect.width() - 2.0 * MARGIN)
+}
+
+/// The legend's box and the view cube's, for tests of where they stand.
+#[cfg(test)]
+pub(crate) fn legend_and_cube(
+    ui: &egui::Ui,
+    viewport: &Viewport,
+    rect: Rect,
+) -> (Option<Rect>, Option<Rect>) {
+    let b = boxes(ui, viewport, rect);
+    (b.legend, b.cube)
+}
+
 pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     let mut b = Boxes::default();
     let step = viewport.step();
@@ -356,6 +417,12 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         pos2(right - CUBE, rect.top() + MARGIN),
         vec2(CUBE, CUBE),
     ));
+    if let Some(cube) = b.cube {
+        b.cube_caption = Some(Rect::from_min_size(
+            pos2(cube.left(), cube.bottom() + CUBE_CAPTION_GAP),
+            vec2(CUBE, CUBE_CAPTION),
+        ));
+    }
     // The axes gadget: bottom left of every 3D view, drawn without a box
     // (decision 0149).
     b.triad = Some(Rect::from_min_size(
@@ -378,26 +445,36 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
             rect.top() + MARGIN
         };
         let left = rect.left() + MARGIN;
+        // As wide as its longest area row, but short of the view cube at the
+        // top right, with a gap; a longer row ends in "…" (`fitted_label`).
+        let legend_width = area_rows_width(ui, viewport, rect)
+            .min(right - CUBE - 8.0 - left)
+            .max(124.0);
         if legend_collapsed(rect.height()) {
             b.legend_button = Some(Rect::from_min_size(pos2(left, top), vec2(84.0, 26.0)));
             if viewport.legend_open {
                 let rows = legend_rows(viewport);
                 b.legend = Some(Rect::from_min_size(
                     pos2(left, top + 30.0),
-                    vec2(124.0, rows * ROW + 12.0),
+                    vec2(legend_width, rows * ROW + 12.0),
                 ));
             }
         } else {
             let rows = legend_rows(viewport);
             b.legend = Some(Rect::from_min_size(
                 pos2(left, top),
-                vec2(124.0, rows * ROW + 12.0),
+                vec2(legend_width, rows * ROW + 12.0),
             ));
         }
     }
     let held = workholding_entries(viewport.view()).len() as f32
-        + f32::from(u8::from(viewport.legend_set.is_some()));
-    if step == ViewStep::Simulate && (viewport.scale_bands().is_some() || viewport.part_changed()) {
+        + f32::from(u8::from(viewport.legend_set.is_some()))
+        + viewport.unreached_legend().len() as f32;
+    if step == ViewStep::Simulate
+        && (viewport.scale_bands().is_some()
+            || viewport.part_changed()
+            || !viewport.unreached_legend().is_empty())
+    {
         let notes = scale_note_height(&ui.painter_at(rect), viewport);
         let height = scale_held_top(viewport, notes) + 4.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
@@ -405,7 +482,7 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
                 rect.left() + MARGIN,
                 rect.bottom() - MARGIN - TRIAD - 8.0 - height,
             ),
-            vec2(236.0, height),
+            vec2(area_rows_width(ui, viewport, rect).max(236.0), height),
         ));
     }
     b
@@ -560,6 +637,23 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         frame(&painter, cube);
         paint_cube(&painter, cube, &viewport.camera);
     }
+    if let Some(caption) = b.cube_caption {
+        let frame_of_cube = viewport.cube_frame();
+        frame(&painter, caption);
+        painter.text(
+            caption.center(),
+            egui::Align2::CENTER_CENTER,
+            crate::orient::cube_caption(frame_of_cube),
+            font.clone(),
+            roles::OVERLAY_TEXT,
+        );
+        ui.interact(
+            caption,
+            ui.scope_id().with("cube caption"),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(crate::orient::cube_tooltip(frame_of_cube));
+    }
     if let Some(triad) = b.triad {
         let (right, up, _) = viewport.camera.basis();
         let centre = triad.center();
@@ -665,6 +759,13 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             set_swatch(&painter, swatch, *rgb);
             fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
+        let first = path_legend(viewport.view()).len() + usize::from(viewport.legend_set.is_some());
+        for (i, name) in viewport.unreached_legend().iter().enumerate() {
+            let y = r.top() + 6.0 + ROW * (first + i) as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
+            dot_swatch(&painter, swatch);
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
+        }
     }
     if let Some(r) = b.scale {
         frame(&painter, r);
@@ -681,7 +782,13 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 roles::OVERLAY_TEXT,
             );
             let scale = Rect::from_min_max(r.min + vec2(0.0, SCALE_TITLE), r.max);
-            colour_scale(&painter, scale, bands.tolerance, &viewport.band_filter);
+            colour_scale(
+                &painter,
+                scale,
+                bands.tolerance,
+                &viewport.band_filter,
+                unreachable_row(viewport),
+            );
         }
         let mut y = r.top() + held_top - note_height;
         for (galley, colour) in notes {
@@ -712,6 +819,14 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             set_swatch(&painter, swatch, *rgb);
             let label = format!("Selection set “{name}”");
             fitted_label(&painter, swatch, &label, &font, r.right() - 8.0);
+        }
+        let first =
+            workholding_entries(viewport.view()).len() + usize::from(viewport.legend_set.is_some());
+        for (i, name) in viewport.unreached_legend().iter().enumerate() {
+            let y = r.top() + held_top + ROW * (first + i) as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(18.0, 12.0));
+            dot_swatch(&painter, swatch);
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }
     if viewport.shows_unapplied() {
@@ -771,10 +886,29 @@ fn scale_note_height(painter: &egui::Painter, viewport: &Viewport) -> f32 {
 /// at the top.
 fn scale_held_top(viewport: &Viewport, notes: f32) -> f32 {
     if viewport.scale_bands().is_some() {
-        70.0 + SCALE_TITLE + notes
+        let row = if unreachable_row(viewport) {
+            UNREACHABLE_ROW
+        } else {
+            0.0
+        };
+        70.0 + row + SCALE_TITLE + notes
     } else {
         6.0 + notes
     }
+}
+
+/// The height of the legend's "Unreachable (enclosed)" row (issue 478).
+const UNREACHABLE_ROW: f32 = 16.0;
+
+/// Whether the legend lists "Unreachable (enclosed)": while the colours
+/// shown hold it, or its tick box hides it (then dimmed).
+fn unreachable_row(viewport: &Viewport) -> bool {
+    viewport.band_filter.hide_unreachable
+        || viewport.scale_bands().is_some_and(|b| {
+            b.bands
+                .iter()
+                .any(|(band, set)| *band == DeviationBand::Unreachable && !set.is_empty())
+        })
 }
 
 /// The bands of the colour scale in order, with the labels at its ends
@@ -800,7 +934,13 @@ fn on_target_cell() -> usize {
 /// "not measured" swatch and the band of "on the surface". A band the band
 /// filter hides is dimmed, one it shows in part is dimmed in its lower half,
 /// and while anything is hidden the box says so (SIM-15; decision 0163).
-fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandFilter) {
+fn colour_scale(
+    painter: &egui::Painter,
+    r: Rect,
+    tolerance: f64,
+    filter: &BandFilter,
+    unreachable: bool,
+) {
     let bar = Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(r.width() - 16.0, 10.0));
     let step = bar.width() / SCALE.len() as f32;
     for (i, band) in SCALE.iter().enumerate() {
@@ -845,23 +985,47 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandF
         font.clone(),
         roles::OVERLAY_TEXT,
     );
-    let unmeasured = Rect::from_min_size(r.left_top() + vec2(8.0, 38.0), vec2(14.0, 10.0));
-    painter.rect_filled(unmeasured, 0.0, to_color32(roles::WITHIN));
-    hatch(
-        painter,
-        unmeasured,
-        to_color32(roles::UNMEASURED_HATCH),
-        false,
-    );
+    // The two patterned bands, as the part draws them (decision 0513):
+    // "Not measured", then "Unreachable (enclosed)", dimmed when its own
+    // tick box hides it.
+    let swatch = |y: f32, band: DeviationBand| {
+        let at = Rect::from_min_size(r.left_top() + vec2(8.0, y), vec2(14.0, 10.0));
+        let dim = if filter.band_shown(band, tolerance) == Shown::Hidden {
+            HIDDEN_OPACITY
+        } else {
+            1.0
+        };
+        painter.rect_filled(
+            at,
+            0.0,
+            to_color32(roles::band_colour(band)).gamma_multiply(dim),
+        );
+        if let Some(h) = roles::band_hatch(band) {
+            hatch(
+                painter,
+                at,
+                to_color32(h.colour).gamma_multiply(dim),
+                matches!(h.kind, openchuck_viewport::HatchKind::Cross),
+            );
+        }
+        painter.text(
+            at.right_center() + vec2(8.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            band.name(),
+            egui::FontId::proportional(11.0),
+            roles::OVERLAY_TEXT,
+        );
+        at
+    };
+    let unmeasured = swatch(38.0, DeviationBand::Unmeasured);
+    let row = if unreachable {
+        swatch(38.0 + UNREACHABLE_ROW, DeviationBand::Unreachable);
+        UNREACHABLE_ROW
+    } else {
+        0.0
+    };
     painter.text(
-        unmeasured.right_center() + vec2(8.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        "Not measured",
-        font.clone(),
-        roles::OVERLAY_TEXT,
-    );
-    painter.text(
-        r.left_top() + vec2(8.0, 52.0),
+        r.left_top() + vec2(8.0, 52.0 + row),
         egui::Align2::LEFT_TOP,
         format!("On the surface: within {tolerance:.3} mm"),
         font.clone(),
@@ -932,6 +1096,7 @@ pub fn swatch_for(painter: &egui::Painter, r: Rect, entry: LegendEntry, kept: bo
         LegendEntry::Link => line(roles::LINK, roles::LINE_WIDTH, false),
         LegendEntry::Rapid => line(roles::RAPID, roles::PATH_WIDTH, true),
         LegendEntry::Entry => line(roles::ENTRY, roles::PATH_WIDTH, false),
+        LegendEntry::CutterSweep => line(roles::SWEEP, roles::LINE_WIDTH, false),
         LegendEntry::Selected => {
             painter.rect_filled(r, 0.0, to_color32(roles::SELECTED).gamma_multiply(0.4));
         }
@@ -1189,6 +1354,37 @@ mod tests {
         assert!(!legend_collapsed(480.0));
     }
 
+    /// Issue #499 (the owner's decision S-1): the Facing cutter sweep is a
+    /// diagram, not a cut, so it is drawn in its own colour, not the Cut
+    /// amber, and named in the path legend while one is shown (SIM-01).
+    #[test]
+    #[allow(clippy::float_cmp)] // Exact colour constants, not computed values.
+    fn req_sim_01_req_ui_25_the_facing_sweep_has_its_own_colour_and_legend_entry() {
+        assert_ne!(roles::SWEEP, roles::CUT);
+        assert_eq!(
+            crate::viewport::style(SceneRole::FacingSweep).0,
+            roles::SWEEP
+        );
+        let mut view = SceneView::default();
+        view.lines.push(openchuck_app::scene::ScenePolyline {
+            role: SceneRole::FacingSweep,
+            points: Vec::new(),
+        });
+        let names: Vec<&str> = path_legend(&view).iter().map(|e| e.name()).collect();
+        assert_eq!(
+            names,
+            [
+                "Cut",
+                "Link",
+                "Rapid",
+                "Entry",
+                "Selected",
+                "Avoid",
+                "Cutter sweep"
+            ]
+        );
+    }
+
     #[test]
     fn req_ui_05_req_nfr_15_a_shown_set_joins_the_path_legend_framed() {
         // Decision 0216 item 5: the legend shows the set the way it is drawn.
@@ -1228,6 +1424,23 @@ mod tests {
             strokes.contains(&Color32::from_rgb(0x23, 0x96, 0x88)),
             "{strokes:?}"
         );
+    }
+
+    #[test]
+    fn req_ui_02_req_sim_01_operations_reads_the_pointer_not_the_old_tool_move() {
+        // Issue 535: a tool position kept from a simulation is not the
+        // readout of any other step.
+        let mut viewport = Viewport::new(true);
+        viewport.set_tool_readout(Some(crate::viewport::ToolReadout {
+            work: [1.0, 2.0, 3.0, 4.0],
+            move_number: 7,
+        }));
+        viewport.set_step(Some(ViewStep::Operations));
+        assert!(readout(&viewport).is_none(), "no pointer on the surface");
+        viewport.cursor_point = Some([5.0, 0.0, 0.0]);
+        assert_eq!(readout(&viewport).unwrap().1, "Cursor on surface");
+        viewport.set_step(Some(ViewStep::Simulate));
+        assert_eq!(readout(&viewport).unwrap().1, "Tool at move 7");
     }
 
     #[test]
