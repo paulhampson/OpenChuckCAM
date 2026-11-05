@@ -2452,10 +2452,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .map_or_else(|| "A setup".to_owned(), |s| format!("Setup '{}'", s.name)),
         _ => "An item".to_owned(),
     };
-    // A missing machine is a to-do, not an error: the Setup step reads it as
-    // "Choose a machine" needing attention (decision 0173, FIRSTRUN item 1).
-    let is_error_need =
-        |m: &Missing| m.requirement.field != crate::requirements::RequirementField::Machine;
+    // A missing machine, and a setup's missing stock or part, are to-dos, not
+    // errors: the Setup step reads them as needing attention (decision 0173,
+    // FIRSTRUN item 1; decision 0636). A missing tool or an operation's
+    // missing value is still an error.
+    let is_to_do = |m: &Missing| {
+        use crate::requirements::RequirementField as F;
+        matches!(m.requirement.field, F::Machine | F::Stock | F::Part)
+    };
+    let is_error_need = |m: &Missing| !is_to_do(m);
     let first_missing = |operation: bool| {
         missing
             .iter()
@@ -2516,6 +2521,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         (StepHealth::Error, Some(text))
     } else if count_state(ItemState::Error, &on_setup) > 0 {
         (StepHealth::Error, Some("A setup has an error".to_owned()))
+    } else if let Some(todo) = missing.iter().find(|m| {
+        matches!(m.item, ItemRef::Setup(_))
+            && is_to_do(m)
+            && m.requirement.field != crate::requirements::RequirementField::Machine
+    }) {
+        // A setup's missing stock or part: the user has not reached it yet
+        // (decision 0636). It is named before the machine, as it is the
+        // nearer step once a setup exists.
+        (StepHealth::Attention, Some(todo.requirement.text.clone()))
     } else if project.machine().is_none() {
         // A to-do, not a fault: Messages counts no error for it either
         // (decision 0173, the owner's answer on FIRSTRUN item 1).
