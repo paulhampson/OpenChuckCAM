@@ -571,6 +571,22 @@ fn turns_with_part(role: SceneRole) -> bool {
     )
 }
 
+/// Whether a label of `role` is drawn under `show`: a guide's label (A+,
+/// the A0 marks, the rotary axis, the work axes) follows the axes switch (7.1, V); any
+/// other label, such as the Facing extent and margin values, is shown with
+/// its lines, which that switch does not hide (OI-2018).
+fn label_shown(role: SceneRole, show: &Visibility) -> bool {
+    match role {
+        SceneRole::RotaryAxis
+        | SceneRole::ADirection
+        | SceneRole::AZero
+        | SceneRole::WorkX
+        | SceneRole::WorkY
+        | SceneRole::WorkZ => show.axes,
+        _ => true,
+    }
+}
+
 /// Where a label of `role` at `at` (model frame) is drawn, with the part
 /// turned by `part`: a label on the workpiece turns with it, a guide's
 /// label does not.
@@ -2010,12 +2026,10 @@ impl Viewport {
         self.focus = (Arc::new(scene), self.focus.1 + 1);
     }
 
-    /// Draws the scene's labels ("A+", the work axes) at their projected
-    /// points, and an arrowhead at the end of each work axis (7.3, 7.4).
+    /// Draws the scene's labels (the guides' and the Facing values) at their
+    /// placed points, and an arrowhead at the end of each work axis (7.3,
+    /// 7.4). The axes switch hides the guides only (`label_shown`).
     fn draw_labels(&self, ui: &egui::Ui, rect: Rect) {
-        if !self.show.axes {
-            return;
-        }
         let painter = ui.painter_at(rect);
         let to_screen = |p: [f64; 3]| {
             let ndc = self.camera.project(p, self.aspect)?;
@@ -2027,10 +2041,11 @@ impl Viewport {
             })
         };
         for line in self.view.lines.iter().filter(|l| {
-            matches!(
-                l.role,
-                SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ
-            )
+            self.show.axes
+                && matches!(
+                    l.role,
+                    SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ
+                )
         }) {
             let (Some(a), Some(b)) = (line.points.first(), line.points.last()) else {
                 continue;
@@ -2067,7 +2082,12 @@ impl Viewport {
     /// part.
     pub(crate) fn guide_labels(&self, rect: Rect) -> Vec<GuideLabel> {
         let mut labels: Vec<(u8, GuideLabel)> = Vec::new();
-        for label in &self.view.labels {
+        for label in self
+            .view
+            .labels
+            .iter()
+            .filter(|l| label_shown(l.role, &self.show))
+        {
             let at = label_point(label.role, label.at, &self.part_transform);
             let Some(ndc) = self.camera.project(at, self.aspect) else {
                 continue;
@@ -3034,6 +3054,30 @@ pub(crate) mod tests {
         }
         assert_ne!([turned[0], turned[1], turned[2]], [1., 0., 2.]);
         assert_eq!(label_point(SceneRole::WorkX, at, &turn), [1., 0., 2.]);
+    }
+
+    /// Issue #499 (CodeRabbit on #520, OI-2018): hiding the axes hides the
+    /// guides' labels (A+) only. The Facing extent and margin labels carry
+    /// the target and margin values and are shown while their lines are,
+    /// whatever the axes switch says (UI-03, ui spec 7.2).
+    #[test]
+    fn req_ui_03_hiding_the_axes_keeps_the_facing_labels() {
+        let axes_off = Visibility {
+            axes: false,
+            ..Visibility::default()
+        };
+        let axes_on = Visibility {
+            axes: true,
+            ..Visibility::default()
+        };
+        for role in [SceneRole::FacingExtent, SceneRole::FacingMargin] {
+            assert!(label_shown(role, &axes_off));
+            assert!(label_shown(role, &axes_on));
+        }
+        for guide in [SceneRole::ADirection, SceneRole::AZero, SceneRole::WorkX] {
+            assert!(!label_shown(guide, &axes_off));
+            assert!(label_shown(guide, &axes_on));
+        }
     }
 
     #[test]
