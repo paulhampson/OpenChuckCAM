@@ -173,6 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             decimals: Some((3, 3)),
             operation_names: BTreeMap::new(),
             operation_spindle: BTreeMap::new(),
+            combine_rotary_runs: false,
         };
         let result = to_machine_program(&path, &options)?;
         let blocks: usize = path.groups.iter().map(|g| g.segments.len()).sum();

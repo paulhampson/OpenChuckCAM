@@ -42,6 +42,36 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     fn left_by_earlier_operations(&self) -> bool {
         false
     }
+
+    /// The stock in a few words for a message, such as "a 35.000 x 35.000 mm
+    /// box, its corners 24.749 mm from the rotary axis", if it has a simple
+    /// shape (decision record 0509). `None` by default.
+    fn describe(&self) -> Option<String> {
+        None
+    }
+
+    /// The highest any material stands along `axis` above `centre`, within
+    /// `radius` of the line through `centre` along `axis`, as
+    /// `dot(p - centre, axis)` at its largest; negative infinity where there
+    /// is no material there. Exact where it is given: the flute check of
+    /// decision record 0509 then cannot miss material between readings.
+    /// `None`, the default, when the model does not compute it; the check
+    /// then holds the stock to a conservative bound from
+    /// [`StockModel::max_radius`] (OI-2025).
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        let _ = (centre, axis, radius);
+        None
+    }
+
+    /// True when the material is the same at every angle of A: it is
+    /// symmetric about the rotary axis, as round stock on the axis is. The
+    /// flute check of decision record 0509 then adds nothing for the
+    /// stock's turn between two readings, so stock flush with the flutes
+    /// through a turn is measured exactly. False, the default, when the
+    /// model does not say so.
+    fn turns_unchanged(&self) -> bool {
+        false
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box
@@ -92,6 +122,20 @@ impl AnalyticStock {
             _ => Err(PathError::Strategy(
                 "imported stock is not supported yet (SET-04)".to_owned(),
             )),
+        }
+    }
+}
+
+impl AnalyticStock {
+    /// True when every size and place of the stock is a finite number.
+    fn is_finite(&self) -> bool {
+        match *self {
+            Self::Cylinder {
+                radius,
+                x_start,
+                x_end,
+            } => radius.is_finite() && x_start.is_finite() && x_end.is_finite(),
+            Self::Box(b) => b.min.is_finite() && b.max.is_finite(),
         }
     }
 }
@@ -161,7 +205,117 @@ impl StockModel for AnalyticStock {
         }
     }
 
+    fn top_over_disc(&self, centre: Point3, axis: UnitVec3, radius: f64) -> Option<f64> {
+        let a = axis.get();
+        // The tool axis of a 4-axis machine is across the rotary axis.
+        // A centre, axis or radius that is not a finite number has no
+        // answer (NFR-07): the caller then holds the stock to its bound.
+        if !centre.is_finite() || !a.is_finite() || !radius.is_finite() || !self.is_finite() {
+            return None;
+        }
+        if a.x.abs() > 1e-9 || radius < 0.0 {
+            return None;
+        }
+        // Coordinates across X: `w` across the tool axis, `h` along it.
+        let e = Vec3::new(0.0, -a.z, a.y);
+        let (wc, hc) = (
+            e.y * centre.y + e.z * centre.z,
+            a.y * centre.y + a.z * centre.z,
+        );
+        let (x0, x1) = match *self {
+            Self::Cylinder { x_start, x_end, .. } => (x_start, x_end),
+            Self::Box(b) => (b.min.x, b.max.x),
+        };
+        // The nearest X of the material to the centre's; what is left of the
+        // radius is the half width across the tool axis there.
+        let dx = (x0 - centre.x).max(centre.x - x1).max(0.0);
+        if dx > radius {
+            return Some(f64::NEG_INFINITY);
+        }
+        // The half width, at most `radius`; where its square overflows,
+        // `radius` itself, which is wider and so still contains the disc.
+        let s = (radius * radius - dx * dx).sqrt();
+        let s = if s.is_finite() { s } else { radius };
+        let (lo, hi) = (wc - s, wc + s);
+        // Coordinates too large to compare have no answer (NFR-07): `clamp`
+        // below needs ordered bounds.
+        if lo.is_nan() || hi.is_nan() || hc.is_nan() {
+            return None;
+        }
+        let top = match *self {
+            Self::Cylinder { radius: r, .. } => {
+                // The section is a disc about the axis: highest at the `w`
+                // nearest zero within the slab.
+                let w = 0.0_f64.clamp(lo, hi);
+                if w.abs() > r {
+                    f64::NEG_INFINITY
+                } else {
+                    (r * r - w * w).sqrt()
+                }
+            }
+            Self::Box(b) => {
+                // The section is a rectangle; the highest point of it within
+                // the slab is a corner inside it or where an edge crosses
+                // one of its sides.
+                let corners = [
+                    (b.min.y, b.min.z),
+                    (b.max.y, b.min.z),
+                    (b.max.y, b.max.z),
+                    (b.min.y, b.max.z),
+                ]
+                .map(|(y, z)| (e.y * y + e.z * z, a.y * y + a.z * z));
+                let mut top = f64::NEG_INFINITY;
+                let next = corners.iter().cycle().skip(1);
+                for (&(w0, h0), &(w1, h1)) in corners.iter().zip(next) {
+                    if (lo..=hi).contains(&w0) {
+                        top = top.max(h0);
+                    }
+                    for side in [lo, hi] {
+                        if (w0 - side) * (w1 - side) < 0.0 {
+                            let t = (side - w0) / (w1 - w0);
+                            top = top.max(h0 + t * (h1 - h0));
+                        }
+                    }
+                }
+                top
+            }
+        };
+        let above = top - hc;
+        (!above.is_nan()).then_some(above)
+    }
+
+    fn describe(&self) -> Option<String> {
+        Some(match *self {
+            Self::Cylinder { radius, .. } => {
+                format!(
+                    "a {:.3} mm diameter cylinder on the rotary axis",
+                    2.0 * radius
+                )
+            }
+            Self::Box(b) => format!(
+                "a {:.3} x {:.3} mm box (Y {:.3} to {:.3}, Z {:.3} to {:.3}), its farthest \
+                 corner {:.3} mm from the rotary axis",
+                b.max.y - b.min.y,
+                b.max.z - b.min.z,
+                b.min.y,
+                b.max.y,
+                b.min.z,
+                b.max.z,
+                self.max_radius().unwrap_or(0.0)
+            ),
+        })
+    }
+
+    fn turns_unchanged(&self) -> bool {
+        matches!(self, Self::Cylinder { .. })
+    }
+
     fn max_radius(&self) -> Option<f64> {
+        // A size that is not a finite number has no farthest radius
+        // (NFR-07): `f64::max` would otherwise drop the NaN.
+        if !self.is_finite() {
+            return None;
+        }
         Some(match *self {
             Self::Cylinder { radius, .. } => radius,
             Self::Box(b) => {

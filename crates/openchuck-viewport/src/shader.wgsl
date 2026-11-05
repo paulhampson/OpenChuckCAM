@@ -22,8 +22,13 @@ struct Uniforms {
     hatch: vec4<f32>,
     // x: logical pixels per millimetre at the camera's target, which the
     // dash pattern is measured in; y: the hatch, 0 none, 1 one direction,
-    // 2 both directions.
+    // 2 both directions, 3 dots.
     scale: vec4<f32>,
+    // Dots, in logical pixels: x: the distance between two dots and between
+    // two rows; y: the radius of the core; z: the radius with its ring.
+    dots: vec4<f32>,
+    // The colour of a dot's ring.
+    ring: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -60,6 +65,26 @@ fn fs_mesh(in: MeshOut) -> @location(0) vec4<f32> {
 fn fs_hatch(in: MeshOut) -> @location(0) vec4<f32> {
     // Whole logical pixels along each diagonal, so the bands are exact.
     let p = in.clip.xy / max(u.line.w, 1e-3);
+    if u.scale.y > 2.5 {
+        // Dots in rows, every other row shifted by half a spacing. A pixel
+        // is the core, the ring or the fill beneath, by its distance from
+        // the nearest dot's centre.
+        let s = u.dots.x;
+        let row = floor(p.y / s);
+        let shift = select(0.0, 0.5 * s, (i32(row) & 1) == 1);
+        let centre = vec2<f32>(
+            (floor((p.x + shift) / s) + 0.5) * s - shift,
+            (row + 0.5) * s,
+        );
+        let d = length(p - centre);
+        if d <= u.dots.y {
+            return u.hatch;
+        }
+        if d <= u.dots.z {
+            return u.ring;
+        }
+        return shade(in);
+    }
     var on = i32(floor(p.x + p.y)) % 6 == 0;
     if u.scale.y > 1.5 {
         // Offset so the difference is never negative.

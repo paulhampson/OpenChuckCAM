@@ -95,17 +95,44 @@ impl LineStyle {
     }
 }
 
+/// What a [`Hatch`] is made of.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HatchKind {
+    /// Lines in one diagonal direction (avoid and check surfaces, the travel
+    /// limit, a value not measured).
+    Single,
+    /// Lines in both diagonal directions (a held region).
+    Cross,
+    /// Dots in rows, every other row shifted half a spacing: each a core in
+    /// [`Hatch::colour`] inside a ring of `ring` (the surfaces the tool
+    /// could not reach, decision record 0515). Two tones, so the dot reads
+    /// on dark and light colours alike. Where it is not a dot, the mesh's
+    /// own fill shows, so a transparent fill leaves what lies beneath as it
+    /// is.
+    Dots {
+        /// The colour round the core.
+        ring: Colour,
+    },
+}
+
 /// A hatch drawn over a mesh's fill in screen space: lines 1 pixel wide,
 /// 6 logical pixels apart whatever the zoom (interface specification 7.4 and
-/// 7.5).
+/// 7.5), or dots 12 logical pixels apart ([`HatchKind::Dots`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hatch {
-    /// The colour of the hatch lines.
+    /// The colour of the hatch lines, or of a dot's core.
     pub colour: Colour,
-    /// Lines in both diagonal directions (a held region) rather than one
-    /// (avoid and check surfaces, the travel limit, a value not measured).
-    pub cross: bool,
+    /// Which hatch.
+    pub kind: HatchKind,
 }
+
+/// The distance between two dots of [`HatchKind::Dots`] in a row, and
+/// between two rows, in logical pixels.
+pub const DOT_SPACING: f32 = 12.0;
+/// The radius of a dot's core, in logical pixels.
+pub const DOT_CORE_RADIUS: f32 = 2.0;
+/// The radius of a dot with its ring, in logical pixels.
+pub const DOT_RADIUS: f32 = 3.5;
 
 /// The outline drawn round a mesh: its silhouette as seen from the eye, its
 /// creases (edges where the faces meet at more than 30 degrees) and its

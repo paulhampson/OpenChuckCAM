@@ -1527,8 +1527,10 @@ fn calm(name: &str) -> Fixture {
         .execute(Command::SetMachine(Some(Box::new(machine))))
         .unwrap();
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    // Within the 10 mm ball's flutes above the 10 mm cube: a ring cut in
+    // deeper stock is refused (decision record 0509).
     setup.stock = Some(Stock::Cylinder {
-        diameter: Millimetres(60.0),
+        diameter: Millimetres(24.0),
         length: Millimetres(60.0),
         x_start: Millimetres(-30.0),
     });
@@ -2227,6 +2229,91 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
         out.insert("adaptive_spacing".to_owned(), ParameterValue::Flag(false));
     }
     out
+}
+
+/// How far along a run an operation's state is, for the order check: an
+/// operation only ever moves forward through a run (decision 0517).
+fn run_rank(state: ItemState) -> u8 {
+    match state {
+        ItemState::Stale => 0,
+        ItemState::Running => 1,
+        ItemState::Finalising => 2,
+        ItemState::UpToDate => 3,
+        other => panic!("unexpected state {other:?} during a run"),
+    }
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_a_made_operation_shows_finalising_until_the_run_ends() {
+    // Issue 474: the first operation's toolpath is done while the second is
+    // still being made. It is not up to date (the run may still be refused
+    // or cancelled) and not stale (it was just made): finalising.
+    let mut f = fixture("finalising", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Forever", "until_cancelled");
+    let mut log = JobLog::default();
+    let handle = f.app.start_regenerate();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last = 0;
+    loop {
+        log.update(f.app.drain_events());
+        let o = f.app.overview(None, &log);
+        let rank = run_rank(f.state(&o, one));
+        assert!(rank >= last, "operation one moved backwards to {rank}");
+        assert_ne!(f.state(&o, one), ItemState::UpToDate, "before the run ends");
+        last = rank;
+        if f.state(&o, two) == ItemState::Running {
+            assert_eq!(f.state(&o, one), ItemState::Finalising);
+            let cause = &o.status(ItemRef::Operation(one)).unwrap().cause;
+            assert!(cause.starts_with("Finalising: "), "{cause}");
+            // The Generate stale offer does not count a finalising operation.
+            assert!(!o.stale.contains(&one), "{:?}", o.stale);
+            break;
+        }
+        assert!(Instant::now() < deadline, "operation two never ran");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    // Cancel: nothing of the run is kept, and the operation says why.
+    assert!(f.app.cancel_job(handle.id()));
+    assert!(handle.wait().unwrap_err().is_cancelled());
+    log.update(f.app.drain_events());
+    let o = f.app.overview(None, &log);
+    assert_eq!(f.state(&o, one), ItemState::Stale);
+    assert_eq!(f.state(&o, two), ItemState::Stale);
+    let cause = &o.status(ItemRef::Operation(one)).unwrap().cause;
+    assert!(cause.contains("cancelled"), "{cause}");
+    assert!(o.stale.contains(&one));
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_every_operation_becomes_up_to_date_when_the_run_ends() {
+    let mut f = fixture("finalising-done", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    let mut log = JobLog::default();
+    let handle = f.app.start_regenerate();
+    let mut seen = [0u8; 2];
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let result = loop {
+        log.update(f.app.drain_events());
+        let o = f.app.overview(None, &log);
+        for (at, op) in [one, two].into_iter().enumerate() {
+            let rank = run_rank(f.state(&o, op));
+            assert!(rank >= seen[at], "operation {at} moved backwards");
+            seen[at] = rank;
+        }
+        if let Some(result) = handle.try_result() {
+            break result;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    result.unwrap();
+    log.update(f.app.drain_events());
+    let o = f.app.overview(None, &log);
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::UpToDate);
+    assert!(o.stale.is_empty());
 }
 
 /// The highest Z word of a program, in its own coordinates.

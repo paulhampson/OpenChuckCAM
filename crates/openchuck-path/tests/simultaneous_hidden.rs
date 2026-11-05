@@ -424,6 +424,58 @@ fn req_op_20_under_the_lips_of_a_dovetail_groove_is_blocked_and_reported() {
     assert!(deepest >= -TOLERANCE, "{deepest}");
 }
 
+/// Issue #416 (decision record 0515, the owner's question 1, option A): each
+/// unreached area carries the surface points the strategy could not reach,
+/// so a viewer marks those surfaces and not the reached ones beside them in
+/// the same X and A range. Under a dovetail's lips the points lie on the
+/// groove's floor and the lips' undersides, never on the lips' outside
+/// (radius 10), which the tool finishes; each lies in its area's X range,
+/// and an area holds at most [`openchuck_path::MAX_UNREACHED_POINTS`].
+#[test]
+fn req_op_20_unreached_areas_carry_their_surface_points() {
+    let profile = [
+        (0.0, 10.0),
+        (11.0, 10.0),
+        (10.0, 6.0),
+        (20.0, 6.0),
+        (19.0, 10.0),
+        (30.0, 10.0),
+    ];
+    let mesh = revolve(&profile, 360);
+    let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &ball(DIAMETER));
+    let path = generate_on(&f, &f.input(), &[]);
+    assert!(!path.unreached.is_empty());
+    // The radius of the profile at `x` on its segment from `a` to `b`.
+    let on_profile = |p: &Point3| {
+        let r = p.y.hypot(p.z);
+        profile.windows(2).any(|w| {
+            let ((xa, ra), (xb, rb)) = (w[0], w[1]);
+            let (dx, dr) = (xb - xa, rb - ra);
+            let len = dx.hypot(dr);
+            // Distance from (x, r) to the segment, in the profile's plane.
+            let t = (((p.x - xa) * dx + (r - ra) * dr) / (len * len)).clamp(0.0, 1.0);
+            (p.x - (xa + t * dx)).hypot(r - (ra + t * dr)) <= 0.05
+        })
+    };
+    for u in &path.unreached {
+        assert!(!u.points.is_empty(), "{u:?}");
+        assert!(u.points.len() <= openchuck_path::MAX_UNREACHED_POINTS);
+        for p in &u.points {
+            assert!(on_profile(p), "{p:?} is not on the part");
+            assert!(
+                p.x >= u.x.0 - 1e-6 && p.x <= u.x.1 + 1e-6,
+                "{p:?} outside {:?}",
+                u.x
+            );
+            let r = p.y.hypot(p.z);
+            assert!(
+                !(r > 9.9 && ((10.2..=10.8).contains(&p.x) || (19.2..=19.8).contains(&p.x))),
+                "{p:?} is on a lip's outside, which the tool reaches"
+            );
+        }
+    }
+}
+
 /// Two round pins of radius `r` side by side at the same X, centred at
 /// Y -/+ `apart`/2 and Z 6, over X 0 to 15.
 fn twin_pins(r: f64, apart: f64) -> TriangleMesh {
@@ -612,6 +664,10 @@ fn req_op_20_a_wall_needing_more_lean_than_the_limit_is_reported_with_its_parame
     assert!(most > 0.1, "{most}");
 }
 
+/// Stock cut back to the part by earlier operations, within the fixtures'
+/// 14 mm.
+const BARE: support::Bare = support::Bare { radius: 14.0 };
+
 /// A 1 mm ball whose flutes are 1.5 mm long, on a 3.175 mm shank.
 fn small_ball() -> (openchuck_types::tool::Tool, RevolvedProfile) {
     let small = openchuck_types::tool::Tool {
@@ -653,6 +709,9 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
             radius: 0.5 * DIAMETER,
             height: 1.5,
         }),
+        // The slot and the stock above the part already cut: the 1.5 mm
+        // flutes stand in none (decision record 0509).
+        stock: &BARE,
         ..f.input()
     };
     let path = generate_on(&f, &input, &[(names::STEPOVER, 0.15)]);
@@ -727,11 +786,25 @@ fn req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing() {
             radius: 0.5 * DIAMETER,
             height: 1.5,
         }),
+        // The slot and the stock above the part already cut: the 1.5 mm
+        // flutes stand in none (decision record 0509).
+        stock: &BARE,
         ..f.input()
     };
     let v = values(&[(names::STEPOVER, 1.0)]);
     let a = run(|ctx| generate(&SimultaneousFinishing, &with, &v, ctx)).unwrap();
-    let b = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+    let b = run(|ctx| {
+        generate(
+            &SimultaneousFinishing,
+            &StrategyInput {
+                stock: &BARE,
+                ..f.input()
+            },
+            &v,
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(a.shank_breaks.is_empty());
     assert!(a.warnings.is_empty(), "{:?}", a.warnings);
     assert_eq!(a.group, b.group);

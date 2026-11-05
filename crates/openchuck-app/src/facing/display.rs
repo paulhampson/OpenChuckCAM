@@ -7,6 +7,7 @@ use crate::scene::{SceneLabel, ScenePolyline, SceneRole};
 use openchuck_path::facing::description::FacingGeometry;
 use openchuck_path::facing::geometry::{CoverageRectangle, FacingPlane};
 use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::ir::MoveKind;
 
 /// One operation's shared diagram and separate completion result. Global
 /// simulation deviation, including overcut, is never filtered by this value.
@@ -32,52 +33,47 @@ impl FacingVerification {
     ) -> Result<FacingDisplay, AppError> {
         self.validate(group, context)?;
         let mut display = nominal(self.description()?)?;
+        // The cutter's sweep along the cutting moves only, at the tool's tip
+        // (the owner's decision S-1, issue #499): the outline of the tool
+        // over the face it cuts. Plunges, entries and links are not drawn,
+        // nor the top of the flutes; the toolpath itself shows those.
+        let r = 0.5 * self.0.tool.diameter.0;
+        let circle = |tip: Point3, u: Vec3, v: Vec3| -> Vec<Point3> {
+            (0..=32)
+                .map(|i| {
+                    let a = std::f64::consts::TAU * f64::from(i) / 32.;
+                    tip + (u * a.cos() + v * a.sin()) * r
+                })
+                .collect()
+        };
         let mut from = group.start;
         for segment in &group.segments {
             context.check_cancelled()?;
             let to = segment.end;
-            if segment.kind.is_fed() && from.a == to.a {
+            if segment.kind == MoveKind::Cutting && from.a == to.a {
                 let delta = to.tip - from.tip;
                 let normal = from.axis.get();
                 let across = normal.cross(delta);
-                // Finite straight cylindrical cutter envelope, including
-                // approach/entry overlap. A display, never a proof by samples.
                 let u = if across.length() > 1e-12 {
                     across * (1. / across.length())
                 } else {
                     Vec3::new(1., 0., 0.)
                 };
                 let v = normal.cross(u);
-                let r = 0.5 * self.0.tool.diameter.0;
-                for h in [0., self.0.tool.flute_length.0] {
-                    for tip in [from.tip, to.tip] {
-                        let mut circle = Vec::with_capacity(33);
-                        for i in 0..=32 {
-                            let a = std::f64::consts::TAU * f64::from(i) / 32.;
-                            circle.push(tip + normal * h + (u * a.cos() + v * a.sin()) * r);
-                        }
-                        display.lines.push(ScenePolyline {
-                            role: SceneRole::FacingSweep,
-                            points: circle,
-                        });
-                    }
-                    for offset in [u * r, u * (-r), v * r, v * (-r)] {
-                        display.lines.push(ScenePolyline {
-                            role: SceneRole::FacingSweep,
-                            points: vec![
-                                from.tip + normal * h + offset,
-                                to.tip + normal * h + offset,
-                            ],
-                        });
-                    }
+                for tip in [from.tip, to.tip] {
+                    display.lines.push(ScenePolyline {
+                        role: SceneRole::FacingSweep,
+                        points: circle(tip, u, v),
+                    });
                 }
-                if display.lines.len() > 200_000 {
-                    return Err(AppError::Post(
-                        "Facing diagram exceeds its work budget".into(),
-                    ));
+                for offset in [u * r, u * (-r)] {
+                    display.lines.push(ScenePolyline {
+                        role: SceneRole::FacingSweep,
+                        points: vec![from.tip + offset, to.tip + offset],
+                    });
                 }
             }
-            if segment.kind.is_fed() && from.a != to.a {
+            if segment.kind == MoveKind::Cutting && from.a != to.a {
                 let count = ((to.a.0 - from.a.0).abs() / 5.).ceil();
                 if !count.is_finite() || count > 72. {
                     return Err(AppError::Post(
@@ -96,26 +92,16 @@ impl FacingVerification {
                         f64::from(i) / f64::from(count.max(1)),
                     );
                     let u = Vec3::new(1., 0., 0.);
-                    let v = normal.cross(u);
-                    for h in [0., self.0.tool.flute_length.0] {
-                        let points = (0..=32)
-                            .map(|i| {
-                                let a = std::f64::consts::TAU * f64::from(i) / 32.;
-                                tip + normal * h
-                                    + (u * a.cos() + v * a.sin()) * (0.5 * self.0.tool.diameter.0)
-                            })
-                            .collect();
-                        display.lines.push(ScenePolyline {
-                            role: SceneRole::FacingSweep,
-                            points,
-                        });
-                    }
-                    if display.lines.len() > 200_000 {
-                        return Err(AppError::Post(
-                            "Facing rotary sweep preview exceeds its work budget".into(),
-                        ));
-                    }
+                    display.lines.push(ScenePolyline {
+                        role: SceneRole::FacingSweep,
+                        points: circle(tip, u, normal.cross(u)),
+                    });
                 }
+            }
+            if display.lines.len() > 200_000 {
+                return Err(AppError::Post(
+                    "Facing diagram exceeds its work budget".into(),
+                ));
             }
             from = to;
         }
@@ -380,10 +366,18 @@ pub(crate) fn preview(
 pub(crate) fn add_generated(
     view: &mut crate::scene::SceneView,
     run: &crate::Regeneration,
+    project: &openchuck_project::Project,
     context: &JobContext<'_>,
 ) -> Result<(), AppError> {
+    // Each operation's sweep shows while its own path is current and its eye
+    // is on (the owner's decision S-1, issue #499), not only while the whole
+    // project is exactly the one the run was made from.
+    let current = crate::export::current_operations(project, run);
     for (group, info) in run.toolpath.groups.iter().zip(&run.groups) {
-        if Some(info.setup) != view.setup {
+        if Some(info.setup) != view.setup
+            || !current.contains(&info.operation)
+            || !project.path_shown(info.operation)
+        {
             continue;
         }
         if let Some(proof) = &info.facing {

@@ -324,6 +324,7 @@ mod tests {
                 max: Point3::new(20., 2., 2.),
             },
             warnings: vec![],
+            unreached: std::sync::Arc::from([]),
             facing: Some(proof),
         };
         let canonical = group.clone();
@@ -401,6 +402,7 @@ mod tests {
             tool: proof.0.tool.profile().unwrap(),
             part_bounds: openchuck_geom::summary(&proof.0.part).bounds.unwrap(),
             warnings: vec![],
+            unreached: std::sync::Arc::from([]),
             facing: Some(proof.clone()),
         };
         let path = Toolpath {
@@ -709,6 +711,7 @@ mod tests {
             tool: proof.0.tool.profile().unwrap(),
             part_bounds: openchuck_geom::summary(&proof.0.part).bounds.unwrap(),
             warnings: vec![],
+            unreached: std::sync::Arc::from([]),
             facing: None,
         };
         let run = crate::Regeneration {
