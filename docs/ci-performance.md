@@ -22,7 +22,11 @@ A check moves off the pull request run only by an owner's decision recorded in a
 ## Test shares
 
 - Each system builds once (`.github/workflows/build-and-test.yml`) into a nextest archive and runs it in shares: Windows 8, Ubuntu 6, macOS 2 (counts in `tools/ci/main-run-mode.sh`, tested by `tools/ci/main-run-mode.test.sh`). The shares are nextest's `count` partition; `tools/ci/check-shares.sh` fails the build if a share is empty or the shares do not hold every test exactly once.
-- The shares are even in number of tests, not in time. If one share is regularly the last job by more than a few minutes, look first for one long test in it (below). Changing a share count is a one-line change in `main-run-mode.sh` plus its test; say the before and after times. Dealing shares by measured time is not built (OI-2028): propose it only with the measurements that show `count` is not enough.
+- **Shares are dealt by count today, not by time.** `--partition count:K/N` gives share K every Nth test of the full list (by binary, then by name), so the shares hold even numbers of tests but uneven times, and moving a test to another file or module only moves it to whichever share its new place in the list lands on: it is not a way to balance. Dealing by measured time is the planned improvement (OI-2028, not built).
+- **Rebalancing by hand**, when one share is regularly the last job by more than a few minutes (read the share times of the last few runs):
+  1. Find the longest test in that share (its nextest log lists each test's time). If it is over a few minutes, split it by case (below); this is what fixed the 31-minute Windows share (OI-2036).
+  2. If no single test dominates, change that system's share count in `tools/ci/main-run-mode.sh` (`WIN_SHARDS`, `UBU_SHARDS`, `MAC_SHARDS`) and its test, which deals every test again. Each extra share costs about 2 min of runner time on Linux and 3 on Windows, plus a runner while it runs.
+  3. Give the before and after times of the slowest and fastest shares in the pull request.
 - Windows is listed first in every matrix, and no Windows check may be removed.
 
 ## Test binaries
