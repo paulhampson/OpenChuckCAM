@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SIMVIS (#488, accepted decision 0514): deviation colours cover only the area each band applies to, not whole triangles. On the cut part, the violet of an enclosed bore covers the bore's disc on a faced end, not whole strips across the ring. The probe reads the piece under the pointer, and the colour scale says when the pieces ran out.
+
 - SIMVIS (#478, accepted decision 0513): Simulate draws material no tool can reach (enclosed across the rotary axis, such as a bore along it) as "Unreachable (enclosed)", violet `#b652ff` under a dark cross-hatch, on the cut part and the part; "Not measured" is slate under a light hatch instead of the grey of "within"; the colour scale lists both; the probe adds "· unreachable (enclosed)"; the results inspector shows "Unreachable (enclosed)" and "Left, not classified", an "of which unreachable" row under each histogram row that has any, and a "Show unreachable (enclosed)" tick box. The run's warning about it is in Results and in Messages, on the setup.
 
 - FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep, and the extent and margin labels) turns with the workpiece as A turns, as the path lines do.

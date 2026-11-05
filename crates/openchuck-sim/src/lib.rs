@@ -36,8 +36,8 @@ mod span;
 
 pub use deviation::{
     Classify, Deviation, DeviationOptions, DeviationPoint, Leftover, MAX_DEVIATION_SAMPLES,
-    SampleOn, compare, compare_cancellable, compare_classified, sample_areas, triangle_values,
-    triangle_worst,
+    SampleOn, compare, compare_cancellable, compare_classified, sample_areas, triangle_samples,
+    triangle_values, triangle_worst,
 };
 pub use dexel::{DexelStock, MAX_COLUMNS, PackedStock, Pose};
 pub use display::stock_mesh;
