@@ -4,7 +4,7 @@
 
 - **Breaking (VIEW-OVERLAYS; issue #416; 0.42.0, decision 0515, accepted):** an unreached area carries its surface points.
   - **API.** `Unreached` gains `points`: the surface points the strategy sampled and could not reach, in its order, taken evenly to at most the new `MAX_UNREACHED_POINTS` (4,096) per area (struct literals add it).
-  - **Both strategies.** Simultaneous finishing and rest machining (decision 0505) both fill `points`.
+  - **Both strategies.** Simultaneous finishing and rest machining (decision 0505) both fill `points`; rest machining's areas are shown like simultaneous finishing's, confirmed by the project owner on 5 Nov 2026, relayed by the coordinator (decision 0049).
   - **Output.** Toolpaths, warnings and the other fields of `Unreached` are unchanged.
 
 ## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)

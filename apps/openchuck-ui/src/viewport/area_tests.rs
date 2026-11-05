@@ -240,6 +240,99 @@ fn req_ui_11_markers_are_numbered_and_the_legend_names_the_operation() {
     );
 }
 
+/// The text the viewport shows in a frame as laid out, glyph by glyph: a
+/// row cut short to fit its box ends in "…" here, though its galley still
+/// holds the whole string.
+fn shown_text(viewport: &mut Viewport, ctx: &egui::Context) -> Vec<String> {
+    fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Text(t) => out.push(
+                t.galley
+                    .rows
+                    .iter()
+                    .flat_map(|r| r.row.glyphs.iter().map(|g| g.chr))
+                    .collect(),
+            ),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut texts = Vec::new();
+    for _ in 0..2 {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(
+                pos2(0.0, 0.0),
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| viewport.show(ui));
+        output.textures_delta.clear();
+        texts.clear();
+        output
+            .shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, &mut texts));
+    }
+    texts
+}
+
+/// UI-11, NFR-15, decision 0515 item 4: the legend row names the operation
+/// in full, on Operations and on Simulate, so the box is as wide as its
+/// longest row (CodeRabbit on #489: the 124-point Operations box cut
+/// "Unreachable (Finish)" short).
+#[test]
+fn req_ui_11_the_legend_row_shows_the_whole_operation_name() {
+    let (mut viewport, model) = cube_viewport("area-legend-width");
+    let ctx = egui::Context::default();
+    for name in ["Finish", "Finish the dovetail undercut"] {
+        viewport.set_unreached(
+            Some(model),
+            vec![shown(&viewport, OperationId::new(), name)],
+        );
+        let row = format!("Unreachable ({name})");
+        for step in [ViewStep::Operations, ViewStep::Simulate] {
+            viewport.set_step(Some(step));
+            let texts = shown_text(&mut viewport, &ctx);
+            assert!(
+                texts.contains(&row),
+                "{step:?}: {row:?} not shown whole in {texts:?}"
+            );
+        }
+    }
+}
+
+/// UI-11, decision 0515 item 4: a legend widened for a long operation name
+/// still stops short of the view cube on Operations; a name longer than
+/// that ends in "…" (CodeRabbit on #543).
+#[test]
+fn req_ui_11_a_long_legend_row_stays_clear_of_the_view_cube() {
+    let (mut viewport, model) = cube_viewport("area-legend-cube");
+    let long = "Finish every hidden face of the dovetail undercut and the lip above it, \
+                then the neck between them, then the far end";
+    viewport.set_unreached(
+        Some(model),
+        vec![shown(&viewport, OperationId::new(), long)],
+    );
+    viewport.set_step(Some(ViewStep::Operations));
+    let ctx = egui::Context::default();
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(600.0, 500.0));
+    let mut boxes = (None, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        boxes = crate::viewport_overlays::legend_and_cube(ui, &viewport, rect);
+    });
+    output.textures_delta.clear();
+    let (legend, cube) = (boxes.0.unwrap(), boxes.1.unwrap());
+    assert!(
+        legend.right() + 8.0 <= cube.left(),
+        "legend {legend:?} runs under the cube {cube:?}"
+    );
+    assert!(
+        legend.width() > 124.0,
+        "the legend still widens: {legend:?}"
+    );
+}
+
 fn area(number: usize, x: (f64, f64), direction: [f64; 3], marker: [f64; 3]) -> AreaMarks {
     AreaMarks {
         number,

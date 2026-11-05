@@ -376,6 +376,39 @@ fn cube_face_at(camera: &Camera, cube: Rect, p: Pos2) -> Option<StandardView> {
 }
 
 /// Where the overlays go in the view `rect` this frame (7.2).
+/// The width a box needs to show each "Unreachable (operation name)" row
+/// whole: the swatch with its margins and the longest label in the legend's
+/// font (decision record 0515 item 4), no wider than the view allows.
+fn area_rows_width(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> f32 {
+    let font = egui::FontId::proportional(12.0);
+    let label = viewport
+        .unreached_legend()
+        .iter()
+        .map(|name| {
+            ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), font.clone(), roles::OVERLAY_TEXT))
+                .size()
+                .x
+        })
+        .fold(0.0_f32, f32::max);
+    if label <= 0.0 {
+        return 0.0;
+    }
+    // Left margin, swatch, gap, the label, right margin; and a point to
+    // spare, so rounding never cuts the last letter.
+    (8.0 + 18.0 + 8.0 + label + 8.0 + 1.0).min(rect.width() - 2.0 * MARGIN)
+}
+
+/// The legend's box and the view cube's, for tests of where they stand.
+#[cfg(test)]
+pub(crate) fn legend_and_cube(
+    ui: &egui::Ui,
+    viewport: &Viewport,
+    rect: Rect,
+) -> (Option<Rect>, Option<Rect>) {
+    let b = boxes(ui, viewport, rect);
+    (b.legend, b.cube)
+}
+
 pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     let mut b = Boxes::default();
     let step = viewport.step();
@@ -412,20 +445,25 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
             rect.top() + MARGIN
         };
         let left = rect.left() + MARGIN;
+        // As wide as its longest area row, but short of the view cube at the
+        // top right, with a gap; a longer row ends in "…" (`fitted_label`).
+        let legend_width = area_rows_width(ui, viewport, rect)
+            .min(right - CUBE - 8.0 - left)
+            .max(124.0);
         if legend_collapsed(rect.height()) {
             b.legend_button = Some(Rect::from_min_size(pos2(left, top), vec2(84.0, 26.0)));
             if viewport.legend_open {
                 let rows = legend_rows(viewport);
                 b.legend = Some(Rect::from_min_size(
                     pos2(left, top + 30.0),
-                    vec2(124.0, rows * ROW + 12.0),
+                    vec2(legend_width, rows * ROW + 12.0),
                 ));
             }
         } else {
             let rows = legend_rows(viewport);
             b.legend = Some(Rect::from_min_size(
                 pos2(left, top),
-                vec2(124.0, rows * ROW + 12.0),
+                vec2(legend_width, rows * ROW + 12.0),
             ));
         }
     }
@@ -444,7 +482,7 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
                 rect.left() + MARGIN,
                 rect.bottom() - MARGIN - TRIAD - 8.0 - height,
             ),
-            vec2(236.0, height),
+            vec2(area_rows_width(ui, viewport, rect).max(236.0), height),
         ));
     }
     b
