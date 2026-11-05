@@ -403,6 +403,7 @@ pub fn job_label(name: &str) -> Option<(&'static str, bool)> {
         "workholding warnings" => ("Checking selections against the workholding", false),
         "project checks" => ("Checking the project", false),
         "colour by deviation" => ("Colouring by deviation", false),
+        "unreachable areas" => ("Finding the unreachable areas on the part", false),
         "prepare playback" => ("Simulating the cut part for playback", false),
         "save selection" => ("Saving the selection set", true),
         "edit selection" => ("Changing the selection set", true),

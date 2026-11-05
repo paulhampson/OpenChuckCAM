@@ -32,6 +32,10 @@ env:
   # and `sanitizer` jobs build OpenCASCADE when its cache misses (issue 451); a job-level `env:`
   # adds to this block, so the sanitizer job's CXXFLAGS do not replace it.
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # Line tables only, not full debug info (decision 0516, OI-2027): a workspace test build was 23 GB
+  # with full debug info and 6.4 GB with this on Linux.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 jobs:
   # Each target's corpus is kept between nights in the Actions cache, so the hours add up on what

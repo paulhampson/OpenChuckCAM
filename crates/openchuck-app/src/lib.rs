@@ -53,6 +53,7 @@ mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
+mod pieces;
 mod pipeline;
 pub mod playback;
 mod posting;
@@ -75,6 +76,7 @@ mod test_project;
 pub mod tool_edit;
 pub mod tool_library;
 pub mod tools;
+pub mod unreached;
 pub mod workholding;
 pub mod workholding_view;
 

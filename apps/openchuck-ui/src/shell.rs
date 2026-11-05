@@ -275,6 +275,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The unreachable areas of the latest run on screen (decision 0515).
+    areas: crate::unreached_view::Areas,
     /// The Simulate camera to restore while its run remains available.
     simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
     /// The results inspector of the Simulate step (SIM-05, SIM-07).
@@ -389,6 +391,7 @@ impl Shell {
             export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
+            areas: crate::unreached_view::Areas::default(),
             simulate_camera: None,
             step: Step::Model,
             jobs: JobLog::default(),
@@ -1402,6 +1405,9 @@ impl Shell {
             MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
                 self.recovery_action(action);
             }
+            MessageAction::ShowInView { operation, area } => {
+                self.show_area_in_view(operation, usize::from(area));
+            }
             MessageAction::ShowSetting(op) => {
                 self.show_item(ItemRef::Operation(op));
                 self.setting_jump = self
@@ -1411,6 +1417,33 @@ impl Shell {
                     .map(|name| (op, name));
             }
         }
+    }
+
+    /// "Show in view N" (decision 0515 item 5): goes to the step the user is
+    /// on when it is Operations or Simulate, else to Operations, selects the
+    /// operation, and turns the view to its area as soon as the areas are
+    /// found. The part's placement and the playback are not touched.
+    fn show_area_in_view(&mut self, operation: OperationId, number: usize) {
+        if self.defer(move |s| s.show_area_in_view(operation, number)) {
+            return;
+        }
+        if !matches!(self.step, Step::Operations | Step::Simulate) {
+            self.open_step(Step::Operations);
+        }
+        self.show_item(ItemRef::Operation(operation));
+        // The view shows the setup the operation is in.
+        let setup = self
+            .app
+            .as_ref()
+            .and_then(|app| app.project().operation(operation))
+            .map(|o| o.setup);
+        if let Some(setup) = setup
+            && self.setup != Some(setup)
+        {
+            self.setup = Some(setup);
+            self.rebuild_scene(true);
+        }
+        self.areas.request(operation, number);
     }
 
     /// Takes the user to the first problem: the step it belongs to, the item
@@ -1652,6 +1685,15 @@ impl Shell {
             }
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
+                ctx.request_repaint();
+            }
+            // The unreachable areas, and a "Show in view" waiting for them.
+            if self.areas.frame(app, &mut self.viewport, self.run.last()) {
+                ctx.request_repaint();
+            }
+            if let Some((operation, area)) = self.areas.take_request(app, self.run.last()) {
+                let now = ctx.input(|i| i.time);
+                self.viewport.look_at_area(operation, &area, now);
                 ctx.request_repaint();
             }
         }
@@ -2915,6 +2957,8 @@ mod tests {
 #[cfg(test)]
 mod keys_tests;
 
+#[cfg(test)]
+mod area_view_tests;
 #[cfg(test)]
 mod four_step_tests;
 #[cfg(test)]
