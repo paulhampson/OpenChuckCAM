@@ -398,6 +398,17 @@ fn area_rows_width(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> f32 {
     (8.0 + 18.0 + 8.0 + label + 8.0 + 1.0).min(rect.width() - 2.0 * MARGIN)
 }
 
+/// The legend's box and the view cube's, for tests of where they stand.
+#[cfg(test)]
+pub(crate) fn legend_and_cube(
+    ui: &egui::Ui,
+    viewport: &Viewport,
+    rect: Rect,
+) -> (Option<Rect>, Option<Rect>) {
+    let b = boxes(ui, viewport, rect);
+    (b.legend, b.cube)
+}
+
 pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     let mut b = Boxes::default();
     let step = viewport.step();
@@ -434,7 +445,11 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
             rect.top() + MARGIN
         };
         let left = rect.left() + MARGIN;
-        let legend_width = area_rows_width(ui, viewport, rect).max(124.0);
+        // As wide as its longest area row, but short of the view cube at the
+        // top right, with a gap; a longer row ends in "…" (`fitted_label`).
+        let legend_width = area_rows_width(ui, viewport, rect)
+            .min(right - CUBE - 8.0 - left)
+            .max(124.0);
         if legend_collapsed(rect.height()) {
             b.legend_button = Some(Rect::from_min_size(pos2(left, top), vec2(84.0, 26.0)));
             if viewport.legend_open {

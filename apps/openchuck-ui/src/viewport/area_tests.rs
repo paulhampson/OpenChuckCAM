@@ -302,6 +302,37 @@ fn req_ui_11_the_legend_row_shows_the_whole_operation_name() {
     }
 }
 
+/// UI-11, decision 0515 item 4: a legend widened for a long operation name
+/// still stops short of the view cube on Operations; a name longer than
+/// that ends in "…" (CodeRabbit on #543).
+#[test]
+fn req_ui_11_a_long_legend_row_stays_clear_of_the_view_cube() {
+    let (mut viewport, model) = cube_viewport("area-legend-cube");
+    let long = "Finish every hidden face of the dovetail undercut and the lip above it, \
+                then the neck between them, then the far end";
+    viewport.set_unreached(
+        Some(model),
+        vec![shown(&viewport, OperationId::new(), long)],
+    );
+    viewport.set_step(Some(ViewStep::Operations));
+    let ctx = egui::Context::default();
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(600.0, 500.0));
+    let mut boxes = (None, None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        boxes = crate::viewport_overlays::legend_and_cube(ui, &viewport, rect);
+    });
+    output.textures_delta.clear();
+    let (legend, cube) = (boxes.0.unwrap(), boxes.1.unwrap());
+    assert!(
+        legend.right() + 8.0 <= cube.left(),
+        "legend {legend:?} runs under the cube {cube:?}"
+    );
+    assert!(
+        legend.width() > 124.0,
+        "the legend still widens: {legend:?}"
+    );
+}
+
 fn area(number: usize, x: (f64, f64), direction: [f64; 3], marker: [f64; 3]) -> AreaMarks {
     AreaMarks {
         number,
