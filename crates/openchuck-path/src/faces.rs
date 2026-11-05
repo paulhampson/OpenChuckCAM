@@ -39,6 +39,8 @@
 //! whatever the threads (GC-07, NFR-06). A part with no such face gives no
 //! turns, and its path is made exactly as before.
 
+use std::sync::Mutex;
+
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
@@ -60,6 +62,9 @@ const CLEAR: f64 = 0.1;
 /// The most X samples on one line, and the most angles; a larger part is
 /// sampled more coarsely rather than run out of time (NFR-07).
 const MAX_SAMPLES: f64 = 100_000.0;
+
+/// Samples along a line of A between two looks at the cancel flag (UI-09).
+const CANCEL_EVERY: usize = 256;
 const MAX_ANGLES: f64 = 720.0;
 const MIN_ANGLES: f64 = 36.0;
 
@@ -231,9 +236,18 @@ fn find(
     // The faces on one line of A, and where along it the drop finds nothing
     // to stand on: each interval whose one end has a height and the other
     // none, with whether the target starts there (rising X) or ends.
-    let line = |k: usize, known: &[Found]| -> (Vec<Found>, Vec<Gap>) {
+    let line = |k: usize, known: &[Found]| -> Result<(Vec<Found>, Vec<Gap>)> {
+        // Cancellation is seen at the start of every line of A and every
+        // `CANCEL_EVERY` samples along it (UI-09, issue #400).
+        context.check_cancelled()?;
         let a = 360.0 * k as f64 / angles as f64;
-        let heights: Vec<Option<f64>> = (0..=samples).map(|i| height(at(i), a)).collect();
+        let mut heights: Vec<Option<f64>> = Vec::with_capacity(samples + 1);
+        for i in 0..=samples {
+            if i % CANCEL_EVERY == CANCEL_EVERY - 1 {
+                context.check_cancelled()?;
+            }
+            heights.push(height(at(i), a));
+        }
         let gaps: Vec<Gap> = heights
             .windows(2)
             .enumerate()
@@ -285,15 +299,30 @@ fn find(
                 out.push(face);
             }
         }
-        (out, gaps)
+        Ok((out, gaps))
     };
-    context.report("finding faces across the axis", 0, Some(angles as u64));
-    let (first, first_gaps) = line(0, &[]);
+    // The lines of A found so far, counted under the lock so the count shown
+    // only goes up; a line that is cancelled is not counted (UI-09).
+    let stage = "finding faces across the axis";
+    let counted = Mutex::new(0_u64);
+    let counted_line = |k: usize, known: &[Found]| {
+        let found = line(k, known)?;
+        if let Ok(mut done) = counted.lock() {
+            *done += 1;
+            context.report(stage, *done, Some(angles as u64));
+        }
+        Ok::<_, PathError>(found)
+    };
+    context.report(stage, 0, Some(angles as u64));
+    let (first, first_gaps) = counted_line(0, &[])?;
     let rest: Vec<usize> = (1..angles).collect();
-    let (found, gaps): (Vec<Vec<Found>>, Vec<Vec<Gap>>) =
-        std::iter::once((first.clone(), first_gaps))
-            .chain(parallel::map_in_order(&rest, |k| line(*k, &first)))
-            .unzip();
+    // The first error in line order, so a cancel gives the same result at any
+    // thread count (NFR-06).
+    let mut lines = vec![(first.clone(), first_gaps)];
+    for result in parallel::map_in_order(&rest, |k| counted_line(*k, &first)) {
+        lines.push(result?);
+    }
+    let (found, gaps): (Vec<Vec<Found>>, Vec<Vec<Gap>>) = lines.into_iter().unzip();
     context.check_cancelled()?;
     let mut ups: Vec<(Found, usize)> = Vec::new();
     let mut downs: Vec<(Found, usize)> = Vec::new();
@@ -364,7 +393,8 @@ fn find(
                     .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
                 input.surface.drop_on_part(profile, &line).is_some()
             };
-            let edges: Vec<f64> = parallel::map_in_order(&on_lines, |&(k, j)| {
+            let edges: Vec<Result<f64>> = parallel::map_in_order(&on_lines, |&(k, j)| {
+                context.check_cancelled()?;
                 let a = 360.0 * k as f64 / angles as f64;
                 let (mut inside, mut outside) = if starts {
                     (at(j + 1), at(j))
@@ -379,8 +409,9 @@ fn find(
                         outside = m;
                     }
                 }
-                inside
+                Ok(inside)
             });
+            let edges = edges.into_iter().collect::<Result<Vec<f64>>>()?;
             // Checked on the first line, just inside its own edge.
             let Some(&own) = edges.first() else { continue };
             if !on_part(if starts { own + WIDTH } else { own - WIDTH }, 0.0) {
@@ -420,15 +451,20 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
             at(last)
         )
     };
-    let (count, each) = if rest.is_empty() {
-        ("a face".to_owned(), "it")
+    let (count, shoulders, at_x, each) = if rest.is_empty() {
+        ("a step".to_owned(), "a shoulder", "at", "the")
     } else {
-        (format!("{} faces", turns.len()), "each")
+        (
+            format!("{} steps", turns.len()),
+            "shoulders",
+            "at each of",
+            "each",
+        )
     };
     Some(format!(
-        "the part has {count} across the rotary axis: the tool turns once round the axis \
-         without moving along it at X {xs}, where its side touches {each}, so the face keeps \
-         only the stock to leave"
+        "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
+         makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
+         {each} shoulder keeps only the stock to leave"
     ))
 }
 
@@ -448,13 +484,19 @@ pub(crate) fn held_note(held: &[f64]) -> Option<String> {
         )
     };
     let (faces, keeps) = if rest.is_empty() {
-        ("a face", "that face keeps")
+        (
+            "a step across the rotary axis (a shoulder facing along X)",
+            "that shoulder keeps",
+        )
     } else {
-        ("faces", "those faces keep")
+        (
+            "steps across the rotary axis (shoulders facing along X)",
+            "those shoulders keep",
+        )
     };
     Some(format!(
-        "the tool does not turn at {faces} across the rotary axis at X {xs}: there it would \
-         reach over the gripped length of the stock, so {keeps} what earlier operations left"
+        "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
+         length of the stock, so {keeps} what earlier operations left"
     ))
 }
 
@@ -615,15 +657,15 @@ mod tests {
         assert_eq!(note(&[]), None);
         assert_eq!(
             note(&[8.4115]).unwrap(),
-            "the part has a face across the rotary axis: the tool turns once round the axis \
-             without moving along it at X 8.412, where its side touches it, so the face keeps \
-             only the stock to leave"
+            "the part has a step across the rotary axis (a shoulder facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, at X 8.412, so the \
+             shoulder keeps only the stock to leave"
         );
         assert_eq!(
             note(&[1.0, 2.0, 3.5]).unwrap(),
-            "the part has 3 faces across the rotary axis: the tool turns once round the axis \
-             without moving along it at X 1.000, 2.000 and 3.500, where its side touches each, \
-             so the face keeps only the stock to leave"
+            "the part has 3 steps across the rotary axis (shoulders facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, at each of X 1.000, \
+             2.000 and 3.500, so each shoulder keeps only the stock to leave"
         );
     }
 
@@ -632,15 +674,15 @@ mod tests {
         assert_eq!(held_note(&[]), None);
         assert_eq!(
             held_note(&[31.5886]).unwrap(),
-            "the tool does not turn at a face across the rotary axis at X 31.589: there it \
-             would reach over the gripped length of the stock, so that face keeps what earlier \
-             operations left"
+            "the tool does not turn at a step across the rotary axis (a shoulder facing along \
+             X) at X 31.589: there it would reach over the gripped length of the stock, so that \
+             shoulder keeps what earlier operations left"
         );
         assert_eq!(
             held_note(&[1.0, 2.5]).unwrap(),
-            "the tool does not turn at faces across the rotary axis at X 1.000 and 2.500: there \
-             it would reach over the gripped length of the stock, so those faces keep what \
-             earlier operations left"
+            "the tool does not turn at steps across the rotary axis (shoulders facing along X) \
+             at X 1.000 and 2.500: there it would reach over the gripped length of the stock, \
+             so those shoulders keep what earlier operations left"
         );
     }
 

@@ -23,7 +23,12 @@ mod rendering;
 
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
-    let mut rig = Rig::cube(name, None);
+    simulate(Rig::cube(name, None))
+}
+
+/// `rig`'s project generated with a simulation, open on Simulate with its
+/// playback ready.
+fn simulate(mut rig: Rig) -> Rig {
     rig.shell.generate(true);
     let deadline = Instant::now() + Duration::from_secs(120);
     while rig.shell.run.last().is_none_or(|r| r.simulation.is_none()) {
@@ -891,6 +896,90 @@ fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_no
     rig.shell.open_step(Step::Operations);
     rig.frame(Vec::new());
     assert_eq!(rig.shell.play.window(), None);
+}
+
+// The turn is the pose's own value or exactly zero.
+#[test]
+#[allow(clippy::float_cmp)]
+fn req_sim_02_the_part_is_at_its_design_orientation_outside_simulate() {
+    // Issue 531: the simulated angle shows on Simulate only; leaving it puts
+    // the part back to A = 0 and the view cube says Part. The turn comes
+    // back, with the cursor kept, on return.
+    let mut rig = simulated("sim-turn-outside");
+    // Leave the play head where A is not zero.
+    let turned = (1..10).map(|i| f64::from(i) / 10.0).find(|&f| {
+        rig.shell.play.seek_to(f);
+        rig.shell
+            .play
+            .pose()
+            .is_some_and(|p| p.part_turn.abs() > 1.0)
+    });
+    assert!(turned.is_some(), "the program turns A somewhere");
+    let pose = rig.shell.play.pose().unwrap();
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.viewport.part_turn(),
+        pose.part_rotation(openchuck_app::playback::ViewFrame::Machine)
+    );
+    assert_eq!(
+        rig.shell.viewport.cube_frame(),
+        openchuck_app::playback::ViewFrame::Machine
+    );
+    for step in [Step::Operations, Step::Setup, Step::Model] {
+        rig.shell.open_step(step);
+        rig.frame(Vec::new());
+        assert_eq!(rig.shell.viewport.part_turn(), 0.0, "{step:?}");
+        assert_eq!(
+            rig.shell.viewport.transforms().0,
+            openchuck_viewport::camera::IDENTITY,
+            "{step:?}"
+        );
+        assert_eq!(
+            rig.shell.viewport.cube_frame(),
+            openchuck_app::playback::ViewFrame::Part,
+            "{step:?}"
+        );
+    }
+    rig.shell.open_step(Step::Simulate);
+    rig.frame(Vec::new());
+    assert_eq!(
+        rig.shell.viewport.part_turn(),
+        pose.part_rotation(openchuck_app::playback::ViewFrame::Machine)
+    );
+    // With "Turn part with A" off, nothing turns and the cube names the part.
+    rig.shell.play.set_turn_part_with_a(false);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.part_turn(), 0.0);
+    assert_eq!(
+        rig.shell.viewport.cube_frame(),
+        openchuck_app::playback::ViewFrame::Part
+    );
+}
+
+#[test]
+fn req_sim_01_a_run_leaves_no_cut_part_tool_or_trace_on_the_other_steps() {
+    // Issue 535: after a simulation the cut part, the tool and the faint
+    // trace stayed drawn on Model, Setup and Operations. They draw on
+    // Simulate only, and again, at the kept cursor, on return; the toolpath
+    // lines draw on every step.
+    use openchuck_viewport::Layer;
+    let mut rig = simulated("sim-layers-outside");
+    rig.frame(Vec::new());
+    let cursor = rig.shell.play.pose().unwrap().cursor;
+    let drawn = |rig: &Rig, layer| rig.shell.viewport.layer_shown(layer);
+    assert!(drawn(&rig, Layer::Tool), "the tool shows on Simulate");
+    for step in [Step::Operations, Step::Setup, Step::Model] {
+        rig.shell.open_step(step);
+        rig.frame(Vec::new());
+        for layer in [Layer::Stock, Layer::Tool, Layer::Trace] {
+            assert!(!drawn(&rig, layer), "{step:?} {layer:?}");
+        }
+        assert!(drawn(&rig, Layer::Paths), "{step:?}: toolpath lines stay");
+    }
+    rig.shell.open_step(Step::Simulate);
+    rig.frame(Vec::new());
+    assert!(drawn(&rig, Layer::Tool) && drawn(&rig, Layer::Stock));
+    assert_eq!(rig.shell.play.pose().unwrap().cursor, cursor);
 }
 
 #[test]
@@ -1814,10 +1903,18 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
                 .count()
         })
         .unwrap();
+    // Of the triangles drawn whole: those drawn in pieces (decision 0514)
+    // are in no band themselves.
+    let parents = whole
+        .pieces
+        .as_ref()
+        .map(|p| p.parents.clone())
+        .unwrap_or_default();
     let in_slot = whole
         .values
         .iter()
-        .filter(|v| slot_of(v) == Some(slot))
+        .enumerate()
+        .filter(|(t, v)| slot_of(v) == Some(slot) && !parents.contains(&(*t as u32)))
         .count();
     assert!(in_slot > 0);
     let (i, bin) = bins
@@ -1860,12 +1957,23 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     rig.frame(Vec::new());
     assert_eq!(rig.shell.results.filter.from, Some(0.2));
     let ranged = rig.shell.viewport.bands().unwrap().clone();
+    let whole_only = |t: &usize| !parents.contains(&(*t as u32));
     let expected = whole
         .values
         .iter()
-        .filter(|v| slot_of(v).is_some_and(|s| s != slot) && v.is_some_and(|(v, _)| v >= 0.2))
+        .enumerate()
+        .filter(|(t, v)| {
+            whole_only(t)
+                && slot_of(v).is_some_and(|s| s != slot)
+                && v.is_some_and(|(v, _)| v >= 0.2)
+        })
         .count();
-    let unmeasured = whole.values.iter().filter(|v| v.is_none()).count();
+    let unmeasured = whole
+        .values
+        .iter()
+        .enumerate()
+        .filter(|(t, v)| whole_only(t) && v.is_none())
+        .count();
     assert_eq!(triangles(&ranged), expected + unmeasured);
     // A start above the end is refused, and the range stays.
     rig.shell.results.set_range_text("0.5", "0.1");
@@ -1902,4 +2010,118 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     assert!(rig.shell.results.range_error.is_none());
     rig.frame(Vec::new());
     assert!(!rig.shows("Some bands are hidden."));
+}
+
+#[test]
+fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be_hidden() {
+    // Issue 478: a tube whose bore lies on the rotary axis leaves the bore
+    // full of stock. The run warns once; the cut part's faces over the bore
+    // are coloured Unreachable (not Not measured); the inspector counts it;
+    // and its own "Show" tick box hides it, saying so, while the counts stay
+    // those of the whole part.
+    let mut rig = simulate(Rig::tube("sim-bore"));
+    let run = rig.shell.run.last().unwrap().clone();
+    let warnings: Vec<_> = run
+        .notes
+        .iter()
+        .filter(|n| n.contains(openchuck_app::simulation::ENCLOSED_WORDS))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{:?}", run.notes);
+    // In the Messages panel too, as a warning on the setup.
+    assert!(rig.shell.overview.messages.iter().any(|m| {
+        m.severity == openchuck_app::overview::Severity::Warning
+            && m.text.contains(openchuck_app::simulation::ENCLOSED_WORDS)
+    }));
+    let colour = at(&rig, "Deviation colours");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    // Whole triangles and pieces (decision 0514) in the Unreachable band.
+    let count = |b: &openchuck_app::pathview::DeviationBands| -> usize {
+        b.bands
+            .iter()
+            .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
+            .map(|(_, t)| t.len())
+            .sum::<usize>()
+    };
+    let unreachable = |rig: &Rig| {
+        rig.shell.viewport.bands().map_or(0, |b| {
+            count(b) + b.pieces.as_ref().map_or(0, |p| count(&p.bands))
+        })
+    };
+    assert!(
+        unreachable(&rig) > 0,
+        "the faces over the bore are coloured"
+    );
+    assert!(rig.shows("Unreachable (enclosed)"));
+    let summary = crate::results_panel::summarise(&run);
+    assert!(summary[0].unreachable_samples.is_some_and(|n| n > 0));
+    assert!(!rig.shows(crate::results_panel::SOME_HIDDEN));
+    let tick = at(&rig, "Show unreachable (enclosed)");
+    rig.click(tick);
+    rig.frame(Vec::new());
+    assert!(rig.shell.results.filter.hide_unreachable);
+    assert_eq!(unreachable(&rig), 0, "hidden on the cut part");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Some bands are hidden."), "the inspector says so");
+    assert_eq!(
+        crate::results_panel::summarise(&run),
+        summary,
+        "the counts stay"
+    );
+}
+
+#[test]
+fn req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore() {
+    // Decision 0514 (issue 488): the cut part's faced end is made of strips
+    // one column wide across the stock; drawn in pieces, only the bore's
+    // disc (Ø14, 153.9 mm²) is Unreachable, not whole strips across the ring.
+    let mut rig = simulate(Rig::tube("sim-bite"));
+    let colour = at(&rig, "Deviation colours");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let surface = rig.shell.viewport.stock_surface().unwrap().clone();
+    let bands = rig.shell.viewport.bands().unwrap().clone();
+    let unreachable = openchuck_app::pathview::DeviationBand::Unreachable;
+    // The area of the triangles in the faced end's plane, X 5, in a band.
+    let on_end =
+        |mesh: &openchuck_app::scene::Mesh, set: &openchuck_app::selection::TriangleSet| -> f64 {
+            set.iter()
+                .filter_map(|t| mesh.triangle(*t as usize))
+                .filter(|c| c.iter().all(|p| (p.x - 5.0).abs() < 1e-6))
+                .map(|[a, b, c]| (b - a).cross(c - a).length() / 2.0)
+                .sum()
+        };
+    let whole: f64 = bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&surface.mesh, set))
+        .sum();
+    let pieces = bands.pieces.as_ref().expect("the end's strips are cut");
+    let cut: f64 = pieces
+        .bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&pieces.mesh, set))
+        .sum();
+    let disc = std::f64::consts::PI * 49.0;
+    let violet = whole + cut;
+    println!("violet on the faced end {violet:.1} mm² against the bore's {disc:.1} mm²");
+    assert!(
+        (violet - disc).abs() < 0.2 * disc,
+        "{violet} against {disc}"
+    );
 }

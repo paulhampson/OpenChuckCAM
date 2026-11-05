@@ -17,13 +17,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 use openchuck_project::Project;
 use openchuck_project::id::{ModelId, OperationId, SetupId};
 use openchuck_sim::{
-    Checkpoint, DeviationOptions, DexelStock, Simulator, stock_mesh, triangle_values,
+    Checkpoint, DeviationOptions, DexelStock, ReachClass, Simulator, stock_mesh, triangle_samples,
+    triangle_worst,
 };
 use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::RevolvedProfile;
 
-use crate::pathview::{DeviationBands, deviation_bands};
+use crate::pathview::{DeviationBands, deviation_bands_with};
 use crate::playback::{Cursor, Timeline};
 pub use crate::stock_surface::StockSurface;
 use crate::stock_surface::SurfaceSamples;
@@ -361,8 +362,15 @@ impl Application {
                             .simulation
                             .as_ref()
                             .and_then(|r| r.setups.iter().find(|s| s.id == id))
-                            .and_then(|s| s.deviation.as_ref())
-                            .map(|d| SurfaceSamples::new(&d.points, settings.cell.0)),
+                            .and_then(|s| {
+                                s.deviation.as_ref().map(|d| {
+                                    SurfaceSamples::with_reach(
+                                        &d.points,
+                                        s.reach.as_ref().map(|r| r.classes.as_slice()),
+                                        settings.cell.0,
+                                    )
+                                })
+                            }),
                     });
                 }
                 Ok(StockPlayback {
@@ -500,9 +508,89 @@ impl Application {
                 let target =
                     crate::workholding::setup_deviation_target(setup_ref, mesh.clone())?.mesh;
                 let options = DeviationOptions::for_cell(report.settings.cell.0);
-                let mut values = triangle_values(deviation, &target, options.spacing)?;
-                values.truncate(model_triangles);
-                Ok((model.id, deviation_bands(&values, report.settings.cell.0)))
+                let mut worst = triangle_worst(deviation, &target, options.spacing)?;
+                worst.truncate(model_triangles);
+                let values: Vec<_> = worst
+                    .iter()
+                    .map(|w| {
+                        w.and_then(|i| deviation.points.get(i))
+                            .map(|p| (p.value, p.at_least))
+                    })
+                    .collect();
+                // Material left that no tool reaches is its own band (issue
+                // 478).
+                let unreachable: Vec<bool> = worst
+                    .iter()
+                    .map(|w| {
+                        w.zip(result.reach.as_ref())
+                            .and_then(|(i, r)| r.classes.get(i))
+                            .is_some_and(|c| *c == ReachClass::Enclosed)
+                    })
+                    .collect();
+                let cell = report.settings.cell.0;
+                let bands = deviation_bands_with(&values, &unreachable, cell);
+                // A triangle whose own samples fall in more than one band is
+                // drawn in pieces, each by its nearest own sample (decision
+                // 0514).
+                let ranges = triangle_samples(deviation, &target, options.spacing)?;
+                let classes = result.reach.as_ref().map(|r| r.classes.as_slice());
+                let enclosed =
+                    |i: usize| classes.and_then(|c| c.get(i)) == Some(&ReachClass::Enclosed);
+                let band_of_sample = |i: usize| {
+                    deviation.points.get(i).map(|p| {
+                        crate::pathview::band_of(Some((p.value, p.at_least)), enclosed(i), cell)
+                    })
+                };
+                let counted = |t: usize| {
+                    ranges
+                        .get(t)
+                        .into_iter()
+                        .flat_map(|r| r.clone())
+                        .filter(|i| {
+                            deviation
+                                .points
+                                .get(*i)
+                                .is_some_and(openchuck_sim::DeviationPoint::counts)
+                        })
+                };
+                let pieces = crate::pieces::refine(
+                    &mesh,
+                    &|t| {
+                        let mut bands = counted(t).filter_map(band_of_sample);
+                        let first = bands.next();
+                        bands.any(|b| Some(b) != first)
+                    },
+                    &|t, point, _| {
+                        counted(t)
+                            .filter_map(|i| deviation.points.get(i).map(|p| (i, p)))
+                            .min_by(|(i, a), (j, b)| {
+                                a.point
+                                    .distance(point)
+                                    .total_cmp(&b.point.distance(point))
+                                    .then(i.cmp(j))
+                            })
+                            .map_or((None, false), |(i, p)| {
+                                (Some((p.value, p.at_least)), enclosed(i))
+                            })
+                    },
+                    // Exactly, from the parent's own samples within a cell of
+                    // the piece: a band narrower than the test points (the
+                    // rim of a bore at an end) is still found.
+                    Some(&|t, piece| {
+                        let mut near = counted(t)
+                            .filter(|i| {
+                                deviation.points.get(*i).is_some_and(|p| {
+                                    crate::pieces::distance_to_triangle(p.point, piece) <= cell
+                                })
+                            })
+                            .filter_map(band_of_sample);
+                        let first = near.next();
+                        near.any(|b| Some(b) != first)
+                    }),
+                    crate::pieces::Limits::for_cell(cell),
+                    context,
+                )?;
+                Ok((model.id, crate::pieces::with_pieces(bands, pieces)))
             },
         )
     }

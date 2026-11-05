@@ -64,6 +64,12 @@ pub mod parameter {
 pub struct Facing;
 
 impl Strategy for Facing {
+    fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
+        // Facing holds its Stepdown and each End view to the flutes itself
+        // (decision records 0252 and 0504).
+        true
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -141,6 +147,10 @@ impl Strategy for Facing {
              stock as it turns. Rings cuts each layer one full turn at a time at a fixed place \
              along the stock, with a short step along it between turns.",
         ));
+        // End and Box passes carry no stock of their own, so they link at
+        // the retract height unless asked to stay low (decision 0496's
+        // choice; issue #499, the owner's decision D1: retract by default).
+        parameters.push(crate::axial::link_height_spec());
         parameters.extend(crate::extend::specs(true));
         parameters.extend(crate::adaptive::specs());
         parameters.push(crate::adaptive::allowed_excess_spec());
@@ -172,6 +182,9 @@ impl Strategy for Facing {
             // Only the round shape cuts a spiral (decision record 0420).
             if name == roughing::PASS_SHAPE {
                 return shape == parameter::ROUND;
+            }
+            if name == crate::axial::parameter::LINK_HEIGHT {
+                return new;
             }
             if name == parameter::LAYERS || name == parameter::ARBITRARY {
                 return shape == parameter::BOX;
@@ -290,7 +303,7 @@ impl Facing {
             {
                 return Err(crate::error::PathError::Strategy("Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.".into()));
             }
-            let passes = if parameters.text(parameter::SHAPE)? == parameter::END {
+            let mut passes = if parameters.text(parameter::SHAPE)? == parameter::END {
                 end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?.passes
             } else {
                 plan::plan_box_sides(
@@ -300,6 +313,11 @@ impl Facing {
                 )?
                 .passes
             };
+            if low_links(parameters)? {
+                for pass in &mut passes {
+                    pass.low_link = true;
+                }
+            }
             return Ok(StrategyOutput {
                 passes,
                 notes: Vec::new(),
@@ -365,6 +383,13 @@ impl Facing {
             _ => validation::legacy(setup, parameters, group, context),
         }
     }
+}
+
+/// End and Box links between passes stay low where they can (decision 0496;
+/// issue #499). A saved operation without the choice retracts, as before.
+fn low_links(parameters: &Parameters) -> Result<bool> {
+    use crate::axial::parameter::{LINK_HEIGHT, LOW};
+    Ok(parameters.get(LINK_HEIGHT).is_some() && parameters.text(LINK_HEIGHT)? == LOW)
 }
 
 fn needs_verification(parameters: &Parameters) -> Result<bool> {
