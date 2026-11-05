@@ -451,15 +451,20 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
             at(last)
         )
     };
-    let (count, each) = if rest.is_empty() {
-        ("a face".to_owned(), "it")
+    let (count, shoulders, at_x, each) = if rest.is_empty() {
+        ("a step".to_owned(), "a shoulder", "at", "the")
     } else {
-        (format!("{} faces", turns.len()), "each")
+        (
+            format!("{} steps", turns.len()),
+            "shoulders",
+            "at each of",
+            "each",
+        )
     };
     Some(format!(
-        "the part has {count} across the rotary axis: the tool turns once round the axis \
-         without moving along it at X {xs}, where its side touches {each}, so the face keeps \
-         only the stock to leave"
+        "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
+         makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
+         {each} shoulder keeps only the stock to leave"
     ))
 }
 
@@ -479,13 +484,19 @@ pub(crate) fn held_note(held: &[f64]) -> Option<String> {
         )
     };
     let (faces, keeps) = if rest.is_empty() {
-        ("a face", "that face keeps")
+        (
+            "a step across the rotary axis (a shoulder facing along X)",
+            "that shoulder keeps",
+        )
     } else {
-        ("faces", "those faces keep")
+        (
+            "steps across the rotary axis (shoulders facing along X)",
+            "those shoulders keep",
+        )
     };
     Some(format!(
-        "the tool does not turn at {faces} across the rotary axis at X {xs}: there it would \
-         reach over the gripped length of the stock, so {keeps} what earlier operations left"
+        "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
+         length of the stock, so {keeps} what earlier operations left"
     ))
 }
 
@@ -646,15 +657,15 @@ mod tests {
         assert_eq!(note(&[]), None);
         assert_eq!(
             note(&[8.4115]).unwrap(),
-            "the part has a face across the rotary axis: the tool turns once round the axis \
-             without moving along it at X 8.412, where its side touches it, so the face keeps \
-             only the stock to leave"
+            "the part has a step across the rotary axis (a shoulder facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, at X 8.412, so the \
+             shoulder keeps only the stock to leave"
         );
         assert_eq!(
             note(&[1.0, 2.0, 3.5]).unwrap(),
-            "the part has 3 faces across the rotary axis: the tool turns once round the axis \
-             without moving along it at X 1.000, 2.000 and 3.500, where its side touches each, \
-             so the face keeps only the stock to leave"
+            "the part has 3 steps across the rotary axis (shoulders facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, at each of X 1.000, \
+             2.000 and 3.500, so each shoulder keeps only the stock to leave"
         );
     }
 
@@ -663,15 +674,15 @@ mod tests {
         assert_eq!(held_note(&[]), None);
         assert_eq!(
             held_note(&[31.5886]).unwrap(),
-            "the tool does not turn at a face across the rotary axis at X 31.589: there it \
-             would reach over the gripped length of the stock, so that face keeps what earlier \
-             operations left"
+            "the tool does not turn at a step across the rotary axis (a shoulder facing along \
+             X) at X 31.589: there it would reach over the gripped length of the stock, so that \
+             shoulder keeps what earlier operations left"
         );
         assert_eq!(
             held_note(&[1.0, 2.5]).unwrap(),
-            "the tool does not turn at faces across the rotary axis at X 1.000 and 2.500: there \
-             it would reach over the gripped length of the stock, so those faces keep what \
-             earlier operations left"
+            "the tool does not turn at steps across the rotary axis (shoulders facing along X) \
+             at X 1.000 and 2.500: there it would reach over the gripped length of the stock, \
+             so those shoulders keep what earlier operations left"
         );
     }
 

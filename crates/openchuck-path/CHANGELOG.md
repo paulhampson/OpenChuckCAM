@@ -7,6 +7,10 @@
   - **Both strategies.** Simultaneous finishing and rest machining (decision 0505) both fill `points`; rest machining's areas are shown like simultaneous finishing's, confirmed by the project owner on 5 Nov 2026, relayed by the coordinator (decision 0049).
   - **Output.** Toolpaths, warnings and the other fields of `Unreached` are unchanged.
 
+## Unreleased (UIBUGS, issue #463 item 1; message text only, no version bump)
+
+- **Changed message text:** the notes about faces across the rotary axis (decision 0297 item 4, and the held-region note of decision 0343) say "step" and "shoulder facing along X" and that the tool makes one extra turn, in place of "face" and "turns once ... where its side touches it". The path and G-code are unchanged. No API change.
+
 ## Unreleased (RESTCORNERS follow-up 2; no version bump of its own, by the coordinator's ruling)
 
 - **Fix (CodeRabbit on #483):** with rings and a lead, simultaneous finishing's note on the tilt used counted the lead each step holds from its ring as tilt, so it could read up to the lead too high. Steps are now left out of that figure; the path, the step limit and the checks are unchanged.
