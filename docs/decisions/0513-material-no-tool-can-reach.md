@@ -6,7 +6,7 @@
 - **Issue:** #478 (Simulate: the results report 27% of the part at 1 mm to 3 mm or more of material left, but it is not visible on the cut part).
 - **Requirements:** SIM-05 (amended, item 8), SIM-15, UI-11, NFR-06, NFR-07, NFR-12, NFR-15. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 - **Amends:** decision 0238 item 4 (stock beyond the search, item 4 below); decision 0216 items 7 and 8 for the band "Not measured" (item 5); requirement SIM-05 (item 8, agreed by the owner, relayed).
-- **Numbers:** 0513, assigned by the Merge Manager at release on 4 Nov 2026 (main's highest + 1; proposed on the lane as 0633). OI-1987 and OI-1988, which no number on `main` collides with.
+- **Numbers:** 0513, assigned by the Merge Manager at release on 4 Nov 2026 (main's highest + 1; proposed on the lane as 0513). OI-1987 and OI-1988, which no number on `main` collides with.
 
 ## Context
 
@@ -67,6 +67,10 @@ Tests written from the requirement first, named by requirement ID (times uninstr
 - `openchuck-ui` `viewport` `req_sim_05_req_nfr_15_the_legend_and_the_probe_name_unreachable_material` (failed first): the legend row, the Not-measured row and the probe's words, on the part.
 - Screenshots of the stand-in, rendered with the release build on Xvfb and lavapipe, on the throwaway branch `claude/simvis-screens` (`simvis/`), not for merging.
 - On the owner's project (scratch program, not committed): the classification as item 2, 100% of the 1,304,634 leftover samples enclosed.
+- From CodeRabbit's review of #486's release head `d6682194`, fixed in #492 (decision 0514); written before their fixes, which they failed without (they did not build):
+  - `openchuck-sim` `tests/reach.rs` `req_nfr_12_a_classification_that_did_not_run_says_so`: a skipped test (a tool narrower than two pitches, or nothing to cast against) is marked unclassified; the tube, and a part with nothing left, are classified.
+  - `openchuck-ui` `results_panel` `req_nfr_12_a_classification_that_did_not_run_reads_not_classified`: the share no tool reaches then reads "not classified", not "0.0 %".
+  - `results_panel` `req_sim_15_the_unreachable_tick_box_stays_while_its_filter_is_on`: the tick box stays while its filter is on, after a run with nothing enclosed.
 - Memory, issue #523 (the owner's crankshaft, private: numbers only; scratch programs, not committed; release builds, 4 threads, 0.1 mm cell, 3,400,004 samples of which 988,878 counted).
   - **The cause.** Item 4's lookup behind a face needs samples of every kind, so the cut part's sample index held all 3.4 million samples in linked nodes of 144 bytes (490 MB), against main's 988,878 counted samples (134 MB). Building it copied every sample (245 MB).
   - **The fix.** `stock_surface.rs` keeps two implicit balanced k-d trees, built from sample numbers. One holds the counted samples, for the lookup within the search; the other holds every finite sample, as a point, a number and a slot, for the lookup behind a face. Tight bounds are kept only for runs of 64 samples or more. The tie rule is unchanged.

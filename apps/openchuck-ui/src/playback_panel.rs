@@ -2004,6 +2004,12 @@ pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) ->
         }
         shown.bands.retain(|(_, triangles)| !triangles.is_empty());
     }
+    // A triangle's pieces are shown or hidden as triangles are (decision 0514).
+    if let Some(pieces) = &bands.pieces {
+        let mut pieces = (**pieces).clone();
+        pieces.bands = shown_bands(&pieces.bands, by, filter);
+        shown.pieces = Some(std::sync::Arc::new(pieces));
+    }
     shown
 }
 

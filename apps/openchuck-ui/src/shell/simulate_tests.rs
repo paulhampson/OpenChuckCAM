@@ -1903,10 +1903,18 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
                 .count()
         })
         .unwrap();
+    // Of the triangles drawn whole: those drawn in pieces (decision 0514)
+    // are in no band themselves.
+    let parents = whole
+        .pieces
+        .as_ref()
+        .map(|p| p.parents.clone())
+        .unwrap_or_default();
     let in_slot = whole
         .values
         .iter()
-        .filter(|v| slot_of(v) == Some(slot))
+        .enumerate()
+        .filter(|(t, v)| slot_of(v) == Some(slot) && !parents.contains(&(*t as u32)))
         .count();
     assert!(in_slot > 0);
     let (i, bin) = bins
@@ -1949,12 +1957,23 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     rig.frame(Vec::new());
     assert_eq!(rig.shell.results.filter.from, Some(0.2));
     let ranged = rig.shell.viewport.bands().unwrap().clone();
+    let whole_only = |t: &usize| !parents.contains(&(*t as u32));
     let expected = whole
         .values
         .iter()
-        .filter(|v| slot_of(v).is_some_and(|s| s != slot) && v.is_some_and(|(v, _)| v >= 0.2))
+        .enumerate()
+        .filter(|(t, v)| {
+            whole_only(t)
+                && slot_of(v).is_some_and(|s| s != slot)
+                && v.is_some_and(|(v, _)| v >= 0.2)
+        })
         .count();
-    let unmeasured = whole.values.iter().filter(|v| v.is_none()).count();
+    let unmeasured = whole
+        .values
+        .iter()
+        .enumerate()
+        .filter(|(t, v)| whole_only(t) && v.is_none())
+        .count();
     assert_eq!(triangles(&ranged), expected + unmeasured);
     // A start above the end is refused, and the range stays.
     rig.shell.results.set_range_text("0.5", "0.1");
@@ -2022,13 +2041,17 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         std::thread::sleep(Duration::from_millis(10));
     }
     rig.settle();
+    // Whole triangles and pieces (decision 0514) in the Unreachable band.
+    let count = |b: &openchuck_app::pathview::DeviationBands| -> usize {
+        b.bands
+            .iter()
+            .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
+            .map(|(_, t)| t.len())
+            .sum::<usize>()
+    };
     let unreachable = |rig: &Rig| {
         rig.shell.viewport.bands().map_or(0, |b| {
-            b.bands
-                .iter()
-                .filter(|(band, _)| *band == openchuck_app::pathview::DeviationBand::Unreachable)
-                .map(|(_, t)| t.len())
-                .sum::<usize>()
+            count(b) + b.pieces.as_ref().map_or(0, |p| count(&p.bands))
         })
     };
     assert!(
@@ -2050,5 +2073,55 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
         crate::results_panel::summarise(&run),
         summary,
         "the counts stay"
+    );
+}
+
+#[test]
+fn req_sim_05_the_faced_end_over_a_bore_is_violet_only_over_the_bore() {
+    // Decision 0514 (issue 488): the cut part's faced end is made of strips
+    // one column wide across the stock; drawn in pieces, only the bore's
+    // disc (Ø14, 153.9 mm²) is Unreachable, not whole strips across the ring.
+    let mut rig = simulate(Rig::tube("sim-bite"));
+    let colour = at(&rig, "Deviation colours");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let surface = rig.shell.viewport.stock_surface().unwrap().clone();
+    let bands = rig.shell.viewport.bands().unwrap().clone();
+    let unreachable = openchuck_app::pathview::DeviationBand::Unreachable;
+    // The area of the triangles in the faced end's plane, X 5, in a band.
+    let on_end =
+        |mesh: &openchuck_app::scene::Mesh, set: &openchuck_app::selection::TriangleSet| -> f64 {
+            set.iter()
+                .filter_map(|t| mesh.triangle(*t as usize))
+                .filter(|c| c.iter().all(|p| (p.x - 5.0).abs() < 1e-6))
+                .map(|[a, b, c]| (b - a).cross(c - a).length() / 2.0)
+                .sum()
+        };
+    let whole: f64 = bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&surface.mesh, set))
+        .sum();
+    let pieces = bands.pieces.as_ref().expect("the end's strips are cut");
+    let cut: f64 = pieces
+        .bands
+        .bands
+        .iter()
+        .filter(|(b, _)| *b == unreachable)
+        .map(|(_, set)| on_end(&pieces.mesh, set))
+        .sum();
+    let disc = std::f64::consts::PI * 49.0;
+    let violet = whole + cut;
+    println!("violet on the faced end {violet:.1} mm² against the bore's {disc:.1} mm²");
+    assert!(
+        (violet - disc).abs() < 0.2 * disc,
+        "{violet} against {disc}"
     );
 }
