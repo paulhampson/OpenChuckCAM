@@ -39,12 +39,13 @@ struct Found {
     areas: Option<SetupAreas>,
 }
 
-/// What was last handed to the view, to hand it again only when it changes.
+/// What was last handed to the view, to hand it again only when it changes:
+/// the operations drawn with the names their legend rows show.
 #[derive(Debug, Clone, PartialEq)]
 struct Pushed {
     run: usize,
     setup: SetupId,
-    operations: Vec<OperationId>,
+    operations: Vec<(OperationId, String)>,
 }
 
 /// The areas of the run on screen.
@@ -52,9 +53,9 @@ struct Pushed {
 pub struct Areas {
     job: Option<Running>,
     found: Option<Found>,
-    /// Which operations' paths are current, for the project revision and run
-    /// it was worked out for.
-    current: Option<(u64, usize, BTreeSet<OperationId>)>,
+    /// Which operations' paths are current, for the project revision, run
+    /// and setup it was worked out for.
+    current: Option<(u64, usize, SetupId, BTreeSet<OperationId>)>,
     pushed: Option<Pushed>,
     /// "Show in view" waiting for the areas to be found.
     request: Option<(OperationId, usize)>,
@@ -86,6 +87,7 @@ impl Areas {
             .is_some_and(|f| !Weak::ptr_eq(&f.run, &Arc::downgrade(run)) || f.setup != setup)
         {
             self.found = None;
+            self.current = None;
         }
         if self
             .job
@@ -145,7 +147,7 @@ impl Areas {
         // What is drawn: the operations whose path is shown and current.
         let on_step = matches!(step, ViewStep::Operations | ViewStep::Simulate);
         let toolpaths = viewport.visibility().toolpaths;
-        let mut shown = Vec::new();
+        let mut visible: Vec<(OperationId, String)> = Vec::new();
         let mut model = None;
         if on_step
             && toolpaths
@@ -156,7 +158,7 @@ impl Areas {
             if self
                 .current
                 .as_ref()
-                .is_none_or(|(r, k, _)| (*r, *k) != (revision, key))
+                .is_none_or(|(r, k, s, _)| (*r, *k, *s) != (revision, key, setup))
             {
                 let current = areas
                     .operations
@@ -164,7 +166,7 @@ impl Areas {
                     .filter(|o| !app.operation_unreached(run, o.operation).is_empty())
                     .map(|o| o.operation)
                     .collect();
-                self.current = Some((revision, key, current));
+                self.current = Some((revision, key, setup, current));
             }
             let current = self.current.as_ref().map(|(.., c)| c);
             model = Some(areas.model);
@@ -172,17 +174,39 @@ impl Areas {
                 if current.is_some_and(|c| c.contains(&operation.operation))
                     && app.project().path_shown(operation.operation)
                 {
-                    shown.push(shown_operation(app, operation.operation, &operation.areas));
+                    visible.push((
+                        operation.operation,
+                        operation_name(app, operation.operation),
+                    ));
                 }
             }
         }
-        let operations: Vec<OperationId> = shown.iter().map(|o| o.operation).collect();
+        // Built, with the areas' triangles, only when what is drawn or a
+        // name in the legend changed.
         let pushed = Pushed {
             run: key,
             setup,
-            operations,
+            operations: visible,
         };
         if self.pushed.as_ref() != Some(&pushed) {
+            let shown = self
+                .found
+                .as_ref()
+                .and_then(|f| f.areas.as_ref())
+                .map(|areas| {
+                    pushed
+                        .operations
+                        .iter()
+                        .filter_map(|(id, name)| {
+                            areas
+                                .operations
+                                .iter()
+                                .find(|o| o.operation == *id)
+                                .map(|o| shown_operation(*id, name.clone(), &o.areas))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             self.pushed = Some(pushed);
             self.hand_over(viewport, model, shown);
         }
@@ -246,17 +270,17 @@ impl Areas {
     }
 }
 
-fn shown_operation(
-    app: &Application,
-    operation: OperationId,
-    areas: &[AreaMarks],
-) -> ShownOperation {
+/// The operation's name as the legend shows it.
+fn operation_name(app: &Application, operation: OperationId) -> String {
+    app.project()
+        .operation(operation)
+        .map_or_else(String::new, |o| o.name.clone())
+}
+
+fn shown_operation(operation: OperationId, name: String, areas: &[AreaMarks]) -> ShownOperation {
     ShownOperation {
         operation,
-        name: app
-            .project()
-            .operation(operation)
-            .map_or_else(String::new, |o| o.name.clone()),
+        name,
         areas: areas
             .iter()
             .map(|a| ShownArea {

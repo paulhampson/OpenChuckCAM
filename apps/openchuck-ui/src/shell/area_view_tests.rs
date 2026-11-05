@@ -222,3 +222,98 @@ fn req_ui_12_messages_link_to_each_area_and_go_to_operations() {
             .any(|m| m.source == Some(ItemRef::Operation(op)) && !m.views.is_empty())
     );
 }
+
+/// The dovetail project with a second setup holding the same part and its
+/// own simultaneous finishing, both generated, on Operations with the first
+/// setup's areas drawn. Returns the second setup and both operations.
+fn generated_two_setups(
+    name: &str,
+) -> (
+    Rig,
+    openchuck_app::project::id::SetupId,
+    OperationId,
+    OperationId,
+) {
+    use openchuck_app::project::Placement;
+    use openchuck_app::project::id::SetupId;
+    let (dir, mut app, op, setup) = crate::testing::dovetail_project(name);
+    let second_setup = SetupId::new();
+    let mut copy = app.project().setup(setup).unwrap().clone();
+    copy.id = second_setup;
+    copy.name = "Setup 2".into();
+    let second_op = OperationId::new();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.id = second_op;
+    operation.setup = second_setup;
+    operation.name = "Finish 2".into();
+    for item in [Item::Setup(copy), Item::Operation(operation)] {
+        app.execute(Command::Add {
+            item,
+            placement: Placement::End,
+        })
+        .unwrap();
+    }
+    app.save().unwrap();
+    drop(app);
+    let shell = Shell::with_settings(false, Some(dir.clone()), None);
+    let mut rig = Rig::new(shell, vec![dir]);
+    rig.settle();
+    rig.shell.generate(true);
+    rig.settle();
+    rig.shell.open_step(Step::Operations);
+    rig.shell.choose_setup(setup, None);
+    wait_for_areas(&mut rig);
+    (rig, second_setup, op, second_op)
+}
+
+/// OP-20, UI-11, decision 0515 item 3: switching the view to another setup
+/// of the same run draws that setup's areas, without an edit or a new run
+/// (CodeRabbit on #489: the operations found current were kept per run, not
+/// per setup, so the second setup's areas were not drawn).
+#[test]
+fn req_ui_11_another_setup_of_the_same_run_draws_its_own_areas() {
+    let (mut rig, second_setup, first_op, second_op) = generated_two_setups("area-setups");
+    assert_eq!(
+        rig.shell.viewport.unreached_legend(),
+        ["Unreachable (Finish)"],
+        "{first_op:?}"
+    );
+    rig.shell.choose_setup(second_setup, None);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig.shell.viewport.unreached_legend() != ["Unreachable (Finish 2)"] {
+        assert!(
+            Instant::now() < deadline,
+            "the second setup's areas ({second_op:?}) were not drawn: {:?}",
+            rig.shell.viewport.unreached_legend()
+        );
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(dots(&rig) > 0);
+}
+
+/// UI-11, decision 0515 item 4: renaming an operation, which leaves its
+/// toolpath current, renames its legend row (CodeRabbit on #489: the row
+/// kept the old name until the drawn operations changed).
+#[test]
+fn req_ui_11_a_renamed_operation_renames_its_legend_row() {
+    let (mut rig, op) = generated("area-rename");
+    assert_eq!(
+        rig.shell.viewport.unreached_legend(),
+        ["Unreachable (Finish)"]
+    );
+    let drawn = dots(&rig);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.name = "Undercut finish".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert_eq!(dots(&rig), drawn, "a name is not a change to the toolpath");
+    assert_eq!(
+        rig.shell.viewport.unreached_legend(),
+        ["Unreachable (Undercut finish)"]
+    );
+}

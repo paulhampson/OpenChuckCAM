@@ -116,8 +116,17 @@ pub fn match_points(
     points: &[Point3],
     tolerance: f64,
 ) -> (TriangleSet, usize) {
+    match_on(&Grid::new(mesh, tolerance), mesh, points, tolerance)
+}
+
+/// [`match_points`] on a grid built once for the mesh.
+fn match_on(
+    grid: &Grid,
+    mesh: &TriangleMesh,
+    points: &[Point3],
+    tolerance: f64,
+) -> (TriangleSet, usize) {
     let mut marked = TriangleSet::new();
-    let grid = Grid::new(mesh, tolerance);
     let mut unmatched = 0;
     for p in points {
         match grid.nearest(mesh, *p, tolerance) {
@@ -337,12 +346,23 @@ pub fn map_areas(
     areas: &[Unreached],
     frame: &impl AsRotaryFrame,
 ) -> Vec<AreaMarks> {
+    map_on(&Grid::new(mesh, MATCH_TOLERANCE), mesh, areas, frame)
+}
+
+/// [`map_areas`] on a grid built once for the mesh, which every operation
+/// of a setup shares.
+fn map_on(
+    grid: &Grid,
+    mesh: &TriangleMesh,
+    areas: &[Unreached],
+    frame: &impl AsRotaryFrame,
+) -> Vec<AreaMarks> {
     let frame = frame.rotary_frame();
     areas
         .iter()
         .enumerate()
         .map(|(i, area)| {
-            let (triangles, unmatched) = match_points(mesh, &area.points, MATCH_TOLERANCE);
+            let (triangles, unmatched) = match_on(grid, mesh, &area.points, MATCH_TOLERANCE);
             let marker = marker_of(&area.points)
                 .unwrap_or_else(|| Point3::new(0.5 * (area.x.0 + area.x.1), 0.0, 0.0));
             AreaMarks {
@@ -403,12 +423,13 @@ impl Application {
                 if part.hash != model.hash {
                     return Err(AppError::PartChanged(model.label()));
                 }
+                let grid = Grid::new(&part.mesh, MATCH_TOLERANCE);
                 let mut operations = Vec::new();
                 for group in wanted {
                     context.check_cancelled()?;
                     operations.push(OperationAreas {
                         operation: group.operation,
-                        areas: map_areas(&part.mesh, &group.unreached, &frame),
+                        areas: map_on(&grid, &part.mesh, &group.unreached, &frame),
                     });
                 }
                 Ok(SetupAreas {
