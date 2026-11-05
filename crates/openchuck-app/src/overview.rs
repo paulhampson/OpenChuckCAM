@@ -335,7 +335,7 @@ pub enum MessageAction {
     /// Turn the view to an area simultaneous finishing could not reach,
     /// numbered from 1 as the warning and the markers number them: go to the
     /// operation's step, select the operation, look at the area and frame it
-    /// (OP-20, UI-12; decision record 0637 item 5).
+    /// (OP-20, UI-12; decision record 0515 item 5).
     ShowInView {
         /// The operation whose warning lists the area.
         operation: OperationId,
@@ -389,7 +389,7 @@ pub struct Message {
     /// The action that fixes it, if one does.
     pub action: Option<MessageAction>,
     /// Further links beside `action`: one "Show in view N" for each area a
-    /// warning of unreachable areas lists (decision record 0637 item 5).
+    /// warning of unreachable areas lists (decision record 0515 item 5).
     pub views: Vec<MessageAction>,
 }
 
@@ -967,7 +967,7 @@ struct Made {
     before: Vec<(OperationId, Key)>,
     /// The path's warnings when it was made (decision record 0175).
     warnings: Vec<openchuck_path::PathWarning>,
-    /// How many areas its strategy could not reach (decision record 0637).
+    /// How many areas its strategy could not reach (decision record 0515).
     unreached: usize,
 }
 
@@ -1556,7 +1556,7 @@ impl Application {
     /// The areas `operation`'s strategy could not reach in `run`, while the
     /// path `run` made for it is the one the project would make now: the
     /// operation and everything before it are as they were (OP-20; decision
-    /// record 0637 item 3). Empty for an operation that is out of date, was
+    /// record 0515 item 3). Empty for an operation that is out of date, was
     /// turned off or is not in the run, so what is marked on the part always
     /// goes with the toolpath it was found for. A generation that failed
     /// brings no run, and the last run's operation is out of date by then.
@@ -1763,7 +1763,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
-                // area it lists (decision record 0637 item 5).
+                // area it lists (decision record 0515 item 5).
                 let views = if warning.message.starts_with(crate::unreached::WARNING_START) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())

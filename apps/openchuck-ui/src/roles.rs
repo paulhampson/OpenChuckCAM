@@ -197,7 +197,7 @@ pub fn band_hatch(band: DeviationBand) -> Option<openchuck_viewport::Hatch> {
 pub const UNMEASURED_HATCH: Colour = hex(0xe3e7ec);
 
 /// The core of a dot marking a surface the tool could not reach, near
-/// black `#0c0e12` (decision record 0637 item 4): 3:1 or more against every
+/// black `#0c0e12` (decision record 0515 item 4): 3:1 or more against every
 /// deviation band, the part's grey and the hidden slate, in normal vision and
 /// each simulated colour vision type (see the test of this module).
 pub const AREA_DOT_CORE: Colour = hex(0x0c0e12);
@@ -568,7 +568,7 @@ pub(crate) mod tests {
         out
     }
 
-    /// Decision 0637 item 4, NFR-15: a dot's core reads at 3:1 or more
+    /// Decision 0515 item 4, NFR-15: a dot's core reads at 3:1 or more
     /// against every ground it can lie over, the ring against the core at
     /// 3:1, so the dot as a whole reads on dark and light grounds alike;
     /// under normal vision and each simulated colour vision type. The

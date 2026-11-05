@@ -151,7 +151,7 @@ fn legend_rows(viewport: &Viewport) -> f32 {
 
 /// A legend swatch for the surfaces the tool could not reach: the part's
 /// grey with one dot, a core in a ring, as the view draws them (decision
-/// 0637 item 4).
+/// 0515 item 4).
 pub fn dot_swatch(painter: &egui::Painter, r: Rect) {
     painter.rect_filled(r, 0.0, to_color32(roles::PART));
     let clipped = painter.with_clip_rect(r);

@@ -424,7 +424,7 @@ fn req_op_20_under_the_lips_of_a_dovetail_groove_is_blocked_and_reported() {
     assert!(deepest >= -TOLERANCE, "{deepest}");
 }
 
-/// Issue #416 (decision record 0637, the owner's question 1, option A): each
+/// Issue #416 (decision record 0515, the owner's question 1, option A): each
 /// unreached area carries the surface points the strategy could not reach,
 /// so a viewer marks those surfaces and not the reached ones beside them in
 /// the same X and A range. Under a dovetail's lips the points lie on the

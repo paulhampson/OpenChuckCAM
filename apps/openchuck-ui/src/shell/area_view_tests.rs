@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The unreachable areas through the shell, from a real run of simultaneous
-//! finishing on a dovetail (OP-20, UI-11, UI-12; decision record 0637; issue
+//! finishing on a dovetail (OP-20, UI-11, UI-12; decision record 0515; issue
 //! #416): when the areas are drawn, and what "Show in view N" in Messages
 //! does.
 
@@ -56,7 +56,7 @@ fn dots(rig: &Rig) -> usize {
         .map_or(0, |l| l.meshes.len())
 }
 
-/// OP-20, UI-11, decision 0637 item 3: on Operations and on Simulate an
+/// OP-20, UI-11, decision 0515 item 3: on Operations and on Simulate an
 /// operation's areas are drawn while its toolpath is shown (its eye, and the
 /// overall Toolpaths choice) and its result is current; not once it is out
 /// of date.
@@ -127,7 +127,7 @@ fn req_ui_11_areas_are_drawn_while_the_operations_path_is_shown_and_current() {
     assert_eq!(dots(&rig), 0, "the areas go with their toolpath");
 }
 
-/// UI-12, decision 0637 item 5: from Simulate, "Show in view N" stays on
+/// UI-12, decision 0515 item 5: from Simulate, "Show in view N" stays on
 /// Simulate, selects the operation, turns the camera to look at the area
 /// and leaves the playback where it was and the part where it is.
 #[test]

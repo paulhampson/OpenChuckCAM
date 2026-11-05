@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Which unreachable areas the view shows, and when (OP-20, UI-11, UI-12;
-//! decision record 0637 items 2 and 3; issue #416).
+//! decision record 0515 items 2 and 3; issue #416).
 //!
 //! The application finds the areas of the latest run on the part's
 //! triangles in a job ([`Application::start_unreached_areas`]). On Operations

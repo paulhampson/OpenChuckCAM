@@ -946,7 +946,7 @@ fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
     assert_eq!(stats.line_draws, 1, "{stats:?}");
     // One vertex buffer and one uniform buffer for the whole path: four
     // points of 16 bytes per run, and 192 bytes of uniforms (160 before the
-    // dot pattern of decision 0637 added two vectors).
+    // dot pattern of decision 0515 added two vectors).
     assert_eq!(stats.buffers, 2, "{stats:?}");
     assert_eq!(stats.bytes, 30 * 4 * 16 + 192, "{stats:?}");
     renderer.prepare(&device, &queue, &f);
@@ -1039,7 +1039,7 @@ fn share_of(pixels: &[[u8; 4]], colour: [f32; 4]) -> f64 {
     n as f64 / pixels.len() as f64
 }
 
-/// Decision 0637 item 4: dots are drawn over what lies beneath, in two
+/// Decision 0515 item 4: dots are drawn over what lies beneath, in two
 /// tones, on the screen, at a fixed spacing whatever the zoom or the pixel
 /// density; where there is no dot, what lies beneath shows through.
 #[test]

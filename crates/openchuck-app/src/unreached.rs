@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The surfaces simultaneous finishing cannot reach, found on the part's
 //! triangles for a front end to mark (OP-20, UI-11, UI-12, NFR-06, GC-07;
-//! decision record 0637; issue #416).
+//! decision record 0515; issue #416).
 //!
 //! The strategy reports each area it cannot reach with the surface points it
 //! sampled there ([`openchuck_path::Unreached::points`]). The area's X and A
@@ -42,7 +42,7 @@ pub const WARNING_START: &str = "simultaneous finishing cannot reach ";
 /// largest five.
 pub const LISTED_AREAS: usize = 5;
 
-/// Where the view looks to frame an area (decision 0637 item 5).
+/// Where the view looks to frame an area (decision 0515 item 5).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameTarget {
     /// The X range the area spans, millimetres.
@@ -288,7 +288,7 @@ fn all_round(area: &Unreached) -> bool {
     area.a.1 - area.a.0 >= 360.0 - 1e-9
 }
 
-/// How to look at `area`, whose marker is `marker` (decision 0637 item 5):
+/// How to look at `area`, whose marker is `marker` (decision 0515 item 5):
 /// from the side it faces, which is the tool's direction at the middle of its
 /// A range, in the setup's frame. An area all round faces no one side; it is
 /// looked at from the side its marker is on.
@@ -346,7 +346,7 @@ pub fn map_areas(
 impl Application {
     /// Finds the areas simultaneous finishing could not reach, for every
     /// operation of `setup` in `run`, on the triangles of the setup's part
-    /// as the scene draws it, as a job (OP-20; decision record 0637). Refused
+    /// as the scene draws it, as a job (OP-20; decision record 0515). Refused
     /// with [`AppError::PartChanged`] when the model's file is no longer the
     /// one the run read, as the deviation colours are (decision 0492): its
     /// triangles would not be the ones the points lie on.

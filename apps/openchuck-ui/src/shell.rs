@@ -275,7 +275,7 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
-    /// The unreachable areas of the latest run on screen (decision 0637).
+    /// The unreachable areas of the latest run on screen (decision 0515).
     areas: crate::unreached_view::Areas,
     /// The Simulate camera to restore while its run remains available.
     simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
@@ -1419,7 +1419,7 @@ impl Shell {
         }
     }
 
-    /// "Show in view N" (decision 0637 item 5): goes to the step the user is
+    /// "Show in view N" (decision 0515 item 5): goes to the step the user is
     /// on when it is Operations or Simulate, else to Operations, selects the
     /// operation, and turns the view to its area as soon as the areas are
     /// found. The part's placement and the playback are not touched.

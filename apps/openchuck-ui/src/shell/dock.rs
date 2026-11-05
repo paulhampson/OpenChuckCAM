@@ -201,7 +201,7 @@ impl Shell {
                                 None => {}
                             }
                             // "Show in view N" for each area a warning of
-                            // unreachable areas lists (decision 0637).
+                            // unreachable areas lists (decision 0515).
                             if !m.views.is_empty() {
                                 ui.horizontal(|ui| {
                                     ui.add_space(24.0);

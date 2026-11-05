@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The surfaces simultaneous finishing could not reach, in the view (OP-20,
-//! UI-11, UI-12, NFR-15; decision record 0637; issue #416): a two-tone dot
+//! UI-11, UI-12, NFR-15; decision record 0515; issue #416): a two-tone dot
 //! pattern on the triangles of each area, a numbered marker for each, the
 //! legend's rows, and the move of the camera to look at one. What is shown,
 //! and when, is decided by [`crate::unreached_view`]; this draws it.
@@ -16,7 +16,7 @@ use openchuck_viewport::{Camera, Hatch, HatchKind, Layer, Scene, Slot};
 use super::Viewport;
 use crate::roles;
 
-/// How long the camera takes to turn to an area, seconds (decision 0637
+/// How long the camera takes to turn to an area, seconds (decision 0515
 /// item 5).
 pub const ORBIT_SECONDS: f64 = 0.3;
 /// How long a marker pulses after "Show in view", seconds.
@@ -68,7 +68,7 @@ struct Move {
     started: f64,
 }
 
-/// What the view keeps for the areas (decision 0637).
+/// What the view keeps for the areas (decision 0515).
 #[derive(Debug, Default)]
 pub(super) struct AreaState {
     model: Option<ModelId>,
@@ -79,7 +79,7 @@ pub(super) struct AreaState {
     /// latest last.
     history: Vec<Camera>,
     /// Whether the turn to an area is animated. No setting for reduced
-    /// motion exists yet, so it is instant (decision 0637 item 5).
+    /// motion exists yet, so it is instant (decision 0515 item 5).
     animate: bool,
 }
 
@@ -208,7 +208,7 @@ impl Viewport {
 
     /// Turns the camera to look straight at `area` of `operation` from the
     /// side it faces, frames its X range with a margin and pulses its marker
-    /// (decision 0637 item 5). The part keeps its turn and the playback its
+    /// (decision 0515 item 5). The part keeps its turn and the playback its
     /// place: only the camera moves, and the area's side is taken where the
     /// part is drawn now, so a part turned by A in the machine view is looked
     /// at from the side the area faces there. One camera step, undone by

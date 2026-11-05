@@ -178,7 +178,7 @@ pub struct Visibility {
     pub toolpaths: bool,
     /// What the mesh check found (the Model step's "Show findings").
     pub findings: bool,
-    /// The surfaces simultaneous finishing could not reach (decision 0637):
+    /// The surfaces simultaneous finishing could not reach (decision 0515):
     /// menu only, like held regions and tabs, and on by default. They are
     /// drawn while their operation's toolpath is.
     pub unreachable: bool,
@@ -733,7 +733,7 @@ pub struct Viewport {
     /// The path legend is open while the view is too low to show it (7.2).
     pub(crate) legend_open: bool,
     /// The unreachable areas drawn, the camera's steps back and its move
-    /// (decision 0637).
+    /// (decision 0515).
     areas: areas::AreaState,
     /// The selection set drawn in its own colour, by name and colour, for a
     /// row of the legends (decision 0216 item 5).

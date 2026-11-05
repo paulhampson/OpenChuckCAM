@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The unreachable areas in the view (OP-20, UI-11, UI-12, NFR-15; decision
-//! record 0637; issue #416): the dot layer, the Show menu's tick, the
+//! record 0515; issue #416): the dot layer, the Show menu's tick, the
 //! markers and the legend, and the camera's turn to an area with its undo.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
@@ -86,7 +86,7 @@ fn shown(viewport: &Viewport, operation: OperationId, name: &str) -> ShownOperat
     }
 }
 
-/// UI-11, decision 0637 items 3 and 4: the areas are dots on their
+/// UI-11, decision 0515 items 3 and 4: the areas are dots on their
 /// triangles in a layer of their own, drawn in the part's frame with a
 /// transparent fill; the Show menu's "Unreachable areas" (menu only, on by
 /// default) hides them and their legend rows, and Simulate's tick boxes do
@@ -194,7 +194,7 @@ fn painted(viewport: &mut Viewport, ctx: &egui::Context) -> Vec<(String, f32)> {
     texts
 }
 
-/// UI-11, NFR-15, decision 0637 item 4: one numbered marker per area, in the
+/// UI-11, NFR-15, decision 0515 item 4: one numbered marker per area, in the
 /// order given (the warning's), in text of at least 12 points, and a legend
 /// row naming the operation, on Operations and on Simulate.
 #[test]
@@ -254,7 +254,7 @@ fn area(number: usize, x: (f64, f64), direction: [f64; 3], marker: [f64; 3]) -> 
     }
 }
 
-/// UI-12, decision 0637 item 5: the camera looks straight at the area from
+/// UI-12, decision 0515 item 5: the camera looks straight at the area from
 /// the side it faces, its X range framed with a margin; the part keeps its
 /// turn (the playback's placement) and only the camera moves.
 #[test]

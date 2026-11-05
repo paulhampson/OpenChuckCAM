@@ -180,7 +180,7 @@ fn model_project(name: &str, stl: &str) -> (PathBuf, Application, OperationId, S
 /// A revolved dovetail along X (two lips of radius 10 with a groove between
 /// them, undercut at both ends), as ASCII STL text: simultaneous finishing
 /// cannot reach the groove's floor and walls, and the lips' outsides lie in
-/// the same X and A range (decision 0637).
+/// the same X and A range (decision 0515).
 fn dovetail_stl() -> String {
     const PROFILE: [(f64, f64); 6] = [
         (0.0, 10.0),
@@ -232,7 +232,7 @@ fn dovetail_stl() -> String {
 
 /// A project with the dovetail, the Makera Z1, a 3 mm ball tool and one
 /// simultaneous finishing operation, "Finish": its generation reports
-/// areas it cannot reach (OP-20; decision 0637).
+/// areas it cannot reach (OP-20; decision 0515).
 pub fn dovetail_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) {
     let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

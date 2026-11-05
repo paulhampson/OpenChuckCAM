@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The surfaces simultaneous finishing cannot reach, as the application hands
 //! them to a front end (OP-20, UI-11, UI-12, NFR-06, GC-07; decision record
-//! 0637; issue #416): the part triangles each area lies on, its marker and the
+//! 0515; issue #416): the part triangles each area lies on, its marker and the
 //! view that looks at it, going with the toolpath they came from.
 #![allow(
     clippy::unwrap_used,
@@ -74,7 +74,7 @@ fn area(points: Vec<Point3>) -> Unreached {
     }
 }
 
-/// OP-20, decision 0637 item 2: the triangles marked are those the points
+/// OP-20, decision 0515 item 2: the triangles marked are those the points
 /// lie on. Under a lip's undercut the lip's outside is in the same X and A
 /// range as the groove, and it is not marked.
 #[test]
@@ -125,7 +125,7 @@ fn req_op_20_areas_map_to_the_triangles_they_lie_on() {
     assert!(triangles_on(&TriangleMesh::default(), &points, MATCH_TOLERANCE).is_empty());
 }
 
-/// UI-12, decision 0637 item 5: the view turns to look straight at the area
+/// UI-12, decision 0515 item 5: the view turns to look straight at the area
 /// from the side it faces, whichever way positive A turns. A surface at
 /// polar angle `phi` (from +Y towards +Z) faces the tool at A = sense (90 -
 /// phi), as the strategy reports it (decision 0368).
@@ -360,7 +360,7 @@ fn build(name: &str, part_offset: f64) -> Built {
     }
 }
 
-/// OP-20, decision 0637 items 1 and 2: the areas of a real run are mapped
+/// OP-20, decision 0515 items 1 and 2: the areas of a real run are mapped
 /// onto the triangles of the part the view draws, in the same frame (the part
 /// offset moves both), and the lips' outsides are not among them.
 #[test]
@@ -417,7 +417,7 @@ fn req_op_20_the_areas_of_a_run_lie_on_the_part_the_view_draws() {
     let _ = std::fs::remove_dir_all(&b.dir);
 }
 
-/// OP-20, decision 0637 items 1 and 3: the markers are numbered in the
+/// OP-20, decision 0515 items 1 and 3: the markers are numbered in the
 /// warning's order, and the areas go with the toolpath they came from: an
 /// edit makes them stale and a failed generation brings none.
 #[test]
@@ -502,7 +502,7 @@ fn req_op_20_the_areas_go_with_their_toolpath() {
     let _ = std::fs::remove_dir_all(&b.dir);
 }
 
-/// UI-12, decision 0637 item 5: the warning that lists unreachable areas
+/// UI-12, decision 0515 item 5: the warning that lists unreachable areas
 /// offers "Show in view N" for each area it lists (at most five, as it
 /// lists), in its order; no other message does.
 #[test]

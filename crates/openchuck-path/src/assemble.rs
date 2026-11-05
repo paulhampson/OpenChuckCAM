@@ -98,13 +98,13 @@ pub struct Unreached {
     /// The points of the part's surface in it that the tool cannot reach,
     /// as the strategy sampled them, in its order: so a viewer marks those
     /// surfaces and not the reached ones in the same X and A range (issue
-    /// #416, decision record 0637). At most [`MAX_UNREACHED_POINTS`], taken
+    /// #416, decision record 0515). At most [`MAX_UNREACHED_POINTS`], taken
     /// evenly through the area's samples when it has more.
     pub points: Vec<Point3>,
 }
 
 /// The most surface points an [`Unreached`] area carries (decision record
-/// 0637): enough to find every triangle of the area on a fine mesh, few
+/// 0515): enough to find every triangle of the area on a fine mesh, few
 /// enough that a large area costs little memory.
 pub const MAX_UNREACHED_POINTS: usize = 4096;
 

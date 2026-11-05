@@ -90,7 +90,7 @@ pub struct GroupInfo {
     pub warnings: Vec<openchuck_path::PathWarning>,
     /// The areas of the part the operation's strategy could not reach, with
     /// the surface points in each, largest first (OP-20; decision record
-    /// 0637). They belong to this generation as its warnings do: a run that
+    /// 0515). They belong to this generation as its warnings do: a run that
     /// failed has none, and one that is out of date is not drawn from
     /// ([`crate::Application::operation_unreached`]).
     pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,

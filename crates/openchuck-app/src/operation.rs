@@ -212,7 +212,7 @@ pub struct OperationPath {
     /// 0175). Each is in `notes` too.
     pub warnings: Vec<openchuck_path::PathWarning>,
     /// The areas of the part the strategy could not reach, with the surface
-    /// points in each (OP-20; decision record 0637): what the viewport marks
+    /// points in each (OP-20; decision record 0515): what the viewport marks
     /// on the part. They go with the path, so a path from the cache brings
     /// the areas it was made with.
     pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,

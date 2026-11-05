@@ -105,7 +105,7 @@ pub enum HatchKind {
     Cross,
     /// Dots in rows, every other row shifted half a spacing: each a core in
     /// [`Hatch::colour`] inside a ring of `ring` (the surfaces the tool
-    /// could not reach, decision record 0637). Two tones, so the dot reads
+    /// could not reach, decision record 0515). Two tones, so the dot reads
     /// on dark and light colours alike. Where it is not a dot, the mesh's
     /// own fill shows, so a transparent fill leaves what lies beneath as it
     /// is.

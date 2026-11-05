@@ -94,7 +94,7 @@ pub enum Layer {
     /// The tool, which moves with the playback position.
     Tool,
     /// Areas of the part marked by a pattern over the surfaces they lie on
-    /// (the surfaces the tool could not reach, decision record 0637): drawn
+    /// (the surfaces the tool could not reach, decision record 0515): drawn
     /// over whatever colours lie beneath, below the selection highlights.
     Areas,
     /// Selection and hover highlights.
