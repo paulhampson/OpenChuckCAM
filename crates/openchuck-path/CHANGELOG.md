@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.43.0
+
+- **Changed output for new operations (0.43.0, PATHORDER, issue #469; decision 0520, accepted by the owner, relayed by the coordinator):** the `order` module added; the default pass order for new operations changes the written order (not the cut geometry). Helical finishing, rest machining and simultaneous finishing have **Pass order** (`order::PARAMETER`, `pass_order`): `by_region` cuts each face turn (0297, 0410) and each hidden area's contours (0368) beside the passes of their region along X, A breaking a tie, when the links then travel less along X and take at most one per cent of the estimated time longer, with a path note; `after_main`, the default, is the order as before, so saved operations and every golden file are unchanged. The passes, their directions and the main passes' order are the same either way. Additive API: the module `order` (`PARAMETER`, `BY_REGION`, `AFTER_MAIN`, `spec`); a minor bump (decision 0048) for the new-operation default.
+
 ## 0.42.0
 
 - **Breaking (VIEW-OVERLAYS; issue #416; 0.42.0, decision 0515, accepted):** an unreached area carries its surface points.

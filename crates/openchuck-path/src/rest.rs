@@ -390,6 +390,7 @@ impl Strategy for RestMachining {
             ]
             .into_iter()
             .chain(crate::finishing::specs(true, false))
+            .chain(std::iter::once(crate::order::spec()))
             .collect(),
         )
     }
@@ -524,6 +525,7 @@ impl Strategy for RestMachining {
             .filter(|w| turns.iter().all(|t| (t - w).abs() >= walls.smallest))
             .collect();
         let mut ring_note = None;
+        let mut order_note = None;
         let mut passes = if crate::helical::in_rings(parameters) {
             // Rings and the steps between them, each cut only where material
             // is left; a step with nothing to cut is left to the shared
@@ -540,15 +542,17 @@ impl Strategy for RestMachining {
             ));
             passes
         } else {
-            let mut passes = fit_region(&fit, seeds, "rest machining", context)?;
+            let passes = fit_region(&fit, seeds, "rest machining", context)?;
             // One whole turn at each face across the axis and at each wall
-            // ring, cut where material is left, as helical finishing does.
+            // ring, cut where material is left, as helical finishing does,
+            // after the helix or beside its region (decision record 0520).
             let mut places: Vec<f64> = turns.iter().chain(&wall_rings).copied().collect();
             places.sort_by(f64::total_cmp);
+            let mut groups = Vec::with_capacity(places.len());
             for &x in &places {
                 context.check_cancelled()?;
                 let at = start + sign * 360.0 * (x - x0) / stepover;
-                passes.extend(crate::helical::turn_passes(
+                groups.push(crate::helical::turn_passes(
                     input,
                     None,
                     (&grown, leave, &[]),
@@ -559,7 +563,15 @@ impl Strategy for RestMachining {
                     context,
                 )?);
             }
-            passes
+            let arranged = crate::order::arrange(
+                parameters.text(crate::order::PARAMETER)?,
+                passes,
+                groups,
+                crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+                parameters.number(names::FEED)?,
+            );
+            order_note = arranged.note;
+            arranged.passes
         };
         // The free ends, in layers down beside them (decision record 0344).
         let free = crate::finishing::free_ends(
@@ -617,6 +629,7 @@ impl Strategy for RestMachining {
             2.0 * input.tool.cutting_radius(),
         ));
         notes.extend(faces::note(&turns));
+        notes.extend(order_note);
         notes.extend(faces::held_note(&found.held));
         notes.extend(free.notes);
         Ok(StrategyOutput {
