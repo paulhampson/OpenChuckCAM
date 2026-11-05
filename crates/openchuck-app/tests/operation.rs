@@ -1620,7 +1620,8 @@ fn req_op_14_req_sim_08_a_new_finishing_operation_keeps_its_links_low() {
 
 #[test]
 fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
-    // Decision 0640 (confirmed by the project owner on 5 Nov 2026, relayed):
+    // Decision 0640 (the default confirmed by the project owner on 5 Nov
+    // 2026, relayed, for the strategies the record names):
     // an operation saved before the option has no `link_height`, so when its
     // project is opened again it keeps retracting, and its toolpath, and so
     // its G-code, is what it was: the same as with Retract chosen.
