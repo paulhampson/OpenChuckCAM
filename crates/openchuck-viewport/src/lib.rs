@@ -27,7 +27,10 @@ pub mod scene;
 
 pub use camera::{Camera, Projection, StandardView};
 pub use renderer::{Frame, Layer, LayerStats, Renderer};
-pub use scene::{Colour, DisplayMode, Hatch, LineItem, LineStyle, MeshItem, Outline, Scene, Slot};
+pub use scene::{
+    Colour, DOT_CORE_RADIUS, DOT_RADIUS, DOT_SPACING, DisplayMode, Hatch, HatchKind, LineItem,
+    LineStyle, MeshItem, Outline, Scene, Slot,
+};
 /// The wgpu version the renderer is built against, for front ends that hand
 /// it a device.
 pub use wgpu;

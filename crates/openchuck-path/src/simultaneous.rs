@@ -1579,10 +1579,12 @@ fn ring_passes(
         };
         for piece in &pieces {
             let axis = plan.held_plan(piece, phi, r.lead.abs() + r.max_tilt, findings);
-            crate::helical::join(
-                &mut passes,
-                plan.track_passes(piece, &axis, 0.0, findings, context)?,
-            );
+            // A step leans by the lead it holds from its ring, by design; that
+            // is not smoothing, so it is kept out of the note on the tilt used.
+            let tilt = findings.tilt;
+            let cut = plan.track_passes(piece, &axis, 0.0, findings, context);
+            findings.tilt = tilt;
+            crate::helical::join(&mut passes, cut?);
         }
     }
     let note = format!(

@@ -2,7 +2,7 @@
 (OpenChuckCAM <version>)
 G90 G21 G17
 G54
-(operation <id>)
+(operation Rough, tool T1 Z1 O-flute 3.175x25, about 1923 s)
 M5
 T1 M6
 S10000 M3
@@ -11840,7 +11840,7 @@ A1080.000 F599.8
 Z18.509 F300.0
 G0 Z40.000
 G92.4 A0 S0
-(operation <id>)
+(operation Finish, tool T2 Z1 ball 3.175x22, about 393 s)
 M5
 T2 M6
 S12000 M3

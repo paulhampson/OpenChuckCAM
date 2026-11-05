@@ -22,7 +22,7 @@ use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Hatch, LineStyle, MeshItem, Outline, Scene, Slot};
+use openchuck_viewport::{Colour, Hatch, HatchKind, LineStyle, MeshItem, Outline, Scene, Slot};
 
 use crate::roles;
 use crate::theme::DARK;
@@ -1152,7 +1152,7 @@ impl SelectionPanel {
                 for added in scene.meshes.iter_mut().skip(first) {
                     added.hatch = Some(Hatch {
                         colour: roles::AVOID,
-                        cross: false,
+                        kind: HatchKind::Single,
                     });
                 }
             }
@@ -1194,7 +1194,7 @@ impl SelectionPanel {
                 for added in scene.meshes.iter_mut().skip(first) {
                     added.hatch = Some(Hatch {
                         colour: GHOST,
-                        cross: false,
+                        kind: HatchKind::Single,
                     });
                 }
             } else {
@@ -2614,7 +2614,7 @@ mod tests {
                 mesh.hatch,
                 Some(Hatch {
                     colour: roles::AVOID,
-                    cross: false
+                    kind: HatchKind::Single
                 })
             );
             assert_eq!(mesh.slot, Slot::Part);

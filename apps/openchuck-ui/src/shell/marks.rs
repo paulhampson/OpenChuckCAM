@@ -44,6 +44,23 @@ pub fn paint(painter: &egui::Painter, centre: Pos2, state: ItemState, size: f32)
                 .collect();
             painter.add(egui::Shape::line(points, Stroke::new(2.0, DARK.accent)));
         }
+        ItemState::Finalising => {
+            // A circle with its left half filled: made, not yet kept.
+            let ring = r * 0.8;
+            painter.circle_stroke(centre, ring, Stroke::new(1.5, DARK.accent));
+            let points: Vec<Pos2> = (0..=16)
+                .map(|i| {
+                    #[allow(clippy::cast_precision_loss)]
+                    let a = FRAC_PI_2 + (i as f32 / 16.0) * std::f32::consts::PI;
+                    centre + ring * egui::vec2(a.cos(), a.sin())
+                })
+                .collect();
+            painter.add(egui::Shape::convex_polygon(
+                points,
+                DARK.accent,
+                Stroke::NONE,
+            ));
+        }
         ItemState::Warning => {
             painter.add(egui::Shape::closed_line(
                 triangle(centre, r),
@@ -203,7 +220,7 @@ pub fn colour_of(state: ItemState) -> Color32 {
     match state {
         ItemState::UpToDate => DARK.ok,
         ItemState::Stale | ItemState::Warning => DARK.warning,
-        ItemState::Running => DARK.accent,
+        ItemState::Running | ItemState::Finalising => DARK.accent,
         ItemState::Error => DARK.error,
         ItemState::Off => DARK.muted,
     }
@@ -212,6 +229,32 @@ pub fn colour_of(state: ItemState) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_11_req_nfr_15_every_state_has_its_own_shape() {
+        // Shape as well as colour (UI-11): no two states are drawn alike, and
+        // finalising differs from running although both are in the accent.
+        let mut shapes: Vec<(ItemState, String)> = Vec::new();
+        for state in ItemState::ALL {
+            let ctx = egui::Context::default();
+            let mut text = String::new();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                paint(ui.painter(), egui::pos2(20.0, 20.0), state, SIZE);
+            });
+            output.textures_delta.clear();
+            for clipped in &output.shapes {
+                let plain = format!("{:?}", clipped.shape);
+                text.push_str(&plain);
+            }
+            shapes.push((state, text));
+        }
+        for (i, (a, shape_a)) in shapes.iter().enumerate() {
+            assert!(!shape_a.is_empty(), "{a:?} draws nothing");
+            for (b, shape_b) in shapes.iter().skip(i + 1) {
+                assert_ne!(shape_a, shape_b, "{a:?} and {b:?} are drawn alike");
+            }
+        }
+    }
 
     #[test]
     fn req_ui_11_the_legend_wraps_between_entries_never_inside_one() {

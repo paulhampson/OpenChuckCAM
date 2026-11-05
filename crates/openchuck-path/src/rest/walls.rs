@@ -48,12 +48,12 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 
 use super::Sample;
-use crate::assemble::{Unreached, UnreachedReason};
+use crate::assemble::{MAX_UNREACHED_POINTS, Unreached, UnreachedReason};
 use crate::cutter::{self, ToolLine};
 use crate::error::Result;
 use crate::parallel;
 use crate::rotary::RotaryMapping;
-use crate::strategy::{HELD_CLEARANCE, StrategyInput, reaches_in};
+use crate::strategy::{HELD_CLEARANCE, KEEP_OUT_SLACK, StrategyInput, reaches_in};
 
 /// Most rings added at walls in one operation; past it the rest are not
 /// added and a warning says so (as adaptive spacing's added passes,
@@ -249,7 +249,11 @@ impl Walls<'_> {
                 } else {
                     (c - reach, c)
                 };
+                // At the keep-out tests' own slack-adjusted edges, so a
+                // place that counts as clear just inside an edge is clipped
+                // there too.
                 for &(a, b) in keep_out {
+                    let (a, b) = (a + KEEP_OUT_SLACK, b - KEEP_OUT_SLACK);
                     if a >= c && a < hi {
                         hi = a;
                     }
@@ -521,11 +525,15 @@ fn group(
     let mut reason = None;
     let mut flush = |run: &mut Vec<Sample>, reason: Option<UnreachedReason>| {
         if let (Some(r), Some(first), Some(last)) = (reason, run.first(), run.last()) {
+            // The samples taken evenly, in their order along X, to the cap
+            // (decision 0515 item 1, as simultaneous finishing gives them).
+            let stride = run.len().div_ceil(MAX_UNREACHED_POINTS).max(1);
             areas.push(Unreached {
                 x: (first.point.x, last.point.x),
                 a: angles(run, rotary),
                 area: run.iter().map(|s| s.area).sum(),
                 reason: r,
+                points: run.iter().step_by(stride).map(|s| s.point).collect(),
             });
         }
         run.clear();
@@ -669,6 +677,76 @@ mod tests {
     }
 
     #[test]
+    fn req_op_09_req_op_20_rest_areas_carry_their_surface_points() {
+        // Decisions 0505 and 0515 item 1: rest machining reports what its
+        // tool cannot reach as simultaneous finishing does, so each area
+        // carries the surface points it could not reach, in their order
+        // along X, taken evenly to at most MAX_UNREACHED_POINTS, and each
+        // point lies within the area's X range.
+        let rotary = mapping(ASense::Positive);
+        let few: Vec<(Sample, UnreachedReason)> = (0..5)
+            .map(|k| (at_x(f64::from(k) * 0.1), UnreachedReason::Blocked))
+            .collect();
+        let areas = group(few, 0.1, &rotary);
+        assert_eq!(areas.len(), 1);
+        let xs: Vec<f64> = areas[0].points.iter().map(|p| p.x).collect();
+        assert_eq!(xs.len(), 5);
+        assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+        let many_count = 3 * MAX_UNREACHED_POINTS + 1;
+        let many: Vec<(Sample, UnreachedReason)> = (0..many_count)
+            .map(|k| {
+                #[allow(clippy::cast_precision_loss)]
+                let x = k as f64 * 1e-4;
+                (at_x(x), UnreachedReason::TooNarrow)
+            })
+            .collect();
+        let areas = group(many, 1e-4, &rotary);
+        assert_eq!(areas.len(), 1);
+        let area = &areas[0];
+        assert!(!area.points.is_empty());
+        assert!(area.points.len() <= MAX_UNREACHED_POINTS);
+        assert!(
+            area.points
+                .iter()
+                .all(|p| p.x >= area.x.0 - 1e-12 && p.x <= area.x.1 + 1e-12)
+        );
+    }
+
+    #[test]
+    fn req_op_09_req_ui_12_the_rest_warning_lists_its_areas_in_the_words_of_op_20() {
+        // Messages finds the warning by its start ("rest machining cannot
+        // reach ", `openchuck_app::unreached::REST_WARNING_START`) to offer
+        // "Show in view N" (decision 0515 item 5), and it lists the areas
+        // with simultaneous finishing's list, largest first (decision 0505).
+        let rotary = mapping(ASense::Positive);
+        let found: Vec<(Sample, UnreachedReason)> = (0..5)
+            .map(|k| (at_x(f64::from(k) * 0.1), UnreachedReason::Blocked))
+            .collect();
+        let areas = group(found, 0.1, &rotary);
+        let warning = crate::rest::unreached_warning(&areas, 3.175).unwrap();
+        assert!(
+            warning.message.starts_with("rest machining cannot reach "),
+            "{}",
+            warning.message
+        );
+        assert!(
+            warning
+                .message
+                .contains(&crate::simultaneous::unreached_list(&areas, 3.175, 0.0)),
+            "{}",
+            warning.message
+        );
+    }
+
+    fn at_x(x: f64) -> Sample {
+        Sample {
+            point: Point3::new(x, 6.0, 0.0),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            area: 0.01,
+        }
+    }
+
+    #[test]
     fn req_op_09_req_op_20_surfaces_at_different_radii_are_checked_apart() {
         // Two faces at the same X and angle, 8 mm apart in radius (two
         // lobes, the outer covering the inner's approach): one drop cannot
@@ -723,6 +801,34 @@ mod tests {
         };
         let (rings, capped) = walls.rings(&[wall], 0.0, &keep);
         assert!(!capped);
+        assert!(!rings.is_empty(), "the wall gets a ring");
+        for r in &rings {
+            assert!(
+                !reaches_in(&keep, *r, *r),
+                "ring at X {r} is inside the keep-out"
+            );
+        }
+    }
+
+    #[test]
+    fn req_op_09_req_set_09_a_wall_ring_within_the_keep_out_slack_stays_clear() {
+        // The keep-out tests allow `KEEP_OUT_SLACK` (1e-6 mm): a tool place
+        // half a micron inside the keep-out's lower edge counts as clear,
+        // and its range must be clipped at the same slack-adjusted edge, or
+        // its ring lands where the pass trimming drops it (the review of
+        // #518).
+        let tool = flat_tool();
+        let walls = walls_with(&tool);
+        let keep = [(12.0, 100.0)];
+        // The tool's edge for a wall facing +X is its radius, plus a tenth
+        // of the tolerance clear of the wall.
+        let place = 12.0 + 0.5e-6;
+        let wall = Sample {
+            point: Point3::new(place - 1.5875 - 0.1 * walls.tolerance, 6.0, 0.0),
+            normal: Vec3::new(1.0, 0.0, 0.0),
+            area: 0.01,
+        };
+        let (rings, _) = walls.rings(&[wall], 0.0, &keep);
         assert!(!rings.is_empty(), "the wall gets a ring");
         for r in &rings {
             assert!(

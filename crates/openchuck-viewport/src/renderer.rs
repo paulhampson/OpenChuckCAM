@@ -13,13 +13,14 @@ use crate::camera::{
     Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
 };
 use crate::scene::{
-    Colour, DisplayMode, Hatch, Scene, Slot, batch_lines, outline_edges, wireframe_indices,
+    Colour, DOT_CORE_RADIUS, DOT_RADIUS, DOT_SPACING, DisplayMode, Hatch, HatchKind, Scene, Slot,
+    batch_lines, outline_edges, wireframe_indices,
 };
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:
 /// the colour, the eye, the line width and viewport, the dash pattern, the
 /// hatch colour, and the scale and hatch kind.
-const UNIFORM_SIZE: u64 = 160;
+const UNIFORM_SIZE: u64 = 192;
 
 /// What a frame needs besides the scene.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -92,6 +93,10 @@ pub enum Layer {
     Paths,
     /// The tool, which moves with the playback position.
     Tool,
+    /// Areas of the part marked by a pattern over the surfaces they lie on
+    /// (the surfaces the tool could not reach, decision record 0515): drawn
+    /// over whatever colours lie beneath, below the selection highlights.
+    Areas,
     /// Selection and hover highlights.
     Overlay,
     /// The outlines of the hovered or selected held region or tab, kept
@@ -102,12 +107,13 @@ pub enum Layer {
 
 impl Layer {
     /// Every layer, in drawing order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Scene,
         Self::Stock,
         Self::Trace,
         Self::Paths,
         Self::Tool,
+        Self::Areas,
         Self::Overlay,
         Self::Focus,
     ];
@@ -121,8 +127,9 @@ impl Layer {
             Self::Trace => 2,
             Self::Paths => 3,
             Self::Tool => 4,
-            Self::Overlay => 5,
-            Self::Focus => 6,
+            Self::Areas => 5,
+            Self::Overlay => 6,
+            Self::Focus => 7,
         }
     }
 }
@@ -592,11 +599,15 @@ impl Renderer {
                 return;
             };
             writes.set(writes.get() + 1);
-            let (hatch, kind) = match u.hatch {
-                Some(h) => (h.colour, if h.cross { 2.0 } else { 1.0 }),
-                None => ([0.0; 4], 0.0),
+            let (hatch, ring, kind) = match u.hatch {
+                Some(h) => match h.kind {
+                    HatchKind::Single => (h.colour, [0.0; 4], 1.0),
+                    HatchKind::Cross => (h.colour, [0.0; 4], 2.0),
+                    HatchKind::Dots { ring } => (h.colour, ring, 3.0),
+                },
+                None => ([0.0; 4], [0.0; 4], 0.0),
             };
-            let mut floats = Vec::with_capacity(40);
+            let mut floats = Vec::with_capacity(48);
             floats.extend(matrix.iter().flatten());
             floats.extend(u.colour);
             floats.extend(eye);
@@ -610,6 +621,8 @@ impl Renderer {
             floats.extend(u.pattern);
             floats.extend(hatch);
             floats.extend([per_mm, kind, 0.0, 0.0]);
+            floats.extend([DOT_SPACING, DOT_CORE_RADIUS, DOT_RADIUS, 0.0]);
+            floats.extend(ring);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };
         for (layer, _) in self.layers.iter_mut().zip(self.shown).filter(|(_, s)| *s) {
@@ -674,7 +687,7 @@ impl Renderer {
     /// Draws the scene into `pass`, which must have the colour and depth
     /// formats the renderer was built for.
     pub fn paint(&self, pass: &mut wgpu::RenderPass<'_>) {
-        let highlights = |l: &Layer| matches!(l, Layer::Overlay | Layer::Focus);
+        let highlights = |l: &Layer| matches!(l, Layer::Areas | Layer::Overlay | Layer::Focus);
         // Opaque meshes of every layer but the highlights.
         for layer in Layer::ALL.iter().filter(|l| !highlights(l)) {
             for mesh in self
