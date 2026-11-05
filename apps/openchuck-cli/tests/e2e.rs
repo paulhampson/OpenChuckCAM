@@ -734,10 +734,10 @@ mod first_cut {
     /// 1-thread test only, so the three never rewrite it at once.
     fn committed_first_cut_at(threads: usize, tag: &str) {
         let bless = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
+        // A bless run rewrites the committed folder from the 1-thread test; the
+        // 2- and N-thread tests do nothing then, so none reads the folder while
+        // it is being rewritten. A normal run checks all three.
         if bless && threads != 1 {
-            eprintln!(
-                "bless run: the 1-thread test rewrites the first-cut folder; skipped at {tag}"
-            );
             return;
         }
         if bless {
