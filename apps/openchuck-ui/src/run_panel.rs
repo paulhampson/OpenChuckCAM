@@ -868,9 +868,18 @@ impl RunPanel {
                 self.last_seconds
             )
         });
-        let text = summary
-            .as_ref()
-            .map(|summary| results_text(&lines, summary, openchuck_buildinfo::current_text()));
+        // The error of a failed run is a line of the results: it is copied
+        // too, and a first run that failed still has Copy all (review of
+        // #480).
+        let failure = self.last_error.as_deref().filter(|_| self.failed);
+        let head = match (&summary, failure) {
+            (Some(summary), Some(error)) => Some(format!("{summary}\nProblem: {error}")),
+            (Some(summary), None) => Some(summary.clone()),
+            (None, Some(error)) => Some(format!("Problem: {error}")),
+            (None, None) => None,
+        };
+        let text =
+            head.map(|head| results_text(&lines, &head, openchuck_buildinfo::current_text()));
         ui.horizontal_wrapped(|ui| {
             if let Some(summary) = &summary {
                 ui.label(summary);
@@ -910,15 +919,15 @@ impl RunPanel {
                     ui.add(egui::Label::new(RichText::new(error).color(PROBLEM)).selectable(true));
                     ui.separator();
                 }
-                let Some(run) = &self.last else {
+                if let Some(run) = &self.last {
+                    if *run.project != *app.project() {
+                        ui.colored_label(
+                            NOTE,
+                            "The project has changed since this run. Generate again.",
+                        );
+                    }
+                } else {
                     ui.label("Nothing has been generated yet.");
-                    return;
-                };
-                if *run.project != *app.project() {
-                    ui.colored_label(
-                        NOTE,
-                        "The project has changed since this run. Generate again.",
-                    );
                 }
                 let mut shown = 0;
                 for (index, line) in lines.iter().enumerate() {
@@ -1000,6 +1009,7 @@ impl Default for LevelFilter {
 }
 
 impl LevelFilter {
+    /// Whether lines of `severity` are shown.
     fn shows(&self, severity: Severity) -> bool {
         match severity {
             Severity::Problem => self.errors,
@@ -1008,6 +1018,7 @@ impl LevelFilter {
         }
     }
 
+    /// Shows or hides lines of `severity`.
     fn toggle(&mut self, severity: Severity) {
         let on = match severity {
             Severity::Problem => &mut self.errors,
@@ -1027,6 +1038,7 @@ struct LevelCounts {
 }
 
 impl LevelCounts {
+    /// Counts one line of `severity`.
     fn add(&mut self, severity: Severity) {
         match severity {
             Severity::Problem => self.errors += 1,
@@ -1035,6 +1047,7 @@ impl LevelCounts {
         }
     }
 
+    /// The lines of `severity`.
     fn get(&self, severity: Severity) -> usize {
         match severity {
             Severity::Problem => self.errors,
@@ -1673,6 +1686,38 @@ mod tests {
         assert!(frames.shows("Cancelled. Nothing was kept"));
         assert!(frames.shows("Errors 0"));
         assert_eq!(frames.panel.results_count(), 0);
+    }
+
+    #[test]
+    fn req_ui_12_req_nfr_12_copy_all_holds_the_error_of_a_failed_run_even_with_no_earlier_run() {
+        // Review of #480: the error line was shown and counted but not copied,
+        // and a first run that failed had no Copy all at all.
+        let (dir, app, _, _) = crate::testing::cube_project("results-frames-failed-copy");
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let mut panel = RunPanel::default();
+        panel.record_failure("the engine stopped: no stock".to_owned());
+        let mut frames = Frames::with(ctx, panel, app, dir);
+        let at = frames.centre_of("Copy all");
+        frames.click(at);
+        let text = frames.copied.last().expect("copied");
+        assert!(text.contains("the engine stopped: no stock"), "{text}");
+        assert!(text.contains(openchuck_buildinfo::current_text().trim_end()));
+        assert!(
+            frames.shows("Results as plain text"),
+            "the keyboard route too"
+        );
+        // With an earlier run kept, its summary and the error are both there.
+        let mut with_run = Frames::new("failed-after-run");
+        with_run.panel.record_failure("then it failed".to_owned());
+        with_run.frame(Vec::new());
+        let at = with_run.centre_of("Copy all");
+        with_run.click(at);
+        let text = with_run.copied.last().expect("copied");
+        assert!(
+            text.contains("operation(s)") && text.contains("then it failed"),
+            "{text}"
+        );
     }
 
     #[test]
