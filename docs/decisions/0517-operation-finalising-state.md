@@ -20,13 +20,13 @@ After one operation's own toolpath the run still does: the link to the previous 
 2. **New state Finalising** (`ItemState::Finalising`): the operation's path, link, checks and stock are done in a run that has not ended. Mark: a blue circle with its left half filled (colour role accent, as Running; the shape differs from the gapped ring and from the filled green circle, so it is told apart without colour, UI-11, NFR-15). Name "Finalising". Tooltip and inspector cause: "Finalising: toolpath made; the checks and final steps are still running, so it does not count as up to date yet".
 3. **Order.** Per operation a run moves forward only: Stale, Running (when it is made or its stock simulated; a cached operation skips this), Finalising, then Up to date for every operation at the commit. Cancel, failure or refusal returns the finalising operations to Stale with the cause "the run was cancelled before it finished" or "the run stopped before it finished (<message>)".
 4. **Not counted as stale.** A finalising operation is not in the stale list, so no "Generate stale" is offered for it during the run; an edit during the run changes its key and makes it Stale.
-5. **Unchanged:** the "Simulation out of date" banner and its meaning, the stale test (chained keys, decision 0520's part-changed rule is read when VIEW-OVERLAYS is on `main`), and the Messages panel (the failure message stays; no new row).
+5. **Unchanged:** the "Simulation out of date" banner and its meaning, the stale test (chained keys, unchanged by this record), and the Messages panel (the failure message stays; no new row).
 6. The legend has seven entries; the wrap and width tests run over all states.
 
 ## Open items
 
 - OI-2039: optionally commit each operation's record as it finishes, so it is up to date before the run ends. This needs a rollback for the end-of-run refusal and a way to show it.
-- Decision 0520 (VIEW-OVERLAYS, #472) was not on `main` when this was written; it only reads `ItemState`, and a new variant may need a match arm in its code after it merges.
+- VIEW-OVERLAYS (decision 0492, #472) is on `main`; it does not match `ItemState`, so it needs no new arm.
 
 ## Verification
 
