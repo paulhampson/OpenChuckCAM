@@ -722,25 +722,28 @@ mod first_cut {
     use super::*;
 
     /// The committed folder validates and, regenerated in a separate process at
-    /// one thread count with both posts, passes gates 1 and 2 and matches its
-    /// golden programs (GC-07, NFR-06, NFR-08). One test per thread count, 1, 2
-    /// and N (owner's decision on OI-2036, decision 0516): the three together
-    /// were one test of 31 minutes on a Windows runner, and apart they run side
-    /// by side in different CI shares. Each is compared with the same golden
-    /// program, so the three are byte-identical to one another in the golden
-    /// form (NFR-06); the lines that form masks, the software version and the
-    /// operation ids, come from the binary and the committed folder, not from the
-    /// thread count. `OPENCHUCK_BLESS_PROJECTS=1` rewrites the folder from the
-    /// 1-thread test only, so the three never rewrite it at once.
+    /// one thread count with both posts, passes gates 1 and 2 and is byte for
+    /// byte its golden program, only the software version masked (GC-07, NFR-06,
+    /// NFR-08). Unlike the sample projects, the first-cut golden files keep the
+    /// operation lines (name, tool and time estimate), which the folder fixes,
+    /// so nothing in the program escapes the comparison, line endings included.
+    /// One test per thread count, 1, 2 and N (owner's decision on OI-2036,
+    /// decision 0516): together they were one test of 31 minutes on a Windows
+    /// runner; apart they run side by side in different CI shares, and each is
+    /// held to the same golden bytes, so the three are byte-identical to one
+    /// another. A bless run (`OPENCHUCK_BLESS_PROJECTS=1` for the folder,
+    /// `OPENCHUCK_BLESS=1` for the golden programs) writes from the 1-thread test
+    /// only.
     fn committed_first_cut_at(threads: usize, tag: &str) {
-        let bless = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
-        // A bless run rewrites the committed folder from the 1-thread test; the
-        // 2- and N-thread tests do nothing then, so none reads the folder while
-        // it is being rewritten. A normal run checks all three.
-        if bless && threads != 1 {
+        let bless_projects = std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some();
+        let blessing = bless_projects || openchuck_testkit::golden::blessing();
+        // The 2- and N-thread tests do nothing in a bless run, so only one test
+        // writes the folder and the golden files, and none reads them while they
+        // are rewritten. A normal run checks all three.
+        if blessing && threads != 1 {
             return;
         }
-        if bless {
+        if bless_projects {
             bless_project(FIRST_CUT);
         }
         let root = scratch(&format!("first-cut-{tag}"));
@@ -749,7 +752,7 @@ mod first_cut {
         for (post, ext) in POSTS {
             let out = root.join(format!("{post}-{threads}"));
             let program = regenerate(project, post, threads, &out);
-            openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &stable(&program))
+            openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &program)
                 .unwrap_or_else(|m| {
                     panic!("first_cut / {post} at {threads} threads (NFR-06, NFR-08): {m}")
                 });
