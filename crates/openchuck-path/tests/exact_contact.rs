@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The per-operation Exact STEP surface contact (decision 0500; issue #351;
+//! The per-operation Exact STEP surface contact (decision 0526; issue #351;
 //! requirement OP-27, IMP-02, OP-12, GC-07, NFR-06, NFR-07): which strategies offer
 //! it, its default for each, which tools it applies to, and that a surface
 //! asked for exact drops drops every tool that has one on the exact faces.
@@ -82,7 +82,7 @@ const OUTLINE: [&str; 2] = ["axial_finishing", "pencil_finishing"];
 
 #[test]
 fn req_op_27_exact_contact_is_offered_by_the_strategies_that_drop_on_faces() {
-    // Decision 0500: helical, indexed, rest and simultaneous finishing take
+    // Decision 0526: helical, indexed, rest and simultaneous finishing take
     // the exact ball drop (decision 0277), on by default; axial finishing and
     // pencil clean-up take the outline drop (decision 0338), off by default.
     // Every other strategy has no such setting and keeps the tessellation.
@@ -189,7 +189,7 @@ fn req_op_27_req_gc_07_exact_contact_is_read_from_the_values_or_the_default() {
 #[test]
 fn req_op_27_exact_drops_drop_every_tool_with_an_exact_drop_on_the_faces() {
     // With exact drops asked for, `drop_tool` answers with the exact drop
-    // for every tool that has one (decision 0500 adopts decision 0338's
+    // for every tool that has one (decision 0526 adopts decision 0338's
     // outline drop behind the setting); a tool without one, and a surface
     // not asked, drop on the tessellation as before.
     let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);

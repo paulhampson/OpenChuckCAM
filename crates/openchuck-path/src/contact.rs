@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The per-operation Exact STEP surface contact (decision record 0500; issue
+//! The per-operation Exact STEP surface contact (decision record 0526; issue
 //! #351; IMP-02, OP-12): the user's choice, for an operation whose strategy
 //! drops the tool on the part, between the import's tessellation and the
 //! exact faces of a STEP part, trading generation time for accuracy.
@@ -110,7 +110,7 @@ impl ExactContact {
 }
 
 /// `schema` with the Exact STEP surface contact of `kind` placed right after
-/// the tolerance (decision record 0500), or last when it has no tolerance.
+/// the tolerance (decision record 0526), or last when it has no tolerance.
 pub fn with_switch(kind: ExactContact, mut schema: ParameterSchema) -> ParameterSchema {
     let at = schema
         .parameters

@@ -1267,7 +1267,7 @@ impl Form<'_> {
         match self {
             // Form (d) is what the application makes by default: exact
             // contacts where the strategy's setting is on for a new
-            // operation (decisions 0277 and 0500).
+            // operation (decisions 0277 and 0526).
             Self::Brep(_, Some(exact), _)
                 if strategy.exact_contact().is_some_and(|k| k.default_on()) =>
             {

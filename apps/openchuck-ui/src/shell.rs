@@ -43,7 +43,7 @@ use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
-use crate::run_panel::RunPanel;
+use crate::run_panel::{LevelFilter, RunPanel};
 use crate::selection_panel::SelectionPanel;
 use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
 use crate::viewport::Viewport;
@@ -68,6 +68,8 @@ mod checkpoint_tests;
 mod open_recovery_tests;
 #[cfg(test)]
 mod pending_edit_tests;
+#[cfg(test)]
+mod recent_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -102,6 +104,10 @@ const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
+
+/// The answer to a check of which recent folders exist: the list that was
+/// looked at, and the folders among them that exist.
+type RecentCheck = std::sync::mpsc::Receiver<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)>;
 
 /// What to do once unsaved changes are dealt with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +197,19 @@ pub struct Shell {
     /// The folder the next Open dialog starts with: a recovery line's
     /// project (decision 0460).
     open_hint: Option<String>,
+    /// The recent project chosen in this frame, so the action log can leave
+    /// its folder name out (NFR-18).
+    recent_clicked: Option<std::path::PathBuf>,
+    /// The running check of which recent folders exist, and when it last
+    /// started (the check is off the UI thread; issue 381).
+    recent_check: Option<RecentCheck>,
+    recent_checked_at: Option<std::time::Instant>,
+    /// Held by a test to keep the check from answering.
+    #[cfg(test)]
+    recent_gate: Option<std::sync::Arc<std::sync::Mutex<()>>>,
+    /// The click lines the action log was given (tests).
+    #[cfg(test)]
+    logged_clicks: Vec<String>,
     edit_guard: pending::Guard,
     app: Option<Application>,
     /// The computer's physical memory, read once, which caps the memory for
@@ -256,6 +275,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The unreachable areas of the latest run on screen (decision 0515).
+    areas: crate::unreached_view::Areas,
     /// The Simulate camera to restore while its run remains available.
     simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
     /// The results inspector of the Simulate step (SIM-05, SIM-07).
@@ -284,6 +305,9 @@ pub struct Shell {
     /// The dock's tab, and the message severities shown.
     dock_tab: DockTab,
     message_filter: [bool; 3],
+    /// Which levels the Results tab shows: errors, warnings, information
+    /// (session only, like `message_filter`; issue 475).
+    result_filter: LevelFilter,
     /// The message the disabled primary action points at.
     highlight: Option<usize>,
     /// Panels collapsed by the small-window rule, not by the user.
@@ -331,6 +355,13 @@ impl Shell {
             recovery_project: None,
             edit_context: None,
             open_hint: None,
+            recent_clicked: None,
+            recent_check: None,
+            recent_checked_at: None,
+            #[cfg(test)]
+            recent_gate: None,
+            #[cfg(test)]
+            logged_clicks: Vec::new(),
             edit_guard: pending::Guard::default(),
             app: None,
             physical_memory: crate::memory::physical(),
@@ -363,6 +394,7 @@ impl Shell {
             export_from_footer: false,
             text_had_focus: false,
             play: PlaybackPanel::default(),
+            areas: crate::unreached_view::Areas::default(),
             simulate_camera: None,
             step: Step::Model,
             jobs: JobLog::default(),
@@ -377,6 +409,7 @@ impl Shell {
             settings_problem: problem,
             dock_tab: DockTab::Messages,
             message_filter: [true; 3],
+            result_filter: LevelFilter::default(),
             highlight: None,
             auto_collapsed: frame::AutoCollapse::default(),
             reset: None,
@@ -1336,13 +1369,6 @@ impl Shell {
         self.dialog = Some(dialog);
     }
 
-    fn show_results(&mut self) {
-        if self.defer(Self::show_results) {
-            return;
-        }
-        self.run.show_results();
-    }
-
     /// Carries out a message's action link (specification section 9).
     fn message_action(&mut self, action: MessageAction) {
         if self.defer(move |s| s.message_action(action)) {
@@ -1376,6 +1402,9 @@ impl Shell {
             MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
                 self.recovery_action(action);
             }
+            MessageAction::ShowInView { operation, area } => {
+                self.show_area_in_view(operation, usize::from(area));
+            }
             MessageAction::ShowSetting(op) => {
                 self.show_item(ItemRef::Operation(op));
                 self.setting_jump = self
@@ -1385,6 +1414,33 @@ impl Shell {
                     .map(|name| (op, name));
             }
         }
+    }
+
+    /// "Show in view N" (decision 0515 item 5): goes to the step the user is
+    /// on when it is Operations or Simulate, else to Operations, selects the
+    /// operation, and turns the view to its area as soon as the areas are
+    /// found. The part's placement and the playback are not touched.
+    fn show_area_in_view(&mut self, operation: OperationId, number: usize) {
+        if self.defer(move |s| s.show_area_in_view(operation, number)) {
+            return;
+        }
+        if !matches!(self.step, Step::Operations | Step::Simulate) {
+            self.open_step(Step::Operations);
+        }
+        self.show_item(ItemRef::Operation(operation));
+        // The view shows the setup the operation is in.
+        let setup = self
+            .app
+            .as_ref()
+            .and_then(|app| app.project().operation(operation))
+            .map(|o| o.setup);
+        if let Some(setup) = setup
+            && self.setup != Some(setup)
+        {
+            self.setup = Some(setup);
+            self.rebuild_scene(true);
+        }
+        self.areas.request(operation, number);
     }
 
     /// Takes the user to the first problem: the step it belongs to, the item
@@ -1582,9 +1638,12 @@ impl Shell {
         let mut error = None;
         let mut regenerated = false;
         let mut added = None;
+        let mut results_tab = false;
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
-            if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+            let polled = self.run.poll(&self.jobs, ctx);
+            results_tab = self.run.take_results_request();
+            if let Some((run, job)) = polled {
                 regenerated = true;
                 self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
@@ -1594,7 +1653,6 @@ impl Shell {
             let (new, problem) = self.run.add_dialog(ctx, app);
             added = new;
             error = problem;
-            self.run.results_window(ctx, app);
             let outcome = self
                 .export
                 .frame(ctx, app, self.run.last(), self.run.last_error());
@@ -1628,6 +1686,18 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+            // The unreachable areas, and a "Show in view" waiting for them.
+            if self.areas.frame(app, &mut self.viewport, self.run.last()) {
+                ctx.request_repaint();
+            }
+            if let Some((operation, area)) = self.areas.take_request(app, self.run.last()) {
+                let now = ctx.input(|i| i.time);
+                self.viewport.look_at_area(operation, &area, now);
+                ctx.request_repaint();
+            }
+        }
+        if results_tab {
+            self.show_results_tab();
         }
         if regenerated {
             self.rebuild_scene(false);
@@ -2841,7 +2911,7 @@ mod tests {
         // Every panel draws: the operation's, the selections', the results,
         // the add-operation dialog and the playback controls.
         shell.selected = Some(Selection::Operation(op));
-        shell.run.show_results();
+        shell.show_results_tab();
         shell.run.begin_add(shell.app.as_ref().unwrap(), None, None);
         frame(&mut shell, &ctx);
         shell.selected = Some(Selection::Picking);
@@ -2890,6 +2960,8 @@ mod tests {
 mod keys_tests;
 
 #[cfg(test)]
+mod area_view_tests;
+#[cfg(test)]
 mod four_step_tests;
 #[cfg(test)]
 mod frame_tests;
@@ -2902,6 +2974,8 @@ mod dock_buttons_tests;
 mod inspector_layout_tests;
 #[cfg(test)]
 mod numbox_tests;
+#[cfg(test)]
+mod results_tab_tests;
 
 #[cfg(test)]
 mod new_project_tests;

@@ -72,6 +72,7 @@ impl Strategy for OneRing {
             .collect();
         Ok(vec![Pass {
             helical_pass_start: false,
+            low_link: false,
             points,
             stock: None,
             rapids: Vec::new(),
@@ -1516,6 +1517,29 @@ fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself(
 }
 
 #[test]
+fn req_op_02_req_op_07_swarf_says_cut_short_lifts_the_tip_first() {
+    // Decision 0491 item 1: on swarf, Cut short lifts the tool's tip clear
+    // of an avoid or check set before it stops the pass, so the Geometry
+    // section's tooltip says so for swarf only; rotary roughing keeps its
+    // own (decision 0043 item 3).
+    let (dir, app, _op) = project("cut-short-lifts");
+    let swarf = app.strategy_set_options("swarf");
+    assert!(swarf.cut_short_lifts_tip && swarf.avoid_and_check && swarf.boundary);
+    assert!(!swarf.check_lifts_tool);
+    let roughing = app.strategy_set_options("rotary_roughing");
+    assert!(roughing.check_lifts_tool && !roughing.cut_short_lifts_tip);
+    for c in app.strategy_choices() {
+        assert_eq!(
+            app.strategy_set_options(&c.name).cut_short_lifts_tip,
+            c.name == "swarf",
+            "{}",
+            c.name
+        );
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     // Decision 0205, option B (the owner's choice, issue 223): rotary
     // roughing added with a tool starts with 10 percent of the tool's
@@ -1552,6 +1576,129 @@ fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     app.undo().unwrap();
     assert!(app.project().operation(no_tool).is_none());
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_14_req_sim_08_a_new_operation_cuts_extra_passes_by_region() {
+    // Decision 0520 (the owner's choice, relayed, issue 469): a new
+    // operation of a strategy with a pass order is written with "by
+    // region", like any value the user set; an operation saved without it
+    // keeps the old order (the default), and other strategies get nothing.
+    let (dir, mut app, op) = project("pass-order-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let order = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(openchuck_path::order::PARAMETER)
+            .cloned()
+    };
+    let by_region = Some(openchuck_app::project::ParameterValue::Text(
+        openchuck_path::order::BY_REGION.into(),
+    ));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(order(&app, added), by_region, "{strategy}");
+    }
+    for strategy in ["rotary_roughing", "axial_finishing", "indexed_finishing"] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(order(&app, added), None, "{strategy}");
+    }
+    // The operation made before the option has none, so its order is as
+    // it was.
+    assert_eq!(order(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_14_req_sim_08_a_new_finishing_operation_keeps_its_links_low() {
+    // Decision 0521 (the owner's choice, relayed, issue 469; amends 0496): a
+    // new operation of a strategy with Links between passes is written with
+    // "low", like any value the user set; an operation saved without it
+    // keeps "retract" (the default), and other strategies get nothing.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, LOW};
+    let (dir, mut app, op) = project("link-height-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let link = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(LINK_HEIGHT)
+            .cloned()
+    };
+    let low = Some(openchuck_app::project::ParameterValue::Text(LOW.into()));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(link(&app, added), low, "{strategy}");
+    }
+    for strategy in ["rotary_roughing", "pencil_finishing", "swarf"] {
+        if let Ok(added) = app.add_operation(strategy, strategy, setup, tool) {
+            assert_eq!(link(&app, added), None, "{strategy}");
+        }
+    }
+    // The operation made before the option has none, so its links retract
+    // as they did.
+    assert_eq!(link(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
+    // Decision 0521 (the default confirmed by the project owner on 5 Nov
+    // 2026, relayed, for the strategies the record names):
+    // an operation saved before the option has no `link_height`, so when its
+    // project is opened again it keeps retracting, and its toolpath, and so
+    // its G-code, is what it was: the same as with Retract chosen.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, RETRACT};
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+    ] {
+        let (dir, mut app, op) = project(&format!("saved-links-{strategy}"));
+        // As an older version saved it: the strategy's own values only. The
+        // cube's free ends are not what this test is about (decision 0344).
+        let free_ends = [("face_free_ends", ParameterValue::Flag(false))];
+        let values: &[(&str, ParameterValue)] = if strategy == "simultaneous_finishing" {
+            &[]
+        } else {
+            &free_ends
+        };
+        set_strategy(&mut app, op, strategy, values);
+        app.save().unwrap();
+        drop(app);
+        let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        assert_eq!(
+            app.project()
+                .operation(op)
+                .unwrap()
+                .parameters
+                .get(LINK_HEIGHT),
+            None,
+            "{strategy}"
+        );
+        let saved = app.regenerate().unwrap();
+        app.set_parameter(op, LINK_HEIGHT, Some(ParameterValue::Text(RETRACT.into())))
+            .unwrap();
+        let retract = app.regenerate().unwrap();
+        assert!(!saved.toolpath.groups.is_empty(), "{strategy}");
+        assert_eq!(saved.toolpath, retract.toolpath, "{strategy}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
 /// `op` turned into `strategy` with the given values.
@@ -2256,5 +2403,69 @@ fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_mesh_part_is_checked() {
         e.contains("only turns the part about the rotary axis") && !e.contains("were not supplied"),
         "{e}"
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Links between passes (decision 0496, issue #524): the inspector form of
+/// axial and indexed finishing offers it, in the Entry, links and retract
+/// section of specification section 8 (UI-07), with its choice and default.
+#[test]
+fn req_ui_07_req_op_14_links_between_passes_is_offered_in_entry_links_and_retract() {
+    use openchuck_app::form::{FieldKind, FormSection};
+    for strategy in ["axial_finishing", "indexed_finishing"] {
+        let (dir, mut app, op) = project(&format!("links-{strategy}"));
+        let mut operation = app.project().operation(op).unwrap().clone();
+        operation.strategy = strategy.into();
+        app.execute(Command::Replace(Item::Operation(operation)))
+            .unwrap();
+        let form = app.parameter_form(op).unwrap();
+        let field = form
+            .fields
+            .iter()
+            .find(|f| f.name == "link_height")
+            .unwrap_or_else(|| panic!("{strategy}: no Links between passes field"));
+        assert_eq!(field.label, "Links between passes", "{strategy}");
+        assert_eq!(
+            field.section,
+            FormSection::EntryLinksAndRetract,
+            "{strategy}"
+        );
+        assert!(
+            matches!(&field.kind, FieldKind::Choice { options } if options == &["retract", "low"]),
+            "{strategy}: {:?}",
+            field.kind
+        );
+        assert_eq!(
+            field.value,
+            Some(ParameterValue::Text("retract".into())),
+            "{strategy}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+/// Every parameter whose name says it is about links is placed in the Entry,
+/// links and retract section, whichever strategy offers it (UI-07), so a
+/// strategy that adds the option later gets the same place.
+#[test]
+fn req_ui_07_every_link_parameter_is_in_the_links_section() {
+    use openchuck_app::form::FormSection;
+    let (dir, app, _) = project("links-all");
+    let mut seen = 0;
+    for strategy in app.strategies().iter() {
+        for spec in &strategy.schema().parameters {
+            if spec.name.contains("link") {
+                seen += 1;
+                assert_eq!(
+                    FormSection::of(&spec.name),
+                    FormSection::EntryLinksAndRetract,
+                    "{}: {}",
+                    strategy.name(),
+                    spec.name
+                );
+            }
+        }
+    }
+    assert!(seen >= 3, "axial, indexed and facing offer it: {seen}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

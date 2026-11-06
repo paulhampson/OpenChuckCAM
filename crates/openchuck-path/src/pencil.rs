@@ -545,7 +545,7 @@ struct Site {
 
 impl Strategy for PencilFinishing {
     /// Exact contacts on a STEP part for every tool with an exact drop,
-    /// off by default: over the limits of OI-835 (decisions 0338, 0500).
+    /// off by default: over the limits of OI-835 (decisions 0338, 0526).
     fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
         Some(crate::contact::ExactContact::Outline)
     }
@@ -771,6 +771,7 @@ impl Strategy for PencilFinishing {
             }
             passes.extend(runs.into_iter().map(|points| Pass {
                 helical_pass_start: false,
+                low_link: false,
                 points,
                 stock: None,
                 rapids: Vec::new(),

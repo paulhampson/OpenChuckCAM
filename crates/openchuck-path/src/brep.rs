@@ -2210,7 +2210,7 @@ impl BrepSurface {
     /// tessellation (`false`, the default): [`SurfaceSource::drop_tool`]
     /// then answers with [`drop_exact`](Self::drop_exact) for a tool that has
     /// an exact drop ([`has_exact_drop`]) and the tessellation for any other
-    /// (decisions 0277, 0338 and 0500). A host sets it where the operation's
+    /// (decisions 0277, 0338 and 0526). A host sets it where the operation's
     /// Exact STEP surface contact is on and applies to its tool
     /// ([`contact::exact_drops`](crate::contact::exact_drops)), on every
     /// surface of the operation alike.
@@ -2356,7 +2356,7 @@ impl BrepSurface {
     /// exact drop, or when a face has none; the caller then drops onto the
     /// tessellation. The outline drop is several times slower than a drop on
     /// the tessellation, so it is off by default where a strategy offers it
-    /// (OI-1351, decision 0500).
+    /// (OI-1351, decision 0526).
     pub fn drop_exact(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<ExactDrop> {
         if ball_radius(profile).is_some() {
             return self.drop_ball(profile, line);
@@ -2497,7 +2497,7 @@ pub struct ExactDrop {
 /// a V-bit or chamfer with a flat at the tip (decision 0338). A bull nose, a
 /// flat end grown for stock to leave, a sharp V-bit and a concave profile
 /// have none (OI-1350). [`SurfaceSource::drop_tool`] uses it on a surface
-/// with exact drops (decision 0500).
+/// with exact drops (decision 0526).
 pub fn has_exact_drop(profile: &RevolvedProfile) -> bool {
     ball_radius(profile).is_some() || outline::Outline::new(profile).is_some()
 }
@@ -2717,7 +2717,7 @@ impl SurfaceSource for BrepSurface {
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
         // A tool with an exact drop drops onto the exact faces when the host
-        // asked for it (decisions 0277, 0338 and 0500): the host asks only
+        // asked for it (decisions 0277, 0338 and 0526): the host asks only
         // where the operation's Exact STEP surface contact is on and applies
         // to the tool (`contact::exact_drops`). Any other tool, or a face
         // without an exact drop, drops onto the tessellation (OI-81, OI-1350).

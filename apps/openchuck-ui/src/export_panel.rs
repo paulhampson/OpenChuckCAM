@@ -68,19 +68,27 @@ enum NumberChoice {
 struct Key {
     post: PostSelection,
     grouping: OutputGrouping,
-    project: Project,
+    /// The project as it was, shared with the dialog's copy of it at that
+    /// revision (issue #470).
+    project: Arc<Project>,
 }
 
-/// Two keys are the same when they give the same files: what only the view
-/// uses (the hidden toolpaths) and the stock simulation choice do not count
-/// (decision records 0168 and 0169; GC-07).
-impl PartialEq for Key {
-    fn eq(&self, other: &Self) -> bool {
-        self.post == other.post
-            && self.grouping == other.grouping
-            && self.project.same_output(&other.project)
-    }
+/// The project at one revision of one application, and the answers of
+/// comparing kept projects with it (issue #470). The kept projects are held,
+/// so an answer is never read for another project at the same address.
+struct Now {
+    revision: u64,
+    /// Where the application keeps its project: another application (a
+    /// project opened since) is another project at any revision.
+    at: *const Project,
+    project: Arc<Project>,
+    /// A kept project, whether it gives the same output, whether it is equal.
+    answers: Vec<(Arc<Project>, Option<bool>, Option<bool>)>,
 }
+
+/// A posting job: the run with the chosen post and the files it will write,
+/// planned on the job's worker (issue #470).
+type PostingJob = JobHandle<(Regeneration, Vec<PlannedFile>)>;
 
 /// The files made for a key.
 struct Files {
@@ -142,7 +150,8 @@ pub struct ExportPanel {
     folder: String,
     number_choice: NumberChoice,
     by_hand: Vec<(ToolId, String)>,
-    job: Option<(JobHandle<Regeneration>, Key)>,
+    /// The posting job, which plans its files on its worker (issue #470).
+    job: Option<(PostingJob, Key)>,
     /// The key the last job was started for, so a failed one is not retried
     /// every frame.
     attempted: Option<Key>,
@@ -174,6 +183,21 @@ pub struct ExportPanel {
     file_names: openchuck_app::FileNameTemplates,
     /// The names they give the current files.
     named: Option<file_names::Named>,
+    split: Option<file_names::Split>,
+    /// How many times a run was split into program files (tests).
+    #[cfg(test)]
+    splits: usize,
+    /// The project as it is, copied once per revision for the keys, and
+    /// what comparing kept projects with it gave, so a frame neither copies
+    /// nor compares the whole project (issue #470).
+    now: std::cell::RefCell<Option<Now>>,
+    /// How many times the project was copied for a key (issue #470).
+    #[cfg(test)]
+    snapshots: std::cell::Cell<usize>,
+    /// How many times a kept project was compared with the project as it is
+    /// (issue #470).
+    #[cfg(test)]
+    compared: std::cell::Cell<usize>,
 }
 
 impl Default for ExportPanel {
@@ -221,6 +245,14 @@ impl ExportPanel {
             ticked: false,
             file_names: openchuck_app::FileNameTemplates::default(),
             named: None,
+            split: None,
+            #[cfg(test)]
+            splits: 0,
+            now: std::cell::RefCell::new(None),
+            #[cfg(test)]
+            snapshots: std::cell::Cell::new(0),
+            #[cfg(test)]
+            compared: std::cell::Cell::new(0),
         }
     }
 
@@ -341,16 +373,79 @@ impl ExportPanel {
         Some(Key {
             post: self.selection()?,
             grouping: self.grouping,
-            project: app.project().clone(),
+            project: self.project_now(app),
         })
+    }
+
+    /// The project as it is, copied once per revision (issue #470).
+    fn project_now(&self, app: &Application) -> Arc<Project> {
+        let revision = app.revision();
+        let at: *const Project = app.project();
+        let mut now = self.now.borrow_mut();
+        match now.as_ref() {
+            Some(n) if n.revision == revision && n.at == at => Arc::clone(&n.project),
+            _ => {
+                #[cfg(test)]
+                self.snapshots.set(self.snapshots.get() + 1);
+                let project = Arc::new(app.project().clone());
+                *now = Some(Now {
+                    revision,
+                    at,
+                    project: Arc::clone(&project),
+                    answers: Vec::new(),
+                });
+                project
+            }
+        }
+    }
+
+    /// Whether `kept` gives the same output as the project as it is
+    /// (`same_output`), or is equal to it: answered once per revision for
+    /// each kept project, and at once for the dialog's own copy (issue #470).
+    fn as_now(&self, app: &Application, kept: &Arc<Project>, same_output: bool) -> bool {
+        let project = self.project_now(app);
+        if Arc::ptr_eq(kept, &project) {
+            return true;
+        }
+        let mut now = self.now.borrow_mut();
+        let Some(now) = now.as_mut() else {
+            return false;
+        };
+        if !now.answers.iter().any(|(k, _, _)| Arc::ptr_eq(k, kept)) {
+            now.answers.push((Arc::clone(kept), None, None));
+        }
+        let Some((_, output, equal)) = now
+            .answers
+            .iter_mut()
+            .find(|(k, _, _)| Arc::ptr_eq(k, kept))
+        else {
+            return false;
+        };
+        let answer = if same_output { output } else { equal };
+        *answer.get_or_insert_with(|| {
+            #[cfg(test)]
+            self.compared.set(self.compared.get() + 1);
+            if same_output {
+                kept.same_output(&project)
+            } else {
+                **kept == *project
+            }
+        })
+    }
+
+    /// Whether `key` is for the project as it is and the post and grouping
+    /// chosen now: whether it gives the same files. What only the view uses
+    /// (the hidden toolpaths) and the stock simulation choice do not count
+    /// (decision records 0168 and 0169; GC-07).
+    fn is_key_now(&self, app: &Application, key: &Key) -> bool {
+        Some(&key.post) == self.selection().as_ref()
+            && key.grouping == self.grouping
+            && self.as_now(app, &key.project, true)
     }
 
     fn files_current(&self, app: &Application) -> Option<&Files> {
         let files = self.files.as_ref()?;
-        (files.key.project.same_output(app.project())
-            && Some(&files.key.post) == self.selection().as_ref()
-            && files.key.grouping == self.grouping)
-            .then_some(files)
+        self.is_key_now(app, &files.key).then_some(files)
     }
 
     /// The numbers typed for a by-hand renumbering, or why they are not numbers.
@@ -459,10 +554,7 @@ impl ExportPanel {
                 Some(result) => {
                     let key = key.clone();
                     self.job = None;
-                    match result.and_then(|run| {
-                        let plan = app.planned_files(&run, &key.post, key.grouping)?;
-                        Ok((Arc::new(run), plan))
-                    }) {
+                    match result.map(|(run, plan)| (Arc::new(run), plan)) {
                         Ok((run, plan)) => {
                             self.files_error = None;
                             self.preview = self.preview.min(plan.len().saturating_sub(1));
@@ -485,7 +577,12 @@ impl ExportPanel {
             return;
         }
         let Some(key) = self.key(app) else { return };
-        if self.files_current(app).is_some() || self.attempted.as_ref() == Some(&key) {
+        if self.files_current(app).is_some()
+            || self
+                .attempted
+                .as_ref()
+                .is_some_and(|attempted| self.is_key_now(app, attempted))
+        {
             return;
         }
         // Nothing is made while a blocker says the toolpaths are missing, out
@@ -495,7 +592,7 @@ impl ExportPanel {
             return;
         }
         self.attempted = Some(key.clone());
-        let handle = app.start_regenerate_with_post(key.post.clone(), key.grouping);
+        let handle = app.start_regenerate_with_post_and_plan(key.post.clone(), key.grouping);
         self.job = Some((handle, key));
         ctx.request_repaint();
     }
@@ -553,7 +650,7 @@ impl ExportPanel {
                 Act::Replace => {
                     if let Some(pending) = self.overwrite.take() {
                         if blocker.is_none()
-                            && self.key(app).as_ref() == Some(&pending.key)
+                            && self.is_key_now(app, &pending.key)
                             && self.folder == pending.folder
                             && self.file_names == pending.names
                         {
@@ -1183,7 +1280,7 @@ impl ExportPanel {
         // paths, which `output_preview` does not: so the preview is also keyed
         // on whether the run's project is the project now, and a refusal for
         // a project that has since gone back is not kept.
-        let same = *run.project == *app.project();
+        let same = self.as_now(app, &run.project, false);
         let fresh = self
             .output_preview
             .as_ref()
@@ -1191,7 +1288,14 @@ impl ExportPanel {
                 Arc::ptr_eq(r, run) && t == templates && *same_then == same
             });
         if !fresh {
-            let made = app.output_preview(run).map_err(|e| e.to_string());
+            let made = match self.split_for(run) {
+                Ok(programs) => {
+                    let programs = Arc::clone(programs);
+                    app.output_preview_from(run, &programs)
+                        .map_err(|e| e.to_string())
+                }
+                Err(e) => Err(e.clone()),
+            };
             self.output_preview = Some((Arc::clone(run), templates.clone(), same, made));
         }
     }
@@ -1525,6 +1629,95 @@ mod tests {
         assert!(reason.contains("Generate"), "{reason}");
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    /// Issue #470: with the dialog open, every frame copied the whole project
+    /// for its key and compared kept projects with it several times (about
+    /// 30 ms a frame on the owner's carving, whose selections hold half a
+    /// million triangles). Now once per change of the project.
+    #[test]
+    fn req_ui_09_req_nfr_04_the_dialog_copies_and_compares_the_project_once_per_change() {
+        let (dir, mut app, op, _) = cube_project("export-once");
+        app.set_post(None);
+        let mut panel = ExportPanel::new(None);
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        frame(&mut panel, &ctx, &mut app, Some(&run));
+        let (copied, compared) = (panel.snapshots.get(), panel.compared.get());
+        for _ in 0..5 {
+            frame(&mut panel, &ctx, &mut app, Some(&run));
+        }
+        assert_eq!(
+            panel.snapshots.get() - copied,
+            0,
+            "no copy without a change"
+        );
+        assert_eq!(
+            panel.compared.get() - compared,
+            0,
+            "no comparison without a change"
+        );
+        app.set_parameter(
+            op,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(1.1)),
+        )
+        .unwrap();
+        let (copied, compared) = (panel.snapshots.get(), panel.compared.get());
+        for _ in 0..5 {
+            frame(&mut panel, &ctx, &mut app, Some(&run));
+        }
+        assert!(
+            panel.snapshots.get() - copied <= 1,
+            "one copy after a change"
+        );
+        assert!(
+            panel.compared.get() - compared <= 2,
+            "the files' project and the run's, once each after a change"
+        );
+        assert!(
+            panel.files_current(&app).is_none(),
+            "the files are out of date"
+        );
+        // Back to the project the files were made from: they are current
+        // again, as comparing the projects says (a new revision, the same
+        // output).
+        assert!(app.undo().unwrap());
+        frame(&mut panel, &ctx, &mut app, Some(&run));
+        assert!(
+            panel.files_current(&app).is_some(),
+            "current again after the undo"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Issue #470: when posting ended the dialog planned the files on the
+    /// interface thread (a frame of 200 ms on the CrankShaft model, more on
+    /// the owner's carving). The posting job plans them; the dialog only
+    /// takes the plan.
+    #[test]
+    fn req_ui_09_req_gc_05_the_dialog_plans_no_files_on_the_interface_thread() {
+        let (dir, mut app, _, _) = cube_project("export-plan-off-thread");
+        app.set_post(None);
+        let mut panel = ExportPanel::new(None);
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        let before = Application::plans_made_on_this_thread();
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        assert_eq!(
+            panel.files.as_ref().unwrap().plan.len(),
+            1,
+            "the files are planned"
+        );
+        assert_eq!(
+            Application::plans_made_on_this_thread(),
+            before,
+            "no plan made on the interface thread"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

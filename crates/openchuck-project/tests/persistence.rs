@@ -2148,7 +2148,7 @@ fn req_prj_04_req_op_04_older_roughing_and_facing_operations_keep_adaptive_spaci
 
 #[test]
 fn req_op_27_req_prj_04_req_gc_07_older_operations_keep_their_surface_contact() {
-    // Schema 27 (decision record 0500): the operations of the strategies
+    // Schema 27 (decision record 0526): the operations of the strategies
     // that drop the tool on a STEP part gain Exact STEP surface contact. An
     // older operation is given the contact it already machined with: on for
     // helical, indexed, rest and simultaneous finishing (the exact ball drop

@@ -14,6 +14,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# The integration tests are one binary (tests/integration.rs, decision 0516, option C);
+# the files behind the `kernel-tests` feature stay one binary each, as the STEP kernel
+# job runs them by name.
+autotests = false
 
 [dependencies]
 openchuck-types.workspace = true
@@ -30,3 +34,7 @@ proptest.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

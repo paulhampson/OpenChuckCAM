@@ -89,9 +89,11 @@ mod faces;
 pub mod facing;
 pub mod field;
 pub mod finishing;
+pub mod flutes;
 pub mod helical;
 pub mod holes;
 pub mod indexed;
+pub mod order;
 pub mod parallel;
 pub mod params;
 pub mod pencil;
@@ -111,7 +113,10 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, UnreachedReason};
+pub use assemble::{
+    GeneratedPath, MAX_UNREACHED_POINTS, PathNote, PathWarning, ShankBreak, Unreached,
+    UnreachedReason,
+};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius, has_exact_drop};
 pub use brep_edges::BrepEdges;
@@ -137,10 +142,10 @@ pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
 pub use simultaneous::SimultaneousFinishing;
 pub use solid::Solid;
-pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
+pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, ReachProfile, StockModel};
 pub use strategy::{
-    CutPoint, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup, StrategyInput,
-    StrategyOutput, generate, generate_in_region, generate_in_zones,
+    CutPoint, HELD_CLEARANCE, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup,
+    StrategyInput, StrategyOutput, generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, FaceRef, MeshSurface, ParametricFace, RayHit, SurfacePoint,

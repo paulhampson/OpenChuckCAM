@@ -133,6 +133,7 @@ impl FormSection {
                 Self::ToolAxisAndA
             }
             "retract"
+            | "link_height"
             | "approach_distance"
             | "entry"
             | "ramp_back_and_forth"
@@ -238,7 +239,7 @@ pub fn parameter_form(
     let ramp_refusal = crate::ramp_entry::refusal(project, op);
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
     // Exact STEP surface contact means something only on a STEP part
-    // (decision record 0500): it is not shown for a mesh part.
+    // (decision record 0526): it is not shown for a mesh part.
     let on_step = crate::operation::on_step_part(project, op);
     let contact_problem = exact_contact_problem(project, registry, op);
     let fields = schema
@@ -336,7 +337,7 @@ pub fn parameter_form(
 }
 
 /// Why Exact STEP surface contact does not apply to `operation`'s tool, in
-/// plain words, when it does not (decision record 0500, NFR-07): the tool
+/// plain words, when it does not (decision record 0526, NFR-07): the tool
 /// then drops on the tessellation whatever the setting. `None` when it
 /// applies, or when the strategy has no such setting or the tool is unknown.
 fn exact_contact_problem(project: &Project, registry: &Registry, op: &Operation) -> Option<String> {

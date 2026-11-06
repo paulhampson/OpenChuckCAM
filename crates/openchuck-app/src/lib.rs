@@ -42,6 +42,7 @@ pub mod machine_edit;
 pub mod machine_library;
 pub mod machine_view;
 pub mod materials;
+mod memo;
 pub mod model;
 pub mod note_groups;
 pub mod operation;
@@ -52,6 +53,7 @@ mod output_write;
 pub mod overview;
 pub mod pathview;
 pub mod pick;
+mod pieces;
 mod pipeline;
 pub mod playback;
 mod posting;
@@ -74,6 +76,7 @@ mod test_project;
 pub mod tool_edit;
 pub mod tool_library;
 pub mod tools;
+pub mod unreached;
 pub mod workholding;
 pub mod workholding_view;
 
@@ -202,6 +205,25 @@ struct Document {
     project: Project,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread compared the project with the saved one.
+    static MODIFIED_COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread compared the project with the saved one.
+#[cfg(test)]
+pub(crate) fn modified_compared() -> usize {
+    MODIFIED_COMPARED.with(std::cell::Cell::get)
+}
+
+thread_local! {
+    /// How many runs this thread has split into program files (tests).
+    static RUN_SPLITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// How many times this thread has planned a run's files (tests).
+    static PLANS_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// An open project and the services that work on it.
 #[derive(Debug)]
 pub struct Application {
@@ -220,6 +242,8 @@ pub struct Application {
     events_rx: Receiver<Event>,
     /// Changes with every command, undo and redo ([`Application::revision`]).
     revision: u64,
+    /// Answers the interface asks every frame, kept per revision (issue #470).
+    memo: memo::Answers,
     /// What generation has made, for the item states (decision record 0117).
     record: std::sync::Arc<overview::GenerationRecord>,
     /// The lines for the user-action log not yet drained (NFR-18).
@@ -324,6 +348,7 @@ impl Application {
             events_tx,
             events_rx,
             revision: 0,
+            memo: memo::Answers::default(),
             record: std::sync::Arc::default(),
             actions: Vec::new(),
             clock: Box::new(SystemClock),
@@ -339,6 +364,9 @@ impl Application {
         if let Ok(mut saved) = self.saved.lock() {
             saved.clone_from(&self.document.project);
         }
+        self.memo
+            .saves
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.recovered_unsaved
             .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
@@ -347,13 +375,38 @@ impl Application {
     /// Whether the project differs from what was last opened, created or
     /// saved, so a front end can ask before discarding changes. Undoing back
     /// to the saved state makes it unmodified again.
+    ///
+    /// Asked every frame (the window title, the recovery checkpoints), so
+    /// the comparison is kept per revision and per save (issue #470).
     pub fn is_modified(&self) -> bool {
-        self.recovered_unsaved
-            .load(std::sync::atomic::Ordering::Relaxed)
-            || self
-                .saved
-                .lock()
-                .map_or(true, |saved| *saved != self.document.project)
+        use std::sync::atomic::Ordering::Relaxed;
+        if self.recovered_unsaved.load(Relaxed) {
+            return true;
+        }
+        let stamp = (self.revision, self.memo.saves.load(Relaxed));
+        *self.memo.modified.get(stamp, || {
+            self.saved.lock().map_or(true, |saved| {
+                #[cfg(test)]
+                MODIFIED_COMPARED.with(|c| c.set(c.get() + 1));
+                *saved != self.document.project
+            })
+        })
+    }
+
+    /// The status keys of the project's enabled operations (decision record
+    /// 0117), in machining order, made once per revision: the project
+    /// changes only through `execute`, `undo` and `redo`, and the keys read
+    /// nothing but the project (issue #470).
+    pub(crate) fn status_keys(&self) -> std::sync::Arc<Vec<(OperationId, cache::StatusKey)>> {
+        self.memo
+            .keys
+            .get(self.revision, || cache::status_keys(&self.document.project))
+    }
+
+    /// The project as last saved, for tests.
+    #[cfg(test)]
+    pub(crate) fn saved_for_tests(&self) -> Project {
+        self.saved.lock().unwrap().clone()
     }
 
     /// One sentence per model file that has changed or is missing since it
@@ -404,8 +457,8 @@ impl Application {
             .submit("build scene", self.events_tx.clone(), move |context| {
                 let mut view =
                     scene::build_scene(&document.location, &document.project, setup, context)?;
-                if let Some(run) = run.filter(|r| r.project.as_ref() == &document.project) {
-                    facing::display::add_generated(&mut view, &run, context)?;
+                if let Some(run) = run {
+                    facing::display::add_generated(&mut view, &run, &document.project, context)?;
                 }
                 Ok(view)
             })
@@ -446,7 +499,7 @@ impl Application {
 
     /// What is wrong with `draft` as the workholding of `setup`, from the
     /// part and the tools, which the setup's own validation cannot see: tabs
-    /// outside the head and tail zones (OI-180) and tabs narrower than a tool
+    /// outside the head and tail zones (OI-180) and tabs shorter along X than a tool is wide
     /// of the setup's operations (OI-159). A front end runs it before it
     /// stores an edit; generation refuses the same things. Empty when there
     /// is nothing wrong or no part to check against. Reads and places the
@@ -961,6 +1014,7 @@ impl Application {
                         frame: &s.frame,
                         stock: s.stock.as_ref(),
                         clearance: s.clearance.as_ref(),
+                        rules: &s.clearance_rules,
                         part: part.as_ref(),
                     }),
                     Some(setup::expected_work_offset(profile, &s.frame)),
@@ -998,10 +1052,10 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
-            // A tab narrower than a tool that operations of the setup use is
+            // A tab shorter along X than a tool is wide that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            notes.extend(workholding::narrow_tab_notes(project, s));
+            notes.extend(workholding::narrow_tab_notes(project, s, part.as_ref()));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),
@@ -1413,6 +1467,18 @@ impl Application {
         simulate: bool,
         until: Option<OperationId>,
     ) -> JobHandle<Regeneration> {
+        self.start_pipeline_then(name, simulate, until, Ok)
+    }
+
+    /// [`Self::start_pipeline`], with `then` done on the job's worker after
+    /// a run that succeeded (issue #470: the export dialog's file plan).
+    fn start_pipeline_then<T: Send + 'static>(
+        &self,
+        name: &str,
+        simulate: bool,
+        until: Option<OperationId>,
+        then: impl FnOnce(Regeneration) -> Result<T, AppError> + Send + 'static,
+    ) -> JobHandle<T> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
@@ -1439,7 +1505,7 @@ impl Application {
                     Err(e) if e.is_cancelled() => record.cancelled(),
                     Err(e) => record.failed(&document.project, e.to_string()),
                 }
-                result
+                result.and_then(then)
             })
     }
 
@@ -1512,7 +1578,17 @@ impl Application {
         post: &PostSelection,
         grouping: OutputGrouping,
     ) -> Result<Vec<PlannedFile>, AppError> {
+        PLANS_MADE.with(|n| n.set(n.get() + 1));
         posting::plan_files(run, post, grouping)
+    }
+
+    /// How many times [`Application::planned_files`] has planned a run's
+    /// files on this thread: lets a test show that the interface thread
+    /// plans none when a posting job ends (issue #470).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn plans_made_on_this_thread() -> usize {
+        PLANS_MADE.with(std::cell::Cell::get)
     }
 
     /// Starts regenerating with `post` and `grouping` for this one run, leaving
@@ -1527,6 +1603,26 @@ impl Application {
         let (before_post, before_grouping) = (self.post.replace(post), self.grouping);
         self.grouping = grouping;
         let handle = self.start_pipeline("post", false, None);
+        self.post = before_post;
+        self.grouping = before_grouping;
+        handle
+    }
+
+    /// [`Self::start_regenerate_with_post`], with the files `grouping` will
+    /// write planned in the same job, on its worker
+    /// ([`Self::planned_files`] of the run it made): the export dialog does
+    /// not plan them on the interface thread (issue #470; UI-09).
+    pub fn start_regenerate_with_post_and_plan(
+        &mut self,
+        post: PostSelection,
+        grouping: OutputGrouping,
+    ) -> JobHandle<(Regeneration, Vec<PlannedFile>)> {
+        let (before_post, before_grouping) = (self.post.replace(post.clone()), self.grouping);
+        self.grouping = grouping;
+        let handle = self.start_pipeline_then("post", false, None, move |run| {
+            let plan = posting::plan_files(&run, &post, grouping)?;
+            Ok((run, plan))
+        });
         self.post = before_post;
         self.grouping = before_grouping;
         handle
@@ -1610,13 +1706,43 @@ impl Application {
     /// written, when a template cannot name a file (NFR-07). The dialog's
     /// preview and the write both use this.
     pub fn output_files(&self, run: &Regeneration) -> Result<OutputFiles, AppError> {
+        self.name_outputs(run, &Self::run_programs(run)?)
+    }
+
+    /// The step of [`Application::output_files`] that depends only on the
+    /// run: the toolpath split into program files, with each file's text.
+    /// Keep it with the run it was made from and give it to
+    /// [`Application::name_outputs`] again after a template edit, so typing
+    /// in a template does not split the toolpath again (issue 379). A new
+    /// run needs a new one; never reuse it across runs (NFR-12).
+    pub fn run_programs(run: &Regeneration) -> Result<output_names::RunPrograms, AppError> {
+        RUN_SPLITS.with(|n| n.set(n.get() + 1));
+        posting::program_files(run).map(output_names::RunPrograms::new)
+    }
+
+    /// How many times [`Application::run_programs`] has split a run on this
+    /// thread: lets a test show that a template edit does not split again.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn run_splits_on_this_thread() -> usize {
+        RUN_SPLITS.with(std::cell::Cell::get)
+    }
+
+    /// The step of [`Application::output_files`] that depends on the
+    /// templates: the final names, from `programs`, which must be
+    /// [`Application::run_programs`] of this same `run`.
+    pub fn name_outputs(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<OutputFiles, AppError> {
         let job = self.job_facts(
             &run.project,
             run.posted_selection.as_ref().map(|(post, _)| post),
         );
-        let mut programs = Vec::new();
+        let mut programs_out = Vec::new();
         let mut groups = Vec::new();
-        for (index, (file, contents)) in posting::program_files(run)?.into_iter().enumerate() {
+        for (index, (file, contents)) in programs.files().iter().enumerate() {
             let extension = std::path::Path::new(&file.posted_name)
                 .extension()
                 .map_or_else(String::new, |e| e.to_string_lossy().into_owned());
@@ -1625,14 +1751,15 @@ impl Application {
                 &job,
                 &output_names::FileFacts {
                     index,
-                    contents: &contents,
-                    file: &file,
+                    contents,
+                    file,
                 },
             )
             .map_err(AppError::FileNames)?;
             groups.push((stem, vec![extension]));
-            programs.push(file);
+            programs_out.push(file.clone());
         }
+        let programs = programs_out;
         let sheet = output_names::sheet_stem(&self.file_names.setup_sheet, &job)
             .map_err(AppError::FileNames)?;
         groups.push((
@@ -1644,6 +1771,7 @@ impl Application {
         ));
         let (mut named, renamed) = output_names::unique_names(&groups);
         let sheet_names = named.pop().unwrap_or_default();
+        let mut programs = programs;
         for (program, names) in programs.iter_mut().zip(named) {
             program.name = names.into_iter().next().unwrap_or_default();
         }
@@ -1688,7 +1816,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, &Self::run_programs(run)?)?;
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         for (program, source) in named.programs.iter().zip(sources) {
             let text = run.gcode.get(source).map(|(_, text)| text).ok_or_else(|| {
@@ -1709,8 +1837,12 @@ impl Application {
 
     /// The final names of the program files and, for each, the index of its
     /// text in the run: the one source of the write and the preview.
-    fn program_sources(&self, run: &Regeneration) -> Result<(OutputFiles, Vec<usize>), AppError> {
-        let named = self.output_files(run)?;
+    fn program_sources(
+        &self,
+        run: &Regeneration,
+        programs: &output_names::RunPrograms,
+    ) -> Result<(OutputFiles, Vec<usize>), AppError> {
+        let named = self.name_outputs(run, programs)?;
         let sources = named
             .programs
             .iter()
@@ -1733,6 +1865,17 @@ impl Application {
         &self,
         run: &std::sync::Arc<Regeneration>,
     ) -> Result<output_preview::OutputPreview, AppError> {
+        self.output_preview_from(run, &Self::run_programs(run)?)
+    }
+
+    /// [`Application::output_preview`] from the run's kept split
+    /// ([`Application::run_programs`] of this same `run`), so a template edit
+    /// names the files again without splitting the toolpath (issue 379).
+    pub fn output_preview_from(
+        &self,
+        run: &std::sync::Arc<Regeneration>,
+        programs: &output_names::RunPrograms,
+    ) -> Result<output_preview::OutputPreview, AppError> {
         if run.gcode.is_empty() {
             return Err(AppError::Post(
                 "There is no G-code to preview. Generate the operations first.".to_owned(),
@@ -1741,7 +1884,7 @@ impl Application {
         if *run.project != self.document.project {
             return Err(AppError::OutOfDate);
         }
-        let (named, sources) = self.program_sources(run)?;
+        let (named, sources) = self.program_sources(run, programs)?;
         output_preview::OutputPreview::new(
             run,
             sources
@@ -1793,7 +1936,18 @@ impl Application {
         posted: Option<&Regeneration>,
         last_error: Option<&str>,
     ) -> ExportChecks {
-        export::export_checks(&self.document.project, run, posted, last_error)
+        // The keys are kept per revision of the project and per run: the
+        // export dialog asks every frame (issue #470).
+        export::export_checks_with(&self.document.project, run, posted, last_error, |run| {
+            let now = self.memo.export_keys.get(self.revision, || {
+                export::keys_answer(&self.document.project)
+            });
+            let then = self
+                .memo
+                .run_keys
+                .get(&run.project, || export::keys_answer(&run.project));
+            export::stale_from(&now, &then, run)
+        })
     }
 
     /// The post in use, if one is chosen.

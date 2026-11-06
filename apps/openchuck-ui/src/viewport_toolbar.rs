@@ -61,13 +61,14 @@ pub const fn directions_unavailable(setup_panes: bool, has_model: bool) -> Optio
 type Entry = (&'static str, fn(&mut Visibility) -> &mut bool);
 
 /// The entries of "Show or hide", in order.
-pub const SHOW_OR_HIDE: [Entry; 6] = [
+pub const SHOW_OR_HIDE: [Entry; 7] = [
     ("Part", |v| &mut v.part),
     ("Stock", |v| &mut v.stock),
     ("Rotary axis and work axes", |v| &mut v.axes),
     ("Held regions and tabs", |v| &mut v.workholding),
     ("Selections", |v| &mut v.selections),
     ("Toolpaths", |v| &mut v.toolpaths),
+    ("Unreachable areas", |v| &mut v.unreachable),
 ];
 
 /// The line under "Show or hide" (7.5).
@@ -209,7 +210,8 @@ fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, choices: &[(T, &str, &str)],
 /// The "Show or hide" button and its list (V).
 fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport) {
     let button = ui.button("Show \u{23f7}").on_hover_text(
-        "Show or hide: part, stock, axes, held regions and tabs, selections, toolpaths (V)",
+        "Show or hide: part, stock, axes, held regions and tabs, selections, toolpaths, unreachable \
+         areas (V)",
     );
     if button.clicked() {
         viewport.show_menu_open = !viewport.show_menu_open;

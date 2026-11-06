@@ -683,3 +683,35 @@ fn req_nfr_07_an_empty_or_cancelled_drilling_job_is_a_clear_error() {
     .unwrap_err();
     assert!(matches!(error, PathError::Cancelled));
 }
+
+#[test]
+fn req_op_10_req_tl_04_req_nfr_07_a_hole_deeper_than_the_flutes_is_warned() {
+    // Decision record 0509: a drill whose flutes do not reach the bottom of
+    // the hole from the top of the stock would put its shank in the hole.
+    let rig = Rig::new(&several());
+    let short = Tool {
+        shape: ToolShape::Drill {
+            point_angle: Degrees(118.0),
+        },
+        diameter: Millimetres(DIAMETER),
+        flute_length: Millimetres(5.0),
+        overall_length: Millimetres(60.0),
+        shank_diameter: Millimetres(DIAMETER),
+        flute_count: 2,
+        material: None,
+        centre_cutting: Some(true),
+    }
+    .profile()
+    .unwrap();
+    // A warning, not a refusal (decision record 0522): the path is made.
+    let flute = |path: &GeneratedPath| {
+        path.warnings
+            .iter()
+            .find(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
+            .map(|w| w.message.clone())
+    };
+    let e = flute(&rig.path(&short, &values(&[])).unwrap()).unwrap();
+    assert!(e.contains("5.000 mm of flute"), "{e}");
+    assert!(e.contains("24.000 mm diameter cylinder"), "{e}");
+    assert!(flute(&rig.path(&drill(DIAMETER), &values(&[])).unwrap()).is_none());
+}

@@ -433,7 +433,7 @@ fn req_nfr_07_exact_ball_drop_refuses_what_it_cannot_answer() {
     assert!(surface.drop_ball(&flat, &line).is_none());
     // A tool with no exact drop at all, a bull nose (OI-1350), drops on the
     // tessellation; a flat end takes the outline drop on a surface with
-    // exact drops (decision 0500).
+    // exact drops (decision 0526).
     let bull = ToolProfile {
         segments: vec![
             ProfileSegment::Line {

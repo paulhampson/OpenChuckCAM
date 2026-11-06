@@ -92,6 +92,14 @@ impl Strategy for HelicalFinishing {
         Some(crate::contact::ExactContact::Ball)
     }
 
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -107,80 +115,72 @@ impl Strategy for HelicalFinishing {
     fn schema(&self) -> ParameterSchema {
         crate::contact::with_switch(crate::contact::ExactContact::Ball, {
             ParameterSchema::with_common(
-                vec![
-                    ParameterSpec {
-                        name: parameter::ROTATION.to_owned(),
-                        label: "Rotation".to_owned(),
-                        description: "Which way A turns as X increases along the helix.".to_owned(),
-                        kind: ParameterKind::Choice {
-                            options: vec!["positive".to_owned(), "negative".to_owned()],
-                            default: "positive".to_owned(),
-                        },
+            vec![
+                ParameterSpec {
+                    name: parameter::ROTATION.to_owned(),
+                    label: "Rotation".to_owned(),
+                    description: "Which way A turns as X increases along the helix.".to_owned(),
+                    kind: ParameterKind::Choice {
+                        options: vec!["positive".to_owned(), "negative".to_owned()],
+                        default: "positive".to_owned(),
                     },
-                    ParameterSpec {
-                        name: parameter::START_ANGLE.to_owned(),
-                        label: "Start angle".to_owned(),
-                        description: "A at the lowest X of the part, where the helix starts."
-                            .to_owned(),
-                        kind: ParameterKind::Number {
-                            unit: Unit::Degrees,
-                            min: None,
-                            min_exclusive: false,
-                            max: None,
-                            default: Some(0.0),
-                        },
+                },
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A at the lowest X of the part, where the helix starts."
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
                     },
-                    ParameterSpec {
-                        name: parameter::MAX_ANGLE_STEP.to_owned(),
-                        label: "Largest angle step".to_owned(),
-                        description:
-                            "The most A may turn between two points of the path; points are \
+                },
+                ParameterSpec {
+                    name: parameter::MAX_ANGLE_STEP.to_owned(),
+                    label: "Largest angle step".to_owned(),
+                    description: "The most A may turn between two points of the path; points are \
                               added where the surface needs them."
-                                .to_owned(),
-                        kind: ParameterKind::Number {
-                            unit: Unit::Degrees,
-                            min: Some(0.0),
-                            min_exclusive: true,
-                            max: Some(90.0),
-                            default: Some(5.0),
-                        },
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: Some(90.0),
+                        default: Some(5.0),
                     },
-                    ParameterSpec {
-                        name: parameter::SCALLOP.to_owned(),
-                        label: "Scallop height".to_owned(),
-                        description: "The largest cusp between turns, for ball-end and bull-nose \
+                },
+                ParameterSpec {
+                    name: parameter::SCALLOP.to_owned(),
+                    label: "Scallop height".to_owned(),
+                    description: "The largest cusp between turns, for ball-end and bull-nose \
                               tools. The pitch is the smaller of this and the stepover \
                               allows. 0 turns it off."
-                            .to_owned(),
-                        kind: ParameterKind::Number {
-                            unit: Unit::Millimetres,
-                            min: Some(0.0),
-                            min_exclusive: false,
-                            max: None,
-                            default: Some(0.0),
-                        },
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Millimetres,
+                        min: Some(0.0),
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
                     },
-                    ParameterSpec {
-                        name: parameter::PASS_SHAPE.to_owned(),
-                        label: "Passes".to_owned(),
-                        description:
-                            "Spiral: one continuous spiral that moves along the part as it \
-                              turns. Rings: one full turn at a time at a fixed place along the \
-                              part, with a short step along the part between turns, at the \
-                              start angle."
-                                .to_owned(),
-                        kind: ParameterKind::Choice {
-                            options: vec![parameter::HELIX.to_owned(), parameter::RINGS.to_owned()],
-                            default: parameter::HELIX.to_owned(),
-                        },
-                    },
-                ]
-                .into_iter()
-                .chain(crate::extend::specs(false))
-                .chain(crate::finishing::specs(true, true))
-                .chain(adaptive::specs())
-                .collect(),
-            )
+                },
+                pass_shape_spec(
+                    "Spiral: one continuous spiral that moves along the part as it turns. Rings: \
+                     one full turn at a time at a fixed place along the part, with a short step \
+                     along the part between turns, at the start angle.",
+                ),
+            ]
+            .into_iter()
+            .chain(crate::extend::specs(false))
+            .chain(crate::finishing::specs(true, true))
+            .chain(adaptive::specs())
+            .chain(std::iter::once(crate::order::spec()))
+            .chain(std::iter::once(crate::axial::link_height_spec()))
+            .collect(),
+        )
         })
     }
 
@@ -411,7 +411,7 @@ fn passes(
             across: 0.0,
         };
 
-        let rings = parameters.text(parameter::PASS_SHAPE)? == parameter::RINGS;
+        let rings = in_rings(parameters);
         // The faces across the axis, where the tool's side touches them
         // (decision record 0297).
         let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
@@ -429,21 +429,15 @@ fn passes(
         let (passes, spaced, ring_note) = if rings {
             // Rings evenly spaced from end to end, no wider apart than the
             // pitch, with each face's turn among them (decision record 0390).
-            let gaps = ((length / pitch) * (1.0 - 1e-12)).ceil().max(1.0);
-            let spacing = length / gaps;
-            let mut xs: Vec<f64> = (0..=gaps as usize)
-                .map(|k| {
-                    if k == gaps as usize {
-                        x1
-                    } else {
-                        x0 + spacing * k as f64
-                    }
-                })
-                .chain(turns.iter().copied())
-                .collect();
-            xs.sort_by(f64::total_cmp);
-            xs.dedup_by(|b, a| (*b - *a).abs() < 1e-9);
-            let (passes, each) = ring_passes(&fit, &xs, step, adaptive.is_some(), context)?;
+            let (xs, spacing) = ring_places((x0, x1), pitch, &turns);
+            let (passes, each) = ring_passes(
+                &fit,
+                &xs,
+                step,
+                adaptive.is_some(),
+                "helical finishing",
+                context,
+            )?;
             let spaced = match adaptive {
                 Some(settings) => Some(adaptive_passes(
                     input,
@@ -492,14 +486,17 @@ fn passes(
             spaced_warning =
                 outcome.warning(&settings, &adaptive::Limits::OWNER, parameter::SCALLOP);
         }
-        // One whole turn at each face across the axis, cut after the helix
-        // as its own pass, so the helix is as before (decision record 0297).
-        // Rings already have them in order.
+        // One whole turn at each face across the axis, as its own pass, so
+        // the helix is as before (decision record 0297), cut after the helix
+        // or beside its region (decision record 0520). Rings already have
+        // them in order.
+        let mut order_note = None;
         if !rings {
+            let mut groups = Vec::with_capacity(turns.len());
             for &x in &turns {
                 context.check_cancelled()?;
                 let at = start + sign * 360.0 * (x - x0) / pitch;
-                passes.extend(turn_passes(
+                groups.push(turn_passes(
                     input,
                     region,
                     (&grown, leave, &zone_fits),
@@ -510,6 +507,15 @@ fn passes(
                     context,
                 )?);
             }
+            let arranged = crate::order::arrange(
+                parameters.text(crate::order::PARAMETER)?,
+                passes,
+                groups,
+                crate::order::Rates::of(&input.max_feeds, input.clearance.radius.0),
+                parameters.number(names::FEED)?,
+            );
+            passes = arranged.passes;
+            order_note = arranged.note;
         }
         // Finishing layers above the passes made so far, when on (decision
         // record 0345).
@@ -526,15 +532,73 @@ fn passes(
         let notes = ring_note
             .into_iter()
             .chain(faces::note(&turns))
+            .chain(order_note)
             .chain(faces::held_note(&found.held))
             .chain(spaced_note)
             .chain(layered)
             .chain(free.notes)
+            .chain(crate::finishing::across_axis_note(
+                region,
+                "Helical finishing",
+            ))
             .collect();
         let mut warnings = free.warnings;
         warnings.extend(spaced_warning);
+        // Every pass may be linked low when asked (decision 0521).
+        crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok((passes, notes, warnings))
     }
+}
+
+/// The **Passes** setting (decision records 0390 and 0420): the same name,
+/// label and choices wherever a strategy that cuts a spiral offers rings,
+/// with `description` saying what the choice does in that strategy.
+pub(crate) fn pass_shape_spec(description: &str) -> ParameterSpec {
+    ParameterSpec {
+        name: parameter::PASS_SHAPE.to_owned(),
+        label: "Passes".to_owned(),
+        description: description.to_owned(),
+        kind: ParameterKind::Choice {
+            options: vec![parameter::HELIX.to_owned(), parameter::RINGS.to_owned()],
+            default: parameter::HELIX.to_owned(),
+        },
+    }
+}
+
+/// Whether `parameters` choose rings. The value was checked against the
+/// choices when the parameters were resolved, so anything but rings is the
+/// spiral, as before the option; so is a schema with no **Passes** setting
+/// (a strategy that only shares the code, such as the reference copy of an
+/// earlier Facing).
+pub(crate) fn in_rings(parameters: &Parameters) -> bool {
+    matches!(
+        parameters.get(parameter::PASS_SHAPE),
+        Some(crate::params::ParameterValue::Text(t)) if t == parameter::RINGS
+    )
+}
+
+/// Where the rings go between `x0` and `x1` (decision record 0390 item 3):
+/// the length divided into equal gaps no wider than `pitch`, with a ring at
+/// each end, and a ring at each X of `turns` (the faces across the axis,
+/// decision record 0297) in X order. Gives the X of each ring and the
+/// spacing of the equal gaps.
+pub(crate) fn ring_places((x0, x1): (f64, f64), pitch: f64, turns: &[f64]) -> (Vec<f64>, f64) {
+    let length = x1 - x0;
+    let gaps = ((length / pitch) * (1.0 - 1e-12)).ceil().max(1.0);
+    let spacing = length / gaps;
+    let mut xs: Vec<f64> = (0..=gaps as usize)
+        .map(|k| {
+            if k == gaps as usize {
+                x1
+            } else {
+                x0 + spacing * k as f64
+            }
+        })
+        .chain(turns.iter().copied())
+        .collect();
+    xs.sort_by(f64::total_cmp);
+    xs.dedup_by(|b, a| (*b - *a).abs() < 1e-9);
+    (xs, spacing)
 }
 
 /// The rings of helical finishing at each X of `xs`, in order, each a whole
@@ -543,11 +607,12 @@ fn passes(
 /// the same tool, stock to leave, zones and region. Gives the joined passes
 /// and, when `keep_each` (adaptive spacing is on), each ring's own passes,
 /// by X, for adaptive spacing.
-fn ring_passes(
+pub(crate) fn ring_passes(
     fit: &Fit<'_>,
     xs: &[f64],
     step: f64,
     keep_each: bool,
+    label: &str,
     context: &JobContext<'_>,
 ) -> Result<(Vec<Pass>, Vec<Ring>)> {
     let around = (360.0 / step).ceil().max(1.0) as usize;
@@ -562,7 +627,7 @@ fn ring_passes(
             max_dt: 1.0 / around as f64,
             ..*fit
         };
-        let pieces = fit_region(&ring, around, "helical finishing", context)?;
+        let pieces = fit_region(&ring, around, label, context)?;
         if keep_each {
             join(&mut joined, pieces.clone());
             each.push((x, pieces));
@@ -579,10 +644,7 @@ fn ring_passes(
                 max_dt: 1.0 / seeds as f64,
                 ..*fit
             };
-            join(
-                &mut joined,
-                fit_region(&along, seeds, "helical finishing", context)?,
-            );
+            join(&mut joined, fit_region(&along, seeds, label, context)?);
         }
     }
     Ok((joined, each))
@@ -591,7 +653,7 @@ fn ring_passes(
 /// Appends `pieces` to `passes`, continuing the last pass where a piece
 /// starts where it ends (the same tip, A the same but for whole turns), so
 /// a ring and the step after it are one cut.
-fn join(passes: &mut Vec<Pass>, pieces: Vec<Pass>) {
+pub(crate) fn join(passes: &mut Vec<Pass>, pieces: Vec<Pass>) {
     for piece in pieces {
         let meets = |last: &Pass| {
             let (Some(end), Some(start)) = (last.points.last(), piece.points.first()) else {
@@ -611,7 +673,7 @@ fn join(passes: &mut Vec<Pass>, pieces: Vec<Pass>) {
 }
 
 /// A ring's X and its own passes.
-type Ring = (f64, Vec<Pass>);
+pub(crate) type Ring = (f64, Vec<Pass>);
 
 /// Which passes adaptive spacing works between.
 enum Shape<'p> {

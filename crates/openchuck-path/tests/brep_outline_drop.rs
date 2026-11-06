@@ -862,7 +862,7 @@ fn req_nfr_07_outlines_without_an_exact_drop_stay_on_the_tessellation() {
     for tool in tools() {
         assert!(surface.drop_exact(&tool.profile, &bad).is_none());
         // A surface asked for exact drops drops these tools on the exact
-        // faces (decision 0500, behind the operation's setting).
+        // faces (decision 0526, behind the operation's setting).
         assert_eq!(
             surface.drop_tool(&tool.profile, &line),
             surface.drop_exact(&tool.profile, &line).map(|d| d.contact),
@@ -877,7 +877,7 @@ fn req_op_02_req_op_23_exact_outline_contacts_are_judged_on_exact_face_sets() {
     // OI-833 for the outline (decisions 0277 and 0338): flat-end and
     // tapered-ball exact contacts lie on the exact faces, off the triangles,
     // and the region and avoid sets judge them as exact faces, ready for a
-    // strategy that turns them on (decision 0500). A check set drops the
+    // strategy that turns them on (decision 0526). A check set drops the
     // tool on itself (`drop_tool`), the outline drop with exact drops on.
     use openchuck_path::RegionConstraint;
     let model = openchuck_testkit::brep::banded_cylinder(10.0, 30.0, &[10.0, 20.0]);

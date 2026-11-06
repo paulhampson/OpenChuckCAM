@@ -135,7 +135,14 @@ fn req_op_11_req_op_21_later_leg_reversal_and_final_connection_are_checked() {
 fn req_op_11_req_set_09_complete_shank_envelope_and_machine_travel_are_checked() {
     use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, ToolProfile};
     let target = MeshSurface::new(&box_at(20.0, 1.0).mesh(8)).unwrap();
-    let cutter = support::tool(ToolShape::FlatEnd, 1.0).profile().unwrap();
+    // A cutting part 12 mm long, well short of the solid 40 mm up, which
+    // only the complete body reaches.
+    let cutter = openchuck_types::tool::Tool {
+        flute_length: openchuck_types::units::Millimetres(12.0),
+        ..support::tool(ToolShape::FlatEnd, 1.0)
+    }
+    .profile()
+    .unwrap();
     let body = ToolProfile {
         segments: vec![
             ProfileSegment::Line {

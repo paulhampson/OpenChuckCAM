@@ -10,6 +10,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+# The integration tests are one binary (tests/integration.rs, decision 0516, option C);
+# the files behind the `kernel-tests` feature stay one binary each, as the STEP kernel
+# job runs them by name.
+autotests = false
 
 [features]
 # Tests that compare the library's exact evaluators with OpenCASCADE itself (decision 0017, 0027).
@@ -31,6 +35,12 @@ required-features = ["kernel-tests"]
 
 [[example]]
 name = "swarf_tolerance"
+required-features = ["kernel-tests"]
+
+# How far swarf cuts into the floor below the faces it cuts, with and without
+# the floor in an avoid set (lane SWARF-FLOOR, decision record 0491).
+[[example]]
+name = "swarf_floor"
 required-features = ["kernel-tests"]
 
 # The exact face and trim queries, measured for correctness and cost (lane
@@ -62,3 +72,39 @@ proptest.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "brep_edges_step"
+path = "tests/brep_edges_step.rs"
+
+[[test]]
+name = "step_accuracy"
+path = "tests/step_accuracy.rs"
+
+[[test]]
+name = "step_drilling"
+path = "tests/step_drilling.rs"
+
+[[test]]
+name = "step_exact"
+path = "tests/step_exact.rs"
+
+[[test]]
+name = "step_pipeline"
+path = "tests/step_pipeline.rs"
+
+[[test]]
+name = "step_queries"
+path = "tests/step_queries.rs"
+
+[[test]]
+name = "step_selection"
+path = "tests/step_selection.rs"
+
+[[test]]
+name = "step_strategies"
+path = "tests/step_strategies.rs"

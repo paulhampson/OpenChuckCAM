@@ -211,6 +211,11 @@ pub struct OperationPath {
     /// finished surface deeper than the tolerance (NFR-12; decision record
     /// 0175). Each is in `notes` too.
     pub warnings: Vec<openchuck_path::PathWarning>,
+    /// The areas of the part the strategy could not reach, with the surface
+    /// points in each (OP-20; decision record 0515): what the viewport marks
+    /// on the part. They go with the path, so a path from the cache brings
+    /// the areas it was made with.
+    pub unreached: std::sync::Arc<[openchuck_path::Unreached]>,
     /// Immutable whole-setup inputs for Facing's actual connected-path checks.
     /// None preserves legacy default Facing and every other strategy.
     pub facing: Option<crate::facing::FacingVerification>,
@@ -336,6 +341,70 @@ pub(crate) fn generate_with_part(
     edges: Option<EdgeOptions>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
+    generate_unnamed(root, project, id, registry, stock, placed, edges, context).map_err(|e| {
+        match project.operation(id) {
+            Some(operation) => named(operation, e),
+            None => e,
+        }
+    })
+}
+
+/// `error` from generating `operation`, naming it (issue #547): an error
+/// from the pathing library does not know which operation it is about, so
+/// the user could not tell which one to change. Its own words are kept,
+/// with the parameter it names. A cancel stays a cancel (UI-09), and an
+/// error of the application's own is kept as it is.
+fn named(operation: &Operation, error: AppError) -> AppError {
+    match error {
+        AppError::Path(openchuck_path::PathError::Cancelled) => error,
+        AppError::Path(other) => AppError::Operation {
+            name: operation.name.clone(),
+            reason: other.to_string(),
+        },
+        other => other,
+    }
+}
+
+/// A warning of `operation`'s path as the user reads it: the flute check's
+/// warning names the operation and its tool (decision record 0522; issue
+/// #547), and so does a tab shorter than the tool (decision 0523; #548). Named when shown, not when made, so a renamed operation or tool,
+/// which does not make the path stale (issue 209), is named as it is now.
+/// Any other warning is unchanged.
+pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &str) -> String {
+    // The flute check's warning (decision 0522) and a tab shorter than the
+    // tool (decision 0523).
+    let (title, rest) =
+        if let Some(rest) = message.strip_prefix(openchuck_path::flutes::WARNING_LEAD) {
+            ("Flute length", rest)
+        } else if let Some(rest) = message.strip_prefix(crate::workholding::TAB_LENGTH_LEAD) {
+            ("Tab length", rest)
+        } else {
+            return message.to_owned();
+        };
+    let tool = operation
+        .tool
+        .and_then(|id| project.tools().iter().find(|t| t.id == id));
+    match tool {
+        Some(tool) => format!(
+            "{title} (operation '{}', tool '{}'): {rest}",
+            operation.name, tool.name
+        ),
+        None => format!("{title} (operation '{}'): {rest}", operation.name),
+    }
+}
+
+/// [`generate_with_part`] before its error names the operation.
+#[allow(clippy::too_many_arguments)]
+fn generate_unnamed(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    placed: Option<crate::model::PlacedPart>,
+    edges: Option<EdgeOptions>,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
     let carried = stock;
     let operation = project
         .operation(id)
@@ -439,7 +508,7 @@ pub(crate) fn generate_with_part(
     };
     // An operation whose Exact STEP surface contact is on drops a tool the
     // setting applies to onto the exact faces of a STEP part (decisions 0277
-    // and 0500); any other tool, and the other strategies, onto its
+    // and 0526); any other tool, and the other strategies, onto its
     // tessellation, with face sets of its triangles to match.
     let profile = snapshot.tool.profile()?;
     let contact_on = openchuck_path::contact::is_on(strategy, &stored_values(operation));
@@ -461,6 +530,8 @@ pub(crate) fn generate_with_part(
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
     let mut reach_notes = Vec::new();
+    // A tab shorter than the tool, warned of (decision 0523).
+    let mut tab_warnings: Vec<String> = Vec::new();
     // No part of the tool reaches over a gripped length while it cuts
     // (SET-09; decision 0161): each held region widened by the tool's largest
     // radius, its shank included.
@@ -470,14 +541,26 @@ pub(crate) fn generate_with_part(
     } else {
         let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
-        crate::workholding::check_for_tool(
+        // An operation with no region checks every tab before it is made; one
+        // limited by selections checks, once it is made, only the tabs its
+        // path can touch (issue #548; decision 0523, amending 0494 item 2).
+        // A tab outside the end zones is refused; one shorter than the tool
+        // is warned of (decision 0523, amending 0494 item 1).
+        let limited = operation.selection_refs().next().is_some();
+        crate::workholding::check_for_tool_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            &|_| !limited,
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+        tab_warnings = crate::workholding::short_tab_warnings_where(
             &setup.workholding,
             setup.stock.as_ref(),
             &part,
             2.0 * profile.cutting_radius(),
-            &snapshot.name,
-        )
-        .map_err(|e| missing(operation, &e.to_string()))?;
+            &|_| !limited,
+        );
         let labelled =
             crate::workholding::labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)
                 .map_err(|e| missing(operation, &e.to_string()))?;
@@ -637,7 +720,7 @@ pub(crate) fn generate_with_part(
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(machine),
-        clearance: setup.clearance.unwrap_or(machine.clearance),
+        clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: entry_safety.as_ref(),
@@ -693,6 +776,33 @@ pub(crate) fn generate_with_part(
             ));
         }
     }
+    // A whole-part operation whose tool cannot cut down beside a tab between
+    // a held region and the part says so; it still generates (OP-21, SET-09;
+    // decision 0503; issue #511).
+    if operation.selections.is_empty()
+        && CLEARS_ROUND_TABS.contains(&operation.strategy.as_str())
+        && !setup.workholding.tabs.is_empty()
+        && let Some(setup_stock) = setup.stock.as_ref()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let leave = match values.get(names::STOCK_TO_LEAVE) {
+            Some(ParameterValue::Number(n)) => *n,
+            _ => operation_leave,
+        };
+        let label = crate::workholding::operation_label(project, operation);
+        leave_notes.extend(crate::workholding::uncleared_tab_notes(
+            &setup.workholding,
+            setup_stock,
+            &part,
+            &crate::workholding::ClearingTool {
+                cutting_radius: profile.cutting_radius(),
+                reach: tool_reach(&profile, &snapshot.tool),
+                leave,
+                tool: &snapshot.name,
+                operation: &label,
+            },
+        ));
+    }
     // Edge following on a STEP part follows the B-rep's own edges, with the
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
     // decision 0056); on a mesh part's chosen edges it follows only them (OP-08,
@@ -744,6 +854,33 @@ pub(crate) fn generate_with_part(
             context,
         )?
     };
+    // The tabs a limited operation's path can touch, against its tool
+    // (issue #548; decision 0523): a tab it never comes near says nothing;
+    // one outside the end zones it does touch is refused, and one shorter
+    // than the tool is warned of.
+    if operation.selection_refs().next().is_some()
+        && !setup.workholding.tabs.is_empty()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let reach = tool_reach(&profile, &snapshot.tool);
+        let touched = |tab: &openchuck_types::workholding::Tab| {
+            crate::workholding::path_reaches_tab(&path.group, tab, reach)
+        };
+        crate::workholding::check_for_tool_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            &touched,
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+        tab_warnings = crate::workholding::short_tab_warnings_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            2.0 * profile.cutting_radius(),
+            &touched,
+        );
+    }
     // A path carried past the stock is checked against the machine's travel
     // along the rotary axis before it is accepted (OP-24; decision 0212
     // part B item 5).
@@ -761,6 +898,15 @@ pub(crate) fn generate_with_part(
         .map(|l| l.warnings.clone())
         .or_else(|| resolved_region.as_ref().map(|r| r.warnings.clone()))
         .unwrap_or_default();
+    warnings.extend(
+        tab_warnings
+            .into_iter()
+            .map(|message| openchuck_path::PathWarning {
+                message,
+                parameter: None,
+                requires_acknowledgement: false,
+            }),
+    );
     // Notes about the values come first, then the notes about moves.
     let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
     notes.extend(resolved.notes);
@@ -821,12 +967,13 @@ pub(crate) fn generate_with_part(
             warnings.extend(path.warnings);
             warnings
         },
+        unreached: path.unreached.into(),
     })
 }
 
 /// The note on an operation of `strategy` (registered as `name`) on a STEP
 /// part that says which surface the tool was dropped on (decision 0209 item
-/// 4.4, OI-830; decisions 0277 and 0500): the exact faces, when the
+/// 4.4, OI-830; decisions 0277 and 0526): the exact faces, when the
 /// operation's Exact STEP surface contact is on (`on`) and applies to the
 /// tool, or the part's tessellation, made at the import's deflection, and
 /// why. `None` for the strategies that read the exact faces or edges
@@ -1524,12 +1671,7 @@ fn keep_out_of(
     let Some(bounds) = setup.stock.as_ref().and_then(|s| s.bounds(Some(&part))) else {
         return Vec::new();
     };
-    let reach = profile
-        .pieces()
-        .iter()
-        .map(|p| p.end().radius.0)
-        .fold(profile.cutting_radius(), f64::max)
-        .max(tool.shank_diameter.0 / 2.0);
+    let reach = tool_reach(profile, tool);
     let (start, end) = setup
         .workholding
         .held_intervals((bounds.min.x, bounds.max.x));
@@ -1539,6 +1681,33 @@ fn keep_out_of(
         .map(|(lo, hi)| (lo - reach - HELD_CLEARANCE, hi + reach + HELD_CLEARANCE))
         .collect()
 }
+
+/// The largest radius of `tool`, its cutting profile or its shank: how far
+/// its middle keeps from a held region (decision 0161).
+fn tool_reach(
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> f64 {
+    profile
+        .pieces()
+        .iter()
+        .map(|p| p.end().radius.0)
+        .fold(profile.cutting_radius(), f64::max)
+        .max(tool.shank_diameter.0 / 2.0)
+}
+
+/// The strategies that clear the whole part when no selection limits them,
+/// for which a tab zone the tool cannot cut down in is worth a note (decision
+/// 0503). Selections, drilling, swarf, edges and Facing (which has its own
+/// end-zone rules, decision 0252) are left out.
+const CLEARS_ROUND_TABS: [&str; 6] = [
+    roughing::NAME,
+    openchuck_path::rest::NAME,
+    openchuck_path::helical::NAME,
+    openchuck_path::axial::NAME,
+    openchuck_path::indexed::NAME,
+    openchuck_path::simultaneous::NAME,
+];
 
 /// The stock an earlier operation of the setup left, which says so
 /// ([`StockModel::left_by_earlier_operations`]; decision record 0344).
@@ -1570,13 +1739,27 @@ impl StockModel for LeftByEarlier<'_> {
     fn left_by_earlier_operations(&self) -> bool {
         true
     }
+
+    fn top_over_disc(
+        &self,
+        centre: openchuck_types::geometry::Point3,
+        axis: openchuck_types::geometry::UnitVec3,
+        radius: f64,
+    ) -> Option<f64> {
+        self.0.top_over_disc(centre, axis, radius)
+    }
+
+    fn reach_profile(&self) -> Option<openchuck_path::ReachProfile> {
+        self.0.reach_profile()
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region
 /// along the axis, in millimetres (decision 0161): the jaw face is not a
 /// surface to cut against, and the simulation's cells would read a tool
-/// flush with it as touching the held stock.
-pub const HELD_CLEARANCE: f64 = 0.5;
+/// flush with it as touching the held stock. The library's value, which
+/// rest machining also uses (decision 0505).
+pub const HELD_CLEARANCE: f64 = openchuck_path::HELD_CLEARANCE;
 
 #[cfg(test)]
 #[allow(
@@ -2614,6 +2797,87 @@ mod tests {
         );
     }
 
+    /// The fixture of the swarf floor (decision 0491, issue #435): the flat
+    /// wall of [`swarf_limits_fixture`] (face 0) and the floor at its foot
+    /// (face 1, `z = FOOT`, facing +Z), cut by a flat end mill.
+    fn swarf_floor_fixture(parameters: &[(&str, Value)]) -> Fixture {
+        use openchuck_testkit::ruled::{floor_plane, wall_plane};
+        let mut brep = wall_plane(8.0, 22.0, 38.0, FOOT, TOP);
+        let mut floor = floor_plane(FOOT, 15.0, 45.0, 8.0, 18.0);
+        for face in &mut floor.faces {
+            face.id = FaceId(1);
+        }
+        brep.faces.extend(floor.faces);
+        let flat = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(FLAT),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(FLAT),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            swarf::NAME,
+            parameters,
+            brep,
+            Vec::new(),
+            "wall.step",
+            flat,
+            20.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f
+    }
+
+    #[test]
+    fn req_op_02_req_op_07_req_op_12_swarf_lifts_the_tool_clear_of_a_floor_in_an_avoid_set() {
+        // A tip extension of 0.5 mm reaches into the floor; with the floor in
+        // an avoid set on Cut short the tool is lifted back off it, the whole
+        // wall is still cut, and the note says so (decision 0491 item 1).
+        // Before decision 0491 the face was refused (issue #435).
+        let reach = [(swarf::parameter::TIP_EXTENSION, Value::Number(0.5))];
+        let plain = swarf_floor_fixture(&reach).run().unwrap();
+        assert!(
+            plain.notes.iter().any(
+                |n| n.contains("The tool's end reaches 0.500 mm beyond the end of the rulings")
+            ),
+            "{:?}",
+            plain.notes
+        );
+        let mut f = swarf_floor_fixture(&reach);
+        f.select_as(
+            SelectionTarget::Faces([FaceId(1)].into()),
+            f.hash,
+            f.model,
+            Role::Avoid,
+        );
+        let path = f.run().unwrap();
+        assert!((furthest_cut(&path) - 38.0).abs() < 0.02);
+        assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("The tool is lifted up to 0.50")
+                    && n.contains("to keep clear of the avoid surfaces")),
+            "{:?}",
+            path.notes
+        );
+        // A negative tip extension is taken through the application and
+        // pulls the tool up the wall (decision 0491 item 2).
+        let up = swarf_floor_fixture(&[(swarf::parameter::TIP_EXTENSION, Value::Number(-1.0))])
+            .run()
+            .unwrap();
+        assert!(
+            up.notes
+                .iter()
+                .any(|n| n.contains("The tip sits 1.000 mm up the rulings")),
+            "{:?}",
+            up.notes
+        );
+    }
+
     /// The banded bar of decision 0209 item 3: a round bar of `BAR` about
     /// the rotary axis whose side is three faces, 0 (X 0 to 20), 1 (20 to
     /// 40) and 2 (40 to 60), cut by a ball of `BALL`, from the STEP file
@@ -2944,7 +3208,7 @@ mod tests {
         );
         assert_eq!(note(&helical.run_on(true).unwrap()), None);
         assert_eq!(exact(&helical.run_on(true).unwrap()), None);
-        // Axial finishing does not by default (decision 0500): its note
+        // Axial finishing does not by default (decision 0526): its note
         // names the tessellation and the setting that is off.
         let axial = bar_fixture(openchuck_path::axial::NAME, "bar.step");
         let said = note(&axial.run().unwrap()).unwrap();
@@ -2985,7 +3249,7 @@ mod tests {
 
     #[test]
     fn req_op_27_req_nfr_12_exact_contact_puts_axial_contacts_on_the_exact_faces() {
-        // Decision 0500: with Exact STEP surface contact on, axial finishing
+        // Decision 0526: with Exact STEP surface contact on, axial finishing
         // drops its tool on the exact faces of a STEP part (the drop of
         // decision 0338), and its note says so; off, the default, it drops
         // on the tessellation, whose chords lie inside the bar.
@@ -3018,7 +3282,7 @@ mod tests {
 
     #[test]
     fn req_op_27_req_nfr_12_exact_contact_off_puts_helical_contacts_on_the_tessellation() {
-        // Decision 0500: helical finishing takes the exact ball drop by
+        // Decision 0526: helical finishing takes the exact ball drop by
         // default (decision 0277); turned off, it drops on the tessellation
         // and says why.
         let on = bar_fixture(openchuck_path::helical::NAME, "bar.step");
@@ -3147,7 +3411,7 @@ mod tests {
 
     #[test]
     fn req_op_27_req_ui_07_exact_contact_is_shown_next_to_tolerance_on_a_step_part_only() {
-        // Decision 0500: one row in Pattern and tolerance, after Tolerance,
+        // Decision 0526: one row in Pattern and tolerance, after Tolerance,
         // on a STEP part; a mesh part has no such row. No problem is shown
         // for a ball end.
         let registry = Registry::builtin();

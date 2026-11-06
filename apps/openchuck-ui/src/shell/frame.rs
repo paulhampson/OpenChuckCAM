@@ -510,9 +510,10 @@ impl Shell {
                 .resizable(false)
                 .show(ui, |ui| {
                     // The show button is at the right end, where the hide
-                    // button of the open dock is (issue 433).
+                    // button of the open dock is (issue 433). Its width is
+                    // taken first, so a narrow window clips the tabs and
+                    // never the button (issue 468, OI-2040).
                     ui.horizontal_centered(|ui| {
-                        self.dock_tabs(ui);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .small_button("\u{23f6}")
@@ -521,6 +522,15 @@ impl Shell {
                             {
                                 self.toggle_region(Region::Dock);
                             }
+                            // The tabs fill what is left of the row, from the
+                            // left, and are cut off at its edge.
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.shrink_clip_rect(ui.max_rect());
+                                    self.dock_tabs(ui);
+                                },
+                            );
                         });
                     });
                 });
@@ -627,6 +637,42 @@ impl Shell {
         });
     }
 
+    /// The File menu's "Open recent" submenu (issue 381; UI-15): the recent
+    /// project folders, newest first, each by its folder name with the full
+    /// path on hover, then "Clear recent list". A folder that is gone is
+    /// forgotten when the menu is drawn. A choice goes through the ordinary
+    /// Open command, so the unsaved-changes question and the recovery rules
+    /// (decision 0460) apply; the Open dialog shows the folder to confirm.
+    fn recent_menu(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.menu_button("Open recent", |ui| {
+            let recent = self.recent_projects(ctx);
+            if recent.is_empty() {
+                ui.add_enabled(false, egui::Button::new("No recent projects"));
+                return;
+            }
+            for (index, folder) in recent.iter().enumerate() {
+                let clicked = ui
+                    .push_id(index, |ui| {
+                        ui.button(recent_label(folder))
+                            .on_hover_text(super::checkpoints::shown(folder))
+                            .clicked()
+                    })
+                    .inner;
+                if clicked {
+                    self.recent_clicked = Some(folder.clone());
+                    self.open_recent(folder, ctx);
+                    ui.close();
+                }
+            }
+            ui.separator();
+            if ui.button("Clear recent list").clicked() {
+                self.settings.clear_recent();
+                self.settings_touched();
+                ui.close();
+            }
+        });
+    }
+
     /// The menus: File, Edit, View, Project, Tools and Help (specification
     /// section 3). Every command is here, with its key (UI-14).
     #[allow(clippy::too_many_lines)]
@@ -645,6 +691,7 @@ impl Shell {
                 if ui.add(o).clicked() {
                     self.request(Next::Open, &ctx);
                 }
+                self.recent_menu(ui, &ctx);
                 let import =
                     egui::Button::new("Import model…").shortcut_text(ctx.format_shortcut(&IMPORT));
                 if ui
@@ -773,6 +820,19 @@ impl Shell {
                     self.viewport.fit();
                     ui.close();
                 }
+                let back = ui.add_enabled(
+                    self.viewport.can_undo_camera(),
+                    egui::Button::new("Previous view"),
+                );
+                if back
+                    .on_hover_text(
+                        "Back to the view before the last Fit, standard view or Show in view",
+                    )
+                    .clicked()
+                {
+                    self.viewport.undo_camera();
+                    ui.close();
+                }
                 ui.menu_button("Projection", |ui| {
                     let mut projection = self.viewport.camera.projection;
                     ui.radio_value(&mut projection, Projection::Perspective, "Perspective");
@@ -835,14 +895,6 @@ impl Shell {
                 let cancel = egui::Button::new("Cancel").shortcut_text("Esc");
                 if ui.add_enabled(!idle, cancel).clicked() {
                     self.run.cancel();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(open, egui::Button::new("Results…"))
-                    .clicked()
-                {
-                    self.show_results();
                     ui.close();
                 }
             });
@@ -1530,6 +1582,15 @@ fn view_step(step: Step) -> ViewStep {
         Step::Operations => ViewStep::Operations,
         Step::Simulate => ViewStep::Simulate,
     }
+}
+
+/// How a recent project is listed: its folder's name, or the whole path for
+/// a folder with no name (such as a drive root).
+pub(super) fn recent_label(folder: &std::path::Path) -> String {
+    folder.file_name().map_or_else(
+        || super::checkpoints::shown(folder),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 #[cfg(test)]

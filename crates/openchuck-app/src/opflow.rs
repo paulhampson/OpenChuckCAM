@@ -33,6 +33,10 @@ pub struct SetOptionsShown {
     /// rather than stopping the pass: rotary roughing (decision record 0043
     /// item 3).
     pub check_lifts_tool: bool,
+    /// Cut short first lifts the tool's tip up the face it cuts, clear of
+    /// an avoid or check set, and stops the pass only where no lift clears
+    /// it: swarf (decision record 0491 item 1).
+    pub cut_short_lifts_tip: bool,
 }
 
 /// A strategy a user can choose for an operation (OP-16).
@@ -117,6 +121,7 @@ impl Application {
                 boundary: s.honours_restriction_options(),
                 avoid_and_check: s.honours_region(),
                 check_lifts_tool: name == openchuck_path::roughing::NAME,
+                cut_short_lifts_tip: name == openchuck_path::swarf::NAME,
             })
     }
 
@@ -236,6 +241,37 @@ impl Application {
                 openchuck_project::ParameterValue::Number(default_roughing_stock_to_leave(
                     snapshot.tool.diameter.0,
                 )),
+            );
+        }
+        // A strategy that can cut its extra passes beside their region
+        // starts with that order, written into the operation; one saved
+        // without it keeps the order it had (decision record 0520).
+        if self
+            .strategies
+            .get(strategy)
+            .is_ok_and(|s| s.schema().get(openchuck_path::order::PARAMETER).is_some())
+        {
+            parameters.insert(
+                openchuck_path::order::PARAMETER.to_owned(),
+                openchuck_project::ParameterValue::Text(
+                    openchuck_path::order::BY_REGION.to_owned(),
+                ),
+            );
+        }
+        // A strategy that can keep its links between passes low starts with
+        // them low, written into the operation; one saved without it keeps
+        // retracting (the owner's choice, decision record 0521, which
+        // amends 0496 for new operations).
+        if self.strategies.get(strategy).is_ok_and(|s| {
+            s.schema()
+                .get(openchuck_path::axial::parameter::LINK_HEIGHT)
+                .is_some()
+        }) {
+            parameters.insert(
+                openchuck_path::axial::parameter::LINK_HEIGHT.to_owned(),
+                openchuck_project::ParameterValue::Text(
+                    openchuck_path::axial::parameter::LOW.to_owned(),
+                ),
             );
         }
         let id = OperationId::new();

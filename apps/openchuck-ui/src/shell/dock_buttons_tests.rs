@@ -41,3 +41,60 @@ fn req_ui_16_the_dock_show_button_is_on_the_right_like_the_hide_button() {
         "show {show:?} hide {hide:?}"
     );
 }
+
+/// The collapsed rail at `width`: the show button must be drawn inside the
+/// window, clear of every tab, and clicking it must open the dock (UI-16;
+/// issue 468, OI-2040).
+fn rail_keeps_its_show_button(width: f32) {
+    let mut rig = Rig::cube(&format!("dock-rail-{width}"), None);
+    rig.size = egui::vec2(width, 700.0);
+    rig.settle();
+    // The Setup step has the longest tab labels ("Setup checks (n)").
+    rig.shell.step = super::Step::Setup;
+    if !rig.shell.collapsed(super::frame::Region::Dock) {
+        rig.shell.toggle_region(super::frame::Region::Dock);
+    }
+    rig.settle();
+    assert!(rig.shell.collapsed(super::frame::Region::Dock));
+
+    let show = glyph(&rig, "\u{23f6}");
+    assert!(
+        show.left() >= 0.0 && show.right() <= rig.size.x,
+        "show button {show:?} is outside the {width} pt window"
+    );
+    // What shows of each tab label (after the row's clip) in the button's row.
+    let tabs: Vec<_> = rig
+        .painted()
+        .into_iter()
+        .filter_map(|(text, _, seen)| Some((text?, seen)))
+        .filter(|(t, seen)| {
+            (seen.center().y - show.center().y).abs() < 12.0
+                && ["Setup checks", "Messages", "Jobs", "Results", "Playback"]
+                    .iter()
+                    .any(|n| t.starts_with(n))
+        })
+        .collect();
+    assert!(!tabs.is_empty(), "no dock tab labels found at {width} pt");
+    for (name, seen) in &tabs {
+        assert!(
+            !seen.intersects(show),
+            "tab {name:?} {seen:?} overlaps the show button {show:?} at {width} pt"
+        );
+    }
+    rig.click(show.center());
+    rig.settle();
+    assert!(
+        !rig.shell.collapsed(super::frame::Region::Dock),
+        "the show button did not open the dock at {width} pt"
+    );
+}
+
+#[test]
+fn req_ui_16_the_collapsed_rail_keeps_its_show_button_at_540_pt() {
+    rail_keeps_its_show_button(540.0);
+}
+
+#[test]
+fn req_ui_16_the_collapsed_rail_keeps_its_show_button_at_440_pt() {
+    rail_keeps_its_show_button(440.0);
+}
