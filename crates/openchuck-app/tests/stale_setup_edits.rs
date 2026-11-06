@@ -482,3 +482,144 @@ fn req_set_09_req_ui_11_req_nfr_12_holding_the_free_end_regenerates_a_different_
         });
     });
 }
+
+// The sequences by which the owner may have made the edit (#558; the
+// coordinator's list of 6 Nov 2026), each with the free-end tab shortened.
+
+/// The free-end tab shortened from 6 to 3 mm.
+fn shorten_free_end_tab(s: &mut Setup) {
+    s.workholding.tabs[FREE_END_TAB].length = Millimetres(3.0);
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_an_edit_made_while_a_run_is_going_leaves_the_operation_stale() {
+    // Sequences 4 and 5: the edit lands while Generate (or Simulate) is
+    // running. The run works on the project as it was when it started, so
+    // what it makes is recorded under the old key: the operation must be
+    // stale when it finishes, never up to date or finalising for the edit.
+    let mut b = build("during-run");
+    let job = b.app.start_regenerate();
+    b.edit_setup(shorten_free_end_tab);
+    let run = loop {
+        if let Some(result) = job.try_result() {
+            break result.unwrap();
+        }
+        let state = b.state();
+        assert!(
+            !matches!(state, ItemState::UpToDate | ItemState::Warning),
+            "shown current while the run of the old setup is going: {state:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    b.assert_stale(&run, "edited during the run");
+    // Generating again makes it current, with the new tab.
+    let again = b.app.regenerate().unwrap();
+    assert_ne!(run.toolpath, again.toolpath);
+    b.assert_current(&again, "generated again");
+}
+
+#[test]
+fn req_ui_11_req_ui_08_req_nfr_12_undo_redo_and_the_cache_keep_the_stale_state_right() {
+    // Sequences 6 and 11: undo, redo, and a result the cache keeps for a
+    // setup seen before. Each state is the one the generated result is
+    // for; a result the cache gives back is the one made for that setup.
+    let mut b = build("undo-redo");
+    let original = b.app.regenerate().unwrap();
+    b.edit_setup(shorten_free_end_tab);
+    b.assert_stale(&original, "edited");
+    let edited = b.app.regenerate().unwrap();
+    assert_ne!(original.toolpath, edited.toolpath);
+    b.assert_current(&edited, "edited, generated");
+    assert!(b.app.undo().unwrap());
+    // Back to the original tab: the last result is the edited one.
+    b.assert_stale(&edited, "undone");
+    let from_cache = b.app.regenerate().unwrap();
+    assert_eq!(original.toolpath, from_cache.toolpath);
+    b.assert_current(&from_cache, "undone, generated");
+    assert!(b.app.redo().unwrap());
+    b.assert_stale(&from_cache, "redone");
+    let redone = b.app.regenerate().unwrap();
+    assert_eq!(edited.toolpath, redone.toolpath);
+    b.assert_current(&redone, "redone, generated");
+}
+
+#[test]
+fn req_ui_11_req_prj_01_req_nfr_12_a_saved_and_reopened_edit_is_not_shown_current() {
+    // Sequence 6: the edit saved and the project opened again. Nothing
+    // generated before the edit counts as current after it.
+    let mut b = build("reopen");
+    b.app.regenerate().unwrap();
+    b.edit_setup(shorten_free_end_tab);
+    b.app.save().unwrap();
+    let reopened = Application::open(&b.dir, Threads::Exactly(2)).unwrap();
+    let status =
+        reopened.overview(None, &JobLog::default()).items[&ItemRef::Operation(b.operation)].clone();
+    assert_eq!(status.state, ItemState::Stale, "{status:?}");
+    assert_eq!(
+        reopened.project().setup(b.setup).unwrap().workholding.tabs[FREE_END_TAB].length,
+        Millimetres(3.0)
+    );
+}
+
+#[test]
+fn req_op_21_req_ui_11_req_nfr_12_an_automatic_free_end_tab_shortened_by_hand_regenerates() {
+    // Sequence 8: the free-end tab placed automatically (decision 0202),
+    // as the Tail tab button adds it, then shortened by hand, which
+    // unticks it (`set_tab_span`).
+    let mut b = build("auto");
+    b.edit_setup(|s| s.workholding.tabs[FREE_END_TAB].auto = Some(TabEnd::Tail));
+    let before = b.app.regenerate().unwrap();
+    b.assert_current(&before, "automatic");
+    b.edit_setup(|s| {
+        let tab = &mut s.workholding.tabs[FREE_END_TAB];
+        tab.auto = None;
+        tab.length = Millimetres(3.0);
+    });
+    b.assert_stale(&before, "shortened by hand");
+    let after = b.app.regenerate().unwrap();
+    assert_ne!(before.toolpath, after.toolpath);
+    b.assert_current(&after, "generated again");
+}
+
+#[test]
+fn req_ui_11_req_nfr_12_a_tab_edit_in_one_setup_makes_its_operations_and_the_later_ones_stale() {
+    // Sequence 9: two setups, an operation in each, in that order; the key
+    // of the second is chained through the first (decision 0030).
+    let mut b = build("two-setups");
+    let second_setup = SetupId::new();
+    let mut setup = b.stored_setup();
+    setup.id = second_setup;
+    setup.name = "Setup 2".into();
+    let mut operation = b.app.project().operation(b.operation).unwrap().clone();
+    operation.id = OperationId::new();
+    operation.setup = second_setup;
+    operation.name = "Axial Finishing 2".into();
+    let second = operation.id;
+    for item in [Item::Setup(setup), Item::Operation(operation)] {
+        b.app
+            .execute(Command::Add {
+                item,
+                placement: Placement::End,
+            })
+            .unwrap();
+    }
+    b.app.regenerate().unwrap();
+    let state = |b: &Built, op: OperationId| {
+        b.app.overview(None, &JobLog::default()).items[&ItemRef::Operation(op)].state
+    };
+    let current = |s: ItemState| matches!(s, ItemState::UpToDate | ItemState::Warning);
+    assert!(current(state(&b, b.operation)) && current(state(&b, second)));
+    // The second setup's free-end tab: only its operation.
+    let mut edited = b.app.project().setup(second_setup).unwrap().clone();
+    shorten_free_end_tab(&mut edited);
+    b.app
+        .execute(Command::Replace(Item::Setup(edited)))
+        .unwrap();
+    assert!(current(state(&b, b.operation)));
+    assert_eq!(state(&b, second), ItemState::Stale);
+    assert!(b.app.undo().unwrap());
+    // The first setup's: its operation and the later one.
+    b.edit_setup(shorten_free_end_tab);
+    assert_eq!(state(&b, b.operation), ItemState::Stale);
+    assert_eq!(state(&b, second), ItemState::Stale);
+}
