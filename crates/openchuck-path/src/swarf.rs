@@ -98,6 +98,9 @@ pub mod parameter {
     pub const TIP_END: &str = "tip_end";
     /// Which way along the face the tool moves.
     pub const DIRECTION: &str = "direction";
+    /// Whether each pass stops short of the faces that meet the ends of the
+    /// face (decision record 0532 item 2).
+    pub const KEEP_OFF_END_FACES: &str = "keep_off_end_faces";
 }
 
 /// The choices of `tip_end`.
@@ -534,6 +537,11 @@ pub struct Settings {
     pub reverse_tip_end: bool,
     /// Cut the face in decreasing parameter.
     pub reverse_direction: bool,
+    /// Stop each pass short of the faces that meet the ends of the face, by
+    /// the least length that keeps the tool off them (decision record 0532
+    /// item 1). Off, the pass runs to the ends, and the cut into those faces
+    /// is measured and warned of (item 2).
+    pub keep_off_end_faces: bool,
 }
 
 impl Settings {
@@ -621,6 +629,44 @@ pub struct Limits {
     /// Each watched surface of the region (only measured, decision record
     /// 0176) that the tool breaks on this face, in the region's order.
     pub watched: Vec<WatchedBreak>,
+    /// Whether the faces next to this one were given, so were checked
+    /// (decision record 0532).
+    pub neighbours_checked: bool,
+    /// Each face meeting an end of this one that the pass stops short of,
+    /// with the length along the face left uncut because of it (decision
+    /// record 0532 item 1), by face number.
+    pub end_stops: Vec<EndStop>,
+    /// Each face next to this one that the written path cuts into by more
+    /// than the tolerance, deepest first by face number (decision record
+    /// 0532 items 2 and 3). Faces in an avoid or check set, or watched, are
+    /// measured by their sets instead.
+    pub neighbour_cuts: Vec<NeighbourCut>,
+}
+
+/// A face meeting an end of the cut face that a pass stops short of
+/// (decision record 0532 item 1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EndStop {
+    /// The face's number.
+    pub face: u32,
+    /// The length along the cut face left uncut because the tool would cut
+    /// into it, in millimetres.
+    pub length: f64,
+}
+
+/// A face next to the cut face that the tool cuts into by more than the
+/// tolerance (decision record 0532 items 2 and 3).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NeighbourCut {
+    /// The face's number.
+    pub face: u32,
+    /// The deepest cut into it found, in millimetres.
+    pub depth: f64,
+    /// Where on it.
+    pub at: Point3,
+    /// Whether it meets an end of the cut face (an end face), rather than
+    /// the ends of its rulings (a floor, or the face along the top).
+    pub end: bool,
 }
 
 /// What the tool does to a surface of this kind that it breaks, for notes
@@ -750,6 +796,19 @@ impl Limits {
                 w.name
             ));
         }
+        for stop in &self.end_stops {
+            out.push_str(&format!(
+                " The pass stops short of face {}, which meets this face at an end, so the tool \
+                 keeps off it: about {:.3} mm along the face is left uncut there.",
+                stop.face, stop.length
+            ));
+        }
+        if self.neighbours_checked {
+            out.push_str(
+                " The faces that share an edge with this face were checked against the tool's \
+                 cutting part; the shank, the holder and other faces were not.",
+            );
+        }
         out
     }
 }
@@ -833,6 +892,67 @@ impl FacePath {
             self.describe_twist(),
             self.describe_tilt(),
         ))
+    }
+
+    /// The warnings for the faces next to this one that the tool cuts into by
+    /// more than the tolerance (decision record 0532 items 2 and 3): each
+    /// names the face, the depth and the place, and what to change, and
+    /// points at the setting that changes it. `keep_off_end_faces` is the
+    /// operation's setting.
+    pub fn neighbour_warnings(&self, tolerance: f64, keep_off_end_faces: bool) -> Vec<PathWarning> {
+        self.limits
+            .neighbour_cuts
+            .iter()
+            .map(|cut| {
+                let (meets, change, parameter) = if !cut.end {
+                    (
+                        "along the ends of its rulings",
+                        format!(
+                            " To keep the tool off it, put face {} in an avoid set on Cut short, \
+                             which lifts the tool clear of it, or set a negative Tip extension to \
+                             pull the tool up the face (in the operation inspector's parameters, \
+                             where the field is marked).",
+                            cut.face
+                        ),
+                        Some(parameter::TIP_EXTENSION),
+                    )
+                } else if keep_off_end_faces {
+                    (
+                        "at an end of the pass",
+                        format!(
+                            " The pass was stopped short of it, but the tool still reaches it \
+                             between the points checked: put face {} in an avoid set on Cut \
+                             short, or use a tool with a smaller radius.",
+                            cut.face
+                        ),
+                        None,
+                    )
+                } else {
+                    (
+                        "at an end of the pass",
+                        format!(
+                            " Keep off the end faces is off for this operation: turn it on to \
+                             stop the pass short of face {} (in the operation inspector's \
+                             parameters, where the field is marked), or put face {} in an avoid \
+                             set on Cut short.",
+                            cut.face, cut.face
+                        ),
+                        Some(parameter::KEEP_OFF_END_FACES),
+                    )
+                };
+                PathWarning {
+                    message: format!(
+                        "Swarf on face {} cuts {:.3} mm into face {}, which meets it {meets}, at \
+                         ({:.3}, {:.3}, {:.3}), more than this operation's tolerance of \
+                         {tolerance} mm.{change} The program is made with this cut in it: check \
+                         the program and the simulation before running it.",
+                        self.number, cut.depth, cut.face, cut.at.x, cut.at.y, cut.at.z
+                    ),
+                    parameter: parameter.map(str::to_owned),
+                    requires_acknowledgement: false,
+                }
+            })
+            .collect()
     }
 
     /// Why the face is refused after placement (decision record 0061 item
@@ -1317,12 +1437,46 @@ fn directrix_length(face: &dyn ParametricFace, family: Family, runs: &[(f64, f64
         .sum()
 }
 
-/// Which kind of surface a [`Guard`] keeps the tool from.
-/// An avoid or check surface as the tool must keep clear of it (decision
-/// record 0176): sampled points, and the least clearance the tool keeps from
-/// each, beyond which the tool position is not used.
+/// What a [`Guard`] keeps the tool off: an avoid or check set (decision
+/// record 0176), or a face meeting an end of the cut face, by its number
+/// (decision record 0532 item 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Set(Protection),
+    End(u32),
+}
+
+/// The length along the face left uncut by each kind of guard.
+#[derive(Debug, Default)]
+struct Uncut(Vec<(Kind, f64)>);
+
+impl Uncut {
+    fn add(&mut self, kind: Kind, length: f64) {
+        match self.0.iter_mut().find(|(k, _)| *k == kind) {
+            Some((_, l)) => *l += length,
+            None => self.0.push((kind, length)),
+        }
+    }
+
+    fn of(&self, kind: Kind) -> f64 {
+        self.0
+            .iter()
+            .filter(|(k, _)| *k == kind)
+            .map(|(_, l)| *l)
+            .sum()
+    }
+
+    fn total(&self) -> f64 {
+        self.0.iter().map(|(_, l)| *l).sum()
+    }
+}
+
+/// An avoid or check surface, or a face meeting an end of the cut face, as
+/// the tool must keep clear of it (decision records 0176 and 0532): sampled
+/// points, and the least clearance the tool keeps from each, beyond which
+/// the tool position is not used.
 struct Guard {
-    kind: Protection,
+    kind: Kind,
     points: Vec<Point3>,
     /// The surface normal at each point and the spacing of the samples
     /// around it, for an exact face; none for a mesh's vertices.
@@ -1348,14 +1502,6 @@ impl Guard {
         tool: &RevolvedProfile,
     ) -> Self {
         let radius = tool.cutting_radius();
-        let rounding = tool
-            .pieces()
-            .iter()
-            .filter_map(|piece| match piece {
-                ProfilePiece::Arc { radius, convex, .. } if *convex => Some(*radius),
-                _ => None,
-            })
-            .reduce(f64::min);
         let least = match kind {
             Protection::Avoid => -settings.tolerance,
             Protection::Check => settings.stock_to_leave.max(0.0) - settings.tolerance,
@@ -1373,12 +1519,43 @@ impl Guard {
                 .map(|(p, n, h)| (p, Some((n, h))))
                 .unzip()
         };
+        Self::of_points(Kind::Set(kind), points, around, least, tool)
+    }
+
+    /// The guard of the face numbered `face`, sampled as `samples`, that
+    /// meets an end of the cut face (decision record 0532 item 1): as an
+    /// avoid surface, it may not be cut into deeper than the tolerance.
+    fn end(
+        face: u32,
+        samples: &[(Point3, Vec3, f64)],
+        settings: &Settings,
+        tool: &RevolvedProfile,
+    ) -> Self {
+        let (points, around) = samples.iter().map(|(p, n, h)| (*p, Some((*n, *h)))).unzip();
+        Self::of_points(Kind::End(face), points, around, -settings.tolerance, tool)
+    }
+
+    fn of_points(
+        kind: Kind,
+        points: Vec<Point3>,
+        around: Vec<Option<(Vec3, f64)>>,
+        least: f64,
+        tool: &RevolvedProfile,
+    ) -> Self {
+        let rounding = tool
+            .pieces()
+            .iter()
+            .filter_map(|piece| match piece {
+                ProfilePiece::Arc { radius, convex, .. } if *convex => Some(*radius),
+                _ => None,
+            })
+            .reduce(f64::min);
         Self {
             kind,
             points,
             around,
             least,
-            radius,
+            radius: tool.cutting_radius(),
             rounding,
         }
     }
@@ -1527,6 +1704,139 @@ fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<(Point3, Vec3, f
     points
 }
 
+/// The rulings at the two ends of the whole face, where a pass starts and
+/// stops (decision record 0532 item 1); none for a closed face.
+fn end_rulings(
+    face: &dyn ParametricFace,
+    family: Family,
+    whole: &[(f64, f64)],
+    closed: bool,
+) -> Vec<Ruling> {
+    if closed {
+        return Vec::new();
+    }
+    [whole.first().map(|r| r.0), whole.last().map(|r| r.1)]
+        .into_iter()
+        .flatten()
+        .filter_map(|t| ruling_at(face, family, t))
+        .collect()
+}
+
+/// A face next to the cut face (decision record 0532), sampled as an avoid
+/// face is.
+struct Neighbour {
+    face: u32,
+    samples: Vec<(Point3, Vec3, f64)>,
+    /// Whether it meets an end of the cut face.
+    end: bool,
+}
+
+/// The faces of the region's neighbours other than the cut face `number`
+/// and those in its avoid, check or watched sets, each sampled no further
+/// apart than `spacing`. A face meets an end of the cut face when it lies
+/// along one of `ends`: it has a sample within its own spacing and
+/// `tolerance` of the points a quarter, half and three quarters along the
+/// ruling. A floor or the face along the top meets an end ruling only at
+/// its end, so is not an end face.
+fn neighbour_samples(
+    region: &RegionConstraint<'_>,
+    number: u32,
+    ends: &[Ruling],
+    spacing: f64,
+    tolerance: f64,
+) -> Vec<Neighbour> {
+    let Some(source) = region.neighbours else {
+        return Vec::new();
+    };
+    let mut sets: Vec<u32> = [region.avoid, region.check]
+        .into_iter()
+        .flatten()
+        .chain(region.watch.iter().map(|w| w.surface))
+        .flat_map(|s| s.exact_faces().into_iter().map(|f| f.number))
+        .collect();
+    sets.push(number);
+    let along = |samples: &[(Point3, Vec3, f64)], r: &Ruling| {
+        [0.25, 0.5, 0.75].iter().all(|f| {
+            let q = r.lo + (r.hi - r.lo) * *f;
+            samples
+                .iter()
+                .any(|(p, _, h)| p.distance(q) <= h + tolerance)
+        })
+    };
+    let mut out: Vec<Neighbour> = source
+        .exact_faces()
+        .into_iter()
+        .filter(|f| !sets.contains(&f.number))
+        .map(|f| {
+            let samples = face_samples(f.face, spacing);
+            let end = ends.iter().any(|r| along(&samples, r));
+            Neighbour {
+                face: f.number,
+                samples,
+                end,
+            }
+        })
+        .collect();
+    out.sort_by_key(|n| n.face);
+    out.dedup_by_key(|n| n.face);
+    out
+}
+
+/// The deepest cut into each of `neighbours` by the tool at `positions`
+/// (the written motion, as the gate takes it), where it is more than
+/// `tolerance` (decision record 0532 items 2 and 3). A sample is measured
+/// against the positions within half their ruling, `reach` and a further
+/// tool radius of it, as a guard looks.
+fn neighbour_cuts(
+    neighbours: &[Neighbour],
+    positions: &[(Point3, UnitVec3, Point3, f64)],
+    tool: &RevolvedProfile,
+    reach: f64,
+    tolerance: f64,
+) -> Vec<NeighbourCut> {
+    if neighbours.is_empty() || positions.is_empty() {
+        return Vec::new();
+    }
+    let radius = tool.cutting_radius();
+    let reach = reach + radius;
+    let near = Near::new(positions, reach);
+    let mut out = Vec::new();
+    for n in neighbours {
+        let clearances: Vec<f64> = parallel::map_in_order(&n.samples, |(p, _, _)| {
+            let mut best = f64::INFINITY;
+            near.each(*p, |i| {
+                if let Some((tip, axis, contact, length)) = positions.get(i)
+                    && p.distance(*contact) <= 0.5 * length + reach
+                    && bound_at(radius, *tip, *axis, *p) < best
+                {
+                    best = best.min(clearance_at(tool, *tip, *axis, *p));
+                }
+            });
+            best
+        });
+        let deepest = n
+            .samples
+            .iter()
+            .zip(&clearances)
+            .filter(|(_, c)| c.is_finite())
+            .fold(None::<(f64, Point3)>, |best, ((p, _, _), c)| match best {
+                Some((d, _)) if -c <= d => best,
+                _ => Some((-c, *p)),
+            });
+        if let Some((depth, at)) = deepest
+            && depth > tolerance
+        {
+            out.push(NeighbourCut {
+                face: n.face,
+                depth,
+                at,
+                end: n.end,
+            });
+        }
+    }
+    out
+}
+
 /// What raising the tolerance does for a face the tool cuts into beyond it
 /// (decision record 0272): the face made again at the tolerance advised.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1671,6 +1981,9 @@ pub fn face_path(
                 _ => false,
             }
         });
+    // A closed face has no ends for a pass to stop short of (decision
+    // record 0532 item 1).
+    let face_closed = closed;
     // The tip end is chosen on the whole face, before any limit, so a
     // boundary never turns the tool over.
     let middle_t = whole
@@ -1768,6 +2081,27 @@ pub fn face_path(
         .iter()
         .map(|w| Guard::new(w.protection, w.surface, settings, tool))
         .collect();
+    // The faces next to this one (decision record 0532), each sampled as an
+    // avoid face is, and whether it meets an end of the face: it lies along
+    // a ruling at either end of the whole face. Those in an avoid, check or
+    // watched set are left to their sets.
+    let neighbours = neighbour_samples(
+        region,
+        number,
+        &end_rulings(face, family, &whole, face_closed),
+        guard_spacing(radius),
+        settings.tolerance,
+    );
+    let end_guards: Vec<Guard> = if settings.keep_off_end_faces {
+        neighbours
+            .iter()
+            .filter(|n| n.end)
+            .map(|n| Guard::end(n.face, &n.samples, settings, tool))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let cutting_guards: Vec<&Guard> = guards.iter().chain(&end_guards).collect();
     let first_broken = |position: (Point3, UnitVec3, Point3, f64)| {
         guards
             .iter()
@@ -1839,7 +2173,7 @@ pub fn face_path(
     };
     let chord = CHORD_FACTOR * settings.tolerance;
     let mut broken = vec![0.0f64; watched.len()];
-    let mut uncut = [0.0f64; 2];
+    let mut uncut = Uncut::default();
     let mut out_runs = Vec::new();
     let mut total = 0usize;
     for (lo, hi) in &runs {
@@ -1916,28 +2250,28 @@ pub fn face_path(
             }
         }
         let run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
-        let pieces = if guards.is_empty() {
+        let pieces = if cutting_guards.is_empty() {
             vec![run]
         } else {
             context.check_cancelled()?;
-            guarded(&run, &guards, tool, rotary, reach, &mut uncut, &pose_at)?
+            guarded(
+                &run,
+                &cutting_guards,
+                tool,
+                rotary,
+                reach,
+                &mut uncut,
+                &pose_at,
+            )?
         };
         // A watched surface is measured along what is cut, the length the
         // guard would have left uncut, and the run is kept as it is.
         for (guard, length) in watched.iter().zip(&mut broken) {
             for piece in &pieces {
                 context.check_cancelled()?;
-                let mut along = [0.0f64; 2];
-                guarded(
-                    piece,
-                    std::slice::from_ref(guard),
-                    tool,
-                    rotary,
-                    reach,
-                    &mut along,
-                    &pose_at,
-                )?;
-                *length += along[0] + along[1];
+                let mut along = Uncut::default();
+                guarded(piece, &[guard], tool, rotary, reach, &mut along, &pose_at)?;
+                *length += along.total();
             }
         }
         for mut run in pieces {
@@ -1955,24 +2289,46 @@ pub fn face_path(
         }
     }
     if out_runs.is_empty() {
-        let blocked: Vec<&str> = guards
+        let mut blocked: Vec<String> = guards
             .iter()
             .map(|g| match g.kind {
-                Protection::Avoid => "cut into the avoid surfaces",
-                Protection::Check => "touch the check surfaces",
+                Kind::Set(Protection::Check) => "touch the check surfaces".to_owned(),
+                _ => "cut into the avoid surfaces".to_owned(),
             })
             .collect();
+        let ends: Vec<String> = end_guards
+            .iter()
+            .filter_map(|g| match g.kind {
+                Kind::End(n) => Some(format!("face {n}")),
+                Kind::Set(_) => None,
+            })
+            .collect();
+        if !ends.is_empty() {
+            blocked.push(format!(
+                "cut into {}, which {} it at its ends,",
+                ends.join(" or "),
+                if ends.len() == 1 { "meets" } else { "meet" }
+            ));
+        }
         return Err(fail(if blocked.is_empty() {
             "no run of rulings has two poses".to_owned()
-        } else {
+        } else if ends.is_empty() {
             format!(
                 "the tool would {} wherever it cuts it, so nothing of it is left to cut; take \
                  the face out of the face set, or the surface out of the set",
                 blocked.join(" or ")
             )
+        } else {
+            format!(
+                "the tool would {} wherever it cuts it, so nothing of it is left to cut; use a \
+                 tool with a smaller radius, or turn Keep off the end faces off to cut to the \
+                 ends (the cut into those faces is then warned of), or take the face out of the \
+                 face set",
+                blocked.join(" or ")
+            )
         }));
     }
-    let closed = closed && out_runs.len() == 1 && uncut.iter().all(|u| *u <= SAME_POINT);
+    let closed = closed && out_runs.len() == 1 && uncut.total() <= SAME_POINT;
     context.check_cancelled()?;
 
     // The gate: every sample of the face against the union of the tool
@@ -2084,14 +2440,16 @@ pub fn face_path(
         if let Some(r) = rule(p.t) {
             let u = placed(&r)?;
             for g in &guards {
-                if !g.kept_off(
-                    tool,
-                    (u.tip, u.axis, u.contact, u.ruling_length),
-                    reach,
-                    settings.tolerance,
-                ) && !lifted_clear_of.contains(&g.kind)
+                if let Kind::Set(kind) = g.kind
+                    && !g.kept_off(
+                        tool,
+                        (u.tip, u.axis, u.contact, u.ruling_length),
+                        reach,
+                        settings.tolerance,
+                    )
+                    && !lifted_clear_of.contains(&kind)
                 {
-                    lifted_clear_of.push(g.kind);
+                    lifted_clear_of.push(kind);
                 }
             }
         }
@@ -2125,7 +2483,23 @@ pub fn face_path(
     } else {
         None
     };
-    let [avoid_uncut, check_uncut] = uncut;
+    let avoid_uncut = uncut.of(Kind::Set(Protection::Avoid));
+    let check_uncut = uncut.of(Kind::Set(Protection::Check));
+    let mut end_stops: Vec<EndStop> = uncut
+        .0
+        .iter()
+        .filter_map(|(k, length)| match k {
+            Kind::End(face) if *length > SAME_POINT => Some(EndStop {
+                face: *face,
+                length: *length,
+            }),
+            _ => None,
+        })
+        .collect();
+    end_stops.sort_by_key(|e| e.face);
+    // Each face next to this one, measured against the written motion as
+    // the gate measures the face (decision record 0532 items 2 and 3).
+    let neighbour_cuts = neighbour_cuts(&neighbours, &positions, tool, reach, settings.tolerance);
     Ok(FacePath {
         number,
         detection,
@@ -2150,6 +2524,9 @@ pub fn face_path(
             end_reach: flank.z_start + settings.tip_extension,
             avoid_uncut,
             check_uncut,
+            neighbours_checked: region.neighbours.is_some(),
+            end_stops,
+            neighbour_cuts,
             watched: region
                 .watch
                 .iter()
@@ -2275,15 +2652,15 @@ fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, P
 /// which the tool comes too close to an avoid or check surface is left out,
 /// and so is a move along which it does, so the pass stops there and starts
 /// again after it with a retract. Pieces of fewer than two poses are
-/// dropped. The length along the face left uncut is added to `uncut`, the
-/// avoid surfaces' first, by the first guard broken.
+/// dropped. The length along the face left uncut is added to `uncut`, by
+/// the first guard broken in the order given.
 fn guarded(
     run: &[Pose],
-    guards: &[Guard],
+    guards: &[&Guard],
     tool: &RevolvedProfile,
     rotary: RotaryMapping,
     reach: f64,
-    uncut: &mut [f64; 2],
+    uncut: &mut Uncut,
     pose_at: &dyn Fn(f64) -> Result<Option<Pose>>,
 ) -> Result<Vec<Vec<Pose>>> {
     let first_broken = |position: (Point3, UnitVec3, Point3, f64)| {
@@ -2327,11 +2704,11 @@ fn guarded(
         }
     }
     let run = run.as_slice();
-    let at_pose: Vec<Option<Protection>> = parallel::map_in_order(run, |p| {
+    let at_pose: Vec<Option<Kind>> = parallel::map_in_order(run, |p| {
         first_broken((p.tip, p.axis, p.contact, p.ruling_length))
     });
     let moves: Vec<(&Pose, &Pose)> = run.iter().zip(run.iter().skip(1)).collect();
-    let on_move: Vec<Option<Protection>> = parallel::map_in_order(&moves, |(p, q)| {
+    let on_move: Vec<Option<Kind>> = parallel::map_in_order(&moves, |(p, q)| {
         motion(p, q, rotary).into_iter().find_map(first_broken)
     });
     // The pieces as indices into `run`.
@@ -2371,10 +2748,7 @@ fn guarded(
             .or(at_pose.get(i + 1).copied().flatten())
             .or(fallback);
         let length = p.contact.distance(q.contact);
-        match kind {
-            Some(Protection::Check) => uncut[1] += length,
-            _ => uncut[0] += length,
-        }
+        uncut.add(kind.unwrap_or(Kind::Set(Protection::Avoid)), length);
     }
     Ok(pieces
         .into_iter()
@@ -2486,6 +2860,18 @@ impl Strategy for Swarf {
                  other end.",
                 &[AUTO, REVERSED],
             ),
+            ParameterSpec {
+                name: KEEP_OFF_END_FACES.to_owned(),
+                label: "Keep off the end faces".to_owned(),
+                description: "Stops each pass short of the faces that meet the ends of the \
+                              face, such as a wall the face stands against, by the least length \
+                              that keeps the tool off them; that part of the face is left uncut \
+                              and the note says how much. Off, the pass runs to the ends and \
+                              any cut into those faces is warned of. Only the faces that share \
+                              an edge with the face are checked."
+                    .to_owned(),
+                kind: ParameterKind::Flag { default: true },
+            },
             choice(
                 DIRECTION,
                 "Direction",
@@ -2587,6 +2973,7 @@ fn swarf(
         max_material_left: parameters.number(parameter::MAX_MATERIAL_LEFT)?,
         reverse_tip_end: parameters.text(parameter::TIP_END)? == REVERSED,
         reverse_direction: parameters.text(parameter::DIRECTION)? == REVERSE,
+        keep_off_end_faces: parameters.flag(parameter::KEEP_OFF_END_FACES)?,
     };
     let mut passes = Vec::new();
     let mut notes = Vec::new();
@@ -2638,6 +3025,7 @@ fn swarf(
                 });
             }
         }
+        warnings.extend(path.neighbour_warnings(settings.tolerance, settings.keep_off_end_faces));
         for broken in &path.limits.watched {
             if let Some((length, faces)) = watched.get_mut(broken.index) {
                 *length += broken.length;
