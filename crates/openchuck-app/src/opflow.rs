@@ -258,6 +258,22 @@ impl Application {
                 ),
             );
         }
+        // A strategy that can keep its links between passes low starts with
+        // them low, written into the operation; one saved without it keeps
+        // retracting (the owner's choice, decision record 0521, which
+        // amends 0496 for new operations).
+        if self.strategies.get(strategy).is_ok_and(|s| {
+            s.schema()
+                .get(openchuck_path::axial::parameter::LINK_HEIGHT)
+                .is_some()
+        }) {
+            parameters.insert(
+                openchuck_path::axial::parameter::LINK_HEIGHT.to_owned(),
+                openchuck_project::ParameterValue::Text(
+                    openchuck_path::axial::parameter::LOW.to_owned(),
+                ),
+            );
+        }
         let id = OperationId::new();
         self.execute(Command::Add {
             item: Item::Operation(Operation {

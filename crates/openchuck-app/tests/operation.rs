@@ -1616,6 +1616,91 @@ fn req_op_14_req_sim_08_a_new_operation_cuts_extra_passes_by_region() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[test]
+fn req_op_14_req_sim_08_a_new_finishing_operation_keeps_its_links_low() {
+    // Decision 0521 (the owner's choice, relayed, issue 469; amends 0496): a
+    // new operation of a strategy with Links between passes is written with
+    // "low", like any value the user set; an operation saved without it
+    // keeps "retract" (the default), and other strategies get nothing.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, LOW};
+    let (dir, mut app, op) = project("link-height-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let link = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(LINK_HEIGHT)
+            .cloned()
+    };
+    let low = Some(openchuck_app::project::ParameterValue::Text(LOW.into()));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+        "axial_finishing",
+        "indexed_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(link(&app, added), low, "{strategy}");
+    }
+    for strategy in ["rotary_roughing", "pencil_finishing", "swarf"] {
+        if let Ok(added) = app.add_operation(strategy, strategy, setup, tool) {
+            assert_eq!(link(&app, added), None, "{strategy}");
+        }
+    }
+    // The operation made before the option has none, so its links retract
+    // as they did.
+    assert_eq!(link(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
+    // Decision 0521 (the default confirmed by the project owner on 5 Nov
+    // 2026, relayed, for the strategies the record names):
+    // an operation saved before the option has no `link_height`, so when its
+    // project is opened again it keeps retracting, and its toolpath, and so
+    // its G-code, is what it was: the same as with Retract chosen.
+    use openchuck_path::axial::parameter::{LINK_HEIGHT, RETRACT};
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "simultaneous_finishing",
+    ] {
+        let (dir, mut app, op) = project(&format!("saved-links-{strategy}"));
+        // As an older version saved it: the strategy's own values only. The
+        // cube's free ends are not what this test is about (decision 0344).
+        let free_ends = [("face_free_ends", ParameterValue::Flag(false))];
+        let values: &[(&str, ParameterValue)] = if strategy == "simultaneous_finishing" {
+            &[]
+        } else {
+            &free_ends
+        };
+        set_strategy(&mut app, op, strategy, values);
+        app.save().unwrap();
+        drop(app);
+        let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        assert_eq!(
+            app.project()
+                .operation(op)
+                .unwrap()
+                .parameters
+                .get(LINK_HEIGHT),
+            None,
+            "{strategy}"
+        );
+        let saved = app.regenerate().unwrap();
+        app.set_parameter(op, LINK_HEIGHT, Some(ParameterValue::Text(RETRACT.into())))
+            .unwrap();
+        let retract = app.regenerate().unwrap();
+        assert!(!saved.toolpath.groups.is_empty(), "{strategy}");
+        assert_eq!(saved.toolpath, retract.toolpath, "{strategy}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,

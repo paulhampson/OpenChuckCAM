@@ -76,6 +76,8 @@ mod facing_validation;
 mod field;
 #[path = "finishing.rs"]
 mod finishing;
+#[path = "finishing_links.rs"]
+mod finishing_links;
 #[path = "fit_interior.rs"]
 mod fit_interior;
 #[path = "flutes.rs"]
