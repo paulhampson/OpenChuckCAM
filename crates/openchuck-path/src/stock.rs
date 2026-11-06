@@ -250,7 +250,11 @@ impl ReachProfile {
             .collect();
         let mut out = vec![f64::NEG_INFINITY; self.slices * n];
         for i in 0..self.slices {
-            if self.slice_reach.get(i).is_none_or(|r| *r == f64::NEG_INFINITY) {
+            if self
+                .slice_reach
+                .get(i)
+                .is_none_or(|r| *r == f64::NEG_INFINITY)
+            {
                 continue;
             }
             let row = self.reach.get(i * n..(i + 1) * n).unwrap_or_default();
