@@ -341,6 +341,70 @@ pub(crate) fn generate_with_part(
     edges: Option<EdgeOptions>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
+    generate_unnamed(root, project, id, registry, stock, placed, edges, context).map_err(|e| {
+        match project.operation(id) {
+            Some(operation) => named(operation, e),
+            None => e,
+        }
+    })
+}
+
+/// `error` from generating `operation`, naming it (issue #547): an error
+/// from the pathing library does not know which operation it is about, so
+/// the user could not tell which one to change. Its own words are kept,
+/// with the parameter it names. A cancel stays a cancel (UI-09), and an
+/// error of the application's own is kept as it is.
+fn named(operation: &Operation, error: AppError) -> AppError {
+    match error {
+        AppError::Path(openchuck_path::PathError::Cancelled) => error,
+        AppError::Path(other) => AppError::Operation {
+            name: operation.name.clone(),
+            reason: other.to_string(),
+        },
+        other => other,
+    }
+}
+
+/// A warning of `operation`'s path as the user reads it: the flute check's
+/// warning names the operation and its tool (decision record 0522; issue
+/// #547), and so does a tab shorter than the tool (decision 0523; #548). Named when shown, not when made, so a renamed operation or tool,
+/// which does not make the path stale (issue 209), is named as it is now.
+/// Any other warning is unchanged.
+pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &str) -> String {
+    // The flute check's warning (decision 0522) and a tab shorter than the
+    // tool (decision 0523).
+    let (title, rest) =
+        if let Some(rest) = message.strip_prefix(openchuck_path::flutes::WARNING_LEAD) {
+            ("Flute length", rest)
+        } else if let Some(rest) = message.strip_prefix(crate::workholding::TAB_LENGTH_LEAD) {
+            ("Tab length", rest)
+        } else {
+            return message.to_owned();
+        };
+    let tool = operation
+        .tool
+        .and_then(|id| project.tools().iter().find(|t| t.id == id));
+    match tool {
+        Some(tool) => format!(
+            "{title} (operation '{}', tool '{}'): {rest}",
+            operation.name, tool.name
+        ),
+        None => format!("{title} (operation '{}'): {rest}", operation.name),
+    }
+}
+
+/// [`generate_with_part`] before its error names the operation.
+#[allow(clippy::too_many_arguments)]
+fn generate_unnamed(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    placed: Option<crate::model::PlacedPart>,
+    edges: Option<EdgeOptions>,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
     let carried = stock;
     let operation = project
         .operation(id)

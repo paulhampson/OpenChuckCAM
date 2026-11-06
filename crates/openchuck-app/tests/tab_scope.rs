@@ -259,6 +259,21 @@ fn req_op_21_req_nfr_12_a_whole_part_operation_with_a_tab_shorter_than_the_tool_
         "{w}"
     );
     assert!(!w.to_lowercase().contains("safe"), "{w}");
+    // Messages name the operation and the tool, as they are now.
+    let named: Vec<String> = b
+        .app
+        .overview(None, &openchuck_app::JobLog::default())
+        .messages
+        .into_iter()
+        .map(|m| m.text)
+        .filter(|t| t.starts_with("Tab length"))
+        .collect();
+    assert_eq!(named.len(), 1, "{named:?}");
+    assert!(
+        named[0]
+            .starts_with("Tab length (operation 'Axial Finishing', tool '6 mm ball'): tab 1 (X"),
+        "{named:?}"
+    );
 }
 
 #[test]

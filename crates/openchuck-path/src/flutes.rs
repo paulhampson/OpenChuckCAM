@@ -11,8 +11,11 @@
 //! uppermost over the rotary axis, its half diagonal from the axis), stock
 //! not centred on the axis or turned about it, and tips below the axis are
 //! all measured as they are. [`deepest`] is the one measure every check uses;
-//! [`check`] refuses a path whose deepest cut is past the flutes, saying
-//! where, by how much and on which stock.
+//! [`check`] warns of a path whose deepest cut is past the flutes, saying
+//! where, by how much and on which stock. It is a warning, not a refusal
+//! (the owner's decision of 6 Nov 2026, decision record 0522, amending
+//! 0509 item 3): the measure is conservative, so the path is kept and the
+//! user, who verifies every program (NFR-12), decides.
 //!
 //! The depth is exact where the stock model gives it
 //! ([`StockModel::top_over_disc`]: the setup's own box or round stock, in
@@ -29,7 +32,8 @@ use openchuck_types::geometry::Point3;
 use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
 
-use crate::error::{PathError, Result};
+use crate::assemble::PathWarning;
+use crate::error::Result;
 use crate::rotary::AxisPosition;
 use crate::stock::StockModel;
 use crate::strategy::{CutPoint, Pass, StrategyInput};
@@ -107,13 +111,18 @@ fn body_radius(input: &StrategyInput<'_>) -> f64 {
 /// it gets the conservative bound `max_radius - height` plus
 /// [`BOUND_MARGIN`], since no material is further from the axis than its
 /// farthest radius. A stock model with no farthest radius has no bound:
-/// infinity, which [`check`] refuses.
+/// infinity, which [`check`] warns of. `farthest` is the stock's
+/// [`StockModel::max_radius`], read once a check by the caller: a model may
+/// compute it by reading all its material, as the simulation's stock does,
+/// and read at every reading it took most of the check's time (212 s for
+/// one operation of the owner's project, issue #547).
 pub(crate) fn depth_at(
     stock: &dyn StockModel,
     input: &StrategyInput<'_>,
     position: AxisPosition,
     a: Degrees,
     radius: f64,
+    farthest: Option<f64>,
 ) -> (f64, bool) {
     if let Some(top) = stock.top_over_disc(
         input.rotary.to_model(position, a),
@@ -126,7 +135,7 @@ pub(crate) fn depth_at(
         }
         return (top.max(0.0), true);
     }
-    match stock.max_radius() {
+    match farthest {
         Some(r) if r.is_finite() && position.height.is_finite() => {
             ((r - position.height + BOUND_MARGIN).max(0.0), false)
         }
@@ -254,13 +263,13 @@ fn between(
     p: (AxisPosition, Degrees),
     q: (AxisPosition, Degrees),
     budget: &mut u32,
+    farthest: Option<f64>,
 ) {
     // A reading past the flutes already refuses the path.
     if worst.is_some_and(|w| w.depth > limit + SLACK) {
         return;
     }
     let stock = input.stock;
-    let farthest = stock.max_radius();
     // The quick bound: nothing is further from the axis than `farthest`.
     if farthest.is_some_and(|r| r - p.0.height.min(q.0.height) + BOUND_MARGIN <= limit) {
         return;
@@ -320,10 +329,28 @@ fn between(
         return;
     }
     *budget -= 1;
-    let (depth, exact) = depth_at(stock, input, middle, a, radius);
+    let (depth, exact) = depth_at(stock, input, middle, a, radius, farthest);
     keep(worst, input, middle, a, depth, exact);
-    between(worst, input, radius, limit, p, (middle, a), budget);
-    between(worst, input, radius, limit, (middle, a), q, budget);
+    between(
+        worst,
+        input,
+        radius,
+        limit,
+        p,
+        (middle, a),
+        budget,
+        farthest,
+    );
+    between(
+        worst,
+        input,
+        radius,
+        limit,
+        (middle, a),
+        q,
+        budget,
+        farthest,
+    );
 }
 
 /// The deepest cut `passes` make in `input`'s stock: how far the stock
@@ -346,6 +373,7 @@ fn deepest_of(
 ) -> Result<Option<Deepest>> {
     let stock = input.stock;
     let radius = body_radius(input);
+    // Read once for the whole path, not at every reading (issue #547).
     let bound = stock.max_radius();
     let found = crate::parallel::map_each_in_order(passes, |pass| -> Result<Option<Deepest>> {
         let mut worst: Option<Deepest> = None;
@@ -386,13 +414,13 @@ fn deepest_of(
                     if bound.is_some_and(|r| r - position.height + BOUND_MARGIN <= limit) {
                         continue;
                     }
-                    let (depth, exact) = depth_at(stock, input, position, a, radius);
+                    let (depth, exact) = depth_at(stock, input, position, a, radius, bound);
                     keep(&mut worst, input, position, a, depth, exact);
                 }
                 // And the stock between the places read.
                 for (&p, &q) in chain.iter().zip(chain.iter().skip(1)) {
                     let mut budget = STEP_BUDGET;
-                    between(&mut worst, input, radius, limit, p, q, &mut budget);
+                    between(&mut worst, input, radius, limit, p, q, &mut budget, bound);
                 }
             }
             previous = Some(point);
@@ -463,15 +491,24 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
     }
 }
 
-/// Refuses `passes` when the stock stands above the tool's tip, along the
-/// tool axis, further than the tool's flutes reach (decision record 0509):
-/// past the flutes the shank would meet the stock. `parameter` names the
-/// setting the user acts on (Finishing layers, where the strategy has
-/// them); the message gives the depth, where, the flute length and the
+/// The words every warning of this check starts with, so a host can tell it
+/// apart and name the operation and the tool in it (decision record 0522).
+pub const WARNING_LEAD: &str = "Flute length: ";
+
+/// A warning when the stock stands above the tool's tip in `passes`, along
+/// the tool axis, further than the tool's flutes reach (decision records
+/// 0509 and 0522): past the flutes the shank may meet the stock. `None`
+/// when it does not. `parameter` names the setting the user acts on
+/// (Finishing layers, where the strategy has them); the message gives the
+/// depth, whether it is exact or a bound, where, the flute length and the
 /// stock.
-pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>) -> Result<()> {
+pub fn check(
+    input: &StrategyInput<'_>,
+    passes: &[Pass],
+    parameter: Option<&str>,
+) -> Option<PathWarning> {
     let flutes = input.tool.top();
-    refuse_past_flutes(input, deepest(input, passes, flutes), parameter)
+    warn_past_flutes(input, deepest(input, passes, flutes), parameter)
 }
 
 /// [`check`] on the path as assembly wrote it: every fed move (cuts, plunges,
@@ -483,13 +520,14 @@ pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>
 /// not a prediction of it (CodeRabbit on #534).
 ///
 /// Cancel is polled at each move (UI-09): a long path is read in bounded
-/// work between polls, and a cancelled job returns [`PathError::Cancelled`].
+/// work between polls, and a cancelled job returns
+/// [`crate::PathError::Cancelled`], the only error.
 pub fn check_path(
     input: &StrategyInput<'_>,
     path: &crate::assemble::GeneratedPath,
     parameter: Option<&str>,
     context: &JobContext<'_>,
-) -> Result<()> {
+) -> Result<Option<PathWarning>> {
     let flutes = input.tool.top();
     let point = |pose: &openchuck_types::ir::ToolPose| CutPoint {
         tip: pose.tip,
@@ -519,22 +557,21 @@ pub fn check_path(
         });
     }
     let worst = deepest_of(input, &runs, flutes, true, Some(context.cancel))?;
-    refuse_past_flutes(input, worst, parameter)
+    Ok(warn_past_flutes(input, worst, parameter))
 }
 
-/// The refusal of [`check`] and [`check_path`] when `worst` is past the
-/// flutes.
-fn refuse_past_flutes(
+/// The warning of [`check`] and [`check_path`] when `worst` is past the
+/// flutes. It says what was found and what the user can do; it never says
+/// the program is safe (NFR-12).
+fn warn_past_flutes(
     input: &StrategyInput<'_>,
     worst: Option<Deepest>,
     parameter: Option<&str>,
-) -> Result<()> {
+) -> Option<PathWarning> {
     let flutes = input.tool.top();
-    let Some(worst) = worst else {
-        return Ok(());
-    };
+    let worst = worst?;
     if worst.depth <= flutes + SLACK {
-        return Ok(());
+        return None;
     }
     let layers = if parameter.is_some() {
         ", or turn on Finishing layers"
@@ -544,14 +581,14 @@ fn refuse_past_flutes(
     let reason = if !worst.x.is_finite() || !worst.a.is_finite() {
         format!(
             "the path has a tool position that is not a finite number, so the tool's \
-             {flutes:.3} mm of flute cannot be checked against the stock there. Regenerate \
+             {flutes:.3} mm of flute could not be checked against the stock there. Regenerate \
              the operation, and report it if it happens again"
         )
     } else if !worst.depth.is_finite() {
         format!(
-            "the stock's size is not known, so the tool's {flutes:.3} mm of flute cannot be \
-             checked against how deep it stands above the tool (at X {:.3}, A {:.1}). Define \
-             the setup's stock",
+            "the stock's size is not known, so the tool's {flutes:.3} mm of flute could not \
+             be checked against how deep it stands above the tool (at X {:.3}, A {:.1}). \
+             Define the setup's stock",
             worst.x, worst.a,
         )
     } else {
@@ -568,17 +605,18 @@ fn refuse_past_flutes(
         };
         format!(
             "the stock {how} {:.3} mm above the tool's tip along its axis{bound} (at X {:.3}, \
-             A {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank would meet \
-             the stock; {}. Use a tool with longer flutes, or rough the part first in this \
-             setup{layers}",
+             A {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank may meet \
+             the stock; {}. The path was made: check it before running it. Use a tool with \
+             longer flutes, or rough the part first in this setup{layers}",
             worst.depth,
             worst.x,
             worst.a,
             stock_words(input.stock),
         )
     };
-    Err(match parameter {
-        Some(name) => PathError::parameter(name, reason),
-        None => PathError::Strategy(reason),
+    Some(PathWarning {
+        message: format!("{WARNING_LEAD}{reason}"),
+        parameter: parameter.map(str::to_owned),
+        requires_acknowledgement: false,
     })
 }
