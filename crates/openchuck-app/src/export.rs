@@ -475,7 +475,12 @@ pub(crate) fn export_checks_with(
                         } else {
                             format!(
                                 "Operation '{}' was made with a warning: {}",
-                                operation.name, warning.message
+                                operation.name,
+                                crate::operation::warning_text(
+                                    project,
+                                    operation,
+                                    &warning.message
+                                )
                             )
                         };
                         push(CheckLevel::Warning, text);

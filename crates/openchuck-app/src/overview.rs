@@ -1825,7 +1825,10 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && let Some(made) = made
             && let Some(first) = made.warnings.first()
         {
-            status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
+            status = ItemStatus::new(
+                ItemState::Warning,
+                sentence(&crate::operation::warning_text(project, o, &first.message)),
+            );
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
@@ -1843,7 +1846,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 messages.push(
                     Message::new(
                         Severity::Warning,
-                        warning.message.clone(),
+                        crate::operation::warning_text(project, o, &warning.message),
                         Some((item, label.clone())),
                         Some(if warning.parameter.is_some() {
                             MessageAction::ShowSetting(o.id)

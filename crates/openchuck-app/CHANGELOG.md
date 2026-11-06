@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- FLUTE-TABS (issue #547, decision 0522, accepted): the flute check's warning (`openchuck_path::flutes::WARNING_LEAD`) is shown as "Flute length (operation '<name>', tool '<tool name>'): ..." in Messages, the operation's status and the export checks, named when shown. An error from the pathing library while generating an operation is `AppError::Operation` naming it ("operation '<name>' cannot be generated: ..."), keeping the library's words and the parameter they name; a cancel stays a cancel. Callers that matched `AppError::Path` for a generation error now get `AppError::Operation`.
 - LARGEPATH pull request 3 (#470, OI-2023): `Application::start_regenerate_with_post_and_plan`: the posting job also plans the files it will write (`planned_files` of its run) on its worker, so a front end does not plan them on its own thread when posting ends. New API; the same files and plan.
 
 - LARGEPATH pull request 2 (#470, decision 0510 item 5): `Application::export_checks` keeps the cache keys of the project per revision and those of a run's project with that run, instead of making both on every call; the export dialog asks every frame (59 ms a frame on the owner's carving). The same checks; no API change.
