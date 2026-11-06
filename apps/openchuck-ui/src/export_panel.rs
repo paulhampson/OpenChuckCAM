@@ -73,18 +73,6 @@ struct Key {
     project: Arc<Project>,
 }
 
-/// Two keys are the same when they give the same files: what only the view
-/// uses (the hidden toolpaths) and the stock simulation choice do not count
-/// (decision records 0168 and 0169; GC-07).
-impl PartialEq for Key {
-    fn eq(&self, other: &Self) -> bool {
-        self.post == other.post
-            && self.grouping == other.grouping
-            && (Arc::ptr_eq(&self.project, &other.project)
-                || self.project.same_output(&other.project))
-    }
-}
-
 /// The project at one revision of one application, and the answers of
 /// comparing kept projects with it (issue #470). The kept projects are held,
 /// so an answer is never read for another project at the same address.
@@ -418,18 +406,16 @@ impl ExportPanel {
         let Some(now) = now.as_mut() else {
             return false;
         };
-        let index = match now
+        if !now.answers.iter().any(|(k, _, _)| Arc::ptr_eq(k, kept)) {
+            now.answers.push((Arc::clone(kept), None, None));
+        }
+        let Some((_, output, equal)) = now
             .answers
-            .iter()
-            .position(|(k, _, _)| Arc::ptr_eq(k, kept))
-        {
-            Some(index) => index,
-            None => {
-                now.answers.push((Arc::clone(kept), None, None));
-                now.answers.len() - 1
-            }
+            .iter_mut()
+            .find(|(k, _, _)| Arc::ptr_eq(k, kept))
+        else {
+            return false;
         };
-        let (_, output, equal) = &mut now.answers[index];
         let answer = if same_output { output } else { equal };
         *answer.get_or_insert_with(|| {
             #[cfg(test)]
@@ -443,7 +429,9 @@ impl ExportPanel {
     }
 
     /// Whether `key` is for the project as it is and the post and grouping
-    /// chosen now.
+    /// chosen now: whether it gives the same files. What only the view uses
+    /// (the hidden toolpaths) and the stock simulation choice do not count
+    /// (decision records 0168 and 0169; GC-07).
     fn is_key_now(&self, app: &Application, key: &Key) -> bool {
         Some(&key.post) == self.selection().as_ref()
             && key.grouping == self.grouping
