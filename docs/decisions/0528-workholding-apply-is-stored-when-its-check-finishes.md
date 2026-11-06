@@ -24,6 +24,23 @@ The owner shortened the tab at the free (unheld) end of his CrankShaft project a
 
 A shell test reproduces it: Apply, select an operation, let the check finish, and the tab is never stored.
 
+**Every sequence the owner may have used was tested** (he was not sure of his steps; the coordinator's list of 6 Nov 2026). Each shortens the free-end tab. Tests are in `crates/openchuck-app/tests/stale_setup_edits.rs` (app) and `apps/openchuck-ui/src/shell/frame_tests.rs` (UI).
+
+| Sequence | Stored? | Stale? | Result |
+| --- | --- | --- | --- |
+| Apply, then an operation selected before the check finished | no, until the section was shown again | no | **the gap; fixed here** |
+| Enter in the Length field only, then left | no (a draft) | no, rightly | chips only before; Messages now says it |
+| Ctrl+Enter in the section | yes | yes | no gap |
+| A refused Apply (a tab outside the end zones) | no | no, rightly | Messages now says the draft is not applied |
+| Edit while Generate or Simulate runs | yes | yes when the run ends, never shown current meanwhile | no gap (the run keys its snapshot) |
+| Undo, redo, results from the cache | yes | yes, each state matches the result made for it | no gap |
+| Saved and reopened | yes | yes | no gap |
+| An automatic free-end tab shortened by hand | yes | yes, path differs | no gap |
+| Two setups, keys chained | yes | its own and later operations | no gap |
+| Each setup, tab, held-region, stock, frame, machine, tool and simulation field | yes | yes, plus Simulate out of date and export blocked; path differs for tab and grip fields | no gap |
+
+Recovery checkpoints restore a project as opening one does, and nothing generated is carried with them.
+
 The owner confirmed he pressed Apply. His other answers (whether the tab was automatic, whether a "Not applied" chip showed, whether he left the section before Apply's spinner finished, and his build) were not known when this was written: OI-2060.
 
 ## Decision

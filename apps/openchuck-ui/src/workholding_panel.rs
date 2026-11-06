@@ -327,6 +327,12 @@ impl WorkholdingPanel {
         }
     }
 
+    /// True while a check the section started is running.
+    #[cfg(test)]
+    pub fn is_checking(&self) -> bool {
+        self.checking.is_some()
+    }
+
     /// Presses Apply, from a test, as the section's button does.
     #[cfg(test)]
     pub fn press_apply(&mut self, app: &Application, setup: &Setup) {
