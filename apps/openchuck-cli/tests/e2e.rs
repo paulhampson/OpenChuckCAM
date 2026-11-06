@@ -935,7 +935,8 @@ fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
                 name.strip_suffix("_makera-z1.nc")
                     .map(|job| format!("{prefix}{job}"))
             })
-            .filter(|job| job != "drilling" && job != "swarf")
+            // The STEP jobs need the kernel; `step_pipeline` builds them.
+            .filter(|job| job != "drilling" && job != "swarf" && job != "face_flow")
             .collect();
         jobs.sort();
         jobs
