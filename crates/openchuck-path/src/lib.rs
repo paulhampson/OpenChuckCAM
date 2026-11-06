@@ -92,6 +92,7 @@ pub mod flutes;
 pub mod helical;
 pub mod holes;
 pub mod indexed;
+pub mod order;
 pub mod parallel;
 pub mod params;
 pub mod pencil;
