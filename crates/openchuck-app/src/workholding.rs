@@ -230,6 +230,7 @@ fn narrow_tab_note(
         let counts = !skip.contains(&i);
         (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
+            refuses: false,
             text: format!(
                 "Tab {} is {d:.3} mm long along X, shorter than the tool \
                  {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab longer or use \
@@ -249,6 +250,11 @@ pub struct WorkholdingFinding {
     pub tab: Option<usize>,
     /// The sentence, naming the tab by its number from 1.
     pub text: String,
+    /// True when Apply stores nothing while it stands (a tab outside the end
+    /// zones); false for one that is a warning only, stored with the
+    /// workholding: a tab shorter than a tool (decision 0523, the owner's
+    /// answer of 6 Nov 2026).
+    pub refuses: bool,
 }
 
 impl std::fmt::Display for WorkholdingFinding {
@@ -405,6 +411,7 @@ pub(crate) fn findings_of(
             .map(|kind| match kind {
                 SetupWarningKind::TabOutsideEndZones { tab, x } => WorkholdingFinding {
                     tab: tab.checked_sub(1),
+                    refuses: true,
                     text: format!(
                         "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
                          zone. Tabs lie between the held region (or the end of the stock) and \
@@ -414,6 +421,7 @@ pub(crate) fn findings_of(
                 },
                 other => WorkholdingFinding {
                     tab: None,
+                    refuses: true,
                     text: openchuck_types::setup::SetupWarning {
                         kind: other,
                         unconfirmed: Vec::new(),

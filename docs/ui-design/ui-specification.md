@@ -733,12 +733,12 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
 | A count out of range | Count | "From 1 to 64." |
 | An offset from the axis below zero | Offset from axis | "Must be 0 mm or more." |
 
-The checks that need the part and the tools run as a job on Apply and on "Check against the part and tools". A finding marks the tab's row header and puts its reason under it: on Apply with the Error mark, in red, and nothing is stored; on a check with the Warning mark, in amber:
+The checks that need the part and the tools run as a job on Apply and on "Check against the part and tools". A finding marks the tab's row header and puts its reason under it: on Apply with the Error mark, in red, and nothing is stored; on a check with the Warning mark, in amber. A tab shorter than a tool is the exception: on Apply too it has the Warning mark, in amber, and the workholding is stored with it ([decision 0523](../decisions/0523-tab-checks-follow-the-operations-reach.md), the owner's answer of 6 Nov 2026; generation warns of it too). The other checks keep the Error mark on Apply:
 
 | Check | Message |
 | --- | --- |
 | A tab not wholly in the head or the tail zone (OI-180) | "Tab 3 (X −1.000 to 1.000 mm) is not wholly in the head or the tail zone. Tabs lie between the held region (or the end of the stock) and the part, or between the part and the other end." |
-| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decision 0494) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
+| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decisions 0494 and 0523; a warning on Apply too, and stored) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
 | The part, the stock or a tool changed while checking | "The part, stock or tools changed while checking; check again." |
 | The draft changed while it was being checked | "The draft changed while it was being checked; apply it again." |
 

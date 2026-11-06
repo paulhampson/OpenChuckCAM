@@ -1,6 +1,6 @@
 # 0523: A tab is checked against an operation's tool only where the operation's path can touch it, and a tab shorter than the tool is warned of, not refused; the audit of checks that ignore an operation's region (OP-21, NFR-07, NFR-12; issue #548; lane FLUTE-TABS)
 
-- **Status:** accepted by the project owner on 6 Nov 2026 with the change that the tab-length rule also warns, relayed by the coordinator (decision 0049). Proposed by lane FLUTE-TABS on 6 Nov 2026; the owner read it in full and answered "Accept, but make the tab-length rule a warning too".
+- **Status:** accepted by the project owner on 6 Nov 2026 with the change that the tab-length rule also warns, relayed by the coordinator (decision 0049). Proposed by lane FLUTE-TABS on 6 Nov 2026; the owner read it in full and answered "Accept, but make the tab-length rule a warning too", and then, asked about the setup panel's Apply, chose that Apply also warns and stores the tab (answer B, 6 Nov 2026, relayed).
 - **Date:** 6 Nov 2026.
 - **Number:** 0523, with OI-2045 to OI-2049, confirmed free by the Merge Manager on 6 Nov 2026.
 - **Issue:** [#548](https://github.com/paulhampson/OpenChuckCAM/issues/548) (sev1). Related: [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (decision 0522), [#438](https://github.com/paulhampson/OpenChuckCAM/issues/438) (decision 0494).
@@ -34,6 +34,8 @@ The fault was reproduced on a public part: a cone in round stock with a 4 mm tab
    - the options: a smaller tool, or a longer tab.
 
    The operation is named where the warning is shown (Messages and Results give it as the source; the export checks say "Operation '<name>' was made with a warning: ..."). Nothing in it says the program is safe (NFR-12). It applies to every tab for a whole-part operation and to the tabs its path can touch for a limited one, so it is not noise.
+
+   **Apply in the setup panel warns too (the owner's answer B).** 0494 item 2 refused a short tab when the workholding was applied, storing nothing. Now Apply stores the workholding and keeps the finding on the tab's row with the Warning mark, in amber (`WorkholdingFinding::refuses` false). A finding that refuses, such as a tab outside the end zones, still has the Error mark and stores nothing. Interface specification 11.7 says so.
 5. **A tab outside the end zones stays a refusal.** It is a separate rule (0035, OI-180): the target is built from the tabs, and a tab across the part would leave the part uncut there. It refuses only operations whose path can touch the tab (item 2); it is also a setup warning. The lane's recommendation is to keep it a refusal.
 6. **The cost.** A limited operation is checked after it is generated, not before, so a refusal for a tab outside the end zones costs a generation, as a refusal from any strategy does.
 
@@ -64,6 +66,7 @@ Every check, refusal or warning that might read the whole part, the whole stock 
 
 - The owner's #548 project (numbers only): with this change and decision 0522's, 'Axial Finishing' is made; its path does not touch the tab. The next operation, 'Rest Machining', is then refused by the free-end check (row 5; OI-2047 and the owner's choice A, B or C).
 - A tab shorter than the tool is warned of and the path is made, for a whole-part operation and for a limited one whose path touches it; it was refused before.
+- In the setup panel, Apply stores a tab shorter than a tool with the warning on its row; it stored nothing before. Apply still stores nothing while a tab is outside the end zones.
 - A limited operation over a tab outside the end zones is refused after it is generated.
 - The setup's own notes (row 3) still name every tool against every tab until OI-2045, so the setup check may say a tab is shorter than a tool whose limited operation generates.
 
@@ -87,4 +90,5 @@ Application tests (`crates/openchuck-app/tests/tab_scope.rs`), on a cone, radius
 - `req_op_21_req_nfr_12_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_warned_of`: made, with one warning naming tab 1, X -4.000 to 0.000 mm, 4.000 mm long, the tool's 6.000 mm, that it may be unable to cut the gap to shape, to check the path before running it, and the options; never "safe". It was refused before.
 - `req_op_21_req_nfr_12_an_operation_on_the_side_above_a_short_tab_is_made`: the owner's case, axial finishing limited to the whole side; made with no tab warning. It failed on the code before.
 - `req_op_21_an_operation_far_from_a_short_tab_is_made`: limited to the side from X 10 to 25; made with no tab warning. It failed on the code before.
+- In the setup panel (`apps/openchuck-ui/src/workholding_panel.rs`), the check-findings test applies a tab 1 mm long beside a 4 mm tool: the workholding is stored with the tab, the finding stays on tab 1's row as a warning (not refused, not an error), and it names the operation. It failed on the code before, which stored nothing. The end-zone finding's refusal on Apply is unchanged (the same test applies a tab outside the zones first and nothing is stored).
 - In `tests/workholding.rs`, `req_op_21_a_tab_outside_the_end_zones_is_refused_and_one_shorter_than_the_tool_warned_of` (was `..._or_narrower_than_the_tool_is_refused`): the end-zone refusal is unchanged; the 9 mm tool against an 8 mm tab is made with the warning.
