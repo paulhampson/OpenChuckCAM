@@ -596,7 +596,7 @@ fn req_gc_07_every_generated_reference_job_has_a_committed_project() {
     // build and check them (`crates/openchuck-app/tests/step_pipeline.rs`,
     // OI-922).
     let mut expected = generated.clone();
-    expected.extend(["drilling", "swarf"].map(str::to_owned));
+    expected.extend(["drilling", "face_flow", "swarf"].map(str::to_owned));
     expected.sort();
     assert_eq!(sample_projects::committed_jobs().unwrap(), expected);
     for job in &generated {

@@ -713,3 +713,224 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     }
     out
 }
+
+/// The blisk placed as the face-flow reference job places it (OI-2007): its
+/// longest span along X, centred on the rotary axis, its end 10 mm from the
+/// chuck, as `examples/swarf_floor.rs` and `examples/face_flow_blisk.rs` do.
+fn blisk_on_axis() -> BrepModel {
+    let raw = placed("blisk", &[]);
+    let bounds = |m: &BrepModel| {
+        let (t, _) = m.joined_tessellation();
+        let mut lo = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut hi = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in &t.vertices {
+            lo = Point3::new(lo.x.min(p.x), lo.y.min(p.y), lo.z.min(p.z));
+            hi = Point3::new(hi.x.max(p.x), hi.y.max(p.y), hi.z.max(p.z));
+        }
+        (lo, hi)
+    };
+    let (lo, hi) = bounds(&raw);
+    let spans = [hi.x - lo.x, hi.y - lo.y, hi.z - lo.z];
+    let mut steps = Vec::new();
+    if spans[2] > spans[0] && spans[2] > spans[1] {
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Y,
+            angle: Degrees(90.0),
+        });
+    } else if spans[1] > spans[0] && spans[1] > spans[2] {
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Z,
+            angle: Degrees(-90.0),
+        });
+    }
+    steps.push(TransformStep::CentreOnRotaryAxis);
+    let turned = transform_brep(&raw, &brep_placement(&raw, &steps).unwrap()).unwrap();
+    steps.push(TransformStep::Translate {
+        x: 10.0 - bounds(&turned).0.x,
+        y: 0.0,
+        z: 0.0,
+    });
+    transform_brep(&raw, &brep_placement(&raw, &steps).unwrap()).unwrap()
+}
+
+/// The distance from `q` to the polyline `line`.
+fn to_polyline(q: Point3, line: &[Point3]) -> f64 {
+    line.windows(2)
+        .map(|w| {
+            let d = w[1] - w[0];
+            let t = ((q - w[0]).dot(d) / d.dot(d)).clamp(0.0, 1.0);
+            q.distance(w[0] + d * t)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// The face-flow reference job on the STEP blisk (OP-28; decision record
+/// 0525; OI-2007, OI-2004): blade floor face 8, a cone between the roots of
+/// blades 7 and 9 (edges 39 and 42), cut with the reference jobs' 3 mm ball.
+/// The passes lie on the floor and run between the two blade roots; the
+/// independent bounded checker (decision 0255) finds no cut into any face
+/// of the blisk, the blade walls included, beyond the tolerance, at every
+/// point and at the middle and quarter points of every move as the machine
+/// makes it; the strip along the walls the ball cannot reach is reported,
+/// not cut; and the output is the same at 1, 2 and N threads.
+#[test]
+fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_gouging() {
+    use std::sync::Arc;
+
+    use openchuck_path::face_flow::FaceFlow;
+    use openchuck_path::params::names;
+    use openchuck_path::{AcceptAll, AnalyticStock, RotaryMapping, Strategy, StrategyInput};
+    use openchuck_testkit::contact::{ConvexTool, Geometry, Settings};
+    use openchuck_types::brep::FaceId;
+    use openchuck_types::ir::PathTags;
+    use openchuck_types::machine::Clearance;
+
+    const TOLERANCE: f64 = 0.01;
+    let model = blisk_on_axis();
+    let edge = |id: u32| model.edges[id as usize].polyline.clone();
+    let (guide, opposite) = (edge(39), edge(42));
+    assert_eq!(model.edges[39].faces.len(), 2);
+    let tool = ball().tool.profile().unwrap();
+    let machine = builtin("makera-z1").unwrap().unwrap();
+    let rotary = RotaryMapping::of_profile(&machine);
+    let surface = BrepSurface::new(&model).unwrap();
+    let stock = AnalyticStock::Cylinder {
+        radius: 21.0,
+        x_start: 9.0,
+        x_end: 61.0,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &stock,
+        collision: &AcceptAll,
+        tool: &tool,
+        rotary,
+        clearance: Clearance {
+            radius: Millimetres(26.0),
+            safe_z: Millimetres(36.0),
+        },
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        entry_safety: None,
+        facing: None,
+        keep_out: &[],
+        shank: None,
+    };
+    let values: BTreeMap<String, openchuck_path::ParameterValue> = [
+        (names::STEPOVER, 0.3),
+        (names::TOLERANCE, TOLERANCE),
+        (names::FEED, 300.0),
+        (names::PLUNGE_FEED, 100.0),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), openchuck_path::ParameterValue::Number(v)))
+    .collect();
+    let strategy = FaceFlow::on_brep(Arc::new(model.clone()), vec![FaceId(8)], Vec::new());
+    let parameters = strategy.resolve_parameters(&values).unwrap();
+    let run = || {
+        let cancel = CancelToken::new();
+        strategy
+            .passes_with_notes(
+                &input,
+                None,
+                &parameters,
+                &JobContext::new(&cancel, &NoProgress),
+            )
+            .unwrap()
+    };
+    let started = std::time::Instant::now();
+    let out = run();
+    let took = started.elapsed().as_secs_f64();
+
+    // The guide is the longer blade root, the opposite side the other.
+    let notes = out.notes.join("\n");
+    assert!(notes.contains("face 8 is cut from its guide, edge 39"), "{notes}");
+
+    // The ball rests on the floor at every point (its centre one radius
+    // from it; where it also touches a blade wall within the tolerance the
+    // reported contact may be on the wall), at a share of the way across
+    // that holds along each pass: the passes follow the blade roots.
+    let floor = BrepSurface::with_faces(&model, &[FaceId(8)]).unwrap();
+    let radius = tool.cutting_radius();
+    for pass in &out.passes {
+        let shares: Vec<f64> = pass
+            .points
+            .iter()
+            .map(|c| {
+                let centre = c.tip + rotary.tool_axis(c.a).get() * radius;
+                let on = floor.project(centre).unwrap();
+                let gap = on.point.distance(centre) - radius;
+                assert!(gap.abs() <= TOLERANCE + 0.001, "the ball is {gap} mm off the floor");
+                let (g, o) = (to_polyline(on.point, &guide), to_polyline(on.point, &opposite));
+                g / (g + o)
+            })
+            .collect();
+        let spread = shares.iter().fold(f64::NEG_INFINITY, |m, s| m.max(*s))
+            - shares.iter().fold(f64::INFINITY, |m, s| m.min(*s));
+        assert!(spread < 0.1, "a pass wanders {spread} of the way across");
+    }
+
+    // No cut into any face of the blisk beyond the tolerance, by the
+    // independent bounded checker, at the points and the middle and quarter
+    // points of each straight machine move.
+    let exact = Geometry::of_faces(&model).unwrap();
+    let ball_tool = ConvexTool::new(&tool).unwrap();
+    let settings = Settings {
+        margin: 0.5,
+        tolerance: 0.001,
+        budget: 4_000_000,
+    };
+    let mut deepest: f64 = 0.0;
+    let mut poses = 0usize;
+    let mut check = |tip: Point3, a: openchuck_types::units::Degrees| {
+        let axis = rotary.tool_axis(a).get();
+        let c = exact.clearance(&ball_tool, tip, axis, &settings).unwrap();
+        deepest = deepest.min(c.lower);
+        poses += 1;
+    };
+    for pass in &out.passes {
+        for c in &pass.points {
+            check(c.tip, c.a);
+        }
+        for w in pass.points.windows(2) {
+            let (pa, pb) = (rotary.to_axis(w[0].tip, w[0].a), rotary.to_axis(w[1].tip, w[1].a));
+            let bb = openchuck_path::rotary::nearest_turn(w[1].a, w[0].a);
+            for f in [0.25, 0.5, 0.75] {
+                let a = openchuck_types::units::Degrees(w[0].a.0 + (bb.0 - w[0].a.0) * f);
+                let tip = rotary.to_model(
+                    openchuck_path::rotary::AxisPosition {
+                        along: pa.along + (pb.along - pa.along) * f,
+                        across: pa.across + (pb.across - pa.across) * f,
+                        height: pa.height + (pb.height - pa.height) * f,
+                    },
+                    a,
+                );
+                check(tip, a);
+            }
+        }
+    }
+    assert!(deepest >= -(TOLERANCE + 0.001), "cuts {deepest} mm into the blisk");
+
+    // The strip along the blade walls the ball cannot reach is reported.
+    assert!(!out.unreached.is_empty());
+    let area: f64 = out.unreached.iter().map(|u| u.area).sum();
+    assert!(out.warnings.iter().any(|w| w.message.contains("cannot reach")));
+    println!(
+        "face-flow on the blisk floor: {} runs, {} points, {took:.2} s; {poses} poses checked, \
+         deepest {deepest:.4} mm; unreached {} areas, {area:.1} mm2 ({:?})",
+        out.passes.len(),
+        out.passes.iter().map(|p| p.points.len()).sum::<usize>(),
+        out.unreached.len(),
+        out.unreached.iter().map(|u| u.reason).collect::<Vec<_>>()
+    );
+
+    // The same passes at 1, 2 and N threads (GC-07, NFR-06).
+    let runs = openchuck_testkit::determinism::check(|| format!("{:?}", run().passes).into_bytes())
+        .unwrap();
+    assert_eq!(runs.len(), 4);
+}
