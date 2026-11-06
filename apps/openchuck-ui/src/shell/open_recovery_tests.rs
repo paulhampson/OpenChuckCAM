@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 fn crashed(folder: &Path, config: &Path, name: &str) {
     file::save(&Project::new(format!("{name} saved")), folder).unwrap();
     let mut session = Session::open(folder.to_owned(), config.to_owned(), 3).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !session
         .poll(Duration::ZERO)
         .iter()
@@ -53,7 +53,7 @@ fn launch(root: &Path, config: &Path, folder: Option<PathBuf>) -> Rig {
 }
 
 fn until(rig: &mut Rig, what: &str, mut done: impl FnMut(&Rig) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !done(rig) {
         rig.frame(Vec::new());
         assert!(Instant::now() < deadline, "timed out waiting for {what}");

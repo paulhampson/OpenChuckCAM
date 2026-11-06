@@ -1811,6 +1811,12 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
+        // The outline under the pointer is its own layer: a zoom that brings
+        // another triangle under it draws only that (issue 556).
+        if let Some(hover) = self.selection.hover_overlay(self.viewport.view()) {
+            self.viewport.set_hover(hover);
+            ctx.request_repaint();
+        }
     }
 
     /// A viewport pick retains model/face/edge identity, never a pointer

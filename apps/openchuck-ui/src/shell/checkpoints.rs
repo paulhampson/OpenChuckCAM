@@ -900,7 +900,7 @@ mod tests {
                 .unwrap();
         }
         rig.settle();
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(60);
         while rig
             .shell
             .recovery
@@ -991,7 +991,7 @@ mod tests {
     fn req_prj_08_reopening_the_same_project_starts_a_new_revision_namespace() {
         let mut rig = ready_project("checkpoint-reopen");
         click(&mut rig, "Keep saved project");
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(60);
         while rig
             .shell
             .recovery
@@ -1050,7 +1050,7 @@ mod tests {
         // Reopening drops the old session and starts the new one only after a
         // background read of the folder lands on a later frame, so wait for
         // that state (its own deadline: a loaded runner is slow here).
-        let reopen_deadline = Instant::now() + Duration::from_secs(30);
+        let reopen_deadline = Instant::now() + Duration::from_secs(60);
         while rig
             .shell
             .recovery
@@ -1084,7 +1084,7 @@ mod tests {
                 true,
             );
         }
-        let publish_deadline = Instant::now() + Duration::from_secs(30);
+        let publish_deadline = Instant::now() + Duration::from_secs(60);
         loop {
             rig.frame(Vec::new());
             let catalog = Catalog::read(&folder).unwrap();

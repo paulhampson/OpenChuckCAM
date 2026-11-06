@@ -14,7 +14,7 @@ use crate::camera::{
 };
 use crate::scene::{
     Colour, DOT_CORE_RADIUS, DOT_RADIUS, DOT_SPACING, DisplayMode, Hatch, HatchKind, Scene, Slot,
-    batch_lines, outline_edges, wireframe_indices,
+    batch_lines, outline_floats, wireframe_indices,
 };
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:
@@ -97,17 +97,23 @@ pub enum Layer {
     /// (the surfaces the tool could not reach, decision record 0515): drawn
     /// over whatever colours lie beneath, below the selection highlights.
     Areas,
-    /// Selection and hover highlights.
+    /// Selection highlights: the shown set, the operation's avoid and check
+    /// sets and the working selection.
     Overlay,
     /// The outlines of the hovered or selected held region or tab, kept
     /// apart from the selection highlights so the two are replaced
     /// separately.
     Focus,
+    /// The outline of the triangle, face or edge under the pointer, kept
+    /// apart from [`Layer::Overlay`] so a pointer moving over the part, or
+    /// a zoom that brings another triangle under it, replaces only this
+    /// small layer and never uploads a large selection again (issue 556).
+    Hover,
 }
 
 impl Layer {
     /// Every layer, in drawing order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Scene,
         Self::Stock,
         Self::Trace,
@@ -116,6 +122,7 @@ impl Layer {
         Self::Areas,
         Self::Overlay,
         Self::Focus,
+        Self::Hover,
     ];
 
     /// The layer's position in [`Layer::ALL`], for front ends that keep a
@@ -130,6 +137,7 @@ impl Layer {
             Self::Areas => 5,
             Self::Overlay => 6,
             Self::Focus => 7,
+            Self::Hover => 8,
         }
     }
 }
@@ -484,11 +492,13 @@ impl Renderer {
     }
 
     fn upload(&self, device: &wgpu::Device, scene: &Scene) -> GpuLayer {
+        let outlines = outline_floats(&scene.meshes);
         let meshes = scene
             .meshes
             .iter()
-            .filter(|m| !m.positions.is_empty())
-            .map(|m| GpuMesh {
+            .zip(&outlines)
+            .filter(|(m, _)| !m.positions.is_empty())
+            .map(|(m, outline_floats)| GpuMesh {
                 slot: m.slot,
                 translucent: m.translucent,
                 vertices: vertex_buffer(device, "mesh vertices", &m.positions),
@@ -505,22 +515,24 @@ impl Renderer {
                 ),
                 edges: self.uniform(device, Look::colour(m.edge_colour)),
                 outline_only: m.outline_only,
-                outline: m.outline.and_then(|o| {
-                    let edges = outline_edges(&m.positions, &m.indices);
-                    let floats: Vec<f32> = edges.iter().flat_map(|e| e.floats()).collect();
-                    let count = u32::try_from(edges.len()).ok().filter(|c| *c > 0)?;
-                    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("outline edges"),
-                        contents: &f32_bytes(&floats),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    });
-                    let look = Look {
-                        width: o.width,
-                        pattern: o.style.pattern(),
-                        ..Look::colour(o.colour)
-                    };
-                    Some((buffer, count, self.uniform(device, look)))
-                }),
+                outline: m
+                    .outline
+                    .zip(outline_floats.as_ref())
+                    .and_then(|(o, floats)| {
+                        // Thirteen floats an edge (OutlineEdge::floats).
+                        let count = u32::try_from(floats.len() / 13).ok().filter(|c| *c > 0)?;
+                        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("outline edges"),
+                            contents: &f32_bytes(floats),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                        let look = Look {
+                            width: o.width,
+                            pattern: o.style.pattern(),
+                            ..Look::colour(o.colour)
+                        };
+                        Some((buffer, count, self.uniform(device, look)))
+                    }),
             })
             .collect();
         // Lines that look alike are one buffer and one draw (issue #200).
@@ -687,7 +699,12 @@ impl Renderer {
     /// Draws the scene into `pass`, which must have the colour and depth
     /// formats the renderer was built for.
     pub fn paint(&self, pass: &mut wgpu::RenderPass<'_>) {
-        let highlights = |l: &Layer| matches!(l, Layer::Areas | Layer::Overlay | Layer::Focus);
+        let highlights = |l: &Layer| {
+            matches!(
+                l,
+                Layer::Areas | Layer::Overlay | Layer::Focus | Layer::Hover
+            )
+        };
         // Opaque meshes of every layer but the highlights.
         for layer in Layer::ALL.iter().filter(|l| !highlights(l)) {
             for mesh in self
