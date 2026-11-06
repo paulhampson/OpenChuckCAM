@@ -489,7 +489,7 @@ pub fn check_for_tool_where(
         number
             .checked_sub(1)
             .and_then(|i| resolved.tabs.get(i))
-            .is_some_and(|tab| counts(tab))
+            .is_some_and(counts)
     };
     // An automatic tab with no room is only a warning: look past it.
     if let Some((tab, x)) = check_tab_zones(workholding, stock, Some(part))

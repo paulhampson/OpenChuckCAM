@@ -10,7 +10,12 @@
 //! above the tab, the cone's side in the owner's case, is made: its path never
 //! comes down to the tab, which is within 3 mm of the axis.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
