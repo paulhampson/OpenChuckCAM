@@ -5,13 +5,8 @@
 - **Number:** 0522, reserved by the Merge Manager on 6 Nov 2026 (first drafted as 0520); OI-2044 likewise (OI-2043 is reserved for lane LARGEPATH).
 - **Issue:** [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (sev1). Related: [#530](https://github.com/paulhampson/OpenChuckCAM/issues/530), [#540](https://github.com/paulhampson/OpenChuckCAM/issues/540).
 - **Amends:** [0509](0509-flute-length-against-the-deepest-cut.md) item 3 ("Refused, not warned") and the refusals its items 1 and 2 and its Verification section describe. The measure of 0509 (items 1 and 2) is unchanged.
-<<<<<<< HEAD:docs/decisions/0520-the-flute-check-warns.md
-- **Open items:** OI-2043 new: replace the warning by real collision detection of the shank and holder against the stock (COL-05). OI-2025 kept open, its effect now a warning. OI-153 unchanged.
-- **Library:** breaking. `flutes::check` returns `Option<PathWarning>` and `flutes::check_path` returns `Result<Option<PathWarning>>` (an error only when cancelled); new `flutes::WARNING_LEAD`. Workspace version 0.44.0 to 0.45.0 (decision 0048).
-=======
 - **Open items:** OI-2044 new: replace the warning by real collision detection of the shank and holder against the stock (COL-05). OI-2025 kept open, its effect now a warning. OI-153 unchanged.
-- **Library:** breaking. `flutes::check` returns `Option<PathWarning>` and `flutes::check_path` returns `Result<Option<PathWarning>>` (an error only when cancelled); new `flutes::WARNING_LEAD`. Workspace version 0.42.0 to 0.43.0 (decision 0048).
->>>>>>> 605fe5ff (Lane FLUTE-TABS: decision 0522 and OI-2044, as reserved by the Merge Manager (#547)):docs/decisions/0522-the-flute-check-warns.md
+- **Library:** breaking. `flutes::check` returns `Option<PathWarning>` and `flutes::check_path` returns `Result<Option<PathWarning>>` (an error only when cancelled); new `flutes::WARNING_LEAD`. Workspace version 0.44.0 to 0.45.0 (decision 0048).
 
 ## Context
 
