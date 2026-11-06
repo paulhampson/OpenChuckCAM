@@ -72,6 +72,211 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
     fn turns_unchanged(&self) -> bool {
         false
     }
+
+    /// How far the material reaches from the rotary axis, slice by slice
+    /// along X and sector by sector about the axis, for a model with no
+    /// exact [`StockModel::top_over_disc`] (issue #547): the flute check of
+    /// decision record 0509 then bounds the stock over the tool from the
+    /// material within the tool's reach along X and towards the tool, not
+    /// from the farthest material anywhere. Every material point must lie
+    /// within the reach of its slice and sector. `None`, the default, when
+    /// the model does not compute it; the check then keeps the bound from
+    /// [`StockModel::max_radius`].
+    fn reach_profile(&self) -> Option<ReachProfile> {
+        None
+    }
+}
+
+/// How far material reaches from the rotary axis (model X), by slice along
+/// X and by sector of direction about it ([`StockModel::reach_profile`];
+/// issue #547). Built from boxes of material, each recorded at its farthest
+/// corner in every sector it spans, so it bounds the material from above:
+/// a reach is never less than the material's, and may be more.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReachProfile {
+    /// Model X where the first slice starts.
+    x0: f64,
+    /// The slices' length along X, mm.
+    dx: f64,
+    /// The number of slices.
+    slices: usize,
+    /// The farthest reach in each slice, mm; negative infinity where empty.
+    slice_reach: Vec<f64>,
+    /// The reach of slice `i`, sector `s` at `i * SECTORS + s`; negative
+    /// infinity where empty.
+    reach: Vec<f64>,
+    /// The highest the material of slice `i` stands along any direction of
+    /// band `k` (1 degree from `k` degrees), at `i * SECTORS + k`; negative
+    /// infinity where the slice is empty. Worked out once, on the first
+    /// reading after the last [`ReachProfile::add`], so a reading costs a
+    /// look-up per slice and band, not a pass over every sector (the owner's
+    /// project: about 710 s of checking with the pass over sectors).
+    support: std::sync::OnceLock<Vec<f64>>,
+}
+
+impl ReachProfile {
+    /// The number of sectors about the axis, each 1 degree.
+    pub const SECTORS: usize = 360;
+
+    /// An empty profile of `slices` slices of `dx` mm along X from `x0`;
+    /// `None` when the sizes are not finite and positive.
+    pub fn new(x0: f64, dx: f64, slices: usize) -> Option<Self> {
+        (x0.is_finite() && dx.is_finite() && dx > 0.0 && slices > 0).then(|| Self {
+            x0,
+            dx,
+            slices,
+            slice_reach: vec![f64::NEG_INFINITY; slices],
+            reach: vec![f64::NEG_INFINITY; slices * Self::SECTORS],
+            support: std::sync::OnceLock::new(),
+        })
+    }
+
+    /// Records material that may fill the box `y` by `z` (model Y and Z,
+    /// low and high) in slice `slice`: its farthest corner from the axis,
+    /// in every sector the box spans. A box that is not finite fills the
+    /// slice at infinite reach, so it can only make a bound larger.
+    pub fn add(&mut self, slice: usize, y: [f64; 2], z: [f64; 2]) {
+        if slice >= self.slices {
+            return;
+        }
+        // The bands are worked out again from the sectors.
+        self.support = std::sync::OnceLock::new();
+        let corners = [(y[0], z[0]), (y[0], z[1]), (y[1], z[0]), (y[1], z[1])];
+        let far = corners
+            .iter()
+            .map(|&(a, b)| a.hypot(b))
+            .fold(
+                0.0_f64,
+                |m, r| if r.is_nan() { f64::INFINITY } else { m.max(r) },
+            );
+        let finite = y.iter().chain(&z).all(|v| v.is_finite());
+        let around = !finite || (y[0] <= 0.0 && 0.0 <= y[1] && z[0] <= 0.0 && 0.0 <= z[1]);
+        let (from, to) = if around {
+            (0.0, std::f64::consts::TAU)
+        } else {
+            // A box clear of the axis subtends less than half a turn: the
+            // arc from its centre's direction to its corners'.
+            let centre = (0.5 * (z[0] + z[1])).atan2(0.5 * (y[0] + y[1]));
+            let (lo, hi) = corners
+                .iter()
+                .fold((0.0_f64, 0.0_f64), |(lo, hi), &(a, b)| {
+                    let d = wrap(b.atan2(a) - centre);
+                    (lo.min(d), hi.max(d))
+                });
+            (centre + lo, centre + hi)
+        };
+        let width = std::f64::consts::TAU / Self::SECTORS as f64;
+        let first = (from / width).floor() as i64;
+        let last = (to / width).floor() as i64;
+        let count = (last - first + 1).clamp(1, Self::SECTORS as i64);
+        let row = slice * Self::SECTORS;
+        for k in 0..count {
+            let s = (first + k).rem_euclid(Self::SECTORS as i64) as usize;
+            if let Some(r) = self.reach.get_mut(row + s) {
+                *r = r.max(far);
+            }
+        }
+        if let Some(r) = self.slice_reach.get_mut(slice) {
+            *r = r.max(far);
+        }
+    }
+
+    /// The highest any material with model X in `x` (low, high) can stand
+    /// along a direction about the axis, `dot(p, direction)`, for every
+    /// direction within `spread` radians of `towards` (the angle from model
+    /// +Y towards +Z): an upper bound, negative infinity where no material
+    /// is in reach. Material past the profile's ends is not known: the
+    /// profile must hold all the material.
+    pub fn highest(&self, x: [f64; 2], towards: f64, spread: f64) -> f64 {
+        if !(x[0].is_finite() && x[1].is_finite() && towards.is_finite() && spread.is_finite()) {
+            return f64::INFINITY;
+        }
+        let first = ((x[0] - self.x0) / self.dx).floor().max(0.0);
+        let last = ((x[1] - self.x0) / self.dx)
+            .floor()
+            .min(self.slices as f64 - 1.0);
+        if last < first {
+            return f64::NEG_INFINITY;
+        }
+        let support = self.support.get_or_init(|| self.bands());
+        let width = std::f64::consts::TAU / Self::SECTORS as f64;
+        let spread = spread.abs();
+        // The bands the directions fall in, every one for a spread of half a
+        // turn or more.
+        let lo = ((towards - spread) / width).floor();
+        let hi = ((towards + spread) / width).floor();
+        let count = ((hi - lo) as usize + 1).min(Self::SECTORS);
+        let lo = lo.rem_euclid(Self::SECTORS as f64) as usize;
+        let mut best = f64::NEG_INFINITY;
+        for i in (first as usize)..=(last as usize) {
+            let all = self.slice_reach.get(i).copied().unwrap_or(f64::INFINITY);
+            if all == f64::NEG_INFINITY {
+                continue;
+            }
+            for b in 0..count {
+                let k = (lo + b) % Self::SECTORS;
+                let h = support
+                    .get(i * Self::SECTORS + k)
+                    .copied()
+                    .unwrap_or(f64::INFINITY);
+                best = best.max(h);
+            }
+        }
+        best
+    }
+
+    /// For each slice and band of directions, the highest its material can
+    /// stand along any direction in the band: for each sector, its reach
+    /// times the largest cosine between the sector and the band, and at
+    /// least the axis's height (material nearer the axis than its reach
+    /// stands no higher than the reach's height where that is positive).
+    /// The cosine depends only on how many sectors apart the two are.
+    fn bands(&self) -> Vec<f64> {
+        let n = Self::SECTORS;
+        let width = std::f64::consts::TAU / n as f64;
+        // The largest cosine of an angle between a sector `d` sectors on
+        // from a band and that band: angles from (d - 1) to (d + 1) widths.
+        let cosine: Vec<f64> = (0..n)
+            .map(|d| {
+                let lo = (d as f64 - 1.0) * width;
+                let hi = (d as f64 + 1.0) * width;
+                let t = std::f64::consts::TAU;
+                if (lo / t).ceil() <= (hi / t).floor() {
+                    1.0
+                } else {
+                    lo.cos().max(hi.cos())
+                }
+            })
+            .collect();
+        let mut out = vec![f64::NEG_INFINITY; self.slices * n];
+        for i in 0..self.slices {
+            if self
+                .slice_reach
+                .get(i)
+                .is_none_or(|r| *r == f64::NEG_INFINITY)
+            {
+                continue;
+            }
+            let row = self.reach.get(i * n..(i + 1) * n).unwrap_or_default();
+            for (k, best) in out.iter_mut().skip(i * n).take(n).enumerate() {
+                for (s, &r) in row.iter().enumerate() {
+                    if r == f64::NEG_INFINITY {
+                        continue;
+                    }
+                    let c = cosine.get((s + n - k) % n).copied().unwrap_or(1.0);
+                    *best = best.max((r * c).max(0.0));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// `angle` wrapped to minus half a turn to half a turn, radians.
+fn wrap(angle: f64) -> f64 {
+    let t = std::f64::consts::TAU;
+    let w = angle.rem_euclid(t);
+    if w > 0.5 * t { w - t } else { w }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box

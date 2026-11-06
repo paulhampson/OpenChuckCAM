@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (FLUTE-TABS PR3, issue #547)
+
+- `DexelStock` gives its reach profile (`StockModel::reach_profile`, decision 0524): each column's spans as boxes, a slice a cell along X, for the flute check's bound from the material within the tool's reach. No API change of its own.
+
 ## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.

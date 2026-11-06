@@ -1718,6 +1718,10 @@ impl StockModel for LeftByEarlier<'_> {
     ) -> Option<f64> {
         self.0.top_over_disc(centre, axis, radius)
     }
+
+    fn reach_profile(&self) -> Option<openchuck_path::ReachProfile> {
+        self.0.reach_profile()
+    }
 }
 
 /// How far, beyond its largest radius, the tool keeps from a held region

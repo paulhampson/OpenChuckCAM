@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (FLUTE-TABS PR3, issue #547; additive API, no version bump)
+
+- **Changed output (decision 0524, accepted):** the flute check bounds stock with no exact answer, such as the stock earlier operations left, from the material within the tool's reach along X and towards the tool, taking the lower of that and the farthest-radius bound of decision 0509; free ends read the same bound. Fewer warnings where the far stock is out of reach (a held region, never cut); still warned where the path reaches stock past the flutes.
+  - **API.** Additive: `ReachProfile` and the defaulted `StockModel::reach_profile`.
+  - **Speed.** The profile is read by bands of direction, a look-up per slice and band, so the check stays fast: on the owner's project 0.31 s with the profile, where the farthest-radius bound alone took 0.027 s (0.45.0) and the first, sector-by-sector version of the profile took 434 s.
+  - **Output.** Paths are unchanged; only the flute warning and the free-end refusal read the new bound. The goldens are unchanged.
+
 ## 0.45.0
 
 - **Breaking (FLUTE-TABS; issue #547; 0.45.0, decision 0522, accepted by the owner on 6 Nov 2026, relayed):** the flute check of decision 0509 warns instead of refusing, in every case.
