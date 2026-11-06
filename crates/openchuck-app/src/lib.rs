@@ -220,6 +220,8 @@ pub(crate) fn modified_compared() -> usize {
 thread_local! {
     /// How many runs this thread has split into program files (tests).
     static RUN_SPLITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// How many times this thread has planned a run's files (tests).
+    static PLANS_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// An open project and the services that work on it.
@@ -1465,6 +1467,18 @@ impl Application {
         simulate: bool,
         until: Option<OperationId>,
     ) -> JobHandle<Regeneration> {
+        self.start_pipeline_then(name, simulate, until, Ok)
+    }
+
+    /// [`Self::start_pipeline`], with `then` done on the job's worker after
+    /// a run that succeeded (issue #470: the export dialog's file plan).
+    fn start_pipeline_then<T: Send + 'static>(
+        &self,
+        name: &str,
+        simulate: bool,
+        until: Option<OperationId>,
+        then: impl FnOnce(Regeneration) -> Result<T, AppError> + Send + 'static,
+    ) -> JobHandle<T> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
@@ -1491,7 +1505,7 @@ impl Application {
                     Err(e) if e.is_cancelled() => record.cancelled(),
                     Err(e) => record.failed(&document.project, e.to_string()),
                 }
-                result
+                result.and_then(then)
             })
     }
 
@@ -1564,7 +1578,17 @@ impl Application {
         post: &PostSelection,
         grouping: OutputGrouping,
     ) -> Result<Vec<PlannedFile>, AppError> {
+        PLANS_MADE.with(|n| n.set(n.get() + 1));
         posting::plan_files(run, post, grouping)
+    }
+
+    /// How many times [`Application::planned_files`] has planned a run's
+    /// files on this thread: lets a test show that the interface thread
+    /// plans none when a posting job ends (issue #470).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn plans_made_on_this_thread() -> usize {
+        PLANS_MADE.with(std::cell::Cell::get)
     }
 
     /// Starts regenerating with `post` and `grouping` for this one run, leaving
@@ -1579,6 +1603,26 @@ impl Application {
         let (before_post, before_grouping) = (self.post.replace(post), self.grouping);
         self.grouping = grouping;
         let handle = self.start_pipeline("post", false, None);
+        self.post = before_post;
+        self.grouping = before_grouping;
+        handle
+    }
+
+    /// [`Self::start_regenerate_with_post`], with the files `grouping` will
+    /// write planned in the same job, on its worker
+    /// ([`Self::planned_files`] of the run it made): the export dialog does
+    /// not plan them on the interface thread (issue #470; UI-09).
+    pub fn start_regenerate_with_post_and_plan(
+        &mut self,
+        post: PostSelection,
+        grouping: OutputGrouping,
+    ) -> JobHandle<(Regeneration, Vec<PlannedFile>)> {
+        let (before_post, before_grouping) = (self.post.replace(post.clone()), self.grouping);
+        self.grouping = grouping;
+        let handle = self.start_pipeline_then("post", false, None, move |run| {
+            let plan = posting::plan_files(&run, &post, grouping)?;
+            Ok((run, plan))
+        });
         self.post = before_post;
         self.grouping = before_grouping;
         handle
