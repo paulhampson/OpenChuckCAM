@@ -1,8 +1,8 @@
 # 0527: An operation limited by a selection cuts on its selected faces only and keeps clear of the setup's tabs (OP-02, OP-21, NFR-12; issue #555; lane TABCUT)
 
-- **Status:** proposed by lane TABCUT on 6 Nov 2026. The owner's answers below were relayed by the coordinator on 6 Nov 2026; only the owner accepts the record (decision 0049). One answer is **assumed**, not given: refusing (rather than warning) when an assembled path still reaches a tab (item 4; OI-2052).
+- **Status:** proposed by lane TABCUT on 6 Nov 2026. The owner's answers below were relayed by the coordinator on 6 Nov 2026; only the owner accepts the record (decision 0049). One answer is **assumed**, not given: refusing (rather than warning) when an assembled path still reaches a tab (item 4; OI-2056).
 - **Date:** 6 Nov 2026.
-- **Number:** 0527, the next after `main`'s highest (0526) under the owner's rule that decision numbers follow `main`; OI-2050 to OI-2052, free on `main` (highest OI-2049) and on every unmerged branch.
+- **Number:** 0527, the next after `main`'s highest (0526) under the owner's rule that decision numbers follow `main`; OI-2054 to OI-2056, given by the coordinator on 6 Nov 2026 (OI-2050 to OI-2053 are reserved for VIEWPERF and FACEFLOW).
 - **Issue:** [#555](https://github.com/paulhampson/OpenChuckCAM/issues/555) (sev1). Related: [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) and [#548](https://github.com/paulhampson/OpenChuckCAM/issues/548) (decisions 0522 to 0524).
 - **Amends:** the region rule of [0032](0032-slice-10-mesh-selection.md) item 6 and [0034](0034-slice-12-baseline-finishing.md) (a contact on the selected region), [0176](0176-swarf-boundary-avoid-and-check-sets.md) (the rule's list), [0035](0035-workholding-and-retaining-tabs.md) item 1 (tabs are part of the target: still so, but an operation limited by a selection keeps clear of them) and [0161](0161-tools-keep-clear-of-the-gripped-length.md) (held regions; unchanged, tabs added beside them).
 - **Library:** `openchuck-path` 0.47.0, a breaking change (decision 0048): `RegionConstraint` gains two public fields. No project schema change.
@@ -30,7 +30,7 @@ Free ends (OI-2047) were not the cause: the owner's operation has Face free ends
    - **Changed output.** Every selection-limited finishing path can end a little sooner at the edges of its region (by up to the drop's tolerance where the selection's edge runs across a smooth surface, and by the whole roll where it is a convex edge). The faces it cuts are the same. Whole-part operations are unchanged.
 2. **An operation limited by a selection keeps clear of the setup's tabs.**
    - **Which operations.** One with a machine selection or a boundary set. It leaves the tabs out: they are not faces of the model, so no selection holds them.
-   - **The clearance.** The tool keeps `HELD_CLEARANCE` (0.5 mm, decision 0161) plus the operation's stock to leave from each tab's design surface. That is the fit's tool, grown by the stock to leave, against the tab grown by 0.5 mm. The owner chose the largest option: also keep clear of the stock earlier operations left on the tab. That part is pull request 2 of this lane (OI-2050).
+   - **The clearance.** The tool keeps `HELD_CLEARANCE` (0.5 mm, decision 0161) plus the operation's stock to leave from each tab's design surface. That is the fit's tool, grown by the stock to leave, against the tab grown by 0.5 mm. The owner chose the largest option: also keep clear of the stock earlier operations left on the tab. That part is pull request 2 of this lane (OI-2054).
    - **The library.** `RegionConstraint::keep_clear` holds the tab solids, not grown. `allows` refuses a cut point where the tool, dropped on a tab grown by the clearance, comes to rest at its tip or above. Rotary roughing raises its floor over the grown tab instead, as it does over a check surface (decision 0043), so it still cuts the layers above.
    - **The host.** `workholding::tab_solids` gives the tab solids, with automatic tabs placed against the real held regions first.
    - **Unchanged.** A whole-part operation still cuts a tab to size as part of the target (0035 item 6). The held regions stay kept out of by every operation (0161). The tab warnings of 0522 to 0524 do not change.
@@ -39,10 +39,10 @@ Free ends (OI-2047) were not the cause: the owner's operation has Face free ends
    - **The test.** At each sample the tool, grown by the operation's stock to leave (the smallest of its selections' amounts), is dropped on each tab grown by the clearance less the tolerance.
    - **Why less the tolerance.** The fit keeps the full clearance at the points it makes; the tolerance is the room the moves between them have.
    - **Speed.** A move further than the tool's reach from every tab along X is passed over. A tab wholly below the tool's tip along its axis needs no drop.
-4. **A path that still reaches a tab is refused (assumed, option R; OI-2052).** It is never written. The message names the move's X and A and the tab's X range, and says that a tab holds the part. It offers changing the selection or the link or entry settings. The coordinator relayed no answer on refuse against warn: R was the lane's recommendation, and the owner confirms or changes it.
+4. **A path that still reaches a tab is refused (assumed, option R; OI-2056).** It is never written. The message names the move's X and A and the tab's X range, and says that a tab holds the part. It offers changing the selection or the link or entry settings. The coordinator relayed no answer on refuse against warn: R was the lane's recommendation, and the owner confirms or changes it.
 5. **Which strategies.**
    - **Trimmed.** Every strategy whose cut points go through the region rule: helical, axial and indexed finishing, simultaneous finishing and rotary roughing. These cut a pass short at a tab instead of refusing it.
-   - **Refused, not trimmed.** Swarf, edge following, drilling and Facing honour a selection without that rule, so item 3 refuses them if they reach a tab (OI-2051).
+   - **Refused, not trimmed.** Swarf, edge following, drilling and Facing honour a selection without that rule, so item 3 refuses them if they reach a tab (OI-2055).
    - **Not affected.** Rest machining and pencil clean-up refuse a selection.
 6. **Generated G-code remains the user's to verify (NFR-12).** Nothing in the messages says the path is safe.
 
@@ -64,4 +64,4 @@ Tests first, named after the requirements:
 
 - Library 0.47.0: `RegionConstraint` gains `outside` and `keep_clear` (struct literals need `..Default::default()`), `Solid::grown` is new, and the strategies' paths change as items 1 and 2 say.
 - Selection-limited finishing operations with a convex edge at their region end there. The tests and goldens that moved are listed in the pull request.
-- Open items: OI-2050 (the carried-stock clearance, pull request 2), OI-2051 (strategies refused, not trimmed, at a tab), OI-2052 (refuse or warn, assumed refuse). OI-2047 (free ends ignore the region) stays open: with Face free ends on, a limited operation still faces both ends. Item 3 now refuses such a path if a ring comes within the clearance of a tab.
+- Open items: OI-2054 (the carried-stock clearance, pull request 2), OI-2055 (strategies refused, not trimmed, at a tab), OI-2056 (refuse or warn, assumed refuse). OI-2047 (free ends ignore the region) stays open: with Face free ends on, a limited operation still faces both ends. Item 3 now refuses such a path if a ring comes within the clearance of a tab.
