@@ -1,4 +1,4 @@
-# 0580: Simulate display synchronisation fixes (BUG-SIMSYNC #333, BUG-SIMEND #334 and #330), recorded after the fact
+# 0529: Simulate display synchronisation fixes (BUG-SIMSYNC #333, BUG-SIMEND #334 and #330), recorded after the fact
 
 - **Status:** recorded after the fact on 1 Nov 2026 by lane DOCS-TIDY; the work was merged earlier (PR #341 for BUG-SIMSYNC, PR #362 for BUG-SIMEND); the owner said no review or acceptance is needed (1 Nov 2026, relayed by the coordinator).
 - **Date:** 25 to 27 Oct 2026 (the work); 1 Nov 2026 (this record).
@@ -6,7 +6,7 @@
 - **Issues:** #333 (BUG-SIMSYNC), #334 and #330 (BUG-SIMEND).
 - **Requirements:** SIM-02, SIM-03, SIM-04, SIM-05, UI-02, UI-11, GC-15, NFR-12.
 - **Relates to:** [decision 0040](0040-slice-9-display-and-playback.md) ("Issue 333 correction"), [decision 0322](0322-simulate-playback-frame-cost.md) item 8 (the tool follows the clock while playing), [decision 0238](0238-simulate-display-and-operation-navigation.md) (OI-987 hardware verification still open).
-- **Numbers:** takes 0580 from DOCS-TIDY's range. No open item, project schema or library change: both fixes are UI and application only (library 0.24.0 at the time of BUG-SIMEND).
+- **Numbers:** written as 0580 (DOCS-TIDY's range) and renumbered 0529, the next sequential number, by lane DOCS-WAVE1 on the Merge Manager's assignment (6 Nov 2026). No open item, project schema or library change: both fixes are UI and application only (library 0.24.0 at the time of BUG-SIMEND).
 
 ## Context
 
