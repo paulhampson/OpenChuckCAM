@@ -19,7 +19,10 @@ use std::sync::{Arc, Mutex};
 
 use openchuck_project::id::OperationId;
 
+use openchuck_project::Project;
+
 use crate::cache::StatusKey;
+use crate::export::KeysAnswer;
 
 /// The answers an [`crate::Application`] keeps.
 #[derive(Debug, Default)]
@@ -32,6 +35,10 @@ pub(crate) struct Answers {
     /// How many times the project was saved: a save changes the saved
     /// project without changing the revision.
     pub(crate) saves: AtomicU64,
+    /// The cache keys of the project for the export checks, at a revision.
+    pub(crate) export_keys: Memo<u64, KeysAnswer>,
+    /// The cache keys of the project a run was made from, with that project.
+    pub(crate) run_keys: ByProject<KeysAnswer>,
 }
 
 /// One answer and the stamp it was made at.
@@ -67,6 +74,45 @@ impl<S: PartialEq + Copy, T> Memo<S, T> {
         }
         let answer = Arc::new(make());
         *slot = Some((stamp, Arc::clone(&answer)));
+        answer
+    }
+}
+
+/// One answer about a project that never changes (the project a run was
+/// made from), kept with that project. The project is held, so it is the
+/// same project while it is kept and never one made later at the same
+/// address.
+#[derive(Debug)]
+pub(crate) struct ByProject<T> {
+    slot: Mutex<Option<(Arc<Project>, Arc<T>)>>,
+}
+
+impl<T> Default for ByProject<T> {
+    fn default() -> Self {
+        Self {
+            slot: Mutex::new(None),
+        }
+    }
+}
+
+impl<T> ByProject<T> {
+    /// The answer for `project`: the kept one when it was made for this
+    /// project, otherwise `make()`, kept for the next call. A poisoned lock
+    /// is cleared, as in [`Memo::get`].
+    pub(crate) fn get(&self, project: &Arc<Project>, make: impl FnOnce() -> T) -> Arc<T> {
+        let mut slot = self.slot.lock().unwrap_or_else(|poisoned| {
+            let mut slot = poisoned.into_inner();
+            *slot = None;
+            self.slot.clear_poison();
+            slot
+        });
+        if let Some((kept, answer)) = slot.as_ref()
+            && Arc::ptr_eq(kept, project)
+        {
+            return Arc::clone(answer);
+        }
+        let answer = Arc::new(make());
+        *slot = Some((Arc::clone(project), Arc::clone(&answer)));
         answer
     }
 }
@@ -117,6 +163,27 @@ mod tests {
         assert_eq!(*memo.get(1, || 8), 8);
         // Once made again, the answer is kept: the lock is no longer poisoned.
         assert_eq!(*memo.get(1, || 9), 8);
+    }
+
+    #[test]
+    fn req_nfr_04_an_answer_kept_by_project_is_made_once_per_project() {
+        let memo: ByProject<u32> = ByProject::default();
+        let a = Arc::new(Project::new("a"));
+        let same_content = Arc::new(Project::new("a"));
+        assert_eq!(*memo.get(&a, || 1), 1);
+        assert_eq!(
+            *memo.get(&Arc::clone(&a), || 2),
+            1,
+            "the same project: kept"
+        );
+        assert_eq!(*memo.get(&same_content, || 3), 3, "another project: made");
+        assert_eq!(*memo.get(&a, || 4), 4, "the first again: made again");
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = memo.slot.lock().unwrap();
+            panic!("poison the lock");
+        }));
+        assert_eq!(*memo.get(&a, || 5), 5, "a poisoned lock is not trusted");
+        assert_eq!(*memo.get(&a, || 6), 5, "and then kept again");
     }
 
     /// Issue #470: with an operation selected the inspector asked for the
@@ -250,5 +317,134 @@ mod tests {
         )
         .unwrap();
         assert!(recovered.is_modified(), "a recovered project is unsaved");
+    }
+
+    /// Issue #470: the export dialog asked for its checks every frame, and
+    /// each call made the cache keys of the run's project and of the project
+    /// as it is (tens of milliseconds a frame on a large carving). Asked many
+    /// times with nothing changed, each is made once: the project's again
+    /// after a change, a run's again only for another run.
+    #[test]
+    fn req_gc_15_req_nfr_04_export_checks_make_the_keys_once_per_change_and_run() {
+        let mut p = TestProject::new("memo-export-once");
+        let id = p.add_operation("Roughing", "rotary_roughing");
+        let run = p.app.regenerate().unwrap();
+        let before = crate::export::keys_made();
+        for _ in 0..5 {
+            let _ = p.app.export_checks(Some(&run), Some(&run), None);
+        }
+        assert_eq!(
+            crate::export::keys_made() - before,
+            2,
+            "the project's and the run's, once for five frames"
+        );
+        p.app
+            .execute(Command::SetParameter {
+                operation: id,
+                name: "stepover".into(),
+                value: Some(ParameterValue::Number(1.1)),
+            })
+            .unwrap();
+        for _ in 0..5 {
+            let _ = p.app.export_checks(Some(&run), None, None);
+        }
+        assert_eq!(
+            crate::export::keys_made() - before,
+            3,
+            "the project's again after a change; the run's are kept"
+        );
+        let again = p.app.regenerate().unwrap();
+        for _ in 0..5 {
+            let _ = p.app.export_checks(Some(&again), None, None);
+        }
+        assert_eq!(
+            crate::export::keys_made() - before,
+            4,
+            "a new run's once; the project's are kept"
+        );
+    }
+
+    /// The kept checks are always the checks made afresh (GC-15, NFR-12: an
+    /// out-of-date path must never be written as current): after every kind
+    /// of change, an undo and a redo, a save, a command that fails, a new
+    /// run and an older run asked for again.
+    #[test]
+    fn req_gc_15_req_nfr_12_kept_export_checks_equal_fresh_checks_after_every_change() {
+        let mut p = TestProject::new("memo-export-fresh");
+        let first = p.add_operation("Roughing", "rotary_roughing");
+        let old = p.app.regenerate().unwrap();
+        let check = |app: &crate::Application, run: &crate::Regeneration, step: &str| {
+            for posted in [None, Some(run)] {
+                for error in [None, Some("the engine stopped")] {
+                    assert_eq!(
+                        app.export_checks(Some(run), posted, error),
+                        crate::export::export_checks(app.project(), Some(run), posted, error),
+                        "{step}"
+                    );
+                }
+            }
+            assert_eq!(
+                app.export_checks(None, None, None),
+                crate::export::export_checks(app.project(), None, None, None),
+                "{step}, no run"
+            );
+        };
+        check(&p.app, &old, "start");
+        assert!(
+            p.app.export_checks(Some(&old), None, None).can_write(),
+            "current"
+        );
+        let second = p.add_operation("Finishing", "helical_finishing");
+        check(&p.app, &old, "added");
+        // The fixture's tool is too short to face the free ends (decision
+        // record 0500); not what this checks.
+        p.app
+            .execute(Command::SetParameter {
+                operation: second,
+                name: "face_free_ends".into(),
+                value: Some(ParameterValue::Flag(false)),
+            })
+            .unwrap();
+        check(&p.app, &old, "flag");
+        p.app
+            .execute(Command::SetParameter {
+                operation: first,
+                name: "stepover".into(),
+                value: Some(ParameterValue::Number(1.1)),
+            })
+            .unwrap();
+        check(&p.app, &old, "parameter");
+        assert!(
+            !p.app.export_checks(Some(&old), None, None).can_write(),
+            "out of date"
+        );
+        let mut off = p.app.project().operation(second).unwrap().clone();
+        off.enabled = false;
+        p.app
+            .execute(Command::Replace(Item::Operation(off)))
+            .unwrap();
+        check(&p.app, &old, "disabled");
+        assert!(p.app.undo().unwrap());
+        check(&p.app, &old, "undo");
+        assert!(p.app.undo().unwrap());
+        check(&p.app, &old, "second undo");
+        assert!(p.app.redo().unwrap());
+        check(&p.app, &old, "redo");
+        assert!(
+            p.app
+                .execute(Command::SetParameter {
+                    operation: OperationId::new(),
+                    name: "stepover".into(),
+                    value: Some(ParameterValue::Number(1.0)),
+                })
+                .is_err()
+        );
+        check(&p.app, &old, "failed command");
+        p.app.save().unwrap();
+        check(&p.app, &old, "saved");
+        let new = p.app.regenerate().unwrap();
+        check(&p.app, &new, "new run");
+        check(&p.app, &old, "the older run again");
+        check(&p.app, &new, "the new run again");
     }
 }

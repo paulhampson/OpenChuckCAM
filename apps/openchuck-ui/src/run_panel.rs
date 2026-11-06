@@ -60,10 +60,23 @@ pub struct ResultLine {
     pub moves: Vec<String>,
 }
 
+#[cfg(test)]
+thread_local! {
+    static RESULT_LINES_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread grouped a run's notes into result lines.
+#[cfg(test)]
+fn result_lines_made() -> usize {
+    RESULT_LINES_MADE.with(std::cell::Cell::get)
+}
+
 /// The lines of the results window for `run`, in order: what was generated
 /// and what was reused, the notes, the G-code checks, and the simulation
 /// (SIM-05).
 pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
+    #[cfg(test)]
+    RESULT_LINES_MADE.with(|c| c.set(c.get() + 1));
     let name = |id: OperationId| {
         project
             .operation(id)
@@ -355,6 +368,95 @@ pub struct RunPanel {
     /// The New operation dialog asked for the tool library (decision record
     /// 0127 item 6).
     wants_library: bool,
+    /// What the Results tab shows, kept per run and revision of the project
+    /// (issue #470).
+    view: Option<Arc<ResultsView>>,
+}
+
+/// What the Results tab shows for one run, one failure and one revision of
+/// the project: the lines, their counts, the summary, the Copy all text and
+/// whether the project has changed since the run. Grouping the notes and
+/// comparing the projects took tens of milliseconds on a large run, and the
+/// tab is drawn every frame it is shown (issue #470; UI-09, NFR-04).
+struct ResultsView {
+    /// The run it was made for (held, so never another run at its address).
+    run: Option<Arc<Regeneration>>,
+    /// The project's revision it was made at.
+    revision: u64,
+    /// The failed run's error it was made with.
+    error: Option<String>,
+    failed: bool,
+    lines: Vec<ResultLine>,
+    counts: LevelCounts,
+    summary: Option<String>,
+    text: Option<String>,
+    /// Whether the project has changed since the run.
+    changed: bool,
+}
+
+impl ResultsView {
+    /// Whether this view is for the run, failure and revision given.
+    fn is_for(&self, panel: &RunPanel, revision: u64) -> bool {
+        self.revision == revision
+            && self.failed == panel.failed
+            && self.error == panel.last_error
+            && match (&self.run, &panel.last) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+
+    fn make(panel: &RunPanel, app: &Application) -> Self {
+        let run = panel.last.clone();
+        let lines = run
+            .as_ref()
+            .map(|run| result_lines(run, app.project()))
+            .unwrap_or_default();
+        let mut counts = LevelCounts::default();
+        for line in &lines {
+            counts.add(line.severity);
+        }
+        counts.errors += usize::from(panel.failed);
+        let summary = run.as_ref().map(|run| {
+            format!(
+                "{} operation(s), {} moves, {:.1} s to generate",
+                run.toolpath.groups.len(),
+                run.toolpath
+                    .groups
+                    .iter()
+                    .map(|g| g.segments.len())
+                    .sum::<usize>(),
+                panel.last_seconds
+            )
+        });
+        // The error of a failed run is a line of the results: it is copied
+        // too, and a first run that failed still has Copy all (review of
+        // #480).
+        let failure = panel.last_error.as_deref().filter(|_| panel.failed);
+        let head = match (&summary, failure) {
+            (Some(summary), Some(error)) => Some(format!("{summary}\nProblem: {error}")),
+            (Some(summary), None) => Some(summary.clone()),
+            (None, Some(error)) => Some(format!("Problem: {error}")),
+            (None, None) => None,
+        };
+        let text =
+            head.map(|head| results_text(&lines, &head, openchuck_buildinfo::current_text()));
+        let changed = run
+            .as_ref()
+            .is_some_and(|run| *run.project != *app.project());
+        Self {
+            run,
+            revision: app.revision(),
+            error: panel.last_error.clone(),
+            failed: panel.failed,
+            lines,
+            counts,
+            summary,
+            text,
+            changed,
+        }
+    }
 }
 
 impl RunPanel {
@@ -846,40 +948,16 @@ impl RunPanel {
     /// everything (UI-12, UI-16; issue 475). Copy all and the plain-text box
     /// hold every line whatever the chips show (NFR-12).
     pub fn results_tab(&mut self, ui: &mut egui::Ui, app: &Application, filter: &mut LevelFilter) {
-        let lines = self
-            .last
-            .as_ref()
-            .map(|run| result_lines(run, app.project()))
-            .unwrap_or_default();
-        let mut counts = LevelCounts::default();
-        for line in &lines {
-            counts.add(line.severity);
-        }
-        counts.errors += usize::from(self.failed);
-        let summary = self.last.as_ref().map(|run| {
-            format!(
-                "{} operation(s), {} moves, {:.1} s to generate",
-                run.toolpath.groups.len(),
-                run.toolpath
-                    .groups
-                    .iter()
-                    .map(|g| g.segments.len())
-                    .sum::<usize>(),
-                self.last_seconds
-            )
-        });
-        // The error of a failed run is a line of the results: it is copied
-        // too, and a first run that failed still has Copy all (review of
-        // #480).
-        let failure = self.last_error.as_deref().filter(|_| self.failed);
-        let head = match (&summary, failure) {
-            (Some(summary), Some(error)) => Some(format!("{summary}\nProblem: {error}")),
-            (Some(summary), None) => Some(summary.clone()),
-            (None, Some(error)) => Some(format!("Problem: {error}")),
-            (None, None) => None,
+        let revision = app.revision();
+        let view = match &self.view {
+            Some(view) if view.is_for(self, revision) => Arc::clone(view),
+            _ => {
+                let view = Arc::new(ResultsView::make(self, app));
+                self.view = Some(Arc::clone(&view));
+                view
+            }
         };
-        let text =
-            head.map(|head| results_text(&lines, &head, openchuck_buildinfo::current_text()));
+        let (lines, counts, summary, text) = (&view.lines, view.counts, &view.summary, &view.text);
         ui.horizontal_wrapped(|ui| {
             if let Some(summary) = &summary {
                 ui.label(summary);
@@ -919,8 +997,8 @@ impl RunPanel {
                     ui.add(egui::Label::new(RichText::new(error).color(PROBLEM)).selectable(true));
                     ui.separator();
                 }
-                if let Some(run) = &self.last {
-                    if *run.project != *app.project() {
+                if self.last.is_some() {
+                    if view.changed {
                         ui.colored_label(
                             NOTE,
                             "The project has changed since this run. Generate again.",
@@ -1627,6 +1705,121 @@ mod tests {
             "{text}"
         );
         assert!(text.contains(openchuck_buildinfo::current_text().trim_end()));
+    }
+
+    /// Renames the operation of `frames`' project to `name`.
+    fn rename(frames: &mut Frames, operation: OperationId, name: &str) {
+        let mut renamed = frames.app.project().operation(operation).unwrap().clone();
+        renamed.name = name.to_owned();
+        frames
+            .app
+            .execute(openchuck_app::Command::Replace(
+                openchuck_app::project::Item::Operation(renamed),
+            ))
+            .unwrap();
+    }
+
+    /// Issue #470: the tab grouped every note of the run, built the whole
+    /// Copy all text and compared the run's project with the current one on
+    /// every frame it was shown (47 ms a frame for 59,044 notes on the
+    /// owner's carving). Now once per run and change of the project.
+    #[test]
+    fn req_ui_09_req_nfr_04_the_results_tab_groups_the_notes_once_per_run_and_change() {
+        let mut frames = Frames::new("once");
+        let operation = frames.app.project().operations()[0].id;
+        let before = result_lines_made();
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert!(result_lines_made() - before <= 1, "once for five frames");
+        let before = result_lines_made();
+        rename(&mut frames, operation, "Renamed");
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(result_lines_made() - before, 1, "once after a change");
+        let before = result_lines_made();
+        frames.panel.record_failure("the engine stopped".to_owned());
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(result_lines_made() - before, 1, "once after a failed run");
+        let before = result_lines_made();
+        let name = frames
+            .app
+            .project()
+            .operation(operation)
+            .unwrap()
+            .name
+            .clone();
+        frames
+            .panel
+            .record_run(Arc::new(feed_run(operation, &name, 3)));
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(
+            result_lines_made() - before,
+            2,
+            "a new run: its count, then the tab's lines once"
+        );
+    }
+
+    /// The kept lines are always those of the run and the project as they
+    /// are (UI-12, NFR-12): a rename, an undo and a redo, a failed run and a
+    /// new run each show, and copy, what a fresh grouping gives.
+    #[test]
+    fn req_ui_12_req_nfr_12_the_results_tab_shows_the_run_and_project_as_they_are() {
+        let mut frames = Frames::new("fresh");
+        let operation = frames.app.project().operations()[0].id;
+        let first = frames
+            .app
+            .project()
+            .operation(operation)
+            .unwrap()
+            .name
+            .clone();
+        let copy_all = |frames: &mut Frames| {
+            let at = frames.centre_of("Copy all");
+            frames.click(at);
+            frames.copied.last().cloned().expect("copied")
+        };
+        let fresh = |frames: &Frames| {
+            result_lines(frames.panel.last.as_ref().unwrap(), frames.app.project())
+                .into_iter()
+                .map(|l| l.text)
+                .collect::<Vec<_>>()
+        };
+        let check = |frames: &mut Frames, step: &str| {
+            frames.frame(Vec::new());
+            let text = copy_all(frames);
+            for line in fresh(frames) {
+                assert!(text.contains(&line), "{step}: {line} not in {text}");
+            }
+        };
+        check(&mut frames, "start");
+        assert!(frames.shows(&format!("'{first}'")));
+        rename(&mut frames, operation, "Renamed");
+        check(&mut frames, "renamed");
+        // The summary line names the operation as the project does now; the
+        // run's own notes keep the name they were made with.
+        assert!(frames.shows("'Renamed'"));
+        assert!(frames.app.undo().unwrap());
+        check(&mut frames, "undo");
+        assert!(!frames.shows("'Renamed'"));
+        assert!(frames.app.redo().unwrap());
+        check(&mut frames, "redo");
+        assert!(frames.shows("'Renamed'"));
+        frames.panel.record_failure("the engine stopped".to_owned());
+        check(&mut frames, "failed");
+        assert!(frames.shows("the engine stopped"));
+        assert!(copy_all(&mut frames).contains("Problem: the engine stopped"));
+        frames
+            .panel
+            .record_run(Arc::new(feed_run(operation, "Renamed", 3)));
+        check(&mut frames, "new run");
+        assert!(!frames.shows("the engine stopped"));
+        assert!(!copy_all(&mut frames).contains("the engine stopped"));
     }
 
     #[test]
