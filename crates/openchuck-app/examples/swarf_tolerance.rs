@@ -511,6 +511,7 @@ fn main() {
                     tip: true,
                 },
                 watch: &[],
+                outside: None,
             };
             let t = Instant::now();
             let generated = match generate_in_region(&Swarf, &input, &region, &values(tol), &ctx) {

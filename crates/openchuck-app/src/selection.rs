@@ -1120,6 +1120,10 @@ pub(crate) fn check_target(
 /// as a [`RegionConstraint`] (OP-02).
 pub(crate) struct ResolvedRegion {
     region: Option<Box<dyn SurfaceSource>>,
+    /// The part's faces outside the selected region, so the tool does not
+    /// roll over the selection's edge (issue #555; decision 0527). `None`
+    /// without a selected region, or when it is the whole part.
+    outside: Option<Box<dyn SurfaceSource>>,
     boundary: Option<Window>,
     avoid: Option<Box<dyn SurfaceSource>>,
     check: Option<Box<dyn SurfaceSource>>,
@@ -1182,6 +1186,7 @@ impl ResolvedRegion {
     ) -> RegionConstraint<'a> {
         RegionConstraint {
             region: self.region.as_deref(),
+            outside: self.outside.as_deref(),
             boundary: self.boundary,
             avoid: self.avoid.as_deref(),
             check: self.check.as_deref(),
@@ -1350,7 +1355,23 @@ pub(crate) fn resolve(
         |triangles: Option<TriangleSet>| -> Result<Option<Box<dyn SurfaceSource>>, AppError> {
             triangles.map(|t| of_triangles(&t)).transpose()
         };
-    let region = surface(union(&mut operation.selections.iter().copied())?)?;
+    let selected = union(&mut operation.selections.iter().copied())?;
+    // The rest of the part, against which the selection's edge is found
+    // (decision 0527).
+    let outside = match &selected {
+        Some(chosen) => {
+            let rest: TriangleSet = (0..u32::try_from(mesh.triangles.len()).unwrap_or(u32::MAX))
+                .filter(|t| !chosen.contains(t))
+                .collect();
+            if rest.is_empty() {
+                None
+            } else {
+                Some(of_triangles(&rest)?)
+            }
+        }
+        None => None,
+    };
+    let region = surface(selected)?;
     // Each avoid and check set by its choice (decision record 0229 item 1):
     // the sets that cut short are one surface per role, as before; each set
     // that only warns is a watched surface of its own; a set on Ignore is
@@ -1444,6 +1465,7 @@ pub(crate) fn resolve(
     };
     Ok(Some(ResolvedRegion {
         region,
+        outside,
         boundary,
         avoid,
         check,

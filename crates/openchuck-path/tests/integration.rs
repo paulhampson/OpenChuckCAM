@@ -114,6 +114,8 @@ mod roughing;
 mod roughing_region;
 #[path = "rounding_noise.rs"]
 mod rounding_noise;
+#[path = "selection_edge.rs"]
+mod selection_edge;
 #[path = "simultaneous.rs"]
 mod simultaneous;
 #[path = "simultaneous_hidden.rs"]
