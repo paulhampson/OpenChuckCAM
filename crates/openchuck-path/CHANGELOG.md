@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.0
+
+- **Breaking (FLUTE-TABS; issue #547; 0.45.0, decision 0520, proposed, on the owner's decision of 6 Nov 2026, relayed):** the flute check of decision 0509 warns instead of refusing, in every case.
+  - **API.** `flutes::check` returns `Option<PathWarning>` and `flutes::check_path` returns `Result<Option<PathWarning>>` (an error only when cancelled). New `flutes::WARNING_LEAD`, the words every such warning starts with ("Flute length: "), so a host can tell it apart and name the operation and the tool.
+  - **Generation.** The shared generation keeps a path whose stock stands past the flutes and adds one warning (also a note, decision 0175), carrying Finishing layers where the strategy has it. The measure is unchanged.
+  - **Words.** "the shank may meet the stock" (was "would"), and "The path was made: check it before running it" (NFR-12).
+  - **Output.** A path within the flutes is byte-identical. One past them, refused before, is now made, with the warning. The goldens are unchanged.
+
 ## 0.44.0
 
 - **Changed output for new operations (0.44.0, PATHORDER pull request D, issue #469; decision 0521, accepted by the owner, relayed by the coordinator):** the default link height of new operations of these strategies changes the written output (not the cut geometry): new helical, rest, simultaneous, axial and indexed finishing operations start with `low`, and saved operations keep `retract`. Helical finishing, rest machining and simultaneous finishing have decision 0496's **Links between passes** (`axial::parameter::LINK_HEIGHT`): `low` marks every pass `low_link`, and the shared assembly links them by 0496's rule (above the setup's stock, clear of held regions, a note for links that retract). `retract`, the default, leaves every path and golden file unchanged. Additive API (the parameter in three more schemas; `Pass::low_link` is 0496's). 0.44.0, for the new-operation default in `openchuck-app`, which changes a new operation's output.

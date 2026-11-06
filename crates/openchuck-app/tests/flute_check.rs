@@ -129,14 +129,62 @@ fn rough() -> (&'static str, Vec<(&'static str, f64)>) {
     )
 }
 
+/// The flute check's warnings among the run's paths (decision record 0520).
+fn flute_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
+    run.groups
+        .iter()
+        .flat_map(|g| g.warnings.iter())
+        .filter(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .map(|w| w.message.clone())
+        .collect()
+}
+
+/// The flute warnings in Messages, as the user reads them.
+fn flute_messages(app: &Application) -> Vec<openchuck_app::overview::Message> {
+    app.overview(None, &openchuck_app::JobLog::default())
+        .messages
+        .into_iter()
+        .filter(|m| m.text.starts_with("Flute length"))
+        .collect()
+}
+
 #[test]
-fn req_tl_04_req_nfr_07_finishing_the_crankshaft_blank_with_25_mm_of_flute_is_refused() {
+fn req_tl_04_req_nfr_12_finishing_the_crankshaft_blank_with_25_mm_of_flute_is_warned_by_name() {
     // The owner's case (#530): the corner of the box stands past the flutes
-    // above the tip, most below the axis on the pins' sides facing it.
+    // above the tip, most below the axis on the pins' sides facing it. By
+    // the owner's decision of 6 Nov 2026 (decision record 0520) it is
+    // made, with a warning that names the operation, the tool, the flutes
+    // and the stock; never silent, never a refusal.
     let app = crankshaft("blank", 25.0, &[finish()]);
-    let e = app.simulate().map(|_| ()).unwrap_err().to_string();
-    assert!(e.contains("25.000 mm of flute"), "{e}");
-    assert!(e.contains("35.000 x 35.000 mm box"), "{e}");
+    let run = app.simulate().unwrap_or_else(|e| panic!("{e}"));
+    let warnings = flute_warnings(&run);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("25.000 mm of flute"), "{warnings:?}");
+    assert!(
+        warnings[0].contains("35.000 x 35.000 mm box"),
+        "{warnings:?}"
+    );
+    let messages = flute_messages(&app);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let text = &messages[0].text;
+    assert!(
+        text.starts_with(
+            "Flute length (operation 'Op 1', tool '3.175 mm flat'): the stock stands up to "
+        ),
+        "{text}"
+    );
+    assert!(text.contains("so the shank may meet the stock"), "{text}");
+    assert!(text.contains("check it before running it"), "{text}");
+    assert!(!text.contains("safe"), "{text}");
+    assert_eq!(
+        messages[0].severity,
+        openchuck_app::overview::Severity::Warning
+    );
+    assert!(
+        messages[0].source_name.contains("Op 1"),
+        "{}",
+        messages[0].source_name
+    );
 }
 
 #[test]
@@ -149,4 +197,122 @@ fn req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flu
     let app = crankshaft("roughed", 25.0, &[rough(), finish()]);
     let run = app.simulate().unwrap_or_else(|e| panic!("{e}"));
     assert!(!run.toolpath.groups.is_empty());
+    assert!(
+        flute_warnings(&run).is_empty(),
+        "{:?}",
+        flute_warnings(&run)
+    );
+}
+
+/// The CrankShaft project with a held start and default tabs (OP-21, SET-09;
+/// issue #547): box stock from X -12 to 46, 4 mm gripped at the start,
+/// roughed leaving 0.3 mm, then finished by axial finishing with a tool of
+/// 8 mm of flute.
+fn held_and_roughed(name: &str) -> Application {
+    use openchuck_app::setup::{HeldRegion, Workholding};
+    let rough = (
+        "rotary_roughing",
+        vec![
+            ("stock_to_leave", 0.3),
+            ("stepdown", 4.0),
+            ("stepover", 2.5),
+        ],
+    );
+    let finish = (
+        "axial_finishing",
+        vec![("stepover", 2.5), ("tolerance", 0.1)],
+    );
+    let mut app = crankshaft(name, 8.0, &[rough, finish]);
+    let mut setup = app.project().setups().first().unwrap().clone();
+    setup.stock = Some(Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(-12.0, -17.5, -17.5),
+            max: Point3::new(46.0, 17.5, 17.5),
+        },
+    });
+    setup.workholding = Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(4.0),
+            diameter: None,
+        }),
+        end: None,
+        tabs: Vec::new(),
+    };
+    app.execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    setup.workholding.tabs = app.start_default_tabs(setup.id).wait().unwrap();
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    app
+}
+
+#[test]
+fn req_tl_04_req_nfr_12_a_finish_past_the_flutes_after_roughing_is_made_with_a_warning() {
+    // The owner's case (#547) on the public CrankShaft model: the stock
+    // roughing left is held to a bound (OI-2025) past the 8 mm of flute.
+    // Before, generation stopped there, with no operation named; now the
+    // finish is made and the warning names it and its tool, says the depth
+    // is a bound, and offers Finishing layers.
+    let app = held_and_roughed("held-roughed");
+    let run = app.simulate().unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(flute_warnings(&run).len(), 1, "{:?}", flute_warnings(&run));
+    let messages = flute_messages(&app);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let text = &messages[0].text;
+    assert!(
+        text.starts_with(
+            "Flute length (operation 'Op 2', tool '3.175 mm flat'): the stock may stand up to "
+        ),
+        "{text}"
+    );
+    assert!(text.contains("(a bound, "), "{text}");
+    assert!(
+        text.contains("what the earlier operations in this setup left"),
+        "{text}"
+    );
+    assert!(text.contains("or turn on Finishing layers"), "{text}");
+    assert!(
+        messages[0].source_name.contains("Op 2"),
+        "{}",
+        messages[0].source_name
+    );
+    // Writing the program says it too, with the operation's name.
+    let checks = app.export_checks(Some(&run), None, None);
+    let said = checks
+        .checks
+        .iter()
+        .filter(|c| c.text.contains("Flute length"))
+        .map(|c| c.text.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(
+        said[0].starts_with(
+            "Operation 'Op 2' was made with a warning: Flute length (operation 'Op 2', tool"
+        ),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn req_nfr_07_a_refusal_from_generation_names_its_operation() {
+    // A Stepdown past the flutes is still refused (OI-153), and the refusal
+    // names the operation (#547) as well as the parameter.
+    let app = crankshaft(
+        "named",
+        3.0,
+        &[(
+            "rotary_roughing",
+            vec![
+                ("stock_to_leave", 0.3),
+                ("stepdown", 4.0),
+                ("stepover", 2.5),
+            ],
+        )],
+    );
+    let e = app.simulate().map(|_| ()).unwrap_err().to_string();
+    assert!(
+        e.starts_with("operation 'Op 1' cannot be generated: "),
+        "{e}"
+    );
+    assert!(e.contains("3.000 mm of flute"), "{e}");
+    assert!(e.contains("parameter stepdown"), "{e}");
 }

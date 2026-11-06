@@ -285,10 +285,11 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// Whether these settings cut the stock in layers no deeper than a
     /// Stepdown the strategy itself holds to the tool's flutes (roughing,
     /// Facing, finishing with Finishing layers on). False, the default: each
-    /// pass cuts all the stock above it at once, so the generation refuses a
+    /// pass cuts all the stock above it at once, so the generation warns of a
     /// path whose deepest cut, read along the tool axis from the stock, is
-    /// past the tool's flutes ([`crate::flutes::check`]; decision record
-    /// 0509). A strategy that returns true makes its own flute check.
+    /// past the tool's flutes ([`crate::flutes::check`]; decision records
+    /// 0509 and 0520). A strategy that returns true makes its own flute
+    /// check.
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         false
     }
@@ -524,9 +525,9 @@ fn generate_with(
         let _timing = context.time_stage("assembly");
         assemble_with_entry(&passes, input, &common, &entry, context)?
     };
-    // The flutes against the deepest cut (TL-04, NFR-07; decision record
-    // 0509), on the path as assembly wrote it: its angles are the ones the
-    // tool turns through.
+    // The flutes against the deepest cut (TL-04, NFR-07; decision records
+    // 0509 and 0520), on the path as assembly wrote it: its angles are the
+    // ones the tool turns through.
     if !strategy.cuts_in_layers(&parameters) {
         let _timing = context.time_stage("flute check");
         let layers = strategy
@@ -534,7 +535,11 @@ fn generate_with(
             .get(crate::finishing::parameter::FINISHING_LAYERS)
             .is_some()
             .then_some(crate::finishing::parameter::FINISHING_LAYERS);
-        crate::flutes::check_path(input, &path, layers, context)?;
+        // A warning, not a refusal (decision record 0520): the path is
+        // kept and the user decides (NFR-12).
+        if let Some(warning) = crate::flutes::check_path(input, &path, layers, context)? {
+            warnings.push(warning);
+        }
     }
     check_clear(&path, input.keep_out, mid)?;
     // Each warning is a note too, first, so a host that shows only notes
