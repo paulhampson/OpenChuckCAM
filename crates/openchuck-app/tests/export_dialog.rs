@@ -423,6 +423,35 @@ fn req_gc_05_the_planned_files_are_the_files_that_are_written() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Issue #470: the export dialog planned the files on the interface thread
+/// when posting ended, assembling the whole toolpath again (about 200 ms on
+/// the CrankShaft model). The posting job plans them on its worker: the same
+/// plan as planning the run it made, for every grouping, and none on the
+/// thread that started it.
+#[test]
+fn req_gc_05_req_ui_09_the_posting_job_plans_its_files_on_its_worker() {
+    let (dir, mut app) = project("plan-job", false);
+    let selection = PostSelection::Builtin("makera-z1".into());
+    for grouping in OutputGrouping::ALL {
+        let before = openchuck_app::Application::plans_made_on_this_thread();
+        let (run, plan) = app
+            .start_regenerate_with_post_and_plan(selection.clone(), grouping)
+            .wait()
+            .unwrap();
+        assert_eq!(
+            openchuck_app::Application::plans_made_on_this_thread(),
+            before,
+            "{grouping:?}: no plan on this thread"
+        );
+        assert_eq!(
+            plan,
+            app.planned_files(&run, &selection, grouping).unwrap(),
+            "{grouping:?}"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn req_gc_05_a_project_file_across_two_setups_is_refused_in_the_plan_too() {
     let (dir, mut app) = project("plan-two", true);
