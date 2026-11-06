@@ -989,7 +989,7 @@ On macOS, Ctrl is Command.
 
 ## 17. Differences from the current build
 
-Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. The owner agreed these resolutions with decision 0038 (15 Oct 2026); each is work for the lane named in the work breakdown. D13 was added with sections 7.5 and 11.7 (decision 0104) and is open.
+Slice 8 (decision 0029, proposed at the time; accepted 6 Nov 2026) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. The owner agreed these resolutions with decision 0038 (15 Oct 2026); each is work for the lane named in the work breakdown. D13 was added with sections 7.5 and 11.7 (decision 0104) and is open.
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
