@@ -2,7 +2,7 @@
 
 ## 0.47.0
 
-- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** a contact on the edge between a selected face and an unselected one is not on the selection, so a selection-limited operation no longer rolls over its selection's edge and cuts outside it.
+- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** a contact on the edge between a selected face and an unselected one is not on the selection, so a selection-limited operation no longer rolls over its selection's edge and cuts outside it.
   - **API.** `RegionConstraint` gains `outside` (the part's faces outside the selection); a struct literal needs `..Default::default()`.
   - **Output.** With `outside` not set, paths are byte-identical. A host that sets it changes selection-limited paths at the edges of their regions.
 
