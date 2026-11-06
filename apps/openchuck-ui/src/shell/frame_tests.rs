@@ -1075,6 +1075,107 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
     assert_eq!(rig.shell.viewport.selected_solid(), None);
 }
 
+/// An Apply of the workholding section whose check finishes after the user
+/// has left the section (an operation selected) is stored when the check
+/// finishes, and makes the operations stale at once (issue #558; UI-11,
+/// NFR-12; decision 0172). Before, the check was taken only while the
+/// section was drawn: the view went on drawing the draft's tab while the
+/// operations read the stored one and stayed up to date. While a draft is
+/// not applied, Messages says the toolpaths use the stored workholding.
+#[test]
+fn req_ui_11_req_nfr_12_an_apply_that_finishes_after_the_section_is_left_is_stored_and_makes_the_operations_stale()
+ {
+    use openchuck_app::setup::{Millimetres, Tab, TabLayout, TabShape};
+    let mut rig = Rig::cube("apply-section-left", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let (setup, op) = {
+        let project = rig.shell.app.as_ref().unwrap().project();
+        (project.setups()[0].id, project.operations()[0].id)
+    };
+    rig.shell.app.as_ref().unwrap().regenerate().unwrap();
+    rig.shell.overview_dirty = true;
+    rig.frame(Vec::new());
+    let state = |rig: &Rig| rig.shell.overview.items[&ItemRef::Operation(op)].state;
+    assert_ne!(state(&rig), ItemState::Stale);
+    let not_applied = |rig: &Rig| {
+        rig.shell
+            .overview
+            .messages
+            .iter()
+            .any(|m| m.text.contains("not applied"))
+    };
+    assert!(!not_applied(&rig));
+    rig.shell.choose_setup(setup, Some(SetupPart::Workholding));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig
+        .shell
+        .workholding_panel
+        .as_ref()
+        .and_then(crate::workholding_panel::WorkholdingPanel::part_extent)
+        .is_none()
+    {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // A tab in the head zone, shorter than the tool: stored with a warning
+    // (decision 0523).
+    let tabs = vec![Tab {
+        auto: None,
+        x_start: Millimetres(-6.0),
+        length: Millimetres(1.0),
+        shape: TabShape::Cylinder {
+            diameter: Millimetres(3.0),
+        },
+        layout: TabLayout::OnAxis,
+    }];
+    rig.shell
+        .workholding_panel
+        .as_mut()
+        .unwrap()
+        .draft_mut()
+        .tabs = tabs.clone();
+    rig.frame(Vec::new());
+    assert!(not_applied(&rig), "{:?}", rig.shell.overview.messages);
+    assert_ne!(state(&rig), ItemState::Stale);
+    // Apply, then straight to an operation before the check has finished.
+    {
+        let app = rig.shell.app.as_ref().unwrap();
+        let stored = app.project().setup(setup).unwrap().clone();
+        rig.shell
+            .workholding_panel
+            .as_mut()
+            .unwrap()
+            .press_apply(app, &stored);
+    }
+    rig.shell.select(Selection::Operation(op));
+    let stored_tabs = |rig: &Rig| {
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setup(setup)
+            .unwrap()
+            .workholding
+            .tabs
+            .clone()
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while stored_tabs(&rig) != tabs {
+        assert!(
+            Instant::now() < deadline,
+            "the Apply was not stored while the section was not shown"
+        );
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.frame(Vec::new());
+    assert_eq!(state(&rig), ItemState::Stale);
+    assert!(!not_applied(&rig), "{:?}", rig.shell.overview.messages);
+    assert!(!rig.shell.viewport.shows_unapplied());
+}
+
 /// Esc clears a selected held region or tab on the Setup step too, where
 /// the panes replace the 3D view (7.5; OI-354).
 #[test]
