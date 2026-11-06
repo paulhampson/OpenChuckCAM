@@ -62,22 +62,23 @@ fn rail_keeps_its_show_button(width: f32) {
         show.left() >= 0.0 && show.right() <= rig.size.x,
         "show button {show:?} is outside the {width} pt window"
     );
+    // What shows of each tab label (after the row's clip) in the button's row.
     let tabs: Vec<_> = rig
-        .text_rects()
+        .painted()
         .into_iter()
-        .filter(|(t, r)| {
-            t != "\u{23f6}" && r.center().y > rig.size.y - 60.0 && r.center().y < rig.size.y
-        })
-        .filter(|(t, _)| {
-            ["Setup checks", "Messages", "Jobs", "Results", "Playback"]
-                .iter()
-                .any(|n| t.starts_with(n))
+        .filter_map(|(text, _, seen)| Some((text?, seen)))
+        .filter(|(t, seen)| {
+            (seen.center().y - show.center().y).abs() < 12.0
+                && ["Setup checks", "Messages", "Jobs", "Results", "Playback"]
+                    .iter()
+                    .any(|n| t.starts_with(n))
         })
         .collect();
-    for (name, rect) in &tabs {
+    assert!(!tabs.is_empty(), "no dock tab labels found at {width} pt");
+    for (name, seen) in &tabs {
         assert!(
-            !rect.intersects(show),
-            "tab {name:?} {rect:?} overlaps the show button {show:?} at {width} pt"
+            !seen.intersects(show),
+            "tab {name:?} {seen:?} overlaps the show button {show:?} at {width} pt"
         );
     }
     rig.click(show.center());
