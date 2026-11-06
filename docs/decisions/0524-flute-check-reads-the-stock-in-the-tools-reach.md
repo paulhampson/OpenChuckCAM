@@ -1,6 +1,6 @@
 # 0524: The flute check bounds the stock earlier operations left from the material within the tool's reach, and reads the stock's farthest radius once a check (TL-04, NFR-07, NFR-12; issue #547; lane FLUTE-TABS)
 
-- **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026. Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049), after reading it in full. Proposed by lane FLUTE-TABS on 6 Nov 2026.
 - **Date:** 6 Nov 2026.
 - **Number:** 0524, confirmed free by the Merge Manager on 6 Nov 2026.
 - **Issue:** [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (sev1), part 2: "only check the stock that the operation can actually touch".
