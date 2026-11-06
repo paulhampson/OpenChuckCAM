@@ -177,11 +177,6 @@ impl ExportChecks {
     }
 }
 
-/// Operations of `project` whose result in `run` is out of date: the project
-/// has changed, in the operation or in anything it reads or in an operation
-/// before it, since the run was made. This is the same key the pipeline cache
-/// uses (architecture section 6), so a change that would regenerate an
-/// operation marks it here. Model file contents are not compared.
 #[cfg(test)]
 thread_local! {
     static KEYS_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -285,6 +280,11 @@ pub fn simulation_out_of_date(project: &Project, run: &Regeneration) -> Option<S
     Some(text)
 }
 
+/// Operations of `project` whose result in `run` is out of date: the project
+/// has changed, in the operation or in anything it reads or in an operation
+/// before it, since the run was made. This is the same key the pipeline cache
+/// uses (architecture section 6), so a change that would regenerate an
+/// operation marks it here. Model file contents are not compared.
 fn stale_operations(
     project: &Project,
     run: &Regeneration,
