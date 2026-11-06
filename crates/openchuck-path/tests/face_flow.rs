@@ -1021,7 +1021,11 @@ fn curved_flat(edges: &[&dyn Fn(f64) -> Point3]) -> BrepModel {
     };
     b.face(
         Surface::Plane {
-            frame: frame(p3(0.0, 0.0, 10.0), Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)),
+            frame: frame(
+                p3(0.0, 0.0, 10.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            ),
         },
         uv,
         Some(outline),
@@ -1042,10 +1046,15 @@ fn req_op_28_a_round_face_is_cut_between_its_two_halves() {
         p3(15.0 + 5.0 * a.cos(), 5.0 * a.sin(), 10.0)
     };
     let rig = Rig::new(curved_flat(&[&circle]), &ball(6.0));
-    let out = rig.output(&rig.strategy(&[0], &[]), &values(0.8, &[])).unwrap();
+    let out = rig
+        .output(&rig.strategy(&[0], &[]), &values(0.8, &[]))
+        .unwrap();
     let r = |q: &Point3| (q.x - 15.0).hypot(q.y);
     let all: Vec<Point3> = out.passes.iter().flat_map(contacts).collect();
-    assert!(all.iter().all(|q| r(q) <= 5.0 + 1e-3), "a contact outside the face");
+    assert!(
+        all.iter().all(|q| r(q) <= 5.0 + 1e-3),
+        "a contact outside the face"
+    );
     let first = contacts(&out.passes[0]);
     let last = contacts(out.passes.last().unwrap());
     assert!(first.iter().all(|q| (r(q) - 5.0).abs() < 1e-3));
@@ -1084,7 +1093,11 @@ fn req_op_28_a_two_sided_face_is_cut_from_its_longer_side_to_the_other() {
         (q.distance(centre) - radius).abs() < 1e-3
     };
     assert!(contacts(&passes[0]).iter().all(|q| on(q, 4.0, -1.0)));
-    assert!(contacts(passes.last().unwrap()).iter().all(|q| on(q, 2.0, 1.0)));
+    assert!(
+        contacts(passes.last().unwrap())
+            .iter()
+            .all(|q| on(q, 2.0, 1.0))
+    );
 }
 
 #[test]
@@ -1118,7 +1131,10 @@ fn req_op_28_moves_round_a_small_face_off_the_axis_stay_within_the_tolerance() {
         for w in pass.points.windows(2) {
             for f in [0.25, 0.5, 0.75] {
                 let d = from_axis(&between(&rig, &w[0], &w[1], f));
-                assert!(d >= radius + r - tol - 1e-6, "a move cuts into the face: {d}");
+                assert!(
+                    d >= radius + r - tol - 1e-6,
+                    "a move cuts into the face: {d}"
+                );
                 assert!(d <= radius + r + 2.0 * tol, "a move leaves {d} mm");
             }
         }
@@ -1128,7 +1144,11 @@ fn req_op_28_moves_round_a_small_face_off_the_axis_stay_within_the_tolerance() {
 #[test]
 fn req_op_28_stock_to_leave_is_left_on_the_face() {
     let rig = Rig::new(trapezoid(), &ball(6.0));
-    let passes = rig.passes(&[0], &[], &values(1.0, &[(names::STOCK_TO_LEAVE, num(0.2))]));
+    let passes = rig.passes(
+        &[0],
+        &[],
+        &values(1.0, &[(names::STOCK_TO_LEAVE, num(0.2))]),
+    );
     for c in passes.iter().flat_map(|p| &p.points) {
         // Within the exact drop's accuracy at the face's edge.
         assert!((c.tip.z - 10.2).abs() < 1e-4, "{c:?}");
@@ -1275,7 +1295,10 @@ fn req_op_28_the_strategy_needs_exact_faces() {
     // run unchecked (OP-16, NFR-12; decision 0237).
     assert!(!flow.label().is_empty());
     assert!(flow.description().contains("STEP model"));
-    assert!(flow.description().contains("Check the toolpath and simulation"));
+    assert!(
+        flow.description()
+            .contains("Check the toolpath and simulation")
+    );
     // The registry's instance has no model: generating with it is refused
     // in plain words, never a crash.
     let rig = Rig::new(trapezoid(), &ball(6.0));
@@ -1300,19 +1323,34 @@ fn req_op_28_nfr_07_bad_input_is_refused_with_a_message() {
         .to_string();
     assert!(err.contains("face 7"), "{err}");
     // Too fine a stepover for the face.
-    let err = rig.output(&rig.strategy(&[0], &[]), &values(1e-4, &[])).unwrap_err().to_string();
+    let err = rig
+        .output(&rig.strategy(&[0], &[]), &values(1e-4, &[]))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("passes"), "{err}");
     // The whole boundary as the guide leaves nothing to step towards.
-    let err = rig.output(&rig.strategy(&[0], &[0, 1, 2, 3]), &values(1.0, &[])).unwrap_err().to_string();
+    let err = rig
+        .output(&rig.strategy(&[0], &[0, 1, 2, 3]), &values(1.0, &[]))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("whole boundary"), "{err}");
     // A face whose edges do not close, and one with no edges at all.
     let mut open = trapezoid();
     open.faces[0].edges.pop();
     let broken = Rig::new(open, &ball(6.0));
-    let err = broken.output(&broken.strategy(&[0], &[]), &values(1.0, &[])).unwrap_err().to_string();
+    let err = broken
+        .output(&broken.strategy(&[0], &[]), &values(1.0, &[]))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("does not close"), "{err}");
-    let bare = Rig::new(openchuck_testkit::ruled::floor_plane(10.0, 0.0, 30.0, -5.0, 5.0), &ball(6.0));
-    let err = bare.output(&bare.strategy(&[0], &[]), &values(1.0, &[])).unwrap_err().to_string();
+    let bare = Rig::new(
+        openchuck_testkit::ruled::floor_plane(10.0, 0.0, 30.0, -5.0, 5.0),
+        &ball(6.0),
+    );
+    let err = bare
+        .output(&bare.strategy(&[0], &[]), &values(1.0, &[]))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("no boundary edges"), "{err}");
     let strategy = rig.strategy(&[0], &[]);
     for (name, value) in [
