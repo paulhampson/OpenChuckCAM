@@ -209,6 +209,11 @@ fn req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flu
 /// roughed leaving 0.3 mm, then finished by axial finishing with a tool of
 /// 8 mm of flute.
 fn held_and_roughed(name: &str) -> Application {
+    held_and_roughed_with(name, 8.0)
+}
+
+/// [`held_and_roughed`] with `flute` mm of flute.
+fn held_and_roughed_with(name: &str, flute: f64) -> Application {
     use openchuck_app::setup::{HeldRegion, Workholding};
     let rough = (
         "rotary_roughing",
@@ -222,7 +227,7 @@ fn held_and_roughed(name: &str) -> Application {
         "axial_finishing",
         vec![("stepover", 2.5), ("tolerance", 0.1)],
     );
-    let mut app = crankshaft(name, 8.0, &[rough, finish]);
+    let mut app = crankshaft(name, flute, &[rough, finish]);
     let mut setup = app.project().setups().first().unwrap().clone();
     setup.stock = Some(Stock::Box {
         bounds: Aabb {
@@ -315,4 +320,20 @@ fn req_nfr_07_a_refusal_from_generation_names_its_operation() {
     );
     assert!(e.contains("3.000 mm of flute"), "{e}");
     assert!(e.contains("parameter stepdown"), "{e}");
+}
+
+#[test]
+fn req_tl_04_req_nfr_12_a_finish_with_flutes_past_the_stock_in_reach_is_not_warned_of() {
+    // The same job with 21 mm of flute (decision 0524): the held start's
+    // corners, 24.749 mm from the axis, are out of the finish's reach, and
+    // the stock in its reach, the crank's webs beside the journals, stands
+    // about 18.2 mm above the tip at most. Before, the bound from the
+    // farthest material anywhere warned of 27.900 mm.
+    let app = held_and_roughed_with("held-21", 21.0);
+    let run = app.simulate().unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        flute_warnings(&run).is_empty(),
+        "{:?}",
+        flute_warnings(&run)
+    );
 }

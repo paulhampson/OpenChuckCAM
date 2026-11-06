@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- FLUTE-TABS PR3 (issue #547, decision 0524, proposed): the stock earlier operations left (`LeftByEarlier`) passes on the simulation's reach profile, so the flute check reads the stock within the tool's reach.
 - FLUTE-TABS (issue #547, decision 0522, proposed): the flute check's warning (`openchuck_path::flutes::WARNING_LEAD`) is shown as "Flute length (operation '<name>', tool '<tool name>'): ..." in Messages, the operation's status and the export checks, named when shown. An error from the pathing library while generating an operation is `AppError::Operation` naming it ("operation '<name>' cannot be generated: ..."), keeping the library's words and the parameter they name; a cancel stays a cancel. Callers that matched `AppError::Path` for a generation error now get `AppError::Operation`.
 - UIBUGS (issue #463 item 3, decision 0518): the Setup step's health reads "Needs attention" (reason "Set the stock" or "Choose the part") for a setup missing only its stock or part, in place of "Error to fix"; a missing tool or an operation's missing value is still an error. `overview()` output only; no API change; the values stay in the list of required values and generation still refuses them.
 - VIEW-ORIENT (#535, decision 0512, accepted): the `SceneRole::AZero` mark is at the part's far end (the scene's end only when no part is readable), not at the stock's.
