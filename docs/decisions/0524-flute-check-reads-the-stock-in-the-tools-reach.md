@@ -2,7 +2,7 @@
 
 - **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026. Only the project owner accepts a record (decision 0049).
 - **Date:** 6 Nov 2026.
-- **Number:** 0524 is provisional; the Merge Manager assigns the number at release.
+- **Number:** 0524, confirmed free by the Merge Manager on 6 Nov 2026.
 - **Issue:** [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (sev1), part 2: "only check the stock that the operation can actually touch".
 - **Builds on:** [0522](0522-the-flute-check-warns.md), under which the check warns rather than refusing.
 - **Amends:** [0509](0509-flute-length-against-the-deepest-cut.md) item 1 ("How it reads" and "The quick bound"), item 4 (free ends) and item 6 (first bullet).
