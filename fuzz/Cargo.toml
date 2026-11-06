@@ -24,6 +24,8 @@ openchuck-geom = { path = "../crates/openchuck-geom" }
 openchuck-import = { path = "../crates/openchuck-import" }
 openchuck-gcode = { path = "../crates/openchuck-gcode" }
 openchuck-post = { path = "../crates/openchuck-post" }
+openchuck-path = { path = "../crates/openchuck-path" }
+openchuck-app = { path = "../crates/openchuck-app" }
 
 [workspace]
 members = ["."]
@@ -101,6 +103,20 @@ bench = false
 [[bin]]
 name = "project_folder"
 path = "fuzz_targets/project_folder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "settings_toml"
+path = "fuzz_targets/settings_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "facing_rows"
+path = "fuzz_targets/facing_rows.rs"
 test = false
 doc = false
 bench = false
