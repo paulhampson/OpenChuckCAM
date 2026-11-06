@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.0
+
+- **Changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** an operation with a machine selection gives the faces it leaves out as `RegionConstraint::outside`, so its path no longer runs past its selected faces at a convex edge (on the owner's carving it came down beside the end face onto the tab). Whole-part operations are unchanged.
+
 ## Unreleased
 
 - FLUTE-TABS PR3 (issue #547, decision 0524, accepted): the stock earlier operations left (`LeftByEarlier`) passes on the simulation's reach profile, so the flute check reads the stock within the tool's reach.
