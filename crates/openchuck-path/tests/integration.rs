@@ -44,6 +44,8 @@ mod edge_following;
 mod entry;
 #[path = "entry_safety.rs"]
 mod entry_safety;
+#[path = "exact_contact.rs"]
+mod exact_contact;
 #[path = "exact_faces.rs"]
 mod exact_faces;
 #[path = "extend.rs"]
