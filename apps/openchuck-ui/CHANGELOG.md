@@ -3,6 +3,7 @@
 ## Unreleased
 
 - LARGEPATH pull request 2 (#470, decision 0510 item 4): the Results tab keeps its lines, counts, Copy all text and whether the project has changed since the run, per run and revision of the project, instead of grouping every note on every frame it is shown (47 ms a frame for 59,044 notes on the owner's carving). The same lines and text.
+- LARGEPATH pull request 2 (#470, decision 0510 item 5): the export dialog copies the project for its key once per revision, not every frame, and keeps what comparing a kept project with it gave (the posted files, the last attempt, the preview's run). On the owner's carving the open dialog drew a frame in 59 ms, now 0.4 ms. The same files and checks.
 
 - FACEAPPROACH follow-up (#499, OI-2018; UI-03): hiding the axes (Show or hide, V) hides only the guides' arrowheads and labels (A+, the A0 marks, the work axes); the Facing extent and margin labels stay with their lines.
 
