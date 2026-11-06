@@ -1379,14 +1379,28 @@ fn req_gc_12_the_last_saved_time_is_the_project_files_modification_time() {
     let (dir, mut app) = sheet_project();
     app.set_clock(at(1_792_575_005));
     app.save().unwrap();
-    let newest = std::fs::read_dir(&dir)
-        .unwrap()
-        .chain(std::fs::read_dir(dir.join("operations")).unwrap())
-        .map(|e| e.unwrap())
-        .filter(|e| e.file_name().to_string_lossy().ends_with(".toml"))
-        .map(|e| e.metadata().unwrap().modified().unwrap())
-        .max()
-        .unwrap();
+    // Every file the save wrote: the project, the machine, and each setup,
+    // tool and operation in its folder. Leaving out the setups and tools made
+    // this fail when one of them was written just after a second boundary
+    // (main, Windows, 6 Nov 2026).
+    fn newest_toml(folder: &Path) -> Option<std::time::SystemTime> {
+        std::fs::read_dir(folder)
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .filter_map(|e| {
+                let path = e.path();
+                if path.is_dir() {
+                    newest_toml(&path)
+                } else if path.extension().is_some_and(|x| x == "toml") {
+                    Some(e.metadata().unwrap().modified().unwrap())
+                } else {
+                    None
+                }
+            })
+            .max()
+    }
+    let newest = newest_toml(&dir).unwrap();
     let want = openchuck_app::iso8601_utc(newest);
     assert_eq!(
         trace_facts(&app.setup_sheet(None))["Project last saved"],

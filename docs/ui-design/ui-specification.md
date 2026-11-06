@@ -63,7 +63,7 @@ Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
 | Viewport | the rest | The 3D view and at most five overlays (section 7.2) |
 | Legend strip | 36 high, optional | A legend in a strip under the view on Model and Setup, where there are no paths |
-| Dock | 260 high (120 to half the window) | Tabs: Messages, Selection sets, Jobs; Setup checks on Setup; Playback on Simulate (section 9) |
+| Dock | 260 high (120 to half the window) | Tabs: Messages, Jobs, Results; Setup checks on Setup; Playback on Simulate (section 9; Selection sets are in the inspector) |
 | Inspector | 340 wide (280 to 520) | The selected item (section 8) |
 | Footer | 48 high | Status on the left; display settings and the step's actions on the right, primary right-most (section 10) |
 
@@ -170,6 +170,7 @@ A disabled operation's name is struck through and muted. It is skipped everywher
 | Up to date | Filled green circle | Operations | Generated, and nothing it reads has changed since (decision 0030) |
 | Stale | Amber diamond | Operations | Something it reads changed; its toolpath and the stock after it are out of date |
 | Running | Blue ring with a gap, the percentage, a cancel button, and a 3-pixel progress bar under the row | Operations, import, scene | A job is working on it |
+| Finalising | Blue circle, left half filled | Operations | Its toolpath, link and checks are done in a run that has not ended; it counts as up to date only when the run is committed, and returns to stale if the run is cancelled or fails (decision 0517) |
 | Error | Red triangle | Operations, selection sets, models | It cannot be used. The tooltip and inspector say why and how to fix it (decision 0032 item 7, decision 0037 item 8) |
 | Warning | Amber triangle outline | Models, setups, machine | It can be used, with a caveat (a mesh finding, an unconfirmed machine value) |
 | Off | Grey ring, name struck through | Operations | Disabled by the user |
@@ -194,7 +195,7 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | Section plane (S) | All | *(UI-21)* |
 | Measure (M): distance, angle, radius about the rotary axis | All | *(UI-21)* |
 | Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(UI-21)* |
-| Show: Part, Cut part, Toolpaths, tick boxes in any combination; Cut part only by default; quick boxes and the Show menu share one state and protect the last checked main choice. Cut part is the simulated Stock layer. Axes, Held regions and tabs, and Selections stay menu-only flags. Overall Toolpaths masks the existing per-operation tree choices, which return unchanged when it is shown again (owner direction, issue 299; accepted [decision 0238](../decisions/0238-simulate-display-and-operation-navigation.md)) | Simulate | SIM-01, SIM-03, SIM-05 |
+| Show: Part, Cut part, Toolpaths, tick boxes in any combination; Cut part only by default; quick boxes and the Show menu share one state and protect the last checked main choice. Cut part is the simulated Stock layer. The cut part, the tool and the faint trace draw on Simulate only; the toolpath lines draw on every step (decision 0512). Axes, Held regions and tabs, and Selections stay menu-only flags. Overall Toolpaths masks the existing per-operation tree choices, which return unchanged when it is shown again (owner direction, issue 299; accepted [decision 0238](../decisions/0238-simulate-display-and-operation-navigation.md)) | Simulate | SIM-01, SIM-03, SIM-05 |
 | Cut part display: Translucent (default) or Solid, in the Show menu; remembered per user, not in the project (issue 300; decision 0238, accepted) | Simulate | SIM-05, UI-15 |
 | Show findings | Model | IMP-04 |
 
@@ -205,8 +206,8 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | Place | Box | Steps |
 | --- | --- | --- |
 | Top left, under the toolbar strip | Selection tools: a filter, "Pick" (a muted label) with Both, Faces, Edges as one framed segmented control, then a line naming the active mode and what the pointer is over (decision 0153) (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
-| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
-| Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149) | All with a 3D view |
+| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Cutter sweep while a Facing cutter sweep is shown (decision 0507); then Held region and Tab when the setup has them (7.5) | Operations |
+| Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149). A caption box under it says "Machine" while the part turns inside the view (Simulate with Turn part with A on) and "Part" otherwise, with a plain-words tooltip (decision 0511) | All with a 3D view |
 | Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2 places, wrapped into 0 to 360 (360 reads 0), with a tooltip giving the continuous A of the G-code ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)); its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
 | Bottom left | Axes gadget: X red, Y green, Z blue, drawn without a box (decision 0149). On Simulate the colour scale (11.5) sits above it, 8 pixels clear | Gadget: all with a 3D view; colour scale: Simulate |
 
@@ -215,7 +216,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 ### 7.3 Scene and camera
 
-- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the held regions and retaining tabs (7.5), the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
+- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the held regions and retaining tabs (7.5), the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The "A0" mark runs from the axis along the model's up direction at the part's far end and turns with the part in the machine view; the arc's start is labelled "A0" too (decision 0511). The labels of the guides (X, Y, Z, A+, A0) are placed so that none touches another, with a thin leader when one is moved off its point (decision 0511 item 5). The simulated angle shows on Simulate only; elsewhere the part is at A = 0. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
 - **Camera** (decision 0029 item 6):
   - Z-up, model X along the rotary axis.
   - Standard views as that record's table.
@@ -238,6 +239,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Link moves | Green `#6fd3a8` | Solid, thinner |
 | Rapid moves | Grey `#9aa6b5` | Dotted |
 | Entry and exit moves | Lilac `#e8b6ff` | Solid |
+| Facing cutter sweep | Lime `#c2e07a` | Thin solid line, along the cutting moves at the tool's tip, shown with its operation (decision 0507) |
 | Tool | Grey body, lilac tip | |
 | Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
@@ -326,7 +328,13 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
+**Tabs:** Messages, Jobs and Results, on every step (Results once a project is open). Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
+
+**Results** *(UI-12, UI-16; decision 0519, replacing the Results window of decision 0430)*:
+
+- The tab sits after Jobs and has no menu entry. Its label is "Results (n)", n being the warning and error lines of the latest run, one more for a failed run, a grouped line once; information is not counted and the chips do not change it. A failed run selects the tab and opens the dock.
+- A wrapping top row holds the summary line, "Copy all" and the chips Errors, Warnings and Information with their counts (all on, kept for the session only). Below it one scroll area holds the error of a failed run, the changed-project line, the lines (a group opens on its moves), "Results as plain text" and the verify-G-code notice, so a dock 120 pt high reaches everything.
+- The chips filter the lines. Copy all and the plain-text box hold every line and the build information whatever the chips show. When the chips hide every line the tab says "No lines at this level.".
 
 **Messages** *(UI-12)*:
 
@@ -527,7 +535,7 @@ Board 4 (SIM-01 to SIM-07).
 
 **Viewport:**
 
-- **The stock** at the playback cursor, plain or with optional projected final-result colours (SIM-05; owner-authorised approach, issue 300; decision 0238, accepted). Colouring and numeric probes use the actual stock surface. Each displayed value comes from the nearest counted final-result sample within the comparison search distance plus one cell; it is not a fresh measurement at the current move. More remote triangles are Not measured. Tooltips identify “Final result · … (nearest target sample)”. Solid stock occludes internal model/toolpaths. Translucent plain stock keeps 30% opacity; mapped colours use 98% opacity to preserve the accepted palette’s rendered readability, while internal geometry still contributes. The choice is personal, with Translucent the default. The stock may be coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
+- **The stock** at the playback cursor, plain or with optional projected final-result colours (SIM-05; owner-authorised approach, issue 300; decision 0238, accepted). Colouring and numeric probes use the actual stock surface. Each displayed value comes from the nearest counted final-result sample within the comparison search distance plus one cell; it is not a fresh measurement at the current move. A triangle more than two cells from every counted sample is off the part's surface and stands for the material behind it ([decision 0514](../decisions/0514-deviation-colours-cover-only-their-area.md) item 5, accepted, amending decision 0513 item 4): it takes the value and class of the sample of any kind nearest to the point one search distance behind it, into the stock, when that is a counted sample on the part whose value is a bound (at least that much is left) or whose material left is enclosed (a bore full of stock behind its cap); otherwise it keeps the nearest counted sample within the search, and beyond it is Not measured ([decision 0513](../decisions/0513-material-no-tool-can-reach.md)). Tooltips identify “Final result · … (nearest target sample)”; on an unreachable triangle they add “· unreachable (enclosed)” (decision 0513). Solid stock occludes internal model/toolpaths. Translucent plain stock keeps 30% opacity; mapped colours use 98% opacity to preserve the accepted palette’s rendered readability, while internal geometry still contributes. The choice is personal, with Translucent the default. The stock may be coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
 
   | Band | Colour | Meaning |
   | --- | --- | --- |
@@ -536,9 +544,10 @@ Board 4 (SIM-01 to SIM-07).
   | Up to 0.25 mm left | Ice `#c6f9ff` | Material left, small |
   | 0.25 to 1 mm left | Sky blue `#4bb7fc` | Material left, more |
   | More than 1 mm left, or a bound | Strong blue `#4e71ea` | Material left, most |
-  | Not measured | Grey `#9aa0a8`, hatched | Not measured |
+  | Unreachable (enclosed) | Violet `#b652ff`, cross-hatched in `#15171a` | Material left that no tool on this machine can reach: closed off from the outside across the rotary axis |
+  | Not measured | Slate `#5d6570`, single hatch in `#e3e7ec` | Not measured |
 
-  Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216).
+  Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216). The colour scale lists Unreachable in a row of its own under Not measured while the colours shown hold it, or its tick box hides it (then dimmed). Unreachable is told apart from the blues of material left by its cross-hatch for red-green colour vision, and Not measured, whose slate is that of a hidden band, by its hatch, whose lines keep 3:1 on the view ([decision 0513](../decisions/0513-material-no-tool-can-reach.md), amending 0216 items 7 and 8 for these two bands).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **The part** *(SIM-05; [decision 0492](../decisions/0492-deviation-colours-on-the-part-model.md), accepted)*. With "Deviation colours" on and Part shown, the part is coloured by its own measured final result (the band of each triangle's worst counted sample); with Cut part shown too, the cut part is drawn plain at 30% over it. The colour scale box names what it colours ("Part · final result", "Cut part · nearest target sample") and, while only the cut part is shown, adds "Tick Part to see these colours on the part model." The probe on the part reads "Final result · …". After a change to the toolpath or the settings the colours stay under the stale banner; after a change to the part itself (reimport, replacement, placement) the part is drawn plain and the scale box says "Deviation colours are not shown on the part: it has changed since this simulation." When the cut part cannot be prepared nothing is coloured (#330).
@@ -551,6 +560,7 @@ Board 4 (SIM-01 to SIM-07).
 - “Deviation colours”, available for current and stale simulated results when cut-part preparation has not failed. A preparation failure disables the checkbox, shows its reason beside it and in its disabled tooltip, and retains the Playback error; no target-model fallback is used (#330). Off shows the plain cut part and removes the colour mapping, without hiding the stale warning or changing result validity (owner direction, issue 293);
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
+- the material left told apart by reach ([decision 0513](../decisions/0513-material-no-tool-can-reach.md); SIM-05): "Unreachable (enclosed)", the share no tool on this machine can reach, in violet, and "Left, not classified", the rest of the material left, which is not yet told apart into excess and too narrow for the tools (OI-1988); "not classified" for a run that did not classify it. Under each histogram row with unreachable samples, a row "of which unreachable" with a violet bar and its count and share; below the histogram, a "Show unreachable (enclosed)" tick box (SIM-15) that hides those triangles' colour, which "Show all" ticks again. The run's results give one warning per setup with enclosed material: its share, area and range along the part, and what to do (drill or bore along the axis); the same warning is in Messages on the setup while that simulation is current;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many (decision 0162);
 - a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥ (decision 0162);
@@ -723,12 +733,12 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
 | A count out of range | Count | "From 1 to 64." |
 | An offset from the axis below zero | Offset from axis | "Must be 0 mm or more." |
 
-The checks that need the part and the tools run as a job on Apply and on "Check against the part and tools". A finding marks the tab's row header and puts its reason under it: on Apply with the Error mark, in red, and nothing is stored; on a check with the Warning mark, in amber:
+The checks that need the part and the tools run as a job on Apply and on "Check against the part and tools". A finding marks the tab's row header and puts its reason under it: on Apply with the Error mark, in red, and nothing is stored; on a check with the Warning mark, in amber. A tab shorter than a tool is the exception: on Apply too it has the Warning mark, in amber, and the workholding is stored with it ([decision 0523](../decisions/0523-tab-checks-follow-the-operations-reach.md), the owner's answer of 6 Nov 2026; generation warns of it too). The other checks keep the Error mark on Apply:
 
 | Check | Message |
 | --- | --- |
 | A tab not wholly in the head or the tail zone (OI-180) | "Tab 3 (X −1.000 to 1.000 mm) is not wholly in the head or the tail zone. Tabs lie between the held region (or the end of the stock) and the part, or between the part and the other end." |
-| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decision 0494) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
+| A tab shorter along X than a tool of the setup's operations is wide (OI-159, decisions 0494 and 0523; a warning on Apply too, and stored) | "Tab 2 is 3.000 mm long along X, shorter than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab longer or use a smaller tool." |
 | The part, the stock or a tool changed while checking | "The part, stock or tools changed while checking; check again." |
 | The draft changed while it was being checked | "The draft changed while it was being checked; apply it again." |
 
@@ -1057,6 +1067,8 @@ Known gaps in the images: the footer omits the short G-code notice of section 10
 ### Optional back-and-forth ramp
 
 The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.
+
+"Links between passes" (`link_height`, [decision 0496](../decisions/0496-low-links-between-finishing-passes.md); axial, indexed and Facing End and Box) is in the Entry, links and retract section, a choice of "Retract to the clearance" (the default) and "Stay low where clear" (issue #524, lane LINKS-UI). Any parameter with "link" in its name goes in that section.
 
 **Refusals the user can act on (#291, lane RAMPERRORS; [decision 0312](../decisions/0312-plain-back-and-forth-ramp-refusals.md), accepted).** Every refusal of the back-and-forth ramp says, in the words of section 15, what is wrong, where the user changes it (the step, the inspector section and the field, for example "In the Setup step, under Work offset and clearance, set Safe Z to at least 36.000 mm", or "In the operation's Entry, links and retract settings, turn off Back-and-forth ramp or set Entry to Plunge, Lead or Helix") and what to try, with no internal names. What is known before Generate (the setup's part is a STEP file, on which the clearance cannot yet be checked; the tool's shank is wider than its cutter) is one check, read in three places as the STEP set refusals are (decision 0209 item 10): an amber warning line under the Back-and-forth ramp field in the Entry, links and retract section; the operation in error in the operations list, with the line in Messages and a Show link; and generation, which refuses with the same words. With the ramp off, or another entry chosen, nothing is shown. The refusals that only the moves can show (the pass has no straight line to ramp along; the ramp would start above the safe height; a run would cut into the part, reach a held region or tab, or go beyond the machine's travel or A range; too many runs or too small a descent per run; the check limit for one entry) appear when the operation is generated, each naming the field to change. The corridor refusal keeps the approved first sentence (decision 0242 item 3) and then names the cause and the fix (0312 item 2).
 

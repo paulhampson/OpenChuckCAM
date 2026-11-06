@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- LARGEPATH pull request 3 (#470, OI-2023): the export dialog takes the file plan from the posting job instead of making it on the interface thread when posting ends (a frame of 200 ms on the CrankShaft model, up to 560 ms on the owner's carving). The same files.
+
+- LARGEPATH pull request 2 (#470, decision 0510 item 4): the Results tab keeps its lines, counts, Copy all text and whether the project has changed since the run, per run and revision of the project, instead of grouping every note on every frame it is shown (47 ms a frame for 59,044 notes on the owner's carving). The same lines and text.
+- LARGEPATH pull request 2 (#470, decision 0510 item 5): the export dialog copies the project for its key once per revision, not every frame, and keeps what comparing a kept project with it gave (the posted files, the last attempt, the preview's run). On the owner's carving the open dialog drew a frame in 59 ms, now 0.4 ms. The same files and checks.
+
+- FACEAPPROACH follow-up (#499, OI-2018; UI-03): hiding the axes (Show or hide, V) hides only the guides' arrowheads and labels (A+, the A0 marks, the work axes); the Facing extent and margin labels stay with their lines.
+
+- SIMVIS (#488, accepted decision 0514): deviation colours cover only the area each band applies to, not whole triangles. On the cut part, the violet of an enclosed bore covers the bore's disc on a faced end, not whole strips across the ring. The probe reads the piece under the pointer, and the colour scale says when the pieces ran out.
+
+- SIMVIS (#478, accepted decision 0513): Simulate draws material no tool can reach (enclosed across the rotary axis, such as a bore along it) as "Unreachable (enclosed)", violet `#b652ff` under a dark cross-hatch, on the cut part and the part; "Not measured" is slate under a light hatch instead of the grey of "within"; the colour scale lists both; the probe adds "· unreachable (enclosed)"; the results inspector shows "Unreachable (enclosed)" and "Left, not classified", an "of which unreachable" row under each histogram row that has any, and a "Show unreachable (enclosed)" tick box. The run's warning about it is in Results and in Messages, on the setup.
+- LINKS-UI (#524, #436; UI-07, OP-14; decision 0496): Links between passes (axial, indexed and Facing End/Box) is in the Entry, links and retract section, and its two choices read "Retract to the clearance" and "Stay low where clear" instead of the stored words.
+
+- FACEAPPROACH follow-up (#499, OI-2016; SIM-02): in the machine view the Facing diagram (extent, margin and cutter sweep, and the extent and margin labels) turns with the workpiece as A turns, as the path lines do.
+
+- FACEAPPROACH (#499, decision 0507, accepted): the Facing cutter sweep is drawn in its own colour (lime `#c2e07a`, a thin line) instead of the Cut amber, and the path legend lists "Cutter sweep" while one is shown.
+
 - POLISH (#381, #379, #418): File > Open recent lists the recent projects by folder name (full path on hover) with Clear recent list; a folder that is gone is dropped from the list; a choice goes through the ordinary Open command and fills the Open dialog with that folder. Typing in an export file-name template no longer splits the toolpath again (the split is kept for the run). Results keeps every feed-limit note of an operation name that two operations share. Whether the recent folders still exist is checked off the UI thread, so a dead network share cannot stall the menu (a late answer never forgets a project added meanwhile). The export Preview is rebuilt from the same kept split. The click log records a recent project as "Open recent project", not its folder name.
 
 - ENDFACE stage 3 (#303, decision 0239, accepted): ticking Adaptive spacing on an operation saved with a Scallop height of 0 asks for the Allowed excess first (0.01 mm suggested, 0 allowed); Cancel changes nothing and Turn on sets both in one undoable step. Export asks for its own tick box, for the files shown only, before it writes files holding a partial path.

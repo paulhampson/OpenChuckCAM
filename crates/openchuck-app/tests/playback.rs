@@ -765,8 +765,14 @@ fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
         .unwrap();
     assert_eq!(model, app.project().models()[0].id);
     let triangles = 12;
-    let total: usize = bands.bands.iter().map(|(_, s)| s.len()).sum();
-    assert_eq!(total, triangles, "every triangle of the cube is in a band");
+    // A triangle holding more than one band is drawn as its pieces
+    // (decision 0514): it is in no band itself, and in the pieces' parents.
+    let parents = bands.pieces.as_ref().map_or(0, |p| p.parents.len());
+    let total: usize = bands.bands.iter().map(|(_, s)| s.len()).sum::<usize>() + parents;
+    assert_eq!(
+        total, triangles,
+        "every triangle of the cube is in a band or in pieces"
+    );
     let report = run.simulation.as_ref().unwrap();
     assert_eq!(bands.tolerance, report.settings.cell.0);
     // The stock outline is a closed mesh the viewport can draw.
@@ -1224,7 +1230,9 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
         helical.map(|c| c.label.clone())
     );
     assert_eq!(app.strategy_label("not_registered"), "not_registered");
-    // Adding: at the end, enabled, with the strategy's defaults.
+    // Adding: at the end, enabled, with the strategy's defaults and the
+    // pass order and the low links a new operation is given (decision
+    // records 0520 and 0521).
     let before = app.project().operations().len();
     let second = app
         .add_operation("  Second pass ", "helical_finishing", setup, Some(tool))
@@ -1232,7 +1240,24 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     assert_eq!(app.project().operations().len(), before + 1);
     let added = app.project().operation(second).unwrap();
     assert_eq!(added.name, "Second pass");
-    assert!(added.enabled && added.parameters.is_empty());
+    assert!(added.enabled);
+    assert_eq!(
+        added.parameters.iter().collect::<Vec<_>>(),
+        [
+            (
+                &openchuck_path::axial::parameter::LINK_HEIGHT.to_owned(),
+                &openchuck_app::project::ParameterValue::Text(
+                    openchuck_path::axial::parameter::LOW.into()
+                )
+            ),
+            (
+                &openchuck_path::order::PARAMETER.to_owned(),
+                &openchuck_app::project::ParameterValue::Text(
+                    openchuck_path::order::BY_REGION.into()
+                )
+            )
+        ]
+    );
     assert_eq!(app.project().operations().last().unwrap().id, second);
     // The cube's ends are free and deeper than the ball's flutes; this test
     // is not about free ends (decision record 0344, OI-1396).

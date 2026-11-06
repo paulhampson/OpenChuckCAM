@@ -157,6 +157,14 @@ impl Fixture {
         }
     }
 
+    /// The fixture with the stock just the part's bounding box: what the
+    /// earlier operations left, so the tool's flutes need reach only the
+    /// face (decision record 0509; the 22 mm round would stand past them).
+    fn snug(mut self) -> Self {
+        self.stock = AnalyticStock::Box(self.surface.bounds());
+        self
+    }
+
     fn settings(&self) -> Settings {
         Settings {
             tolerance: TOL,
@@ -190,6 +198,25 @@ fn overcut_warning(path: &openchuck_path::GeneratedPath) -> String {
     let warning = &path.warnings[0];
     assert_eq!(warning.parameter.as_deref(), Some(names::TOLERANCE));
     warning.message.clone()
+}
+
+/// The flute check's warning on swarf's path, which is made (decision
+/// record 0522: a warning, not a refusal).
+fn flute_warned(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
+    let path = generated(fixture, extra);
+    path.warnings
+        .iter()
+        .find(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .map(|w| w.message.clone())
+        .unwrap_or_else(|| panic!("no flute warning: {:?}", path.warnings))
+}
+
+/// True when swarf's path has no flute warning.
+fn flute_clear(path: &openchuck_path::GeneratedPath) -> bool {
+    !path
+        .warnings
+        .iter()
+        .any(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
 }
 
 fn refused(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
@@ -851,7 +878,7 @@ fn req_op_07_a_ruling_longer_than_the_flank_is_refused_and_so_is_a_tool_without_
     let message = refused(&f, &[]);
     assert!(message.contains("needs 8.000 mm of flank"), "{message}");
     assert!(message.contains("flank is 6.000 mm long"), "{message}");
-    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 9.0));
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 9.0)).snug();
     assert!(generated(&f, &[]).group.segments.len() > 10);
     let message = refused(&f, &[(swarf::parameter::TIP_EXTENSION, num(1.5))]);
     assert!(message.contains("needs 9.500 mm of flank"), "{message}");
@@ -862,7 +889,7 @@ fn req_op_07_a_ruling_longer_than_the_flank_is_refused_and_so_is_a_tool_without_
 #[test]
 fn req_op_07_the_tip_extension_tip_end_and_direction_parameters_move_the_tool() {
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
-    let f = Fixture::brep(&model, flat());
+    let f = Fixture::brep(&model, flat()).snug();
     let forward = generated(&f, &[]);
     let extended = generated(&f, &[(swarf::parameter::TIP_EXTENSION, num(1.5))]);
     let tips = |p: &openchuck_path::GeneratedPath| {
@@ -2171,7 +2198,7 @@ fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_l
     // Decision 0491 item 2: a negative tip extension starts the flank that far
     // up the rulings. The strip below is left on purpose: it is not material
     // left, so the default limit of 0.1 mm does not refuse a 1 mm strip.
-    let f = Fixture::brep(&limit_wall(), flat());
+    let f = Fixture::brep(&limit_wall(), flat()).snug();
     let up = generated(&f, &[(swarf::parameter::TIP_EXTENSION, num(-1.0))]);
     assert!(
         cutting_poses(&up.group)
@@ -2205,7 +2232,7 @@ fn req_op_07_req_op_12_a_negative_tip_extension_pulls_the_tool_up_the_face_and_l
     assert!(path.poses().all(|p| p.lift == 0.0));
     // With the tip at the other end of the rulings, the flank starts that
     // far down from the top of the wall.
-    let f = Fixture::brep(&limit_wall(), flat());
+    let f = Fixture::brep(&limit_wall(), flat()).snug();
     let down = generated(
         &f,
         &[
@@ -2574,4 +2601,36 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
         &ctx,
     );
     assert_eq!(cancelled, Err(openchuck_path::PathError::Cancelled));
+}
+
+#[test]
+fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall_is_warned() {
+    // Decision record 0509: the 8 mm wall fits 11 mm of flank, but the
+    // 22 mm round stock stands 4 mm above the wall's top, so the shank may
+    // meet it: warned (decision record 0522); 13 mm of flute reaches.
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 11.0));
+    let message = flute_warned(&f, &[]);
+    assert!(message.contains("11.000 mm of flute"), "{message}");
+    assert!(message.contains("44.000 mm diameter cylinder"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 13.0));
+    let path = generated(&f, &[]);
+    assert!(path.group.segments.len() > 10);
+    assert!(flute_clear(&path), "{:?}", path.warnings);
+}
+
+#[test]
+fn req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stock() {
+    // The tip end reversed: the tool comes from below (A 180), its tip on
+    // the wall's top 18 mm from the axis on the far side, so the 22 mm
+    // round stands 22 + 18 = 40 mm above it (decision record 0509).
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let reversed = [(swarf::parameter::TIP_END, text("reversed"))];
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 39.9));
+    let message = flute_warned(&f, &reversed);
+    assert!(message.contains("stands up to 40.000 mm"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 40.1));
+    let path = generated(&f, &reversed);
+    assert!(path.group.segments.len() > 10);
+    assert!(flute_clear(&path), "{:?}", path.warnings);
 }

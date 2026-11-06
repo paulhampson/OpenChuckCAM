@@ -228,6 +228,11 @@ pub enum ItemState {
     Stale,
     /// A job is working on it: a blue ring with a gap.
     Running,
+    /// Its own toolpath, link and checks are done in a run that has not
+    /// ended: a blue circle, the left half filled. It counts as up to date
+    /// only when the run is committed, and goes back to stale if the run is
+    /// cancelled, fails or is refused (decision record 0517).
+    Finalising,
     /// It can be used, with a caveat: an amber triangle outline.
     Warning,
     /// It cannot be used: a red triangle.
@@ -238,10 +243,11 @@ pub enum ItemState {
 
 impl ItemState {
     /// Every state, in the legend's order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::UpToDate,
         Self::Stale,
         Self::Running,
+        Self::Finalising,
         Self::Warning,
         Self::Error,
         Self::Off,
@@ -253,6 +259,7 @@ impl ItemState {
             Self::UpToDate => "Up to date",
             Self::Stale => "Stale",
             Self::Running => "Running",
+            Self::Finalising => "Finalising",
             Self::Warning => "Warning",
             Self::Error => "Error",
             Self::Off => "Off",
@@ -332,7 +339,26 @@ pub enum MessageAction {
     /// Find the new folder of a moved project whose recovery data was kept
     /// (PRJ-08; decisions 0243 and 0460). Same index as `OpenRecovery`.
     LocateRecovery(usize),
+    /// Turn the view to an area simultaneous finishing could not reach,
+    /// numbered from 1 as the warning and the markers number them: go to the
+    /// operation's step, select the operation, look at the area and frame it
+    /// (OP-20, UI-12; decision record 0515 item 5).
+    ShowInView {
+        /// The operation whose warning lists the area.
+        operation: OperationId,
+        /// The area's number, from 1.
+        area: u8,
+    },
 }
+
+/// The words of "Show in view N" for the areas a warning offers it for.
+const SHOW_IN_VIEW: [&str; crate::unreached::LISTED_AREAS] = [
+    "Show in view 1",
+    "Show in view 2",
+    "Show in view 3",
+    "Show in view 4",
+    "Show in view 5",
+];
 
 impl MessageAction {
     /// The link's words.
@@ -347,6 +373,11 @@ impl MessageAction {
             Self::ShowSetting(_) => "Show setting",
             Self::OpenRecovery(_) => "Open project",
             Self::LocateRecovery(_) => "Locate folder",
+            Self::ShowInView { area, .. } => usize::from(area)
+                .checked_sub(1)
+                .and_then(|i| SHOW_IN_VIEW.get(i))
+                .copied()
+                .unwrap_or("Show in view"),
         }
     }
 }
@@ -364,6 +395,9 @@ pub struct Message {
     pub source_name: String,
     /// The action that fixes it, if one does.
     pub action: Option<MessageAction>,
+    /// Further links beside `action`: one "Show in view N" for each area a
+    /// warning of unreachable areas lists (decision record 0515 item 5).
+    pub views: Vec<MessageAction>,
 }
 
 impl Message {
@@ -384,7 +418,15 @@ impl Message {
             source,
             source_name,
             action,
+            views: Vec::new(),
         }
+    }
+
+    /// This message with the links `views`.
+    #[must_use]
+    pub fn with_views(mut self, views: Vec<MessageAction>) -> Self {
+        self.views = views;
+        self
     }
 }
 
@@ -889,6 +931,16 @@ struct RecordState {
     /// end shows and posts: Simulate is complete only while they are the
     /// enabled operations (issue 260).
     last_run: Option<Vec<OperationId>>,
+    /// The operations the run in progress has finished (path, link, checks
+    /// and stock), by the chained key they were finished with. They are not
+    /// up to date until the run is committed (decision record 0517).
+    finished_in_run: BTreeMap<OperationId, Key>,
+    /// The operations a run finished but did not keep because it was
+    /// cancelled, failed or was refused, with why, to say so in their cause.
+    interrupted: BTreeMap<OperationId, (Key, String)>,
+    /// Each setup's warning about material no tool can reach, from the last
+    /// simulation of it (issue 478); shown while that simulation is current.
+    enclosed: BTreeMap<SetupId, String>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -929,12 +981,25 @@ struct Made {
     before: Vec<(OperationId, Key)>,
     /// The path's warnings when it was made (decision record 0175).
     warnings: Vec<openchuck_path::PathWarning>,
+    /// How many areas its strategy could not reach (decision record 0515).
+    unreached: usize,
 }
 
 #[derive(Debug, Clone)]
 struct Failure {
     operation: Option<(OperationId, Option<Key>)>,
     message: String,
+}
+
+impl RecordState {
+    /// The run ended without being kept: what it had finished is stale
+    /// again, for `reason`.
+    fn stop_run(&mut self, reason: &str) {
+        self.interrupted = std::mem::take(&mut self.finished_in_run)
+            .into_iter()
+            .map(|(id, key)| (id, (key, reason.to_owned())))
+            .collect();
+    }
 }
 
 impl GenerationRecord {
@@ -949,6 +1014,26 @@ impl GenerationRecord {
         self.with(|s| {
             s.current = operation;
             s.activity = None;
+        });
+    }
+
+    /// A pipeline run starts: nothing of an earlier run's progress carries
+    /// over.
+    pub(crate) fn begin_run(&self) {
+        self.with(|s| {
+            s.finished_in_run.clear();
+            s.interrupted.clear();
+        });
+    }
+
+    /// The run in progress has finished `operation`: its path, link, checks
+    /// and stock. It shows finalising until the run is committed.
+    pub(crate) fn finished(&self, project: &Project, operation: OperationId) {
+        let keys = status_keys(project);
+        self.with(|s| {
+            if let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) {
+                s.finished_in_run.insert(operation, key.chained);
+            }
         });
     }
 
@@ -986,12 +1071,19 @@ impl GenerationRecord {
                     .filter(|g| g.operation == *id)
                     .flat_map(|g| g.warnings.iter().cloned())
                     .collect();
+                let unreached = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .map(|g| g.unreached.len())
+                    .sum();
                 s.generated.insert(
                     *id,
                     Made {
                         key: *key,
                         before,
                         warnings,
+                        unreached,
                     },
                 );
                 if simulated {
@@ -999,8 +1091,22 @@ impl GenerationRecord {
                 }
             }
             s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
+            // Material no tool can reach, by setup (issue 478): a simulated
+            // run replaces what its setups said before.
+            for setup in run.simulation.iter().flat_map(|r| r.setups.iter()) {
+                match setup.reach.as_ref().and_then(|r| r.enclosed.as_ref()) {
+                    Some(summary) => {
+                        s.enclosed.insert(setup.id, summary.warning(&setup.setup));
+                    }
+                    None => {
+                        s.enclosed.remove(&setup.id);
+                    }
+                }
+            }
             s.failure = None;
             s.current = None;
+            s.finished_in_run.clear();
+            s.interrupted.clear();
         });
     }
 
@@ -1013,13 +1119,17 @@ impl GenerationRecord {
                 let key = keys.iter().find(|(o, _)| *o == id).map(|(_, k)| k.chained);
                 (id, key)
             });
+            s.stop_run(&format!("the run stopped before it finished ({message})"));
             s.failure = Some(Failure { operation, message });
         });
     }
 
     /// A pipeline run was cancelled: nothing it did is kept.
     pub(crate) fn cancelled(&self) {
-        self.with(|s| s.current = None);
+        self.with(|s| {
+            s.current = None;
+            s.stop_run("the run was cancelled before it finished");
+        });
     }
 
     /// G-code was written from `project`'s operations.
@@ -1478,12 +1588,48 @@ impl Application {
     /// made. What a run reported about it (such as feeds the machine's
     /// limits lowered) is then still true of the settings on screen.
     pub fn operation_path_is_current(&self, operation: OperationId) -> bool {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        matches!(
-            (keys.iter().find(|(id, _)| *id == operation), record.generated.get(&operation)),
-            (Some((_, key)), Some(made)) if key.chained == made.key.chained
-        )
+        // Asked every frame while the operation is inspected: the keys are
+        // kept per change of the project, and the record is read in place,
+        // not copied with every path warning it holds (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
+            return false;
+        };
+        self.record
+            .with(|s| {
+                s.generated
+                    .get(&operation)
+                    .is_some_and(|made| key.chained == made.key.chained)
+            })
+            .unwrap_or(false)
+    }
+
+    /// The areas `operation`'s strategy could not reach in `run`, while the
+    /// path `run` made for it is the one the project would make now: the
+    /// operation and everything before it are as they were (OP-20; decision
+    /// record 0515 item 3). Empty for an operation that is out of date, was
+    /// turned off or is not in the run, so what is marked on the part always
+    /// goes with the toolpath it was found for. A generation that failed
+    /// brings no run, and the last run's operation is out of date by then.
+    pub fn operation_unreached<'a>(
+        &self,
+        run: &'a crate::Regeneration,
+        operation: OperationId,
+    ) -> &'a [openchuck_path::Unreached] {
+        let chained = |project: &Project| {
+            status_keys(project)
+                .into_iter()
+                .find(|(id, _)| *id == operation)
+                .map(|(_, key)| key.chained)
+        };
+        let now = chained(self.project());
+        if now.is_none() || now != chained(&run.project) {
+            return &[];
+        }
+        run.groups
+            .iter()
+            .find(|g| g.operation == operation)
+            .map_or(&[], |g| &g.unreached)
     }
 
     /// The settings of `operation` its current path's warnings name (the
@@ -1492,24 +1638,28 @@ impl Application {
     /// Empty when the operation is not up to date or its path has no
     /// warning that names one.
     pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
-        let keys = status_keys(self.project());
-        let record = self.record.snapshot();
-        let (Some((_, key)), Some(made)) = (
-            keys.iter().find(|(id, _)| *id == operation),
-            record.generated.get(&operation),
-        ) else {
+        // Asked every frame, as `operation_path_is_current` is (issue #470).
+        let keys = self.status_keys();
+        let Some((_, key)) = keys.iter().find(|(id, _)| *id == operation) else {
             return Vec::new();
         };
-        if key.chained != made.key.chained {
-            return Vec::new();
-        }
-        let mut names: Vec<String> = Vec::new();
-        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        names
+        self.record
+            .with(|s| {
+                let Some(made) = s.generated.get(&operation) else {
+                    return Vec::new();
+                };
+                if key.chained != made.key.chained {
+                    return Vec::new();
+                }
+                let mut names: Vec<String> = Vec::new();
+                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                    if !names.contains(name) {
+                        names.push(name.clone());
+                    }
+                }
+                names
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -1522,7 +1672,7 @@ fn operation_name(index: usize, name: &str) -> String {
 fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview {
     let project = app.project();
     let record = app.record.snapshot();
-    let keys_in_order = status_keys(project);
+    let keys_in_order = app.status_keys();
     let keys: BTreeMap<OperationId, StatusKey> = keys_in_order.iter().copied().collect();
     let summaries: Vec<SelectionSummary> = app.selection_summaries(&file_warnings(project, checks));
     let mut items = BTreeMap::new();
@@ -1599,14 +1749,28 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         if !simulated && !up_to_date && first_unsimulated_unmade.is_none() {
             first_unsimulated_unmade = Some(index + 1);
         }
+        let finalising = !up_to_date
+            && matches!((key, record.finished_in_run.get(&o.id)), (Some(k), Some(f)) if k.chained == *f);
         let mut status = if up_to_date {
             ItemStatus::new(
                 ItemState::UpToDate,
                 "generated, and nothing it reads has changed since",
             )
+        } else if finalising {
+            // Made in the run in progress, which may still be cancelled,
+            // fail or be refused: not up to date yet (NFR-12).
+            ItemStatus::new(
+                ItemState::Finalising,
+                "toolpath made; the checks and final steps are still running, so it does not count as up to date yet",
+            )
         } else {
             stale.push(o.id);
+            let interrupted = match (key, record.interrupted.get(&o.id)) {
+                (Some(k), Some((then, why))) if k.chained == *then => Some(why.clone()),
+                _ => None,
+            };
             let cause = match (made, key) {
+                _ if interrupted.is_some() => interrupted.unwrap_or_default(),
                 (None, _) | (_, None) => "not generated yet".to_owned(),
                 (Some(m), Some(k)) if m.key.own != k.own => {
                     "it, or its setup, tool, model or selection sets, changed".to_owned()
@@ -1661,18 +1825,37 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && let Some(made) = made
             && let Some(first) = made.warnings.first()
         {
-            status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
+            status = ItemStatus::new(
+                ItemState::Warning,
+                sentence(&crate::operation::warning_text(project, o, &first.message)),
+            );
             for warning in &made.warnings {
-                messages.push(Message::new(
-                    Severity::Warning,
-                    warning.message.clone(),
-                    Some((item, label.clone())),
-                    Some(if warning.parameter.is_some() {
-                        MessageAction::ShowSetting(o.id)
-                    } else {
-                        MessageAction::Show(item)
-                    }),
-                ));
+                // The warning of unreachable areas offers a link for each
+                // area it lists (decision record 0515 item 5).
+                let views = if crate::unreached::lists_areas(&warning.message) {
+                    (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
+                        .filter_map(|n| u8::try_from(n).ok())
+                        .map(|area| MessageAction::ShowInView {
+                            operation: o.id,
+                            area,
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                messages.push(
+                    Message::new(
+                        Severity::Warning,
+                        crate::operation::warning_text(project, o, &warning.message),
+                        Some((item, label.clone())),
+                        Some(if warning.parameter.is_some() {
+                            MessageAction::ShowSetting(o.id)
+                        } else {
+                            MessageAction::Show(item)
+                        }),
+                    )
+                    .with_views(views),
+                );
             }
         }
         // A strategy that needs a STEP part on a mesh part: said at once,
@@ -1795,6 +1978,31 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     for s in project.setups() {
         let setup = ItemRef::Setup(s.id);
         let at = |part| ItemRef::SetupPart(s.id, part);
+        // Material no tool can reach, while the simulation that found it is
+        // current for every enabled operation of the setup (issue 478;
+        // NFR-12): a warning in Messages, on the setup.
+        if let Some(text) = record.enclosed.get(&s.id) {
+            let mut operations = project
+                .operations()
+                .iter()
+                .filter(|o| o.setup == s.id && o.enabled)
+                .peekable();
+            let current = operations.peek().is_some()
+                && operations.all(|o| {
+                    matches!(
+                        (keys.get(&o.id), record.simulated.get(&o.id)),
+                        (Some(k), Some(simulated)) if k.chained == *simulated
+                    )
+                });
+            if current {
+                messages.push(Message::new(
+                    Severity::Warning,
+                    text.clone(),
+                    Some((setup, s.name.clone())),
+                    Some(MessageAction::ReviewSetup(s.id)),
+                ));
+            }
+        }
         match project.machine() {
             None => {
                 let text = "The project has no machine profile, so the setup is not checked. Choose one in the setup's machine section.";
@@ -2247,10 +2455,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .map_or_else(|| "A setup".to_owned(), |s| format!("Setup '{}'", s.name)),
         _ => "An item".to_owned(),
     };
-    // A missing machine is a to-do, not an error: the Setup step reads it as
-    // "Choose a machine" needing attention (decision 0173, FIRSTRUN item 1).
-    let is_error_need =
-        |m: &Missing| m.requirement.field != crate::requirements::RequirementField::Machine;
+    // A missing machine, and a setup's missing stock or part, are to-dos, not
+    // errors: the Setup step reads them as needing attention (decision 0173,
+    // FIRSTRUN item 1; decision 0518). A missing tool or an operation's
+    // missing value is still an error.
+    let is_to_do = |m: &Missing| {
+        use crate::requirements::RequirementField as F;
+        matches!(m.requirement.field, F::Machine | F::Stock | F::Part)
+    };
+    let is_error_need = |m: &Missing| !is_to_do(m);
     let first_missing = |operation: bool| {
         missing
             .iter()
@@ -2311,6 +2524,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         (StepHealth::Error, Some(text))
     } else if count_state(ItemState::Error, &on_setup) > 0 {
         (StepHealth::Error, Some("A setup has an error".to_owned()))
+    } else if let Some(todo) = missing.iter().find(|m| {
+        matches!(m.item, ItemRef::Setup(_))
+            && is_to_do(m)
+            && m.requirement.field != crate::requirements::RequirementField::Machine
+    }) {
+        // A setup's missing stock or part: the user has not reached it yet
+        // (decision 0518). It is named before the machine, as it is the
+        // nearer step once a setup exists.
+        (StepHealth::Attention, Some(todo.requirement.text.clone()))
     } else if project.machine().is_none() {
         // A to-do, not a fault: Messages counts no error for it either
         // (decision 0173, the owner's answer on FIRSTRUN item 1).
@@ -2326,6 +2548,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
+    let finalising = count_state(ItemState::Finalising, &on_ops);
     let operations_health = if let Some(text) = first_missing(true) {
         (StepHealth::Error, Some(text))
     } else if count_state(ItemState::Error, &on_ops) > 0 {
@@ -2341,6 +2564,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             Some(format!(
                 "{} stale: generate again",
                 plural(stale.len(), "operation")
+            )),
+        )
+    } else if finalising > 0 {
+        // Made in a run that has not ended: not committed yet (NFR-12).
+        (
+            StepHealth::Attention,
+            Some(format!(
+                "{} finalising: the run has not finished",
+                plural(finalising, "operation")
             )),
         )
     } else if count_state(ItemState::Warning, &on_ops) > 0 {
@@ -2379,7 +2611,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         state(
             Step::Operations,
             (!has_machine_and_stock).then_some("Set up the machine and stock first"),
-            any_enabled && stale.is_empty(),
+            any_enabled && stale.is_empty() && finalising == 0,
             operations_health,
         ),
         state(
@@ -2584,6 +2816,156 @@ mod tests {
         assert_eq!(o.count(Severity::Warning), 1);
     }
 
+    /// An application with one setup and one operation, for the record tests.
+    fn one_operation_app(name: &str) -> (Application, OperationId, std::path::PathBuf) {
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                spindle_speed: None,
+                material: None,
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        (app, op, dir)
+    }
+
+    /// The status the overview gives `op`, with no jobs running.
+    fn state_of(app: &Application, op: OperationId) -> ItemStatus {
+        let overview = app.overview(None, &JobLog::default());
+        overview.items[&ItemRef::Operation(op)].clone()
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_a_finished_operation_is_finalising_until_the_run_is_committed() {
+        // Decision 0517: finished in a run that has not ended is finalising,
+        // never up to date; the commit makes it up to date.
+        let (app, op, dir) = one_operation_app("finalising-commit");
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Finalising, "{status:?}");
+        assert!(status.cause.starts_with("Finalising: "), "{}", status.cause);
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
+                facing: None,
+                operation: op,
+                setup: app.project().operations()[0].setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings: Vec::new(),
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        assert_eq!(state_of(&app, op).state, ItemState::UpToDate);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_a_run_that_fails_or_is_cancelled_returns_finished_operations_to_stale()
+    {
+        let (app, op, dir) = one_operation_app("finalising-stop");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        app.record
+            .failed(app.project(), "a model file changed".into());
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Stale, "{status:?}");
+        assert!(
+            status.cause.contains("a model file changed"),
+            "{}",
+            status.cause
+        );
+
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        assert_eq!(state_of(&app, op).state, ItemState::Finalising);
+        app.record.cancelled();
+        let status = state_of(&app, op);
+        assert_eq!(status.state, ItemState::Stale, "{status:?}");
+        assert!(status.cause.contains("cancelled"), "{}", status.cause);
+
+        // A new run starts from a clean slate: nothing carries over.
+        app.record.begin_run();
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_the_operations_step_is_not_complete_while_an_operation_is_finalising() {
+        // CodeRabbit on #482: a finalising operation is not in the stale
+        // list, but nothing of the run is committed, so the step is not
+        // complete and does not read good.
+        let (app, op, dir) = one_operation_app("finalising-step");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        let overview = app.overview(None, &JobLog::default());
+        assert_eq!(
+            overview.items[&ItemRef::Operation(op)].state,
+            ItemState::Finalising
+        );
+        assert!(overview.stale.is_empty());
+        let step = overview.step(Step::Operations);
+        assert!(!step.complete, "{step:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_ui_11_req_nfr_12_editing_a_finalising_operation_makes_it_stale() {
+        let (mut app, op, dir) = one_operation_app("finalising-edit");
+        app.record.begin_run();
+        app.record.finished(app.project(), op);
+        assert_eq!(state_of(&app, op).state, ItemState::Finalising);
+        app.execute(crate::Command::SetParameter {
+            operation: op,
+            name: "tolerance".into(),
+            value: Some(openchuck_project::ParameterValue::Number(0.02)),
+        })
+        .unwrap();
+        assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn req_op_07_req_nfr_12_a_path_made_with_a_warning_keeps_the_operation_in_warning() {
         // Decision 0175 (issue #226): an operation whose up-to-date path was
@@ -2628,6 +3010,7 @@ mod tests {
                        (40.330, -5.370, -9.425), more than this operation's tolerance of 0.01 mm.";
         let run = crate::Regeneration {
             groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
                 facing: None,
                 operation: op,
                 setup,

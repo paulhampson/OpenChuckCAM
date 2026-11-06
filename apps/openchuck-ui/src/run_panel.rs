@@ -60,10 +60,23 @@ pub struct ResultLine {
     pub moves: Vec<String>,
 }
 
+#[cfg(test)]
+thread_local! {
+    static RESULT_LINES_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread grouped a run's notes into result lines.
+#[cfg(test)]
+fn result_lines_made() -> usize {
+    RESULT_LINES_MADE.with(std::cell::Cell::get)
+}
+
 /// The lines of the results window for `run`, in order: what was generated
 /// and what was reused, the notes, the G-code checks, and the simulation
 /// (SIM-05).
 pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
+    #[cfg(test)]
+    RESULT_LINES_MADE.with(|c| c.set(c.get() + 1));
     let name = |id: OperationId| {
         project
             .operation(id)
@@ -343,12 +356,107 @@ pub struct RunPanel {
     last: Option<Arc<Regeneration>>,
     last_error: Option<String>,
     last_seconds: f64,
-    show_results: bool,
+    /// Whether the last run failed (not cancelled): one error in the Results
+    /// tab (issue 475).
+    failed: bool,
+    /// The last run's lines by level: errors, warnings, information.
+    counts: LevelCounts,
+    /// A failed run asks the shell to show the Results tab.
+    wants_tab: bool,
     adding: Option<AddOperation>,
     deferred_add: Option<(crate::pending_edits::Ticket, (bool, bool, bool))>,
     /// The New operation dialog asked for the tool library (decision record
     /// 0127 item 6).
     wants_library: bool,
+    /// What the Results tab shows, kept per run and revision of the project
+    /// (issue #470).
+    view: Option<Arc<ResultsView>>,
+}
+
+/// What the Results tab shows for one run, one failure and one revision of
+/// the project: the lines, their counts, the summary, the Copy all text and
+/// whether the project has changed since the run. Grouping the notes and
+/// comparing the projects took tens of milliseconds on a large run, and the
+/// tab is drawn every frame it is shown (issue #470; UI-09, NFR-04).
+struct ResultsView {
+    /// The run it was made for (held, so never another run at its address).
+    run: Option<Arc<Regeneration>>,
+    /// The project's revision it was made at.
+    revision: u64,
+    /// The failed run's error it was made with.
+    error: Option<String>,
+    failed: bool,
+    lines: Vec<ResultLine>,
+    counts: LevelCounts,
+    summary: Option<String>,
+    text: Option<String>,
+    /// Whether the project has changed since the run.
+    changed: bool,
+}
+
+impl ResultsView {
+    /// Whether this view is for the run, failure and revision given.
+    fn is_for(&self, panel: &RunPanel, revision: u64) -> bool {
+        self.revision == revision
+            && self.failed == panel.failed
+            && self.error == panel.last_error
+            && match (&self.run, &panel.last) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+
+    fn make(panel: &RunPanel, app: &Application) -> Self {
+        let run = panel.last.clone();
+        let lines = run
+            .as_ref()
+            .map(|run| result_lines(run, app.project()))
+            .unwrap_or_default();
+        let mut counts = LevelCounts::default();
+        for line in &lines {
+            counts.add(line.severity);
+        }
+        counts.errors += usize::from(panel.failed);
+        let summary = run.as_ref().map(|run| {
+            format!(
+                "{} operation(s), {} moves, {:.1} s to generate",
+                run.toolpath.groups.len(),
+                run.toolpath
+                    .groups
+                    .iter()
+                    .map(|g| g.segments.len())
+                    .sum::<usize>(),
+                panel.last_seconds
+            )
+        });
+        // The error of a failed run is a line of the results: it is copied
+        // too, and a first run that failed still has Copy all (review of
+        // #480).
+        let failure = panel.last_error.as_deref().filter(|_| panel.failed);
+        let head = match (&summary, failure) {
+            (Some(summary), Some(error)) => Some(format!("{summary}\nProblem: {error}")),
+            (Some(summary), None) => Some(summary.clone()),
+            (None, Some(error)) => Some(format!("Problem: {error}")),
+            (None, None) => None,
+        };
+        let text =
+            head.map(|head| results_text(&lines, &head, openchuck_buildinfo::current_text()));
+        let changed = run
+            .as_ref()
+            .is_some_and(|run| *run.project != *app.project());
+        Self {
+            run,
+            revision: app.revision(),
+            error: panel.last_error.clone(),
+            failed: panel.failed,
+            lines,
+            counts,
+            summary,
+            text,
+            changed,
+        }
+    }
 }
 
 impl RunPanel {
@@ -415,6 +523,7 @@ impl RunPanel {
 
     fn begin(&mut self, handle: JobHandle<Regeneration>, simulate: bool) {
         self.last_error = None;
+        self.failed = false;
         self.progress = None;
         self.job = Some(RunningJob {
             handle,
@@ -470,7 +579,7 @@ impl RunPanel {
                 match result {
                     Ok(run) => {
                         let run = Arc::new(run);
-                        self.last = Some(Arc::clone(&run));
+                        self.record_run(Arc::clone(&run));
                         Some((run, id))
                     }
                     Err(e) if e.is_cancelled() => {
@@ -479,8 +588,7 @@ impl RunPanel {
                         None
                     }
                     Err(e) => {
-                        self.last_error = Some(e.to_string());
-                        self.show_results = true;
+                        self.record_failure(e.to_string());
                         None
                     }
                 }
@@ -510,9 +618,10 @@ impl RunPanel {
         Some(text)
     }
 
-    /// Whether the results window or the add-operation dialog is open.
+    /// Whether the add-operation dialog is open. The Results are a tab of the
+    /// dock, not a window (issue 475).
     pub fn has_window(&self) -> bool {
-        self.show_results || self.adding.is_some()
+        self.adding.is_some()
     }
 
     /// Whether the add-operation dialog is open.
@@ -522,9 +631,36 @@ impl RunPanel {
         self.adding.is_some()
     }
 
-    /// Opens the results window on the latest run.
-    pub fn show_results(&mut self) {
-        self.show_results = true;
+    /// Keeps `run` as the latest run and counts its lines by level.
+    pub(crate) fn record_run(&mut self, run: Arc<Regeneration>) {
+        let mut counts = LevelCounts::default();
+        for line in result_lines(&run, &run.project) {
+            counts.add(line.severity);
+        }
+        self.counts = counts;
+        self.last = Some(run);
+        self.failed = false;
+        self.last_error = None;
+    }
+
+    /// Keeps a failed run's error, and asks for the Results tab.
+    pub(crate) fn record_failure(&mut self, message: String) {
+        self.last_error = Some(message);
+        self.failed = true;
+        self.wants_tab = true;
+    }
+
+    /// Whether a failed run has asked for the Results tab since the last
+    /// call.
+    pub fn take_results_request(&mut self) -> bool {
+        std::mem::take(&mut self.wants_tab)
+    }
+
+    /// The number on the Results tab: the warnings and errors of the latest
+    /// run, a group once, and one more for a failed run. Information is not
+    /// counted, and the tab's filters do not change it (owner, 1 Nov 2026).
+    pub fn results_count(&self) -> usize {
+        self.counts.errors + self.counts.warnings + usize::from(self.failed)
     }
 
     /// Opens the add-operation dialog (11.4): the setup and tool of the
@@ -807,102 +943,204 @@ impl RunPanel {
         (added, error)
     }
 
-    /// Draws the results window.
-    pub fn results_window(&mut self, ctx: &egui::Context, app: &Application) {
-        if !self.show_results {
-            return;
-        }
-        let mut open = true;
-        egui::Window::new("Results")
-            .open(&mut open)
-            .default_width(520.0)
-            .show(ctx, |ui| {
-                if let Some(error) = &self.last_error {
-                    ui.colored_label(PROBLEM, error);
+    /// Draws the Results tab of the dock: the summary and Copy all, the level
+    /// chips, then the lines in one scroll area, so a short dock reaches
+    /// everything (UI-12, UI-16; issue 475). Copy all and the plain-text box
+    /// hold every line whatever the chips show (NFR-12).
+    pub fn results_tab(&mut self, ui: &mut egui::Ui, app: &Application, filter: &mut LevelFilter) {
+        let revision = app.revision();
+        let view = match &self.view {
+            Some(view) if view.is_for(self, revision) => Arc::clone(view),
+            _ => {
+                let view = Arc::new(ResultsView::make(self, app));
+                self.view = Some(Arc::clone(&view));
+                view
+            }
+        };
+        let (lines, counts, summary, text) = (&view.lines, view.counts, &view.summary, &view.text);
+        ui.horizontal_wrapped(|ui| {
+            if let Some(summary) = &summary {
+                ui.label(summary);
+            }
+            if let Some(text) = &text
+                && ui.button("Copy all").on_hover_text(COPY_ALL_TIP).clicked()
+            {
+                ui.ctx().copy_text(text.clone());
+            }
+            for severity in [Severity::Problem, Severity::Warning, Severity::Info] {
+                let (name, colour) = level_name(severity);
+                let on = filter.shows(severity);
+                let label = RichText::new(format!("{name} {}", counts.get(severity)))
+                    .color(if on { colour } else { DARK.muted });
+                if ui
+                    .selectable_label(on, label)
+                    .on_hover_text(format!(
+                        "Show or hide {}. Copy all and the plain text always hold every line.",
+                        name.to_lowercase()
+                    ))
+                    .clicked()
+                {
+                    filter.toggle(severity);
+                }
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("results")
+            .auto_shrink([false, false])
+            // The default 64 pt minimum would push the viewport past a
+            // short dock and clip the end of the content (review of #480).
+            .min_scrolled_height(0.0)
+            .show(ui, |ui| {
+                if let Some(error) = &self.last_error
+                    && (!self.failed || filter.errors)
+                {
+                    ui.add(egui::Label::new(RichText::new(error).color(PROBLEM)).selectable(true));
                     ui.separator();
                 }
-                match &self.last {
-                    None => {
-                        ui.label("Nothing has been generated yet.");
-                    }
-                    Some(run) => {
-                        if *run.project != *app.project() {
-                            ui.colored_label(
-                                NOTE,
-                                "The project has changed since this run. Generate again.",
-                            );
-                        }
-                        let summary = format!(
-                            "{} operation(s), {} moves, {:.1} s to generate",
-                            run.toolpath.groups.len(),
-                            run.toolpath
-                                .groups
-                                .iter()
-                                .map(|g| g.segments.len())
-                                .sum::<usize>(),
-                            self.last_seconds
+                if self.last.is_some() {
+                    if view.changed {
+                        ui.colored_label(
+                            NOTE,
+                            "The project has changed since this run. Generate again.",
                         );
-                        ui.label(&summary);
-                        let lines = result_lines(run, app.project());
-                        let text =
-                            results_text(&lines, &summary, openchuck_buildinfo::current_text());
-                        if ui.button("Copy all").on_hover_text(COPY_ALL_TIP).clicked() {
-                            ui.ctx().copy_text(text.clone());
-                        }
-                        egui::ScrollArea::vertical()
-                            .max_height(360.0)
-                            .show(ui, |ui| {
-                                for (index, line) in lines.iter().enumerate() {
-                                    let colour = |text: RichText| match line.severity {
-                                        Severity::Info => text,
-                                        Severity::Warning => text.color(NOTE),
-                                        Severity::Problem => text.color(PROBLEM),
-                                    };
-                                    // Text in the window can be selected and
-                                    // copied (issue 431).
-                                    let label = |text: &str| {
-                                        egui::Label::new(colour(RichText::new(text)))
-                                            .selectable(true)
-                                    };
-                                    if line.moves.is_empty() {
-                                        ui.add(label(&line.text));
-                                        continue;
-                                    }
-                                    // A group opens on its moves, one line
-                                    // each; it starts closed (issue 255).
-                                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
-                                        .id_salt(("result group", index))
-                                        .default_open(false)
-                                        .show(ui, |ui| {
-                                            for note in &line.moves {
-                                                ui.add(label(note));
-                                            }
-                                        })
-                                        .header_response
-                                        .on_hover_text(GROUP_HINT);
-                                }
-                            });
-                        // The same text in a box that selects and copies with
-                        // the keyboard alone (select all, then copy).
-                        egui::CollapsingHeader::new("Results as plain text")
-                            .id_salt("results plain text")
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                let mut shown = text.as_str();
-                                ui.add(
-                                    egui::TextEdit::multiline(&mut shown)
-                                        .id(egui::Id::unique(PLAIN_TEXT_BOX))
-                                        .desired_rows(6)
-                                        .desired_width(f32::INFINITY)
-                                        .font(egui::TextStyle::Monospace),
-                                );
-                            });
-                        ui.separator();
-                        ui.weak(openchuck_app::VERIFY_GCODE_NOTICE);
                     }
+                } else {
+                    ui.label("Nothing has been generated yet.");
                 }
+                let mut shown = 0;
+                for (index, line) in lines.iter().enumerate() {
+                    if !filter.shows(line.severity) {
+                        continue;
+                    }
+                    shown += 1;
+                    let colour = |text: RichText| match line.severity {
+                        Severity::Info => text,
+                        Severity::Warning => text.color(NOTE),
+                        Severity::Problem => text.color(PROBLEM),
+                    };
+                    // Text in the tab can be selected and copied (issue 431).
+                    let label =
+                        |text: &str| egui::Label::new(colour(RichText::new(text))).selectable(true);
+                    if line.moves.is_empty() {
+                        ui.add(label(&line.text));
+                        continue;
+                    }
+                    // A group opens on its moves, one line each; it starts
+                    // closed (issue 255).
+                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
+                        .id_salt(("result group", index))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for note in &line.moves {
+                                ui.add(label(note));
+                            }
+                        })
+                        .header_response
+                        .on_hover_text(GROUP_HINT);
+                }
+                if shown == 0 && !lines.is_empty() {
+                    ui.weak("No lines at this level.");
+                }
+                // The same text in a box that selects and copies with the
+                // keyboard alone (select all, then copy).
+                if let Some(text) = &text {
+                    egui::CollapsingHeader::new("Results as plain text")
+                        .id_salt("results plain text")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let mut shown = text.as_str();
+                            ui.add(
+                                egui::TextEdit::multiline(&mut shown)
+                                    .id(egui::Id::unique(PLAIN_TEXT_BOX))
+                                    .desired_rows(6)
+                                    .desired_width(f32::INFINITY)
+                                    .font(egui::TextStyle::Monospace),
+                            );
+                        });
+                }
+                ui.separator();
+                ui.weak(openchuck_app::VERIFY_GCODE_NOTICE);
             });
-        self.show_results = open;
+    }
+}
+
+/// Which levels the Results tab shows (the chips), as in Messages. Session
+/// only (decision 0519).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LevelFilter {
+    /// Errors.
+    pub errors: bool,
+    /// Warnings.
+    pub warnings: bool,
+    /// Information.
+    pub information: bool,
+}
+
+impl Default for LevelFilter {
+    fn default() -> Self {
+        Self {
+            errors: true,
+            warnings: true,
+            information: true,
+        }
+    }
+}
+
+impl LevelFilter {
+    /// Whether lines of `severity` are shown.
+    fn shows(&self, severity: Severity) -> bool {
+        match severity {
+            Severity::Problem => self.errors,
+            Severity::Warning => self.warnings,
+            Severity::Info => self.information,
+        }
+    }
+
+    /// Shows or hides lines of `severity`.
+    fn toggle(&mut self, severity: Severity) {
+        let on = match severity {
+            Severity::Problem => &mut self.errors,
+            Severity::Warning => &mut self.warnings,
+            Severity::Info => &mut self.information,
+        };
+        *on = !*on;
+    }
+}
+
+/// Lines by level.
+#[derive(Debug, Clone, Copy, Default)]
+struct LevelCounts {
+    errors: usize,
+    warnings: usize,
+    information: usize,
+}
+
+impl LevelCounts {
+    /// Counts one line of `severity`.
+    fn add(&mut self, severity: Severity) {
+        match severity {
+            Severity::Problem => self.errors += 1,
+            Severity::Warning => self.warnings += 1,
+            Severity::Info => self.information += 1,
+        }
+    }
+
+    /// The lines of `severity`.
+    fn get(&self, severity: Severity) -> usize {
+        match severity {
+            Severity::Problem => self.errors,
+            Severity::Warning => self.warnings,
+            Severity::Info => self.information,
+        }
+    }
+}
+
+/// A chip's name (as in Messages) and colour.
+fn level_name(severity: Severity) -> (&'static str, Color32) {
+    match severity {
+        Severity::Problem => ("Errors", DARK.error),
+        Severity::Warning => ("Warnings", DARK.warning),
+        Severity::Info => ("Information", DARK.accent),
     }
 }
 
@@ -1190,6 +1428,9 @@ mod tests {
         app: Application,
         shapes: Vec<egui::epaint::ClippedShape>,
         copied: Vec<String>,
+        filter: LevelFilter,
+        size: egui::Vec2,
+        clock: f64,
         _dir: std::path::PathBuf,
     }
 
@@ -1201,17 +1442,26 @@ mod tests {
             let run = feed_run(operation, &name, 4);
             let ctx = egui::Context::default();
             crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
-            let panel = RunPanel {
-                last: Some(Arc::new(run)),
-                show_results: true,
-                ..RunPanel::default()
-            };
+            let mut panel = RunPanel::default();
+            panel.record_run(Arc::new(run));
+            Self::with(ctx, panel, app, dir)
+        }
+
+        fn with(
+            ctx: egui::Context,
+            panel: RunPanel,
+            app: Application,
+            dir: std::path::PathBuf,
+        ) -> Self {
             let mut frames = Self {
                 ctx,
                 panel,
                 app,
                 shapes: Vec::new(),
                 copied: Vec::new(),
+                filter: LevelFilter::default(),
+                size: egui::vec2(1000.0, 800.0),
+                clock: 0.0,
                 _dir: dir,
             };
             for _ in 0..3 {
@@ -1220,17 +1470,29 @@ mod tests {
             frames
         }
 
+        /// A run whose notes are `notes` (each its own warning line).
+        fn with_notes(tag: &str, notes: &[&str]) -> Self {
+            let (dir, app, _, _) = crate::testing::cube_project(&format!("results-frames-{tag}"));
+            let ctx = egui::Context::default();
+            crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+            let mut panel = RunPanel::default();
+            panel.record_run(Arc::new(Regeneration {
+                notes: notes.iter().map(|n| (*n).to_owned()).collect(),
+                ..Regeneration::default()
+            }));
+            Self::with(ctx, panel, app, dir)
+        }
+
         fn frame(&mut self, events: Vec<egui::Event>) {
+            self.clock += 0.05;
             let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(1000.0, 800.0),
-                )),
+                time: Some(self.clock),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
                 events,
                 ..Default::default()
             };
             let mut output = self.ctx.run_ui(input, |ui| {
-                self.panel.results_window(ui.ctx(), &self.app);
+                self.panel.results_tab(ui, &self.app, &mut self.filter);
             });
             output.textures_delta.clear();
             for command in output.platform_output.commands {
@@ -1266,6 +1528,34 @@ mod tests {
                 }
             }
             self.shapes.iter().any(|s| has(&s.shape, needle))
+        }
+
+        /// Whether the end of the text holding `needle` is drawn inside the
+        /// screen and inside its own clip rectangle (a scroll area's edge):
+        /// scrolled to the end, the last line is on show and not cut off.
+        fn readable(&self, needle: &str) -> bool {
+            fn walk(
+                shape: &egui::Shape,
+                clip: egui::Rect,
+                screen: egui::Rect,
+                needle: &str,
+            ) -> bool {
+                match shape {
+                    egui::Shape::Text(t) if t.galley.text().contains(needle) => {
+                        let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                        let slack = egui::Vec2::splat(0.5);
+                        rect.bottom() <= screen.bottom() + slack.y
+                            && rect.bottom() <= clip.bottom() + slack.y
+                            && rect.bottom() > clip.top()
+                    }
+                    egui::Shape::Vec(v) => v.iter().any(|s| walk(s, clip, screen, needle)),
+                    _ => false,
+                }
+            }
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, self.size);
+            self.shapes
+                .iter()
+                .any(|s| walk(&s.shape, s.clip_rect, screen, needle))
         }
 
         fn click(&mut self, at: egui::Pos2) {
@@ -1333,6 +1623,294 @@ mod tests {
             }
         }
         assert!(reached, "Tab reaches the plain text box");
+    }
+
+    const WARNING_A: &str = "alpha: a note about one move";
+    const WARNING_B: &str = "bravo: a note about another thing";
+
+    #[test]
+    fn req_ui_12_the_label_count_is_warnings_and_errors_with_a_group_once() {
+        // Owner answer (d), 1 Nov 2026: n = warning and error lines of the
+        // latest run, plus one for a failed run; a grouped line once;
+        // information not counted; none gives no number.
+        let mut panel = RunPanel::default();
+        assert_eq!(panel.results_count(), 0, "no run yet");
+        let (mut run, project, _) = limited_run("count-info", 6);
+        run.project = project.into();
+        panel.record_run(Arc::new(run));
+        assert_eq!(panel.results_count(), 0, "information is not counted");
+        let mut notes: Vec<String> = (2..=4)
+            .map(|m| {
+                format!(
+                    "operation 'Roughing': move {m}: a plunge is steeper than 972.9 mm/min, \
+                     not 1000.0"
+                )
+            })
+            .collect();
+        notes.push(WARNING_B.to_owned());
+        panel.record_run(Arc::new(Regeneration {
+            notes,
+            ..Regeneration::default()
+        }));
+        assert_eq!(panel.results_count(), 2, "a group is one line");
+        panel.record_failure("the engine stopped".to_owned());
+        assert_eq!(panel.results_count(), 3, "a failed run adds one");
+    }
+
+    #[test]
+    fn req_ui_12_a_cancelled_run_is_not_a_failure_and_a_failure_asks_for_the_tab() {
+        let mut panel = RunPanel::default();
+        panel.record_failure("the engine stopped".to_owned());
+        assert!(
+            panel.take_results_request(),
+            "a failed run asks for the tab"
+        );
+        assert!(!panel.take_results_request(), "once");
+        assert_eq!(panel.results_count(), 1);
+        panel.record_run(Arc::new(Regeneration::default()));
+        assert_eq!(panel.results_count(), 0, "a later run clears the failure");
+    }
+
+    #[test]
+    fn req_ui_12_the_chips_filter_the_lines_and_keep_unfiltered_counts() {
+        let mut frames = Frames::with_notes("chips", &[WARNING_A, WARNING_B]);
+        assert!(
+            frames.shows("Warnings 2") && frames.shows("Errors 0") && frames.shows("Information 0")
+        );
+        assert!(frames.shows(WARNING_A) && frames.shows(WARNING_B));
+        let at = frames.centre_of("Warnings 2");
+        frames.click(at);
+        assert!(!frames.shows(WARNING_A), "the warning lines are hidden");
+        assert!(frames.shows("Warnings 2"), "the count is unfiltered");
+        assert!(frames.shows("No lines at this level."));
+        assert_eq!(
+            frames.filter,
+            LevelFilter {
+                warnings: false,
+                ..LevelFilter::default()
+            }
+        );
+    }
+
+    #[test]
+    fn req_ui_12_req_nfr_12_copy_all_holds_every_line_whatever_the_filter() {
+        let mut frames = Frames::with_notes("chips-copy", &[WARNING_A, WARNING_B]);
+        let at = frames.centre_of("Warnings 2");
+        frames.click(at);
+        let at = frames.centre_of("Copy all");
+        frames.click(at);
+        let text = frames.copied.last().expect("copied");
+        assert!(
+            text.contains(WARNING_A) && text.contains(WARNING_B),
+            "{text}"
+        );
+        assert!(text.contains(openchuck_buildinfo::current_text().trim_end()));
+    }
+
+    /// Renames the operation of `frames`' project to `name`.
+    fn rename(frames: &mut Frames, operation: OperationId, name: &str) {
+        let mut renamed = frames.app.project().operation(operation).unwrap().clone();
+        renamed.name = name.to_owned();
+        frames
+            .app
+            .execute(openchuck_app::Command::Replace(
+                openchuck_app::project::Item::Operation(renamed),
+            ))
+            .unwrap();
+    }
+
+    /// Issue #470: the tab grouped every note of the run, built the whole
+    /// Copy all text and compared the run's project with the current one on
+    /// every frame it was shown (47 ms a frame for 59,044 notes on the
+    /// owner's carving). Now once per run and change of the project.
+    #[test]
+    fn req_ui_09_req_nfr_04_the_results_tab_groups_the_notes_once_per_run_and_change() {
+        let mut frames = Frames::new("once");
+        let operation = frames.app.project().operations()[0].id;
+        let before = result_lines_made();
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert!(result_lines_made() - before <= 1, "once for five frames");
+        let before = result_lines_made();
+        rename(&mut frames, operation, "Renamed");
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(result_lines_made() - before, 1, "once after a change");
+        let before = result_lines_made();
+        frames.panel.record_failure("the engine stopped".to_owned());
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(result_lines_made() - before, 1, "once after a failed run");
+        let before = result_lines_made();
+        let name = frames
+            .app
+            .project()
+            .operation(operation)
+            .unwrap()
+            .name
+            .clone();
+        frames
+            .panel
+            .record_run(Arc::new(feed_run(operation, &name, 3)));
+        for _ in 0..5 {
+            frames.frame(Vec::new());
+        }
+        assert_eq!(
+            result_lines_made() - before,
+            2,
+            "a new run: its count, then the tab's lines once"
+        );
+    }
+
+    /// The kept lines are always those of the run and the project as they
+    /// are (UI-12, NFR-12): a rename, an undo and a redo, a failed run and a
+    /// new run each show, and copy, what a fresh grouping gives.
+    #[test]
+    fn req_ui_12_req_nfr_12_the_results_tab_shows_the_run_and_project_as_they_are() {
+        let mut frames = Frames::new("fresh");
+        let operation = frames.app.project().operations()[0].id;
+        let first = frames
+            .app
+            .project()
+            .operation(operation)
+            .unwrap()
+            .name
+            .clone();
+        let copy_all = |frames: &mut Frames| {
+            let at = frames.centre_of("Copy all");
+            frames.click(at);
+            frames.copied.last().cloned().expect("copied")
+        };
+        let fresh = |frames: &Frames| {
+            result_lines(frames.panel.last.as_ref().unwrap(), frames.app.project())
+                .into_iter()
+                .map(|l| l.text)
+                .collect::<Vec<_>>()
+        };
+        let check = |frames: &mut Frames, step: &str| {
+            frames.frame(Vec::new());
+            let text = copy_all(frames);
+            for line in fresh(frames) {
+                assert!(text.contains(&line), "{step}: {line} not in {text}");
+            }
+        };
+        check(&mut frames, "start");
+        assert!(frames.shows(&format!("'{first}'")));
+        rename(&mut frames, operation, "Renamed");
+        check(&mut frames, "renamed");
+        // The summary line names the operation as the project does now; the
+        // run's own notes keep the name they were made with.
+        assert!(frames.shows("'Renamed'"));
+        assert!(frames.app.undo().unwrap());
+        check(&mut frames, "undo");
+        assert!(!frames.shows("'Renamed'"));
+        assert!(frames.app.redo().unwrap());
+        check(&mut frames, "redo");
+        assert!(frames.shows("'Renamed'"));
+        frames.panel.record_failure("the engine stopped".to_owned());
+        check(&mut frames, "failed");
+        assert!(frames.shows("the engine stopped"));
+        assert!(copy_all(&mut frames).contains("Problem: the engine stopped"));
+        frames
+            .panel
+            .record_run(Arc::new(feed_run(operation, "Renamed", 3)));
+        check(&mut frames, "new run");
+        assert!(!frames.shows("the engine stopped"));
+        assert!(!copy_all(&mut frames).contains("the engine stopped"));
+    }
+
+    #[test]
+    fn req_ui_16_req_ui_12_the_tab_is_usable_in_a_short_dock() {
+        // The dock is at least 120 pt high and the tab strip takes some of it.
+        let mut frames = Frames::with_notes("short", &[WARNING_A, WARNING_B]);
+        frames.size = egui::vec2(380.0, 90.0);
+        for _ in 0..3 {
+            frames.frame(Vec::new());
+        }
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, frames.size);
+        let copy = frames.centre_of("Copy all");
+        assert!(screen.contains(copy), "Copy all is on screen at {copy:?}");
+        // The rest scrolls: the notice is reached by scrolling the wheel.
+        let notice = openchuck_app::VERIFY_GCODE_NOTICE;
+        let mut reached = frames.readable(&notice[..20]);
+        for _ in 0..30 {
+            if reached {
+                break;
+            }
+            frames.frame(vec![
+                egui::Event::PointerMoved(egui::pos2(100.0, frames.size.y - 6.0)),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
+                    delta: egui::vec2(0.0, -60.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            reached = frames.readable(&notice[..20]);
+        }
+        assert!(
+            reached,
+            "the verify notice is readable at the end of the scroll"
+        );
+    }
+
+    #[test]
+    fn req_ui_12_a_new_panel_says_nothing_is_generated_and_a_cancel_is_shown_unfiltered() {
+        let (dir, app, _, _) = crate::testing::cube_project("results-frames-empty");
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let panel = RunPanel {
+            last_error: Some("Cancelled. Nothing was kept from that run.".to_owned()),
+            ..RunPanel::default()
+        };
+        let mut frames = Frames::with(ctx, panel, app, dir);
+        assert!(frames.shows("Nothing has been generated yet."));
+        assert!(frames.shows("Cancelled. Nothing was kept"));
+        assert!(!frames.shows("Copy all"), "nothing to copy yet");
+        // A cancel is not an error line: the Errors chip does not hide it,
+        // and it does not count.
+        frames.filter.errors = false;
+        frames.frame(Vec::new());
+        assert!(frames.shows("Cancelled. Nothing was kept"));
+        assert!(frames.shows("Errors 0"));
+        assert_eq!(frames.panel.results_count(), 0);
+    }
+
+    #[test]
+    fn req_ui_12_req_nfr_12_copy_all_holds_the_error_of_a_failed_run_even_with_no_earlier_run() {
+        // Review of #480: the error line was shown and counted but not copied,
+        // and a first run that failed had no Copy all at all.
+        let (dir, app, _, _) = crate::testing::cube_project("results-frames-failed-copy");
+        let ctx = egui::Context::default();
+        crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+        let mut panel = RunPanel::default();
+        panel.record_failure("the engine stopped: no stock".to_owned());
+        let mut frames = Frames::with(ctx, panel, app, dir);
+        let at = frames.centre_of("Copy all");
+        frames.click(at);
+        let text = frames.copied.last().expect("copied");
+        assert!(text.contains("the engine stopped: no stock"), "{text}");
+        assert!(text.contains(openchuck_buildinfo::current_text().trim_end()));
+        assert!(
+            frames.shows("Results as plain text"),
+            "the keyboard route too"
+        );
+        // With an earlier run kept, its summary and the error are both there.
+        let mut with_run = Frames::new("failed-after-run");
+        with_run.panel.record_failure("then it failed".to_owned());
+        with_run.frame(Vec::new());
+        let at = with_run.centre_of("Copy all");
+        with_run.click(at);
+        let text = with_run.copied.last().expect("copied");
+        assert!(
+            text.contains("operation(s)") && text.contains("then it failed"),
+            "{text}"
+        );
     }
 
     #[test]

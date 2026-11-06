@@ -92,6 +92,10 @@ pub struct WorkholdingPanel {
     findings: Vec<WorkholdingFinding>,
     refused: bool,
     message: Option<String>,
+    /// The workholding the section's own Apply just stored: when the stored
+    /// workholding becomes it, what the check found stays, as warnings
+    /// (decision 0523, the owner's answer B).
+    applied: Option<Workholding>,
     /// Set for one frame to open the tab just added and focus its Start X.
     focus_new_tab: bool,
     /// The row with keyboard focus this frame.
@@ -277,6 +281,7 @@ impl WorkholdingPanel {
             findings: Vec::new(),
             refused: false,
             message: None,
+            applied: None,
             focus_new_tab: false,
             focused: None,
             open_request: None,
@@ -508,12 +513,17 @@ impl WorkholdingPanel {
 
     /// Starts again from the stored workholding, which another edit (an
     /// undo, the command line) changed, saying so if that threw changes away.
+    /// The section's own Apply is not another edit: the warnings it stored
+    /// the workholding with stay.
     fn follow_stored(&mut self, stored: &Workholding) {
+        let own = self.applied.take().as_ref() == Some(stored);
         self.draft.sync(stored);
         self.fields.clear();
-        self.findings.clear();
-        self.refused = false;
-        self.message = None;
+        if !own {
+            self.findings.clear();
+            self.refused = false;
+            self.message = None;
+        }
     }
 
     /// Adds or removes tabs of the draft with `edit`. The tabs after the
@@ -1482,9 +1492,13 @@ impl WorkholdingPanel {
         draft: Workholding,
         setup: &Setup,
     ) -> Option<Command> {
-        self.refused = apply;
+        // A finding that refuses (a tab outside the end zones) stops Apply; a
+        // tab shorter than a tool is stored with its warning (decision 0523,
+        // the owner's answer B).
+        let refuses = |found: &[WorkholdingFinding]| found.iter().any(|f| f.refuses);
+        self.refused = apply && result.as_ref().map_or(true, |found| refuses(found));
         match result {
-            Ok(found) if found.is_empty() && apply => {
+            Ok(found) if !refuses(&found) && apply => {
                 // Edited or reverted while the check ran: what was checked is
                 // not what is on screen, so store nothing.
                 if draft != *self.draft.workholding() {
@@ -1502,9 +1516,11 @@ impl WorkholdingPanel {
                 if resolved != draft {
                     *self.draft.edit() = resolved.clone();
                 }
+                self.applied = Some(resolved.clone());
                 edited.workholding = resolved;
                 self.message = None;
-                self.findings.clear();
+                // What did not refuse stays on its tab's row, as a warning.
+                self.findings = found;
                 self.refused = false;
                 // The zones and the defaults follow the stored held regions.
                 self.facts = Facts::None;
@@ -1515,6 +1531,7 @@ impl WorkholdingPanel {
                     tab: None,
                     text: "The tabs are in the head and tail zones and long enough for the tools."
                         .to_owned(),
+                    refuses: false,
                 }];
                 None
             }
@@ -1669,6 +1686,8 @@ mod tests {
         assert_eq!(panel.findings.len(), 1);
         assert_eq!(panel.findings[0].tab, Some(0));
         assert!(panel.findings[0].text.contains("Tab 1"));
+        // A tab outside the end zones still refuses Apply (decision 0523).
+        assert!(panel.findings[0].refuses);
         assert!(panel.draft_view(&setup).failing.contains(&HeldItem::Tab(0)));
         // A change to the stock is a change to what a check depends on.
         let before = check_inputs(&app, &setup);
@@ -1697,26 +1716,47 @@ mod tests {
         );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("changed while"), "{message}");
-        // A tab shorter than the 4 mm tool is refused, naming the operation
-        // by its number.
+        // A tab shorter than the 4 mm tool is reported, naming the operation
+        // by its number, and stored with the warning (decision 0523, the
+        // owner's answer B of 6 Nov 2026): Apply does not refuse it, and the
+        // finding stays on the tab's row as a warning, not an error.
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 3.0)];
-        assert!(
-            panel
-                .finish_check(
-                    check(&app, &panel),
-                    true,
-                    panel.draft.workholding().clone(),
-                    &setup
-                )
-                .is_none()
-        );
-        let message = &panel.findings[0].text;
-        assert!(message.contains("shorter than the tool"), "{message}");
-        assert!(message.contains("of 1 Finish"), "{message}");
-        assert!(
-            message.starts_with("Tab 1 is 1.000 mm long along X"),
-            "{message}"
-        );
+        let applied = panel.draft.workholding().clone();
+        let stored = panel.finish_check(check(&app, &panel), true, applied.clone(), &setup);
+        let command = match stored {
+            Some(Command::Replace(Item::Setup(edited))) => {
+                assert_eq!(edited.workholding.tabs, applied.tabs);
+                Command::Replace(Item::Setup(edited))
+            }
+            other => panic!("the short tab was not stored: {other:?}"),
+        };
+        let warned = |panel: &WorkholdingPanel, setup: &Setup| {
+            assert!(!panel.refused);
+            assert_eq!(panel.findings.len(), 1);
+            let message = &panel.findings[0].text;
+            assert!(message.contains("shorter than the tool"), "{message}");
+            assert!(message.contains("of 1 Finish"), "{message}");
+            assert!(
+                message.starts_with("Tab 1 is 1.000 mm long along X"),
+                "{message}"
+            );
+            assert!(!panel.findings[0].refuses);
+            assert!(!panel.draft_view(setup).failing.contains(&HeldItem::Tab(0)));
+        };
+        warned(&panel, &setup);
+        // The warning outlasts the Apply that stored the tab: the next frame
+        // sees the stored workholding changed by the section's own command,
+        // which is not another edit.
+        app.execute(command).unwrap();
+        let applied_setup = app.project().setup(setup_id).unwrap().clone();
+        let ctx = egui::Context::default();
+        painted(&mut panel, &ctx, &app, &applied_setup);
+        warned(&panel, &applied_setup);
+        // An undo is another edit: what was found about the tab goes.
+        assert!(app.undo().unwrap());
+        let undone = app.project().setup(setup_id).unwrap().clone();
+        painted(&mut panel, &ctx, &app, &undone);
+        assert!(panel.findings.is_empty(), "{:?}", panel.findings);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1779,7 +1819,8 @@ mod tests {
             panel.refused = true;
             panel.findings = vec![WorkholdingFinding {
                 tab: Some(1),
-                text: "Tab 2 is shorter than the 4 mm tool of 1 Rough".to_owned(),
+                text: "Tab 2 is outside the end zones".to_owned(),
+                refuses: true,
             }];
         };
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 4.0), tab(4.0, 1.0, 2.0)];

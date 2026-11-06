@@ -12,6 +12,13 @@ use openchuck_types::geometry::{Point3, UnitVec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::units::Degrees;
 
+/// The flute bands that face the end coverage at `target`, top first in
+/// each view, and the tab remainder bound when a tab is routed round.
+/// Views are the start angle alone, two opposite views where the flutes
+/// cannot reach the whole end from one (decision 0504), or the tangent
+/// views round one cylindrical tab (decision 0252). Bands reach the
+/// written-motion allowance past the coverage edges and overlap by as
+/// much (decision 0501). An end the flutes cannot reach is refused.
 pub(super) fn bands(
     setup: &FacingSetup<'_>,
     parameters: &EndFacingParameters,
@@ -98,6 +105,38 @@ pub(super) fn bands(
             ));
         }
     };
+    // The flutes limit how deep one view may reach (the owner's decision F1,
+    // issue #499): at most the flute length below the stock's top at that
+    // view. An end taller than that is faced from A and A + 180 degrees, each
+    // view down past the axis by the written-motion allowance, and their
+    // union certified by the completion proof as for tab views.
+    let written = 0.125 * parameters.tolerance;
+    let flute = setup.tool.flute_length.0;
+    let top_at = |angle: Degrees| -> Result<f64> {
+        super::super::extents::FacingExtent::WholeStock.support(
+            super::super::geometry::FacingPlane::side(rotary, angle)?,
+            setup.stock,
+            setup.part,
+            &[],
+        )
+    };
+    let heights_at = |angle: Degrees| {
+        let h = corners.map(|p| rotary.to_axis(p, angle).height);
+        (
+            h.iter().copied().fold(f64::INFINITY, f64::min),
+            h.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        )
+    };
+    let (views, split) = if tab.is_none() {
+        let (low, _) = heights_at(parameters.start_angle);
+        if top_at(parameters.start_angle)? - (low - written) <= flute {
+            (views, None)
+        } else {
+            (2, Some(0.))
+        }
+    } else {
+        (views, None)
+    };
     let mut bands = vec![];
     let reach = corners.iter().map(|p| p.y.hypot(p.z)).fold(0., f64::max)
         + setup.tool.overall_length.0
@@ -131,13 +170,41 @@ pub(super) fn bands(
                 [axis.across, axis.height]
             })
             .to_vec();
-        let mut low = polygon.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+        let low = polygon.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
         let high = polygon
             .iter()
             .map(|p| p[1])
             .fold(f64::NEG_INFINITY, f64::max);
+        // The bands reach past the requested edges by one eighth of the
+        // tolerance, the written-motion share of the budget (0252), and
+        // overlap each other by at least as much, so the coordinates the
+        // controller reads back (rounded words, single-precision floats)
+        // still cover the face. Without it the Baluster's End facing could
+        // not be exported (issue #499). A band the tab limits keeps its
+        // separation and is not carried further.
+        let mut low = low - written;
+        let high = high + written;
         if let Some((centre, radius)) = tab {
             low = low.max(rotary.to_axis(centre, angle).height + radius);
+        }
+        if let Some(split) = split {
+            low = low.max(split - written);
+        }
+        let top = top_at(angle)?;
+        if !top.is_finite() {
+            return Err(refuse("end view stock top overflowed"));
+        }
+        if low < high && top - low > flute {
+            let from = if tab.is_some() {
+                format!("from each of the {views} views around the tab")
+            } else {
+                format!(
+                    "even facing it from A {:.3} and A {:.3}",
+                    parameters.start_angle.0,
+                    parameters.start_angle.0 + rotary.sense.sign() * 180.
+                )
+            };
+            return Err(too_deep(target, angle, top - low, flute, &from));
         }
         if !low.is_finite() || !high.is_finite() {
             return Err(refuse("end view projection overflowed"));
@@ -145,8 +212,14 @@ pub(super) fn bands(
         if low >= high {
             continue;
         }
+        let step = parameters.flute_step.min(flute - 2. * written);
+        if !step.is_finite() || step <= 0. {
+            return Err(refuse(
+                "the flutes are too short to overlap the bands by the written-motion allowance",
+            ));
+        }
         let mut upper = high;
-        for lower in LayerDistribution::Full.levels(high, low, parameters.flute_step)? {
+        for lower in LayerDistribution::Full.levels(high, low, step)? {
             context.check_cancelled()?;
             let strip = clip(&clip(&polygon, lower, true), upper, false);
             let min = strip.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
@@ -165,6 +238,23 @@ pub(super) fn bands(
         }
     }
     Ok((bands, residual))
+}
+
+/// The refusal for an end deeper than the flutes reach (decision 0344 item 7
+/// style: the place, the depth, the flutes and each remedy).
+fn too_deep(
+    target: f64,
+    angle: Degrees,
+    depth: f64,
+    flute: f64,
+    from: &str,
+) -> crate::error::PathError {
+    crate::error::PathError::Strategy(format!(
+        "End facing: the end at X {target:.3} needs the tool {depth:.3} mm below the top of the \
+         stock at A {:.3}, more than the tool's {flute:.3} mm of flute, {from}, so the tool cannot \
+         face it. Use a tool with longer flutes, or face the stock down with Box facing first",
+        angle.0
+    ))
 }
 
 /// Intersect a convex polygon with one tool-height halfplane. Each output

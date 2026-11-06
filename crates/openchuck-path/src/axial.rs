@@ -78,7 +78,29 @@ pub mod parameter {
     pub const LOW: &str = "low";
 }
 
-/// The `link_height` choice, shared with indexed finishing (decision 0496).
+/// Whether `parameters` ask for low links (`link_height` is `low`): false
+/// for a strategy or an operation without the parameter.
+pub(crate) fn low_links_asked(parameters: &Parameters) -> bool {
+    parameters.get(parameter::LINK_HEIGHT).is_some()
+        && parameters
+            .text(parameter::LINK_HEIGHT)
+            .is_ok_and(|t| t == parameter::LOW)
+}
+
+/// Marks every one of `passes` linkable low when `parameters` ask for it
+/// (decision 0496): the strategies that have no fit of their own call it on
+/// their complete pass list (decision 0521).
+pub(crate) fn mark_low_links_if_asked(parameters: &Parameters, passes: &mut [Pass]) {
+    if low_links_asked(parameters) {
+        for pass in passes {
+            pass.low_link = true;
+        }
+    }
+}
+
+/// The `link_height` choice, shared with indexed finishing (decision 0496),
+/// helical finishing, rest machining and simultaneous finishing (decision
+/// 0521).
 pub(crate) fn link_height_spec() -> ParameterSpec {
     ParameterSpec {
         name: parameter::LINK_HEIGHT.to_owned(),
@@ -103,6 +125,14 @@ pub(crate) fn link_height_spec() -> ParameterSpec {
 const MAX_SEEDS: f64 = 5.0e6;
 
 impl Strategy for AxialFinishing {
+    fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
+        // With Finishing layers on, each layer is held to the flutes by the
+        // Stepdown check (decision records 0345 and 0509).
+        parameters
+            .flag(crate::finishing::parameter::FINISHING_LAYERS)
+            .unwrap_or(false)
+    }
+
     fn name(&self) -> &str {
         NAME
     }
@@ -333,11 +363,7 @@ impl<'a> AlongX<'a> {
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
         let mut x_step = parameters.number(parameter::MAX_X_STEP)?;
         let zigzag = parameters.text(parameter::DIRECTION)? == "zigzag";
-        let low_links = parameters.get(parameter::LINK_HEIGHT).is_some_and(|_| {
-            parameters
-                .text(parameter::LINK_HEIGHT)
-                .is_ok_and(|t| t == parameter::LOW)
-        });
+        let low_links = low_links_asked(parameters);
         let label = if parameters.get(crate::indexed::parameter::ANGLES).is_some() {
             "indexed finishing"
         } else {
@@ -766,6 +792,10 @@ fn passes(
         .chain(spaced_note)
         .chain(layered)
         .chain(free.notes)
+        .chain(crate::finishing::across_axis_note(
+            region,
+            "Axial finishing",
+        ))
         .collect();
     Ok((passes, notes, warnings))
 }

@@ -58,6 +58,22 @@ pub struct ConvertOptions<F> {
     /// An operation with an entry runs at it; any other runs at its tool's
     /// [`ToolSetting::spindle_rpm`] (decision 0196).
     pub operation_spindle: BTreeMap<String, f64>,
+    /// Write each run of consecutive fed pure-A moves (the same written X, Y
+    /// and Z, the same direction, kind and written per-minute feed word) as
+    /// one move (decision 0506, accepted; GC-04 option
+    /// `combine_rotary_runs`). The motion and its time are unchanged.
+    pub combine_rotary_runs: bool,
+}
+
+/// The last fed pure-A move written, which a following one may extend.
+struct PureA {
+    /// Its index in the program's steps.
+    step: usize,
+    kind: MoveKind,
+    /// Whether A increases.
+    forward: bool,
+    /// The F word as written.
+    written: f64,
 }
 
 /// `value` rounded to `decimals` places as the post writes it (ties to even
@@ -185,6 +201,7 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             .rposition(|s| matches!(s, Step::Comment { .. }))
             .unwrap_or(group_comment);
         let mut runs: Vec<Vec<Block>> = vec![Vec::new()];
+        let mut pure_a: Option<PureA> = None;
         let mut here = target_of(group.start.tip, group.start.a);
         program.steps.push(Step::Rapid { target: here });
         for (s, segment) in group.segments.iter().enumerate() {
@@ -241,8 +258,24 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                         reason: format!("the feed worked out is {f}, which cannot be written"),
                     });
                 }
+                // Exact: the written linear words are identical, so the tool
+                // stays at one machine point while A turns, in one block or
+                // in many.
+                #[allow(clippy::float_cmp)]
+                let pure = to.x == here.x && to.y == here.y && to.z == here.z;
+                let written = written_feed(feed, options.feed_decimals)?;
+                let forward = to.a > here.a;
+                let extends = options.combine_rotary_runs
+                    && pure
+                    && matches!(feed, FeedWord::PerMinute(_))
+                    && pure_a.as_ref().is_some_and(|last| {
+                        last.step + 1 == program.steps.len()
+                            && last.kind == segment.kind
+                            && last.forward == forward
+                            && last.written.to_bits() == written.to_bits()
+                    });
                 if options.short_blocks.enabled() {
-                    let actual = written_feed(feed, options.feed_decimals)?;
+                    let actual = written;
                     let amount = match options.feed_rule {
                         FeedRule::InverseTime => 60.0,
                         _ => {
@@ -266,21 +299,45 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                         });
                     }
                     if let Some(run) = runs.last_mut() {
-                        run.push(Block {
-                            step: program.steps.len(),
-                            segment: s,
-                            seconds,
-                            amount,
-                            contact_length: segment.contact_length.0,
+                        match run.last_mut() {
+                            Some(block) if extends => {
+                                block.seconds += seconds;
+                                block.amount += amount;
+                                block.contact_length += segment.contact_length.0;
+                                block.parts.push((s, seconds));
+                            }
+                            _ => run.push(Block {
+                                step: program.steps.len(),
+                                parts: vec![(s, seconds)],
+                                seconds,
+                                amount,
+                                contact_length: segment.contact_length.0,
+                                feed,
+                            }),
+                        }
+                    }
+                }
+                match (extends, pure_a.as_ref()) {
+                    (true, Some(last)) => {
+                        if let Some(Step::Feed { target, .. }) = program.steps.get_mut(last.step) {
+                            *target = to;
+                        }
+                    }
+                    _ => {
+                        pure_a =
+                            (pure && matches!(feed, FeedWord::PerMinute(_))).then_some(PureA {
+                                step: program.steps.len(),
+                                kind: segment.kind,
+                                forward,
+                                written,
+                            });
+                        program.steps.push(Step::Feed {
+                            kind: segment.kind,
+                            target: to,
                             feed,
                         });
                     }
                 }
-                program.steps.push(Step::Feed {
-                    kind: segment.kind,
-                    target: to,
-                    feed,
-                });
             }
             if !moved
                 && options.short_blocks.enabled()
@@ -320,10 +377,12 @@ pub fn to_machine_program<F: AsRotaryFrame>(
     Ok(program)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Block {
     step: usize,
-    segment: usize,
+    /// The IR segments the block writes, with the time each takes at the
+    /// written feed: one, or a combined pure-A run's.
+    parts: Vec<(usize, f64)>,
     seconds: f64,
     amount: f64,
     contact_length: f64,
@@ -448,13 +507,20 @@ fn manage_group(
                 }
             }
             if settings.mode == openchuck_types::machine::ShortBlockMode::SlowDown
-                && let Some(segment) = program
-                    .verification_path
-                    .groups
-                    .get_mut(group)
-                    .and_then(|g| g.segments.get_mut(b.segment))
+                && let Some(g) = program.verification_path.groups.get_mut(group)
             {
-                segment.duration.0 = posted_seconds;
+                // A combined block's segments share its time in proportion
+                // to their own (one segment takes all of it).
+                let scale = posted_seconds / b.seconds;
+                for &(s, seconds) in &b.parts {
+                    if let Some(segment) = g.segments.get_mut(s) {
+                        segment.duration.0 = if b.parts.len() == 1 {
+                            posted_seconds
+                        } else {
+                            seconds * scale
+                        };
+                    }
+                }
             }
         }
     }

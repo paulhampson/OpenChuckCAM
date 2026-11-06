@@ -415,10 +415,23 @@ pub(crate) struct StatusKey {
     pub(crate) own: Key,
 }
 
+#[cfg(test)]
+thread_local! {
+    static STATUS_KEYS_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread made the status keys of a project.
+#[cfg(test)]
+pub(crate) fn status_keys_made() -> usize {
+    STATUS_KEYS_MADE.with(std::cell::Cell::get)
+}
+
 /// The status keys of `project`'s enabled operations, in machining order.
 /// Reads no file. An operation whose inputs cannot be hashed is left out,
 /// and reads as not generated.
 pub(crate) fn status_keys(project: &Project) -> Vec<(OperationId, StatusKey)> {
+    #[cfg(test)]
+    STATUS_KEYS_MADE.with(|c| c.set(c.get() + 1));
     let files = ModelFiles::recorded(project);
     let mut previous = None;
     let mut keys = Vec::new();

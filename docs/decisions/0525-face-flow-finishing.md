@@ -1,12 +1,12 @@
-# 0645: Face-flow finishing, passes parallel to a guide edge of selected STEP faces (OP-28; issue #512; lane FACEFLOW)
+# 0525: Face-flow finishing, passes parallel to a guide edge of selected STEP faces (OP-28; issue #512; lane FACEFLOW)
 
-- **Status:** accepted. The owner approved the requirement and the four points of item 2 on 2 Nov 2026 in the originating session, relayed by the orchestrator (decision 0049). Proposed by lane FACEFLOW the same day.
+- **Status:** accepted. The owner approved the requirement and the four points of item 2 on 2 Nov 2026 in the originating session, relayed by the orchestrator (decision 0049). Proposed by lane FACEFLOW the same day. Written as 0645; the number moved from 0645 to 0525 at the merge (6 Nov 2026), assigned by the Merge Manager as the next free number after main's highest (0523; #554 holds 0524).
 - **Date:** 2 Nov 2026.
 - **Issue:** #512.
 - **Builds on:** [0174](0174-step-only-strategies-blocked-on-a-mesh-part.md) (a strategy that needs a STEP part is blocked on a mesh), [0210](0210-step-face-sets-for-region-strategies.md) (face sets on a STEP part, OP-23), [0053](0053-slice-16-edge-following-brep.md) and [0227](0227-edge-following-on-the-exact-edge-curve.md) (B-rep edges and their exact curves), [0017](0017-sp-9-exact-surfaces.md) (exact surfaces in the library), [0036](0036-slice-13-simultaneous-finishing.md) (the tool-axis policy and the smoothing of A), [0368](0368-simultaneous-finishing-of-hidden-surfaces.md) (unreached regions reported, OP-20), [0048](0048-pre-1-0-api-changes.md) (library API before 1.0).
 - **Open items:** raises OI-2004 to OI-2009 ([open-items.md](../open-items.md)). Depends on OI-81 (exact tool-centre solving on parametric faces) for the accuracy of the stepover and scallop measured on the exact face.
 
-Numbering: on 2 Nov 2026 `main` ended at OP-26 and record 0497; unmerged branches held OP-27, records 0498 and 0636 to 0643, and RESTCORNERS had reserved 0644; the highest `OI-` number on any branch was OI-2002. This lane takes OP-28, record 0645 and OI-2004 to OI-2009 (OI-2003 left free as the coordinator advised). No project schema number (item 6).
+Numbering: on 2 Nov 2026 `main` ended at OP-26 and record 0497; unmerged branches held OP-27, records 0498 and 0636 to 0643, and RESTCORNERS had reserved 0644; the highest `OI-` number on any branch was OI-2002. This lane took OP-28, record 0645 (renumbered 0525 at the merge, see the Status line) and OI-2004 to OI-2009 (OI-2003 left free as the coordinator advised; still free when checked at the merge). No project schema number (item 6).
 
 ## Context
 
