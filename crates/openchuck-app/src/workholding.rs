@@ -230,6 +230,7 @@ fn narrow_tab_note(
         let counts = !skip.contains(&i);
         (counts && d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
             tab: Some(i),
+            refuses: false,
             text: format!(
                 "Tab {} is {d:.3} mm long along X, shorter than the tool \
                  {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab longer or use \
@@ -249,6 +250,11 @@ pub struct WorkholdingFinding {
     pub tab: Option<usize>,
     /// The sentence, naming the tab by its number from 1.
     pub text: String,
+    /// True when Apply stores nothing while it stands (a tab outside the end
+    /// zones); false for one that is a warning only, stored with the
+    /// workholding: a tab shorter than a tool (decision 0523, the owner's
+    /// answer of 6 Nov 2026).
+    pub refuses: bool,
 }
 
 impl std::fmt::Display for WorkholdingFinding {
@@ -405,6 +411,7 @@ pub(crate) fn findings_of(
             .map(|kind| match kind {
                 SetupWarningKind::TabOutsideEndZones { tab, x } => WorkholdingFinding {
                     tab: tab.checked_sub(1),
+                    refuses: true,
                     text: format!(
                         "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
                          zone. Tabs lie between the held region (or the end of the stock) and \
@@ -414,6 +421,7 @@ pub(crate) fn findings_of(
                 },
                 other => WorkholdingFinding {
                     tab: None,
+                    refuses: true,
                     text: openchuck_types::setup::SetupWarning {
                         kind: other,
                         unconfirmed: Vec::new(),
@@ -456,22 +464,45 @@ pub(crate) fn reach_warnings_of(
     Ok(selection_reach_notes(project, operation, &mesh, &solids))
 }
 
-/// The checks that need the part and the tool, made before generating
-/// (decision 0035, owner's answers; OI-159 and OI-180): every tab lies wholly
-/// in the head zone or the tail zone, and none is shorter along X than the tool is wide.
-/// The message names the tab and what to change.
+/// The words every warning of a tab shorter than the tool starts with, so a
+/// host can tell it apart (decision 0523).
+pub const TAB_LENGTH_LEAD: &str = "Tab length: ";
+
+/// The check that needs the part, made before generating (decision 0035,
+/// owner's answers; OI-180): every tab lies wholly in the head zone or the
+/// tail zone. The message names the tab and what to change. A tab shorter
+/// than the tool is warned of, not refused ([`short_tab_warnings_where`];
+/// decision 0523, amending 0494 item 1).
 pub fn check_for_tool(
     workholding: &Workholding,
     stock: Option<&Stock>,
     part: &PartExtent,
-    tool_diameter: f64,
-    tool_name: &str,
 ) -> Result<(), AppError> {
+    check_for_tool_where(workholding, stock, part, &|_| true)
+}
+
+/// [`check_for_tool`] over the tabs `counts` keeps, as they are resolved
+/// (issue #548; decision 0523, amending 0494 item 2): an operation limited
+/// by selections checks only the tabs its path can touch
+/// ([`path_reaches_tab`]), so a tab it never comes near does not refuse it.
+pub fn check_for_tool_where(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: &PartExtent,
+    counts: &dyn Fn(&Tab) -> bool,
+) -> Result<(), AppError> {
+    let resolved = workholding.resolved(stock, Some(part));
+    let counted = |number: usize| {
+        number
+            .checked_sub(1)
+            .and_then(|i| resolved.tabs.get(i))
+            .is_some_and(counts)
+    };
     // An automatic tab with no room is only a warning: look past it.
     if let Some((tab, x)) = check_tab_zones(workholding, stock, Some(part))
         .into_iter()
         .find_map(|kind| match kind {
-            SetupWarningKind::TabOutsideEndZones { tab, x } => Some((tab, x)),
+            SetupWarningKind::TabOutsideEndZones { tab, x } if counted(tab) => Some((tab, x)),
             _ => None,
         })
     {
@@ -482,22 +513,92 @@ pub fn check_for_tool(
             x.0, x.1
         )));
     }
+    Ok(())
+}
+
+/// A warning for each tab `counts` keeps that is shorter along X than a
+/// tool of `tool_diameter` is wide (decision 0494 item 1, a warning since
+/// decision 0523, the owner's choice of 6 Nov 2026): the tool may be unable
+/// to cut the gap beside the tab to shape. Each names the tab, its X range
+/// and length, and the tool's width; the host names the operation and the
+/// tool when it shows it. Nothing in it says the program is safe (NFR-12).
+pub fn short_tab_warnings_where(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: &PartExtent,
+    tool_diameter: f64,
+    counts: &dyn Fn(&Tab) -> bool,
+) -> Vec<String> {
+    let resolved = workholding.resolved(stock, Some(part));
     // An automatic tab keeps its last-applied length when the part moves
     // (decision 0202 item 3): compare the length it has now, as the target
     // is built from it.
-    let resolved = workholding.resolved(stock, Some(part));
     let skip = unresolved_tabs(workholding, stock, Some(part));
-    for (i, tab) in resolved.tabs.iter().enumerate() {
-        let d = tab.length.0;
-        if d < tool_diameter - 1e-9 && !skip.contains(&i) {
-            return Err(refuse(format!(
-                "tab {} is {d:.3} mm long along X, shorter than the tool \
-                 '{tool_name}' ({tool_diameter:.3} mm); make the tab longer or use a smaller tool",
-                i + 1
-            )));
+    resolved
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(i, tab)| tab.length.0 < tool_diameter - 1e-9 && !skip.contains(i) && counts(tab))
+        .map(|(i, tab)| {
+            let (lo, d) = (tab.x_start.0, tab.length.0);
+            format!(
+                "{TAB_LENGTH_LEAD}tab {} (X {lo:.3} to {:.3} mm) is {d:.3} mm long along X, \
+                 shorter than the tool is wide ({tool_diameter:.3} mm), so the tool may be \
+                 unable to cut the gap beside it to shape. The path was made: check it before \
+                 running it. Use a smaller tool, or make the tab longer",
+                i + 1,
+                lo + d,
+            )
+        })
+        .collect()
+}
+
+/// How far past a tab's farthest radius, mm, a tip may stand and still count
+/// as reaching it: rounding in the drop onto the tab.
+const TAB_REACH_SLACK: f64 = 0.01;
+
+/// True when a fed move of `group` can touch `tab` with a tool whose largest
+/// radius is `reach` (issue #548; decision 0523). The tool's body lies at or
+/// above its tip along the tool axis (every tool profile rises from its
+/// tip) and within `reach` of that axis, which is square to the rotary
+/// axis; the tab lies within its farthest radius of the rotary axis. So a
+/// tool can touch the tab only where its tip comes within `reach` of the
+/// tab along X and no higher above the rotary axis, along the tool axis,
+/// than the tab's farthest radius. Each fed move (cuts, plunges, leads and
+/// fed links) is read from the pose before it, over the X range and the
+/// lowest height of its two ends, which bounds the move; rapids are not
+/// cuts. A pose that is not a finite number counts as touching (NFR-07).
+pub fn path_reaches_tab(group: &openchuck_types::ir::ToolpathGroup, tab: &Tab, reach: f64) -> bool {
+    // A layout this check does not know is taken as far out as the stock
+    // could hold it: never a tab missed.
+    let top = match tab.layout {
+        TabLayout::OnAxis => 0.0,
+        TabLayout::AroundAxis { radial_offset, .. } => radial_offset.0.abs(),
+        _ => f64::INFINITY,
+    } + 0.5 * tab.shape.max_diameter().0;
+    let (lo, hi) = (tab.x_start.0 - reach, tab.x_start.0 + tab.length.0 + reach);
+    let height = |pose: &openchuck_types::ir::ToolPose| {
+        let axis = pose.axis.get();
+        pose.tip.y * axis.y + pose.tip.z * axis.z
+    };
+    let mut from = &group.start;
+    for segment in &group.segments {
+        if segment.kind.is_fed() {
+            let (x0, x1) = (
+                from.tip.x.min(segment.end.tip.x),
+                from.tip.x.max(segment.end.tip.x),
+            );
+            let low = height(from).min(height(&segment.end));
+            if !(x0.is_finite() && x1.is_finite() && low.is_finite()) {
+                return true;
+            }
+            if x1 >= lo && x0 <= hi && low <= top + TAB_REACH_SLACK {
+                return true;
+            }
         }
+        from = &segment.end;
     }
-    Ok(())
+    false
 }
 
 /// The tool of an operation as [`uncleared_tab_notes`] needs it (decision
@@ -1037,6 +1138,19 @@ mod tests {
         }
     }
 
+    /// The first warning of a tab shorter than a tool `d` wide, on every
+    /// tab (decision 0494 item 1, a warning since decision 0523).
+    fn short_warning(
+        w: &Workholding,
+        stock: Option<&Stock>,
+        part: &PartExtent,
+        d: f64,
+    ) -> Option<String> {
+        short_tab_warnings_where(w, stock, part, d, &|_| true)
+            .into_iter()
+            .next()
+    }
+
     fn stock() -> Stock {
         Stock::Cylinder {
             diameter: Millimetres(30.0),
@@ -1375,11 +1489,120 @@ mod tests {
         }
     }
 
-    /// OP-21, decision 0494 (amends 0035 item 6): the tab's length along X is
-    /// compared with the tool's diameter, not the tab's diameter. A wide tab
-    /// that is shorter than the tool is refused.
+    /// A pose with its tip at model `x`, `height` above the rotary axis
+    /// along the tool axis, at A 0 with the tool along +Z.
+    fn pose(x: f64, height: f64) -> openchuck_types::ir::ToolPose {
+        openchuck_types::ir::ToolPose {
+            tip: Point3::new(x, 0.0, height),
+            axis: UnitVec3::new(Vec3::new(0.0, 0.0, 1.0)).unwrap(),
+            a: openchuck_types::units::Degrees(0.0),
+        }
+    }
+
+    /// A path from `start` through `moves`, each a pose and whether it is
+    /// fed.
+    fn group(
+        start: openchuck_types::ir::ToolPose,
+        moves: &[(openchuck_types::ir::ToolPose, bool)],
+    ) -> openchuck_types::ir::ToolpathGroup {
+        use openchuck_types::ir::{MoveKind, Segment, ToolpathGroup};
+        ToolpathGroup {
+            start,
+            segments: moves
+                .iter()
+                .map(|&(end, fed)| Segment {
+                    kind: if fed {
+                        MoveKind::Cutting
+                    } else {
+                        MoveKind::Rapid
+                    },
+                    end,
+                    contact_feed: None,
+                    duration: openchuck_types::units::Seconds(0.0),
+                    contact_length: Millimetres(0.0),
+                })
+                .collect(),
+            rotary_reset_after: Vec::new(),
+            tags: openchuck_types::ir::PathTags {
+                operation: String::new(),
+                setup: String::new(),
+                tool: String::new(),
+            },
+        }
+    }
+
+    /// Issue #548: a tab on the axis 6 mm across (radius 3) from X 80 to 84,
+    /// and a tool whose largest radius is 3. A path touches the tab only
+    /// where a fed move's tip comes within the tool's radius of it along X
+    /// and no higher above the axis than the tab's farthest radius: the
+    /// tool's body is above its tip, and the tab is within 3 mm of the axis.
     #[test]
-    fn req_op_21_a_tab_shorter_than_the_tool_is_refused_whatever_its_diameter() {
+    fn req_op_21_a_path_reaches_a_tab_only_within_the_tool_and_the_tab() {
+        let w = tab_of(
+            4.0,
+            TabShape::Cylinder {
+                diameter: Millimetres(6.0),
+            },
+            TabLayout::OnAxis,
+        );
+        let tab = &w.tabs[0];
+        let reaches = |moves: &[(openchuck_types::ir::ToolPose, bool)]| {
+            path_reaches_tab(&group(pose(20.0, 10.0), moves), tab, 3.0)
+        };
+        // Finishing the part's side, 10 mm from the axis, right over the tab:
+        // the tool never comes down to it.
+        assert!(!reaches(&[
+            (pose(70.0, 10.0), true),
+            (pose(84.0, 10.0), true)
+        ]));
+        // A plunge, from a rapid above, down to the tab's top beside it within
+        // the tool's radius: touches.
+        let plunge = |x: f64, h: f64| reaches(&[(pose(x, 20.0), false), (pose(x, h), true)]);
+        assert!(plunge(77.1, 3.0));
+        assert!(plunge(86.9, 3.0));
+        // Past the tool's radius along X, even at the axis: it does not.
+        assert!(!plunge(76.9, 0.0));
+        assert!(!plunge(87.1, 0.0));
+        // Over the tab but above its top: it does not.
+        assert!(!plunge(82.0, 3.1));
+        // A fed move across the tab, low, from one side to the other, though
+        // neither end is within reach: touches.
+        assert!(reaches(&[
+            (pose(60.0, 2.0), true),
+            (pose(100.0, 2.0), true)
+        ]));
+        // A rapid is not a cut.
+        assert!(!reaches(&[(pose(82.0, 2.0), false)]));
+        // A fed move from where a rapid left the tool is read from there.
+        assert!(reaches(&[
+            (pose(82.0, 20.0), false),
+            (pose(82.0, 2.0), true)
+        ]));
+        // A tab around the axis reaches its offset plus its radius.
+        let around = tab_of(
+            4.0,
+            TabShape::Cylinder {
+                diameter: Millimetres(2.0),
+            },
+            TabLayout::AroundAxis {
+                count: 3,
+                start_angle: openchuck_types::units::Degrees(0.0),
+                radial_offset: Millimetres(6.0),
+            },
+        );
+        let g = group(pose(82.0, 20.0), &[(pose(82.0, 6.9), true)]);
+        assert!(path_reaches_tab(&g, &around.tabs[0], 3.0));
+        let g = group(pose(82.0, 20.0), &[(pose(82.0, 7.1), true)]);
+        assert!(!path_reaches_tab(&g, &around.tabs[0], 3.0));
+    }
+
+    /// Issue #548 (amends decision 0494 item 2, decision 0523): the tabs an
+    /// operation's check reads are chosen by `counts`. A tab shorter than the
+    /// tool that it leaves out is not warned of; one it keeps still is, with
+    /// the same words; and with every tab counted (an operation with no
+    /// region) the check is as before.
+    #[test]
+    fn req_op_21_a_tab_the_operation_cannot_touch_is_not_warned_of() {
         let w = tab_of(
             3.0,
             TabShape::Cylinder {
@@ -1388,12 +1611,52 @@ mod tests {
             TabLayout::OnAxis,
         );
         let part = part(20.0, 78.0);
-        assert!(check_for_tool(&w, Some(&stock()), &part, 3.0, "a").is_ok());
-        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        let none = |_: &Tab| false;
+        let all = |_: &Tab| true;
+        assert!(short_tab_warnings_where(&w, Some(&stock()), &part, 4.0, &none).is_empty());
+        let text = short_tab_warnings_where(&w, Some(&stock()), &part, 4.0, &all).join("\n");
+        assert!(
+            text.contains("tab 1 (X 80.000 to 83.000 mm) is 3.000 mm long along X"),
+            "{text}"
+        );
+        assert!(
+            text.contains("shorter than the tool is wide (4.000 mm)"),
+            "{text}"
+        );
+        // A tab outside the end zones is left out the same way.
+        let mut stray = w.clone();
+        stray.tabs[0].x_start = Millimetres(40.0);
+        stray.tabs[0].length = Millimetres(5.0);
+        assert!(check_for_tool_where(&stray, Some(&stock()), &part, &none).is_ok());
+        let text = check_for_tool_where(&stray, Some(&stock()), &part, &all)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            text.contains("is not wholly in the head or the tail zone"),
+            "{text}"
+        );
+    }
+
+    /// OP-21, decision 0494 (amends 0035 item 6): the tab's length along X is
+    /// compared with the tool's diameter, not the tab's diameter. A wide tab
+    /// that is shorter than the tool is warned of (a refusal before decision
+    /// 0523).
+    #[test]
+    fn req_op_21_a_tab_shorter_than_the_tool_is_warned_of_whatever_its_diameter() {
+        let w = tab_of(
+            3.0,
+            TabShape::Cylinder {
+                diameter: Millimetres(12.0),
+            },
+            TabLayout::OnAxis,
+        );
+        let part = part(20.0, 78.0);
+        assert!(short_warning(&w, Some(&stock()), &part, 3.0).is_none());
+        let error = short_warning(&w, Some(&stock()), &part, 4.0).unwrap();
         let text = error.to_string();
         assert!(text.contains("3.000 mm long along X"), "{text}");
         assert!(
-            text.contains("shorter than the tool 'ball 4' (4.000 mm)"),
+            text.contains("shorter than the tool is wide (4.000 mm)"),
             "{text}"
         );
         assert!(!text.contains("across"), "{text}");
@@ -1429,13 +1692,13 @@ mod tests {
     /// OP-21, decision 0202 item 3 and decision 0494: an automatic tab is
     /// compared with the tool where it is now, not at the length it was last
     /// applied with. Stored 8 mm long; the part now starts at X 12, so the
-    /// head gap is 2 mm and a 4 mm tool does not fit: refused when generating
+    /// head gap is 2 mm and a 4 mm tool does not fit: warned of when generating
     /// and found by the checks.
     #[test]
-    fn req_op_21_an_automatic_tab_that_shrank_is_refused_at_its_resolved_length() {
+    fn req_op_21_an_automatic_tab_that_shrank_is_warned_of_at_its_resolved_length() {
         let shrunk = auto_head_tab(8.0);
         let near = part(12.0, 70.0);
-        let error = check_for_tool(&shrunk, Some(&stock()), &near, 4.0, "ball 4").unwrap_err();
+        let error = short_warning(&shrunk, Some(&stock()), &near, 4.0).unwrap();
         assert!(
             error.to_string().contains("2.000 mm long along X"),
             "{error}"
@@ -1451,7 +1714,7 @@ mod tests {
     fn req_op_21_an_automatic_tab_that_grew_is_accepted_at_its_resolved_length() {
         let grown = auto_head_tab(2.0);
         let far = part(18.0, 70.0);
-        assert!(check_for_tool(&grown, Some(&stock()), &far, 4.0, "ball 4").is_ok());
+        assert!(short_warning(&grown, Some(&stock()), &far, 4.0).is_none());
         assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &one_ball_tool()).is_empty());
     }
 
@@ -1506,10 +1769,10 @@ mod tests {
             w.auto_tabs_without_room(Some(&stock()), Some(&part)),
             vec![(0, TabEnd::Head)]
         );
-        assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").is_ok());
+        assert!(short_warning(&w, Some(&stock()), &part, 4.0).is_none());
         let tools = one_ball_tool();
         assert!(narrow_findings(&w, Some(&stock()), Some(&part), &tools).is_empty());
-        // A short tab placed by hand, in the tail zone, is still refused.
+        // A short tab placed by hand, in the tail zone, is still warned of.
         w.tabs.push(Tab {
             auto: None,
             x_start: Millimetres(72.0),
@@ -1519,9 +1782,9 @@ mod tests {
             },
             layout: TabLayout::OnAxis,
         });
-        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        let error = short_warning(&w, Some(&stock()), &part, 4.0).unwrap();
         assert!(
-            error.to_string().contains("tab 2 is 3.000 mm long"),
+            error.contains("tab 2 (") && error.contains("is 3.000 mm long"),
             "{error}"
         );
         let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
@@ -1554,8 +1817,8 @@ mod tests {
             ] {
                 let w = tab_of(4.0, shape, layout);
                 // Length equal to the tool is long enough.
-                assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
-                assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
+                assert!(short_warning(&w, Some(&stock()), &part, 4.0).is_none());
+                assert!(short_warning(&w, Some(&stock()), &part, 4.5).is_some());
                 assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", &[]).is_none());
                 let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", &[]).unwrap();
                 assert_eq!(
@@ -1581,7 +1844,7 @@ mod tests {
             }],
             ..Workholding::default()
         };
-        let error = check_for_tool(&w, Some(&stock()), &part(20.0, 78.0), 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &part(20.0, 78.0)).unwrap_err();
         assert!(
             error.to_string().contains("head or the tail zone"),
             "{error}"
@@ -1623,12 +1886,12 @@ mod tests {
             check_tab_zones(&w, Some(&stock()), Some(&after))[0],
             SetupWarningKind::AutoTabNoRoom { tab: 1, .. }
         ));
-        let error = check_for_tool(&w, Some(&stock()), &after, 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &after).unwrap_err();
         assert!(error.to_string().contains("tab 2"), "{error}");
         // The automatic tab itself is refused when the part has moved over
         // the position it keeps.
         let over = part(12.0, 78.0);
-        let error = check_for_tool(&w, Some(&stock()), &over, 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &over).unwrap_err();
         assert!(error.to_string().contains("tab 1"), "{error}");
     }
 

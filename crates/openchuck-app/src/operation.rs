@@ -367,22 +367,29 @@ fn named(operation: &Operation, error: AppError) -> AppError {
 
 /// A warning of `operation`'s path as the user reads it: the flute check's
 /// warning names the operation and its tool (decision record 0522; issue
-/// #547). Named when shown, not when made, so a renamed operation or tool,
+/// #547), and so does a tab shorter than the tool (decision 0523; #548). Named when shown, not when made, so a renamed operation or tool,
 /// which does not make the path stale (issue 209), is named as it is now.
 /// Any other warning is unchanged.
 pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &str) -> String {
-    let Some(rest) = message.strip_prefix(openchuck_path::flutes::WARNING_LEAD) else {
-        return message.to_owned();
-    };
+    // The flute check's warning (decision 0522) and a tab shorter than the
+    // tool (decision 0523).
+    let (title, rest) =
+        if let Some(rest) = message.strip_prefix(openchuck_path::flutes::WARNING_LEAD) {
+            ("Flute length", rest)
+        } else if let Some(rest) = message.strip_prefix(crate::workholding::TAB_LENGTH_LEAD) {
+            ("Tab length", rest)
+        } else {
+            return message.to_owned();
+        };
     let tool = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
     match tool {
         Some(tool) => format!(
-            "Flute length (operation '{}', tool '{}'): {rest}",
+            "{title} (operation '{}', tool '{}'): {rest}",
             operation.name, tool.name
         ),
-        None => format!("Flute length (operation '{}'): {rest}", operation.name),
+        None => format!("{title} (operation '{}'): {rest}", operation.name),
     }
 }
 
@@ -523,6 +530,8 @@ fn generate_unnamed(
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
     let mut reach_notes = Vec::new();
+    // A tab shorter than the tool, warned of (decision 0523).
+    let mut tab_warnings: Vec<String> = Vec::new();
     // No part of the tool reaches over a gripped length while it cuts
     // (SET-09; decision 0161): each held region widened by the tool's largest
     // radius, its shank included.
@@ -532,14 +541,26 @@ fn generate_unnamed(
     } else {
         let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
-        crate::workholding::check_for_tool(
+        // An operation with no region checks every tab before it is made; one
+        // limited by selections checks, once it is made, only the tabs its
+        // path can touch (issue #548; decision 0523, amending 0494 item 2).
+        // A tab outside the end zones is refused; one shorter than the tool
+        // is warned of (decision 0523, amending 0494 item 1).
+        let limited = operation.selection_refs().next().is_some();
+        crate::workholding::check_for_tool_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            &|_| !limited,
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+        tab_warnings = crate::workholding::short_tab_warnings_where(
             &setup.workholding,
             setup.stock.as_ref(),
             &part,
             2.0 * profile.cutting_radius(),
-            &snapshot.name,
-        )
-        .map_err(|e| missing(operation, &e.to_string()))?;
+            &|_| !limited,
+        );
         let labelled =
             crate::workholding::labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)
                 .map_err(|e| missing(operation, &e.to_string()))?;
@@ -833,6 +854,33 @@ fn generate_unnamed(
             context,
         )?
     };
+    // The tabs a limited operation's path can touch, against its tool
+    // (issue #548; decision 0523): a tab it never comes near says nothing;
+    // one outside the end zones it does touch is refused, and one shorter
+    // than the tool is warned of.
+    if operation.selection_refs().next().is_some()
+        && !setup.workholding.tabs.is_empty()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let reach = tool_reach(&profile, &snapshot.tool);
+        let touched = |tab: &openchuck_types::workholding::Tab| {
+            crate::workholding::path_reaches_tab(&path.group, tab, reach)
+        };
+        crate::workholding::check_for_tool_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            &touched,
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+        tab_warnings = crate::workholding::short_tab_warnings_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            2.0 * profile.cutting_radius(),
+            &touched,
+        );
+    }
     // A path carried past the stock is checked against the machine's travel
     // along the rotary axis before it is accepted (OP-24; decision 0212
     // part B item 5).
@@ -850,6 +898,15 @@ fn generate_unnamed(
         .map(|l| l.warnings.clone())
         .or_else(|| resolved_region.as_ref().map(|r| r.warnings.clone()))
         .unwrap_or_default();
+    warnings.extend(
+        tab_warnings
+            .into_iter()
+            .map(|message| openchuck_path::PathWarning {
+                message,
+                parameter: None,
+                requires_acknowledgement: false,
+            }),
+    );
     // Notes about the values come first, then the notes about moves.
     let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
     notes.extend(resolved.notes);
