@@ -57,6 +57,9 @@ const EXPECTED_SECONDS: &[(&str, u64)] = &[
     ("cone_axial_linuxcnc.ngc", 278),
     ("cone_held_tabs_linuxcnc.ngc", 223),
     ("groove_linuxcnc.ngc", 159),
+    // Estimated, not yet measured on a hosted runner: 120 s from the program at the simulator's
+    // limits, stopping at every point, which comes 0 to 20 % under the others' measured times.
+    ("face_flow_linuxcnc.ngc", 135),
     ("cone_linuxcnc.ngc", 124),
     ("lobed_linuxcnc.ngc", 114),
     ("swarf_linuxcnc.ngc", 110),

@@ -711,9 +711,9 @@ fn blisk_onto_axis() -> Vec<TransformStep> {
 /// blades 7 and 9, with the 3 mm ball, a 1.5 mm stepover and the guide by
 /// default (the root of blade 7, edge 39), in stock 42 mm across and 52 mm
 /// long over the placed part. The stepover is coarse so gate 3 replays the
-/// program in a few minutes (at 0.3 mm it takes about 17, past gate 3's
-/// limit); `tests/step_strategies.rs` checks the 0.3 mm passes against the
-/// exact faces.
+/// program in about two minutes (at 0.3 mm it would take about five times as
+/// long, more than any share of gate 3); `tests/step_strategies.rs` checks the
+/// 0.3 mm passes against the exact faces.
 fn face_flow_job(tag: &str) -> (PathBuf, Application) {
     let (dir, mut app) = build_job(
         tag,
