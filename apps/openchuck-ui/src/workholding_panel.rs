@@ -92,6 +92,10 @@ pub struct WorkholdingPanel {
     findings: Vec<WorkholdingFinding>,
     refused: bool,
     message: Option<String>,
+    /// The workholding the section's own Apply just stored: when the stored
+    /// workholding becomes it, what the check found stays, as warnings
+    /// (decision 0523, the owner's answer B).
+    applied: Option<Workholding>,
     /// Set for one frame to open the tab just added and focus its Start X.
     focus_new_tab: bool,
     /// The row with keyboard focus this frame.
@@ -277,6 +281,7 @@ impl WorkholdingPanel {
             findings: Vec::new(),
             refused: false,
             message: None,
+            applied: None,
             focus_new_tab: false,
             focused: None,
             open_request: None,
@@ -508,12 +513,17 @@ impl WorkholdingPanel {
 
     /// Starts again from the stored workholding, which another edit (an
     /// undo, the command line) changed, saying so if that threw changes away.
+    /// The section's own Apply is not another edit: the warnings it stored
+    /// the workholding with stay.
     fn follow_stored(&mut self, stored: &Workholding) {
+        let own = self.applied.take().as_ref() == Some(stored);
         self.draft.sync(stored);
         self.fields.clear();
-        self.findings.clear();
-        self.refused = false;
-        self.message = None;
+        if !own {
+            self.findings.clear();
+            self.refused = false;
+            self.message = None;
+        }
     }
 
     /// Adds or removes tabs of the draft with `edit`. The tabs after the
@@ -1506,6 +1516,7 @@ impl WorkholdingPanel {
                 if resolved != draft {
                     *self.draft.edit() = resolved.clone();
                 }
+                self.applied = Some(resolved.clone());
                 edited.workholding = resolved;
                 self.message = None;
                 // What did not refuse stays on its tab's row, as a warning.
@@ -1712,23 +1723,40 @@ mod tests {
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 3.0)];
         let applied = panel.draft.workholding().clone();
         let stored = panel.finish_check(check(&app, &panel), true, applied.clone(), &setup);
-        match stored {
+        let command = match stored {
             Some(Command::Replace(Item::Setup(edited))) => {
                 assert_eq!(edited.workholding.tabs, applied.tabs);
+                Command::Replace(Item::Setup(edited))
             }
             other => panic!("the short tab was not stored: {other:?}"),
-        }
-        assert!(!panel.refused);
-        assert_eq!(panel.findings.len(), 1);
-        let message = &panel.findings[0].text;
-        assert!(message.contains("shorter than the tool"), "{message}");
-        assert!(message.contains("of 1 Finish"), "{message}");
-        assert!(
-            message.starts_with("Tab 1 is 1.000 mm long along X"),
-            "{message}"
-        );
-        assert!(!panel.findings[0].refuses);
-        assert!(!panel.draft_view(&setup).failing.contains(&HeldItem::Tab(0)));
+        };
+        let warned = |panel: &WorkholdingPanel, setup: &Setup| {
+            assert!(!panel.refused);
+            assert_eq!(panel.findings.len(), 1);
+            let message = &panel.findings[0].text;
+            assert!(message.contains("shorter than the tool"), "{message}");
+            assert!(message.contains("of 1 Finish"), "{message}");
+            assert!(
+                message.starts_with("Tab 1 is 1.000 mm long along X"),
+                "{message}"
+            );
+            assert!(!panel.findings[0].refuses);
+            assert!(!panel.draft_view(setup).failing.contains(&HeldItem::Tab(0)));
+        };
+        warned(&panel, &setup);
+        // The warning outlasts the Apply that stored the tab: the next frame
+        // sees the stored workholding changed by the section's own command,
+        // which is not another edit.
+        app.execute(command).unwrap();
+        let applied_setup = app.project().setup(setup_id).unwrap().clone();
+        let ctx = egui::Context::default();
+        painted(&mut panel, &ctx, &app, &applied_setup);
+        warned(&panel, &applied_setup);
+        // An undo is another edit: what was found about the tab goes.
+        assert!(app.undo().unwrap());
+        let undone = app.project().setup(setup_id).unwrap().clone();
+        painted(&mut panel, &ctx, &app, &undone);
+        assert!(panel.findings.is_empty(), "{:?}", panel.findings);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
