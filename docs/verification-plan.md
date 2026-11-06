@@ -295,7 +295,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 **Automated checks in CI.**
 
 - An xtask dependency-rule check over cargo metadata: only openchuck-ui and openchuck-viewport may depend on egui, eframe or wgpu; only openchuck-import on the STEP kernel binding; only openchuck-vcs on git2; the library family on none of these; and no crate on a network client or telemetry library (INT-01, NFR-09).
-- cargo-deny for licence compatibility, banned crates and duplicate versions, with SPDX identifiers checked on files. Allowed on purpose: CC0-1.0 (blake3, notify) and NCSA (libfuzzer-sys, dev-only).
+- cargo-deny for licence compatibility, banned crates and duplicate versions, with SPDX identifiers checked on files. Allowed on purpose: CC0-1.0 (blake3) and NCSA (libfuzzer-sys, dev-only).
 - cargo-audit for known security advisories.
 - cargo-semver-checks on the library family's public API (INT-07), and cargo-hack to build and test each library on its own.
 - cargo-about to produce the licence notices shipped with binaries (NFR-10).
@@ -319,7 +319,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 | Snapshot and golden files | insta, plain-text golden files | Neutral toolpath, G-code, project files, setup sheet |
 | CLI end-to-end tests | assert\_cmd | openchuck-cli scenarios, the system-level harness |
 | Fuzzing | cargo-fuzz (needs a nightly toolchain) | STL, STEP, DXF and SVG importers and the G-code reader |
-| Memory and UB checks | Miri, sanitizers | Unsafe code and the C++ FFI boundary |
+| Memory and UB checks | Sanitizers: AddressSanitizer over the STEP import and kernel comparison tests, nightly (`sanitizer` job in `nightly.yml`). Miri is not used: it cannot run the C++ kernel ([decision 0027](decisions/0027-slice-11a-step-import.md) item 10, OI-19 closed) | Unsafe code and the C++ FFI boundary |
 | Static analysis | clippy (deny warnings, deny unwrap and unchecked indexing in libraries), rustfmt | Every pull request |
 | Coverage | cargo-llvm-cov, `cargo xtask coverage` | Line coverage per crate against a 95% development target (decision 0102), measured every night on the whole suite (the nightly series is the trend); a shortfall opens one GitHub issue and a green run closes it. Pull requests and pushes do not run it |
 | Benchmarks | criterion | Hot paths in pathing and simulation, cross-crate benches |
