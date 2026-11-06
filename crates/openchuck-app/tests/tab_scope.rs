@@ -13,10 +13,10 @@
 //! tab, which is within 3 mm of the axis.
 //!
 //! The owner's carving case of #555 (decision 0527), on the same part: a
-//! V-bit of 20 degrees on the cone's side keeps its contact on the rim of the
-//! cone's end while its tip sweeps down beside the end face, and came down
-//! onto the tab. A selection now stops at its edge with an unselected face,
-//! and an operation limited by one keeps its clearance from every tab.
+//! V-bit of 20 degrees on the cone's side kept its contact on the rim of the
+//! cone's end while its tip swept down beside the end face, outside the
+//! selection, and came down onto the tab. A selection now stops at its edge
+//! with an unselected face, so the path stays on the side.
 
 #![allow(
     clippy::unwrap_used,
@@ -360,11 +360,12 @@ fn into_tab(run: &openchuck_app::Regeneration, margin: f64) -> f64 {
 }
 
 #[test]
-fn req_op_02_req_op_21_req_nfr_12_a_v_bit_on_the_side_keeps_to_it_and_clear_of_the_tab() {
+fn req_op_02_req_nfr_12_a_v_bit_on_the_side_stays_on_its_selection() {
     // The owner's case (#555): axial finishing with the V-bit on the cone's
-    // side. Before, every pass came down beside the cone's end onto the tab
-    // (its tip at radius 3.000). Now its cuts stay on the side (none past
-    // the end at X 0) and no move comes within the clearance of the tab.
+    // side. Before, every pass ran on past the side and down beside the
+    // cone's end onto the tab (its tip at radius 3.000). Now its cuts stay on
+    // the side (none past the end at X 0), so nothing comes near the tab: no
+    // move within half a millimetre of it.
     let mut b = build_with(
         "vbit",
         ToolShape::VBit {
@@ -384,10 +385,9 @@ fn req_op_02_req_op_21_req_nfr_12_a_v_bit_on_the_side_keeps_to_it_and_clear_of_t
         .map(|s| s.end.tip.x)
         .fold(f64::INFINITY, f64::min);
     assert!(lowest >= -1e-3, "a cut at X {lowest}, past the selection");
-    let tolerance = 0.01;
-    let into = into_tab(&run, openchuck_path::HELD_CLEARANCE - tolerance);
+    let into = into_tab(&run, 0.5);
     assert!(
         into <= 0.0,
-        "the tool comes {into} mm into the tab's clearance"
+        "the tool comes {into} mm inside half a millimetre of the tab"
     );
 }

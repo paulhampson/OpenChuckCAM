@@ -14,19 +14,16 @@
 //!
 //! - the contact lies on the selected region, if there is one;
 //! - the contact lies inside the containment boundary, if there is one;
-//! - the contact does not lie on an avoid surface; and
+//! - the contact does not lie on an avoid surface;
 //! - the tool, dropped on the check surfaces alone, does not come to rest at
-//!   the same tip, that is the tool is not touching a check surface;
+//!   the same tip, that is the tool is not touching a check surface; and
 //! - the contact does not also lie on the part's faces outside the selected
 //!   region, where the host gives them: a contact on the edge between a
 //!   selected face and an unselected one is not on the selection, so the
 //!   tool does not roll over that edge and on past the selection (issue
-//!   #555; decision record 0527); and
-//! - the tool, dropped on each solid it keeps clear of (the setup's tabs,
-//!   for an operation limited by a selection) grown by
-//!   [`HELD_CLEARANCE`](crate::HELD_CLEARANCE), comes to rest below its tip:
-//!   it comes no nearer a tab than the clearance (OP-21, NFR-12; decision
-//!   record 0527).
+//!   #555; decision record 0527). A setup's tabs and held regions need no
+//!   rule of their own: they are not faces of the model, so a contact on
+//!   one is never on a selection.
 //!
 //! A tool that is not allowed to cut leaves a gap in the pass; the shared
 //! services link the pieces (OP-14). Nothing is dropped silently: a
@@ -46,7 +43,6 @@ use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter::ToolLine;
 use crate::error::{PathError, Result};
-use crate::solid::Solid;
 use crate::surface::SurfaceSource;
 
 /// How close, in millimetres, a point must be to a surface to count as on it.
@@ -170,12 +166,6 @@ pub struct RegionConstraint<'a> {
     /// region, so the tool does not roll over the selection's edge (issue
     /// #555; decision record 0527). `None` keeps the old rule.
     pub outside: Option<&'a dyn SurfaceSource>,
-    /// Solids the tool keeps [`HELD_CLEARANCE`](crate::HELD_CLEARANCE)
-    /// from, as they are, not grown: the setup's tabs, for an operation
-    /// limited by a selection, which leaves them out (OP-21, NFR-12;
-    /// decision record 0527). The shared services also refuse a path one of
-    /// whose moves comes within the clearance, less the toolpath tolerance.
-    pub keep_clear: &'a [Solid],
 }
 
 /// How a boundary limits a strategy that offers a choice (decision record
@@ -239,7 +229,6 @@ impl std::fmt::Debug for RegionConstraint<'_> {
             .field("boundary_limits", &self.boundary_limits)
             .field("watch", &self.watch)
             .field("outside", &self.outside.is_some())
-            .field("keep_clear", &self.keep_clear)
             .finish()
     }
 }
@@ -282,9 +271,6 @@ impl RegionConstraint<'_> {
         if self.region.is_some() && self.outside.is_some_and(on) {
             return false;
         }
-        if self.reaches_keep_clear(tip, profile, line) {
-            return false;
-        }
         if self.boundary.is_some_and(|b| !b.contains(contact)) {
             return false;
         }
@@ -299,64 +285,6 @@ impl RegionConstraint<'_> {
         }
         true
     }
-}
-
-impl RegionConstraint<'_> {
-    /// True when the tool with its tip at `tip` on `line` comes within
-    /// [`HELD_CLEARANCE`](crate::HELD_CLEARANCE) of one of
-    /// [`keep_clear`](Self::keep_clear): dropped along `line` on the solid
-    /// grown by it, the tool comes to rest at its tip or above. A solid that
-    /// cannot be grown is taken as reached (NFR-07).
-    pub(crate) fn reaches_keep_clear(
-        &self,
-        tip: Point3,
-        profile: &RevolvedProfile,
-        line: &ToolLine,
-    ) -> bool {
-        reaches_solids(self.keep_clear, crate::HELD_CLEARANCE, tip, profile, line)
-    }
-}
-
-/// True when the tool with its tip at `tip` on `line` reaches into one of
-/// `solids` grown by `by`, or touches it within [`ON_SURFACE`]. A solid that
-/// cannot be grown is taken as reached (NFR-07).
-pub(crate) fn reaches_solids(
-    solids: &[Solid],
-    by: f64,
-    tip: Point3,
-    profile: &RevolvedProfile,
-    line: &ToolLine,
-) -> bool {
-    if solids.is_empty() {
-        return false;
-    }
-    let axis = line.axis.get();
-    let offset = (tip - line.origin).dot(axis);
-    solids.iter().any(|solid| match solid.grown(by) {
-        // The tool lies at or above its tip along its axis: a solid wholly
-        // below the tip is not reached, and needs no drop.
-        Ok(grown) if highest_along(&grown, line) < offset - ON_SURFACE => false,
-        Ok(grown) => grown
-            .drop_tool(profile, line)
-            .is_some_and(|c| c.offset >= offset - ON_SURFACE),
-        Err(_) => true,
-    })
-}
-
-/// The highest any point of `solid`'s bounding box reaches along `line`'s
-/// axis, from its origin: no point of the solid is higher.
-fn highest_along(solid: &Solid, line: &ToolLine) -> f64 {
-    let b = solid.bounds();
-    let axis = line.axis.get();
-    let mut top = f64::NEG_INFINITY;
-    for x in [b.min.x, b.max.x] {
-        for y in [b.min.y, b.max.y] {
-            for z in [b.min.z, b.max.z] {
-                top = top.max((Point3::new(x, y, z) - line.origin).dot(axis));
-            }
-        }
-    }
-    top
 }
 
 /// Most samples along one move between two cut points when it is measured

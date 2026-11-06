@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! An operation limited by a selection cuts on its selected faces only and
-//! keeps clear of the setup's tabs (OP-02, OP-21, NFR-12; issue #555;
-//! decision record 0527).
+//! An operation limited by a selection cuts on its selected faces only: a
+//! contact on the edge between a selected face and an unselected one is not
+//! on the selection, so the tool does not roll over that edge (OP-02; issue
+//! #555; decision record 0527).
 //!
 //! The case: a cylinder (radius 15, X 0 to 40) joined to a tab on the axis
 //! (radius 5, X -6 to 0), as the host joins a setup's tabs to the target
 //! (decision 0035 item 1), and a 6 mm V-bit of 20 degrees, which keeps a
 //! contact on the rim of the end face while its tip sweeps down beside it.
-//! The operation selects the cylinder's side only.
+//! The operation selects the cylinder's side only. The tab is where the roll
+//! showed in the owner's project; it needs no rule of its own.
 #![allow(
     clippy::unwrap_used,
     clippy::panic,
@@ -113,7 +115,6 @@ struct Case {
     composite: CompositeSurface,
     side: MeshSurface,
     ends: MeshSurface,
-    tabs: Vec<Solid>,
 }
 
 impl Case {
@@ -127,7 +128,6 @@ impl Case {
             composite,
             side: MeshSurface::new(&pick(&mesh, |c| !flat(c))).unwrap(),
             ends: MeshSurface::new(&pick(&mesh, flat)).unwrap(),
-            tabs: vec![tab()],
         }
     }
 
@@ -214,7 +214,7 @@ fn lowest_cut(path: &GeneratedPath) -> f64 {
 }
 
 #[test]
-fn req_op_02_req_op_21_a_selection_stops_at_its_edge_with_an_unselected_face() {
+fn req_op_02_a_selection_stops_at_its_edge_with_an_unselected_face() {
     // Without the faces outside the selection the V-bit keeps its contact on
     // the rim and its tip goes down beside the end face to the tab (#555).
     // With them, a contact on the rim (shared with the end face) is not on
@@ -268,41 +268,9 @@ fn req_op_02_req_op_21_a_selection_stops_at_its_edge_with_an_unselected_face() {
 }
 
 #[test]
-fn req_op_21_req_nfr_12_a_limited_operation_keeps_its_clearance_from_a_tab() {
-    // Even when the tool rolls over the rim (no faces outside given), a tab
-    // the operation keeps clear of is never come within its clearance
-    // (HELD_CLEARANCE) of, less the toolpath tolerance, by any move.
-    let case = Case::new();
-    for strategy in [&AxialFinishing as &dyn Strategy, &HelicalFinishing] {
-        let path = case
-            .run(
-                strategy,
-                if strategy.name() == "axial_finishing" {
-                    20.0
-                } else {
-                    2.0
-                },
-                &RegionConstraint {
-                    region: Some(&case.side),
-                    keep_clear: &case.tabs,
-                    ..RegionConstraint::default()
-                },
-            )
-            .unwrap();
-        let tolerance = 0.01;
-        let into = deepest_into_tab(
-            &case.fixture,
-            &path,
-            openchuck_path::HELD_CLEARANCE - tolerance,
-        );
-        assert_eq!(into, 0.0, "{}", strategy.name());
-    }
-}
-
-#[test]
-fn req_op_21_a_tab_kept_clear_of_does_not_change_a_path_far_from_it() {
-    // A band of the side from X 10 to 30 never comes near the tab: keeping
-    // clear of it changes nothing (NFR-06).
+fn req_op_02_faces_outside_the_selection_far_from_it_change_nothing() {
+    // A band of the side from X 10 to 30 never reaches the end faces: giving
+    // them as faces outside the selection changes nothing (NFR-06).
     let case = Case::new();
     let mesh = cylinder();
     let band = MeshSurface::new(&pick(&mesh, |c| {
@@ -325,7 +293,6 @@ fn req_op_21_a_tab_kept_clear_of_does_not_change_a_path_far_from_it() {
             20.0,
             &RegionConstraint {
                 region: Some(&band),
-                keep_clear: &case.tabs,
                 outside: Some(&case.ends),
                 ..RegionConstraint::default()
             },

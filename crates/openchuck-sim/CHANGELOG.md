@@ -2,7 +2,7 @@
 
 ## 0.47.0
 
-- **Family release (0.47.0, TABCUT; issue #555; decision 0527, proposed):** `openchuck-path`'s `RegionConstraint` gains the public fields `outside` and `keep_clear`, a breaking change; no change to this crate.
+- **Family release (0.47.0, TABCUT; issue #555; decision 0527, proposed):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.
 
 ## Unreleased (FLUTE-TABS PR3, issue #547)
 

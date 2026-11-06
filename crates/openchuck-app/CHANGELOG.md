@@ -2,7 +2,7 @@
 
 ## 0.47.0
 
-- **Changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** an operation with a machine selection gives the faces it leaves out as `RegionConstraint::outside`, and one with a machine selection or a boundary keeps clear of the setup's tabs (`workholding::tab_solids`, new), so its path no longer runs past its selected faces at a convex edge, nor comes within 0.5 mm plus its stock to leave of a tab; a path that still would is refused. Whole-part operations are unchanged.
+- **Changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** an operation with a machine selection gives the faces it leaves out as `RegionConstraint::outside`, so its path no longer runs past its selected faces at a convex edge (on the owner's carving it came down beside the end face onto the tab). Whole-part operations are unchanged.
 
 ## Unreleased
 

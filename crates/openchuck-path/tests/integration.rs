@@ -112,6 +112,8 @@ mod roughing;
 mod roughing_region;
 #[path = "rounding_noise.rs"]
 mod rounding_noise;
+#[path = "selection_edge.rs"]
+mod selection_edge;
 #[path = "simultaneous.rs"]
 mod simultaneous;
 #[path = "simultaneous_hidden.rs"]
@@ -128,8 +130,6 @@ mod spiral_rings;
 mod strategy_menu;
 #[path = "swarf.rs"]
 mod swarf;
-#[path = "tab_keep_clear.rs"]
-mod tab_keep_clear;
 #[path = "unroll.rs"]
 mod unroll;
 #[path = "walls.rs"]

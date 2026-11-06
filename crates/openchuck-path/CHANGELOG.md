@@ -2,11 +2,9 @@
 
 ## 0.47.0
 
-- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** an operation limited by a selection cuts on its selected faces only and keeps clear of the setup's tabs.
-  - **API.** `RegionConstraint` gains `outside` (the part's faces outside the selection) and `keep_clear` (solids the tool keeps `HELD_CLEARANCE` from); a struct literal needs `..Default::default()`. New `Solid::grown`.
-  - **Rule.** A contact on the selection and also on `outside` (the edge with an unselected face) is not on the selection, so the tool no longer rolls over that edge. A cut point where the tool, dropped on a `keep_clear` solid grown by `HELD_CLEARANCE`, rests at its tip or above is not allowed; rotary roughing raises its floor over it instead.
-  - **Check.** Generation follows every assembled move, fed or rapid, and refuses a path that comes within `HELD_CLEARANCE` less the tolerance of a `keep_clear` solid.
-  - **Output.** With neither field set, paths are byte-identical. A host that sets them changes selection-limited paths at the edges of their regions and near tabs.
+- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** a contact on the edge between a selected face and an unselected one is not on the selection, so a selection-limited operation no longer rolls over its selection's edge and cuts outside it.
+  - **API.** `RegionConstraint` gains `outside` (the part's faces outside the selection); a struct literal needs `..Default::default()`.
+  - **Output.** With `outside` not set, paths are byte-identical. A host that sets it changes selection-limited paths at the edges of their regions.
 
 ## 0.46.0
 
