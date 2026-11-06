@@ -3885,10 +3885,10 @@ mod tests {
         assert!(said.starts_with("Face-flow finishing needs a face set"), "{said}");
         let err = f.run().unwrap_err().to_string();
         assert!(err.contains("needs a face set"), "{err}");
-        // On a mesh part it is blocked with the plain reason (decision 0174).
-        let mut f = face_flow_fixture();
-        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
-        let err = f.run_on(true).unwrap_err().to_string();
+        // On a mesh (STL) part it is blocked with the plain reason
+        // (decision 0174).
+        let mesh = fixture_with(face_flow::NAME, &[], &[], "blank.stl");
+        let err = mesh.run_on(true).unwrap_err().to_string();
         assert!(err.contains("STEP"), "{err}");
     }
 }

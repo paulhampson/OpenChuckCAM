@@ -2004,3 +2004,76 @@ mod cut_short_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod geometry_row_tests {
+    use super::{GeometryRow, SelectionRole, SelectionSetId, SelectionSummary, geometry_rows};
+    use openchuck_app::project::id::{ModelId, OperationId, SetupId};
+    use openchuck_app::project::{Operation, OrderKey};
+
+    fn summary(id: SelectionSetId, kind: &'static str) -> SelectionSummary {
+        SelectionSummary {
+            id,
+            name: kind.to_owned(),
+            model: ModelId::new(),
+            model_path: None,
+            kind,
+            count: 1,
+            uses: Vec::new(),
+            problem: None,
+            colour: None,
+        }
+    }
+
+    fn operation(strategy: &str, selections: Vec<SelectionSetId>) -> Operation {
+        Operation {
+            enabled: true,
+            id: OperationId::new(),
+            order: OrderKey::default(),
+            name: "Op".into(),
+            setup: SetupId::new(),
+            strategy: strategy.into(),
+            tool: None,
+            selections,
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            restriction_options: Default::default(),
+            spindle_speed: None,
+            material: None,
+            parameters: Default::default(),
+        }
+    }
+
+    fn labels(rows: &[GeometryRow]) -> Vec<(&str, Vec<SelectionSetId>)> {
+        rows.iter().map(|r| (r.label, r.sets.clone())).collect()
+    }
+
+    /// OP-28, decision 0525 D3 and D4: face-flow finishing's Cut on shows its
+    /// face sets and, apart, its guide edge sets, each offering only its own
+    /// kind; every other strategy and role keeps one row per role.
+    #[test]
+    fn req_op_28_face_flow_shows_its_guide_edge_sets_apart_from_its_faces() {
+        let (faces, edges) = (SelectionSetId::new(), SelectionSetId::new());
+        let summaries = [summary(faces, "faces"), summary(edges, "edges")];
+        let sets = vec![faces, edges];
+        let flow = operation(openchuck_app::path::face_flow::NAME, sets.clone());
+        let rows = geometry_rows(&flow, SelectionRole::Machine, &sets, &summaries);
+        assert_eq!(
+            labels(&rows),
+            vec![
+                (SelectionRole::Machine.name(), vec![faces]),
+                ("Guide edge", vec![edges])
+            ]
+        );
+        assert_eq!(rows[1].kinds, Some(&["edges"][..]));
+        assert!(rows[1].description.contains("longest side"));
+        for role in [SelectionRole::Avoid, SelectionRole::Check] {
+            assert_eq!(geometry_rows(&flow, role, &[], &summaries).len(), 1);
+        }
+        let follow = operation(openchuck_app::path::edge_following::NAME, sets.clone());
+        let rows = geometry_rows(&follow, SelectionRole::Machine, &sets, &summaries);
+        assert_eq!(labels(&rows), vec![(SelectionRole::Machine.name(), sets)]);
+        assert_eq!(rows[0].kinds, None);
+    }
+}
