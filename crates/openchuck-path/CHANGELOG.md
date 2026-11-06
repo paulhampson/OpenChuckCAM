@@ -2,7 +2,7 @@
 
 ## 0.45.0
 
-- **Breaking (FLUTE-TABS; issue #547; 0.45.0, decision 0520, proposed, on the owner's decision of 6 Nov 2026, relayed):** the flute check of decision 0509 warns instead of refusing, in every case.
+- **Breaking (FLUTE-TABS; issue #547; 0.45.0, decision 0522, proposed, on the owner's decision of 6 Nov 2026, relayed):** the flute check of decision 0509 warns instead of refusing, in every case.
   - **API.** `flutes::check` returns `Option<PathWarning>` and `flutes::check_path` returns `Result<Option<PathWarning>>` (an error only when cancelled). New `flutes::WARNING_LEAD`, the words every such warning starts with ("Flute length: "), so a host can tell it apart and name the operation and the tool.
   - **Generation.** The shared generation keeps a path whose stock stands past the flutes and adds one warning (also a note, decision 0175), carrying Finishing layers where the strategy has it. The measure is unchanged.
   - **Words.** "the shank may meet the stock" (was "would"), and "The path was made: check it before running it" (NFR-12).

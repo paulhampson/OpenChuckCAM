@@ -201,7 +201,7 @@ fn overcut_warning(path: &openchuck_path::GeneratedPath) -> String {
 }
 
 /// The flute check's warning on swarf's path, which is made (decision
-/// record 0520: a warning, not a refusal).
+/// record 0522: a warning, not a refusal).
 fn flute_warned(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
     let path = generated(fixture, extra);
     path.warnings
@@ -2607,7 +2607,7 @@ fn req_op_12_req_op_07_req_nfr_07_the_advised_tolerance_is_searched_by_making_th
 fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall_is_warned() {
     // Decision record 0509: the 8 mm wall fits 11 mm of flank, but the
     // 22 mm round stock stands 4 mm above the wall's top, so the shank may
-    // meet it: warned (decision record 0520); 13 mm of flute reaches.
+    // meet it: warned (decision record 0522); 13 mm of flute reaches.
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 11.0));
     let message = flute_warned(&f, &[]);

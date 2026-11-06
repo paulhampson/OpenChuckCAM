@@ -166,7 +166,7 @@ pub(crate) struct FreeEnds {
 /// setup's own stock, when the note says the real blank must match it
 /// (OI-1394). Without a Stepdown, or on a stock of no known size, the face is
 /// not faced and a warning says why (C1, C2). A face deeper than the flutes
-/// is not faced either, and a warning says why (C3; decision record 0520,
+/// is not faced either, and a warning says why (C3; decision record 0522,
 /// option B; it refused the operation before, OI-1396). Where
 /// the stock carries on past the ring the tool cuts, a warning says the
 /// stock there can be cut free (the owner's choice on OI-1390).
@@ -274,7 +274,7 @@ pub(crate) fn free_ends(
             continue;
         }
         // Not faced, with a warning at the switch the user acts on (decision
-        // record 0520, option B; it was refused, the owner's choice on
+        // record 0522, option B; it was refused, the owner's choice on
         // OI-1396): the rest of the path is made, and no turn is added whose
         // depth is past the flutes.
         // The depth the flutes must reach, by the shared measure over the

@@ -129,7 +129,7 @@ fn rough() -> (&'static str, Vec<(&'static str, f64)>) {
     )
 }
 
-/// The flute check's warnings among the run's paths (decision record 0520).
+/// The flute check's warnings among the run's paths (decision record 0522).
 fn flute_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
     run.groups
         .iter()
@@ -152,7 +152,7 @@ fn flute_messages(app: &Application) -> Vec<openchuck_app::overview::Message> {
 fn req_tl_04_req_nfr_12_finishing_the_crankshaft_blank_with_25_mm_of_flute_is_warned_by_name() {
     // The owner's case (#530): the corner of the box stands past the flutes
     // above the tip, most below the axis on the pins' sides facing it. By
-    // the owner's decision of 6 Nov 2026 (decision record 0520) it is
+    // the owner's decision of 6 Nov 2026 (decision record 0522) it is
     // made, with a warning that names the operation, the tool, the flutes
     // and the stock; never silent, never a refusal.
     let app = crankshaft("blank", 25.0, &[finish()]);

@@ -13,7 +13,7 @@
 //! all measured as they are. [`deepest`] is the one measure every check uses;
 //! [`check`] warns of a path whose deepest cut is past the flutes, saying
 //! where, by how much and on which stock. It is a warning, not a refusal
-//! (the owner's decision of 6 Nov 2026, decision record 0520, amending
+//! (the owner's decision of 6 Nov 2026, decision record 0522, amending
 //! 0509 item 3): the measure is conservative, so the path is kept and the
 //! user, who verifies every program (NFR-12), decides.
 //!
@@ -468,12 +468,12 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
 }
 
 /// The words every warning of this check starts with, so a host can tell it
-/// apart and name the operation and the tool in it (decision record 0520).
+/// apart and name the operation and the tool in it (decision record 0522).
 pub const WARNING_LEAD: &str = "Flute length: ";
 
 /// A warning when the stock stands above the tool's tip in `passes`, along
 /// the tool axis, further than the tool's flutes reach (decision records
-/// 0509 and 0520): past the flutes the shank may meet the stock. `None`
+/// 0509 and 0522): past the flutes the shank may meet the stock. `None`
 /// when it does not. `parameter` names the setting the user acts on
 /// (Finishing layers, where the strategy has them); the message gives the
 /// depth, whether it is exact or a bound, where, the flute length and the

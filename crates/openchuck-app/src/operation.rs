@@ -366,7 +366,7 @@ fn named(operation: &Operation, error: AppError) -> AppError {
 }
 
 /// A warning of `operation`'s path as the user reads it: the flute check's
-/// warning names the operation and its tool (decision record 0520; issue
+/// warning names the operation and its tool (decision record 0522; issue
 /// #547). Named when shown, not when made, so a renamed operation or tool,
 /// which does not make the path stale (issue 209), is named as it is now.
 /// Any other warning is unchanged.

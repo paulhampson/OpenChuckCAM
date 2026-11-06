@@ -1284,7 +1284,7 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
 #[test]
 fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_not_faced_and_warned() {
     // The face is 10 mm deep; a tool with 8 mm of flute cannot face it. A
-    // warning, not a refusal (decision record 0520, option B): the rest of
+    // warning, not a refusal (decision record 0522, option B): the rest of
     // the path is made and that end is not faced, so no cut is added past
     // the flutes.
     let job = free_end(true, 8.0);

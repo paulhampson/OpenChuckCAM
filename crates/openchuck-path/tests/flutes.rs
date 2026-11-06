@@ -334,7 +334,7 @@ fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> 
     .collect()
 }
 
-/// The flute check's warning on a generated path (decision record 0520), if
+/// The flute check's warning on a generated path (decision record 0522), if
 /// it has one.
 fn flute_warning(path: &openchuck_path::GeneratedPath) -> Option<openchuck_path::PathWarning> {
     path.warnings
@@ -345,7 +345,7 @@ fn flute_warning(path: &openchuck_path::GeneratedPath) -> Option<openchuck_path:
 
 /// The flute warning of a generation that must be made and warned: the
 /// check never refuses, and never stays silent past the flutes (decision
-/// record 0520). Each warning is a note too (decision record 0175).
+/// record 0522). Each warning is a note too (decision record 0175).
 fn warned(
     result: openchuck_path::Result<openchuck_path::GeneratedPath>,
 ) -> openchuck_path::PathWarning {
@@ -395,7 +395,7 @@ fn refused_then_accepted(
 }
 
 /// Made with a warning with `flutes.0` of flute, without one with
-/// `flutes.1` (decision record 0520: a warning, not a refusal).
+/// `flutes.1` (decision record 0522: a warning, not a refusal).
 fn refused_and_accepted_at(
     strategy: &dyn openchuck_path::Strategy,
     extra: &[(&str, ParameterValue)],

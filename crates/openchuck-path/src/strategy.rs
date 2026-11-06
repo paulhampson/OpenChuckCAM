@@ -288,7 +288,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// pass cuts all the stock above it at once, so the generation warns of a
     /// path whose deepest cut, read along the tool axis from the stock, is
     /// past the tool's flutes ([`crate::flutes::check`]; decision records
-    /// 0509 and 0520). A strategy that returns true makes its own flute
+    /// 0509 and 0522). A strategy that returns true makes its own flute
     /// check.
     fn cuts_in_layers(&self, _parameters: &Parameters) -> bool {
         false
@@ -526,7 +526,7 @@ fn generate_with(
         assemble_with_entry(&passes, input, &common, &entry, context)?
     };
     // The flutes against the deepest cut (TL-04, NFR-07; decision records
-    // 0509 and 0520), on the path as assembly wrote it: its angles are the
+    // 0509 and 0522), on the path as assembly wrote it: its angles are the
     // ones the tool turns through.
     if !strategy.cuts_in_layers(&parameters) {
         let _timing = context.time_stage("flute check");
@@ -535,7 +535,7 @@ fn generate_with(
             .get(crate::finishing::parameter::FINISHING_LAYERS)
             .is_some()
             .then_some(crate::finishing::parameter::FINISHING_LAYERS);
-        // A warning, not a refusal (decision record 0520): the path is
+        // A warning, not a refusal (decision record 0522): the path is
         // kept and the user decides (NFR-12).
         if let Some(warning) = crate::flutes::check_path(input, &path, layers, context)? {
             warnings.push(warning);

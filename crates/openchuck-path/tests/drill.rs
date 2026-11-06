@@ -703,7 +703,7 @@ fn req_op_10_req_tl_04_req_nfr_07_a_hole_deeper_than_the_flutes_is_warned() {
     }
     .profile()
     .unwrap();
-    // A warning, not a refusal (decision record 0520): the path is made.
+    // A warning, not a refusal (decision record 0522): the path is made.
     let flute = |path: &GeneratedPath| {
         path.warnings
             .iter()
