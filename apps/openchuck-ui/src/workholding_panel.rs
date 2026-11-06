@@ -1697,7 +1697,7 @@ mod tests {
         );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("changed while"), "{message}");
-        // A tab shorter than the 4 mm tool is refused, naming the operation
+        // A tab shorter than the 4 mm tool is reported, naming the operation
         // by its number.
         panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 3.0)];
         assert!(

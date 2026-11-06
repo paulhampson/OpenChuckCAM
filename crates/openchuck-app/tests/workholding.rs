@@ -582,7 +582,7 @@ fn req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count() {
 }
 
 #[test]
-fn req_op_21_a_tab_outside_the_end_zones_or_narrower_than_the_tool_is_refused() {
+fn req_op_21_a_tab_outside_the_end_zones_is_refused_and_one_shorter_than_the_tool_warned_of() {
     // Across the middle of the part.
     let mut w = workholding();
     w.tabs = vec![tab(10.0, 5.0, 6.0, 8.0, true)];
@@ -591,11 +591,28 @@ fn req_op_21_a_tab_outside_the_end_zones_or_narrower_than_the_tool_is_refused() 
     assert!(error.contains("head or the tail zone"), "{error}");
     std::fs::remove_dir_all(&b.dir).unwrap();
     // Tab 1 is 8 mm long along X, shorter than a 9 mm tool (decision 0494);
-    // its diameter (10 mm at the narrow end) does not matter.
+    // its diameter (10 mm at the narrow end) does not matter. A warning, not
+    // a refusal, since decision 0523 (the owner's choice of 6 Nov 2026).
     let b = build("narrow", workholding(), 1, 9.0);
-    let error = b.app.regenerate().unwrap_err().to_string();
-    assert!(error.contains("shorter than the tool"), "{error}");
-    assert!(error.contains("tab 1"), "{error}");
+    let run = b
+        .app
+        .regenerate()
+        .unwrap_or_else(|e| panic!("refused, not warned: {e}"));
+    let warning = run
+        .groups
+        .iter()
+        .flat_map(|g| g.warnings.iter())
+        .find(|w| {
+            w.message
+                .starts_with(openchuck_app::workholding::TAB_LENGTH_LEAD)
+        })
+        .unwrap_or_else(|| panic!("no tab warning"));
+    assert!(
+        warning.message.contains("shorter than the tool is wide"),
+        "{}",
+        warning.message
+    );
+    assert!(warning.message.contains("tab 1 ("), "{}", warning.message);
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 

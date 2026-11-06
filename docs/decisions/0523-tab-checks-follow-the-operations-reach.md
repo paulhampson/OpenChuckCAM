@@ -1,10 +1,10 @@
-# 0523: A tab is checked against an operation's tool only where the operation's path can touch it; the audit of checks that ignore an operation's region (OP-21, NFR-07, NFR-12; issue #548; lane FLUTE-TABS)
+# 0523: A tab is checked against an operation's tool only where the operation's path can touch it, and a tab shorter than the tool is warned of, not refused; the audit of checks that ignore an operation's region (OP-21, NFR-07, NFR-12; issue #548; lane FLUTE-TABS)
 
-- **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026. Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 6 Nov 2026 with the change that the tab-length rule also warns, relayed by the coordinator (decision 0049). Proposed by lane FLUTE-TABS on 6 Nov 2026; the owner read it in full and answered "Accept, but make the tab-length rule a warning too".
 - **Date:** 6 Nov 2026.
 - **Number:** 0523, with OI-2045 to OI-2049, confirmed free by the Merge Manager on 6 Nov 2026.
 - **Issue:** [#548](https://github.com/paulhampson/OpenChuckCAM/issues/548) (sev1). Related: [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (decision 0522), [#438](https://github.com/paulhampson/OpenChuckCAM/issues/438) (decision 0494).
-- **Amends:** [0494](0494-tab-length-is-checked-against-the-tool.md) item 2 ("Where it applies, unchanged"), for operations limited by selections. Its rule (item 1) is unchanged.
+- **Amends:** [0494](0494-tab-length-is-checked-against-the-tool.md) items 1 and 2: the rule (a tab shorter along X than the tool is wide) is a warning, not a refusal, and it applies to an operation limited by selections only where its path can touch the tab. The end-zone rule of [0035](0035-workholding-and-retaining-tabs.md) (OI-180) stays a refusal, with the same narrowed scope.
 - **Open items:** OI-2045 to OI-2049 new: the audit's follow-ups, below. No project schema change; no library change (the application only).
 
 ## Context
@@ -21,15 +21,21 @@ The fault was reproduced on a public part: a cone in round stock with a 4 mm tab
 
 ## Decision
 
-1. **Whole-part operations: unchanged.** An operation with no selections (no machine, boundary, avoid or check set) is checked against every tab before it is generated, as 0494 says. It may cut anywhere the part and the tabs are, including down beside a tab.
-2. **Limited operations: checked on their path.** An operation limited by selections is generated first. It is then checked only against the tabs its path can touch. That covers both rules of the gate: the tab's length against the tool (0494) and a tab outside the end zones (0035, OI-180). A tab it can touch is refused with the same words as before; one it cannot touch does not refuse it.
+1. **Whole-part operations: every tab.** An operation with no selections (no machine, boundary, avoid or check set) is checked against every tab before it is generated, as 0494 says. It may cut anywhere the part and the tabs are, including down beside a tab.
+2. **Limited operations: checked on their path.** An operation limited by selections is generated first. It is then checked only against the tabs its path can touch. That covers both rules of the gate: the tab's length against the tool (0494) and a tab outside the end zones (0035, OI-180). A tab it cannot touch says nothing.
 3. **What "can touch" means (`workholding::path_reaches_tab`).** Each fed move of the path is read from the pose before it: cuts, plunges, leads and fed links. Rapids are not cuts.
    - **Why the test is sound.** Every tool profile rises from its tip, so the tool's body is at or above its tip along the tool axis, and within its largest radius (cutting profile or shank) of that axis, which is square to the rotary axis. The tab lies within its farthest radius of the rotary axis: half its largest diameter on the axis, or its offset plus that around the axis.
    - **The test.** A move can touch the tab only where its X range comes within the tool's largest radius of the tab, and its lower end is no higher above the rotary axis, along the tool axis, than the tab's farthest radius plus 0.01 mm of rounding. The test reads the move's X range and its lower end together, so it may count a move that does not touch. It never misses one that does.
    - **Edge cases.** A pose that is not a finite number counts as touching (NFR-07). A tab layout the check does not know is taken as reaching any height.
-4. **Still refused where it is right (NFR-12).** A limited operation whose path comes down beside or over a tab shorter than its tool is still refused. So is any whole-part operation, as before.
-5. **Recommendation: keep it a refusal.** With its scope narrowed, the rule refuses only operations whose path really reaches the tab. There a tool wider than the gap cannot cut it to shape, which is 0494's reason (its option C, a warning, was declined). Whether it should also become a warning, as the flute check did (decision 0522), is the owner's call.
-6. **The cost.** A limited operation is refused after it is generated, not before. A refusal therefore costs a generation, as a refusal from any strategy does.
+4. **A tab shorter than the tool is warned of, not refused (the owner's choice, 6 Nov 2026).** This amends 0494 item 1; 0494's option C, declined then, is taken now, as the flute check was made a warning (decision 0522). The path is kept, with one warning per tab (a `PathWarning`, also a note, needing no acknowledgement; decision 0175). It starts "Tab length: " (`workholding::TAB_LENGTH_LEAD`) and gives:
+   - the tab's number, its X range and its length along X;
+   - the tool's width, and that the tool may be unable to cut the gap beside the tab to shape;
+   - that the path was made and must be checked before it is run;
+   - the options: a smaller tool, or a longer tab.
+
+   The operation is named where the warning is shown (Messages and Results give it as the source; the export checks say "Operation '<name>' was made with a warning: ..."). Nothing in it says the program is safe (NFR-12). It applies to every tab for a whole-part operation and to the tabs its path can touch for a limited one, so it is not noise.
+5. **A tab outside the end zones stays a refusal.** It is a separate rule (0035, OI-180): the target is built from the tabs, and a tab across the part would leave the part uncut there. It refuses only operations whose path can touch the tab (item 2); it is also a setup warning. The lane's recommendation is to keep it a refusal.
+6. **The cost.** A limited operation is checked after it is generated, not before, so a refusal for a tab outside the end zones costs a generation, as a refusal from any strategy does.
 
 ## The audit (issue #548 item 2)
 
@@ -38,7 +44,7 @@ Every check, refusal or warning that might read the whole part, the whole stock 
 | # | Check (code) | Decision | Reads now | Kind | Ignores the region? | Risk | Proposed |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Tab outside the end zones, in the generation gate (`workholding::check_for_tool`) | 0035, OI-180 | Every tab of the setup | Refusal | Yes | Blocks every operation for a setup fault that is already a setup warning | **Fixed here** (item 2): a limited operation counts only the tabs it can touch |
-| 2 | Tab shorter than the tool (`check_for_tool`) | 0494 | Every tab | Refusal | Yes | Blocks generation (#548) | **Fixed here** (items 1 to 3) |
+| 2 | Tab shorter than the tool (`check_for_tool`) | 0494 | Every tab | Refusal | Yes | Blocks generation (#548) | **Fixed here** (items 1 to 4): narrowed to the tabs the path can touch, and a warning, not a refusal (the owner's choice) |
 | 3 | The same rule's notes in "Check against the part and tools", the overview and the export notes (`narrow_tab_notes`, `findings_of`) | 0494 | Every operation's tool against every tab | Warning | Yes | Noise; disagrees with generation now | OI-2045: give the setup check the same scope; it needs the path, or a pre-generation bound of the region |
 | 4 | No room to cut beside a tab (`uncleared_tab_notes`) | 0503 | Each tab zone, for whole-part operations | Note | Partly: it is skipped only for machine selections (`operation.selections`), not for boundary, avoid or check sets | Noise | OI-2046: gate it on all of an operation's sets, and read the zone against the region (with OI-2011) |
 | 5 | Free-end facing and its flute refusal (`finishing::free_ends`) | 0344 item 7, 0509 item 4 | The part's free ends over the whole part; the stock's depth from its farthest material anywhere for stock earlier operations left | Refusal, and it adds cuts | Yes: a selection-limited helical, axial or rest operation still faces both ends of the part, cutting rings outside its region, and is refused for an end it was not asked to cut | Blocks generation (the owner's #547 project, Rest Machining); changes the path outside the region | OI-2047: face only the free ends within the operation's region (or none when it has one); the refusal itself waits on the owner's choice (A, B or C, put on 6 Nov 2026; option B built on `claude/flute-tabs-pr1b-free-ends`) |
@@ -57,7 +63,8 @@ Every check, refusal or warning that might read the whole part, the whole stock 
 ## Consequences
 
 - The owner's #548 project (numbers only): with this change and decision 0522's, 'Axial Finishing' is made; its path does not touch the tab. The next operation, 'Rest Machining', is then refused by the free-end check (row 5; OI-2047 and the owner's choice A, B or C).
-- A limited operation over a short tab is refused after it is generated, with the same message as before.
+- A tab shorter than the tool is warned of and the path is made, for a whole-part operation and for a limited one whose path touches it; it was refused before.
+- A limited operation over a tab outside the end zones is refused after it is generated.
 - The setup's own notes (row 3) still name every tool against every tab until OI-2045, so the setup check may say a tab is shorter than a tool whose limited operation generates.
 
 ## Verification
@@ -72,12 +79,12 @@ Unit tests (`crates/openchuck-app/src/workholding.rs`):
   - a low fed move across the tab touches it, though neither end is within reach;
   - a rapid is not read, and a fed move after a rapid is read from where the rapid left the tool;
   - a tab around the axis reaches its offset plus its radius (6.9 touches, 7.1 does not).
-- `req_op_21_a_tab_the_operation_cannot_touch_is_not_refused`: `check_for_tool_where` leaves out a tab its filter does not keep, for both rules, and refuses with the same words when it keeps it.
+- `req_op_21_a_tab_the_operation_cannot_touch_is_not_warned_of`: `short_tab_warnings_where` and `check_for_tool_where` leave out a tab their filter does not keep, and warn or refuse when they keep it.
+- The tests of 0494 that expected a refusal are warning tests with the same numbers: `req_op_21_a_tab_shorter_than_the_tool_is_warned_of_whatever_its_diameter` (was `..._is_refused_...`) and `req_op_21_an_automatic_tab_that_shrank_is_warned_of_at_its_resolved_length` (was `..._is_refused_...`); the others pass unchanged. The end-zone tests keep their refusals.
 
 Application tests (`crates/openchuck-app/tests/tab_scope.rs`), on a cone, radius 10 to 5 and X 0 to 30, in round stock from X -12 to 42 gripped 4 mm at its start. The tab is on the axis from X -4 to 0, 6 mm across, and the tool is a 6 mm ball:
 
-- `req_op_21_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_still_refused`: unchanged.
-- `req_op_21_req_nfr_12_an_operation_on_the_side_above_a_short_tab_is_made`: the owner's case, axial finishing limited to the whole side. It failed on the code before.
-- `req_op_21_an_operation_far_from_a_short_tab_is_made`: limited to the side from X 10 to 25. It failed on the code before.
-
-The tests of 0494 are unchanged and pass.
+- `req_op_21_req_nfr_12_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_warned_of`: made, with one warning naming tab 1, X -4.000 to 0.000 mm, 4.000 mm long, the tool's 6.000 mm, that it may be unable to cut the gap to shape, to check the path before running it, and the options; never "safe". It was refused before.
+- `req_op_21_req_nfr_12_an_operation_on_the_side_above_a_short_tab_is_made`: the owner's case, axial finishing limited to the whole side; made with no tab warning. It failed on the code before.
+- `req_op_21_an_operation_far_from_a_short_tab_is_made`: limited to the side from X 10 to 25; made with no tab warning. It failed on the code before.
+- In `tests/workholding.rs`, `req_op_21_a_tab_outside_the_end_zones_is_refused_and_one_shorter_than_the_tool_warned_of` (was `..._or_narrower_than_the_tool_is_refused`): the end-zone refusal is unchanged; the 9 mm tool against an 8 mm tab is made with the warning.

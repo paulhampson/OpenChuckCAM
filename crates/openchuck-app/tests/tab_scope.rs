@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! A tab shorter than the tool refuses only the operations that can touch it
-//! (OP-21, NFR-07, NFR-12; issue #548; decision 0523, amending 0494 item 2).
+//! A tab shorter than the tool is warned of, and only for the operations that
+//! can touch it (OP-21, NFR-07, NFR-12; issue #548; decision 0523, amending
+//! 0494 items 1 and 2).
 //!
 //! The owner's case on a public part: a cone (radius 10 to 5, X 0 to 30) in
 //! round stock, gripped at its start, with a tab on the axis 4 mm long and
 //! 6 mm across between the grip and the part, and a 6 mm ball. The tab is
-//! shorter than the tool. An operation on the whole part is refused before
-//! it is made, as before. An operation limited to faces that keep the tool
-//! above the tab, the cone's side in the owner's case, is made: its path never
-//! comes down to the tab, which is within 3 mm of the axis.
+//! shorter than the tool. An operation on the whole part is made with a
+//! warning (the owner's choice of 6 Nov 2026; a refusal before). An operation
+//! limited to faces that keep the tool above the tab, the cone's side in the
+//! owner's case, is made with no warning: its path never comes down to the
+//! tab, which is within 3 mm of the axis.
 
 #![allow(
     clippy::unwrap_used,
@@ -221,16 +223,42 @@ fn limit_to(b: &mut Built, x: (f64, f64)) {
         .unwrap();
 }
 
+/// The tab-length warnings among the run's paths (decision 0523).
+fn tab_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
+    run.groups
+        .iter()
+        .flat_map(|g| g.warnings.iter())
+        .filter(|w| {
+            w.message
+                .starts_with(openchuck_app::workholding::TAB_LENGTH_LEAD)
+        })
+        .map(|w| w.message.clone())
+        .collect()
+}
+
 #[test]
-fn req_op_21_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_still_refused() {
-    // Unchanged (decision 0494): with no region, every tab counts.
+fn req_op_21_req_nfr_12_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_warned_of() {
+    // With no region, every tab counts (decision 0494). By the owner's choice
+    // of 6 Nov 2026 (decision 0523) the path is made and the tab is warned
+    // of, with its number, X range and length and the tool's width; it was
+    // refused before.
     let b = build("whole");
-    let e = b.app.simulate().map(|_| ()).unwrap_err().to_string();
+    let run = b
+        .app
+        .simulate()
+        .unwrap_or_else(|e| panic!("refused, not warned: {e}"));
+    let warnings = tab_warnings(&run);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let w = &warnings[0];
     assert!(
-        e.contains("operation 'Axial Finishing' cannot be generated")
-            && e.contains("tab 1 is 4.000 mm long along X, shorter than the tool '6 mm ball'"),
-        "{e}"
+        w.contains("tab 1 (X -4.000 to 0.000 mm) is 4.000 mm long along X")
+            && w.contains("shorter than the tool is wide (6.000 mm)")
+            && w.contains("may be unable to cut the gap beside it to shape")
+            && w.contains("check it before running it")
+            && w.contains("Use a smaller tool, or make the tab longer"),
+        "{w}"
     );
+    assert!(!w.to_lowercase().contains("safe"), "{w}");
 }
 
 #[test]
@@ -242,6 +270,7 @@ fn req_op_21_req_nfr_12_an_operation_on_the_side_above_a_short_tab_is_made() {
     limit_to(&mut b, (0.0, 30.0));
     let run = b.app.simulate().unwrap_or_else(|e| panic!("{e}"));
     assert!(!run.toolpath.groups.is_empty());
+    assert!(tab_warnings(&run).is_empty(), "{:?}", tab_warnings(&run));
 }
 
 #[test]
@@ -251,4 +280,5 @@ fn req_op_21_an_operation_far_from_a_short_tab_is_made() {
     limit_to(&mut b, (10.0, 25.0));
     let run = b.app.simulate().unwrap_or_else(|e| panic!("{e}"));
     assert!(!run.toolpath.groups.is_empty());
+    assert!(tab_warnings(&run).is_empty(), "{:?}", tab_warnings(&run));
 }

@@ -456,20 +456,21 @@ pub(crate) fn reach_warnings_of(
     Ok(selection_reach_notes(project, operation, &mesh, &solids))
 }
 
-/// The checks that need the part and the tool, made before generating
-/// (decision 0035, owner's answers; OI-159 and OI-180): every tab lies wholly
-/// in the head zone or the tail zone, and none is shorter along X than the tool is wide.
-/// The message names the tab and what to change.
+/// The words every warning of a tab shorter than the tool starts with, so a
+/// host can tell it apart (decision 0523).
+pub const TAB_LENGTH_LEAD: &str = "Tab length: ";
+
+/// The check that needs the part, made before generating (decision 0035,
+/// owner's answers; OI-180): every tab lies wholly in the head zone or the
+/// tail zone. The message names the tab and what to change. A tab shorter
+/// than the tool is warned of, not refused ([`short_tab_warnings_where`];
+/// decision 0523, amending 0494 item 1).
 pub fn check_for_tool(
     workholding: &Workholding,
     stock: Option<&Stock>,
     part: &PartExtent,
-    tool_diameter: f64,
-    tool_name: &str,
 ) -> Result<(), AppError> {
-    check_for_tool_where(workholding, stock, part, tool_diameter, tool_name, &|_| {
-        true
-    })
+    check_for_tool_where(workholding, stock, part, &|_| true)
 }
 
 /// [`check_for_tool`] over the tabs `counts` keeps, as they are resolved
@@ -480,8 +481,6 @@ pub fn check_for_tool_where(
     workholding: &Workholding,
     stock: Option<&Stock>,
     part: &PartExtent,
-    tool_diameter: f64,
-    tool_name: &str,
     counts: &dyn Fn(&Tab) -> bool,
 ) -> Result<(), AppError> {
     let resolved = workholding.resolved(stock, Some(part));
@@ -506,21 +505,44 @@ pub fn check_for_tool_where(
             x.0, x.1
         )));
     }
+    Ok(())
+}
+
+/// A warning for each tab `counts` keeps that is shorter along X than a
+/// tool of `tool_diameter` is wide (decision 0494 item 1, a warning since
+/// decision 0523, the owner's choice of 6 Nov 2026): the tool may be unable
+/// to cut the gap beside the tab to shape. Each names the tab, its X range
+/// and length, and the tool's width; the host names the operation and the
+/// tool when it shows it. Nothing in it says the program is safe (NFR-12).
+pub fn short_tab_warnings_where(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: &PartExtent,
+    tool_diameter: f64,
+    counts: &dyn Fn(&Tab) -> bool,
+) -> Vec<String> {
+    let resolved = workholding.resolved(stock, Some(part));
     // An automatic tab keeps its last-applied length when the part moves
     // (decision 0202 item 3): compare the length it has now, as the target
     // is built from it.
     let skip = unresolved_tabs(workholding, stock, Some(part));
-    for (i, tab) in resolved.tabs.iter().enumerate() {
-        let d = tab.length.0;
-        if d < tool_diameter - 1e-9 && !skip.contains(&i) && counts(tab) {
-            return Err(refuse(format!(
-                "tab {} is {d:.3} mm long along X, shorter than the tool \
-                 '{tool_name}' ({tool_diameter:.3} mm); make the tab longer or use a smaller tool",
-                i + 1
-            )));
-        }
-    }
-    Ok(())
+    resolved
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(i, tab)| tab.length.0 < tool_diameter - 1e-9 && !skip.contains(i) && counts(tab))
+        .map(|(i, tab)| {
+            let (lo, d) = (tab.x_start.0, tab.length.0);
+            format!(
+                "{TAB_LENGTH_LEAD}tab {} (X {lo:.3} to {:.3} mm) is {d:.3} mm long along X, \
+                 shorter than the tool is wide ({tool_diameter:.3} mm), so the tool may be \
+                 unable to cut the gap beside it to shape. The path was made: check it before \
+                 running it. Use a smaller tool, or make the tab longer",
+                i + 1,
+                lo + d,
+            )
+        })
+        .collect()
 }
 
 /// How far past a tab's farthest radius, mm, a tip may stand and still count
@@ -1108,6 +1130,19 @@ mod tests {
         }
     }
 
+    /// The first warning of a tab shorter than a tool `d` wide, on every
+    /// tab (decision 0494 item 1, a warning since decision 0523).
+    fn short_warning(
+        w: &Workholding,
+        stock: Option<&Stock>,
+        part: &PartExtent,
+        d: f64,
+    ) -> Option<String> {
+        short_tab_warnings_where(w, stock, part, d, &|_| true)
+            .into_iter()
+            .next()
+    }
+
     fn stock() -> Stock {
         Stock::Cylinder {
             diameter: Millimetres(30.0),
@@ -1555,11 +1590,11 @@ mod tests {
 
     /// Issue #548 (amends decision 0494 item 2, decision 0523): the tabs an
     /// operation's check reads are chosen by `counts`. A tab shorter than the
-    /// tool that it leaves out is not refused; one it keeps still is, with
+    /// tool that it leaves out is not warned of; one it keeps still is, with
     /// the same words; and with every tab counted (an operation with no
     /// region) the check is as before.
     #[test]
-    fn req_op_21_a_tab_the_operation_cannot_touch_is_not_refused() {
+    fn req_op_21_a_tab_the_operation_cannot_touch_is_not_warned_of() {
         let w = tab_of(
             3.0,
             TabShape::Cylinder {
@@ -1570,21 +1605,22 @@ mod tests {
         let part = part(20.0, 78.0);
         let none = |_: &Tab| false;
         let all = |_: &Tab| true;
-        assert!(check_for_tool_where(&w, Some(&stock()), &part, 4.0, "ball 4", &none).is_ok());
-        let text = check_for_tool_where(&w, Some(&stock()), &part, 4.0, "ball 4", &all)
-            .unwrap_err()
-            .to_string();
-        assert!(text.contains("tab 1 is 3.000 mm long along X"), "{text}");
+        assert!(short_tab_warnings_where(&w, Some(&stock()), &part, 4.0, &none).is_empty());
+        let text = short_tab_warnings_where(&w, Some(&stock()), &part, 4.0, &all).join("\n");
         assert!(
-            text.contains("shorter than the tool 'ball 4' (4.000 mm)"),
+            text.contains("tab 1 (X 80.000 to 83.000 mm) is 3.000 mm long along X"),
+            "{text}"
+        );
+        assert!(
+            text.contains("shorter than the tool is wide (4.000 mm)"),
             "{text}"
         );
         // A tab outside the end zones is left out the same way.
         let mut stray = w.clone();
         stray.tabs[0].x_start = Millimetres(40.0);
         stray.tabs[0].length = Millimetres(5.0);
-        assert!(check_for_tool_where(&stray, Some(&stock()), &part, 4.0, "a", &none).is_ok());
-        let text = check_for_tool_where(&stray, Some(&stock()), &part, 4.0, "a", &all)
+        assert!(check_for_tool_where(&stray, Some(&stock()), &part, &none).is_ok());
+        let text = check_for_tool_where(&stray, Some(&stock()), &part, &all)
             .unwrap_err()
             .to_string();
         assert!(
@@ -1595,9 +1631,10 @@ mod tests {
 
     /// OP-21, decision 0494 (amends 0035 item 6): the tab's length along X is
     /// compared with the tool's diameter, not the tab's diameter. A wide tab
-    /// that is shorter than the tool is refused.
+    /// that is shorter than the tool is warned of (a refusal before decision
+    /// 0523).
     #[test]
-    fn req_op_21_a_tab_shorter_than_the_tool_is_refused_whatever_its_diameter() {
+    fn req_op_21_a_tab_shorter_than_the_tool_is_warned_of_whatever_its_diameter() {
         let w = tab_of(
             3.0,
             TabShape::Cylinder {
@@ -1606,12 +1643,12 @@ mod tests {
             TabLayout::OnAxis,
         );
         let part = part(20.0, 78.0);
-        assert!(check_for_tool(&w, Some(&stock()), &part, 3.0, "a").is_ok());
-        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        assert!(short_warning(&w, Some(&stock()), &part, 3.0).is_none());
+        let error = short_warning(&w, Some(&stock()), &part, 4.0).unwrap();
         let text = error.to_string();
         assert!(text.contains("3.000 mm long along X"), "{text}");
         assert!(
-            text.contains("shorter than the tool 'ball 4' (4.000 mm)"),
+            text.contains("shorter than the tool is wide (4.000 mm)"),
             "{text}"
         );
         assert!(!text.contains("across"), "{text}");
@@ -1647,13 +1684,13 @@ mod tests {
     /// OP-21, decision 0202 item 3 and decision 0494: an automatic tab is
     /// compared with the tool where it is now, not at the length it was last
     /// applied with. Stored 8 mm long; the part now starts at X 12, so the
-    /// head gap is 2 mm and a 4 mm tool does not fit: refused when generating
+    /// head gap is 2 mm and a 4 mm tool does not fit: warned of when generating
     /// and found by the checks.
     #[test]
-    fn req_op_21_an_automatic_tab_that_shrank_is_refused_at_its_resolved_length() {
+    fn req_op_21_an_automatic_tab_that_shrank_is_warned_of_at_its_resolved_length() {
         let shrunk = auto_head_tab(8.0);
         let near = part(12.0, 70.0);
-        let error = check_for_tool(&shrunk, Some(&stock()), &near, 4.0, "ball 4").unwrap_err();
+        let error = short_warning(&shrunk, Some(&stock()), &near, 4.0).unwrap();
         assert!(
             error.to_string().contains("2.000 mm long along X"),
             "{error}"
@@ -1669,7 +1706,7 @@ mod tests {
     fn req_op_21_an_automatic_tab_that_grew_is_accepted_at_its_resolved_length() {
         let grown = auto_head_tab(2.0);
         let far = part(18.0, 70.0);
-        assert!(check_for_tool(&grown, Some(&stock()), &far, 4.0, "ball 4").is_ok());
+        assert!(short_warning(&grown, Some(&stock()), &far, 4.0).is_none());
         assert!(narrow_findings(&grown, Some(&stock()), Some(&far), &one_ball_tool()).is_empty());
     }
 
@@ -1724,10 +1761,10 @@ mod tests {
             w.auto_tabs_without_room(Some(&stock()), Some(&part)),
             vec![(0, TabEnd::Head)]
         );
-        assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").is_ok());
+        assert!(short_warning(&w, Some(&stock()), &part, 4.0).is_none());
         let tools = one_ball_tool();
         assert!(narrow_findings(&w, Some(&stock()), Some(&part), &tools).is_empty());
-        // A short tab placed by hand, in the tail zone, is still refused.
+        // A short tab placed by hand, in the tail zone, is still warned of.
         w.tabs.push(Tab {
             auto: None,
             x_start: Millimetres(72.0),
@@ -1737,9 +1774,9 @@ mod tests {
             },
             layout: TabLayout::OnAxis,
         });
-        let error = check_for_tool(&w, Some(&stock()), &part, 4.0, "ball 4").unwrap_err();
+        let error = short_warning(&w, Some(&stock()), &part, 4.0).unwrap();
         assert!(
-            error.to_string().contains("tab 2 is 3.000 mm long"),
+            error.contains("tab 2 (") && error.contains("is 3.000 mm long"),
             "{error}"
         );
         let notes = narrow_findings(&w, Some(&stock()), Some(&part), &tools);
@@ -1772,8 +1809,8 @@ mod tests {
             ] {
                 let w = tab_of(4.0, shape, layout);
                 // Length equal to the tool is long enough.
-                assert!(check_for_tool(&w, Some(&stock()), &part, 4.0, "a").is_ok());
-                assert!(check_for_tool(&w, Some(&stock()), &part, 4.5, "a").is_err());
+                assert!(short_warning(&w, Some(&stock()), &part, 4.0).is_none());
+                assert!(short_warning(&w, Some(&stock()), &part, 4.5).is_some());
                 assert!(narrow_tab_note(&w, 4.0, "a", "1 Rough", &[]).is_none());
                 let note = narrow_tab_note(&w, 4.5, "T1 Flat", "1 Rough", &[]).unwrap();
                 assert_eq!(
@@ -1799,7 +1836,7 @@ mod tests {
             }],
             ..Workholding::default()
         };
-        let error = check_for_tool(&w, Some(&stock()), &part(20.0, 78.0), 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &part(20.0, 78.0)).unwrap_err();
         assert!(
             error.to_string().contains("head or the tail zone"),
             "{error}"
@@ -1841,12 +1878,12 @@ mod tests {
             check_tab_zones(&w, Some(&stock()), Some(&after))[0],
             SetupWarningKind::AutoTabNoRoom { tab: 1, .. }
         ));
-        let error = check_for_tool(&w, Some(&stock()), &after, 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &after).unwrap_err();
         assert!(error.to_string().contains("tab 2"), "{error}");
         // The automatic tab itself is refused when the part has moved over
         // the position it keeps.
         let over = part(12.0, 78.0);
-        let error = check_for_tool(&w, Some(&stock()), &over, 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &over).unwrap_err();
         assert!(error.to_string().contains("tab 1"), "{error}");
     }
 
