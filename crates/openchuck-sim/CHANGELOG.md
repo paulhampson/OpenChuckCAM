@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.0
+
+- **Family release (0.47.0, TABCUT; issue #555; decision 0527, accepted):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.
+
 ## Unreleased (FLUTE-TABS PR3, issue #547)
 
 - `DexelStock` gives its reach profile (`StockModel::reach_profile`, decision 0524): each column's spans as boxes, a slice a cell along X, for the flute check's bound from the material within the tool's reach. No API change of its own.

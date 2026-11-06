@@ -14,9 +14,16 @@
 //!
 //! - the contact lies on the selected region, if there is one;
 //! - the contact lies inside the containment boundary, if there is one;
-//! - the contact does not lie on an avoid surface; and
+//! - the contact does not lie on an avoid surface;
 //! - the tool, dropped on the check surfaces alone, does not come to rest at
-//!   the same tip, that is the tool is not touching a check surface.
+//!   the same tip, that is the tool is not touching a check surface; and
+//! - the contact does not also lie on the part's faces outside the selected
+//!   region, where the host gives them: a contact on the edge between a
+//!   selected face and an unselected one is not on the selection, so the
+//!   tool does not roll over that edge and on past the selection (issue
+//!   #555; decision record 0527). A setup's tabs and held regions need no
+//!   rule of their own: they are not faces of the model, so a contact on
+//!   one is never on a selection.
 //!
 //! A tool that is not allowed to cut leaves a gap in the pass; the shared
 //! services link the pieces (OP-14). Nothing is dropped silently: a
@@ -154,6 +161,11 @@ pub struct RegionConstraint<'a> {
     /// the surface (decision record 0176). Only a strategy that honours
     /// restriction options takes them.
     pub watch: &'a [WatchedSurface<'a>],
+    /// The part's faces outside the selected region: a contact on them as
+    /// well as on the region (the edge between the two) is not on the
+    /// region, so the tool does not roll over the selection's edge (issue
+    /// #555; decision record 0527). `None` keeps the old rule.
+    pub outside: Option<&'a dyn SurfaceSource>,
 }
 
 /// How a boundary limits a strategy that offers a choice (decision record
@@ -216,6 +228,7 @@ impl std::fmt::Debug for RegionConstraint<'_> {
             .field("check", &self.check.is_some())
             .field("boundary_limits", &self.boundary_limits)
             .field("watch", &self.watch)
+            .field("outside", &self.outside.is_some())
             .finish()
     }
 }
@@ -253,6 +266,9 @@ impl RegionConstraint<'_> {
             surface.within(contact, ON_SURFACE + surface.drop_accuracy())
         };
         if self.region.is_some_and(|r| !on(r)) {
+            return false;
+        }
+        if self.region.is_some() && self.outside.is_some_and(on) {
             return false;
         }
         if self.boundary.is_some_and(|b| !b.contains(contact)) {

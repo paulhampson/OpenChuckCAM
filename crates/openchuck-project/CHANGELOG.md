@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.0
+
+- **Family release (0.47.0, TABCUT; issue #555; decision 0527, accepted):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.
+
 ## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** project schema 26 (a setup's optional `clearance_rules`; the machine copy's optional `min_clearance_radius`) and machine profile schema 8. Older files read with neither and machine as before; an older file that already holds one is refused.
