@@ -85,6 +85,7 @@ pub mod edge_following;
 pub mod entry_safety;
 mod error;
 pub mod extend;
+pub mod face_flow;
 mod faces;
 pub mod facing;
 pub mod field;
