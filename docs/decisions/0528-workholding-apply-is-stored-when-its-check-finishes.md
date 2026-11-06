@@ -4,8 +4,8 @@
 - **Date:** 6 Nov 2026.
 - **Number:** 0528, with OI-2059 and OI-2060, given to the lane by the coordinator.
 - **Issue:** [#558](https://github.com/paulhampson/OpenChuckCAM/issues/558) (sev1). Related: decisions [0172](0172-stale-state-and-removed-paths.md), [0192](0192-simulate-result-out-of-date.md), [0523](0523-tab-checks-follow-the-operations-reach.md).
-- **Amends:** nothing in the requirements or the architecture. It adds a message to interface specification section 11.7 (the workholding section) and to Messages, once accepted.
-- **Open items:** OI-2059 and OI-2060 new. No project schema change and no library change: `openchuck-ui` only, plus tests in `openchuck-app`.
+- **Amends:** nothing in the requirements or the architecture. It adds a message to interface specification section 11.7 (the workholding section) and to Messages, edited in the same pull request.
+- **Open items:** OI-2059 (closed 6 Nov 2026 as not applicable now, below) and OI-2060 new. No project schema change and no library change: `openchuck-ui` only, plus tests in `openchuck-app`.
 
 ## Context
 
@@ -62,9 +62,9 @@ The owner confirmed he pressed Apply. His other answers (whether the tab was aut
 
 - An Apply the user pressed can no longer wait unseen until the section is shown again.
 - A hidden check that fails (for example "The part, stock or tools changed while checking; check again", or a refusing finding) still stores nothing. Its message waits in the section, and the Messages warning stays meanwhile.
-- **Choosing another setup still drops the section and its draft.** That includes an Apply whose check is still running, with no notice: OI-2059. It cannot show a draft beside a path made for something else, because the view then draws the stored workholding. It can lose an Apply the user pressed.
+- **Choosing another setup still drops the section and its draft.** That includes an Apply whose check is still running, with no notice (OI-2059). It cannot show a draft beside a path made for something else, because the view then draws the stored workholding. The owner closed OI-2059 as not applicable now (6 Nov 2026, relayed, decision 0049): "I do not believe this is relevant as multiple setups are not yet supported." It is re-opened if editing more than one setup is added.
 
 ## Open items
 
-- **OI-2059:** choosing another setup drops the workholding section, and with it an Apply whose check is still running, without notice. Keep the panel until its Apply is taken, or say that the Apply was cancelled.
+- **OI-2059 (closed, not applicable now):** choosing another setup drops the workholding section, and with it an Apply whose check is still running, without notice. Closed by the owner's clarification of 6 Nov 2026 (relayed): multiple setups are not yet supported. Re-open it if editing more than one setup is added.
 - **OI-2060:** confirm with the owner's CrankShaft project (numbers only) that #558 was the hidden-check case of this record, and not another path. If it was another path, extend `stale_setup_edits.rs` and fix it.
