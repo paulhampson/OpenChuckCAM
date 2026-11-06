@@ -510,9 +510,10 @@ impl Shell {
                 .resizable(false)
                 .show(ui, |ui| {
                     // The show button is at the right end, where the hide
-                    // button of the open dock is (issue 433).
+                    // button of the open dock is (issue 433). Its width is
+                    // taken first, so a narrow window clips the tabs and
+                    // never the button (issue 468, OI-2040).
                     ui.horizontal_centered(|ui| {
-                        self.dock_tabs(ui);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .small_button("\u{23f6}")
@@ -521,6 +522,15 @@ impl Shell {
                             {
                                 self.toggle_region(Region::Dock);
                             }
+                            // The tabs fill what is left of the row, from the
+                            // left, and are cut off at its edge.
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.shrink_clip_rect(ui.max_rect());
+                                    self.dock_tabs(ui);
+                                },
+                            );
                         });
                     });
                 });
