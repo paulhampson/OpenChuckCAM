@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.47.0
+
+- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** a contact on the edge between a selected face and an unselected one is not on the selection, so a selection-limited operation no longer rolls over its selection's edge and cuts outside it.
+  - **API.** `RegionConstraint` gains `outside` (the part's faces outside the selection); a struct literal needs `..Default::default()`.
+  - **Output.** With `outside` not set, paths are byte-identical. A host that sets it changes selection-limited paths at the edges of their regions.
+
 ## Unreleased (FACEFLOW pull request A, issue #512; additive API, no version bump)
 
 - **Added (OP-28, decision 0525, accepted):** face-flow finishing, the module `face_flow` (`FaceFlow`, `NAME`, `CORNER_ANGLE`, `parameter`). On selected faces of a STEP part the passes run parallel to a guide (the longest side of each face, or the edges a host passes) and blend by arc-length fraction to the opposite boundary, spaced by the stepover along the face or a scallop height; the tool axis follows the face as simultaneous finishing's (lead and tilt), the tool is dropped on the whole part, and stretches a neighbouring face blocks are left out and reported as unreached. Climb, conventional or meander. A host builds it with `FaceFlow::on_brep`; it is not yet in `Registry::builtin` (the application wiring is pull request B).

@@ -11,6 +11,12 @@
 //! limited to faces that keep the tool above the tab, the cone's side in the
 //! owner's case, is made with no warning: its path never comes down to the
 //! tab, which is within 3 mm of the axis.
+//!
+//! The owner's carving case of #555 (decision 0527), on the same part: a
+//! V-bit of 20 degrees on the cone's side kept its contact on the rim of the
+//! cone's end while its tip swept down beside the end face, outside the
+//! selection, and came down onto the tab. A selection now stops at its edge
+//! with an unselected face, so the path stays on the side.
 
 #![allow(
     clippy::unwrap_used,
@@ -80,6 +86,11 @@ impl Drop for Built {
 /// its start, with a tab on the axis from X -4 to 0, 6 mm across, and axial
 /// finishing with a 6 mm ball.
 fn build(name: &str) -> Built {
+    build_with(name, ToolShape::BallEnd)
+}
+
+/// As [`build`], with a tool of `shape`, 6 mm across.
+fn build_with(name: &str, shape: ToolShape) -> Built {
     let dir =
         std::env::temp_dir().join(format!("openchuck-tabscope-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -135,7 +146,7 @@ fn build(name: &str) -> Built {
         order: OrderKey::default(),
         name: "6 mm ball".into(),
         tool: Tool {
-            shape: ToolShape::BallEnd,
+            shape,
             diameter: Millimetres(BALL),
             flute_length: Millimetres(30.0),
             overall_length: Millimetres(45.0),
@@ -296,4 +307,87 @@ fn req_op_21_an_operation_far_from_a_short_tab_is_made() {
     let run = b.app.simulate().unwrap_or_else(|e| panic!("{e}"));
     assert!(!run.toolpath.groups.is_empty());
     assert!(tab_warnings(&run).is_empty(), "{:?}", tab_warnings(&run));
+}
+
+/// The V-bit of the owner's carving project (#555): 20 degrees, a 0.3 mm tip.
+const V_ANGLE: f64 = 20.0;
+const V_TIP: f64 = 0.3;
+
+/// The most the V-bit of `run`'s paths comes into the tab (X -4 to 0,
+/// radius 3) grown by `margin`, over every move, fed or rapid, sampled along
+/// it as the machine makes it; zero when it keeps clear. The tool's axis
+/// crosses the rotary axis (axial finishing), so the tab is nearest in the
+/// plane through both, where the V reaches `tip + h tan(half angle)` from its
+/// axis at `h` above its tip.
+fn into_tab(run: &openchuck_app::Regeneration, margin: f64) -> f64 {
+    let (lo, hi, r) = (-4.0 - margin, margin, 3.0 + margin);
+    let tan = (V_ANGLE / 2.0).to_radians().tan();
+    let tip = V_TIP / 2.0;
+    let into = |x: f64, h: f64| {
+        if h >= r {
+            return 0.0;
+        }
+        let dx = if (lo..=hi).contains(&x) {
+            0.0
+        } else {
+            (x - lo).abs().min((x - hi).abs())
+        };
+        if dx <= tip {
+            r - h
+        } else {
+            (r - (h + (dx - tip) / tan)).max(0.0)
+        }
+    };
+    let height = |p: &openchuck_types::ir::ToolPose| {
+        let axis = p.axis.get();
+        p.tip.y * axis.y + p.tip.z * axis.z
+    };
+    let mut worst = 0.0_f64;
+    for group in &run.toolpath.groups {
+        let mut from = group.start;
+        for segment in &group.segments {
+            let to = segment.end;
+            for k in 0..=16 {
+                let t = f64::from(k) / 16.0;
+                let x = from.tip.x + t * (to.tip.x - from.tip.x);
+                let h = height(&from) + t * (height(&to) - height(&from));
+                worst = worst.max(into(x, h));
+            }
+            from = to;
+        }
+    }
+    worst
+}
+
+#[test]
+fn req_op_02_req_nfr_12_a_v_bit_on_the_side_stays_on_its_selection() {
+    // The owner's case (#555): axial finishing with the V-bit on the cone's
+    // side. Before, every pass ran on past the side and down beside the
+    // cone's end onto the tab (its tip at radius 3.000). Now its cuts stay on
+    // the side (none past the end at X 0), so nothing comes near the tab: no
+    // move within half a millimetre of it.
+    let mut b = build_with(
+        "vbit",
+        ToolShape::VBit {
+            included_angle: openchuck_types::units::Degrees(V_ANGLE),
+            tip_diameter: Millimetres(V_TIP),
+        },
+    );
+    limit_to(&mut b, (0.0, 30.0));
+    let run = b.app.regenerate().unwrap_or_else(|e| panic!("{e}"));
+    assert!(!run.toolpath.groups.is_empty());
+    let lowest = run
+        .toolpath
+        .groups
+        .iter()
+        .flat_map(|g| g.segments.iter())
+        .filter(|s| s.kind.is_fed())
+        .map(|s| s.end.tip.x)
+        .fold(f64::INFINITY, f64::min);
+    assert!(lowest >= -1e-3, "a cut at X {lowest}, past the selection");
+    let into = into_tab(&run, 0.5);
+    assert!(
+        into <= 0.0,
+        "the tool comes {into} mm inside half a millimetre of the tab"
+    );
 }
