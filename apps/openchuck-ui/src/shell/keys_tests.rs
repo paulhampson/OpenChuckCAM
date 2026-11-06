@@ -40,11 +40,22 @@ struct Rig {
 impl Rig {
     /// A shell on the cube project with the scene built, picking on.
     fn picking(name: &str) -> Self {
+        Self::picking_in(name, false)
+    }
+
+    /// As [`Rig::picking`], with the 3D view drawn, so the pointer picks
+    /// what it is over (no GPU is needed: the paint callback is only
+    /// recorded).
+    fn picking_in_view(name: &str) -> Self {
+        Self::picking_in(name, true)
+    }
+
+    fn picking_in(name: &str, view: bool) -> Self {
         let (dir, app, _, _) = cube_project(name);
         app.save().unwrap();
         drop(app);
         // Not the real configuration folder.
-        let mut shell = Shell::with_settings(false, Some(dir.clone()), None);
+        let mut shell = Shell::with_settings(view, Some(dir.clone()), None);
         shell.export = ExportPanel::new(None);
         let mut rig = Self {
             shell,
@@ -544,12 +555,20 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
     rig.cleanup();
 }
 
-/// Whether anything is drawn in the highlight layer over the part.
+/// Whether anything is drawn in the highlight layers over the part: the
+/// selections, or the outline under the pointer (issue 556).
 fn highlighted(rig: &Rig) -> bool {
-    rig.shell
-        .viewport
-        .layer(openchuck_viewport::Layer::Overlay)
-        .is_some_and(|s| !s.meshes.is_empty() || !s.lines.is_empty())
+    [
+        openchuck_viewport::Layer::Overlay,
+        openchuck_viewport::Layer::Hover,
+    ]
+    .into_iter()
+    .any(|layer| {
+        rig.shell
+            .viewport
+            .layer(layer)
+            .is_some_and(|s| !s.meshes.is_empty() || !s.lines.is_empty())
+    })
 }
 
 /// Saves a set of two triangles, selects it in the tree and draws a frame.
@@ -941,5 +960,63 @@ fn req_ui_05_reselect_waits_while_a_change_is_checked() {
     rig.shell.message_action(MessageAction::Reselect(b));
     assert_eq!(rig.shell.selected, Some(Selection::Set(a)));
     assert_eq!(rig.shell.selection.shown_set(), Some(a));
+    rig.cleanup();
+}
+
+#[test]
+fn req_nfr_03_req_ui_05_zooming_over_a_shown_set_replaces_only_the_hover_outline() {
+    // Issue 556: zooming moves the part under a resting pointer, so the
+    // triangle under it changes from frame to frame. The shown set is built
+    // and handed to the renderer once; only the outline under the pointer
+    // is replaced as the view zooms.
+    use openchuck_viewport::Layer;
+    let mut rig = Rig::picking_in_view("zoom-over-set");
+    let model = rig.model();
+    let id = rig
+        .shell
+        .app
+        .as_mut()
+        .unwrap()
+        .save_selection("Most", model, (0u32..10).collect::<BTreeSet<_>>())
+        .unwrap();
+    rig.shell.selection.show_set(Some(id));
+    rig.shell.selected = Some(Selection::Set(id));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let layer = |rig: &Rig, layer: Layer| {
+        let scene = rig.shell.viewport.layer(layer).unwrap();
+        (std::ptr::from_ref(scene), scene.clone())
+    };
+    let (set_at, set) = layer(&rig, Layer::Overlay);
+    assert_eq!(set.meshes.len(), 2, "the set's frame and fill");
+    let rect = rig.shell.viewport.last_rect;
+    let mut hovers = BTreeSet::new();
+    for step in 0..40 {
+        // Across the part, zooming in and then out.
+        let at = egui::pos2(
+            rect.center().x + (step % 8) as f32 * 4.0 - 16.0,
+            rect.center().y + (step % 5) as f32 * 4.0 - 8.0,
+        );
+        let wheel = Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, if step < 20 { 1.0 } else { -1.0 }),
+            modifiers: Modifiers::NONE,
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+        };
+        rig.frame(vec![Event::PointerMoved(at), wheel]);
+        let (at, _) = layer(&rig, Layer::Overlay);
+        assert_eq!(at, set_at, "step {step}: the set is not handed over again");
+        let (_, hover) = layer(&rig, Layer::Hover);
+        if let Some(line) = hover.lines.first() {
+            hovers.insert(format!("{:?}", line.segments));
+        }
+    }
+    assert!(hovers.len() > 1, "the hover outline followed the pointer");
+    // What is drawn is what a fresh build gives.
+    rig.shell.selection.mark_dirty_for_test();
+    rig.frame(Vec::new());
+    assert_eq!(layer(&rig, Layer::Overlay).1, set);
     rig.cleanup();
 }

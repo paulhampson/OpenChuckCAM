@@ -1115,6 +1115,12 @@ impl Viewport {
         self.set_layer(Layer::Overlay, overlay);
     }
 
+    /// Replaces the outline of what is under the pointer, a layer of its own
+    /// so the highlights are not uploaded again as it moves (issue 556).
+    pub fn set_hover(&mut self, hover: Scene) {
+        self.set_layer(Layer::Hover, hover);
+    }
+
     /// Replaces one layer: toolpaths, the stock, the tool, the highlights.
     /// The renderer uploads it on the next frame; the other layers are not
     /// touched.
@@ -1805,7 +1811,7 @@ impl Viewport {
             return false;
         }
         match layer {
-            Layer::Overlay => show.selections,
+            Layer::Overlay | Layer::Hover => show.selections,
             Layer::Areas => show.unreachable,
             Layer::Paths | Layer::Trace => show.toolpaths,
             Layer::Stock => show.stock,
@@ -3637,6 +3643,8 @@ pub(crate) mod tests {
         });
         assert!(!viewport.layer_shown(Layer::Paths));
         assert!(!viewport.layer_shown(Layer::Overlay));
+        // The outline under the pointer is a selection highlight too.
+        assert!(!viewport.layer_shown(Layer::Hover));
         // Hidden, the path goes to the renderer as it is, with the same
         // generation, so it stays uploaded and showing it again uploads
         // nothing (issue #200).

@@ -152,7 +152,13 @@ mod tests {
             for layer in [Layer::Stock, Layer::Tool, Layer::Trace] {
                 assert_eq!(layer_drawn_on(step, layer), simulate, "{step:?} {layer:?}");
             }
-            for layer in [Layer::Scene, Layer::Paths, Layer::Overlay, Layer::Focus] {
+            for layer in [
+                Layer::Scene,
+                Layer::Paths,
+                Layer::Overlay,
+                Layer::Focus,
+                Layer::Hover,
+            ] {
                 assert!(layer_drawn_on(step, layer), "{step:?} {layer:?}");
             }
         }

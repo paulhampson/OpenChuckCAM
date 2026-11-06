@@ -427,6 +427,10 @@ pub struct SelectionPanel {
     message: Option<String>,
     /// The highlights need drawing again.
     dirty: bool,
+    /// The outline under the pointer needs drawing again. Apart from
+    /// `dirty`, so the pointer moving, or a zoom bringing another triangle
+    /// under it, never builds a large shown set again (issue 556).
+    hover_dirty: bool,
     /// Test hook: leave a region pick pending when frames are drawn, so a
     /// shell test can press Esc while one is certainly still running.
     #[cfg(test)]
@@ -465,6 +469,7 @@ impl Default for SelectionPanel {
             roles_sets: None,
             message: None,
             dirty: true,
+            hover_dirty: true,
             #[cfg(test)]
             hold_region_pick: false,
         }
@@ -808,7 +813,7 @@ impl SelectionPanel {
             None => None,
         };
         if key(hover) != key(self.hover) {
-            self.dirty = true;
+            self.hover_dirty = true;
         }
         self.hover = hover;
         if let Some((pick, modifiers)) = input.click {
@@ -1102,10 +1107,10 @@ impl SelectionPanel {
     }
 
     /// The highlights to draw over the scene when they changed since the last
-    /// call: the chosen set in its swatch, the working selection in blue
-    /// (filled surfaces, or edges drawn over the part), and what is under
-    /// the pointer outlined in yellow: a triangle, a STEP part's face, or an
-    /// edge.
+    /// call: the chosen set in its swatch, the operation's avoid and check
+    /// sets, and the working selection in blue (filled surfaces, or edges
+    /// drawn over the part). What is under the pointer is
+    /// [`hover_overlay`](Self::hover_overlay), drawn in a layer of its own.
     pub fn overlay(&mut self, app: &Application, view: &SceneView) -> Option<Scene> {
         // A change to the shown set (a Shift or Ctrl click's edit, an undo)
         // draws it again.
@@ -1117,6 +1122,9 @@ impl SelectionPanel {
         if !std::mem::take(&mut self.dirty) {
             return None;
         }
+        // Whatever drew the highlights again (a pick ending, a new scene)
+        // draws the hover outline again too, so it never outlives them.
+        self.hover_dirty = true;
         let part_of = |model: ModelId| {
             view.meshes
                 .iter()
@@ -1262,6 +1270,25 @@ impl SelectionPanel {
                 },
             );
         }
+        // The highlights are on the workpiece, which turns with A.
+        for mesh in &mut scene.meshes {
+            mesh.slot = Slot::Part;
+        }
+        for line in &mut scene.lines {
+            line.slot = Slot::Part;
+        }
+        Some(scene)
+    }
+
+    /// The outline of what is under the pointer, in yellow: a triangle, a
+    /// STEP part's face, or an edge; when it changed since the last call, or
+    /// the highlights were drawn again. Its own layer (issue 556): the
+    /// pointer moving replaces only this, never a large shown set.
+    pub fn hover_overlay(&mut self, view: &SceneView) -> Option<Scene> {
+        if !std::mem::take(&mut self.hover_dirty) {
+            return None;
+        }
+        let mut scene = Scene::default();
         match self.hover {
             Some(Hover::Surface(hover)) => {
                 if let Some(part) = view.meshes.get(hover.mesh) {
@@ -1310,10 +1337,7 @@ impl SelectionPanel {
             }
             None => {}
         }
-        // The highlights are on the workpiece, which turns with A.
-        for mesh in &mut scene.meshes {
-            mesh.slot = Slot::Part;
-        }
+        // The outline is on the workpiece, which turns with A.
         for line in &mut scene.lines {
             line.slot = Slot::Part;
         }
@@ -2557,8 +2581,11 @@ mod tests {
         assert_eq!(overlay_triangles(&scene), 2);
         assert_eq!(scene.meshes[0].colour, WORKING);
         assert!(scene.meshes[0].colour[3] < 1.0);
-        // ... and the hovered triangle as a closed yellow loop of 3 sides
-        // (6 end points), not a fill.
+        assert!(scene.lines.is_empty());
+        // ... and, in its own layer (issue 556), the hovered triangle as a
+        // closed yellow loop of 3 sides (6 end points), not a fill.
+        let scene = panel.hover_overlay(&view).unwrap();
+        assert!(scene.meshes.is_empty());
         assert_eq!(scene.lines.len(), 1);
         assert_eq!(scene.lines[0].colour, HOVER);
         assert_eq!(scene.lines[0].segments.len(), 6);
@@ -2567,6 +2594,102 @@ mod tests {
         // Hovered marks are 2 pixels wide (7.5; OI-341).
         assert_eq!(scene.lines[0].width, EDGE_HOVER_WIDTH);
         let _ = ModelId::new();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The pointer resting on triangle `triangle` of the part mesh `mesh`.
+    fn hover_on(mesh: usize, model: ModelId, triangle: u32) -> PickInput {
+        PickInput {
+            hover: Some(ScenePick {
+                face: None,
+                mesh,
+                model: Some(model),
+                triangle,
+                distance: 1.0,
+                point: openchuck_app::setup::Point3::new(0.0, 0.0, 0.0),
+                normal: None,
+            }),
+            ..PickInput::default()
+        }
+    }
+
+    #[test]
+    fn req_nfr_03_req_ui_04_a_hover_change_rebuilds_only_the_hover_outline() {
+        // Issue 556: zooming brings another triangle under a resting
+        // pointer every frame. Only the small hover outline is built again;
+        // the shown set, its frame and outline, is built once per change.
+        let (dir, mut app, model) = cube_project("hover-only");
+        let id = app
+            .save_selection("Most", model, set(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+            .unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let part = view
+            .meshes
+            .iter()
+            .position(|m| m.role == SceneRole::Part)
+            .unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.set_picking(true);
+        panel.show_set(Some(id));
+        let kept = panel.overlay(&app, &view).expect("the set is built");
+        // A dark frame and the set's fill with its line (decision 0216 item 4).
+        assert_eq!(kept.meshes.len(), 2);
+        assert_eq!(overlay_triangles(&kept), 10);
+        assert!(kept.lines.is_empty(), "no hover in the set's layer");
+        assert!(
+            panel.hover_overlay(&view).is_some(),
+            "the hover starts empty"
+        );
+        for triangle in 0..12 {
+            panel.frame(&app, &view, hover_on(part, model, triangle));
+            assert!(panel.overlay(&app, &view).is_none(), "triangle {triangle}");
+            let hover = panel.hover_overlay(&view).expect("the hover follows");
+            assert!(hover.meshes.is_empty());
+            assert_eq!(hover.lines.len(), 1);
+            assert_eq!(hover.lines[0].colour, HOVER);
+            assert_eq!(hover.lines[0].width, EDGE_HOVER_WIDTH);
+            assert_eq!(hover.lines[0].slot, Slot::Part);
+            // The pointer staying on it builds nothing.
+            panel.frame(&app, &view, hover_on(part, model, triangle));
+            assert!(panel.overlay(&app, &view).is_none());
+            assert!(panel.hover_overlay(&view).is_none());
+        }
+        // The pointer leaving the part clears the outline, and only it.
+        panel.frame(&app, &view, PickInput::default());
+        assert!(panel.overlay(&app, &view).is_none());
+        assert_eq!(panel.hover_overlay(&view), Some(Scene::default()));
+        // What was kept is what a fresh build gives now.
+        panel.mark_dirty_for_test();
+        assert_eq!(panel.overlay(&app, &view), Some(kept.clone()));
+        // An edit of the set builds it again, once.
+        app.edit_selection(id, SelectionEdit::Remove(tri(&[9])))
+            .unwrap();
+        let edited = panel.overlay(&app, &view).expect("an edit draws it again");
+        assert_eq!(overlay_triangles(&edited), 9);
+        assert!(panel.overlay(&app, &view).is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_the_hover_outline_goes_when_picking_ends_or_the_set_is_redrawn() {
+        // The hover is drawn again whenever the highlights are, so a pick
+        // ending or a new scene never leaves a stale outline behind.
+        let (dir, app, model) = cube_project("hover-goes");
+        let view = app.start_scene(None).wait().unwrap();
+        let part = view
+            .meshes
+            .iter()
+            .position(|m| m.role == SceneRole::Part)
+            .unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.set_picking(true);
+        let _ = panel.overlay(&app, &view);
+        let _ = panel.hover_overlay(&view);
+        panel.frame(&app, &view, hover_on(part, model, 2));
+        assert_eq!(panel.hover_overlay(&view).unwrap().lines.len(), 1);
+        panel.set_picking(false);
+        assert!(panel.overlay(&app, &view).is_some());
+        assert_eq!(panel.hover_overlay(&view), Some(Scene::default()));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -3250,7 +3373,11 @@ mod tests {
         assert_eq!(scene.meshes.len(), 1);
         assert_eq!(overlay_triangles(&scene), 1);
         assert_eq!(scene.meshes[0].colour, WORKING);
-        // Face 0 outlined in yellow by its two edges, not by its triangle.
+        assert!(scene.lines.is_empty());
+        // Face 0 outlined in yellow by its two edges, not by its triangle,
+        // in the hover's own layer (issue 556).
+        let scene = panel.hover_overlay(&view).unwrap();
+        assert!(scene.meshes.is_empty());
         assert_eq!(scene.lines.len(), 2);
         assert!(scene.lines.iter().all(|l| l.colour == HOVER));
         assert_eq!(scene.lines[0].segments.len(), 4);
@@ -3298,11 +3425,16 @@ mod tests {
         // A cube's corners join three edges: the chain is the edge alone.
         assert!(matches!(&panel.working, SelectionTarget::MeshEdges(e) if e.len() == 1));
         assert_eq!(panel.working_model, Some(model));
-        let scene = panel.overlay(&app, &view).unwrap();
-        // The selected edge in orange and the hovered one in magenta, both over
-        // the part, and nothing filled.
-        assert!(scene.meshes.is_empty());
-        assert_eq!(scene.lines.len(), 2);
+        let selected = panel.overlay(&app, &view).unwrap();
+        // The selected edge in orange and, in its own layer drawn after it
+        // (issue 556), the hovered one in magenta, both over the part, and
+        // nothing filled.
+        let hovered = panel.hover_overlay(&view).unwrap();
+        assert!(selected.meshes.is_empty() && hovered.meshes.is_empty());
+        assert_eq!(selected.lines.len(), 1);
+        assert_eq!(hovered.lines.len(), 1);
+        let mut scene = selected;
+        scene.lines.extend(hovered.lines);
         // Edges have their own colours, apart from a triangle's (issue 151).
         assert_eq!(scene.lines[0].colour, roles::EDGE_SELECTED);
         assert_eq!(scene.lines[1].colour, roles::EDGE_HOVER);
