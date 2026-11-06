@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (FACEFLOW pull request A, issue #512; additive API, no version bump)
+
+- **Added (OP-28, decision 0525, accepted):** face-flow finishing, the module `face_flow` (`FaceFlow`, `NAME`, `CORNER_ANGLE`, `parameter`). On selected faces of a STEP part the passes run parallel to a guide (the longest side of each face, or the edges a host passes) and blend by arc-length fraction to the opposite boundary, spaced by the stepover along the face or a scallop height; the tool axis follows the face as simultaneous finishing's (lead and tilt), the tool is dropped on the whole part, and stretches a neighbouring face blocks are left out and reported as unreached. Climb, conventional or meander. A host builds it with `FaceFlow::on_brep`; it is not yet in `Registry::builtin` (the application wiring is pull request B).
+  - **API.** Additive only.
+  - **Output.** No existing path or golden file changes.
+
 ## Unreleased (FLUTE-TABS PR3, issue #547; additive API, no version bump)
 
 - **Changed output (decision 0524, accepted):** the flute check bounds stock with no exact answer, such as the stock earlier operations left, from the material within the tool's reach along X and towards the tool, taking the lower of that and the farthest-radius bound of decision 0509; free ends read the same bound. Fewer warnings where the far stock is out of reach (a held region, never cut); still warned where the path reaches stock past the flutes.

@@ -48,6 +48,8 @@ mod entry_safety;
 mod exact_faces;
 #[path = "extend.rs"]
 mod extend;
+#[path = "face_flow.rs"]
+mod face_flow;
 #[path = "faces_cancel.rs"]
 mod faces_cancel;
 #[path = "facing_box_plan.rs"]
