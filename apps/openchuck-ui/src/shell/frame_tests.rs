@@ -77,10 +77,15 @@ impl Rig {
         loop {
             self.frame(Vec::new());
             let s = &self.shell;
+            // Adding a model is a job of the import session: a test that
+            // presses Add to project and settles reads the project after it
+            // (on a slow runner it was still running; main, Windows, 6 Nov
+            // 2026).
             if s.scene_job.is_none()
                 && s.checks_job.is_none()
                 && !s.run.is_running()
                 && !s.play.is_preparing()
+                && !s.import.as_ref().is_some_and(|i| i.is_adding())
                 && s.overview.checks_current
             {
                 break;
