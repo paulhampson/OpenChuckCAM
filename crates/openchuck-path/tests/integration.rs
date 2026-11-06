@@ -78,6 +78,8 @@ mod field;
 mod finishing;
 #[path = "fit_interior.rs"]
 mod fit_interior;
+#[path = "flute_reach.rs"]
+mod flute_reach;
 #[path = "flutes.rs"]
 mod flutes;
 #[path = "helical.rs"]

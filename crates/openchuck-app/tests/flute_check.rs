@@ -150,3 +150,76 @@ fn req_tl_04_req_set_03_roughing_then_finishing_the_crankshaft_with_25_mm_of_flu
     let run = app.simulate().unwrap_or_else(|e| panic!("{e}"));
     assert!(!run.toolpath.groups.is_empty());
 }
+
+/// The CrankShaft project with a held start and default tabs (OP-21, SET-09;
+/// issue #547): box stock from X -12 to 46, 4 mm gripped at the start,
+/// roughed (leaving 0.3 mm) and then finished by axial finishing with a
+/// tool of `flute` mm of flute.
+fn held_and_roughed(name: &str, flute: f64) -> Application {
+    use openchuck_app::setup::{HeldRegion, Workholding};
+    let rough = (
+        "rotary_roughing",
+        vec![
+            ("stock_to_leave", 0.3),
+            ("stepdown", 4.0),
+            ("stepover", 2.5),
+        ],
+    );
+    let finish = (
+        "axial_finishing",
+        vec![("stepover", 2.5), ("tolerance", 0.1)],
+    );
+    let mut app = crankshaft(name, flute, &[rough, finish]);
+    let mut setup = app.project().setups().first().unwrap().clone();
+    setup.stock = Some(Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(-12.0, -17.5, -17.5),
+            max: Point3::new(46.0, 17.5, 17.5),
+        },
+    });
+    setup.workholding = Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(4.0),
+            diameter: None,
+        }),
+        end: None,
+        tabs: Vec::new(),
+    };
+    app.execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    setup.workholding.tabs = app.start_default_tabs(setup.id).wait().unwrap();
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    app
+}
+
+#[test]
+fn req_tl_04_req_nfr_12_a_finish_beside_a_held_region_is_not_refused_for_stock_out_of_reach() {
+    // The owner's case (#547) on the public CrankShaft model: the held
+    // start is never cut, so the stock roughing left still reaches the box's
+    // corners there, 24.749 mm from the axis. The finish never comes within
+    // the tool's reach of it. Before, the check held every tip to the
+    // farthest material anywhere and refused 21 mm of flute, at 27.900 mm;
+    // now the stock within the tool's reach, the crank's webs beside the
+    // journals, is held to about 18.2 mm.
+    let app = held_and_roughed("held-roughed", 21.0);
+    app.simulate().map(|_| ()).unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn req_tl_04_req_nfr_12_a_finish_under_stock_deeper_than_the_flutes_is_still_refused_by_name() {
+    // The same job with 8 mm of flute: the webs beside the journals stand
+    // past the flutes within the tool's reach, so it is still refused, and
+    // the refusal names the operation (#547).
+    let app = held_and_roughed("held-deep", 8.0);
+    let e = app.simulate().map(|_| ()).unwrap_err().to_string();
+    assert!(
+        e.starts_with("operation 'Op 2' cannot be generated: "),
+        "{e}"
+    );
+    assert!(e.contains("8.000 mm of flute"), "{e}");
+    assert!(
+        e.contains("what the earlier operations in this setup left"),
+        "{e}"
+    );
+    assert!(!e.contains("finishing_layers"), "{e}");
+}

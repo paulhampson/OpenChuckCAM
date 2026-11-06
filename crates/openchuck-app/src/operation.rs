@@ -341,6 +341,49 @@ pub(crate) fn generate_with_part(
     edges: Option<EdgeOptions>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
+    generate_unnamed(root, project, id, registry, stock, placed, edges, context).map_err(|e| {
+        match project.operation(id) {
+            Some(operation) => named(operation, e),
+            None => e,
+        }
+    })
+}
+
+/// `error` from generating `operation`, naming it (issue #547): a refusal
+/// from the pathing library does not know which operation it refuses, so
+/// the user could not tell which one to change. A cancel stays a cancel
+/// (UI-09), and an error that names the operation already is kept. A
+/// refused parameter keeps its plain words, without the parameter's name in
+/// the strategy's schema (specification section 15).
+fn named(operation: &Operation, error: AppError) -> AppError {
+    match error {
+        AppError::Path(openchuck_path::PathError::Cancelled) => error,
+        AppError::Path(openchuck_path::PathError::Parameter { reason, .. }) => {
+            AppError::Operation {
+                name: operation.name.clone(),
+                reason,
+            }
+        }
+        AppError::Path(other) => AppError::Operation {
+            name: operation.name.clone(),
+            reason: other.to_string(),
+        },
+        other => other,
+    }
+}
+
+/// [`generate_with_part`] before its error names the operation.
+#[allow(clippy::too_many_arguments)]
+fn generate_unnamed(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    placed: Option<crate::model::PlacedPart>,
+    edges: Option<EdgeOptions>,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
     let carried = stock;
     let operation = project
         .operation(id)
@@ -1603,6 +1646,10 @@ impl StockModel for LeftByEarlier<'_> {
         radius: f64,
     ) -> Option<f64> {
         self.0.top_over_disc(centre, axis, radius)
+    }
+
+    fn reach_profile(&self) -> Option<openchuck_path::ReachProfile> {
+        self.0.reach_profile()
     }
 }
 
