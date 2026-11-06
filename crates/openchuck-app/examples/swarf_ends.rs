@@ -38,6 +38,7 @@ use openchuck_geom::transform::{brep_placement, transform_brep};
 use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
 use openchuck_path::region::RegionConstraint;
+use openchuck_path::surface::SurfaceSource;
 use openchuck_path::swarf::{self, Settings};
 use openchuck_path::{BrepSurface, RotaryMapping};
 use openchuck_testkit::contact::{self, ConvexTool, Geometry};
@@ -129,32 +130,6 @@ fn sense_of(poses: &[ToolPose]) -> f64 {
     s
 }
 
-/// A tool position: tip and unit axis in the model frame.
-#[derive(Clone, Copy)]
-struct At {
-    tip: Point3,
-    axis: Vec3,
-}
-
-/// The machine's straight move from `p` to `q`, cut into steps no longer
-/// than `step` mm at the tip and the flank's far end.
-fn motion(p: &ToolPose, q: &ToolPose, s: f64, reach: f64, step: f64, out: &mut Vec<At>) {
-    let mp = rot_x(p.tip.to_vec(), s * p.a.0);
-    let mq = rot_x(q.tip.to_vec(), s * q.a.0);
-    let turn = (q.a.0 - p.a.0).abs().to_radians() * reach;
-    let n = (((mq - mp).length() + turn) / step).ceil().max(1.0) as usize;
-    for k in 1..=n {
-        let f = k as f64 / n as f64;
-        let m = mp + (mq - mp) * f;
-        let a = p.a.0 + (q.a.0 - p.a.0) * f;
-        let tip = rot_x(m, -s * a);
-        out.push(At {
-            tip: Point3::new(tip.x, tip.y, tip.z),
-            axis: rot_x(Vec3::new(0.0, 0.0, 1.0), -s * a),
-        });
-    }
-}
-
 fn tool(shape: ToolShape, diameter: f64) -> RevolvedProfile {
     Tool {
         shape,
@@ -169,7 +144,6 @@ fn tool(shape: ToolShape, diameter: f64) -> RevolvedProfile {
     .profile()
     .unwrap()
 }
-
 
 /// The machine's straight move from `p` to `q` at fraction `f` (X, Y, Z and
 /// A linear), as tip and axis in the model frame.
@@ -201,13 +175,45 @@ struct Station {
 
 fn main() {
     let mut it = std::env::args().skip(1);
-    let file = it.next().expect("usage: swarf_ends <file.step> --faces 7,9,13");
+    let file = it
+        .next()
+        .expect("usage: swarf_ends <file.step> --faces 7,9,13");
     let mut faces: Vec<u32> = vec![7, 9, 13];
     let mut exts: Vec<f64> = vec![0.0];
+    let mut ends_of: Vec<(u32, Vec<u32>)> =
+        vec![(7, vec![2, 15]), (9, vec![2, 15]), (13, vec![3, 15])];
     while let Some(x) = it.next() {
         match x.as_str() {
-            "--faces" => faces = it.next().unwrap().split(',').map(|v| v.parse().unwrap()).collect(),
-            "--extensions" => exts = it.next().unwrap().split(',').map(|v| v.parse().unwrap()).collect(),
+            "--faces" => {
+                faces = it
+                    .next()
+                    .unwrap()
+                    .split(',')
+                    .map(|v| v.parse().unwrap())
+                    .collect()
+            }
+            "--ends" => {
+                ends_of = it
+                    .next()
+                    .unwrap()
+                    .split(',')
+                    .map(|e| {
+                        let (f, l) = e.split_once(':').unwrap();
+                        (
+                            f.parse().unwrap(),
+                            l.split('+').map(|v| v.parse().unwrap()).collect(),
+                        )
+                    })
+                    .collect()
+            }
+            "--extensions" => {
+                exts = it
+                    .next()
+                    .unwrap()
+                    .split(',')
+                    .map(|v| v.parse().unwrap())
+                    .collect()
+            }
             o => panic!("unknown option {o}"),
         }
     }
@@ -215,7 +221,11 @@ fn main() {
     let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);
-    let settings_c = contact::Settings { margin: 5.0, tolerance: 0.0005, budget: 4_000_000 };
+    let settings_c = contact::Settings {
+        margin: 5.0,
+        tolerance: 0.0005,
+        budget: 4_000_000,
+    };
     let all: BTreeSet<u32> = model.faces.iter().map(|f| f.id.0).collect();
     let tools = [
         ("flat 3 mm", tool(ToolShape::FlatEnd, 3.0)),
@@ -232,7 +242,9 @@ fn main() {
             ),
         ),
     ];
-    println!("| face | tool | ext | against | deepest cut mm [proven at most] | where (x, r) | from nearer run end mm | stations cutting |");
+    println!(
+        "| face | tool | ext | against | deepest cut mm [proven at most] | where (x, r) | from nearer run end mm | stations cutting |"
+    );
     println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
     for n in &faces {
         let neighbours: BTreeSet<u32> = model
@@ -242,7 +254,28 @@ fn main() {
             .flat_map(|e| e.faces.iter().map(|f| f.0))
             .filter(|f| f != n)
             .collect();
+        let end_faces: Vec<u32> = ends_of
+            .iter()
+            .find(|(f, _)| f == n)
+            .map(|e| e.1.clone())
+            .unwrap_or_default();
         eprintln!("face {n}: neighbours {neighbours:?}");
+        for f in model
+            .faces
+            .iter()
+            .filter(|f| neighbours.contains(&f.id.0) || f.id.0 == *n)
+        {
+            let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+            for v in &f.tessellation.vertices {
+                let r = v.y.hypot(v.z);
+                lo = [lo[0].min(v.x), lo[1].min(r)];
+                hi = [hi[0].max(v.x), hi[1].max(r)];
+            }
+            eprintln!(
+                "  face {}: {:?} x {:.2}..{:.2} r {:.2}..{:.2}",
+                f.id.0, f.surface, lo[0], hi[0], lo[1], hi[1]
+            );
+        }
         let mut groups: Vec<(String, Geometry)> = neighbours
             .iter()
             .map(|f| {
@@ -266,89 +299,154 @@ fn main() {
         for (name, profile) in &tools {
             let ct = ConvexTool::new(profile).unwrap();
             for ext in &exts {
-            let settings = Settings {
-                tolerance: 0.01,
-                stock_to_leave: 0.0,
-                tip_extension: *ext,
-                max_material_left: 0.1,
-                reverse_tip_end: false,
-                reverse_direction: false,
-            };
-            let path = match swarf::face_path(
-                face,
-                profile,
-                rotary,
-                &settings,
-                &RegionConstraint::default(),
-                &ctx,
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    println!("| {n} | {name} | {ext} | refused: {e} |");
-                    continue;
-                }
-            };
-            let mut stations: Vec<Station> = Vec::new();
-            let mut run_len = Vec::new();
-            for (ri, run) in path.runs.iter().enumerate() {
-                let poses: Vec<ToolPose> = run
-                    .iter()
-                    .map(|p| ToolPose { tip: p.tip, axis: p.axis, a: p.a })
-                    .collect();
-                let sense = sense_of(&poses);
-                let mut s = 0.0;
-                for (i, p) in run.iter().enumerate() {
-                    stations.push(Station { tip: p.tip, axis: p.axis.get(), s, run: ri });
-                    if let Some(q) = run.get(i + 1) {
-                        let d = p.contact.distance(q.contact);
-                        for k in 1..4 {
-                            let f = f64::from(k) / 4.0;
-                            let (tip, axis) = on_move(&poses[i], &poses[i + 1], sense, f);
-                            stations.push(Station { tip, axis, s: s + d * f, run: ri });
+                let settings = Settings {
+                    tolerance: 0.01,
+                    stock_to_leave: 0.0,
+                    tip_extension: *ext,
+                    max_material_left: 0.1,
+                    reverse_tip_end: false,
+                    reverse_direction: false,
+                };
+                let path = match swarf::face_path(
+                    face,
+                    profile,
+                    rotary,
+                    &settings,
+                    &RegionConstraint::default(),
+                    &ctx,
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        println!("| {n} | {name} | {ext} | refused: {e} |");
+                        continue;
+                    }
+                };
+                let mut stations: Vec<Station> = Vec::new();
+                let mut run_len = Vec::new();
+                for (ri, run) in path.runs.iter().enumerate() {
+                    let poses: Vec<ToolPose> = run
+                        .iter()
+                        .map(|p| ToolPose {
+                            tip: p.tip,
+                            axis: p.axis,
+                            a: p.a,
+                        })
+                        .collect();
+                    let sense = sense_of(&poses);
+                    let mut s = 0.0;
+                    for (i, p) in run.iter().enumerate() {
+                        stations.push(Station {
+                            tip: p.tip,
+                            axis: p.axis.get(),
+                            s,
+                            run: ri,
+                        });
+                        if let Some(q) = run.get(i + 1) {
+                            let d = p.contact.distance(q.contact);
+                            for k in 1..4 {
+                                let f = f64::from(k) / 4.0;
+                                let (tip, axis) = on_move(&poses[i], &poses[i + 1], sense, f);
+                                stations.push(Station {
+                                    tip,
+                                    axis,
+                                    s: s + d * f,
+                                    run: ri,
+                                });
+                            }
+                            s += d;
                         }
-                        s += d;
+                    }
+                    run_len.push(s);
+                }
+                for (gname, geom) in &groups {
+                    let obs: Vec<contact::Bounded> = stations
+                        .par_iter()
+                        .map(|st| geom.clearance(&ct, st.tip, st.axis, &settings_c).unwrap())
+                        .collect();
+                    let mut worst = (f64::INFINITY, f64::INFINITY, None, 0.0);
+                    let mut cutting = 0;
+                    for (st, b) in stations.iter().zip(&obs) {
+                        if b.upper < -0.001 {
+                            cutting += 1;
+                        }
+                        if b.upper < worst.0 {
+                            let from_end = st.s.min(run_len[st.run] - st.s);
+                            worst = (b.upper, b.lower, b.at, from_end);
+                        }
+                    }
+                    if std::env::var("DUMP").is_ok_and(|v| gname.contains(&v)) {
+                        for (st, b) in stations.iter().zip(&obs).step_by(8) {
+                            let at = b.at.unwrap_or(Point3::ORIGIN);
+                            eprintln!(
+                                "{name} {gname} s={:.2} tip=({:.2},{:.2},{:.2}) axis=({:.3},{:.3},{:.3}) c={:.3} at=({:.2},{:.2},{:.2})",
+                                st.s,
+                                st.tip.x,
+                                st.tip.y,
+                                st.tip.z,
+                                st.axis.x,
+                                st.axis.y,
+                                st.axis.z,
+                                b.upper,
+                                at.x,
+                                at.y,
+                                at.z
+                            );
+                        }
+                    }
+                    if worst.0 < 0.001 {
+                        let at = worst.2.unwrap_or(Point3::ORIGIN);
+                        println!(
+                            "| {n} | {name} | {ext} | {gname} | {:.3} [{:.3}] | ({:.2}, {:.2}) | {:.2} | {cutting}/{} |",
+                            -worst.0,
+                            -worst.1,
+                            at.x,
+                            at.y.hypot(at.z),
+                            worst.3,
+                            stations.len()
+                        );
                     }
                 }
-                run_len.push(s);
-            }
-            for (gname, geom) in &groups {
-                let obs: Vec<contact::Bounded> = stations
-                    .par_iter()
-                    .map(|st| geom.clearance(&ct, st.tip, st.axis, &settings_c).unwrap())
+                // How far back from each run end the tool first clears the end
+                // faces (those across the end rulings), within the tolerance.
+                let ends: Vec<&Geometry> = groups
+                    .iter()
+                    .filter(|(g, _)| end_faces.iter().any(|f| *g == format!("face {f}")))
+                    .map(|g| &g.1)
                     .collect();
-                let mut worst = (f64::INFINITY, f64::INFINITY, None, 0.0);
-                let mut cutting = 0;
-                for (st, b) in stations.iter().zip(&obs) {
-                    if b.upper < -0.001 {
-                        cutting += 1;
-                    }
-                    if b.upper < worst.0 {
-                        let from_end = st.s.min(run_len[st.run] - st.s);
-                        worst = (b.upper, b.lower, b.at, from_end);
-                    }
-                }
-                if worst.0 < 0.001 {
-                    let at = worst.2.unwrap_or(Point3::ORIGIN);
+                let radius = profile.cutting_radius();
+                for (ri, len) in run_len.iter().enumerate() {
+                    let mine: Vec<&Station> = stations.iter().filter(|s| s.run == ri).collect();
+                    let cut: Vec<f64> = mine
+                        .par_iter()
+                        .map(|st| {
+                            ends.iter()
+                                .map(|g| {
+                                    g.clearance(&ct, st.tip, st.axis, &settings_c)
+                                        .unwrap()
+                                        .upper
+                                })
+                                .fold(f64::INFINITY, f64::min)
+                        })
+                        .collect();
+                    let bad = |c: &f64| *c < -0.01;
+                    let start = mine
+                        .iter()
+                        .zip(&cut)
+                        .filter(|(_, c)| bad(c))
+                        .map(|(s, _)| s.s)
+                        .filter(|v| *v < 0.5 * len)
+                        .fold(0.0, f64::max);
+                    let end = mine
+                        .iter()
+                        .zip(&cut)
+                        .filter(|(_, c)| bad(c))
+                        .map(|(s, _)| len - s.s)
+                        .filter(|v| *v < 0.5 * len)
+                        .fold(0.0, f64::max);
                     println!(
-                        "| {n} | {name} | {ext} | {gname} | {:.3} [{:.3}] | ({:.2}, {:.2}) | {:.2} | {cutting}/{} |",
-                        -worst.0, -worst.1, at.x, at.y.hypot(at.z), worst.3, stations.len()
+                        "| {n} | {name} | {ext} | run {ri} of {len:.2} mm: stop short at start / end to clear faces {end_faces:?} (tool radius {radius}) | {start:.2} / {end:.2} | | | |"
                     );
                 }
-            }
-            // How far back from each run end the tool first clears every neighbour.
-            for (ri, len) in run_len.iter().enumerate() {
-                let nb: Vec<&Geometry> = groups[..groups.len() - 1].iter().map(|g| &g.1).collect();
-                let clear = |st: &Station| nb.iter().all(|g| g.clearance(&ct, st.tip, st.axis, &settings_c).unwrap().upper >= -0.001);
-                let mine: Vec<&Station> = stations.iter().filter(|s| s.run == ri).collect();
-                let start = mine.iter().find(|s| clear(s)).map(|s| s.s);
-                let end = mine.iter().rev().find(|s| clear(s)).map(|s| len - s.s);
-                println!(
-                    "| {n} | {name} | {ext} | run {ri} of {:.2} mm: back from start / end to clear neighbours | {} / {} | | | |",
-                    len,
-                    start.map_or("never".into(), |v| format!("{v:.2}")),
-                    end.map_or("never".into(), |v| format!("{v:.2}"))
-                );
-            }
             }
         }
     }
