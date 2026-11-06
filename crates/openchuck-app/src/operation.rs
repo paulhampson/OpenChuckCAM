@@ -475,12 +475,17 @@ pub(crate) fn generate_with_part(
     } else {
         let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
-        crate::workholding::check_for_tool(
+        // An operation with no region checks every tab before it is made; one
+        // limited by selections checks, once it is made, only the tabs its
+        // path can touch (issue #548; decision 0523, amending 0494 item 2).
+        let limited = operation.selection_refs().next().is_some();
+        crate::workholding::check_for_tool_where(
             &setup.workholding,
             setup.stock.as_ref(),
             &part,
             2.0 * profile.cutting_radius(),
             &snapshot.name,
+            &|_| !limited,
         )
         .map_err(|e| missing(operation, &e.to_string()))?;
         let labelled =
@@ -776,6 +781,24 @@ pub(crate) fn generate_with_part(
             context,
         )?
     };
+    // The tabs a limited operation's path can touch, against its tool
+    // (issue #548; decision 0523): a tab it never comes near does not
+    // refuse it; one it does is refused as before (decision 0494).
+    if operation.selection_refs().next().is_some()
+        && !setup.workholding.tabs.is_empty()
+        && let Some(part) = openchuck_geom::part_extent(mesh)
+    {
+        let reach = tool_reach(&profile, &snapshot.tool);
+        crate::workholding::check_for_tool_where(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            2.0 * profile.cutting_radius(),
+            &snapshot.name,
+            &|tab| crate::workholding::path_reaches_tab(&path.group, tab, reach),
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+    }
     // A path carried past the stock is checked against the machine's travel
     // along the rotary axis before it is accepted (OP-24; decision 0212
     // part B item 5).

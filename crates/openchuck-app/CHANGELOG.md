@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- FLUTE-TABS (issue #548, decision 0523, proposed): an operation limited by selections is checked against the setup's tabs (decision 0494's length rule and the end-zone rule) only where its generated path can touch them, so a tab it never comes near no longer refuses it; a whole-part operation is checked before generation as before. New `workholding::check_for_tool_where` and `workholding::path_reaches_tab`; `check_for_tool` is unchanged.
 - LARGEPATH pull request 2 (#470, decision 0510 item 5): `Application::export_checks` keeps the cache keys of the project per revision and those of a run's project with that run, instead of making both on every call; the export dialog asks every frame (59 ms a frame on the owner's carving). The same checks; no API change.
 
 - UIBUGS (issue #463 item 3, decision 0518): the Setup step's health reads "Needs attention" (reason "Set the stock" or "Choose the part") for a setup missing only its stock or part, in place of "Error to fix"; a missing tool or an operation's missing value is still an error. `overview()` output only; no API change; the values stay in the list of required values and generation still refuses them.

@@ -1,0 +1,83 @@
+# 0523: A tab is checked against an operation's tool only where the operation's path can touch it; the audit of checks that ignore an operation's region (OP-21, NFR-07, NFR-12; issue #548; lane FLUTE-TABS)
+
+- **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026. Only the project owner accepts a record (decision 0049).
+- **Date:** 6 Nov 2026.
+- **Number:** 0523 is provisional; the Merge Manager assigns the number at release.
+- **Issue:** [#548](https://github.com/paulhampson/OpenChuckCAM/issues/548) (sev1). Related: [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (decision 0522), [#438](https://github.com/paulhampson/OpenChuckCAM/issues/438) (decision 0494).
+- **Amends:** [0494](0494-tab-length-is-checked-against-the-tool.md) item 2 ("Where it applies, unchanged"), for operations limited by selections. Its rule (item 1) is unchanged.
+- **Open items:** OI-2045 to OI-2049 new (provisional numbers): the audit's follow-ups, below. No project schema change; no library change (the application only).
+
+## Context
+
+The owner's carving project (private; numbers only) could not be generated. 'Axial Finishing' stopped with "invalid workholding: tab 1 is 5.000 mm long along X, shorter than the tool 'Z1 V-bit 20 deg tip 0.3 shank 6' (6.000 mm)".
+
+- **The operation never reaches the tab.** Its selection set holds the part's side only, so the tool stays near the side's radius. The tab is 10 mm across on the axis, at X -5 to 0 between the 5 mm grip and the part.
+- **Why it was refused anyway.** Decision 0494's rule (a tab shorter along X than the tool is wide is refused) was checked before generation for every operation on the setup, whatever it cuts.
+- **A second check in the same place.** The zone check (a tab not wholly in the head or the tail zone) also refused every operation, though it is already a setup warning.
+
+The owner asked that the check apply only where the operation can touch the tab, and for an audit of every check for the same fault.
+
+The fault was reproduced on a public part: a cone in round stock with a 4 mm tab, 6 mm across, between a grip and the part, and a 6 mm ball. Axial finishing limited to the cone's side was refused.
+
+## Decision
+
+1. **Whole-part operations: unchanged.** An operation with no selections (no machine, boundary, avoid or check set) is checked against every tab before it is generated, as 0494 says. It may cut anywhere the part and the tabs are, including down beside a tab.
+2. **Limited operations: checked on their path.** An operation limited by selections is generated first. It is then checked only against the tabs its path can touch. That covers both rules of the gate: the tab's length against the tool (0494) and a tab outside the end zones (0035, OI-180). A tab it can touch is refused with the same words as before; one it cannot touch does not refuse it.
+3. **What "can touch" means (`workholding::path_reaches_tab`).** Each fed move of the path is read from the pose before it: cuts, plunges, leads and fed links. Rapids are not cuts.
+   - **Why the test is sound.** Every tool profile rises from its tip, so the tool's body is at or above its tip along the tool axis, and within its largest radius (cutting profile or shank) of that axis, which is square to the rotary axis. The tab lies within its farthest radius of the rotary axis: half its largest diameter on the axis, or its offset plus that around the axis.
+   - **The test.** A move can touch the tab only where its X range comes within the tool's largest radius of the tab, and its lower end is no higher above the rotary axis, along the tool axis, than the tab's farthest radius plus 0.01 mm of rounding. The test reads the move's X range and its lower end together, so it may count a move that does not touch. It never misses one that does.
+   - **Edge cases.** A pose that is not a finite number counts as touching (NFR-07). A tab layout the check does not know is taken as reaching any height.
+4. **Still refused where it is right (NFR-12).** A limited operation whose path comes down beside or over a tab shorter than its tool is still refused. So is any whole-part operation, as before.
+5. **Recommendation: keep it a refusal.** With its scope narrowed, the rule refuses only operations whose path really reaches the tab. There a tool wider than the gap cannot cut it to shape, which is 0494's reason (its option C, a warning, was declined). Whether it should also become a warning, as the flute check did (decision 0522), is the owner's call.
+6. **The cost.** A limited operation is refused after it is generated, not before. A refusal therefore costs a generation, as a refusal from any strategy does.
+
+## The audit (issue #548 item 2)
+
+Every check, refusal or warning that might read the whole part, the whole stock or every tab instead of the operation's region. "Region" means the operation's machine, boundary, avoid and check sets, the held regions and tabs, and its tool.
+
+| # | Check (code) | Decision | Reads now | Kind | Ignores the region? | Risk | Proposed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Tab outside the end zones, in the generation gate (`workholding::check_for_tool`) | 0035, OI-180 | Every tab of the setup | Refusal | Yes | Blocks every operation for a setup fault that is already a setup warning | **Fixed here** (item 2): a limited operation counts only the tabs it can touch |
+| 2 | Tab shorter than the tool (`check_for_tool`) | 0494 | Every tab | Refusal | Yes | Blocks generation (#548) | **Fixed here** (items 1 to 3) |
+| 3 | The same rule's notes in "Check against the part and tools", the overview and the export notes (`narrow_tab_notes`, `findings_of`) | 0494 | Every operation's tool against every tab | Warning | Yes | Noise; disagrees with generation now | OI-2045: give the setup check the same scope; it needs the path, or a pre-generation bound of the region |
+| 4 | No room to cut beside a tab (`uncleared_tab_notes`) | 0503 | Each tab zone, for whole-part operations | Note | Partly: it is skipped only for machine selections (`operation.selections`), not for boundary, avoid or check sets | Noise | OI-2046: gate it on all of an operation's sets, and read the zone against the region (with OI-2011) |
+| 5 | Free-end facing and its flute refusal (`finishing::free_ends`) | 0344 item 7, 0509 item 4 | The part's free ends over the whole part; the stock's depth from its farthest material anywhere for stock earlier operations left | Refusal, and it adds cuts | Yes: a selection-limited helical, axial or rest operation still faces both ends of the part, cutting rings outside its region, and is refused for an end it was not asked to cut | Blocks generation (the owner's #547 project, Rest Machining); changes the path outside the region | OI-2047: face only the free ends within the operation's region (or none when it has one); the refusal itself waits on the owner's choice (A, B or C, put on 6 Nov 2026; option B built on `claude/flute-tabs-pr1b-free-ends`) |
+| 6 | The free end's cut-free and held-by-nothing warnings | 0344 item 8, 0500 | The rings of row 5 | Warning | Yes, through row 5 | Noise | With OI-2047 |
+| 7 | The flute check (`flutes::check_path`) | 0509, 0522 | The operation's own path (region respected); the stock's bound from its farthest material anywhere | Warning (0522) | Partly: the path is local, the bound is global | Noise only now | OI-2025, #540; PR3 of this lane narrows the bound to the stock within the tool's reach |
+| 8 | End facing's depth within the flutes (`facing/end/routing.rs`) | 0504, 0252 | Its own coverage at the target X; the setup's original stock, not what earlier operations left | Refusal | No, for the region; the stock is the whole original stock on purpose (0504) | Conservative after roughing | OI-2048: read the stock earlier operations left (low priority) |
+| 9 | Selection reach notes (`selection_reach_notes`) | SET-09, OP-21 | The operation's machine triangle sets against the held and tab solids | Note | No; but it is skipped for STEP face sets | A missing note, not a false refusal | OI-2049: cover STEP face sets |
+| 10 | Stepdown past the flutes: roughing and Finishing layers | 0509, 0345 | The parameter and the tool | Refusal | No geometry to narrow | None | None |
+| 11 | Keep-out of the held regions (`keep_out_of`, `check_clear`) | 0161 | The operation's own moves | Path limit; refusal of a move into it | No | None | None |
+| 12 | Clearance and tool length (`effective_clearance`, `check_setup`) | 0495, 0318 | The setup and each tool | Setup warning | No (setup-wide by nature) | None | None |
+| 13 | Swarf's set checks (`watched_warnings`, `swarf_compatibility`) | 0176, 0111 | The operation's own sets | Warnings, refusals | No | None | None |
+| 14 | Unreached areas, simultaneous finishing (`hidden.rs`, `in_scope`) | 0368 | Filtered by the operation's sets | Warning | No | None | None |
+| 15 | Unreached walls, rest machining | 0505 | The whole part; rest machining does not take a region (selections are refused) | Warning | Not applicable | None | None |
+| 16 | Workholding solid errors (`labelled_solids`) | SET-09 | The whole workholding | Refusal | Formally, but these are bad setup data the target needs | None | None |
+
+## Consequences
+
+- The owner's #548 project: 'Axial Finishing' is no longer refused for the tab; see the pull request for what follows.
+- A limited operation over a short tab is refused after it is generated, with the same message as before.
+- The setup's own notes (row 3) still name every tool against every tab until OI-2045, so the setup check may say a tab is shorter than a tool whose limited operation generates.
+
+## Verification
+
+Unit tests (`crates/openchuck-app/src/workholding.rs`):
+
+- `req_op_21_a_path_reaches_a_tab_only_within_the_tool_and_the_tab`, on a tab 6 mm across (radius 3) at X 80 to 84 with a tool of radius 3:
+  - a cut over the tab 10 mm from the axis does not touch it;
+  - a plunge to the tab's top within the tool's radius along X touches it (X 77.1 and 86.9, height 3);
+  - past the tool's radius along X it does not, even at the axis (X 76.9 and 87.1);
+  - over the tab but 0.1 mm above it, it does not;
+  - a low fed move across the tab touches it, though neither end is within reach;
+  - a rapid is not read, and a fed move after a rapid is read from where the rapid left the tool;
+  - a tab around the axis reaches its offset plus its radius (6.9 touches, 7.1 does not).
+- `req_op_21_a_tab_the_operation_cannot_touch_is_not_refused`: `check_for_tool_where` leaves out a tab its filter does not keep, for both rules, and refuses with the same words when it keeps it.
+
+Application tests (`crates/openchuck-app/tests/tab_scope.rs`), on a cone, radius 10 to 5 and X 0 to 30, in round stock from X -12 to 42 gripped 4 mm at its start. The tab is on the axis from X -4 to 0, 6 mm across, and the tool is a 6 mm ball:
+
+- `req_op_21_a_whole_part_operation_with_a_tab_shorter_than_the_tool_is_still_refused`: unchanged.
+- `req_op_21_req_nfr_12_an_operation_on_the_side_above_a_short_tab_is_made`: the owner's case, axial finishing limited to the whole side. It failed on the code before.
+- `req_op_21_an_operation_far_from_a_short_tab_is_made`: limited to the side from X 10 to 25. It failed on the code before.
+
+The tests of 0494 are unchanged and pass.

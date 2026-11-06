@@ -90,6 +90,8 @@ mod step_accuracy_timing;
 mod step_accuracy_workspace;
 #[path = "swarf.rs"]
 mod swarf;
+#[path = "tab_scope.rs"]
+mod tab_scope;
 #[path = "tab_zone_clearance.rs"]
 mod tab_zone_clearance;
 #[path = "tool_edit.rs"]
