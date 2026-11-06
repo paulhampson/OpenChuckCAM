@@ -1,6 +1,6 @@
 # 0522: The flute check of 0509 warns instead of refusing, in every case, and names the operation and its tool; a refusal from generation names its operation (TL-04, NFR-07, NFR-12; issue #547; lane FLUTE-TABS)
 
-- **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026, on the project owner's decision of 6 Nov 2026, relayed by the coordinator (decision 0049): "the flute-depth check is too conservative; until detailed collision detection exists it is downgraded from a refusal to a warning, all cases" (the owner chose "all cases become warnings" over keeping the exact box and round cases as refusals). Only the project owner accepts a record.
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049), after reading it in full. Proposed by lane FLUTE-TABS on 6 Nov 2026, on the owner's decision of 6 Nov 2026, relayed: "the flute-depth check is too conservative; until detailed collision detection exists it is downgraded from a refusal to a warning, all cases" (the owner chose "all cases become warnings" over keeping the exact box and round cases as refusals).
 - **Date:** 6 Nov 2026.
 - **Number:** 0522, reserved by the Merge Manager on 6 Nov 2026 (first drafted as 0520); OI-2044 likewise (OI-2043 is reserved for lane LARGEPATH).
 - **Issue:** [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (sev1). Related: [#530](https://github.com/paulhampson/OpenChuckCAM/issues/530), [#540](https://github.com/paulhampson/OpenChuckCAM/issues/540).
@@ -44,7 +44,8 @@ The owner's decision: the check is too conservative to block generation. Until t
    - Finishing layers' Stepdown past the flutes (0345);
    - Facing (0252, 0504);
    - the free-end turn of 0344 item 7, which reads the same measure. Whether it should warn too (and then face the end or leave it) was put to the owner on 6 Nov 2026; until then it is a refusal, and its change, if chosen, follows in a pull request of its own.
-6. **Not in this record.**
+6. **The check reads the stock's farthest radius once.** The simulation's stock works out its farthest radius by reading every column, and the check asked for it at every reading. On the owner's project that was nearly all of the 212 s the check took for one operation. It is now read once a check and passed down, which takes the check to 0.027 s there. Nothing else changes.
+7. **Not in this record.**
    - Narrowing the bound to the stock within the tool's reach, so the warning is not noise (#547 part 2): a later pull request of this lane. Its prototype cost about 710 s for the check alone on the owner's project in a release build, so it is reworked first.
    - Running a cheap check before the long generation: an option, less urgent now that the check does not block.
 
