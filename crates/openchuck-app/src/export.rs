@@ -182,8 +182,22 @@ impl ExportChecks {
 /// before it, since the run was made. This is the same key the pipeline cache
 /// uses (architecture section 6), so a change that would regenerate an
 /// operation marks it here. Model file contents are not compared.
+#[cfg(test)]
+thread_local! {
+    static KEYS_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread made the cache keys of a project for the
+/// export checks.
+#[cfg(test)]
+pub(crate) fn keys_made() -> usize {
+    KEYS_MADE.with(std::cell::Cell::get)
+}
+
 /// The cache keys of `project`'s enabled operations, in machining order.
 fn keys(project: &Project) -> Result<Vec<(OperationId, crate::cache::Key)>, AppError> {
+    #[cfg(test)]
+    KEYS_MADE.with(|c| c.set(c.get() + 1));
     let files = ModelFiles::default();
     let mut previous = None;
     let mut out = Vec::new();
@@ -193,6 +207,16 @@ fn keys(project: &Project) -> Result<Vec<(OperationId, crate::cache::Key)>, AppE
         previous = Some(key);
     }
     Ok(out)
+}
+
+/// The cache keys of a project for the export checks, or why they could not
+/// be made: what [`crate::Application`] keeps per revision of its project
+/// and per run (issue #470).
+pub(crate) type KeysAnswer = Result<Vec<(OperationId, crate::cache::Key)>, String>;
+
+/// The keys of `project` as a [`KeysAnswer`].
+pub(crate) fn keys_answer(project: &Project) -> KeysAnswer {
+    keys(project).map_err(|e| e.to_string())
 }
 
 /// Whether every operation `run` holds is still in `project`, enabled, and
@@ -264,9 +288,22 @@ pub fn simulation_out_of_date(project: &Project, run: &Regeneration) -> Option<S
 fn stale_operations(
     project: &Project,
     run: &Regeneration,
-) -> Result<BTreeSet<OperationId>, AppError> {
-    let then = keys(&run.project)?;
-    let now = keys(project)?;
+) -> Result<BTreeSet<OperationId>, String> {
+    stale_from(&keys_answer(project), &keys_answer(&run.project), run)
+}
+
+/// The operations whose result in `run` is out of date, from the keys of the
+/// project as it is (`now`) and of the project the run was made from
+/// (`then`).
+pub(crate) fn stale_from(
+    now: &KeysAnswer,
+    then: &KeysAnswer,
+    run: &Regeneration,
+) -> Result<BTreeSet<OperationId>, String> {
+    let (now, then) = (
+        now.as_ref().map_err(Clone::clone)?,
+        then.as_ref().map_err(Clone::clone)?,
+    );
     // An operation the run did not make (a run up to an earlier operation,
     // decision record 0117) is stale too: it is not in the toolpath.
     let made = |id: &OperationId| run.groups.iter().any(|g| g.operation == *id);
@@ -289,6 +326,20 @@ fn stale_operations(
     Ok(stale)
 }
 
+/// [`export_checks_with`] with every key made afresh: what the kept
+/// answers of [`crate::Application::export_checks`] must equal (issue #470).
+#[cfg(test)]
+pub(crate) fn export_checks(
+    project: &Project,
+    run: Option<&Regeneration>,
+    posted: Option<&Regeneration>,
+    last_error: Option<&str>,
+) -> ExportChecks {
+    export_checks_with(project, run, posted, last_error, |run| {
+        stale_operations(project, run)
+    })
+}
+
 /// Works out the checks before writing G-code (GC-15).
 ///
 /// `run` is the latest regeneration the user has, if any; `posted` a run made
@@ -300,11 +351,15 @@ fn stale_operations(
 /// file that failed its own checks (gates 1 and 2) blocks too: the user
 /// must not be offered a file the application itself knows disagrees with
 /// the toolpath (decision record 0071 item 4).
-pub fn export_checks(
+///
+/// `stale` gives the operations of a run that are out of date, so the
+/// application can answer from the keys it keeps (issue #470).
+pub(crate) fn export_checks_with(
     project: &Project,
     run: Option<&Regeneration>,
     posted: Option<&Regeneration>,
     last_error: Option<&str>,
+    stale: impl FnOnce(&Regeneration) -> Result<BTreeSet<OperationId>, String>,
 ) -> ExportChecks {
     let mut out = ExportChecks::default();
     let mut push = |level, text: String| out.checks.push(Check { level, text });
@@ -329,7 +384,7 @@ pub fn export_checks(
         ),
         None => {}
         Some(run) => {
-            match stale_operations(project, run) {
+            match stale(run) {
                 Ok(stale) => {
                     for operation in &enabled {
                         if stale.contains(&operation.id) {

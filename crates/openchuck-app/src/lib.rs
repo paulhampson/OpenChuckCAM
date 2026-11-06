@@ -1892,7 +1892,18 @@ impl Application {
         posted: Option<&Regeneration>,
         last_error: Option<&str>,
     ) -> ExportChecks {
-        export::export_checks(&self.document.project, run, posted, last_error)
+        // The keys are kept per revision of the project and per run: the
+        // export dialog asks every frame (issue #470).
+        export::export_checks_with(&self.document.project, run, posted, last_error, |run| {
+            let now = self.memo.export_keys.get(self.revision, || {
+                export::keys_answer(&self.document.project)
+            });
+            let then = self
+                .memo
+                .run_keys
+                .get(&run.project, || export::keys_answer(&run.project));
+            export::stale_from(&now, &then, run)
+        })
     }
 
     /// The post in use, if one is chosen.

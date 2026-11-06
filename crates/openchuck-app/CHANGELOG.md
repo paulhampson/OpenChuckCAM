@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- LARGEPATH pull request 2 (#470, decision 0510 item 5): `Application::export_checks` keeps the cache keys of the project per revision and those of a run's project with that run, instead of making both on every call; the export dialog asks every frame (59 ms a frame on the owner's carving). The same checks; no API change.
+
 - UIBUGS (issue #463 item 3, decision 0518): the Setup step's health reads "Needs attention" (reason "Set the stock" or "Choose the part") for a setup missing only its stock or part, in place of "Error to fix"; a missing tool or an operation's missing value is still an error. `overview()` output only; no API change; the values stay in the list of required values and generation still refuses them.
 - VIEW-ORIENT (#535, decision 0512, accepted): the `SceneRole::AZero` mark is at the part's far end (the scene's end only when no part is readable), not at the stock's.
 - VIEW-ORIENT (#531, decision 0511, accepted): `SceneRole::AZero` marks A = 0 on the part (a line from the rotary axis along the model's up direction, and an "A0" label); the A+ arrow's start is labelled "A0".
