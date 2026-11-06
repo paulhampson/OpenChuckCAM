@@ -1449,8 +1449,8 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
     .unwrap();
     app.set_operation_selection(op, SelectionRole::Machine, set, true)
         .unwrap();
-    let said = "Only edge following follows chosen edges. Take the edge set 'Rims' out of the \
-                operation, or use edge following.";
+    let said = "Only edge following follows chosen edges, and face-flow finishing takes them as \
+                its guide. Take the edge set 'Rims' out of the operation, or use one of those.";
     let refusals = app.set_refusals(op);
     assert_eq!(refusals.len(), 1);
     assert_eq!(
