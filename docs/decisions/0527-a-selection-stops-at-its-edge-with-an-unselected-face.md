@@ -1,6 +1,6 @@
 # 0527: A selection stops at its edge with an unselected face (OP-02; issue #555; lane TABCUT)
 
-- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049), after reading it with the numbers. Proposed by lane TABCUT on 6 Nov 2026 and cut back to this one rule on the owner's clarification, relayed by the coordinator: "it's not particularly that it's a tab; the issue is it was cutting outside of a selected region".
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049), after reading it. Proposed by lane TABCUT on 6 Nov 2026 and cut back to this one rule on the owner's clarification, relayed by the coordinator: "it's not particularly that it's a tab; the issue is it was cutting outside of a selected region". The numbers were shown with it.
 - **Date:** 6 Nov 2026.
 - **Number:** 0527, the next after `main`'s highest (0526) under the owner's rule that decision numbers follow `main`. OI-2054, given by the coordinator (OI-2050 to OI-2053 are reserved for VIEWPERF and FACEFLOW). The draft also used OI-2055 and OI-2056; both are released unused.
 - **Issue:** [#555](https://github.com/paulhampson/OpenChuckCAM/issues/555) (sev1). Related: decisions [0522](0522-the-flute-check-warns.md) to [0524](0524-flute-check-reads-the-stock-in-the-tools-reach.md).
