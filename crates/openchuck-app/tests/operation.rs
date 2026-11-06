@@ -1348,7 +1348,7 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         .filter(|c| c.unavailable.is_some())
         .map(|c| c.name.as_str())
         .collect();
-    assert_eq!(unavailable, ["swarf", "radial_drilling"]);
+    assert_eq!(unavailable, ["face_flow", "swarf", "radial_drilling"]);
     for c in &choices {
         if let Some(why) = &c.unavailable {
             assert!(

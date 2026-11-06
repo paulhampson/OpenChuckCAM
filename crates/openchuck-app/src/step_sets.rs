@@ -71,8 +71,8 @@ pub(crate) fn refusals(
         regions || name == openchuck_path::drill::NAME || name == openchuck_path::swarf::NAME;
     // Edge following follows its edge sets; face-flow finishing takes them as
     // the guide of the faces they bound (OP-28; decision 0525, D3).
-    let follows_edges = name == openchuck_path::edge_following::NAME
-        || name == openchuck_path::face_flow::NAME;
+    let follows_edges =
+        name == openchuck_path::edge_following::NAME || name == openchuck_path::face_flow::NAME;
     // Roughing leaves the largest of the sets' amounts wherever it cuts
     // (decision 0058); the others that take one cut each set to its own.
     let takes_set_stock = strategy.honours_leave_zones() || name == roughing::NAME;

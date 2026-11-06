@@ -1008,7 +1008,14 @@ fn contact_note(
     leave: f64,
 ) -> Option<String> {
     use openchuck_path::contact::ExactContact;
-    if [drill::NAME, swarf::NAME, edge_following::NAME, face_flow::NAME].contains(&name) {
+    if [
+        drill::NAME,
+        swarf::NAME,
+        edge_following::NAME,
+        face_flow::NAME,
+    ]
+    .contains(&name)
+    {
         return None;
     }
     let deflection = openchuck_types::brep::TessellationSettings::default().linear;
@@ -3759,8 +3766,7 @@ mod tests {
 
     fn floor_brep() -> BrepModel {
         use openchuck_types::brep::{
-            BrepEdge, BrepFace, BrepVertex, EdgeCurve, Frame, Surface, TrimLoop, UvPoint,
-            VertexId,
+            BrepEdge, BrepFace, BrepVertex, EdgeCurve, Frame, Surface, TrimLoop, UvPoint, VertexId,
         };
         use openchuck_types::geometry::Vec3;
         use openchuck_types::mesh::TriangleMesh;
@@ -3854,7 +3860,10 @@ mod tests {
         assert!(!path.group.segments.is_empty());
         let notes = path.notes.join("\n");
         // The longest sides tie at 30 mm: edge 0, the lower ID, is the guide.
-        assert!(notes.contains("face 0 is cut from its guide, edge 0"), "{notes}");
+        assert!(
+            notes.contains("face 0 is cut from its guide, edge 0"),
+            "{notes}"
+        );
         // Always on the exact faces: no Exact STEP surface contact note
         // (OP-27; the owner's D5, decision 0525).
         assert!(!notes.contains("tessellation"), "{notes}");
@@ -3874,7 +3883,10 @@ mod tests {
             .is_empty()
         );
         let notes = f.run().unwrap().notes.join("\n");
-        assert!(notes.contains("face 0 is cut from its guide, edge 2"), "{notes}");
+        assert!(
+            notes.contains("face 0 is cut from its guide, edge 2"),
+            "{notes}"
+        );
     }
 
     #[test]
@@ -3882,7 +3894,10 @@ mod tests {
         let f = face_flow_fixture();
         let operation = f.project.operation(f.operation).unwrap();
         let said = needs_faces(&f.project, operation).unwrap();
-        assert!(said.starts_with("Face-flow finishing needs a face set"), "{said}");
+        assert!(
+            said.starts_with("Face-flow finishing needs a face set"),
+            "{said}"
+        );
         let err = f.run().unwrap_err().to_string();
         assert!(err.contains("needs a face set"), "{err}");
         // On a mesh (STL) part it is blocked with the plain reason

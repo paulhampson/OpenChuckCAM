@@ -1461,8 +1461,7 @@ fn geometry_rows(
     sets: &[SelectionSetId],
     summaries: &[SelectionSummary],
 ) -> Vec<GeometryRow> {
-    if role != SelectionRole::Machine
-        || operation.strategy != openchuck_app::path::face_flow::NAME
+    if role != SelectionRole::Machine || operation.strategy != openchuck_app::path::face_flow::NAME
     {
         return vec![GeometryRow {
             label: role.name(),
@@ -1471,11 +1470,7 @@ fn geometry_rows(
             kinds: None,
         }];
     }
-    let is_edges = |id: &SelectionSetId| {
-        summaries
-            .iter()
-            .any(|s| s.id == *id && s.kind == "edges")
-    };
+    let is_edges = |id: &SelectionSetId| summaries.iter().any(|s| s.id == *id && s.kind == "edges");
     vec![
         GeometryRow {
             label: role.name(),

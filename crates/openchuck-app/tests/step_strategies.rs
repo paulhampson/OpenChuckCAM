@@ -849,7 +849,10 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
 
     // The guide is the longer blade root, the opposite side the other.
     let notes = out.notes.join("\n");
-    assert!(notes.contains("face 8 is cut from its guide, edge 39"), "{notes}");
+    assert!(
+        notes.contains("face 8 is cut from its guide, edge 39"),
+        "{notes}"
+    );
 
     // The ball rests on the floor at every point (its centre one radius
     // from it; where it also touches a blade wall within the tolerance the
@@ -865,8 +868,14 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
                 let centre = c.tip + rotary.tool_axis(c.a).get() * radius;
                 let on = floor.project(centre).unwrap();
                 let gap = on.point.distance(centre) - radius;
-                assert!(gap.abs() <= TOLERANCE + 0.001, "the ball is {gap} mm off the floor");
-                let (g, o) = (to_polyline(on.point, &guide), to_polyline(on.point, &opposite));
+                assert!(
+                    gap.abs() <= TOLERANCE + 0.001,
+                    "the ball is {gap} mm off the floor"
+                );
+                let (g, o) = (
+                    to_polyline(on.point, &guide),
+                    to_polyline(on.point, &opposite),
+                );
                 g / (g + o)
             })
             .collect();
@@ -898,7 +907,10 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
             check(c.tip, c.a);
         }
         for w in pass.points.windows(2) {
-            let (pa, pb) = (rotary.to_axis(w[0].tip, w[0].a), rotary.to_axis(w[1].tip, w[1].a));
+            let (pa, pb) = (
+                rotary.to_axis(w[0].tip, w[0].a),
+                rotary.to_axis(w[1].tip, w[1].a),
+            );
             let bb = openchuck_path::rotary::nearest_turn(w[1].a, w[0].a);
             for f in [0.25, 0.5, 0.75] {
                 let a = openchuck_types::units::Degrees(w[0].a.0 + (bb.0 - w[0].a.0) * f);
@@ -914,12 +926,19 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
             }
         }
     }
-    assert!(deepest >= -(TOLERANCE + 0.001), "cuts {deepest} mm into the blisk");
+    assert!(
+        deepest >= -(TOLERANCE + 0.001),
+        "cuts {deepest} mm into the blisk"
+    );
 
     // The strip along the blade walls the ball cannot reach is reported.
     assert!(!out.unreached.is_empty());
     let area: f64 = out.unreached.iter().map(|u| u.area).sum();
-    assert!(out.warnings.iter().any(|w| w.message.contains("cannot reach")));
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w.message.contains("cannot reach"))
+    );
     println!(
         "face-flow on the blisk floor: {} runs, {} points, {took:.2} s; {poses} poses checked, \
          deepest {deepest:.4} mm; unreached {} areas, {area:.1} mm2 ({:?})",

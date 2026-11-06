@@ -31,7 +31,9 @@ use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
 use openchuck_path::face_flow::FaceFlow;
 use openchuck_path::params::names;
-use openchuck_path::{AcceptAll, AnalyticStock, BrepSurface, ParameterValue, RotaryMapping, Strategy, StrategyInput};
+use openchuck_path::{
+    AcceptAll, AnalyticStock, BrepSurface, ParameterValue, RotaryMapping, Strategy, StrategyInput,
+};
 use openchuck_types::brep::{BrepModel, EdgeId, FaceId};
 use openchuck_types::geometry::{Aabb, Point3};
 use openchuck_types::ir::PathTags;
@@ -59,7 +61,11 @@ fn surface_bounds(model: &BrepModel) -> Aabb {
 fn placed(bytes: &[u8]) -> BrepModel {
     let cancel = CancelToken::new();
     let imported = StepImporter::new()
-        .import(bytes, &ImportOptions::default(), &JobContext::new(&cancel, &NoProgress))
+        .import(
+            bytes,
+            &ImportOptions::default(),
+            &JobContext::new(&cancel, &NoProgress),
+        )
         .unwrap();
     let ModelGeometry::Brep(model) = imported.geometry else {
         panic!("not a B-rep");
@@ -68,24 +74,41 @@ fn placed(bytes: &[u8]) -> BrepModel {
     let spans = [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z];
     let mut steps = Vec::new();
     if spans[2] > spans[0] && spans[2] > spans[1] {
-        steps.push(TransformStep::Rotate { axis: Axis::Y, angle: Degrees(90.0) });
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Y,
+            angle: Degrees(90.0),
+        });
     } else if spans[1] > spans[0] && spans[1] > spans[2] {
-        steps.push(TransformStep::Rotate { axis: Axis::Z, angle: Degrees(-90.0) });
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Z,
+            angle: Degrees(-90.0),
+        });
     }
     steps.push(TransformStep::CentreOnRotaryAxis);
     let turned = transform_brep(&model, &brep_placement(&model, &steps).unwrap()).unwrap();
-    steps.push(TransformStep::Translate { x: 10.0 - surface_bounds(&turned).min.x, y: 0.0, z: 0.0 });
+    steps.push(TransformStep::Translate {
+        x: 10.0 - surface_bounds(&turned).min.x,
+        y: 0.0,
+        z: 0.0,
+    });
     transform_brep(&model, &brep_placement(&model, &steps).unwrap()).unwrap()
 }
 
 fn main() {
     let mut it = std::env::args().skip(1);
-    let file = it.next().expect("usage: face_flow_blisk <file.step> [options]");
+    let file = it
+        .next()
+        .expect("usage: face_flow_blisk <file.step> [options]");
     let (mut faces, mut guide) = (vec![8u32], Vec::<u32>::new());
     let (mut ball, mut stepover, mut tolerance) = (3.0, 0.3, 0.01);
     while let Some(x) = it.next() {
         let mut v = || it.next().expect("a value");
-        let list = |s: String| s.split(',').filter(|x| !x.is_empty()).map(|x| x.parse().unwrap()).collect();
+        let list = |s: String| {
+            s.split(',')
+                .filter(|x| !x.is_empty())
+                .map(|x| x.parse().unwrap())
+                .collect()
+        };
         match x.as_str() {
             "--faces" => faces = list(v()),
             "--guide" => guide = list(v()),
@@ -104,7 +127,11 @@ fn main() {
             .triangles
             .iter()
             .map(|[a, b, c]| {
-                let (a, b, c) = (t.vertices[*a as usize], t.vertices[*b as usize], t.vertices[*c as usize]);
+                let (a, b, c) = (
+                    t.vertices[*a as usize],
+                    t.vertices[*b as usize],
+                    t.vertices[*c as usize],
+                );
                 0.5 * (b - a).cross(c - a).length()
             })
             .sum();
@@ -116,7 +143,12 @@ fn main() {
         for e in &face.edges {
             let edge = &model.edges[e.0 as usize];
             let len: f64 = edge.polyline.windows(2).map(|w| w[0].distance(w[1])).sum();
-            println!("  edge {}: {:.3} mm, faces {:?}", e.0, len, edge.faces.iter().map(|f| f.0).collect::<Vec<_>>());
+            println!(
+                "  edge {}: {:.3} mm, faces {:?}",
+                e.0,
+                len,
+                edge.faces.iter().map(|f| f.0).collect::<Vec<_>>()
+            );
         }
     }
     let tool = Tool {
@@ -133,16 +165,34 @@ fn main() {
     let machine = MachineProfile::example_x_rotary();
     let surface = BrepSurface::new(&model).unwrap();
     let b = surface_bounds(&model);
-    let radius = b.max.y.abs().max(b.min.y.abs()).max(b.max.z.abs()).max(b.min.z.abs()) + 1.0;
-    let stock = AnalyticStock::Cylinder { radius, x_start: b.min.x - 1.0, x_end: b.max.x + 1.0 };
-    let tags = PathTags { operation: "op".into(), setup: "setup".into(), tool: "tool".into() };
+    let radius = b
+        .max
+        .y
+        .abs()
+        .max(b.min.y.abs())
+        .max(b.max.z.abs())
+        .max(b.min.z.abs())
+        + 1.0;
+    let stock = AnalyticStock::Cylinder {
+        radius,
+        x_start: b.min.x - 1.0,
+        x_end: b.max.x + 1.0,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
     let input = StrategyInput {
         surface: &surface,
         stock: &stock,
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(&machine),
-        clearance: Clearance { radius: Millimetres(radius + 5.0), safe_z: Millimetres(radius + 15.0) },
+        clearance: Clearance {
+            radius: Millimetres(radius + 5.0),
+            safe_z: Millimetres(radius + 15.0),
+        },
         max_feeds: machine.max_feeds,
         tags: &tags,
         entry_safety: None,
@@ -176,12 +226,24 @@ fn main() {
                 out.passes.len(),
                 start.elapsed().as_secs_f64()
             );
-            let a: Vec<f64> = out.passes.iter().flat_map(|p| p.points.iter().map(|c| c.a.0)).collect();
-            let (lo, hi) = a.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), x| (l.min(*x), h.max(*x)));
+            let a: Vec<f64> = out
+                .passes
+                .iter()
+                .flat_map(|p| p.points.iter().map(|c| c.a.0))
+                .collect();
+            let (lo, hi) = a
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), x| {
+                    (l.min(*x), h.max(*x))
+                });
             println!("A of the cut points: {lo:.1} to {hi:.1}");
             for p in out.passes.iter().take(3) {
                 let a: Vec<f64> = p.points.iter().map(|c| c.a.0).collect();
-                println!("  a pass: A {:.1} to {:.1}", a.iter().copied().fold(f64::INFINITY, f64::min), a.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+                println!(
+                    "  a pass: A {:.1} to {:.1}",
+                    a.iter().copied().fold(f64::INFINITY, f64::min),
+                    a.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+                );
             }
             for n in &out.notes {
                 println!("note: {n}");
