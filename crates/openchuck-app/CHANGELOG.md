@@ -3,6 +3,8 @@
 ## Unreleased
 
 - FLUTE-TABS (issue #548, decision 0523, accepted): a tab shorter than the tool (decision 0494) is warned of, not refused: the path is made, with a warning naming the tab, its X range and length and the tool's width (`workholding::TAB_LENGTH_LEAD`, `workholding::short_tab_warnings_where`). An operation limited by selections is checked against the setup's tabs (that rule, and the end-zone rule, which stays a refusal) only where its generated path can touch them (`workholding::path_reaches_tab`); a whole-part operation is checked against every tab before generation. `check_for_tool` and `check_for_tool_where` now check the end zones only (their tool arguments are gone).
+- LARGEPATH pull request 3 (#470, OI-2023): `Application::start_regenerate_with_post_and_plan`: the posting job also plans the files it will write (`planned_files` of its run) on its worker, so a front end does not plan them on its own thread when posting ends. New API; the same files and plan.
+
 - LARGEPATH pull request 2 (#470, decision 0510 item 5): `Application::export_checks` keeps the cache keys of the project per revision and those of a run's project with that run, instead of making both on every call; the export dialog asks every frame (59 ms a frame on the owner's carving). The same checks; no API change.
 
 - UIBUGS (issue #463 item 3, decision 0518): the Setup step's health reads "Needs attention" (reason "Set the stock" or "Choose the part") for a setup missing only its stock or part, in place of "Error to fix"; a missing tool or an operation's missing value is still an error. `overview()` output only; no API change; the values stay in the list of required values and generation still refuses them.
