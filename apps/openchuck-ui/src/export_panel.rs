@@ -86,6 +86,10 @@ struct Now {
     answers: Vec<(Arc<Project>, Option<bool>, Option<bool>)>,
 }
 
+/// A posting job: the run with the chosen post and the files it will write,
+/// planned on the job's worker (issue #470).
+type PostingJob = JobHandle<(Regeneration, Vec<PlannedFile>)>;
+
 /// The files made for a key.
 struct Files {
     key: Key,
@@ -147,7 +151,7 @@ pub struct ExportPanel {
     number_choice: NumberChoice,
     by_hand: Vec<(ToolId, String)>,
     /// The posting job, which plans its files on its worker (issue #470).
-    job: Option<(JobHandle<(Regeneration, Vec<PlannedFile>)>, Key)>,
+    job: Option<(PostingJob, Key)>,
     /// The key the last job was started for, so a failed one is not retried
     /// every frame.
     attempted: Option<Key>,
