@@ -166,7 +166,8 @@ pub(crate) struct FreeEnds {
 /// setup's own stock, when the note says the real blank must match it
 /// (OI-1394). Without a Stepdown, or on a stock of no known size, the face is
 /// not faced and a warning says why (C1, C2). A face deeper than the flutes
-/// refuses the operation (C3; OI-1396). Where
+/// is not faced either, and a warning says why (C3; decision record 0520,
+/// option B; it refused the operation before, OI-1396). Where
 /// the stock carries on past the ring the tool cuts, a warning says the
 /// stock there can be cut free (the owner's choice on OI-1390).
 pub(crate) fn free_ends(
@@ -272,8 +273,10 @@ pub(crate) fn free_ends(
         if !top.is_finite() || top <= 0.0 {
             continue;
         }
-        // Refused, not skipped (the owner's choice on OI-1396), at the switch
-        // the user acts on.
+        // Not faced, with a warning at the switch the user acts on (decision
+        // record 0520, option B; it was refused, the owner's choice on
+        // OI-1396): the rest of the path is made, and no turn is added whose
+        // depth is past the flutes.
         // The depth the flutes must reach, by the shared measure over the
         // tool's width at every half degree and between (decision record
         // 0509): a box corner between the readings above is not missed. The
@@ -290,18 +293,21 @@ pub(crate) fn free_ends(
             } else {
                 ("", "")
             };
-            return Err(PathError::Parameter {
-                name: parameter::FACE_FREE_ENDS.to_owned(),
-                reason: format!(
-                    "the end face at X {face:.3} has nothing beyond it and stock {up_to}{:.3} mm \
-                     deep beside it{bound}, more than the tool's {:.3} mm of flute, so the tool \
-                     cannot face it; {}. Use a tool with longer flutes, or turn off Face \
-                     free ends for this operation, or face it with Facing",
+            out.warnings.push(PathWarning {
+                message: format!(
+                    "the end face at X {face:.3} has nothing beyond it and is not faced: the \
+                     stock beside it is {up_to}{:.3} mm deep{bound}, more than the tool's \
+                     {:.3} mm of flute, so the shank may meet the stock; {}. Use a tool with \
+                     longer flutes, or face it with Facing, or turn off Face free ends for \
+                     this operation",
                     top.max(deepest),
                     input.tool.top(),
                     crate::flutes::stock_words(stock),
                 ),
+                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                requires_acknowledgement: false,
             });
+            continue;
         }
         // Layers at whole Stepdowns above the axis, the first the highest
         // below the material's top, the last on the axis.

@@ -1282,8 +1282,11 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
 }
 
 #[test]
-fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
-    // The face is 10 mm deep; a tool with 8 mm of flute cannot face it.
+fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_not_faced_and_warned() {
+    // The face is 10 mm deep; a tool with 8 mm of flute cannot face it. A
+    // warning, not a refusal (decision record 0520, option B): the rest of
+    // the path is made and that end is not faced, so no cut is added past
+    // the flutes.
     let job = free_end(true, 8.0);
     let tag = tags();
     let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
@@ -1297,21 +1300,35 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
     .into_iter()
     .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
     .collect();
-    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
-        .unwrap_err()
-        .to_string();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
+        .unwrap_or_else(|e| panic!("refused, not warned: {e}"));
     // Named at the switch the user acts on, with the face, the depth, the
     // flutes and each remedy (the owner's choice on OI-1396).
+    let warning = path
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("is not faced") && w.message.contains("of flute"))
+        .unwrap_or_else(|| panic!("no warning: {:?}", path.warnings));
+    assert_eq!(warning.parameter.as_deref(), Some("face_free_ends"));
+    let err = &warning.message;
     assert!(
-        err.contains("face_free_ends")
-            && err.contains("X 0.000")
+        err.contains("X 0.000")
             && err.contains("10.300 mm deep")
             && err.contains("8.000 mm of flute")
+            && err.contains("the shank may meet the stock")
             && err.contains("longer flutes")
             && err.contains("turn off Face free ends for this operation")
             && err.contains("Facing"),
         "{err}"
     );
+    // No turn at that end: it is left as earlier operations left it.
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(
+        turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-3),
+        "{:?}",
+        turns_in_place(&path)
+    );
+    assert!(!path.group.segments.is_empty());
 }
 
 #[test]
@@ -1362,7 +1379,7 @@ impl StockModel for Bounded {
 }
 
 #[test]
-fn req_nfr_07_req_nfr_12_a_free_end_refused_on_a_bound_says_it_is_a_bound() {
+fn req_nfr_07_req_nfr_12_a_free_end_warned_on_a_bound_says_it_is_a_bound() {
     // CodeRabbit on #534 (review of 6580f9b): where the free end's depth is
     // the bound from the stock's farthest radius (10.3 + 1 mm over the axis),
     // not a measure, the refusal says so rather than naming it as the stock's
@@ -1385,12 +1402,16 @@ fn req_nfr_07_req_nfr_12_a_free_end_refused_on_a_bound_says_it_is_a_bound() {
     .into_iter()
     .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
     .collect();
-    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
-        .unwrap_err()
-        .to_string();
+    let path = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
+        .unwrap_or_else(|e| panic!("refused, not warned: {e}"));
+    let err = path
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("is not faced") && w.message.contains("of flute"))
+        .map(|w| w.message.clone())
+        .unwrap_or_else(|| panic!("no warning: {:?}", path.warnings));
     assert!(
-        err.contains("face_free_ends")
-            && err.contains("up to 11.300 mm deep")
+        err.contains("up to 11.300 mm deep")
             && err.contains("a bound")
             && err.contains("8.000 mm of flute"),
         "{err}"
