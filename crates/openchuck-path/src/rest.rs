@@ -323,10 +323,10 @@ pub(crate) fn min_remaining_spec() -> ParameterSpec {
 pub struct RestMachining;
 
 impl Strategy for RestMachining {
-    /// Exact contacts on a STEP part: measured within the limits of OI-835
-    /// (decision 0277).
-    fn exact_contact(&self) -> bool {
-        true
+    /// Exact contacts on a STEP part for a ball-end tool, on by default:
+    /// measured within the limits of OI-835 (decision 0277).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Ball)
     }
 
     fn name(&self) -> &str {
@@ -342,7 +342,8 @@ impl Strategy for RestMachining {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(
+        crate::contact::with_switch(crate::contact::ExactContact::Ball, {
+            ParameterSchema::with_common(
             vec![
                 min_remaining_spec(),
                 ParameterSpec {
@@ -394,6 +395,7 @@ impl Strategy for RestMachining {
             .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
+        })
     }
 
     fn needs_earlier_operations(&self) -> bool {

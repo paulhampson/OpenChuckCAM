@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.0
+
+- **Family release (0.46.0, STEPALL-CLOSE; issue #351; decision 0526, accepted):** `openchuck-path`'s `Strategy::exact_contact` returns the kind of Exact STEP surface contact a strategy offers, a breaking change; no change to this crate.
+
 ## 0.39.0
 
 - **Family release (0.39.0, lane A-MOVES, issue #503; decision 0506, accepted):** gate 2 (`compare`, `compare_with_moves`) accepts IR poses part way along a fed pure-A block at exactly the same written X, Y and Z, in order; each is compared and timed as the part of the block that reaches it, and observers see that part. No API change.

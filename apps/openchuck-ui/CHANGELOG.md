@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- STEPALL-CLOSE (issue #351; decision 0526, accepted): the operation inspector shows *Exact STEP surface contact* in *Pattern and tolerance*, after *Tolerance*, for helical, indexed, rest, simultaneous and axial finishing and pencil clean-up on a STEP part, with a warning line under it when the tool cannot take it.
+
 - LARGEPATH pull request 3 (#470, OI-2023): the export dialog takes the file plan from the posting job instead of making it on the interface thread when posting ends (a frame of 200 ms on the CrankShaft model, up to 560 ms on the owner's carving). The same files.
 
 - LARGEPATH pull request 2 (#470, decision 0510 item 4): the Results tab keeps its lines, counts, Copy all text and whether the project has changed since the run, per run and revision of the project, instead of grouping every note on every frame it is shown (47 ms a frame for 59,044 notes on the owner's carving). The same lines and text.

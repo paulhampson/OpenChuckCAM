@@ -506,14 +506,20 @@ fn generate_unnamed(
         }
         _ => None,
     };
-    // A strategy that takes exact contacts drops its ball onto the exact
-    // faces of a STEP part (decision 0277); any other tool, and the other
-    // strategies, onto its tessellation, with face sets of its triangles to
-    // match.
+    // An operation whose Exact STEP surface contact is on drops a tool the
+    // setting applies to onto the exact faces of a STEP part (decisions 0277
+    // and 0526); any other tool, and the other strategies, onto its
+    // tessellation, with face sets of its triangles to match.
     let profile = snapshot.tool.profile()?;
+    let contact_on = openchuck_path::contact::is_on(strategy, &stored_values(operation));
+    // The tool is grown by the largest stock to leave, the operation's or a
+    // set's; a flat end so grown is a bull nose with no exact drop
+    // (OI-1350), and its contacts are on the tessellation, so the whole
+    // operation stays there, face sets as triangles (decision 0526).
+    let contact_leave = largest_leave(project, operation);
     let exact = placed.brep.is_some()
-        && strategy.exact_contact()
-        && openchuck_path::ball_radius(&profile).is_some();
+        && openchuck_path::contact::exact_drops(strategy, &stored_values(operation), &profile)
+        && !grown_has_no_exact_drop(strategy, &profile, contact_leave);
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
             Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
@@ -914,7 +920,13 @@ fn generate_unnamed(
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
     if placed.brep.is_some()
-        && let Some(note) = contact_note(registry_strategy, &operation.strategy, &profile)
+        && let Some(note) = contact_note(
+            registry_strategy,
+            &operation.strategy,
+            &profile,
+            contact_on,
+            contact_leave,
+        )
     {
         notes.push(note);
     }
@@ -966,51 +978,95 @@ fn generate_unnamed(
 
 /// The note on an operation of `strategy` (registered as `name`) on a STEP
 /// part that says which surface the tool was dropped on (decision 0209 item
-/// 4.4, OI-830; decision 0277): the exact faces, for a ball-end tool in a
-/// strategy that takes exact contacts, or the part's tessellation, made at
-/// the import's deflection, otherwise. `None` for the strategies that read
-/// the exact faces or edges themselves: radial drilling, swarf and edge
-/// following.
+/// 4.4, OI-830; decisions 0277 and 0526): the exact faces, when the
+/// operation's Exact STEP surface contact is on (`on`) and applies to the
+/// tool, or the part's tessellation, made at the import's deflection, and
+/// why. `None` for the strategies that read the exact faces or edges
+/// themselves: radial drilling, swarf and edge following.
 fn contact_note(
     strategy: &dyn Strategy,
     name: &str,
     profile: &openchuck_types::tool::RevolvedProfile,
+    on: bool,
+    leave: f64,
 ) -> Option<String> {
+    use openchuck_path::contact::ExactContact;
     if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
         return None;
     }
     let deflection = openchuck_types::brep::TessellationSettings::default().linear;
-    if name == pencil::NAME {
+    let ball = openchuck_path::ball_radius(profile).is_some();
+    let subject = if name == pencil::NAME {
+        format!(
+            "{} follows the STEP part's inside corners on its exact edges, and drops",
+            strategy.label()
+        )
+    } else {
+        format!("{} drops", strategy.label())
+    };
+    let tool = if ball {
+        "the ball-end tool"
+    } else {
+        "the tool"
+    };
+    let kind = strategy.exact_contact();
+    let grown = grown_has_no_exact_drop(strategy, profile, leave);
+    if on && !grown && kind.is_some_and(|k| k.supports(profile)) {
         return Some(format!(
-            "{} follows the STEP part's inside corners on its exact edges, and drops the tool \
-             on the part's tessellation, made at a deflection of {deflection} mm, not on its \
-             exact faces: dropping on the exact faces is not built yet for this strategy",
-            strategy.label(),
+            "{subject} {tool} on the STEP part's exact faces, to within {} mm, not on its \
+             tessellation; selected faces limit the cut as exact faces too",
+            openchuck_path::DROP_TOLERANCE
         ));
     }
-    if strategy.exact_contact() {
-        return Some(if openchuck_path::ball_radius(profile).is_some() {
-            format!(
-                "{} drops the ball-end tool on the STEP part's exact faces, to within {} mm, \
-                 not on its tessellation; selected faces limit the cut as exact faces too",
-                strategy.label(),
-                openchuck_path::DROP_TOLERANCE
-            )
-        } else {
-            format!(
-                "{} drops this tool on the STEP part's tessellation, made at a deflection of \
-                 {deflection} mm, not on its exact faces: dropping on the exact faces is built \
-                 for ball-end tools only",
-                strategy.label(),
-            )
-        });
-    }
+    let grown_why = format!(
+        "with a stock to leave of {leave} mm the tool grows into a shape that has no exact \
+         drop, so Exact STEP surface contact does not apply"
+    );
+    let why = match kind {
+        None => "dropping on the exact faces is not built yet for this strategy",
+        Some(ExactContact::Ball) if !ball => {
+            "dropping on the exact faces is built for ball-end tools only in this strategy"
+        }
+        Some(ExactContact::Outline) if !ExactContact::Outline.supports(profile) => {
+            "dropping on the exact faces is not built for this tool's shape (a bull nose, a \
+             flat end with stock to leave, a sharp V-bit or a concave profile)"
+        }
+        Some(_) if on && grown => grown_why.as_str(),
+        Some(_) => "Exact STEP surface contact is off for this operation",
+    };
     Some(format!(
-        "{} drops the tool on the STEP part's tessellation, made at a deflection of \
-         {deflection} mm, not on its exact faces: dropping on the exact faces is not built yet \
-         for this strategy",
-        strategy.label(),
+        "{subject} {tool} on the STEP part's tessellation, made at a deflection of \
+         {deflection} mm, not on its exact faces: {why}"
     ))
+}
+
+/// The largest stock to leave of `operation`: its own, as stored (none is
+/// 0), or a selection set's, whichever is larger. The tool is grown by it
+/// where it applies.
+fn largest_leave(project: &Project, operation: &Operation) -> f64 {
+    let own = match operation.parameters.get(names::STOCK_TO_LEAVE) {
+        Some(openchuck_project::ParameterValue::Number(v)) => *v,
+        Some(openchuck_project::ParameterValue::Integer(v)) => *v as f64,
+        _ => 0.0,
+    };
+    largest_selection_leave(project, operation).map_or(own, |(l, _)| l.max(own))
+}
+
+/// Whether `profile`, grown by `leave` for stock to leave, has no exact drop
+/// of `strategy`'s kind while the tool itself has one: a flat end grown into
+/// a bull nose (OI-1350). Exact contact then does not apply to the
+/// operation (decision 0526).
+fn grown_has_no_exact_drop(
+    strategy: &dyn Strategy,
+    profile: &openchuck_types::tool::RevolvedProfile,
+    leave: f64,
+) -> bool {
+    let Some(kind) = strategy.exact_contact() else {
+        return false;
+    };
+    leave > 0.0
+        && kind.supports(profile)
+        && !openchuck_path::cutter::grow_profile(profile, leave).is_ok_and(|g| kind.supports(&g))
 }
 
 /// The largest stock to leave of the selection sets `operation` selects, and
@@ -2895,6 +2951,13 @@ mod tests {
                 .collect()
         }
 
+        /// Sets the operation's parameter `name` to `value`.
+        fn set(&mut self, name: &str, value: Value) {
+            let mut operation = self.project.operation(self.operation).unwrap().clone();
+            operation.parameters.insert(name.to_owned(), value);
+            self.project.replace(Item::Operation(operation)).unwrap();
+        }
+
         /// Gives selection set `set` a stock to leave of its own (OP-11).
         fn set_stock(&mut self, set: SelectionSetId, leave: f64) {
             let mut edited = self
@@ -3171,16 +3234,247 @@ mod tests {
         );
         assert_eq!(note(&helical.run_on(true).unwrap()), None);
         assert_eq!(exact(&helical.run_on(true).unwrap()), None);
-        // Axial finishing does not yet: its note names the tessellation.
+        // Axial finishing does not by default (decision 0526): its note
+        // names the tessellation and the setting that is off.
         let axial = bar_fixture(openchuck_path::axial::NAME, "bar.step");
         let said = note(&axial.run().unwrap()).unwrap();
         assert!(
-            said.starts_with("Axial finishing drops the tool on the STEP part's tessellation")
-                && said.contains("0.01 mm")
-                && said.contains("not built yet"),
+            said.starts_with(
+                "Axial finishing drops the ball-end tool on the STEP part's tessellation"
+            ) && said.contains("0.01 mm")
+                && said.contains("Exact STEP surface contact is off"),
             "{said}"
         );
+        // Rotary roughing has no exact contact at all.
+        let roughing = bar_fixture(roughing::NAME, "bar.step");
+        let said = note(&roughing.run().unwrap()).unwrap();
+        assert!(said.contains("not built yet for this strategy"), "{said}");
         assert_eq!(note(&fixture(drill::NAME, &[]).run().unwrap()), None);
+    }
+
+    /// The distance from the rotary axis of each cutting tip over the bar,
+    /// a tool's width clear of its ends, in the part's frame: there a ball
+    /// dropped on the banded bar rests with its tip on the bar's surface,
+    /// `BAR` from the axis (past the ends it drops off them).
+    fn tip_radii(path: &OperationPath) -> Vec<f64> {
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+            .filter(|s| (BALL..=LENGTH - BALL).contains(&(s.end.tip.x - SHIFT)))
+            .map(|s| s.end.tip.y.hypot(s.end.tip.z))
+            .collect()
+    }
+
+    fn exact_contact(on: bool) -> (&'static str, Value) {
+        (
+            openchuck_path::contact::parameter::EXACT_CONTACT,
+            Value::Flag(on),
+        )
+    }
+
+    #[test]
+    fn req_op_27_req_nfr_12_exact_contact_puts_axial_contacts_on_the_exact_faces() {
+        // Decision 0526: with Exact STEP surface contact on, axial finishing
+        // drops its tool on the exact faces of a STEP part (the drop of
+        // decision 0338), and its note says so; off, the default, it drops
+        // on the tessellation, whose chords lie inside the bar.
+        let off = bar_fixture(openchuck_path::axial::NAME, "bar.step");
+        let mut on = bar_fixture(openchuck_path::axial::NAME, "bar.step");
+        on.set(exact_contact(true).0, exact_contact(true).1);
+        let (off, on) = (off.run().unwrap(), on.run().unwrap());
+        let worst = |path: &OperationPath| {
+            tip_radii(path)
+                .into_iter()
+                .map(|r| (r - BAR).abs())
+                .fold(0.0, f64::max)
+        };
+        assert!(!tip_radii(&on).is_empty());
+        assert!(worst(&on) < 2e-4, "exact: {}", worst(&on));
+        assert!(worst(&off) > 1e-3, "tessellation: {}", worst(&off));
+        let said = on
+            .notes
+            .iter()
+            .find(|n| n.contains("exact faces"))
+            .cloned()
+            .unwrap();
+        assert!(
+            said.starts_with(
+                "Axial finishing drops the ball-end tool on the STEP part's exact faces"
+            ),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn req_op_27_req_nfr_12_exact_contact_off_puts_helical_contacts_on_the_tessellation() {
+        // Decision 0526: helical finishing takes the exact ball drop by
+        // default (decision 0277); turned off, it drops on the tessellation
+        // and says why.
+        let on = bar_fixture(openchuck_path::helical::NAME, "bar.step");
+        let mut off = bar_fixture(openchuck_path::helical::NAME, "bar.step");
+        off.set(exact_contact(false).0, exact_contact(false).1);
+        let (on, off) = (on.run().unwrap(), off.run().unwrap());
+        assert_ne!(on.group.segments, off.group.segments);
+        let said = off
+            .notes
+            .iter()
+            .find(|n| n.contains("tessellation"))
+            .cloned()
+            .unwrap();
+        assert!(
+            said.starts_with(
+                "Helical finishing drops the ball-end tool on the STEP part's tessellation"
+            ) && said.contains("Exact STEP surface contact is off"),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn req_op_27_req_gc_07_req_nfr_06_exact_contact_at_its_default_machines_as_before() {
+        // An operation saved before the setting is migrated to the value its
+        // strategy already used (project schema 27): the stored default and
+        // no value give byte-identical paths, for a strategy on by default
+        // and one off by default.
+        for (strategy, default) in [
+            (openchuck_path::helical::NAME, true),
+            (openchuck_path::rest::NAME, true),
+            (openchuck_path::axial::NAME, false),
+        ] {
+            let unset = bar_fixture(strategy, "bar.step");
+            let mut stored = bar_fixture(strategy, "bar.step");
+            stored.set(exact_contact(default).0, exact_contact(default).1);
+            let (a, b) = (unset.run().unwrap(), stored.run().unwrap());
+            // Each fixture has its own IDs, so the tags differ; the moves
+            // must not.
+            assert_eq!(a.group.start, b.group.start, "{strategy}");
+            assert_eq!(a.group.segments, b.group.segments, "{strategy}");
+            assert_eq!(a.notes, b.notes, "{strategy}");
+        }
+    }
+
+    #[test]
+    fn req_op_27_req_gc_07_req_nfr_06_exact_axial_contact_is_identical_at_1_2_and_n_threads() {
+        let mut f = bar_fixture(openchuck_path::axial::NAME, "bar.step");
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        let mut first = None;
+        for count in openchuck_testkit::determinism::thread_counts() {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(count)
+                .build()
+                .unwrap();
+            let path = pool.install(|| f.run().unwrap());
+            match &first {
+                None => first = Some(path),
+                Some(p) => assert_eq!(p.group.segments, path.group.segments, "{count} workers"),
+            }
+        }
+    }
+
+    #[test]
+    fn req_op_27_req_nfr_07_req_nfr_12_exact_contact_says_where_a_tool_cannot_take_it() {
+        // A bull nose has no exact drop (OI-1350): with the setting on it
+        // still runs, on the tessellation, and the note and the form say
+        // why, in plain words.
+        let bull = || ToolShape::BullNose {
+            corner_radius: Millimetres(0.5),
+        };
+        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", bull());
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        let path = f.run().unwrap();
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("tessellation") && n.contains("this tool's shape")),
+            "{:?}",
+            path.notes
+        );
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        let field = form
+            .fields
+            .iter()
+            .find(|x| x.name == exact_contact(true).0)
+            .unwrap();
+        assert!(
+            field
+                .problem
+                .as_deref()
+                .is_some_and(|p| p.contains("whatever this setting")),
+            "{:?}",
+            field.problem
+        );
+        // A ball-only strategy says so for a tool that is not a ball.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.step", bull());
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        let field = form
+            .fields
+            .iter()
+            .find(|x| x.name == exact_contact(true).0)
+            .unwrap();
+        assert!(
+            field
+                .problem
+                .as_deref()
+                .is_some_and(|p| p.contains("ball-end tools only")),
+            "{:?}",
+            field.problem
+        );
+        // A flat end grown for stock to leave is a bull nose, which has no
+        // exact drop (OI-1350). Its contacts are on the tessellation, so the
+        // whole operation stays on it, face sets as triangles: the same path
+        // as with the setting off, and a note that says why (CodeRabbit on
+        // #481). The stock may be the operation's or a face set's.
+        let flat = |leave_on_set: bool, on: bool| {
+            let mut f =
+                bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+            f.set(exact_contact(on).0, exact_contact(on).1);
+            if leave_on_set {
+                let set = f.select_as(
+                    SelectionTarget::Faces([FaceId(1)].into()),
+                    f.hash,
+                    f.model,
+                    Role::Machine,
+                );
+                f.set_stock(set, 0.2);
+            } else {
+                f.set(names::STOCK_TO_LEAVE, Value::Number(0.2));
+            }
+            f.run().unwrap()
+        };
+        for leave_on_set in [false, true] {
+            let (on, off) = (flat(leave_on_set, true), flat(leave_on_set, false));
+            assert_eq!(on.group.segments, off.group.segments, "set: {leave_on_set}");
+            assert!(
+                on.notes.iter().any(|n| n.contains("tessellation")
+                    && n.contains("stock to leave")
+                    && !n.contains("exact faces, to within")),
+                "set: {leave_on_set}: {:?}",
+                on.notes
+            );
+        }
+    }
+
+    #[test]
+    fn req_op_27_req_ui_07_exact_contact_is_shown_next_to_tolerance_on_a_step_part_only() {
+        // Decision 0526: one row in Pattern and tolerance, after Tolerance,
+        // on a STEP part; a mesh part has no such row. No problem is shown
+        // for a ball end.
+        let registry = Registry::builtin();
+        let step = bar_fixture(openchuck_path::axial::NAME, "bar.step");
+        let form = crate::form::parameter_form(&step.project, &registry, step.operation).unwrap();
+        let names: Vec<&str> = form.fields.iter().map(|f| f.name.as_str()).collect();
+        let at = names.iter().position(|n| *n == names::TOLERANCE).unwrap();
+        assert_eq!(names.get(at + 1), Some(&exact_contact(true).0), "{names:?}");
+        let field = &form.fields[at + 1];
+        assert_eq!(field.label, "Exact STEP surface contact");
+        assert_eq!(field.section, crate::form::FormSection::PatternAndTolerance);
+        assert_eq!(field.value, Some(Value::Flag(false)));
+        assert_eq!(field.problem, None);
+        let mesh = bar_fixture(openchuck_path::axial::NAME, "bar.stl");
+        let form = crate::form::parameter_form(&mesh.project, &registry, mesh.operation).unwrap();
+        assert!(form.fields.iter().all(|f| f.name != exact_contact(true).0));
     }
 
     /// The shouldered shaft of the testkit (one sharp inside corner at X 12,
@@ -3236,7 +3530,7 @@ mod tests {
             said.starts_with(
                 "Pencil clean-up follows the STEP part's inside corners on its exact edges"
             ) && said.contains("0.01 mm")
-                && said.contains("not built yet"),
+                && said.contains("Exact STEP surface contact is off"),
             "{said}"
         );
         assert!(
