@@ -86,10 +86,10 @@ pub mod parameter {
 }
 
 impl Strategy for HelicalFinishing {
-    /// Exact contacts on a STEP part: measured within the limits of OI-835
-    /// (decision 0277).
-    fn exact_contact(&self) -> bool {
-        true
+    /// Exact contacts on a STEP part for a ball-end tool, on by default:
+    /// measured within the limits of OI-835 (decision 0277).
+    fn exact_contact(&self) -> Option<crate::contact::ExactContact> {
+        Some(crate::contact::ExactContact::Ball)
     }
 
     fn cuts_in_layers(&self, parameters: &Parameters) -> bool {
@@ -113,7 +113,8 @@ impl Strategy for HelicalFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(
+        crate::contact::with_switch(crate::contact::ExactContact::Ball, {
+            ParameterSchema::with_common(
             vec![
                 ParameterSpec {
                     name: parameter::ROTATION.to_owned(),
@@ -180,6 +181,7 @@ impl Strategy for HelicalFinishing {
             .chain(std::iter::once(crate::axial::link_height_spec()))
             .collect(),
         )
+        })
     }
 
     fn schema_for(

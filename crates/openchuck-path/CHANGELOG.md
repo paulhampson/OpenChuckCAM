@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.0
+
+- **Breaking (0.46.0, STEPALL-CLOSE; issue #351; decision 0526, accepted):** Exact STEP surface contact as a per-operation setting. New module `contact`: `ExactContact` (`Ball`, `Outline`; `supports`, `default_on`), `with_switch`, `is_on`, `exact_drops`, `parameter::EXACT_CONTACT` (`exact_contact`), `BALL_STRATEGIES`, `OUTLINE_STRATEGIES`. `Strategy::exact_contact` returns `Option<ExactContact>` (was `bool`; a strategy that returned `true` returns `Some(ExactContact::Ball)`). Helical, indexed, rest and simultaneous finishing have the flag in their schemas, on by default (the exact ball drop of decision 0277); axial finishing and pencil clean-up have it off by default (the outline drop of decision 0338), right after Tolerance. `BrepSurface::with_exact_drops(true)` now drops every tool with an exact drop (`has_exact_drop`) through `drop_exact`, not only a ball; a host asks for it only where `contact::exact_drops` says so. The strategies do not read the flag; their paths for given surfaces are unchanged.
+
 ## Unreleased (FLUTE-TABS PR3, issue #547; additive API, no version bump)
 
 - **Changed output (decision 0524, accepted):** the flute check bounds stock with no exact answer, such as the stock earlier operations left, from the material within the tool's reach along X and towards the tool, taking the lower of that and the farthest-radius bound of decision 0509; free ends read the same bound. Fewer warnings where the far stock is out of reach (a held region, never cut); still warned where the path reaches stock past the flutes.

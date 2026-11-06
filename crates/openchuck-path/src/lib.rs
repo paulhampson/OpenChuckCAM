@@ -76,6 +76,7 @@ pub mod brep;
 pub mod brep_edges;
 mod candidates;
 mod composite;
+pub mod contact;
 pub mod curves;
 pub mod cutter;
 pub mod drill;
