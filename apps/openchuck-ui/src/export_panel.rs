@@ -86,6 +86,10 @@ struct Now {
     answers: Vec<(Arc<Project>, Option<bool>, Option<bool>)>,
 }
 
+/// A posting job: the run with the chosen post and the files it will write,
+/// planned on the job's worker (issue #470).
+type PostingJob = JobHandle<(Regeneration, Vec<PlannedFile>)>;
+
 /// The files made for a key.
 struct Files {
     key: Key,
@@ -146,7 +150,8 @@ pub struct ExportPanel {
     folder: String,
     number_choice: NumberChoice,
     by_hand: Vec<(ToolId, String)>,
-    job: Option<(JobHandle<Regeneration>, Key)>,
+    /// The posting job, which plans its files on its worker (issue #470).
+    job: Option<(PostingJob, Key)>,
     /// The key the last job was started for, so a failed one is not retried
     /// every frame.
     attempted: Option<Key>,
@@ -549,10 +554,7 @@ impl ExportPanel {
                 Some(result) => {
                     let key = key.clone();
                     self.job = None;
-                    match result.and_then(|run| {
-                        let plan = app.planned_files(&run, &key.post, key.grouping)?;
-                        Ok((Arc::new(run), plan))
-                    }) {
+                    match result.map(|(run, plan)| (Arc::new(run), plan)) {
                         Ok((run, plan)) => {
                             self.files_error = None;
                             self.preview = self.preview.min(plan.len().saturating_sub(1));
@@ -590,7 +592,7 @@ impl ExportPanel {
             return;
         }
         self.attempted = Some(key.clone());
-        let handle = app.start_regenerate_with_post(key.post.clone(), key.grouping);
+        let handle = app.start_regenerate_with_post_and_plan(key.post.clone(), key.grouping);
         self.job = Some((handle, key));
         ctx.request_repaint();
     }
@@ -1687,6 +1689,33 @@ mod tests {
         assert!(
             panel.files_current(&app).is_some(),
             "current again after the undo"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Issue #470: when posting ended the dialog planned the files on the
+    /// interface thread (a frame of 200 ms on the CrankShaft model, more on
+    /// the owner's carving). The posting job plans them; the dialog only
+    /// takes the plan.
+    #[test]
+    fn req_ui_09_req_gc_05_the_dialog_plans_no_files_on_the_interface_thread() {
+        let (dir, mut app, _, _) = cube_project("export-plan-off-thread");
+        app.set_post(None);
+        let mut panel = ExportPanel::new(None);
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        let before = Application::plans_made_on_this_thread();
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        assert_eq!(
+            panel.files.as_ref().unwrap().plan.len(),
+            1,
+            "the files are planned"
+        );
+        assert_eq!(
+            Application::plans_made_on_this_thread(),
+            before,
+            "no plan made on the interface thread"
         );
         let _ = std::fs::remove_dir_all(dir);
     }
