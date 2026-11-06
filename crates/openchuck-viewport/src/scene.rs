@@ -847,6 +847,11 @@ mod tests {
             },
             outlined(&cube_positions, &cube_indices, 1.0),
             outlined(&positions, &indices, 1.0),
+            MeshItem {
+                outline: None,
+                ..outlined(&cube_positions, &cube_indices, 1.0)
+            },
+            outlined(&positions, &indices, 1.0),
         ];
         let floats = outline_floats(&meshes);
         assert_eq!(floats.len(), meshes.len());
@@ -871,6 +876,12 @@ mod tests {
         assert!(!std::rc::Rc::ptr_eq(
             floats[3].as_ref().unwrap(),
             floats[4].as_ref().unwrap()
+        ));
+        // A mesh with no outline between two with the same triangles does
+        // not stop them sharing.
+        assert!(std::rc::Rc::ptr_eq(
+            floats[4].as_ref().unwrap(),
+            floats[6].as_ref().unwrap()
         ));
     }
 

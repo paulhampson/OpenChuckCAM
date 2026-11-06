@@ -901,6 +901,17 @@ fn req_nfr_03_req_ui_04_the_hover_layer_draws_as_the_hover_in_the_overlay_did() 
         &f,
     );
     assert!(blue_pixels(&apart) > 100, "{}", blue_pixels(&apart));
+    // The hover is drawn: yellow pixels the picture without it lacks.
+    let yellow = |pixels: &[[u8; 4]]| {
+        pixels
+            .iter()
+            .filter(|p| p[0] > 200 && p[1] > 200 && p[2] < 80)
+            .count()
+    };
+    let without = render_layers(&device, &queue, &part, Some(&set), &[], &f);
+    assert!(yellow(&apart) > 50, "{}", yellow(&apart));
+    assert_eq!(yellow(&without), 0);
+    assert_ne!(without, apart);
     assert_eq!(together, apart);
 }
 
