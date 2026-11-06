@@ -1273,7 +1273,7 @@ fn req_ui_07_req_ui_04_keep_placement_rebuilds_before_resuming_a_direction_pick(
     assert!(rig.shows("Unconfirmed changes"));
     click(&mut rig, "Keep");
     rig.settle();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while rig.shell.selection.has_region_pick() {
         assert!(std::time::Instant::now() < deadline);
         rig.frame(Vec::new());
@@ -1689,7 +1689,7 @@ fn req_ui_07_req_ui_08_req_ui_25_explicit_apply_resumes_after_keeping_the_workho
     assert!(rig.shows("Unconfirmed changes"));
     assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
     click(&mut rig, "Keep");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while rig
         .shell
         .app

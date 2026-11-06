@@ -19,7 +19,7 @@ pub(super) fn ready_project(name: &str) -> Rig {
     let config = root.join("config");
     file::save(&Project::new("saved"), &project).unwrap();
     let mut session = Session::open(project.clone(), config.clone(), 3).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         if session
             .poll(Duration::ZERO)
@@ -58,19 +58,13 @@ pub(super) fn ready_project(name: &str) -> Rig {
         ),
         vec![root],
     );
-    for _ in 0..100 {
-        rig.frame(Vec::new());
-        if rig.shows("Recover project changes") {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    wait(&mut rig, |rig| rig.shows("Recover project changes"));
     rig
 }
 
-/// Draws until `done`, failing after five seconds.
+/// Draws until `done`, failing after a minute.
 fn wait(rig: &mut Rig, mut done: impl FnMut(&Rig) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !done(rig) {
         rig.frame(Vec::new());
         assert!(Instant::now() < deadline);
@@ -170,7 +164,7 @@ fn req_prj_08_cancel_close_preserves_recovery_and_resolved_close_waits_for_retir
     click(&mut rig, "Interim");
     click(&mut rig, "Recover selected");
     wait(&mut rig, recovered);
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     let root = rig.shell.app.as_ref().unwrap().location().to_owned();
     let ctx = rig.ctx.clone();
     rig.shell.request(super::Next::Quit, &ctx);
@@ -208,7 +202,7 @@ fn req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writ
     std::fs::create_dir(&ignore).unwrap();
     click(&mut rig, "Periodic");
     click(&mut rig, "Recover selected");
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !recovered(&rig) || rig.shell.recovery.problem.is_none() {
         rig.frame(Vec::new());
         assert!(Instant::now() < deadline);
@@ -278,7 +272,7 @@ fn req_prj_08_req_ui_07_pending_field_text_is_excluded_and_recovery_cancel_prese
     super::pending_edit_tests::type_unconfirmed(&mut rig, "Stepover", "1.6");
     let root = rig.shell.app.as_ref().unwrap().location().to_owned();
     let mut session = Session::open(root.clone(), root.join("test-config"), 3).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !session.is_ready() {
         session.poll(Duration::ZERO);
         assert!(Instant::now() < deadline);

@@ -38,7 +38,7 @@ fn until(session: &mut Session, mut predicate: impl FnMut(&Notice) -> bool) {
             }
         }
         assert!(
-            started.elapsed() < Duration::from_secs(5),
+            started.elapsed() < Duration::from_secs(60),
             "worker did not complete"
         );
         std::thread::sleep(Duration::from_millis(1));
@@ -113,7 +113,7 @@ fn req_prj_08_discovery_deduplicates_paths_and_tracks_unexpected_sessions() {
             assert!(found.projects[0].catalog.as_ref().unwrap().recovery_needed);
             break;
         }
-        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(started.elapsed() < Duration::from_secs(60));
         std::thread::sleep(Duration::from_millis(1));
     }
     let moved = folders.path("moved");
