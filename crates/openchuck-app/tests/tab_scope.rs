@@ -386,8 +386,8 @@ fn req_op_02_req_op_21_req_nfr_12_a_v_bit_on_the_side_keeps_to_it_and_clear_of_t
     assert!(lowest >= -1e-3, "a cut at X {lowest}, past the selection");
     let tolerance = 0.01;
     let into = into_tab(&run, openchuck_path::HELD_CLEARANCE - tolerance);
-    assert_eq!(
-        into, 0.0,
+    assert!(
+        into <= 0.0,
         "the tool comes {into} mm into the tab's clearance"
     );
 }

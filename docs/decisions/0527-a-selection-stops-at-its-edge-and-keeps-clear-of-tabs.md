@@ -63,5 +63,7 @@ Tests first, named after the requirements:
 ## Consequences
 
 - Library 0.47.0: `RegionConstraint` gains `outside` and `keep_clear` (struct literals need `..Default::default()`), `Solid::grown` is new, and the strategies' paths change as items 1 and 2 say.
-- Selection-limited finishing operations with a convex edge at their region end there. The tests and goldens that moved are listed in the pull request.
+- Selection-limited finishing operations with a convex edge at their region end there. One existing test moved, and no golden file did. The whole `openchuck-path` suite (107 unit and 708 integration tests) passes unchanged, and so does the rest of the `openchuck-app` suite.
+  - **The test that moved.** `openchuck-app` `selection::req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations` selects a cube's top face with its own 0.3 mm and leaves 1 mm on the rest. It expected some cuts beside the cube's edges where the ball rode the neighbouring faces' 1 mm, with its contact on the edge between the top and a side. Those contacts are no longer on the selection (item 1), so every cut now keeps the selection's 0.3 mm, and the test says so.
+  - **What that test no longer shows.** It no longer shows the rest of the part's 1 mm when that amount was written as a whole number. Its first half still shows the operation's whole-number 1 mm being read.
 - Open items: OI-2054 (the carried-stock clearance, pull request 2), OI-2055 (strategies refused, not trimmed, at a tab), OI-2056 (refuse or warn, assumed refuse). OI-2047 (free ends ignore the region) stays open: with Face free ends on, a limited operation still faces both ends. Item 3 now refuses such a path if a ring comes within the clearance of a tab.
