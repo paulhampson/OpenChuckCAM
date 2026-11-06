@@ -111,13 +111,18 @@ fn body_radius(input: &StrategyInput<'_>) -> f64 {
 /// it gets the conservative bound `max_radius - height` plus
 /// [`BOUND_MARGIN`], since no material is further from the axis than its
 /// farthest radius. A stock model with no farthest radius has no bound:
-/// infinity, which [`check`] refuses.
+/// infinity, which [`check`] warns of. `farthest` is the stock's
+/// [`StockModel::max_radius`], read once a check by the caller: a model may
+/// compute it by reading all its material, as the simulation's stock does,
+/// and read at every reading it took most of the check's time (212 s for
+/// one operation of the owner's project, issue #547).
 pub(crate) fn depth_at(
     stock: &dyn StockModel,
     input: &StrategyInput<'_>,
     position: AxisPosition,
     a: Degrees,
     radius: f64,
+    farthest: Option<f64>,
 ) -> (f64, bool) {
     if let Some(top) = stock.top_over_disc(
         input.rotary.to_model(position, a),
@@ -130,7 +135,7 @@ pub(crate) fn depth_at(
         }
         return (top.max(0.0), true);
     }
-    match stock.max_radius() {
+    match farthest {
         Some(r) if r.is_finite() && position.height.is_finite() => {
             ((r - position.height + BOUND_MARGIN).max(0.0), false)
         }
@@ -258,13 +263,13 @@ fn between(
     p: (AxisPosition, Degrees),
     q: (AxisPosition, Degrees),
     budget: &mut u32,
+    farthest: Option<f64>,
 ) {
     // A reading past the flutes already refuses the path.
     if worst.is_some_and(|w| w.depth > limit + SLACK) {
         return;
     }
     let stock = input.stock;
-    let farthest = stock.max_radius();
     // The quick bound: nothing is further from the axis than `farthest`.
     if farthest.is_some_and(|r| r - p.0.height.min(q.0.height) + BOUND_MARGIN <= limit) {
         return;
@@ -324,10 +329,28 @@ fn between(
         return;
     }
     *budget -= 1;
-    let (depth, exact) = depth_at(stock, input, middle, a, radius);
+    let (depth, exact) = depth_at(stock, input, middle, a, radius, farthest);
     keep(worst, input, middle, a, depth, exact);
-    between(worst, input, radius, limit, p, (middle, a), budget);
-    between(worst, input, radius, limit, (middle, a), q, budget);
+    between(
+        worst,
+        input,
+        radius,
+        limit,
+        p,
+        (middle, a),
+        budget,
+        farthest,
+    );
+    between(
+        worst,
+        input,
+        radius,
+        limit,
+        (middle, a),
+        q,
+        budget,
+        farthest,
+    );
 }
 
 /// The deepest cut `passes` make in `input`'s stock: how far the stock
@@ -350,6 +373,7 @@ fn deepest_of(
 ) -> Result<Option<Deepest>> {
     let stock = input.stock;
     let radius = body_radius(input);
+    // Read once for the whole path, not at every reading (issue #547).
     let bound = stock.max_radius();
     let found = crate::parallel::map_each_in_order(passes, |pass| -> Result<Option<Deepest>> {
         let mut worst: Option<Deepest> = None;
@@ -390,13 +414,13 @@ fn deepest_of(
                     if bound.is_some_and(|r| r - position.height + BOUND_MARGIN <= limit) {
                         continue;
                     }
-                    let (depth, exact) = depth_at(stock, input, position, a, radius);
+                    let (depth, exact) = depth_at(stock, input, position, a, radius, bound);
                     keep(&mut worst, input, position, a, depth, exact);
                 }
                 // And the stock between the places read.
                 for (&p, &q) in chain.iter().zip(chain.iter().skip(1)) {
                     let mut budget = STEP_BUDGET;
-                    between(&mut worst, input, radius, limit, p, q, &mut budget);
+                    between(&mut worst, input, radius, limit, p, q, &mut budget, bound);
                 }
             }
             previous = Some(point);
