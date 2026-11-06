@@ -2,10 +2,10 @@
 
 - **Status:** proposed by lane FLUTE-TABS on 6 Nov 2026. Only the project owner accepts a record (decision 0049).
 - **Date:** 6 Nov 2026.
-- **Number:** 0523 is provisional; the Merge Manager assigns the number at release.
+- **Number:** 0523, with OI-2045 to OI-2049, confirmed free by the Merge Manager on 6 Nov 2026.
 - **Issue:** [#548](https://github.com/paulhampson/OpenChuckCAM/issues/548) (sev1). Related: [#547](https://github.com/paulhampson/OpenChuckCAM/issues/547) (decision 0522), [#438](https://github.com/paulhampson/OpenChuckCAM/issues/438) (decision 0494).
 - **Amends:** [0494](0494-tab-length-is-checked-against-the-tool.md) item 2 ("Where it applies, unchanged"), for operations limited by selections. Its rule (item 1) is unchanged.
-- **Open items:** OI-2045 to OI-2049 new (provisional numbers): the audit's follow-ups, below. No project schema change; no library change (the application only).
+- **Open items:** OI-2045 to OI-2049 new: the audit's follow-ups, below. No project schema change; no library change (the application only).
 
 ## Context
 
@@ -56,7 +56,7 @@ Every check, refusal or warning that might read the whole part, the whole stock 
 
 ## Consequences
 
-- The owner's #548 project: 'Axial Finishing' is no longer refused for the tab; see the pull request for what follows.
+- The owner's #548 project (numbers only): with this change and decision 0522's, 'Axial Finishing' is made; its path does not touch the tab. The next operation, 'Rest Machining', is then refused by the free-end check (row 5; OI-2047 and the owner's choice A, B or C).
 - A limited operation over a short tab is refused after it is generated, with the same message as before.
 - The setup's own notes (row 3) still name every tool against every tab until OI-2045, so the setup check may say a tab is shorter than a tool whose limited operation generates.
 
