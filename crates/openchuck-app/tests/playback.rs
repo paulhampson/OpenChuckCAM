@@ -1231,7 +1231,8 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     );
     assert_eq!(app.strategy_label("not_registered"), "not_registered");
     // Adding: at the end, enabled, with the strategy's defaults and the
-    // pass order a new operation is given (decision record 0520).
+    // pass order and the low links a new operation is given (decision
+    // records 0520 and 0521).
     let before = app.project().operations().len();
     let second = app
         .add_operation("  Second pass ", "helical_finishing", setup, Some(tool))
@@ -1242,10 +1243,20 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     assert!(added.enabled);
     assert_eq!(
         added.parameters.iter().collect::<Vec<_>>(),
-        [(
-            &openchuck_path::order::PARAMETER.to_owned(),
-            &openchuck_app::project::ParameterValue::Text(openchuck_path::order::BY_REGION.into())
-        )]
+        [
+            (
+                &openchuck_path::axial::parameter::LINK_HEIGHT.to_owned(),
+                &openchuck_app::project::ParameterValue::Text(
+                    openchuck_path::axial::parameter::LOW.into()
+                )
+            ),
+            (
+                &openchuck_path::order::PARAMETER.to_owned(),
+                &openchuck_app::project::ParameterValue::Text(
+                    openchuck_path::order::BY_REGION.into()
+                )
+            )
+        ]
     );
     assert_eq!(app.project().operations().last().unwrap().id, second);
     // The cube's ends are free and deeper than the ball's flutes; this test

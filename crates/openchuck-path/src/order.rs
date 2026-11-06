@@ -150,8 +150,8 @@ impl End {
 }
 
 /// The sum of `cost` over the links between consecutive blocks.
-fn total(blocks: &[Vec<Pass>], cost: impl Fn(End, End) -> f64) -> f64 {
-    let ends: Vec<(End, End)> = blocks.iter().filter_map(|b| ends(b)).collect();
+fn total(blocks: impl IntoIterator<Item = (End, End)>, cost: impl Fn(End, End) -> f64) -> f64 {
+    let ends: Vec<(End, End)> = blocks.into_iter().collect();
     ends.windows(2)
         .map(|w| match w {
             [(_, p), (q, _)] => cost(*p, *q),
@@ -166,11 +166,15 @@ fn total(blocks: &[Vec<Pass>], cost: impl Fn(End, End) -> f64) -> f64 {
 /// back in, at the rapid rates. It is the base of the allowance only, so
 /// the allowance is never more than one hundredth of the real time.
 fn estimate(blocks: &[Vec<Pass>], rates: Rates, feed: f64) -> f64 {
-    let passes: Vec<Vec<Pass>> = blocks.iter().flatten().map(|p| vec![p.clone()]).collect();
+    // Each pass's own ends, read in place: nothing is copied.
+    let passes = blocks
+        .iter()
+        .flatten()
+        .filter_map(|p| ends(std::slice::from_ref(p)));
     let radial = |p: End, q: End| {
         ((rates.clearance - p.r).max(0.0) + (rates.clearance - q.r).max(0.0)) / rates.z
     };
-    cutting(blocks, rates, feed) + total(&passes, |p, q| radial(p, q) + rates.link(p, q))
+    cutting(blocks, rates, feed) + total(passes, |p, q| radial(p, q) + rates.link(p, q))
 }
 
 /// Minutes to cut `blocks`: each move at `feed` mm per minute along the
@@ -236,23 +240,38 @@ pub(crate) fn arrange(
 /// its links travel least along X, never before the first main pass; kept
 /// as given unless that travels less in all within the time allowed.
 fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -> Arranged {
-    let mut old: Vec<Vec<Pass>> = main.into_iter().map(|p| vec![p]).collect();
+    // Nothing to move: the order is as given, at no cost.
+    if groups.iter().all(|g| ends(g).is_none()) {
+        return Arranged {
+            passes: main
+                .into_iter()
+                .chain(groups.into_iter().flatten())
+                .collect(),
+            note: None,
+        };
+    }
+    // Every block once, the main passes first and then the groups; the two
+    // orders are lists of indices into it, so no pass is copied.
+    let main_count = main.len();
+    let blocks: Vec<Vec<Pass>> = main.into_iter().map(|p| vec![p]).chain(groups).collect();
+    let block_ends: Vec<Option<(End, End)>> = blocks.iter().map(|b| ends(b)).collect();
+    let end_of = |i: usize| block_ends.get(i).copied().flatten();
+    let old: Vec<usize> = (0..blocks.len()).collect();
     // A main pass with no points cannot anchor a group: it keeps its place
     // and the groups go round it.
-    let first = old.iter().position(|b| ends(b).is_some());
-    let mut placed = old.clone();
+    let first = (0..main_count).position(|i| end_of(i).is_some());
+    let mut placed: Vec<usize> = (0..main_count).collect();
     let mut moved = false;
-    for group in groups {
-        old.push(group.clone());
-        let (Some(first), Some((s, f))) = (first, ends(&group)) else {
+    for group in main_count..blocks.len() {
+        let (Some(first), Some((s, f))) = (first, end_of(group)) else {
             placed.push(group);
             continue;
         };
         let mut best: Option<(f64, usize)> = None;
         for at in first + 1..=placed.len() {
             let (before, after) = placed.split_at(at);
-            let prev = before.iter().rev().find_map(|b| ends(b)).map(|e| e.1);
-            let next = after.iter().find_map(|b| ends(b)).map(|e| e.0);
+            let prev = before.iter().rev().find_map(|&b| end_of(b)).map(|e| e.1);
+            let next = after.iter().find_map(|&b| end_of(b)).map(|e| e.0);
             let cost = match (prev, next) {
                 (Some(p), Some(n)) => p.travel(s) + f.travel(n) - p.travel(n),
                 (Some(p), None) => p.travel(s),
@@ -266,11 +285,18 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -
         moved |= at != placed.len();
         placed.insert(at, group);
     }
-    let time = |b: &[Vec<Pass>]| total(b, |p, q| rates.link(p, q));
-    let x = |b: &[Vec<Pass>]| total(b, |p, q| (q.x - p.x).abs());
-    let (x0, x1) = (x(&old), x(&placed));
-    let longer = 60.0 * (time(&placed) - time(&old));
-    let allowed = 60.0 * ALLOWANCE * estimate(&old, rates, feed);
+    let in_order = |order: &[usize]| {
+        order
+            .iter()
+            .filter_map(|&i| end_of(i))
+            .collect::<Vec<(End, End)>>()
+    };
+    let (old_ends, placed_ends) = (in_order(&old), in_order(&placed));
+    let time = |e: &[(End, End)]| total(e.iter().copied(), |p, q| rates.link(p, q));
+    let x = |e: &[(End, End)]| total(e.iter().copied(), |p, q| (q.x - p.x).abs());
+    let (x0, x1) = (x(&old_ends), x(&placed_ends));
+    let longer = 60.0 * (time(&placed_ends) - time(&old_ends));
+    let allowed = 60.0 * ALLOWANCE * estimate(&blocks, rates, feed);
     let (chosen, note) = if !moved || x1 >= x0 {
         (old, None)
     } else if longer <= allowed {
@@ -290,10 +316,14 @@ fn by_region(main: Vec<Pass>, groups: Vec<Vec<Pass>>, rates: Rates, feed: f64) -
         );
         (old, Some(note))
     };
-    Arranged {
-        passes: chosen.into_iter().flatten().collect(),
-        note,
-    }
+    // Each block is moved out once, in the chosen order.
+    let mut slots: Vec<Option<Vec<Pass>>> = blocks.into_iter().map(Some).collect();
+    let passes = chosen
+        .iter()
+        .filter_map(|&i| slots.get_mut(i).and_then(Option::take))
+        .flatten()
+        .collect();
+    Arranged { passes, note }
 }
 
 #[cfg(test)]
@@ -476,8 +506,10 @@ mod tests {
                 .collect();
             let out = arrange_passes(BY_REGION, main, groups, r, FEED);
             let after: Vec<Vec<Pass>> = out.into_iter().map(|p| vec![p]).collect();
-            let x = |b: &[Vec<Pass>]| total(b, |p, q| (q.x - p.x).abs());
-            let time = |b: &[Vec<Pass>]| total(b, |p, q| r.link(p, q));
+            let x =
+                |b: &[Vec<Pass>]| total(b.iter().filter_map(|k| ends(k)), |p, q| (q.x - p.x).abs());
+            let time =
+                |b: &[Vec<Pass>]| total(b.iter().filter_map(|k| ends(k)), |p, q| r.link(p, q));
             assert!(x(&after) <= x(&before) + 1e-12);
             assert!(time(&after) <= time(&before) + ALLOWANCE * estimate(&before, r, FEED) + 1e-12);
             changed += usize::from(after != before);
@@ -522,6 +554,23 @@ mod tests {
         assert!(note.contains("are cut after the main passes"), "{note}");
         let last = vec![vec![pass(20.0, 20.0, 0.0, 0.0)]];
         assert_eq!(arrange(BY_REGION, main, last, rates(), FEED).note, None);
+    }
+
+    #[test]
+    fn req_gc_07_nothing_to_move_keeps_the_order_and_says_nothing() {
+        // No groups, or groups with no points: the order is as given and
+        // there is no note, by region or not.
+        let main = vec![pass(0.0, 10.0, 0.0, 3600.0), pass(10.0, 20.0, 0.0, 3600.0)];
+        for groups in [Vec::new(), vec![vec![Pass::default()], Vec::new()]] {
+            let expected: Vec<Pass> = main
+                .iter()
+                .cloned()
+                .chain(groups.iter().flatten().cloned())
+                .collect();
+            let out = arrange(BY_REGION, main.clone(), groups, rates(), FEED);
+            assert_eq!(out.passes, expected);
+            assert_eq!(out.note, None);
+        }
     }
 
     #[test]
