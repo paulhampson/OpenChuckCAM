@@ -837,6 +837,22 @@ impl StockModel for DexelStock {
         Some(self.max_radius_of_material())
     }
 
+    /// Each column's material as a box (its cell across X and Y, each span
+    /// in Z), by slice of one cell along X: the flute check bounds the
+    /// stock over the tool from the material in its reach (issue #547).
+    fn reach_profile(&self) -> Option<openchuck_path::ReachProfile> {
+        let mut profile = openchuck_path::ReachProfile::new(self.x0, self.cx, self.nx)?;
+        for i in 0..self.nx {
+            for j in 0..self.ny {
+                let y = self.y0 + j as f64 * self.cy;
+                for span in self.column(i, j) {
+                    profile.add(i, [y, y + self.cy], *span);
+                }
+            }
+        }
+        Some(profile)
+    }
+
     /// The X range of the columns that hold material, to their cell edges
     /// (OP-24; decision record 0212 part B).
     fn x_extent(&self) -> Option<(f64, f64)> {

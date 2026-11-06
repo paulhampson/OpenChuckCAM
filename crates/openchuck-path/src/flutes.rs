@@ -35,7 +35,7 @@ use openchuck_types::units::Degrees;
 use crate::assemble::PathWarning;
 use crate::error::Result;
 use crate::rotary::AxisPosition;
-use crate::stock::StockModel;
+use crate::stock::{ReachProfile, StockModel};
 use crate::strategy::{CutPoint, Pass, StrategyInput};
 
 /// How near half a turn, degrees, a step between two cut points must be for
@@ -92,6 +92,19 @@ pub struct Deepest {
     pub exact: bool,
 }
 
+/// What the check knows of the stock before it reads it, worked out once a
+/// check: its farthest radius, which a model may compute by reading all its
+/// material (the simulation's stock does), and its reach profile. Asked for
+/// at every reading, the farthest radius alone cost most of the check's time
+/// on the owner's project (issue #547).
+#[derive(Clone, Copy)]
+pub(crate) struct Known<'a> {
+    /// [`StockModel::max_radius`].
+    pub(crate) farthest: Option<f64>,
+    /// [`StockModel::reach_profile`].
+    pub(crate) profile: Option<&'a ReachProfile>,
+}
+
 /// The radius of the tool's body above its tip: the cutting radius, or the
 /// shank's where it is wider.
 fn body_radius(input: &StrategyInput<'_>) -> f64 {
@@ -111,18 +124,14 @@ fn body_radius(input: &StrategyInput<'_>) -> f64 {
 /// it gets the conservative bound `max_radius - height` plus
 /// [`BOUND_MARGIN`], since no material is further from the axis than its
 /// farthest radius. A stock model with no farthest radius has no bound:
-/// infinity, which [`check`] warns of. `farthest` is the stock's
-/// [`StockModel::max_radius`], read once a check by the caller: a model may
-/// compute it by reading all its material, as the simulation's stock does,
-/// and read at every reading it took most of the check's time (212 s for
-/// one operation of the owner's project, issue #547).
+/// infinity, which [`check`] refuses.
 pub(crate) fn depth_at(
     stock: &dyn StockModel,
     input: &StrategyInput<'_>,
     position: AxisPosition,
     a: Degrees,
     radius: f64,
-    farthest: Option<f64>,
+    known: Known<'_>,
 ) -> (f64, bool) {
     if let Some(top) = stock.top_over_disc(
         input.rotary.to_model(position, a),
@@ -135,12 +144,56 @@ pub(crate) fn depth_at(
         }
         return (top.max(0.0), true);
     }
-    match farthest {
+    let farthest = match known.farthest {
         Some(r) if r.is_finite() && position.height.is_finite() => {
-            ((r - position.height + BOUND_MARGIN).max(0.0), false)
+            (r - position.height + BOUND_MARGIN).max(0.0)
         }
-        _ => (f64::INFINITY, false),
+        _ => f64::INFINITY,
+    };
+    let near = in_reach(input, known.profile, (position, a), (position, a), radius);
+    (near.map_or(farthest, |n| n.min(farthest)), false)
+}
+
+/// The bound on the stock over the tool from the material within its reach
+/// (issue #547), for a stock model with a [`ReachProfile`] and no exact
+/// answer: over the step from `p` to `q` (the same place for one reading),
+/// no material over the tool's disc lies further along X than `radius` from
+/// the tips, and none stands higher along the tool axis than the profile's
+/// highest over that X range, for every direction the axis takes over the
+/// step's turn. Less the lower tip's height, plus [`BOUND_MARGIN`], that
+/// bounds how far the stock stands above any tip of the step. `None` where
+/// there is no profile, or the tool axis is not square to the rotary axis
+/// (the X range would not hold).
+fn in_reach(
+    input: &StrategyInput<'_>,
+    profile: Option<&ReachProfile>,
+    p: (AxisPosition, Degrees),
+    q: (AxisPosition, Degrees),
+    radius: f64,
+) -> Option<f64> {
+    let profile = profile?;
+    let middle = Degrees(0.5 * (p.1.0 + q.1.0));
+    let axis = input.rotary.tool_axis(middle).get();
+    let square = |a: Degrees| input.rotary.tool_axis(a).get().x.abs() <= 1e-9;
+    if !(square(p.1) && square(q.1)) {
+        return None;
     }
+    let towards = axis.z.atan2(axis.y);
+    let spread = 0.5 * (q.1.0 - p.1.0).abs().to_radians();
+    let xp = input.rotary.to_model(p.0, p.1).x;
+    let xq = input.rotary.to_model(q.0, q.1).x;
+    let highest = profile.highest([xp.min(xq) - radius, xp.max(xq) + radius], towards, spread);
+    if highest == f64::NEG_INFINITY {
+        return Some(0.0);
+    }
+    let low = p.0.height.min(q.0.height);
+    let bound = highest - low + BOUND_MARGIN;
+    // A bound that is not a number is no bound (NFR-07).
+    Some(if bound.is_nan() {
+        f64::INFINITY
+    } else {
+        bound.max(0.0)
+    })
 }
 
 /// The places along the move from `from` to `to` the stock is read at,
@@ -263,13 +316,14 @@ fn between(
     p: (AxisPosition, Degrees),
     q: (AxisPosition, Degrees),
     budget: &mut u32,
-    farthest: Option<f64>,
+    known: Known<'_>,
 ) {
     // A reading past the flutes already refuses the path.
     if worst.is_some_and(|w| w.depth > limit + SLACK) {
         return;
     }
     let stock = input.stock;
+    let farthest = known.farthest;
     // The quick bound: nothing is further from the axis than `farthest`.
     if farthest.is_some_and(|r| r - p.0.height.min(q.0.height) + BOUND_MARGIN <= limit) {
         return;
@@ -307,7 +361,17 @@ fn between(
         // (equal to theirs where the model gives no exact answer at all).
         let low = p.0.height.min(q.0.height);
         let bound = farthest.map_or(f64::INFINITY, |r| r - low + BOUND_MARGIN);
-        keep(worst, input, middle, a, bound, false);
+        // Or, tighter, from the material within the tool's reach over the
+        // step (issue #547).
+        let near = in_reach(input, known.profile, p, q, radius);
+        keep(
+            worst,
+            input,
+            middle,
+            a,
+            near.map_or(bound, |n| n.min(bound)),
+            false,
+        );
         return;
     };
     let bound = top + up + turned;
@@ -329,28 +393,10 @@ fn between(
         return;
     }
     *budget -= 1;
-    let (depth, exact) = depth_at(stock, input, middle, a, radius, farthest);
+    let (depth, exact) = depth_at(stock, input, middle, a, radius, known);
     keep(worst, input, middle, a, depth, exact);
-    between(
-        worst,
-        input,
-        radius,
-        limit,
-        p,
-        (middle, a),
-        budget,
-        farthest,
-    );
-    between(
-        worst,
-        input,
-        radius,
-        limit,
-        (middle, a),
-        q,
-        budget,
-        farthest,
-    );
+    between(worst, input, radius, limit, p, (middle, a), budget, known);
+    between(worst, input, radius, limit, (middle, a), q, budget, known);
 }
 
 /// The deepest cut `passes` make in `input`'s stock: how far the stock
@@ -373,8 +419,13 @@ fn deepest_of(
 ) -> Result<Option<Deepest>> {
     let stock = input.stock;
     let radius = body_radius(input);
-    // Read once for the whole path, not at every reading (issue #547).
     let bound = stock.max_radius();
+    // Built once for the whole path (issue #547).
+    let profile = stock.reach_profile();
+    let known = Known {
+        farthest: bound,
+        profile: profile.as_ref(),
+    };
     let found = crate::parallel::map_each_in_order(passes, |pass| -> Result<Option<Deepest>> {
         let mut worst: Option<Deepest> = None;
         let mut previous: Option<&CutPoint> = None;
@@ -414,13 +465,13 @@ fn deepest_of(
                     if bound.is_some_and(|r| r - position.height + BOUND_MARGIN <= limit) {
                         continue;
                     }
-                    let (depth, exact) = depth_at(stock, input, position, a, radius, bound);
+                    let (depth, exact) = depth_at(stock, input, position, a, radius, known);
                     keep(&mut worst, input, position, a, depth, exact);
                 }
                 // And the stock between the places read.
                 for (&p, &q) in chain.iter().zip(chain.iter().skip(1)) {
                     let mut budget = STEP_BUDGET;
-                    between(&mut worst, input, radius, limit, p, q, &mut budget, bound);
+                    between(&mut worst, input, radius, limit, p, q, &mut budget, known);
                 }
             }
             previous = Some(point);
