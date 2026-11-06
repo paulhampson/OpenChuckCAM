@@ -512,8 +512,14 @@ fn generate_unnamed(
     // tessellation, with face sets of its triangles to match.
     let profile = snapshot.tool.profile()?;
     let contact_on = openchuck_path::contact::is_on(strategy, &stored_values(operation));
+    // The tool is grown by the largest stock to leave, the operation's or a
+    // set's; a flat end so grown is a bull nose with no exact drop
+    // (OI-1350), and its contacts are on the tessellation, so the whole
+    // operation stays there, face sets as triangles (decision 0526).
+    let contact_leave = largest_leave(project, operation);
     let exact = placed.brep.is_some()
-        && openchuck_path::contact::exact_drops(strategy, &stored_values(operation), &profile);
+        && openchuck_path::contact::exact_drops(strategy, &stored_values(operation), &profile)
+        && !grown_has_no_exact_drop(strategy, &profile, contact_leave);
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
             Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
@@ -919,8 +925,7 @@ fn generate_unnamed(
             &operation.strategy,
             &profile,
             contact_on,
-            largest_selection_leave(project, operation)
-                .map_or(operation_leave, |(l, _)| l.max(operation_leave)),
+            contact_leave,
         )
     {
         notes.push(note);
@@ -1005,27 +1010,18 @@ fn contact_note(
         "the tool"
     };
     let kind = strategy.exact_contact();
-    if on && let Some(k) = kind.filter(|k| k.supports(profile)) {
-        // A flat end grown for stock to leave is a bull nose, which has no
-        // exact drop (OI-1350): where stock is left it drops on the
-        // tessellation, and the note says so (NFR-07, NFR-12).
-        let grown_too = leave <= 0.0
-            || openchuck_path::cutter::grow_profile(profile, leave).is_ok_and(|g| k.supports(&g));
-        let rest = if grown_too {
-            String::new()
-        } else {
-            format!(
-                "; where it leaves stock ({leave} mm) it drops on the tessellation, made at a \
-                 deflection of {deflection} mm: the tool grown by the stock to leave has no \
-                 exact drop"
-            )
-        };
+    let grown = grown_has_no_exact_drop(strategy, profile, leave);
+    if on && !grown && kind.is_some_and(|k| k.supports(profile)) {
         return Some(format!(
             "{subject} {tool} on the STEP part's exact faces, to within {} mm, not on its \
-             tessellation; selected faces limit the cut as exact faces too{rest}",
+             tessellation; selected faces limit the cut as exact faces too",
             openchuck_path::DROP_TOLERANCE
         ));
     }
+    let grown_why = format!(
+        "with a stock to leave of {leave} mm the tool grows into a shape that has no exact \
+         drop, so Exact STEP surface contact does not apply"
+    );
     let why = match kind {
         None => "dropping on the exact faces is not built yet for this strategy",
         Some(ExactContact::Ball) if !ball => {
@@ -1035,12 +1031,42 @@ fn contact_note(
             "dropping on the exact faces is not built for this tool's shape (a bull nose, a \
              flat end with stock to leave, a sharp V-bit or a concave profile)"
         }
+        Some(_) if on && grown => grown_why.as_str(),
         Some(_) => "Exact STEP surface contact is off for this operation",
     };
     Some(format!(
         "{subject} {tool} on the STEP part's tessellation, made at a deflection of \
          {deflection} mm, not on its exact faces: {why}"
     ))
+}
+
+/// The largest stock to leave of `operation`: its own, as stored (none is
+/// 0), or a selection set's, whichever is larger. The tool is grown by it
+/// where it applies.
+fn largest_leave(project: &Project, operation: &Operation) -> f64 {
+    let own = match operation.parameters.get(names::STOCK_TO_LEAVE) {
+        Some(openchuck_project::ParameterValue::Number(v)) => *v,
+        Some(openchuck_project::ParameterValue::Integer(v)) => *v as f64,
+        _ => 0.0,
+    };
+    largest_selection_leave(project, operation).map_or(own, |(l, _)| l.max(own))
+}
+
+/// Whether `profile`, grown by `leave` for stock to leave, has no exact drop
+/// of `strategy`'s kind while the tool itself has one: a flat end grown into
+/// a bull nose (OI-1350). Exact contact then does not apply to the
+/// operation (decision 0526).
+fn grown_has_no_exact_drop(
+    strategy: &dyn Strategy,
+    profile: &openchuck_types::tool::RevolvedProfile,
+    leave: f64,
+) -> bool {
+    let Some(kind) = strategy.exact_contact() else {
+        return false;
+    };
+    leave > 0.0
+        && kind.supports(profile)
+        && !openchuck_path::cutter::grow_profile(profile, leave).is_ok_and(|g| kind.supports(&g))
 }
 
 /// The largest stock to leave of the selection sets `operation` selects, and
@@ -3395,18 +3421,39 @@ mod tests {
             "{:?}",
             field.problem
         );
-        // A flat end with stock to leave is a bull nose where stock is left.
-        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
-        f.set(exact_contact(true).0, exact_contact(true).1);
-        f.set(names::STOCK_TO_LEAVE, Value::Number(0.2));
-        let path = f.run().unwrap();
-        assert!(
-            path.notes
-                .iter()
-                .any(|n| n.contains("exact faces") && n.contains("where it leaves stock (0.2 mm)")),
-            "{:?}",
-            path.notes
-        );
+        // A flat end grown for stock to leave is a bull nose, which has no
+        // exact drop (OI-1350). Its contacts are on the tessellation, so the
+        // whole operation stays on it, face sets as triangles: the same path
+        // as with the setting off, and a note that says why (CodeRabbit on
+        // #481). The stock may be the operation's or a face set's.
+        let flat = |leave_on_set: bool, on: bool| {
+            let mut f =
+                bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+            f.set(exact_contact(on).0, exact_contact(on).1);
+            if leave_on_set {
+                let set = f.select_as(
+                    SelectionTarget::Faces([FaceId(1)].into()),
+                    f.hash,
+                    f.model,
+                    Role::Machine,
+                );
+                f.set_stock(set, 0.2);
+            } else {
+                f.set(names::STOCK_TO_LEAVE, Value::Number(0.2));
+            }
+            f.run().unwrap()
+        };
+        for leave_on_set in [false, true] {
+            let (on, off) = (flat(leave_on_set, true), flat(leave_on_set, false));
+            assert_eq!(on.group.segments, off.group.segments, "set: {leave_on_set}");
+            assert!(
+                on.notes.iter().any(|n| n.contains("tessellation")
+                    && n.contains("stock to leave")
+                    && !n.contains("exact faces, to within")),
+                "set: {leave_on_set}: {:?}",
+                on.notes
+            );
+        }
     }
 
     #[test]
