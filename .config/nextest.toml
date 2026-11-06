@@ -228,6 +228,10 @@ priority = 79
 # unchanged full case passed alone at 323.661 s. All remain selected by default
 # (apart from the pre-existing independent-oracle nightly-only exclusion).
 [profile.coverage]
+# Lane LARGEPATH, 6 Nov 2026 (coordinator's request), uninstrumented and alone on 4 vCPU:
+# tab_zone_clearance's roughing and rest round a tab 351.9 s (634 s on a busy Windows CI
+# share), the playback panel's final cut part after play to end 77.5 s (182 s on CI).
+# Default runs them; coverage excludes them and the nightly long run selects them.
 # PATHBUGS 2 Nov 2026 (issue #462): the tutorial piece's helical finishing with adaptive
 # spacing on, 123.607 s uninstrumented alone on four cores. Default runs it; coverage excludes
 # it and the nightly long run selects it. Found unlisted in the same run: held_region's
@@ -409,9 +413,13 @@ default-filter = '''not (
   | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_two_pins_side_by_side_are_cut_all_round))
   | (binary_id(=openchuck-path::integration) & test(=helical_rings::req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
   | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
+  | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
+  | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
 )'''
 
 [profile.long]
+# LARGEPATH 6 Nov 2026: tab_zone_clearance round a tab 351.9 s and the playback panel's
+# final cut part 77.5 s (see the coverage profile).
 # PATHBUGS 2 Nov 2026: the tutorial piece with adaptive spacing, 123.607 s, and held_region's
 # simultaneous finishing beside a held start, 78.678 s (see the coverage profile).
 # SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
@@ -502,4 +510,6 @@ default-filter = '''
   | (binary_id(=openchuck-path::integration) & test(=simultaneous_hidden::req_op_20_two_pins_side_by_side_are_cut_all_round))
   | (binary_id(=openchuck-path::integration) & test(=helical_rings::req_op_12_req_op_11_rings_cover_the_surface_without_gouging))
   | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
+  | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
+  | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
 '''
