@@ -852,9 +852,56 @@ fn req_ui_25_the_focus_layer_draws_over_the_scene() {
     assert!(blue_pixels(&pixels) > 100, "{}", blue_pixels(&pixels));
     // The fill is the scene's own, not drawn again by the focus layer.
     assert!(pixels.iter().filter(|p| p[0] > 60 && p[1] < 30).count() > 500);
-    assert_eq!(Layer::ALL.len(), 8);
+    assert_eq!(Layer::ALL.len(), 9);
     assert_eq!(Layer::Focus.index(), 7);
+    assert_eq!(Layer::Hover.index(), 8);
     assert_eq!(Layer::Trace.index() + 1, Layer::Paths.index());
+}
+
+#[test]
+fn req_nfr_03_req_ui_04_the_hover_layer_draws_as_the_hover_in_the_overlay_did() {
+    // Issue 556: the outline under the pointer moved out of the selection
+    // overlay into its own layer, so moving it never uploads the set again.
+    // The picture is the same as with both in one layer.
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let block = block([-40.0; 3], [40.0; 3]);
+    let mut part = Scene::default();
+    part.add_mesh(&block, &[], RED, BLACK);
+    let mut set = Scene::default();
+    set.add_mesh(&some(&block, &[4, 5]), &[], [0.0, 0.0, 1.0, 0.3], BLACK);
+    set.meshes[0].outline = Some(Outline {
+        colour: BLUE,
+        width: 3.0,
+        style: LineStyle::Solid,
+    });
+    let mut hover = Scene::default();
+    hover.add_wide_polyline(
+        &[
+            Point3::new(-40.0, -40.0, 40.0),
+            Point3::new(40.0, -40.0, 40.0),
+            Point3::new(40.0, 40.0, 40.0),
+            Point3::new(-40.0, -40.0, 40.0),
+        ],
+        [1.0, 1.0, 0.0, 1.0],
+        false,
+        2.0,
+    );
+    let mut both = set.clone();
+    both.lines.extend(hover.lines.iter().cloned());
+    let f = front(&part, 1.0);
+    let together = render_layers(&device, &queue, &part, Some(&both), &[], &f);
+    let apart = render_layers(
+        &device,
+        &queue,
+        &part,
+        Some(&set),
+        &[(Layer::Hover, &hover)],
+        &f,
+    );
+    assert!(blue_pixels(&apart) > 100, "{}", blue_pixels(&apart));
+    assert_eq!(together, apart);
 }
 
 #[test]

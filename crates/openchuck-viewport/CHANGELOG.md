@@ -8,6 +8,9 @@ All notable changes to `openchuck-viewport` are recorded here.
 
 ## Unreleased
 
+- VIEWPERF (issue #556; NFR-03): **breaking**: `Layer` gains `Layer::Hover`, the outline of what is under the pointer, kept apart from `Layer::Overlay` so a moving pointer, or a zoom that brings another triangle under it, never uploads a large selection again (nine layers; `Layer::ALL` and `Layer::index` follow, `Hover` last). A front end that matched on `Layer` must add it. `openchuck-viewport` is not in the library family, so `cargo-semver-checks` does not run on it (as for `Layer::Focus`, decision 0119, and `Layer::Trace`, decision 0169).
+- VIEWPERF (issue #556; NFR-03): an upload works a mesh's outline edges out once for a run of outlined meshes with the same triangles (a shown set's dark frame and its coloured line, decision 0216 item 4), and the outline edges are found by a hash and one sort instead of a map node and a list per edge. The same edges, in the same order, with the same floats (tested against the earlier form). On the owner's carving (a set of 496,172 triangles) the upload's outline work fell from 757 ms to 286 ms.
+
 - Version 0.25.0 with the library family for FACING (decision0252). Hosts constructing `StrategyInput` supply the new optional `facing` setup context; use `None` to retain legacy whole-stock inputs. No project-schema migration.
 
 - Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.

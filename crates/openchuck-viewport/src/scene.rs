@@ -441,29 +441,60 @@ const CREASE_COS: f32 = 0.866_025_4;
 /// on in that order: the edges of a ring follow one another, so a dashed
 /// ring keeps its rhythm.
 pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<OutlineEdge> {
-    use std::collections::BTreeMap;
     // A tenth of a micrometre joins coincident points without joining
     // distinct ones on any part this program machines.
     #[allow(clippy::cast_possible_truncation)]
     let key = |p: [f32; 3]| p.map(|v| (f64::from(v) * 1.0e4).round() as i64);
-    let mut first: BTreeMap<[i64; 3], u32> = BTreeMap::new();
-    let welded: Vec<u32> = (0u32..)
-        .zip(positions)
-        .map(|(i, p)| *first.entry(key(*p)).or_insert(i))
-        .collect();
-    let mut faces: BTreeMap<(u32, u32), Vec<[f32; 3]>> = BTreeMap::new();
+    // Each point is joined to the first point with its key: sorted by key
+    // and then by index, that point heads its run. One sort, with no map
+    // node or list per point or edge, keeps a selection of half a million
+    // triangles quick (issue 556).
+    let keys: Vec<[i64; 3]> = (0u32..).zip(positions).map(|(_, p)| key(*p)).collect();
+    let mut welded = vec![0u32; keys.len()];
+    let mut join = |run: &mut dyn Iterator<Item = u32>| {
+        let mut head = None;
+        for i in run {
+            let head = *head.get_or_insert(i);
+            if let Some(w) = welded.get_mut(i as usize) {
+                *w = head;
+            }
+        }
+    };
+    if keys.iter().flatten().all(|v| i32::try_from(*v).is_ok()) {
+        // Within 214 m of the origin, the usual case: a key and its index
+        // fit one 128-bit word, which sorts quickest.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let word = |v: i64| u128::from(v as i32 as u32);
+        let mut packed: Vec<u128> = (0u32..)
+            .zip(&keys)
+            .map(|(i, k)| {
+                (word(k[0]) << 96) | (word(k[1]) << 64) | (word(k[2]) << 32) | u128::from(i)
+            })
+            .collect();
+        packed.sort_unstable();
+        #[allow(clippy::cast_possible_truncation)]
+        for run in packed.chunk_by(|x, y| x >> 32 == y >> 32) {
+            join(&mut run.iter().map(|w| *w as u32));
+        }
+    } else {
+        let mut by_key: Vec<([i64; 3], u32)> = (0u32..).zip(&keys).map(|(i, k)| (*k, i)).collect();
+        by_key.sort_unstable();
+        for run in by_key.chunk_by(|x, y| x.0 == y.0) {
+            join(&mut run.iter().map(|(_, i)| *i));
+        }
+    }
+    let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
+    // Each side of each good triangle by its welded ends, in the high bits,
+    // and its place in triangle order, in the low bits; the face normals by
+    // that place. Sorting the keys groups the faces of each side in
+    // triangle order.
+    let mut sides: Vec<u128> = Vec::with_capacity(indices.len());
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(indices.len());
     for t in indices.chunks_exact(3) {
-        let Some(ids) = t
-            .iter()
-            .map(|&i| welded.get(i as usize).copied())
-            .collect::<Option<Vec<u32>>>()
-        else {
+        let corner = |k: usize| t.get(k).and_then(|&i| welded.get(i as usize)).copied();
+        let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) else {
             continue;
         };
-        let (Some(&a), Some(&b), Some(&c)) = (ids.first(), ids.get(1), ids.get(2)) else {
-            continue;
-        };
-        let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
         let (pa, pb, pc) = (point(a), point(b), point(c));
         let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
         let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
@@ -478,19 +509,25 @@ pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<Outl
         }
         let n = n.map(|x| x / length);
         for (p, q) in [(a, b), (b, c), (c, a)] {
-            faces.entry((p.min(q), p.max(q))).or_default().push(n);
+            let place = normals.len() as u128;
+            sides.push((u128::from(p.min(q)) << 96) | (u128::from(p.max(q)) << 64) | place);
+            normals.push(n);
         }
     }
-    let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
+    sides.sort_unstable();
+    let ends = |s: u128| ((s >> 96) as u32, (s >> 64) as u32);
+    let normal = |s: u128| normals.get(s as u64 as usize).copied().unwrap_or_default();
     let mut along = 0.0_f32;
-    faces
-        .into_iter()
-        .map(|((a, b), normals)| {
+    sides
+        .chunk_by(|x, y| ends(*x) == ends(*y))
+        .filter_map(|run| {
+            let (a, b) = ends(*run.first()?);
             let always = [[0.0; 3]; 2];
-            let pair = match normals.as_slice() {
-                [n1, n2] => {
+            let pair = match run {
+                [s1, s2] => {
+                    let (n1, n2) = (normal(*s1), normal(*s2));
                     let cos = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
-                    if cos < CREASE_COS { always } else { [*n1, *n2] }
+                    if cos < CREASE_COS { always } else { [n1, n2] }
                 }
                 _ => always,
             };
@@ -503,7 +540,35 @@ pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<Outl
                 along,
             };
             along += distance(pa, pb);
-            edge
+            Some(edge)
+        })
+        .collect()
+}
+
+/// The outline floats the GPU reads for each of `meshes` that asks for an
+/// outline, by index, or `None`. A mesh with the same triangles as the
+/// outlined mesh before it shares that outline: a shown set is drawn as a
+/// dark frame and then a line in its colour over the same triangles
+/// (decision 0216 item 4), and on a large set working the outline out twice
+/// was most of the upload (issue 556).
+pub(crate) fn outline_floats(meshes: &[MeshItem]) -> Vec<Option<std::rc::Rc<[f32]>>> {
+    let mut last: Option<(&MeshItem, std::rc::Rc<[f32]>)> = None;
+    meshes
+        .iter()
+        .map(|m| {
+            m.outline?;
+            if let Some((before, floats)) = &last
+                && before.positions == m.positions
+                && before.indices == m.indices
+            {
+                return Some(std::rc::Rc::clone(floats));
+            }
+            let floats: std::rc::Rc<[f32]> = outline_edges(&m.positions, &m.indices)
+                .iter()
+                .flat_map(OutlineEdge::floats)
+                .collect();
+            last = Some((m, std::rc::Rc::clone(&floats)));
+            Some(floats)
         })
         .collect()
 }
@@ -597,6 +662,216 @@ mod tests {
         assert_eq!(edges[0].floats().count(), 13);
         // The same mesh gives the same edges in the same order.
         assert_eq!(edges, outline_edges(&positions, &indices));
+    }
+
+    /// The outline edges as worked out before issue 556 (one map entry and
+    /// one list per edge): the answer the quicker form must equal exactly.
+    #[allow(clippy::cast_possible_truncation)]
+    fn reference_outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<OutlineEdge> {
+        use std::collections::BTreeMap;
+        // A tenth of a micrometre joins coincident points without joining
+        // distinct ones on any part this program machines.
+        #[allow(clippy::cast_possible_truncation)]
+        let key = |p: [f32; 3]| p.map(|v| (f64::from(v) * 1.0e4).round() as i64);
+        let mut first: BTreeMap<[i64; 3], u32> = BTreeMap::new();
+        let welded: Vec<u32> = (0u32..)
+            .zip(positions)
+            .map(|(i, p)| *first.entry(key(*p)).or_insert(i))
+            .collect();
+        let mut faces: BTreeMap<(u32, u32), Vec<[f32; 3]>> = BTreeMap::new();
+        for t in indices.chunks_exact(3) {
+            let Some(ids) = t
+                .iter()
+                .map(|&i| welded.get(i as usize).copied())
+                .collect::<Option<Vec<u32>>>()
+            else {
+                continue;
+            };
+            let (Some(&a), Some(&b), Some(&c)) = (ids.first(), ids.get(1), ids.get(2)) else {
+                continue;
+            };
+            let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
+            let (pa, pb, pc) = (point(a), point(b), point(c));
+            let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+            let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+            let n = [
+                u[1] * v[2] - u[2] * v[1],
+                u[2] * v[0] - u[0] * v[2],
+                u[0] * v[1] - u[1] * v[0],
+            ];
+            let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if length <= f32::EPSILON || a == b || b == c || c == a {
+                continue;
+            }
+            let n = n.map(|x| x / length);
+            for (p, q) in [(a, b), (b, c), (c, a)] {
+                faces.entry((p.min(q), p.max(q))).or_default().push(n);
+            }
+        }
+        let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
+        let mut along = 0.0_f32;
+        faces
+            .into_iter()
+            .map(|((a, b), normals)| {
+                let always = [[0.0; 3]; 2];
+                let pair = match normals.as_slice() {
+                    [n1, n2] => {
+                        let cos = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+                        if cos < CREASE_COS { always } else { [*n1, *n2] }
+                    }
+                    _ => always,
+                };
+                let (pa, pb) = (point(a), point(b));
+                let edge = OutlineEdge {
+                    a: pa,
+                    b: pb,
+                    n1: pair[0],
+                    n2: pair[1],
+                    along,
+                };
+                along += distance(pa, pb);
+                edge
+            })
+            .collect()
+    }
+
+    /// A ring of `around` by `rings` quads with a ripple, every triangle with
+    /// its own three vertices (as a selection overlay is built), with
+    /// creases, a seam, coincident points and a few bad triangles.
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    fn rippled_tube(around: u32, rings: u32) -> (Vec<[f32; 3]>, Vec<u32>) {
+        let point = |i: u32, j: u32| {
+            let t = std::f32::consts::TAU * (i % around) as f32 / around as f32;
+            let r = 10.0
+                + 0.4 * (7.0 * t).sin() * (j as f32 * 0.9).cos()
+                + if (i / 3 + j / 2).is_multiple_of(5) {
+                    0.8
+                } else {
+                    0.0
+                };
+            [j as f32 * 0.25, r * t.cos(), r * t.sin()]
+        };
+        let mut positions = Vec::new();
+        let mut indices = Vec::new();
+        for j in 0..rings {
+            for i in 0..around {
+                for tri in [
+                    [point(i, j), point(i + 1, j), point(i + 1, j + 1)],
+                    [point(i, j), point(i + 1, j + 1), point(i, j + 1)],
+                ] {
+                    let base = positions.len() as u32;
+                    positions.extend(tri);
+                    indices.extend([base, base + 1, base + 2]);
+                }
+            }
+        }
+        // A zero-area triangle, a repeated corner, a missing vertex and an
+        // edge shared by three faces.
+        let n = positions.len() as u32;
+        positions.extend([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
+        indices.extend([n, n + 1, n + 2, 0, 0, 1, 0, 1, n + 99]);
+        indices.extend([0, 1, 5, 0, 1, 7]);
+        (positions, indices)
+    }
+
+    #[test]
+    fn req_nfr_03_outline_edges_equal_the_reference_exactly() {
+        // Issue 556: the quicker outline gives the same edges, in the same
+        // order, with the same floats, as the form it replaces.
+        let (positions, indices) = split_cube();
+        assert_eq!(
+            outline_edges(&positions, &indices),
+            reference_outline_edges(&positions, &indices)
+        );
+        for (around, rings) in [(3, 1), (3, 2), (48, 30), (400, 120)] {
+            let (positions, indices) = rippled_tube(around, rings);
+            let quick = outline_edges(&positions, &indices);
+            assert!(!quick.is_empty());
+            assert_eq!(
+                quick,
+                reference_outline_edges(&positions, &indices),
+                "{around} by {rings}"
+            );
+        }
+        // Far from the origin the keys do not fit 32 bits and are sorted
+        // whole; the answer is the same.
+        let (positions, indices) = rippled_tube(48, 30);
+        let far: Vec<[f32; 3]> = positions
+            .iter()
+            .map(|p| p.map(|v| v * 30_000.0 + 1.0e6))
+            .collect();
+        let quick = outline_edges(&far, &indices);
+        assert!(!quick.is_empty());
+        assert_eq!(quick, reference_outline_edges(&far, &indices));
+        for (positions, indices) in [
+            (
+                vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                vec![0, 1, 2],
+            ),
+            (
+                vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                vec![0, 1, 9],
+            ),
+            (vec![], vec![]),
+        ] {
+            assert_eq!(
+                outline_edges(&positions, &indices),
+                reference_outline_edges(&positions, &indices)
+            );
+        }
+    }
+
+    #[test]
+    fn req_nfr_03_meshes_with_the_same_triangles_share_one_outline() {
+        // Issue 556: a shown set is drawn as a dark frame and then a line in
+        // its colour over the same triangles (decision 0216 item 4); their
+        // outline is worked out once, and is what each would get alone.
+        let (positions, indices) = rippled_tube(48, 30);
+        let outlined = |positions: &[[f32; 3]], indices: &[u32], width: f32| MeshItem {
+            positions: positions.to_vec(),
+            indices: indices.to_vec(),
+            outline: Some(Outline {
+                colour: [1.0, 0.0, 0.0, 1.0],
+                width,
+                style: LineStyle::Solid,
+            }),
+            ..MeshItem::default()
+        };
+        let (cube_positions, cube_indices) = split_cube();
+        let meshes = [
+            outlined(&positions, &indices, 4.0),
+            outlined(&positions, &indices, 2.0),
+            MeshItem {
+                outline: None,
+                ..outlined(&cube_positions, &cube_indices, 1.0)
+            },
+            outlined(&cube_positions, &cube_indices, 1.0),
+            outlined(&positions, &indices, 1.0),
+        ];
+        let floats = outline_floats(&meshes);
+        assert_eq!(floats.len(), meshes.len());
+        let fresh = |m: &MeshItem| -> Vec<f32> {
+            outline_edges(&m.positions, &m.indices)
+                .iter()
+                .flat_map(OutlineEdge::floats)
+                .collect()
+        };
+        for (i, (mesh, kept)) in meshes.iter().zip(&floats).enumerate() {
+            match (mesh.outline, kept) {
+                (Some(_), Some(kept)) => assert_eq!(**kept, *fresh(mesh), "mesh {i}"),
+                (None, None) => {}
+                _ => panic!("mesh {i}: an outline only where one is asked for"),
+            }
+        }
+        // The frame and the line share one computation; other triangles,
+        // even after a mesh with none, get their own.
+        let (a, b) = (floats[0].as_ref().unwrap(), floats[1].as_ref().unwrap());
+        assert!(std::rc::Rc::ptr_eq(a, b));
+        assert!(!std::rc::Rc::ptr_eq(b, floats[3].as_ref().unwrap()));
+        assert!(!std::rc::Rc::ptr_eq(
+            floats[3].as_ref().unwrap(),
+            floats[4].as_ref().unwrap()
+        ));
     }
 
     #[test]

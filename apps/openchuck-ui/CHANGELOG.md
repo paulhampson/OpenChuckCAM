@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- VIEWPERF (issue #556; NFR-03, UI-04, UI-05): the outline under the pointer is drawn in its own viewport layer, so zooming or moving the pointer over a shown selection set draws only that outline again, not the set. Zooming had rebuilt and uploaded the whole set on almost every frame because another triangle came under the resting pointer: on the owner's carving with a set of 496,172 triangles a zoom frame took 873 ms (p95 951 ms), now 0.5 ms (p95 0.9 ms), measured without a window and without a GPU. On a public stand-in (the NFR-03 benchmark model, 1,002,000 triangles, a set of 991,980) 1,783 ms (p95 1,903 ms), now 0.3 ms (p95 0.3 ms). What is selected and drawn is unchanged. Showing or editing a large set still takes one long frame (about 0.4 s on the owner's carving, was 0.9 s); building it off the interface thread is held as an open item.
+
 - STEPALL-CLOSE (issue #351; decision 0526, accepted): the operation inspector shows *Exact STEP surface contact* in *Pattern and tolerance*, after *Tolerance*, for helical, indexed, rest, simultaneous and axial finishing and pencil clean-up on a STEP part, with a warning line under it when the tool cannot take it.
 
 - LARGEPATH pull request 3 (#470, OI-2023): the export dialog takes the file plan from the posting job instead of making it on the interface thread when posting ends (a frame of 200 ms on the CrankShaft model, up to 560 ms on the owner's carving). The same files.
