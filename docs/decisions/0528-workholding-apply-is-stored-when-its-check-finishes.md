@@ -1,6 +1,6 @@
 # 0528: An Apply of the workholding section is stored when its check finishes, wherever the user is, and Messages says while a draft is not applied (UI-11, NFR-12; issue #558; lane STALETAB)
 
-- **Status:** proposed by lane STALETAB on 6 Nov 2026. Guidance only until the owner accepts it (decision 0049).
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049), after reading it in full. Proposed by lane STALETAB on 6 Nov 2026.
 - **Date:** 6 Nov 2026.
 - **Number:** 0528, with OI-2059 and OI-2060, given to the lane by the coordinator.
 - **Issue:** [#558](https://github.com/paulhampson/OpenChuckCAM/issues/558) (sev1). Related: decisions [0172](0172-stale-state-and-removed-paths.md), [0192](0192-simulate-result-out-of-date.md), [0523](0523-tab-checks-follow-the-operations-reach.md).
