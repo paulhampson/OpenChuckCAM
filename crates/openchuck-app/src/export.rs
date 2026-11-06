@@ -420,7 +420,12 @@ pub fn export_checks(
                         } else {
                             format!(
                                 "Operation '{}' was made with a warning: {}",
-                                operation.name, warning.message
+                                operation.name,
+                                crate::operation::warning_text(
+                                    project,
+                                    operation,
+                                    &warning.message
+                                )
                             )
                         };
                         push(CheckLevel::Warning, text);

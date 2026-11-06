@@ -11,8 +11,11 @@
 //! uppermost over the rotary axis, its half diagonal from the axis), stock
 //! not centred on the axis or turned about it, and tips below the axis are
 //! all measured as they are. [`deepest`] is the one measure every check uses;
-//! [`check`] refuses a path whose deepest cut is past the flutes, saying
-//! where, by how much and on which stock.
+//! [`check`] warns of a path whose deepest cut is past the flutes, saying
+//! where, by how much and on which stock. It is a warning, not a refusal
+//! (the owner's decision of 6 Nov 2026, decision record 0522, amending
+//! 0509 item 3): the measure is conservative, so the path is kept and the
+//! user, who verifies every program (NFR-12), decides.
 //!
 //! The depth is exact where the stock model gives it
 //! ([`StockModel::top_over_disc`]: the setup's own box or round stock, in
@@ -29,7 +32,8 @@ use openchuck_types::geometry::Point3;
 use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
 
-use crate::error::{PathError, Result};
+use crate::assemble::PathWarning;
+use crate::error::Result;
 use crate::rotary::AxisPosition;
 use crate::stock::StockModel;
 use crate::strategy::{CutPoint, Pass, StrategyInput};
@@ -463,15 +467,24 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
     }
 }
 
-/// Refuses `passes` when the stock stands above the tool's tip, along the
-/// tool axis, further than the tool's flutes reach (decision record 0509):
-/// past the flutes the shank would meet the stock. `parameter` names the
-/// setting the user acts on (Finishing layers, where the strategy has
-/// them); the message gives the depth, where, the flute length and the
+/// The words every warning of this check starts with, so a host can tell it
+/// apart and name the operation and the tool in it (decision record 0522).
+pub const WARNING_LEAD: &str = "Flute length: ";
+
+/// A warning when the stock stands above the tool's tip in `passes`, along
+/// the tool axis, further than the tool's flutes reach (decision records
+/// 0509 and 0522): past the flutes the shank may meet the stock. `None`
+/// when it does not. `parameter` names the setting the user acts on
+/// (Finishing layers, where the strategy has them); the message gives the
+/// depth, whether it is exact or a bound, where, the flute length and the
 /// stock.
-pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>) -> Result<()> {
+pub fn check(
+    input: &StrategyInput<'_>,
+    passes: &[Pass],
+    parameter: Option<&str>,
+) -> Option<PathWarning> {
     let flutes = input.tool.top();
-    refuse_past_flutes(input, deepest(input, passes, flutes), parameter)
+    warn_past_flutes(input, deepest(input, passes, flutes), parameter)
 }
 
 /// [`check`] on the path as assembly wrote it: every fed move (cuts, plunges,
@@ -483,13 +496,14 @@ pub fn check(input: &StrategyInput<'_>, passes: &[Pass], parameter: Option<&str>
 /// not a prediction of it (CodeRabbit on #534).
 ///
 /// Cancel is polled at each move (UI-09): a long path is read in bounded
-/// work between polls, and a cancelled job returns [`PathError::Cancelled`].
+/// work between polls, and a cancelled job returns
+/// [`crate::PathError::Cancelled`], the only error.
 pub fn check_path(
     input: &StrategyInput<'_>,
     path: &crate::assemble::GeneratedPath,
     parameter: Option<&str>,
     context: &JobContext<'_>,
-) -> Result<()> {
+) -> Result<Option<PathWarning>> {
     let flutes = input.tool.top();
     let point = |pose: &openchuck_types::ir::ToolPose| CutPoint {
         tip: pose.tip,
@@ -519,22 +533,21 @@ pub fn check_path(
         });
     }
     let worst = deepest_of(input, &runs, flutes, true, Some(context.cancel))?;
-    refuse_past_flutes(input, worst, parameter)
+    Ok(warn_past_flutes(input, worst, parameter))
 }
 
-/// The refusal of [`check`] and [`check_path`] when `worst` is past the
-/// flutes.
-fn refuse_past_flutes(
+/// The warning of [`check`] and [`check_path`] when `worst` is past the
+/// flutes. It says what was found and what the user can do; it never says
+/// the program is safe (NFR-12).
+fn warn_past_flutes(
     input: &StrategyInput<'_>,
     worst: Option<Deepest>,
     parameter: Option<&str>,
-) -> Result<()> {
+) -> Option<PathWarning> {
     let flutes = input.tool.top();
-    let Some(worst) = worst else {
-        return Ok(());
-    };
+    let worst = worst?;
     if worst.depth <= flutes + SLACK {
-        return Ok(());
+        return None;
     }
     let layers = if parameter.is_some() {
         ", or turn on Finishing layers"
@@ -544,14 +557,14 @@ fn refuse_past_flutes(
     let reason = if !worst.x.is_finite() || !worst.a.is_finite() {
         format!(
             "the path has a tool position that is not a finite number, so the tool's \
-             {flutes:.3} mm of flute cannot be checked against the stock there. Regenerate \
+             {flutes:.3} mm of flute could not be checked against the stock there. Regenerate \
              the operation, and report it if it happens again"
         )
     } else if !worst.depth.is_finite() {
         format!(
-            "the stock's size is not known, so the tool's {flutes:.3} mm of flute cannot be \
-             checked against how deep it stands above the tool (at X {:.3}, A {:.1}). Define \
-             the setup's stock",
+            "the stock's size is not known, so the tool's {flutes:.3} mm of flute could not \
+             be checked against how deep it stands above the tool (at X {:.3}, A {:.1}). \
+             Define the setup's stock",
             worst.x, worst.a,
         )
     } else {
@@ -568,17 +581,18 @@ fn refuse_past_flutes(
         };
         format!(
             "the stock {how} {:.3} mm above the tool's tip along its axis{bound} (at X {:.3}, \
-             A {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank would meet \
-             the stock; {}. Use a tool with longer flutes, or rough the part first in this \
-             setup{layers}",
+             A {:.1}), more than the tool's {flutes:.3} mm of flute, so the shank may meet \
+             the stock; {}. The path was made: check it before running it. Use a tool with \
+             longer flutes, or rough the part first in this setup{layers}",
             worst.depth,
             worst.x,
             worst.a,
             stock_words(input.stock),
         )
     };
-    Err(match parameter {
-        Some(name) => PathError::parameter(name, reason),
-        None => PathError::Strategy(reason),
+    Some(PathWarning {
+        message: format!("{WARNING_LEAD}{reason}"),
+        parameter: parameter.map(str::to_owned),
+        requires_acknowledgement: false,
     })
 }
