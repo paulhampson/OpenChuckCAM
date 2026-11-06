@@ -141,7 +141,7 @@ pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
 pub use simultaneous::SimultaneousFinishing;
 pub use solid::Solid;
-pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
+pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, ReachProfile, StockModel};
 pub use strategy::{
     CutPoint, HELD_CLEARANCE, LeaveZone, Pass, PassStock, Registry, Shank, Strategy, StrategyGroup,
     StrategyInput, StrategyOutput, generate, generate_in_region, generate_in_zones,
