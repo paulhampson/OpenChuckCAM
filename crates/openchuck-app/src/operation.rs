@@ -3900,6 +3900,20 @@ mod tests {
         );
         let err = f.run().unwrap_err().to_string();
         assert!(err.contains("needs a face set"), "{err}");
+        // An empty face set, and an empty guide set, are refused naming the
+        // set and what to do.
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces(BTreeSet::new()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("'chosen'") && err.contains("select the faces to cut"),
+            "{err}"
+        );
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f.select(SelectionTarget::Edges(BTreeSet::new()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("select the guide edges"), "{err}");
         // On a mesh (STL) part it is blocked with the plain reason
         // (decision 0174).
         let mesh = fixture_with(face_flow::NAME, &[], &[], "blank.stl");
