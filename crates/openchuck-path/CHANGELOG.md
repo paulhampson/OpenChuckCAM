@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.47.0
+
+- **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, proposed):** an operation limited by a selection cuts on its selected faces only and keeps clear of the setup's tabs.
+  - **API.** `RegionConstraint` gains `outside` (the part's faces outside the selection) and `keep_clear` (solids the tool keeps `HELD_CLEARANCE` from); a struct literal needs `..Default::default()`. New `Solid::grown`.
+  - **Rule.** A contact on the selection and also on `outside` (the edge with an unselected face) is not on the selection, so the tool no longer rolls over that edge. A cut point where the tool, dropped on a `keep_clear` solid grown by `HELD_CLEARANCE`, rests at its tip or above is not allowed; rotary roughing raises its floor over it instead.
+  - **Check.** Generation follows every assembled move, fed or rapid, and refuses a path that comes within `HELD_CLEARANCE` less the tolerance of a `keep_clear` solid.
+  - **Output.** With neither field set, paths are byte-identical. A host that sets them changes selection-limited paths at the edges of their regions and near tabs.
+
 ## 0.46.0
 
 - **Breaking (0.46.0, STEPALL-CLOSE; issue #351; decision 0526, accepted):** Exact STEP surface contact as a per-operation setting. New module `contact`: `ExactContact` (`Ball`, `Outline`; `supports`, `default_on`), `with_switch`, `is_on`, `exact_drops`, `parameter::EXACT_CONTACT` (`exact_contact`), `BALL_STRATEGIES`, `OUTLINE_STRATEGIES`. `Strategy::exact_contact` returns `Option<ExactContact>` (was `bool`; a strategy that returned `true` returns `Some(ExactContact::Ball)`). Helical, indexed, rest and simultaneous finishing have the flag in their schemas, on by default (the exact ball drop of decision 0277); axial finishing and pencil clean-up have it off by default (the outline drop of decision 0338), right after Tolerance. `BrepSurface::with_exact_drops(true)` now drops every tool with an exact drop (`has_exact_drop`) through `drop_exact`, not only a ball; a host asks for it only where `contact::exact_drops` says so. The strategies do not read the flag; their paths for given surfaces are unchanged.

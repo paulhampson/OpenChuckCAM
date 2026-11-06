@@ -156,6 +156,43 @@ impl Solid {
         Ok(solid)
     }
 
+    /// The solid grown by `by` mm all round: a box by `by` on every side, a
+    /// cylinder or frustum by `by` past each disc and `by` square to its
+    /// side, its side carried on past the discs, so the grown solid holds
+    /// every point within `by` of this one (issue #555; decision record
+    /// 0527). A `by` that is not a finite number zero or more is refused
+    /// (NFR-07).
+    pub fn grown(&self, by: f64) -> Result<Self> {
+        if !(by.is_finite() && by >= 0.0) {
+            return Err(PathError::Surface(format!(
+                "a solid cannot be grown by {by} mm"
+            )));
+        }
+        if let Some(b) = self.cuboid {
+            let d = Vec3::new(by, by, by);
+            return Self::cuboid(Aabb {
+                min: b.min + d * -1.0,
+                max: b.max + d,
+            });
+        }
+        // The side's slope, radius per length along the axis, and how much
+        // further than `by` the radius moves for the side to move `by`.
+        let slope = (self.top_radius - self.base_radius) / self.length;
+        let square = by * slope.hypot(1.0);
+        let a = self.axis.get();
+        let mut grown = Self::frustum(
+            self.base + a * -by,
+            self.axis,
+            self.length + 2.0 * by,
+            // A side that narrows to a point before the grown disc ends at
+            // the axis there: the grown solid is never thinner than `by`.
+            (self.base_radius - slope * by + square).max(by.max(f64::MIN_POSITIVE)),
+            (self.top_radius + slope * by + square).max(by.max(f64::MIN_POSITIVE)),
+        )?;
+        grown.cuboid = None;
+        Ok(grown)
+    }
+
     /// The box, for a solid made by [`Solid::cuboid`]; `None` for a cylinder
     /// or frustum.
     pub fn as_cuboid(&self) -> Option<Aabb> {
@@ -1106,5 +1143,54 @@ mod tests {
             }
         }
         assert!(touched > 500, "too few drops touched: {touched}");
+    }
+
+    #[test]
+    fn req_op_21_a_grown_solid_holds_every_point_within_its_growth() {
+        // Issue #555, decision record 0527: a tab grown by the clearance holds
+        // every point within the clearance of the tab, and no point much
+        // further out.
+        let by = 0.5;
+        let cylinder = Solid::cylinder(Point3::new(-6.0, 0.0, 0.0), UnitVec3::X, 6.0, 5.0)
+            .unwrap()
+            .grown(by)
+            .unwrap();
+        assert!(cylinder.contains(Point3::new(-6.49, 0.0, 0.0)));
+        assert!(cylinder.contains(Point3::new(0.49, 0.0, 0.0)));
+        assert!(cylinder.contains(Point3::new(-3.0, 5.49, 0.0)));
+        assert!(!cylinder.contains(Point3::new(-3.0, 0.0, 5.51)));
+        assert!(!cylinder.contains(Point3::new(0.51, 0.0, 0.0)));
+        // A frustum: a point `by` square to its side, beside its middle, is
+        // in the grown solid, and one a little further is not.
+        let frustum =
+            Solid::frustum(Point3::new(0.0, 0.0, 0.0), UnitVec3::X, 10.0, 6.0, 2.0).unwrap();
+        let grown = frustum.grown(by).unwrap();
+        let (slope, k) = (-0.4_f64, 0.4_f64.hypot(1.0));
+        // The outward normal of the side in the plane z = 0: (-slope, 1)/k.
+        let at = |d: f64| Point3::new(5.0 - slope * d / k, 4.0 + d / k, 0.0);
+        assert!(grown.contains(at(by - 1e-6)));
+        assert!(!grown.contains(at(by + 1e-3)));
+        // Every corner of the frustum's section moved `by` out stays inside.
+        for p in [
+            Point3::new(-by + 1e-9, 0.0, 6.0),
+            Point3::new(10.0 + by - 1e-9, 0.0, 2.0),
+        ] {
+            assert!(grown.contains(p), "{p:?}");
+        }
+        // A box grows on every side.
+        let cube = Solid::cuboid(Aabb {
+            min: Point3::new(0.0, -1.0, -1.0),
+            max: Point3::new(2.0, 1.0, 1.0),
+        })
+        .unwrap()
+        .grown(by)
+        .unwrap();
+        assert!(cube.contains(Point3::new(-0.49, 1.49, -1.49)));
+        assert!(!cube.contains(Point3::new(-0.51, 0.0, 0.0)));
+        // Growth by a bad amount is refused, not a crash (NFR-07).
+        for bad in [-0.1, f64::NAN, f64::INFINITY] {
+            assert!(frustum.grown(bad).is_err());
+        }
+        assert_eq!(frustum.grown(0.0).unwrap(), frustum);
     }
 }

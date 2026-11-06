@@ -69,6 +69,31 @@ pub fn solids(
         .collect())
 }
 
+/// The solids of the tabs of `workholding` alone, with automatic tabs
+/// placed against its real held regions first, so leaving the held regions
+/// out does not move them (decision 0202): what an operation limited by a
+/// selection keeps clear of (issue #555; decision 0527), and Facing's tabs.
+pub fn tab_solids(
+    workholding: &Workholding,
+    stock: &Stock,
+    part: &PartExtent,
+) -> Result<Vec<Solid>, AppError> {
+    let resolved = workholding.resolved(Some(stock), Some(part));
+    let tab_only = Workholding {
+        start: None,
+        end: None,
+        tabs: resolved
+            .tabs
+            .into_iter()
+            .map(|mut tab| {
+                tab.auto = None;
+                tab
+            })
+            .collect(),
+    };
+    solids(&tab_only, Some(stock), part)
+}
+
 /// [`solids`], each with a name for messages ("the held region at the start
 /// of the stock", "tab 2").
 pub fn labelled_solids(

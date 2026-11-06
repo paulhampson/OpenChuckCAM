@@ -804,6 +804,19 @@ impl<'a> Job<'a> {
                 let touch = check.drop_tool(&self.grown, &line)?;
                 Some(self.rotary.to_axis(touch.tip, Degrees(site.a)).height + self.leave)
             });
+            // As does a solid it keeps clear of (decision 0527).
+            let kept = self
+                .region
+                .map_or(&[][..], |r| r.keep_clear)
+                .iter()
+                .filter_map(|solid| {
+                    let touch = solid
+                        .grown(crate::HELD_CLEARANCE)
+                        .ok()?
+                        .drop_tool(&self.grown, &line)?;
+                    Some(self.rotary.to_axis(touch.tip, Degrees(site.a)).height + self.leave)
+                });
+            let floor = kept.fold(floor, |f, h| Some(f.map_or(h, |f: f64| f.max(h))));
             return (floor, allowed, None);
         };
         let height = |tip| self.rotary.to_axis(tip, Degrees(site.a)).height + self.leave;
@@ -819,11 +832,25 @@ impl<'a> Job<'a> {
             {
                 floor = floor.max(height(touch.tip));
             }
+            // So does a solid it keeps clear of, grown by the clearance: the
+            // layers above a tab are still cut (decision 0527).
+            for solid in region.keep_clear {
+                match solid.grown(crate::HELD_CLEARANCE) {
+                    Ok(grown) => {
+                        if let Some(touch) = grown.drop_tool(&self.grown, &line) {
+                            floor = floor.max(height(touch.tip));
+                        }
+                    }
+                    Err(_) => allowed = false,
+                }
+            }
             let without_check = RegionConstraint {
                 check: None,
+                keep_clear: &[],
                 ..*region
             };
-            allowed = without_check.allows(contact.contact, contact.tip, &self.grown, &line);
+            allowed =
+                allowed && without_check.allows(contact.contact, contact.tip, &self.grown, &line);
         }
         let on_part = (floor <= part).then_some(contact.contact);
         (Some(floor), allowed, on_part)

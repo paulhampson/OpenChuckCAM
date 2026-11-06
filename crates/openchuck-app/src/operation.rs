@@ -615,11 +615,30 @@ fn generate_unnamed(
         .as_ref()
         .map(crate::selection::ResolvedRegion::watch)
         .unwrap_or_default();
+    // An operation limited to selected faces or a boundary leaves the tabs
+    // out, so the tool keeps clear of them (OP-21, NFR-12; issue #555,
+    // decision 0527). A whole-part operation cuts a tab to size as part of
+    // the target (decision 0035 item 6); the held regions are kept out of
+    // by every operation already (decision 0161).
+    let keep_clear = if (!operation.selections.is_empty() || operation.boundary.is_some())
+        && !setup.workholding.tabs.is_empty()
+    {
+        let part = openchuck_geom::part_extent(mesh)
+            .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
+        crate::workholding::tab_solids(&setup.workholding, stock, &part)
+            .map_err(|e| missing(operation, &e.to_string()))?
+    } else {
+        Vec::new()
+    };
     let constraint = match (&resolved_region, &brep_limits) {
         (Some(r), _) => Some(r.constraint(&region_watch)),
         (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
-    };
+    }
+    .map(|c| RegionConstraint {
+        keep_clear: &keep_clear,
+        ..c
+    });
     let facing_geometry = if crate::facing::needs_verification(operation) {
         let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "the whole facing part has no extent"))?;
@@ -630,22 +649,7 @@ fn generate_unnamed(
             .workholding
             .held_intervals((bounds.min.x, bounds.max.x));
         let protected = crate::workholding::solids(&setup.workholding, Some(stock), &part)?;
-        // Resolve automatic tabs against the real held regions first. Removing
-        // holding to obtain the tab-only union must not reposition those tabs.
-        let resolved = setup.workholding.resolved(Some(stock), Some(&part));
-        let tab_only = openchuck_types::workholding::Workholding {
-            start: None,
-            end: None,
-            tabs: resolved
-                .tabs
-                .into_iter()
-                .map(|mut tab| {
-                    tab.auto = None;
-                    tab
-                })
-                .collect(),
-        };
-        let tabs = crate::workholding::solids(&tab_only, Some(stock), &part)?;
+        let tabs = crate::workholding::tab_solids(&setup.workholding, stock, &part)?;
         Some((tabs, protected, [start, end]))
     } else {
         None
@@ -1391,6 +1395,7 @@ impl BrepLimits {
             check: self.check.as_ref().map(|s| s as _),
             boundary_limits: self.boundary_limits,
             watch,
+            ..RegionConstraint::default()
         }
     }
 }

@@ -546,6 +546,19 @@ fn generate_with(
         }
     }
     check_clear(&path, input.keep_out, mid)?;
+    // No move comes within the clearance of a tab the operation's selection
+    // leaves out (OP-21, NFR-12; issue #555, decision record 0527): the
+    // links, leads and entries too, which the passes did not show.
+    if let Some(region) = region {
+        let leave = zones.iter().fold(operation_leave, |m, z| m.min(z.leave));
+        check_keep_clear(
+            &path,
+            input,
+            region.keep_clear,
+            (leave, common.tolerance.get().0),
+            context,
+        )?;
+    }
     // Each warning is a note too, first, so a host that shows only notes
     // still says it (decision record 0175).
     let notes: Vec<String> = warnings
@@ -775,6 +788,117 @@ fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)], mid: f64) -> Resul
             )));
         }
         from = to;
+    }
+    Ok(())
+}
+
+/// Most samples along one move when it is checked against the solids it
+/// keeps clear of (NFR-07): at the spacing below, a move of several metres.
+const MAX_KEEP_CLEAR_SAMPLES: f64 = 1.0e6;
+
+/// The spacing of the samples along a move checked against the solids it
+/// keeps clear of, mm of the machine's motion: the toolpath tolerance, but no
+/// finer than this.
+const KEEP_CLEAR_SPACING: f64 = 0.01;
+
+/// Refuses an assembled path one of whose moves, fed or rapid, brings the
+/// tool, grown by `leave`, within [`HELD_CLEARANCE`] less `tolerance` of one
+/// of `solids` (OP-21, NFR-12; issue #555, decision record 0527). Each move
+/// is followed as the machine makes it, straight in its axes, sampled no
+/// further apart than the tolerance (and [`KEEP_CLEAR_SPACING`]); a move that
+/// stays further than the tool's reach from every solid along X is passed
+/// over. The fit keeps the full clearance at the points it makes, so the
+/// tolerance is the room the moves between them have.
+fn check_keep_clear(
+    path: &GeneratedPath,
+    input: &StrategyInput<'_>,
+    solids: &[crate::solid::Solid],
+    (leave, tolerance): (f64, f64),
+    context: &JobContext<'_>,
+) -> Result<()> {
+    if solids.is_empty() {
+        return Ok(());
+    }
+    let by = (HELD_CLEARANCE - tolerance.max(0.0)).max(0.0);
+    let profile = crate::cutter::grow_profile(input.tool, leave.max(0.0))?;
+    let grown = solids
+        .iter()
+        .map(|s| s.grown(by))
+        .collect::<Result<Vec<_>>>()?;
+    let reach = profile
+        .pieces()
+        .iter()
+        .map(|p| p.end().radius.0)
+        .fold(profile.cutting_radius(), f64::max);
+    let near = grown
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), s| {
+            let b = s.bounds();
+            (lo.min(b.min.x - reach), hi.max(b.max.x + reach))
+        });
+    let spacing = tolerance.max(KEEP_CLEAR_SPACING);
+    let rotary = input.rotary;
+    let mut from = path.group.start;
+    for (i, segment) in path.group.segments.iter().enumerate() {
+        if i % 4096 == 0 {
+            context.check_cancelled()?;
+        }
+        let to = segment.end;
+        let (p, q) = (
+            rotary.to_axis(from.tip, from.a),
+            rotary.to_axis(to.tip, to.a),
+        );
+        let (a0, a1) = (from.a.0, to.a.0);
+        from = to;
+        let finite = [
+            p.along, q.along, p.across, q.across, p.height, q.height, a0, a1,
+        ]
+        .iter()
+        .all(|v| v.is_finite());
+        if finite && (p.along.max(q.along) < near.0 || p.along.min(q.along) > near.1) {
+            continue;
+        }
+        let radius = p.height.abs().max(q.height.abs()) + reach;
+        let swept = (a1 - a0).abs().to_radians() * radius;
+        let length = (q.along - p.along)
+            .hypot(q.across - p.across)
+            .hypot(q.height - p.height)
+            .hypot(swept);
+        let samples = (length / spacing).ceil();
+        if !finite || !samples.is_finite() || samples > MAX_KEEP_CLEAR_SAMPLES {
+            return Err(PathError::Strategy(format!(
+                "a move at X {:.3} mm cannot be checked against the tabs it keeps clear of; \
+                 it is not written",
+                q.along
+            )));
+        }
+        let samples = (samples as usize).max(1);
+        for k in 0..=samples {
+            let t = k as f64 / samples as f64;
+            let along = p.along + t * (q.along - p.along);
+            let across = p.across + t * (q.across - p.across);
+            let height = p.height + t * (q.height - p.height);
+            let a = Degrees(a0 + t * (a1 - a0));
+            let line = rotary.tool_line(
+                openchuck_types::units::Millimetres(along),
+                a,
+                openchuck_types::units::Millimetres(across),
+            );
+            let tip = line.at(height);
+            if let Some(solid) = grown.iter().zip(solids).find_map(|(g, s)| {
+                crate::region::reaches_solids(std::slice::from_ref(g), 0.0, tip, &profile, &line)
+                    .then_some(s)
+            }) {
+                let b = solid.bounds();
+                return Err(PathError::Strategy(format!(
+                    "a move at X {along:.3} mm, A {:.3} deg would bring the tool within \
+                     {HELD_CLEARANCE:.3} mm of the tab at X {:.3} to {:.3} mm, which the \
+                     operation's selection leaves out: a tab holds the part, so this path is \
+                     not written. Change the selection, or the link or entry settings",
+                    a.0, b.min.x, b.max.x
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -1073,6 +1197,127 @@ mod tests {
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         }
+    }
+
+    /// The tab of issue #555: on the axis, X -6 to 0, radius 5.
+    fn tab() -> crate::solid::Solid {
+        crate::solid::Solid::cylinder(Point3::new(-6.0, 0.0, 0.0), UnitVec3::X, 6.0, 5.0).unwrap()
+    }
+
+    /// `moves` as a path, each to X and Z (the tool over the axis at A 0).
+    fn path_at(moves: &[(MoveKind, f64, f64)]) -> GeneratedPath {
+        let mut out = path(&[]);
+        out.group.segments = moves
+            .iter()
+            .map(|&(kind, x, z)| Segment {
+                kind,
+                end: ToolPose {
+                    tip: Point3::new(x, 0.0, z),
+                    axis: UnitVec3::Z,
+                    a: Degrees(0.0),
+                },
+                contact_feed: None,
+                duration: Seconds(0.0),
+                contact_length: openchuck_types::units::Millimetres(0.0),
+            })
+            .collect();
+        out
+    }
+
+    /// Runs [`check_keep_clear`] on `path` with a 2 mm ball, no stock to
+    /// leave and a tolerance of 0.01 mm.
+    fn keep_clear_of_tab(path: &GeneratedPath, solids: &[crate::solid::Solid]) -> Result<()> {
+        use openchuck_types::machine::MachineProfile;
+        use openchuck_types::tool::{Tool, ToolShape};
+        let mesh = openchuck_types::mesh::TriangleMesh {
+            vertices: vec![
+                Point3::new(0.0, -1.0, 9.0),
+                Point3::new(10.0, -1.0, 9.0),
+                Point3::new(0.0, 1.0, 9.0),
+            ],
+            triangles: vec![[0, 1, 2]],
+        };
+        let surface = crate::MeshSurface::new(&mesh).unwrap();
+        let stock = crate::AnalyticStock::Cylinder {
+            radius: 10.0,
+            x_start: -10.0,
+            x_end: 10.0,
+        };
+        let machine = MachineProfile::example_x_rotary();
+        let tool = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: openchuck_types::units::Millimetres(2.0),
+            flute_length: openchuck_types::units::Millimetres(12.0),
+            overall_length: openchuck_types::units::Millimetres(50.0),
+            shank_diameter: openchuck_types::units::Millimetres(2.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        let tags = PathTags {
+            operation: "op".into(),
+            setup: "setup".into(),
+            tool: "tool".into(),
+        };
+        let input = StrategyInput {
+            surface: &surface,
+            stock: &stock,
+            collision: &crate::AcceptAll,
+            tool: &tool,
+            rotary: RotaryMapping::of_profile(&machine),
+            clearance: openchuck_types::machine::Clearance {
+                radius: openchuck_types::units::Millimetres(15.0),
+                safe_z: openchuck_types::units::Millimetres(25.0),
+            },
+            max_feeds: machine.max_feeds,
+            tags: &tags,
+            entry_safety: None,
+            facing: None,
+            keep_out: &[],
+            shank: None,
+        };
+        let cancel = openchuck_types::job::CancelToken::new();
+        let context = JobContext::new(&cancel, &openchuck_types::job::NoProgress);
+        check_keep_clear(path, &input, solids, (0.0, 0.01), &context)
+    }
+
+    #[test]
+    fn req_op_21_req_nfr_12_any_move_that_comes_within_the_clearance_of_a_tab_refuses_the_path() {
+        // Issue #555, decision record 0527: the moves the passes do not show
+        // (a rapid, a link, a lead) are checked too, as the machine makes
+        // them, against the tab grown by the clearance less the tolerance.
+        let tabs = [tab()];
+        // Over the tab with the clearance to spare, at feed and rapid.
+        let clear = path_at(&[
+            (MoveKind::Cutting, -3.0, 6.6),
+            (MoveKind::Rapid, -8.0, 6.6),
+            (MoveKind::Cutting, 10.0, 6.6),
+        ]);
+        assert!(keep_clear_of_tab(&clear, &tabs).is_ok());
+        // Nothing to keep clear of: nothing is checked.
+        let into = path_at(&[(MoveKind::Rapid, -3.0, 0.0)]);
+        assert!(keep_clear_of_tab(&into, &[]).is_ok());
+        // A rapid that dips to 0.3 mm above the tab's top (its ball 1 mm up
+        // from its tip) is refused, naming the tab.
+        let dips = path_at(&[
+            (MoveKind::Rapid, -3.0, 12.0),
+            (MoveKind::Rapid, -3.0, 5.3),
+            (MoveKind::Rapid, -3.0, 12.0),
+        ]);
+        let refused = keep_clear_of_tab(&dips, &tabs).unwrap_err().to_string();
+        assert!(
+            refused.contains("within 0.500 mm of the tab at X -6.000 to 0.000 mm")
+                && refused.contains("not written"),
+            "{refused}"
+        );
+        // So is a move between two clear ends that passes through it.
+        let through = path_at(&[
+            (MoveKind::Cutting, -20.0, 3.0),
+            (MoveKind::Cutting, 20.0, 3.0),
+        ]);
+        assert!(keep_clear_of_tab(&through, &tabs).is_err());
     }
 
     #[test]

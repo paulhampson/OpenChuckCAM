@@ -128,6 +128,8 @@ mod spiral_rings;
 mod strategy_menu;
 #[path = "swarf.rs"]
 mod swarf;
+#[path = "tab_keep_clear.rs"]
+mod tab_keep_clear;
 #[path = "unroll.rs"]
 mod unroll;
 #[path = "walls.rs"]
