@@ -4,8 +4,10 @@
 //! Windows icon file (`icon.ico`) and compiled resource (`icon.res`) from them.
 //! `cargo xtask icon --check` renders in memory and reports any committed file that differs,
 //! so the committed files are always reproducible from the SVG. Nothing here runs at build
-//! time: the product build only reads the committed files. The user guide's favicon
-//! (`user-docs/theme/favicon.svg` and `favicon.png`) is written from the same SVG.
+//! time: the product build only reads the committed files. The user guide's favicon is
+//! written too: `user-docs/theme/favicon.svg` is a copy of `favicon-adaptive.svg` (the
+//! tile-less mark, ink or white by the browser's colour scheme) and `favicon.png`, for
+//! browsers without SVG favicons, is the application icon at 32 pixels.
 
 use std::path::{Path, PathBuf};
 
@@ -189,11 +191,12 @@ fn windows_files(png_of: impl Fn(u32) -> Result<Vec<u8>>) -> Result<Generated> {
     ])
 }
 
-/// Every file `cargo xtask icon` writes, generated from the SVG.
+/// Every file `cargo xtask icon` writes, generated from the application icon `svg` and the
+/// adaptive favicon `favicon_svg`.
 ///
 /// # Errors
 /// If rendering fails.
-pub fn generate(svg: &[u8]) -> Result<Generated> {
+pub fn generate(svg: &[u8], favicon_svg: &[u8]) -> Result<Generated> {
     let mut files = Generated::new();
     for size in SIZES {
         files.push((
@@ -210,7 +213,7 @@ pub fn generate(svg: &[u8]) -> Result<Generated> {
             .map(|(_, png)| png.clone())
             .with_context(|| format!("{size} is not one of the committed sizes"))
     })?);
-    files.push((format!("{FAVICON_DIR}/favicon.svg"), svg.to_vec()));
+    files.push((format!("{FAVICON_DIR}/favicon.svg"), favicon_svg.to_vec()));
     files.push((format!("{FAVICON_DIR}/favicon.png"), render_png(svg, 32)?));
     Ok(files)
 }
@@ -234,15 +237,23 @@ fn icon_dir(root: &Path) -> PathBuf {
     root.join(ICON_DIR)
 }
 
+/// The two committed sources: `icon.svg` and `favicon-adaptive.svg`.
+fn sources(dir: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
+    let read = |name: &str| {
+        std::fs::read(dir.join(name))
+            .with_context(|| format!("cannot read {}/{name}", dir.display()))
+    };
+    Ok((read("icon.svg")?, read("favicon-adaptive.svg")?))
+}
+
 /// Writes the generated files.
 ///
 /// # Errors
 /// If the SVG cannot be read or a file cannot be written.
 pub fn write(root: &Path) -> Result<()> {
     let dir = icon_dir(root);
-    let svg = std::fs::read(dir.join("icon.svg"))
-        .with_context(|| format!("cannot read {}/icon.svg", dir.display()))?;
-    for (name, bytes) in generate(&svg)? {
+    let (svg, favicon) = sources(&dir)?;
+    for (name, bytes) in generate(&svg, &favicon)? {
         let path = root.join(&name);
         std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
         println!("wrote {name}");
@@ -258,11 +269,10 @@ pub fn write(root: &Path) -> Result<()> {
 /// If the SVG cannot be read or does not render.
 pub fn check(root: &Path) -> Result<Findings> {
     let dir = icon_dir(root);
-    let svg = std::fs::read(dir.join("icon.svg"))
-        .with_context(|| format!("cannot read {}/icon.svg", dir.display()))?;
+    let (svg, favicon) = sources(&dir)?;
     let mut findings = Findings::new();
     let fix = "run `cargo xtask icon`";
-    let mut generated = generate(&svg)?;
+    let mut generated = generate(&svg, &favicon)?;
     generated.retain(|(name, _)| !name.ends_with(".ico") && !name.ends_with(".res"));
     for (name, bytes) in generated {
         let Ok(committed) = std::fs::read(root.join(&name)) else {
@@ -446,7 +456,8 @@ mod tests {
 
     #[test]
     fn icon_generate_makes_every_committed_size_and_the_windows_files() {
-        let files = generate(SQUARE.as_bytes()).unwrap();
+        let favicon = b"<svg/>";
+        let files = generate(SQUARE.as_bytes(), favicon).unwrap();
         let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(
             names,
@@ -469,7 +480,7 @@ mod tests {
         }
         let ico_file = &files[7].1;
         assert_eq!(le16(ico_file, 4), u16::try_from(ICO_SIZES.len()).unwrap());
-        assert_eq!(files[9].1, SQUARE.as_bytes());
+        assert_eq!(files[9].1, favicon);
         assert_eq!(png_size(&files[10].1).unwrap(), (32, 32));
     }
 
