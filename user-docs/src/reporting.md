@@ -12,8 +12,14 @@ Check [Known limitations](start/limitations.md) and [Troubleshooting](troublesho
 - What happened, what you expected, and the steps that lead to it. Numbered steps that someone else can follow are the most useful part.
 - The version of the program: **Help > About** shows it, and `openchuck-cli --version` prints it for the command line. Give your operating system and its version.
 - The machine and post you used, if the problem is in the G-code or the export.
-- Your guess at the severity. The maintainer sets the final one.
+- Your guess at the severity. The maintainer sets the final one. The form's four choices map to the repository's labels: Critical is `sev1`, Major is `sev2`, and Minor and Trivial are both `sev3`.
 - A small model that shows the problem, if you can make one.
+
+## Labels on your issue
+
+The forms add two labels. `user-reported` means the issue was filed through the forms. `awaiting-triage` means the maintainer has not yet looked at it and set its severity, labels and any milestone; it is removed when they have. A bug report also gets `bug`, and an enhancement request gets `enhancement`.
+
+For a question that the guide does not answer, open a blank issue and start the title with `Question:`.
 
 ## Issues are public
 

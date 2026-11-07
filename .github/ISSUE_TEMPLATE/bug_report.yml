@@ -3,7 +3,8 @@ description: Something in OpenChuckCAM does not work as it should, or generated 
 title: "[Bug]: "
 labels:
   - bug
-  - awaiting-planning
+  - user-reported
+  - awaiting-triage
 body:
   - type: markdown
     attributes:
@@ -75,13 +76,13 @@ body:
     id: severity
     attributes:
       label: Severity (your guess)
-      description: The maintainer sets the final severity.
+      description: The maintainer sets the final severity and the repository label (sev1, sev2 or sev3). Critical is sev1, Major is sev2, and Minor and Trivial are both sev3.
       options:
         - Not sure
-        - "1 Critical: wrong or unsafe G-code, a crash or data loss"
-        - "2 Major: a feature fails or output is outside tolerance, with no workaround"
-        - "3 Minor: a feature works with a workaround, or a cosmetic fault that affects use"
-        - "4 Trivial: cosmetic or wording"
+        - "1 Critical (sev1): wrong or unsafe G-code, a crash or data loss"
+        - "2 Major (sev2): a feature fails or output is outside tolerance, with no workaround"
+        - "3 Minor (sev3): a feature works with a workaround, or a cosmetic fault that affects use"
+        - "4 Trivial (sev3): cosmetic or wording"
     validations:
       required: false
   - type: textarea

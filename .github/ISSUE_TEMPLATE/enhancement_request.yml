@@ -3,6 +3,8 @@ description: Ask for a feature, a change, or help with something the guide does 
 title: "[Request]: "
 labels:
   - enhancement
+  - user-reported
+  - awaiting-triage
 body:
   - type: markdown
     attributes:
