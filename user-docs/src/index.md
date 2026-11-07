@@ -19,6 +19,12 @@
 
 **OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.** Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often outside the reach of makers and hobbyists. OpenChuckCAM has been developed with the vision to close the gap that exists for makers and hobbyists in the CNC world for 4-axis machining.
 
+<figure class="thumbs">
+<a href="images/hero-1-toolpaths.png"><img src="images/hero-1-toolpaths-thumb.png" width="400" height="225" alt="The OpenChuckCAM window on its Operations step: the finishing toolpath of the tutorial's baluster drawn in orange around the part on the rotary axis."></a>
+<a href="images/hero-2-deviation.png"><img src="images/hero-2-deviation-thumb.png" width="400" height="225" alt="The OpenChuckCAM window on its Simulate step: the simulated cut part in 3D, coloured by how far each point is from the model."></a>
+<figcaption>The real program, with the tutorial's example piece: the toolpath of a finishing operation, and the simulated cut part, coloured by deviation from the model. Select an image to see it full size.</figcaption>
+</figure>
+
 **OpenChuckCAM is machine agnostic** at its core: additional machines can be supported by adding a machine profile and a post template. Machine support is currently very limited and based on the machines the developer has access to and software used for simulation. OpenChuckCAM currently has support for G-Code post-processing output for:
 
 * LinuxCNC (used and tested in simulation only)

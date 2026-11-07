@@ -4,6 +4,15 @@
 
 **OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.** Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often outside the reach of makers and hobbyists. OpenChuckCAM has been developed with the vision to close the gap that exists for makers and hobbyists in the CNC world for 4-axis machining.
 
+<table>
+<tr>
+<td><a href="user-docs/src/images/hero-1-toolpaths.png"><img src="user-docs/src/images/hero-1-toolpaths-thumb.png" width="400" alt="The OpenChuckCAM window on its Operations step: the finishing toolpath of the tutorial's baluster drawn in orange around the part on the rotary axis."></a></td>
+<td><a href="user-docs/src/images/hero-2-deviation.png"><img src="user-docs/src/images/hero-2-deviation-thumb.png" width="400" alt="The OpenChuckCAM window on its Simulate step: the simulated cut part in 3D, coloured by how far each point is from the model."></a></td>
+</tr>
+</table>
+
+*The real program, with the example piece from the tutorial. Left: the toolpath of a finishing operation. Right: the simulated cut part, coloured by deviation from the model (grey is on the surface; light blue still has material left). Select an image to see it full size.*
+
 **OpenChuckCAM is machine agnostic** at its core: additional machines can be supported by adding a machine profile and a post template. Machine support is currently very limited and based on the machines the developer has access to and software used for simulation. OpenChuckCAM currently has support for G-Code post-processing output for:
 
 * LinuxCNC (used and tested in simulation only)
@@ -35,14 +44,6 @@ However - it is still AI developed and you will encounter rough edges (as you wo
 ## Platforms
 
 Windows, Linux and macOS on Apple silicon. The programs are unsigned, so Windows and macOS warn the first time you start one: the [install page](https://paulhampson.github.io/OpenChuckCAM/latest/start/install.html#download-a-development-build) gives the first-run steps for each.
-
-## Screenshots
-
-![The OpenChuckCAM window on its Operations step: the finishing toolpath of the tutorial's baluster drawn in orange around the part on the rotary axis.](user-docs/src/images/hero-1-toolpaths.png)
-
-![The OpenChuckCAM window on its Simulate step: the simulated cut part in 3D, coloured by how far each point is from the model.](user-docs/src/images/hero-2-deviation.png)
-
-*The real program, with the example piece from the tutorial. Top: the toolpath of a finishing operation. Bottom: the simulated cut part, coloured by deviation from the model (grey is on the surface; light blue still has material left).*
 
 ## The user guide
 

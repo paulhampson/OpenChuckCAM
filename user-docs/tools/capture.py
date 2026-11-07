@@ -11,7 +11,7 @@ decision 0131 took the reference screens), and drives the program with
     python3 user-docs/tools/capture.py [--work DIR] [--out DIR] [--hero-out DIR] [--keep-project DIR]
 
 The tutorial's screenshots go to user-docs/src/tutorial/images/ and the home page's hero images
-to user-docs/src/images/. Beside the tutorial's images it writes CAPTURED.toml: the commit the
+to user-docs/src/images/, with their small copies (thumbnails.py). Beside the tutorial's images it writes CAPTURED.toml: the commit the
 screens were taken at, the date, the renderer and the window size. The docs check compares that
 commit with the last change to the screens (user-docs/tools/check.py); after checking the screens
 against a later build without re-capturing, add `reviewed_at = "<commit>"` to the file by hand.
@@ -205,6 +205,10 @@ def main():
     if shutil.which("optipng"):
         for png in sorted([*OUT.glob("*.png"), *HERO.glob("hero-*.png")]):
             subprocess.run(["optipng", "-quiet", "-o2", str(png)], check=False)
+    import thumbnails  # the small copies of the hero images for the README and the front page
+
+    for path in thumbnails.make(HERO):
+        print("wrote", path)
     print("wrote", record(OUT, commit, time.strftime("%Y-%m-%d")))
 
 
