@@ -37,14 +37,14 @@ Each file can be at most 1 MiB.
 | `units` | `"mm"` | Millimetres (`G21`). There is no other choice. |
 | `a_letter` | `"A"`, `"B"`, `"C"` | The letter of the rotary axis. |
 | `a_direction` | `"same"`, `"reversed"` | `reversed` turns every A value round, for a controller whose A runs the other way to the machine profile. |
-| `unwind` | `"rotate"`, `"drop_turns"` | `drop_turns` writes `unwind_command` between operations to drop whole turns from the controller's count. With `rotate`, A keeps its full value and nothing is written. |
+| `unwind` | `"drop_turns"`, `"rotate"` | `drop_turns` writes `unwind_command` between operations to drop whole turns from the controller's count, as the Makera Z1 post does. `rotate`, which the LinuxCNC post uses, writes nothing at present: A keeps its full value to the end of the program ([issue #599](https://github.com/paulhampson/OpenChuckCAM/issues/599)). |
 | `unwind_command` | text | The command for `drop_turns`, for example `"G92.4 A0 S0"`. |
 | `header` | list of lines | Lines written after the opening comments. |
 | `footer` | list of lines | The last lines of the program. |
 | `work_offset` | `"G54"` to `"G59"` | Optional. The setup's own work offset replaces it. |
 | `tool_change.stop_spindle_first` | `true`, `false` | Write `M5` before `T<n> M6`. |
 | `tool_change.length_offset` | `true`, `false` | Add `G43 H<n>` to the tool change line. |
-| `coolant` | `"off"`, `"flood"`, `"mist"` | `flood` writes `M8` and `mist` writes `M7` after the spindle starts. Nothing turns it off: put `M9` in the `footer` if your controller needs it. |
+| `coolant` | `"off"` | Leave it `"off"`, as both built-in posts do: no coolant codes are written. The other values, `"flood"` and `"mist"`, are not finished: they turn coolant on and nothing turns it off ([issue #598](https://github.com/paulhampson/OpenChuckCAM/issues/598)). |
 | `line_numbers.enabled`, `.start`, `.step` | `true` or `false`, then whole numbers | Write `N` numbers. |
 | `decimals.pos`, `.a`, `.f` | 0 to 9 | Decimal places for X, Y and Z, for A, and for F. |
 | `max_feed` | a number above 0 | Optional. The highest F to write; a higher feed is lowered, and the export says how many were. |
