@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.48.0
+
+- **Family release (0.48.0, SAFETYNOTICE; OI-2000; decision 0533, proposed):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.
+
 ## 0.47.0
 
 - **Breaking, changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** a contact on the edge between a selected face and an unselected one is not on the selection, so a selection-limited operation no longer rolls over its selection's edge and cuts outside it.
