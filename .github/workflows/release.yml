@@ -231,8 +231,12 @@ jobs:
             else
               tar -xzOf "dist/$dir.tar.gz" "$dir/OPENCASCADE-NOTICE.txt" > notice.txt
             fi
-            grep -qF "occt-sys" notice.txt || { echo "the notice in the $target archive does not name occt-sys"; exit 1; }
-            grep -qF "OpenCASCADE Technology (OCCT) $occt" notice.txt || { echo "the notice in the $target archive does not name OCCT $occt (Cargo.lock)"; exit 1; }
+            # Whole version tokens: 7.8.10 or 7.8.1.2 must not pass for 7.8.1, and both places that name
+            # the version (the introduction and the source offer) must agree with Cargo.lock.
+            v=$(printf '%s' "$occt" | sed 's/\./\\./g')
+            vend='($|[^0-9.]|\.($|[^0-9]))'
+            grep -Eq "OpenCASCADE Technology \(OCCT\) $v$vend" notice.txt || { echo "the notice in the $target archive does not name OCCT $occt (Cargo.lock) in its introduction"; exit 1; }
+            grep -Eq "\"occt-sys\" $v$vend" notice.txt || { echo "the source offer in the $target archive does not name occt-sys $occt (Cargo.lock)"; exit 1; }
           }
           check x86_64-unknown-linux-gnu tar.gz ""
           check aarch64-apple-darwin tar.gz ""

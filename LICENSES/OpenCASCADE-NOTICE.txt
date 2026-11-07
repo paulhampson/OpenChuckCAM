@@ -18,7 +18,9 @@ openchuck-step-worker against a modified OCCT: build it from that commit with
 setting the environment variable OCCT_ROOT to your own OCCT installation.
 What you can do: replace the openchuck-step-worker file in your copy of the application
 with the one you built, and the application will use it, because it finds the worker beside
-itself. This is a description of how the build works, not legal advice.
+itself, unless the environment variable OPENCHUCK_STEP_WORKER names a worker program (the
+application then uses that one, and the file beside it is not used). This is a description of
+how the build works, not legal advice.
 
 The Open CASCADE exception text and the LGPL-2.1 text govern the kernel; where this
 notice and those texts differ, they win.
