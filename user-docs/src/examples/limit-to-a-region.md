@@ -88,7 +88,7 @@ The finish now has 2,236 moves instead of about 19,150, and removes 204 mm³. Th
 
 The roughing is the same in every row: 9,946 moves and 12,100 mm³.
 
-Avoiding the ball made the finish longer, not shorter: about 74,900 moves for the finish instead of about 19,150. The strategy's description says that "selections and gaps can split the spiral into separate cuts", and here that made the path much longer. Look at the move count and the time as well as the picture when you choose between **Avoid** and **Cut on**. To finish everything but one area, a second operation with **Cut on** for the other areas can be shorter.
+Avoid can lengthen the program, even though it cuts less: here the finish with the ball avoided has more moves than the finish over the whole part. The strategy's description says that "selections and gaps can split the spiral into separate cuts". After you add a set, look at the path, the move count in the Results tab and the programmed time in **Post and export...** again, not only at the picture.
 
 ## Common mistakes
 
