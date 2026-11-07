@@ -51,7 +51,7 @@ a = 3
 f = 1
 ```
 
-Every key is required unless [the reference](../reference/writing-a-post.md#options) says it is optional, and a key the program does not know is refused. Three choices matter most:
+Every key is required unless [the reference](../reference/writing-a-post.md) says it is optional, and a key the program does not know is refused. Three choices matter most:
 
 - `feed_rule` is how the F word is worked out on a move that turns A. Choose the rule of your controller: `linuxcnc` applies F to the X, Y and Z distance, `makera` is the Makera Z1's rule.
 - `comments = true` and `safety_notice = true` write the two lines of the safety notice at the top of every program. The notice needs comments, and a post with the notice on and comments off is refused.
@@ -145,7 +145,7 @@ G1 X9.088 Y0.000 Z11.001 A0.000 F300.0
 
 and ends with the footer, `M5` and `M30`. The version in the second line is the version of your program.
 
-After writing, the program reads the file back and replays it, and compares the replay with the toolpath. The command line prints, for example:
+Before it writes anything, the program reads the program back and replays it, and compares the replay with the toolpath; a program that does not match is not written. The command line prints, for example:
 
 ```text
 01-setup-1.ngc: 29099 moves; replay matches the toolpath (tip 0.0007 mm, A 0.0005 deg; cut 1564.6 s, toolpath 1564.5 s)
@@ -175,8 +175,8 @@ These are the messages the command line gives for each mistake; the export panel
 ``setup 'Setup 1': minimal.post at line 27: undefined value `it.taget` is undefined``
 : A mistake in the template, here a misspelt variable. The message names the template and the line. The template stops at the first unknown name instead of writing empty text.
 
-`replay does not match the toolpath: the G-code has moves beyond the end of the IR`
-: The template wrote a move that goes nowhere, such as two lines with the same position. The replay counts the moves, so they no longer match. The `st.at` check in the example leaves such moves out.
+`error: 01-setup-1.ngc failed its checks (the replay does not match)`
+: The template wrote a move that goes nowhere, such as two lines with the same position. The read-back counts the moves, so the program no longer matches its toolpath, and nothing is written. The `st.at` check in the example leaves such moves out.
 
 ``options.safety_notice: is on, but the template minimal.post does not write the notice; ...``
 : `safety_notice = true`, but the template does not write the notice lines. Keep the `{% for notice in safety_notice %}` loop after the generator line.
