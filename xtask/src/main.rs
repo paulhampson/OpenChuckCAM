@@ -20,14 +20,19 @@
 //! - `release-gate`: the release gate (slice 20 item 9): `deps`, `cargo deny`, the golden G-code
 //!   comparison and `replay`, all of which must pass (needs LinuxCNC, cargo-deny and the STEP
 //!   kernel's toolchain; not part of `all`).
+//! - `macos-app`: the macOS application bundle `OpenChuckCAM.app` (decision 0541; not part of `all`).
+//! - `glibc-floor`: the Linux binaries need no newer glibc or libstdc++ than the stated floor
+//!   (decision 0541; not part of `all`).
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod conflicts;
 mod coverage;
 mod deps;
+mod glibc_floor;
 mod golden;
 mod licences;
+mod macos_app;
 mod publish;
 mod records;
 mod registers;
@@ -127,6 +132,38 @@ enum Check {
         #[arg(long)]
         tag: Option<String>,
     },
+    /// Build the macOS application bundle `OpenChuckCAM.app` from the Info.plist template, with
+    /// `openchuck-ui` and the STEP reader inside it. Not signed or notarised.
+    MacosApp {
+        /// The `openchuck-ui` executable.
+        #[arg(long)]
+        ui: PathBuf,
+        /// The `openchuck-step-worker` executable.
+        #[arg(long)]
+        worker: PathBuf,
+        /// The folder to write `OpenChuckCAM.app` into (an existing bundle there is replaced).
+        #[arg(long)]
+        out: PathBuf,
+        /// The bundle version (default: the workspace version).
+        #[arg(long)]
+        version: Option<String>,
+        /// Modification time of every file in the bundle, seconds since 1970 (default:
+        /// `SOURCE_DATE_EPOCH`).
+        #[arg(long)]
+        mtime: Option<u64>,
+        /// A 512 by 512 PNG for the icon (default: no icon).
+        #[arg(long)]
+        icon: Option<PathBuf>,
+    },
+    /// Fail if a Linux binary needs a newer symbol version than the floor of its family.
+    GlibcFloor {
+        /// A floor, `FAMILY=version`, for example `GLIBC=2.35` (repeat for each family).
+        #[arg(long = "floor", required = true)]
+        floors: Vec<String>,
+        /// The binaries to check.
+        #[arg(required = true)]
+        binaries: Vec<PathBuf>,
+    },
     /// Every check.
     All,
 }
@@ -203,6 +240,38 @@ fn run() -> Result<bool> {
                 tag,
             },
         ),
+        Check::MacosApp {
+            ui,
+            worker,
+            out,
+            version,
+            mtime,
+            icon,
+        } => {
+            let mtime = match mtime {
+                Some(m) => m,
+                None => std::env::var("SOURCE_DATE_EPOCH")
+                    .context("give --mtime or set SOURCE_DATE_EPOCH (the commit time)")?
+                    .parse()
+                    .context("SOURCE_DATE_EPOCH is not a number of seconds")?,
+            };
+            let bundle = macos_app::build(
+                &root,
+                &macos_app::Options {
+                    ui,
+                    worker,
+                    out,
+                    version,
+                    mtime,
+                    icon,
+                },
+            )?;
+            println!("wrote {}", bundle.display());
+            vec![]
+        }
+        Check::GlibcFloor { floors, binaries } => {
+            vec![("glibc-floor", glibc_floor::check(&binaries, &floors)?)]
+        }
         Check::All => vec![
             ("deps", deps::check(&root)?),
             ("licences", licences::check(&root)?),
