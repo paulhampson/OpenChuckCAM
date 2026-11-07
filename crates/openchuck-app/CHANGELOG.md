@@ -1,6 +1,12 @@
 # Changelog
 
+## 0.47.0
+
+- **Changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** an operation with a machine selection gives the faces it leaves out as `RegionConstraint::outside`, so its path no longer runs past its selected faces at a convex edge (on the owner's carving it came down beside the end face onto the tab). Whole-part operations are unchanged.
+
 ## Unreleased
+
+- STALETAB (issue #558, decision 0528, accepted): tests only. `tests/stale_setup_edits.rs` holds that every setup, workholding, machine, tool and simulation edit makes the operations stale (tree state, Simulate out of date, export blocked), that a tab or held-region edit gives a different path, and the edit sequences of #558 (during a run, undo and redo with the cache, save and reopen, an automatic tab, two setups). No code or API change.
 
 - FLUTE-TABS PR3 (issue #547, decision 0524, accepted): the stock earlier operations left (`LeftByEarlier`) passes on the simulation's reach profile, so the flute check reads the stock within the tool's reach.
 - FLUTE-TABS (issue #548, decision 0523, accepted): a tab shorter than the tool (decision 0494) is warned of, not refused: the path is made, with a warning naming the tab, its X range and length and the tool's width (`workholding::TAB_LENGTH_LEAD`, `workholding::short_tab_warnings_where`). An operation limited by selections is checked against the setup's tabs (that rule, and the end-zone rule, which stays a refusal) only where its generated path can touch them (`workholding::path_reaches_tab`); a whole-part operation is checked against every tab before generation. `check_for_tool` and `check_for_tool_where` now check the end zones only (their tool arguments are gone).
