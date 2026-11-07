@@ -31,7 +31,7 @@ use openchuck_app::tools::{
     with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, ModelStorage, OutputGrouping, PostSelection, Query,
+    AppError, Application, CheckLevel, Command, ModelStorage, OutputGrouping, PostSelection, Query,
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
@@ -631,6 +631,61 @@ fn run(cli: Cli) -> Result<()> {
                     sources.block_window.as_str()
                 );
             }
+            // The replay and G-code checks of every file, before anything is
+            // written (GC-15; decision record 0540).
+            for report in &result.reports {
+                match &report.comparison {
+                    Ok(c) => println!(
+                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
+                        report.file,
+                        report.moves,
+                        c.max_position_error,
+                        c.max_a_error,
+                        c.gcode_cut_seconds,
+                        c.ir_cut_seconds
+                    ),
+                    Err(why) => println!(
+                        "  {}: replay does not match the toolpath: {why}",
+                        report.file
+                    ),
+                }
+                for finding in &report.findings {
+                    println!("  {}: check: {finding}", report.file);
+                }
+            }
+            // The checks the export dialog makes before it writes, the same
+            // ones, so the two cannot drift (GC-15; decision record 0540):
+            // a blocking check writes nothing; a warning is said and the
+            // files are written. A run that makes no G-code file (no
+            // operation enabled) has nothing they protect, so it is not
+            // checked, as before.
+            let blocking = if post.is_some() && !result.gcode.is_empty() {
+                let checks = app.export_checks(Some(&result), Some(&result), None);
+                if !checks.checks.is_empty() {
+                    eprintln!("checks before writing the G-code:");
+                }
+                for check in &checks.checks {
+                    match check.level {
+                        CheckLevel::Blocking => eprintln!("error: {}", check.text),
+                        CheckLevel::Warning => eprintln!("warning: {}", check.text),
+                    }
+                }
+                checks
+                    .checks
+                    .iter()
+                    .filter(|c| c.level == CheckLevel::Blocking)
+                    .count()
+            } else {
+                0
+            };
+            if blocking > 0 {
+                // NFR-12: always printed when G-code is generated, written
+                // or not.
+                println!("{VERIFY_GCODE_NOTICE}");
+                anyhow::bail!(
+                    "{blocking} check(s) above stop the G-code from being written; nothing was written"
+                );
+            }
             // A partial path is written only when this run is acknowledged
             // (decision record 0239 item 10); nothing is written otherwise.
             let partial = openchuck_app::partial_operations(app.project(), &result);
@@ -671,32 +726,11 @@ fn run(cli: Cli) -> Result<()> {
                 result.toolpath.groups.len(),
                 result.gcode.len()
             );
-            let mut unclean = 0;
-            for report in &result.reports {
-                match &report.comparison {
-                    Ok(c) => println!(
-                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
-                        report.file,
-                        report.moves,
-                        c.max_position_error,
-                        c.max_a_error,
-                        c.gcode_cut_seconds,
-                        c.ir_cut_seconds
-                    ),
-                    Err(why) => println!(
-                        "  {}: replay does not match the toolpath: {why}",
-                        report.file
-                    ),
-                }
-                for finding in &report.findings {
-                    println!("  {}: check: {finding}", report.file);
-                }
-                if !report.is_clean() {
-                    unclean += 1;
-                }
-            }
             // NFR-12: always printed when G-code is generated.
             println!("{VERIFY_GCODE_NOTICE}");
+            // A file whose checks failed is a blocking check above; without
+            // a post there are no files, so nothing more is checked here.
+            let unclean = result.reports.iter().filter(|r| !r.is_clean()).count();
             if unclean > 0 {
                 anyhow::bail!("{unclean} G-code file(s) failed the checks above");
             }
