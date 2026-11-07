@@ -78,6 +78,8 @@ mod setup;
 mod setup_panes;
 #[path = "simulation.rs"]
 mod simulation;
+#[path = "stale_setup_edits.rs"]
+mod stale_setup_edits;
 #[path = "step_accuracy_bounded.rs"]
 mod step_accuracy_bounded;
 #[path = "step_accuracy_checks.rs"]
