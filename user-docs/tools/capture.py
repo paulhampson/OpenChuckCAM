@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Takes the screenshots of the user guide's tutorial from the real application (decision 0400, section G).
 
-It starts a virtual X display of 1366 x 768 (Xvfb), runs the release build of
+It starts a virtual X display (Xvfb; 1366 x 768 for the tutorial, 1920 x 1080 for the heroes), runs the release build of
 `openchuck-ui` on it with Mesa's lavapipe software Vulkan driver (the same way
 decision 0131 took the reference screens), and drives the program with
 `xdotool` clicks and key presses at fixed positions, as a user would. Each
@@ -9,6 +9,7 @@ decision 0131 took the reference screens), and drives the program with
 
     cargo build --release -p openchuck-ui
     python3 user-docs/tools/capture.py [--work DIR] [--out DIR] [--hero-out DIR] [--keep-project DIR]
+    python3 user-docs/tools/capture.py --heroes
 
 The tutorial's screenshots go to user-docs/src/tutorial/images/ and the home page's hero images
 to user-docs/src/images/, with their small copies (thumbnails.py). Beside the tutorial's images it writes CAPTURED.toml: the commit the
@@ -40,6 +41,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 ENV = {}
 # The window size and renderer of every capture (decision 0131 took the reference screens the same way).
+# The hero images (and the worked examples, capture_example.py) are taken at 1920 x 1080, the
+# owner's choice of 7 Nov 2026 for the guide's screenshots. The tutorial's click positions were
+# recorded at 1366 x 768 and stay at that size until they are recorded again at 1920 x 1080 at the
+# release recapture; until then the tutorial's pages are all 1366 x 768. (The product's own
+# layout tests at 1366 x 768, UI-16, are a different thing.)
+SCREEN = (1920, 1080)
+TUTORIAL_SCREEN = (1366, 768)
 WINDOW = "1366x768"
 RENDERER = "Mesa lavapipe (software Vulkan) on Xvfb"
 
@@ -93,10 +101,10 @@ def grab(path):
     run("import", "-window", "root", str(path))
 
 
-def shot(name):
+def shot(name, quiet=(700, 745)):
     """The mouse goes to a quiet spot of the status bar so no hover is drawn."""
     pause(1.0)
-    move(700, 745)
+    move(*quiet)
     pause(0.7)
     path = (HERO if name.startswith("hero-") else OUT) / f"{name}.png"
     grab(path)
@@ -158,6 +166,8 @@ def main():
     ap.add_argument("--out", default=str(REPO / "user-docs/src/tutorial/images"))
     ap.add_argument("--hero-out", default=str(REPO / "user-docs/src/images"))
     ap.add_argument("--ui", default=str(REPO / "target/release/openchuck-ui"))
+    ap.add_argument("--heroes", action="store_true",
+                    help="take only the two hero images, at 1920 x 1080, from the tutorial's finished project")
     ap.add_argument("--keep-project", help="copy the finished project to this folder, which must not exist yet (without recovery files)")
     args = ap.parse_args()
     OUT, HERO = Path(args.out), Path(args.hero_out)
@@ -175,6 +185,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     HERO.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO / "testdata/examples/baluster/baluster.stl", WORK / "baluster.stl")
+    width, height = SCREEN if args.heroes else TUTORIAL_SCREEN
+    project = []
+    if args.heroes:
+        shutil.copytree(REPO / "testdata/examples/baluster/baluster-project", WORK / "project")
+        project = [str(WORK / "project")]
     ENV = dict(
         os.environ,
         DISPLAY=":99",
@@ -187,18 +202,21 @@ def main():
     if icd:
         ENV["VK_ICD_FILENAMES"] = str(icd)
 
-    xvfb = subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1366x768x24"], env=ENV,
+    xvfb = subprocess.Popen(["Xvfb", ":99", "-screen", "0", f"{width}x{height}x24"], env=ENV,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pause(2)
-    ui = subprocess.Popen([args.ui], env=ENV, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ui = subprocess.Popen([args.ui, *project], env=ENV, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         pause(10)
         win = run("xdotool", "search", "--onlyvisible", "--name", ".", stdout=subprocess.PIPE,
                   text=True).stdout.split()[0]
-        run("xdotool", "windowmove", win, "0", "0", "windowsize", win, "1366", "768")
+        run("xdotool", "windowmove", win, "0", "0", "windowsize", win, str(width), str(height))
         run("xdotool", "windowfocus", win)
         pause(3)
-        tutorial(args)
+        if args.heroes:
+            heroes()
+        else:
+            tutorial(args)
     finally:
         ui.terminate()
         xvfb.terminate()
@@ -209,7 +227,39 @@ def main():
 
     for path in thumbnails.make(HERO):
         print("wrote", path)
-    print("wrote", record(OUT, commit, time.strftime("%Y-%m-%d")))
+    global WINDOW
+    WINDOW = f"{width}x{height}"
+    print("wrote", record(HERO if args.heroes else OUT, commit, time.strftime("%Y-%m-%d")))
+
+
+def heroes():
+    """The README's and the front page's two images, from the tutorial's finished project, at 1920 x 1080."""
+    click(300, 54, 2)                                # 3 Operations
+    click(1855, 1058, 5)                             # Generate stale (2)
+    wait_green([(113, 551), (113, 579)], 900, "the toolpaths")
+    # Hero 1: the finishing path in a large 3D view.
+    click(90, 551, 1)                                # hide the Rough path
+    click(1558, 789, 1.5)                            # fold the dock
+    click(668, 98, 1)                                # Iso view
+    click(722, 98, 2)                                # Fit
+    scroll(920, 560, 3, down=False)                  # zoom in
+    click(148, 578, 2)                               # select Finish: its settings in the Inspector
+    shot("hero-1-toolpaths", quiet=(1000, 1058))
+    click(1558, 1020, 1.5)                           # unfold the dock
+    click(90, 551, 1)                                # show the Rough path again
+    # Hero 2: the cut part at the end of the program, coloured by deviation from the model.
+    click(1847, 1058, 5)                             # Continue to simulate
+    pause(70)                                        # the cut part of the whole program
+    click(300, 98, 1)                                # Shaded
+    click(1596, 134, 4)                              # Deviation colours
+    click(541, 946, 1.5)                             # speed 10 000x
+    click(355, 832, 3)                               # play to the end
+    pause(35)
+    click(1558, 789, 2)                              # fold the dock
+    click(668, 98, 1)                                # Iso view
+    click(722, 98, 2)                                # Fit
+    scroll(920, 560, 3, down=False)                  # zoom in
+    shot("hero-2-deviation", quiet=(1000, 1058))
 
 
 def tutorial(args):
@@ -299,16 +349,6 @@ def tutorial(args):
     shot("13-generated")
     click(90, 579, 1)                                # show it again
 
-    # Hero 1 (README and home page): the finishing path in a large 3D view.
-    click(90, 551, 1)                                # hide the Rough path
-    click(1004, 477, 1.5)                            # fold the dock
-    click(668, 99, 1)                                # Iso view
-    click(722, 99, 2)                                # Fit
-    scroll(690, 420, 3, down=False)                  # zoom in
-    shot("hero-1-toolpaths")
-    click(285, 707, 1.5)                             # unfold the dock
-    click(90, 551, 1)                                # show the Rough path again
-
     # 7. Simulate.
     click(1297, 746, 5)                              # Continue to simulate
     pause(60)                                        # the cut part of the whole program
@@ -321,19 +361,6 @@ def tutorial(args):
     click(355, 520, 1)                               # play
     pause(30)
     shot("14-simulate-final")
-
-    # Hero 2 (README and home page): the cut part coloured by deviation from the model.
-    scroll(1190, 300, 6, down=False)                 # Inspector back to its top
-    click(668, 99, 1)                                # Iso view
-    click(722, 99, 1.5)                              # Fit
-    scroll(640, 290, 6, down=False)                  # zoom in
-    click(1036, 135, 4)                              # Deviation colours
-    click(1004, 477, 2)                              # fold the dock
-    scroll(640, 330, 2, down=False)
-    scroll(640, 330, 3)
-    shot("hero-2-deviation")
-    click(285, 707, 1.5)                             # unfold the dock
-    click(1036, 135, 1)                              # Deviation colours off
 
     # 8. Post and export.
     click(1303, 746, 3)                              # Post and export...

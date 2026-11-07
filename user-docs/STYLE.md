@@ -49,14 +49,14 @@ Also avoid: asides that comment on how easy something is ("simply", "just", "of 
 
   ```html
   <figure>
-    <img src="images/06-workholding.png" width="1366" height="768"
+    <img src="images/06-workholding.png" width="1920" height="1080"
          alt="The Workholding and tabs section of the Inspector with Held at the start ticked ...">
     <figcaption><b>Figure 5.</b> An 8 mm held region at the start of the stock, drawn hatched in the view.</figcaption>
   </figure>
   ```
 
 - Number figures within a page. Say in the caption what to look at.
-- Screenshots show the real program, taken with `user-docs/tools/capture.py` at 1366 x 768 (decision 0400 section G), and only the repository's example models or generated ones. Never show a private project. The script records the commit in `src/tutorial/images/CAPTURED.toml`; see `user-docs/README.md`, Taking the screenshots.
+- Screenshots show the real program, taken with `user-docs/tools/capture.py` (or `capture_example.py` for a worked example) at 1920 x 1080 and 100 % scale (the owner's choice of 7 Nov 2026; decision 0400 section G), and only the repository's example models or generated ones. The tutorial's screens are still 1366 x 768 until its click positions are recorded again at the release recapture; keep every image on one page the same size. 1366 x 768 is the smallest window the program is tested at (UI-16), not the size readers are expected to use. Never show a private project. The script records the commit in `src/tutorial/images/CAPTURED.toml`; see `user-docs/README.md`, Taking the screenshots.
 - A diagram is inline SVG drawn with `currentColor`, so it works in the light and the dark theme, with a `<title>` and `<desc>`.
 
 ## Versions
