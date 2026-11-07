@@ -1,9 +1,9 @@
 # 0542: The application icon (lane ICON)
 
-- **Status:** proposed by lane ICON on 7 Nov 2026. It records the owner's choices of 7 Nov 2026, relayed by the coordinator: the design (concept A, variation A6 in the one-colour palette C3) and its colour on each surface (option d), embedding the Windows program icon with no new dependency (option 1), and rendering the PNGs with `resvg` in `xtask` only (option 1). Only the owner accepts this record (decision 0049).
-- **What it amends, if accepted:** nothing in the requirements or the architecture. It adds files to `openchuck-ui` (its assets, a build script and one module), a command to `xtask`, a dependency to `xtask` only, the user guide's favicon and logo, and the logo at the top of the repository README. No library API change and no project schema change.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane ICON on 7 Nov 2026. It records the owner's choices of 7 Nov 2026, relayed by the coordinator: the design (concept A, variation A6 in the one-colour palette C3) and its colour on each surface (option d), embedding the Windows program icon with no new dependency (option 1), and rendering the PNGs with `resvg` in `xtask` only (option 1).
+- **What it amends:** nothing in the requirements or the architecture. It adds files to `openchuck-ui` (its assets, a build script and one module), a command to `xtask`, a dependency to `xtask` only, the user guide's favicon and logo, and the logo at the top of the repository README. No library API change and no project schema change.
 - **Date:** 7 Nov 2026.
-- **Open items:** closes OI-2106 (OpenChuckCAM has no icon of its own on any platform, raised with [decision 0541](0541-macos-app-bundle-linux-glibc-floor-and-release-tags.md)) when merged. Raises OI-2109 (the native check on Windows, an owner item).
+- **Open items:** closes OI-2106 (OpenChuckCAM has no icon of its own on any platform, raised with [decision 0541](0541-macos-app-bundle-linux-glibc-floor-and-release-tags.md)). Raises OI-2109 (the owner's check on Windows, issue #590). The macOS Dock is checked by CI only (issue #588).
 
 ## Context
 
@@ -15,7 +15,7 @@ Until now the program had no icon of its own:
 
 No requirement names an icon; the work is release work for milestone 2026.1-alpha, asked for by the owner through OI-2106.
 
-## Decision (proposed)
+## Decision
 
 1. **The design.** The owner chose variation A6 of concept A in the one-colour palette C3, from three concepts and one refinement round. The sheets are on the throwaway branch `claude/icon-concepts`, never merged: `icon-concepts/contact-sheet.png`, `icon-concepts/refine/contact-sheet-refine.png` with the scores against the logo tests in `icon-concepts/refine/NOTES.md`, and `icon-concepts/surfaces/surfaces-sheet.png`.
    The mark shows a chuck seen end-on: three jaws around round stock, inside an arrow for the A-axis rotation. It is drawn on a 512-unit canvas with a 32-unit grid, so its ring, jaws and gaps land on whole pixels at 16 px. It does not resemble the egui logo, a white hexagon with a four-part cross; four jaws were not offered because they would.
@@ -45,10 +45,9 @@ Done in the lane's container (Linux, x86_64) on branch `claude/lane-icon` at com
 - `icon.res` was linked with `rust-lld -flavor link /dll /noentry /machine:x64` into a test DLL, and `pefile` read back five `RT_ICON` resources of the PNG sizes and one `RT_GROUP_ICON` (language 1033), so the linker accepts the file. ImageMagick's `identify` reads `icon.ico` as five PNG images of 256, 64, 48, 32 and 16 pixels.
 - `python3 -m unittest discover -s user-docs/tools/tests` (66 tests, including `test_the_favicons_are_copied_to_the_site_root`, `test_the_template_links_the_copied_favicons`, `test_the_site_pages_carry_the_guide_favicon` and `test_a_guide_without_a_favicon_still_assembles`). The guide was built with mdBook 0.5.4 through `build.py`, assembled with `assemble.py` and checked with `check.py`: 0 errors. The one warning, that the tutorial screenshots' capture commit is not in this shallow checkout, is not from this change. Screenshots of the header show the logo in the light and dark themes. lychee and the Nu HTML Checker were not run here; the pull request's `docs` job runs them.
 - `cargo nextest run -p xtask -p openchuck-ui`: 814 tests passed (every icon test under 1 s uninstrumented); `cargo clippy -p xtask -p openchuck-ui --all-targets -- -D warnings`, `cargo fmt --all`, and `cargo xtask deps`, `licences`, `records` and `trace` (105 of 105 P1 requirements have tests) passed. Coverage: `openchuck-ui` is report-only and `xtask` is not in `xtask/coverage.toml`.
-- Not verified here: the icon on a real Windows title bar, taskbar and Explorer, which cannot be seen headless. Neither can the Dock on macOS. Both are OI-2109, an owner item. The Windows CI build links the resource on every pull request.
+- Not verified here: the icon on a real Windows title bar, taskbar and Explorer, which cannot be seen headless. The Windows check is OI-2109 (issue #590). The macOS Dock is not checked by hand: the owner has no Mac, so it is checked by CI only (issue #588). The Windows CI build links the resource on every pull request.
 
 ## Open items
 
-- OI-2109: the owner uploads the social preview (item 10) and checks natively, on a release or pull-request build:
-  - on Windows, light and dark themes, at 100% and 150% display scale: the title bar, the taskbar and Explorer show the icon;
-  - on macOS: the Dock and Finder show the bundle's icon with no grey tile around it.
+- OI-2109: the owner's check on Windows (tracked in issue #590), on a release or pull-request build, light and dark themes, at 100% and 150% display scale: the title bar, the taskbar and Explorer show the icon. He also uploads the social preview (item 10).
+- macOS: the Dock and Finder are not checked by hand, because the owner has no Mac; the bundle's icon is checked by CI only (a recorded concession, issue #588).
