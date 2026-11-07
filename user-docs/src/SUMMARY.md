@@ -61,5 +61,6 @@
 # More
 
 - [Troubleshooting](troubleshooting.md)
+- [Reporting a problem or asking for a feature](reporting.md)
 - [Release notes](release-notes.md)
 - [Contributing to this guide](contributing.md)

@@ -92,7 +92,16 @@ td {{ border-bottom: 1px solid #d6d2ca; padding: 0.45rem 0.8rem 0.45rem 0; verti
 """
 
 
-def _versions_page(newest, releases):
+FAVICONS = (("favicon.svg", 'type="image/svg+xml"'), ("favicon.png", 'type="image/png" sizes="32x32"'))
+
+
+def _icon_links(out, prefix):
+    """The favicon links of a site page (decision 0542), for the favicons at the site's root."""
+    return "".join(f'<link rel="icon" href="{prefix}{name}" {kind}>\n'
+                   for name, kind in FAVICONS if os.path.exists(os.path.join(out, name)))
+
+
+def _versions_page(newest, releases, icons=""):
     rows = ['<tr><td><a href="latest/">latest</a></td><td>The nightly build: the development version, built from the main branch. '
             'It may describe features that are not in a release yet.</td></tr>']
     for v in releases:
@@ -104,7 +113,7 @@ def _versions_page(newest, releases):
             "program you run.</p>\n"
             "<table>\n<thead><tr><th>Version</th><th>Describes</th></tr></thead>\n<tbody>\n"
             + "\n".join(rows) + "\n</tbody>\n</table>\n" + note)
-    return PAGE.format(title="Versions of the OpenChuckCAM user guide", head="", body=body)
+    return PAGE.format(title="Versions of the OpenChuckCAM user guide", head=icons, body=body)
 
 
 def assemble(latest, releases, out, base="/"):
@@ -123,6 +132,11 @@ def assemble(latest, releases, out, base="/"):
     os.makedirs(out, exist_ok=True)
     shutil.copytree(latest, os.path.join(out, "latest"), dirs_exist_ok=False)
     _fill_latest(os.path.join(out, "latest"), newest)
+    # The guide's favicon (decision 0542) at the site's root too, for the pages below.
+    for name, _ in FAVICONS:
+        if os.path.exists(os.path.join(latest, name)):
+            shutil.copyfile(os.path.join(latest, name), os.path.join(out, name))
+    icons = _icon_links(out, "")
     for v in versions:
         shutil.copytree(os.path.join(releases, f"v{v}"), os.path.join(out, f"v{v}"))
 
@@ -132,18 +146,18 @@ def assemble(latest, releases, out, base="/"):
         json.dump(data, f, indent=2)
         f.write("\n")
     with open(os.path.join(out, "versions.html"), "w", encoding="utf-8") as f:
-        f.write(_versions_page(newest, versions))
+        f.write(_versions_page(newest, versions, icons))
 
     target = f"v{newest}/" if newest else "latest/"
     with open(os.path.join(out, "index.html"), "w", encoding="utf-8") as f:
         f.write(PAGE.format(
             title="OpenChuckCAM user guide",
-            head=f'<meta http-equiv="refresh" content="0; url={target}">\n',
+            head=f'<meta http-equiv="refresh" content="0; url={target}">\n' + icons,
             body=f'<p>The OpenChuckCAM user guide is at <a href="{target}">{target}</a>. '
                  f'<a href="versions.html">All versions</a>.</p>'))
     with open(os.path.join(out, "404.html"), "w", encoding="utf-8") as f:
         f.write(PAGE.format(
-            title="Page not found - OpenChuckCAM user guide", head="",
+            title="Page not found - OpenChuckCAM user guide", head=_icon_links(out, html.escape(base)),
             body="<h1>Page not found</h1>\n<p>There is no page at this address. It may have moved, or it may "
                  "belong to another version of the guide.</p>\n<p>Go to <a href=\"{b}\">the start of the "
                  "guide</a> or <a href=\"{b}versions.html\">the list of versions</a>.</p>".format(b=html.escape(base))))
