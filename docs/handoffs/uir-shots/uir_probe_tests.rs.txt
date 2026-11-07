@@ -1,0 +1,752 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! TEMPORARY review probe (lane UIR): not committed. Walks keyboard focus.
+#![allow(clippy::unwrap_used, clippy::all, clippy::pedantic)]
+
+use std::fmt::Write as _;
+use std::io::Write as _;
+
+use eframe::egui::{self, Event, Key, Modifiers};
+use openchuck_app::overview::{SetupPart, Step};
+
+use super::frame_tests::Rig;
+use super::*;
+use crate::tool_library_window::Purpose;
+
+const WINDOW: egui::Vec2 = egui::vec2(1366.0, 768.0);
+
+fn out_path() -> String {
+    std::env::var("UIR_OUT").unwrap_or_else(|_| "/tmp/uir_probe.txt".into())
+}
+
+fn log(s: &str) {
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(out_path())
+        .unwrap();
+    writeln!(f, "{s}").unwrap();
+}
+
+struct P {
+    rig: Rig,
+    time: f64,
+    events_out: Vec<egui::output::OutputEvent>,
+}
+
+impl P {
+    fn new(name: &str) -> Self {
+        let mut rig = Rig::cube(name, None);
+        rig.shell.generate(true);
+        rig.settle();
+        rig.size = WINDOW;
+        let mut p = Self {
+            rig,
+            time: 0.0,
+            events_out: Vec::new(),
+        };
+        p.frames(3);
+        p
+    }
+
+    fn frame(&mut self, events: Vec<Event>) {
+        self.time += 0.05;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), self.rig.size)),
+            time: Some(self.time),
+            events,
+            ..Default::default()
+        };
+        let Rig { shell, ctx, .. } = &mut self.rig;
+        let mut output = ctx.run_ui(input, |ui| {
+            shell.draw(ui);
+        });
+        output.textures_delta.clear();
+        self.rig.shapes = output.shapes;
+        self.events_out
+            .extend(output.platform_output.events.into_iter());
+    }
+
+    fn frames(&mut self, n: usize) {
+        for _ in 0..n {
+            self.frame(Vec::new());
+        }
+    }
+
+    fn key(&mut self, key: Key, modifiers: Modifiers) {
+        let ev = |pressed| Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        };
+        self.frame(vec![ev(true)]);
+        self.frame(vec![ev(false)]);
+        self.frame(Vec::new());
+    }
+
+    fn any_tooltip(&self) -> bool {
+        self.rig.ctx.memory(|m| m.areas().visible_layer_ids().iter().any(|l| l.order == egui::Order::Tooltip))
+    }
+
+    fn focused(&self) -> Option<egui::Id> {
+        self.rig.ctx.memory(|m| m.focused())
+    }
+
+    fn describe(&self, id: egui::Id) -> String {
+        // last FocusGained info for this id
+        let info = self.events_out.iter().rev().find_map(|e| match e {
+            egui::output::OutputEvent::FocusGained(i) => Some(i.clone()),
+            _ => None,
+        });
+        let rect = self
+            .rig
+            .ctx
+            .read_response(id)
+            .map(|r| format!("[{:.0},{:.0} {:.0}x{:.0}]", r.rect.min.x, r.rect.min.y, r.rect.width(), r.rect.height()))
+            .unwrap_or_else(|| "[?]".into());
+        match info {
+            Some(i) => format!(
+                "{:?} '{}' {}",
+                i.role,
+                i.label.clone().or(i.current_text_value.clone()).unwrap_or_default().replace('\n', " "),
+                rect
+            ),
+            None => format!("? {rect}"),
+        }
+    }
+
+    fn region(&self, id: egui::Id) -> &'static str {
+        let Some(r) = self.rig.ctx.read_response(id) else {
+            return "?";
+        };
+        let c = r.rect.center();
+        if c.y < 32.0 {
+            "menu"
+        } else if c.y < 80.0 {
+            "workflow bar"
+        } else if c.y > WINDOW.y - 48.0 {
+            "footer"
+        } else if c.x < 270.0 {
+            "project panel"
+        } else if c.x > WINDOW.x - 345.0 {
+            "inspector"
+        } else if c.y > WINDOW.y - 48.0 - 260.0 {
+            "dock"
+        } else {
+            "viewport/toolbar"
+        }
+    }
+
+    /// Presses Tab up to `max` times; logs each stop; returns the stops in
+    /// order (until the cycle repeats).
+    fn walk(&mut self, title: &str, max: usize) -> Vec<(egui::Id, String)> {
+        log(&format!("\n=== TAB WALK: {title} ==="));
+        let mut seen: Vec<(egui::Id, String)> = Vec::new();
+        let mut lost = 0;
+        for n in 0..max {
+            self.events_out.clear();
+            self.key(Key::Tab, Modifiers::NONE);
+            match self.focused() {
+                None => {
+                    lost += 1;
+                    log(&format!("{n:3}: (no focus)"));
+                    if lost > 3 {
+                        log("   focus lost repeatedly: stop");
+                        break;
+                    }
+                }
+                Some(id) => {
+                    if seen.first().is_some_and(|(f, _)| *f == id) {
+                        log(&format!("{n:3}: cycle back to first stop after {} stops", seen.len()));
+                        break;
+                    }
+                    if seen.iter().any(|(s, _)| *s == id) {
+                        log(&format!("{n:3}: REPEAT {}", self.describe(id)));
+                        continue;
+                    }
+                    let tip = egui::Tooltip::was_tooltip_open_last_frame(&self.rig.ctx, id);
+                    let d = format!(
+                        "{:16} {}{}",
+                        self.region(id),
+                        self.describe(id),
+                        if tip { "  <tooltip shown on focus>" } else { "" }
+                    );
+                    log(&format!("{n:3}: {d}"));
+                    seen.push((id, d));
+                }
+            }
+        }
+        let mut regions: std::collections::BTreeMap<&str, usize> = Default::default();
+        for (id, _) in &seen {
+            *regions.entry(self.region(*id)).or_default() += 1;
+        }
+        log(&format!("SUMMARY {title}: {} stops; by region {:?}", seen.len(), regions));
+        seen
+    }
+
+    /// For each stop, does a hover tooltip exist, and is it shown on focus?
+    fn tooltip_audit(&mut self, title: &str, stops: &[(egui::Id, String)]) {
+        log(&format!("\n=== TOOLTIP AUDIT: {title} ==="));
+        let (mut hover_only, mut both) = (0, 0);
+        for (id, d) in stops {
+            let Some(r) = self.rig.ctx.read_response(*id) else { continue };
+            // Hover
+            self.rig.ctx.memory_mut(|m| m.surrender_focus(*id));
+            let c = r.rect.center();
+            self.frame(vec![Event::PointerMoved(c)]);
+            let mut hover = false;
+            for _ in 0..20 {
+                self.frame(Vec::new());
+                if self.any_tooltip() {
+                    hover = true;
+                    break;
+                }
+            }
+            self.frame(vec![Event::PointerGone]);
+            self.frames(8);
+            if self.any_tooltip() { log(&format!("(tooltip still open before focus test: {d})")); }
+            // Focus
+            self.rig.ctx.memory_mut(|m| m.request_focus(*id));
+            self.frames(3);
+            let focus = self.any_tooltip();
+            self.rig.ctx.memory_mut(|m| m.surrender_focus(*id));
+            if hover && !focus {
+                hover_only += 1;
+                log(&format!("HOVER-ONLY tooltip: {d}"));
+            } else if hover && focus {
+                both += 1;
+            } else if focus && !hover {
+                log(&format!("focus-only tooltip: {d}"));
+            }
+        }
+        log(&format!("SUMMARY tooltips {title}: hover-and-focus {both}, hover-only {hover_only}"));
+    }
+}
+
+fn reset() {
+    let _ = std::fs::remove_file(out_path());
+}
+
+#[test]
+fn uir_probe_tab_walk_steps() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-steps");
+    let op = p.rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    for step in Step::ALL {
+        p.rig.shell.open_step(step);
+        if step == Step::Operations {
+            p.rig.shell.select(Selection::Operation(op));
+        }
+        p.frames(3);
+        p.rig.ctx.memory_mut(|m| {
+            if let Some(f) = m.focused() {
+                m.surrender_focus(f)
+            }
+        });
+        let stops = p.walk(step.name(), 400);
+        if std::env::var("UIR_TIPS").is_ok() {
+            p.tooltip_audit(step.name(), &stops);
+        }
+    }
+    // Setup sections
+    let setup = p.rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    p.rig.shell.open_step(Step::Setup);
+    for part in SetupPart::ALL {
+        p.rig.shell.choose_setup(setup, Some(part));
+        p.frames(3);
+        let stops = p.walk(&format!("Setup inspector {part:?}"), 300);
+        if std::env::var("UIR_TIPS").is_ok() {
+            p.tooltip_audit(&format!("Setup {part:?}"), &stops);
+        }
+    }
+}
+
+#[test]
+fn uir_probe_dialogs() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-dialogs");
+    for d in [Dialog::Keys, Dialog::About, Dialog::Settings] {
+        let name = d.log_name();
+        p.rig.shell.open_dialog(d);
+        p.frames(3);
+        p.walk(&format!("dialog {name}"), 120);
+        log(&format!("dialog open after walk: {}", p.rig.shell.dialog.is_some()));
+        p.key(Key::Escape, Modifiers::NONE);
+        log(&format!("Esc closes {name}: {}", p.rig.shell.dialog.is_none()));
+        p.rig.shell.dialog = None;
+        p.frames(2);
+    }
+    // Export dialog via Ctrl E
+    p.key(Key::E, Modifiers::COMMAND);
+    p.frames(5);
+    log(&format!("\nCtrl E opens export: {}", p.rig.shell.export.is_open()));
+    p.walk("export dialog", 200);
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(3);
+    log(&format!("Esc closes export: {}", !p.rig.shell.export.is_open()));
+    p.rig.shell.export = crate::export_panel::ExportPanel::new(None);
+    p.frames(3);
+    // Tool library
+    p.rig.shell.open_tool_library(Purpose::Add, None);
+    p.frames(5);
+    p.walk("tool library", 200);
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(3);
+    log(&format!("Esc closes tool library: {}", !p.rig.shell.tool_library.is_open()));
+    // Machine library
+    p.rig.shell.open_machine_library();
+    p.frames(5);
+    p.walk("machine library", 200);
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(3);
+    log(&format!("Esc closes machine library: {}", !p.rig.shell.machine_library.is_open()));
+    p.rig.shell.machine_library = Default::default();
+    p.frames(3);
+    // Import dialog via Ctrl I
+    p.rig.shell.open_step(Step::Model);
+    p.frames(2);
+    p.key(Key::I, Modifiers::COMMAND);
+    p.frames(5);
+    log(&format!("\nCtrl I opens import: {}", p.rig.shell.import.is_some()));
+    p.walk("import dialog", 120);
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(3);
+    log(&format!("Esc closes import: {}", p.rig.shell.import.is_none()));
+    p.rig.shell.import = None;
+    p.frames(2);
+    // New operation via N
+    p.rig.shell.open_step(Step::Operations);
+    p.frames(2);
+    p.key(Key::N, Modifiers::NONE);
+    p.frames(4);
+    p.walk("new operation (N)", 150);
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(3);
+}
+
+#[test]
+fn uir_probe_menus() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-menus");
+    log("\n=== MENUS ===");
+    // Tab to the File menu button, then Enter / Space / ArrowDown
+    p.rig.ctx.memory_mut(|m| {
+        if let Some(f) = m.focused() {
+            m.surrender_focus(f)
+        }
+    });
+    let mut file = None;
+    for _ in 0..40 {
+        p.events_out.clear();
+        p.key(Key::Tab, Modifiers::NONE);
+        if let Some(id) = p.focused() {
+            let d = p.describe(id);
+            if d.contains("'File'") {
+                file = Some(id);
+                break;
+            }
+        }
+    }
+    log(&format!("File menu reachable by Tab: {}", file.is_some()));
+    if file.is_some() {
+        for k in [Key::Enter, Key::Space, Key::ArrowDown] {
+            p.key(k, Modifiers::NONE);
+            p.frames(2);
+            let open = p.rig.ctx.any_popup_open() || egui::Popup::is_any_open(&p.rig.ctx);
+            log(&format!("  {k:?} on File: popup open = {open}"));
+            if open {
+                // Try Tab and ArrowDown inside
+                for k2 in [Key::ArrowDown, Key::Tab, Key::Tab] {
+                    p.events_out.clear();
+                    p.key(k2, Modifiers::NONE);
+                    let f = p.focused().map(|id| p.describe(id));
+                    let still = egui::Popup::is_any_open(&p.rig.ctx);
+                    log(&format!("    then {k2:?}: focus {f:?}; menu still open {still}"));
+                }
+                p.key(Key::Escape, Modifiers::NONE);
+                break;
+            }
+        }
+    }
+    // Alt alone, F10
+    for (k, m) in [(Key::F10, Modifiers::NONE), (Key::F, Modifiers::ALT)] {
+        p.key(k, m);
+        p.frames(2);
+        log(&format!("{m:?}+{k:?} opens a menu: {}", egui::Popup::is_any_open(&p.rig.ctx)));
+    }
+}
+
+#[test]
+fn uir_probe_keyboard_workflow() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-flow");
+    log("\n=== KEYBOARD WORKFLOW (shortcuts) ===");
+    for (k, m, label) in [
+        (Key::Num1, Modifiers::ALT, "Alt 1"),
+        (Key::Num2, Modifiers::ALT, "Alt 2"),
+        (Key::Num3, Modifiers::ALT, "Alt 3"),
+        (Key::Num4, Modifiers::ALT, "Alt 4"),
+    ] {
+        p.key(k, m);
+        p.frames(2);
+        log(&format!("{label}: step now {}", p.rig.shell.step.name()));
+    }
+    // Tree keyboard: can arrow keys move the selection in the tree?
+    p.key(Key::Num3, Modifiers::ALT);
+    let before = format!("{:?}", p.rig.shell.selected);
+    p.key(Key::ArrowDown, Modifiers::NONE);
+    p.key(Key::ArrowDown, Modifiers::NONE);
+    log(&format!("ArrowDown with no focus: selection {before} -> {:?}", p.rig.shell.selected));
+    // Ctrl 1/2/3
+    for (k, label) in [(Key::Num1, "Ctrl 1"), (Key::Num2, "Ctrl 2"), (Key::Num3, "Ctrl 3")] {
+        p.key(k, Modifiers::COMMAND);
+        p.frames(2);
+        log(&format!(
+            "{label}: collapsed project {} inspector {} dock {}",
+            p.rig.shell.collapsed(frame::Region::Project),
+            p.rig.shell.collapsed(frame::Region::Inspector),
+            p.rig.shell.collapsed(frame::Region::Dock)
+        ));
+        p.key(k, Modifiers::COMMAND);
+        p.frames(2);
+    }
+    // F / V viewport keys
+    for (k, label) in [(Key::F, "F"), (Key::V, "V")] {
+        p.key(k, Modifiers::NONE);
+        log(&format!("{label}: pressed (see viewport tests for effect)"));
+    }
+    // Simulate playback keys
+    p.key(Key::Num4, Modifiers::ALT);
+    p.frames(3);
+    let mut s = String::new();
+    write!(s, "Simulate Space: playing before {:?}", p.rig.shell.play.is_playing()).ok();
+    p.key(Key::Space, Modifiers::NONE);
+    p.frames(2);
+    write!(s, " after {:?}", p.rig.shell.play.is_playing()).ok();
+    log(&s);
+    // Ctrl Enter, Esc
+    p.key(Key::Escape, Modifiers::NONE);
+    // F1 help?
+    p.key(Key::F1, Modifiers::NONE);
+    log(&format!("F1 opens a dialog: {:?}", p.rig.shell.dialog.as_ref().map(|d| d.log_name())));
+}
+
+#[test]
+fn uir_probe_scroll_and_tree() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-scroll");
+    let op = p.rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    p.rig.shell.open_step(Step::Operations);
+    p.rig.shell.select(Selection::Operation(op));
+    p.frames(3);
+    log("\n=== SCROLL ON FOCUS ===");
+    for _ in 0..120 {
+        p.key(Key::Tab, Modifiers::NONE);
+        let Some(id) = p.focused() else { continue };
+        let Some(r) = p.rig.ctx.read_response(id) else { continue };
+        if r.rect.min.x > 1020.0 && r.rect.max.y > 720.0 {
+            p.frames(10);
+            let r2 = p.rig.ctx.read_response(id).unwrap();
+            log(&format!(
+                "focused inspector widget at y {:.0}..{:.0}; after 10 frames at y {:.0}..{:.0} (visible area ends at 720)",
+                r.rect.min.y, r.rect.max.y, r2.rect.min.y, r2.rect.max.y
+            ));
+            break;
+        }
+    }
+    log("\n=== TREE BY KEYBOARD ===");
+    p.rig.shell.selected = None;
+    p.rig.ctx.memory_mut(|m| if let Some(f) = m.focused() { m.surrender_focus(f) });
+    p.frames(2);
+    let mut n = 0;
+    for _ in 0..60 {
+        p.events_out.clear();
+        p.key(Key::Tab, Modifiers::NONE);
+        let Some(id) = p.focused() else { continue };
+        let Some(r) = p.rig.ctx.read_response(id) else { continue };
+        if r.rect.min.x < 20.0 && r.rect.width() > 200.0 && r.rect.min.y > 130.0 {
+            n += 1;
+            let before = format!("{:?}", p.rig.shell.selected);
+            p.key(Key::Enter, Modifiers::NONE);
+            p.frames(2);
+            let after_enter = format!("{:?}", p.rig.shell.selected);
+            p.key(Key::Space, Modifiers::NONE);
+            p.frames(2);
+            let after_space = format!("{:?}", p.rig.shell.selected);
+            log(&format!("tree row at y {:.0}: before {before}; Enter -> {after_enter}; Space -> {after_space}; focus still on row {}", r.rect.min.y, p.focused() == Some(id)));
+            // ArrowDown from a row
+            p.key(Key::ArrowDown, Modifiers::NONE);
+            let f = p.focused().and_then(|f| p.rig.ctx.read_response(f)).map(|r| r.rect.min.y);
+            log(&format!("   ArrowDown -> focus at y {f:?}"));
+            if n >= 4 { break; }
+            p.rig.ctx.memory_mut(|m| m.request_focus(id));
+            p.frames(1);
+        }
+    }
+}
+
+impl P {
+    /// Tabs until a widget whose name contains `needle` has focus.
+    fn tab_to(&mut self, needle: &str, max: usize) -> bool {
+        for _ in 0..max {
+            self.events_out.clear();
+            self.key(Key::Tab, Modifiers::NONE);
+            if let Some(id) = self.focused() {
+                if self.describe(id).contains(needle) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    fn type_text(&mut self, s: &str) {
+        self.frame(vec![Event::Text(s.to_owned())]);
+        self.frames(1);
+    }
+    fn clear_focus(&mut self) {
+        self.rig.ctx.memory_mut(|m| if let Some(f) = m.focused() { m.surrender_focus(f) });
+        self.frames(1);
+    }
+    fn settle(&mut self) {
+        for _ in 0..2400 {
+            self.frame(Vec::new());
+            let s = &self.rig.shell;
+            if s.scene_job.is_none() && s.checks_job.is_none() && !s.run.is_running()
+                && !s.play.is_preparing() && !s.import.as_ref().is_some_and(|i| i.is_adding())
+                && s.overview.checks_current {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        self.frames(3);
+    }
+}
+
+#[test]
+fn uir_probe_esc() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-esc");
+    log("\n=== ESC ON OPEN, NOTHING FOCUSED ===");
+    for d in [Dialog::Keys, Dialog::About, Dialog::Settings] {
+        let name = d.log_name();
+        p.rig.shell.open_dialog(d);
+        p.frames(3);
+        p.clear_focus();
+        p.key(Key::Escape, Modifiers::NONE);
+        p.frames(2);
+        log(&format!("Esc closes {name}: {}", p.rig.shell.dialog.is_none()));
+        p.rig.shell.dialog = None;
+        p.frames(2);
+    }
+    p.rig.shell.open_tool_library(Purpose::Add, None);
+    p.frames(4);
+    p.clear_focus();
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(2);
+    log(&format!("Esc closes tool library: {}", !p.rig.shell.tool_library.is_open()));
+    p.rig.shell.tool_library = Default::default();
+    p.rig.shell.open_machine_library();
+    p.frames(4);
+    p.clear_focus();
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(2);
+    log(&format!("Esc closes machine library: {}", !p.rig.shell.machine_library.is_open()));
+    p.rig.shell.machine_library = Default::default();
+    p.frames(2);
+    p.key(Key::E, Modifiers::COMMAND);
+    p.frames(4);
+    p.clear_focus();
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(2);
+    log(&format!("Esc closes export: {}", !p.rig.shell.export.is_open()));
+    p.rig.shell.export = crate::export_panel::ExportPanel::new(None);
+    p.frames(2);
+    p.key(Key::I, Modifiers::COMMAND);
+    p.frames(4);
+    p.clear_focus();
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(2);
+    log(&format!("Esc closes import: {}", p.rig.shell.import.is_none()));
+    p.rig.shell.import = None;
+    p.frames(2);
+    p.rig.shell.open_step(Step::Operations);
+    p.key(Key::N, Modifiers::NONE);
+    p.frames(3);
+    p.clear_focus();
+    p.key(Key::Escape, Modifiers::NONE);
+    p.frames(2);
+    let still = p.rig.shell_shows_new_op();
+    log(&format!("Esc closes New operation: {}", !still));
+}
+
+impl Rig {
+    fn shell_shows_new_op(&self) -> bool {
+        self.shows("New operation") && self.shows("Strategy")
+    }
+}
+
+#[test]
+fn uir_probe_e2e() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-e2e");
+    log("\n=== END-TO-END KEYBOARD-ONLY ===");
+    let models_before = p.rig.shell.app.as_ref().unwrap().project().models().len();
+    // Import by Ctrl I, type the path, Enter, then Tab to Add to project.
+    p.key(Key::Num1, Modifiers::ALT);
+    p.key(Key::I, Modifiers::COMMAND);
+    p.frames(3);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    p.clear_focus();
+    let at_path = p.tab_to("TextInput ''", 120);
+    // check it is the import path field (x around 468)
+    let fid = p.focused();
+    let r = fid.and_then(|f| p.rig.ctx.read_response(f)).map(|r| r.rect);
+    log(&format!("Tab reaches an empty text field (import path?): {at_path} at {r:?}"));
+    p.type_text(&path.display().to_string());
+    p.key(Key::Enter, Modifiers::NONE);
+    p.settle();
+    p.frames(10);
+    p.settle();
+    let found_add = p.tab_to("Add to project", 200);
+    log(&format!("Tab reaches 'Add to project': {found_add}"));
+    if found_add {
+        p.key(Key::Enter, Modifiers::NONE);
+        p.settle();
+    }
+    let models_after = p.rig.shell.app.as_ref().unwrap().project().models().len();
+    log(&format!("models {models_before} -> {models_after}; import open {}", p.rig.shell.import.is_some()));
+    p.rig.shell.import = None;
+    // Setup step
+    p.key(Key::Num2, Modifiers::ALT);
+    p.frames(2);
+    log(&format!("Alt 2 -> {}", p.rig.shell.step.name()));
+    // New operation by N, Tab to Add, Enter
+    p.key(Key::Num3, Modifiers::ALT);
+    let ops_before = p.rig.shell.app.as_ref().unwrap().project().operations().len();
+    p.clear_focus();
+    p.key(Key::N, Modifiers::NONE);
+    p.frames(3);
+    let add = p.tab_to("Button 'Add'", 200);
+    log(&format!("N opens New operation; Tab reaches 'Add': {add}"));
+    if add {
+        p.key(Key::Enter, Modifiers::NONE);
+        p.settle();
+    }
+    let ops_after = p.rig.shell.app.as_ref().unwrap().project().operations().len();
+    log(&format!("operations {ops_before} -> {ops_after}; selected {:?}", p.rig.shell.selected.is_some()));
+    // Generate stale with Shift G
+    p.clear_focus();
+    p.key(Key::G, Modifiers::SHIFT);
+    p.frames(2);
+    log(&format!("Shift G starts a run: {}", p.rig.shell.run.is_running()));
+    p.settle();
+    // Simulate: tab to the footer primary
+    p.key(Key::Num4, Modifiers::ALT);
+    p.frames(2);
+    p.clear_focus();
+    let mut primary = String::new();
+    for _ in 0..30 {
+        p.events_out.clear();
+        p.key(Key::Tab, Modifiers::NONE);
+        if let Some(id) = p.focused() {
+            let r = p.rig.ctx.read_response(id).unwrap().rect;
+            if r.min.y > 720.0 && r.height() > 25.0 {
+                primary = p.describe(id);
+                break;
+            }
+        }
+    }
+    log(&format!("Simulate footer primary by Tab: {primary}"));
+    p.key(Key::Enter, Modifiers::NONE);
+    p.frames(2);
+    log(&format!("Enter on it runs: {}", p.rig.shell.run.is_running()));
+    p.settle();
+    // Export
+    p.clear_focus();
+    p.key(Key::E, Modifiers::COMMAND);
+    p.frames(5);
+    let tick = p.tab_to("I will verify", 200);
+    log(&format!("Ctrl E; Tab reaches the acknowledgement: {tick}"));
+    if tick {
+        let id = p.focused().unwrap();
+        log(&format!("  acknowledgement rect {:?} (window height 768)", p.rig.ctx.read_response(id).unwrap().rect));
+        p.key(Key::Space, Modifiers::NONE);
+        p.frames(2);
+        let write = p.tab_to("Write G-code", 200);
+        log(&format!("  Space ticks it; Tab reaches 'Write G-code': {write}"));
+        if write {
+            let id = p.focused().unwrap();
+            log(&format!("  Write rect {:?}", p.rig.ctx.read_response(id).unwrap().rect));
+        }
+    }
+}
+
+#[test]
+fn uir_probe_export_keys() {
+    if std::env::var("UIR_RUN").is_err() {
+        return;
+    }
+    let mut p = P::new("uir-export");
+    log("\n=== EXPORT BY KEYBOARD ===");
+    let out = std::env::temp_dir().join("uir-export-out");
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(&out).unwrap();
+    p.clear_focus();
+    p.key(Key::E, Modifiers::COMMAND);
+    p.frames(5);
+    // the output folder field follows "One file per tool"
+    let ok = p.tab_to("One file per tool", 200);
+    p.key(Key::Tab, Modifiers::NONE);
+    let d = p.focused().map(|f| p.describe(f));
+    log(&format!("folder field after 'One file per tool': {ok} {d:?}"));
+    p.type_text(&out.display().to_string());
+    p.key(Key::Enter, Modifiers::NONE);
+    p.frames(5);
+    p.settle();
+    let tick = p.tab_to("I will verify", 200);
+    p.key(Key::Space, Modifiers::NONE);
+    p.frames(3);
+    p.settle();
+    log(&format!("acknowledgement reached {tick}"));
+    let mut stops = Vec::new();
+    for _ in 0..12 {
+        p.events_out.clear();
+        p.key(Key::Tab, Modifiers::NONE);
+        if let Some(f) = p.focused() { stops.push(p.describe(f)); }
+    }
+    log(&format!("next stops after the acknowledgement: {stops:#?}"));
+    p.clear_focus();
+    let write = p.tab_to("Write G-code", 200);
+    log(&format!("Tab reaches 'Write G-code': {write}"));
+    if write {
+        p.key(Key::Enter, Modifiers::NONE);
+        p.frames(5);
+        p.settle();
+        for _ in 0..200 { p.frames(1); std::thread::sleep(std::time::Duration::from_millis(10)); }
+        let files: Vec<_> = std::fs::read_dir(&out).unwrap().flatten().map(|e| e.file_name()).collect();
+        log(&format!("files written: {files:?}"));
+        // The result modal: Tab stops
+        let mut stops = Vec::new();
+        for _ in 0..6 {
+            p.events_out.clear();
+            p.key(Key::Tab, Modifiers::NONE);
+            if let Some(f) = p.focused() { stops.push(p.describe(f)); }
+        }
+        log(&format!("result dialog Tab stops: {stops:#?}"));
+    }
+}

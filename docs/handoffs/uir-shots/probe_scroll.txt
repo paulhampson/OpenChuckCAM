@@ -1,0 +1,13 @@
+
+=== SCROLL ON FOCUS ===
+focused inspector widget at y 730..758; after 10 frames at y 730..758 (visible area ends at 720)
+
+=== TREE BY KEYBOARD ===
+tree row at y 138: before None; Enter -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Space -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); focus still on row true
+   ArrowDown -> focus at y Some(166.0)
+tree row at y 166: before Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Enter -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Space -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); focus still on row true
+   ArrowDown -> focus at y Some(194.0)
+tree row at y 194: before Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Enter -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Space -> Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); focus still on row true
+   ArrowDown -> focus at y Some(250.0)
+tree row at y 250: before Some(Model(ModelId(81089737-6b8d-42f0-9a99-d6e4065216ed))); Enter -> Some(Setup(SetupId(2dbc0f33-69e8-4c59-aee7-a255ab423b00))); Space -> Some(Setup(SetupId(2dbc0f33-69e8-4c59-aee7-a255ab423b00))); focus still on row true
+   ArrowDown -> focus at y Some(278.0)

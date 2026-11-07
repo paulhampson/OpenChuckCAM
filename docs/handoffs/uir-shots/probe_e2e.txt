@@ -1,0 +1,24 @@
+
+=== END-TO-END KEYBOARD-ONLY ===
+Tab reaches an empty text field (import path?): true at Some([[468.0 172.0] - [658.0 192.0]])
+Tab reaches 'Add to project': true
+models 1 -> 2; import open false
+Alt 2 -> Setup
+N opens New operation; Tab reaches 'Add': true
+operations 1 -> 2; selected true
+Shift G starts a run: true
+Simulate footer primary by Tab: Button 'Post and export…' [1237,730 121x28]
+Enter on it runs: false
+Ctrl E; Tab reaches the acknowledgement: true
+  acknowledgement rect [[211.0 832.0] - [538.4 852.0]] (window height 768)
+  Space ticks it; Tab reaches 'Write G-code': false
+
+=== ESC ON OPEN, NOTHING FOCUSED ===
+Esc closes Keyboard shortcuts: false
+Esc closes About: false
+Esc closes Settings: false
+Esc closes tool library: true
+Esc closes machine library: false
+Esc closes export: false
+Esc closes import: false
+Esc closes New operation: false

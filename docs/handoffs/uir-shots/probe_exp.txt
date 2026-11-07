@@ -1,0 +1,28 @@
+
+=== EXPORT BY KEYBOARD ===
+folder field after 'One file per tool': true Some("TextInput '' [289,371 280x20]")
+acknowledgement reached true
+next stops after the acknowledgement: [
+    "Button 'File' [8,6 24x20]",
+    "Button 'Edit' [40,6 27x20]",
+    "Button 'View' [75,6 32x20]",
+    "Button 'Project' [115,6 45x20]",
+    "Button 'Tools' [169,6 35x20]",
+    "Button 'Help' [211,6 31x20]",
+    "Button 'Overall status: Needs attention' [1230,38 128x32]",
+    "Button 'Tool library…' [1129,44 94x20]",
+    "Button '+ New operation' [1008,44 112x20]",
+    "Button 'Model, Good to go' [8,34 105x40]",
+    "Button 'Setup, Needs attention' [121,34 102x40]",
+    "Button 'Operations, Good to go' [231,34 133x40]",
+]
+Tab reaches 'Write G-code': true
+files written: ["uir-export-setup-sheet.html", "01-setup-1.nc", "uir-export-setup-sheet.pdf"]
+result dialog Tab stops: [
+    "Button 'Dismiss' [996,581 59x20]",
+    "Button 'Copy paths' [905,582 80x20]",
+    "Button 'Dismiss' [994,581 61x21]",
+    "Button 'Copy paths' [905,582 80x20]",
+    "Button 'Dismiss' [994,581 61x21]",
+    "Button 'Copy paths' [905,582 80x20]",
+]

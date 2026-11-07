@@ -1,0 +1,23 @@
+
+=== KEYBOARD WORKFLOW (shortcuts) ===
+Alt 1: step now Model
+Alt 2: step now Setup
+Alt 3: step now Operations
+Alt 4: step now Simulate
+ArrowDown with no focus: selection None -> None
+Ctrl 1: collapsed project true inspector false dock false
+Ctrl 2: collapsed project false inspector true dock false
+Ctrl 3: collapsed project false inspector false dock true
+F: pressed (see viewport tests for effect)
+V: pressed (see viewport tests for effect)
+Simulate Space: playing before false after true
+F1 opens a dialog: None
+
+=== MENUS ===
+File menu reachable by Tab: true
+  Enter on File: popup open = true
+    then ArrowDown: focus Some("Button 'New project… Ctrl+N' [15,33 153x20]"); menu still open true
+    then Tab: focus Some("Button 'Open project… Ctrl+O' [15,56 153x20]"); menu still open true
+    then Tab: focus Some("Button 'Open recent' [15,79 153x20]"); menu still open true
+Modifiers::NONE+F10 opens a menu: false
+Modifiers { alt: true }+F opens a menu: false
