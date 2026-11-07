@@ -164,7 +164,7 @@ jobs:
           fi
           patterns=""
           for id in $ids; do
-            patterns="$patterns $(gh api "repos/$REPO/rulesets/$id" --jq '.conditions.ref_name.include[]?' 2>/dev/null | tr '\n' ' ')"
+            patterns="$patterns $(gh api "repos/$REPO/rulesets/$id" --jq '.conditions.ref_name.include[]?' 2>/dev/null | tr '\n' ' ' || true)"
           done
           for tag in lib-v app-v; do
             case " $patterns " in

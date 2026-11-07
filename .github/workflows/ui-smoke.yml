@@ -127,7 +127,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends ca-certificates git
-          ldd --version | head -n 1
+          ldd --version | sed -n 1p
       # Only the corpus models are needed; the archive carries the program.
       - uses: actions/checkout@v7
         with:

@@ -130,7 +130,7 @@ jobs:
             cmake pkg-config perl zstd xz-utils
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          ldd --version | head -n 1
+          ldd --version | sed -n 1p
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -141,7 +141,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           rustup toolchain install
           rustc --version
-          cmake --version | head -n 1
+          cmake --version | sed -n 1p
       # The STEP kernel (OpenCASCADE, built by occt-sys) takes 8 to 71 minutes cold, so its install
       # is cached per platform on its own (decision 0039).
       - uses: ./.github/actions/occt
@@ -326,7 +326,7 @@ jobs:
             tar=gtar
             command -v gtar > /dev/null || brew install gnu-tar
           fi
-          "$tar" --version | head -n 1
+          "$tar" --version | sed -n 1p
           "$tar" -C dist --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 \
             --numeric-owner --format=gnu -cf - "$NAME" | gzip -n -9 > "dist/$NAME.tar.gz"
       - name: Pack (zip)
