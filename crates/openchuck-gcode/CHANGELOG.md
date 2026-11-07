@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.48.0
+## 0.49.0
 
-- **Family release (0.48.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.
+- **Family release (0.49.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.
 
 ## 0.47.0
 

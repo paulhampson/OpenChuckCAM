@@ -69,7 +69,10 @@ pub(crate) fn refusals(
     let regions = strategy.honours_region();
     let takes_faces =
         regions || name == openchuck_path::drill::NAME || name == openchuck_path::swarf::NAME;
-    let follows_edges = name == openchuck_path::edge_following::NAME;
+    // Edge following follows its edge sets; face-flow finishing takes them as
+    // the guide of the faces they bound (OP-28; decision 0525, D3).
+    let follows_edges =
+        name == openchuck_path::edge_following::NAME || name == openchuck_path::face_flow::NAME;
     // Roughing leaves the largest of the sets' amounts wherever it cuts
     // (decision 0058); the others that take one cut each set to its own.
     let takes_set_stock = strategy.honours_leave_zones() || name == roughing::NAME;
@@ -119,8 +122,9 @@ pub(crate) fn refusals(
                 )),
                 (SelectionTarget::Edges(_), SelectionRole::Machine) if !follows_edges => {
                     Some(format!(
-                        "Only edge following follows chosen edges. Take the edge set '{named}' \
-                         out of the operation, or use edge following."
+                        "Only edge following follows chosen edges, and face-flow finishing takes \
+                         them as its guide. Take the edge set '{named}' out of the operation, or \
+                         use one of those."
                     ))
                 }
                 (SelectionTarget::Faces(_), SelectionRole::Machine) if !takes_faces => {

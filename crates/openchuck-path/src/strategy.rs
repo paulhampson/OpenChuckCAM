@@ -825,6 +825,7 @@ impl Registry {
         let _ = registry.register(Arc::new(crate::edge_following::EdgeFollowing::default()));
         let _ = registry.register(Arc::new(crate::swarf::Swarf));
         let _ = registry.register(Arc::new(crate::drill::RadialDrilling));
+        let _ = registry.register(Arc::new(crate::face_flow::FaceFlow::default()));
         registry
     }
 

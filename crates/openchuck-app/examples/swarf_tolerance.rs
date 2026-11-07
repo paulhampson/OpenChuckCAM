@@ -459,6 +459,7 @@ fn main() {
         max_material_left: 0.0,
         reverse_tip_end: false,
         reverse_direction: false,
+        keep_off_end_faces: true,
     };
     let fine = RegionConstraint::default();
     for f in selected.exact_faces().into_iter().filter(|_| a.check) {
@@ -512,6 +513,7 @@ fn main() {
                 },
                 watch: &[],
                 outside: None,
+                neighbours: None,
             };
             let t = Instant::now();
             let generated = match generate_in_region(&Swarf, &input, &region, &values(tol), &ctx) {

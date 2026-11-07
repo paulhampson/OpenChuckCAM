@@ -641,3 +641,112 @@ fn req_op_07_req_sim_05_the_swarf_reference_job_cuts_the_flats_and_nothing_of_th
     assert!(worst <= 0.1 + 0.01, "material left on a flat: {worst}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// The blisk's placement for the face-flow job (OI-2007): its longest span
+/// turned onto X, centred on the rotary axis and moved so its end is 10 mm
+/// from the chuck, as `examples/face_flow_blisk.rs` places it.
+fn blisk_onto_axis() -> Vec<TransformStep> {
+    use openchuck_import::step::StepImporter;
+    use openchuck_import::{ImportOptions, ModelImporter};
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+    use openchuck_types::model::ModelGeometry;
+    let bytes = std::fs::read(fixture("blisk")).unwrap();
+    let cancel = CancelToken::new();
+    let imported = StepImporter::new()
+        .import(
+            &bytes,
+            &ImportOptions::default(),
+            &JobContext::new(&cancel, &NoProgress),
+        )
+        .unwrap();
+    let ModelGeometry::Brep(model) = imported.geometry else {
+        panic!("the blisk is not a B-rep");
+    };
+    let bounds = |m: &openchuck_types::brep::BrepModel| {
+        let (t, _) = m.joined_tessellation();
+        t.vertices.iter().fold(
+            (
+                Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+                Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+            ),
+            |(lo, hi), p| {
+                (
+                    Point3::new(lo.x.min(p.x), lo.y.min(p.y), lo.z.min(p.z)),
+                    Point3::new(hi.x.max(p.x), hi.y.max(p.y), hi.z.max(p.z)),
+                )
+            },
+        )
+    };
+    let (lo, hi) = bounds(&model);
+    let spans = [hi.x - lo.x, hi.y - lo.y, hi.z - lo.z];
+    let mut steps = Vec::new();
+    if spans[2] > spans[0] && spans[2] > spans[1] {
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Y,
+            angle: Degrees(90.0),
+        });
+    } else if spans[1] > spans[0] && spans[1] > spans[2] {
+        steps.push(TransformStep::Rotate {
+            axis: Axis::Z,
+            angle: Degrees(-90.0),
+        });
+    }
+    steps.push(TransformStep::CentreOnRotaryAxis);
+    let place = |steps: &[TransformStep]| {
+        let map = openchuck_geom::transform::brep_placement(&model, steps).unwrap();
+        openchuck_geom::transform::transform_brep(&model, &map).unwrap()
+    };
+    let start = bounds(&place(&steps)).0.x;
+    steps.push(TransformStep::Translate {
+        x: 10.0 - start,
+        y: 0.0,
+        z: 0.0,
+    });
+    steps
+}
+
+/// The `face_flow` job (OP-28; decision record 0525; OI-2007): face-flow
+/// finishing of the blisk's blade floor, face 8, between the roots of
+/// blades 7 and 9, with the 3 mm ball, a 1.5 mm stepover and the guide by
+/// default (the root of blade 7, edge 39), in stock 42 mm across and 52 mm
+/// long over the placed part. The stepover is coarse so gate 3 replays the
+/// program in about two minutes (at 0.3 mm it would take about five times as
+/// long, more than any share of gate 3); `tests/step_strategies.rs` checks the
+/// 0.3 mm passes against the exact faces.
+fn face_flow_job(tag: &str) -> (PathBuf, Application) {
+    let (dir, mut app) = build_job(
+        tag,
+        Job {
+            project: "face_flow",
+            operation: "Floor",
+            fixture: "blisk",
+            stock: Stock::Cylinder {
+                diameter: Millimetres(42.0),
+                length: Millimetres(52.0),
+                x_start: Millimetres(9.0),
+            },
+        },
+        &blisk_onto_axis(),
+        openchuck_path::face_flow::NAME,
+        ball(),
+        &[
+            ("stepover", ParameterValue::Number(1.5)),
+            ("tolerance", ParameterValue::Number(0.01)),
+        ],
+    );
+    let model = app.project().models()[0].id;
+    let floor: std::collections::BTreeSet<_> =
+        [openchuck_types::brep::FaceId(8)].into_iter().collect();
+    let set = app.save_selection("Floor", model, floor).unwrap();
+    let mut operation = app.project().operations()[0].clone();
+    operation.selections = vec![set];
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    (dir, app)
+}
+
+#[test]
+fn req_op_28_req_gc_07_the_committed_face_flow_project_writes_the_golden_programs() {
+    committed("face_flow", face_flow_job);
+}

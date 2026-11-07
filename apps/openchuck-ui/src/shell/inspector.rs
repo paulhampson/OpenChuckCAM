@@ -1440,6 +1440,54 @@ struct Notes<'a> {
 /// the role that holds a set the strategy cannot use on this part, the
 /// warning with the reason and what to do, before anything is generated
 /// (decision record 0209 item 10).
+/// One row of the Geometry section: a role, or for face-flow finishing the
+/// part of Cut on that holds its face sets and the part that holds its guide
+/// edge sets (OP-28; decision 0525, D3 and D4), with the kinds of set it
+/// offers to add (`None`: every kind).
+struct GeometryRow {
+    label: &'static str,
+    description: &'static str,
+    sets: Vec<SelectionSetId>,
+    kinds: Option<&'static [&'static str]>,
+}
+
+/// The rows for `role`: one, as the role, except Cut on for face-flow
+/// finishing, which shows its face sets and its guide edge sets apart. Both
+/// are the operation's selections; an edge set there is the guide, and
+/// with none each face starts from its longest side.
+fn geometry_rows(
+    operation: &openchuck_app::project::Operation,
+    role: SelectionRole,
+    sets: &[SelectionSetId],
+    summaries: &[SelectionSummary],
+) -> Vec<GeometryRow> {
+    if role != SelectionRole::Machine || operation.strategy != openchuck_app::path::face_flow::NAME
+    {
+        return vec![GeometryRow {
+            label: role.name(),
+            description: role.description(),
+            sets: sets.to_vec(),
+            kinds: None,
+        }];
+    }
+    let is_edges = |id: &SelectionSetId| summaries.iter().any(|s| s.id == *id && s.kind == "edges");
+    vec![
+        GeometryRow {
+            label: role.name(),
+            description: "The faces to cut, each with passes along its guide.",
+            sets: sets.iter().copied().filter(|id| !is_edges(id)).collect(),
+            kinds: Some(&["faces", "triangles"]),
+        },
+        GeometryRow {
+            label: "Guide edge",
+            description: "The edges each face's passes run along. With none, each face \
+                          starts from its longest side.",
+            sets: sets.iter().copied().filter(|id| is_edges(id)).collect(),
+            kinds: Some(&["edges"]),
+        },
+    ]
+}
+
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
@@ -1463,67 +1511,77 @@ fn geometry(
     );
     for role in SelectionRole::ALL {
         let sets = members(operation, role);
-        ui.horizontal_wrapped(|ui| {
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(
-                    crate::field_row::label_column(ui),
-                    ui.spacing().interact_size.y,
-                ),
-                egui::Sense::hover(),
-            );
-            let label = ui.put(
-                rect,
-                egui::Label::new(RichText::new(role.name()).color(DARK.muted)),
-            );
-            label.on_hover_text(role.description());
-            for id in &sets {
-                let summary = summaries.iter().find(|s| s.id == *id);
-                let name = summary.map_or("(missing set)", |s| s.name.as_str());
-                let problem = summary.and_then(|s| s.problem.clone());
-                let text = match (&problem, summary) {
-                    (Some(_), Some(s)) => {
-                        format!("{name} \u{b7} {} {} not found \u{d7}", s.count, s.kind)
-                    }
-                    _ => format!("{name} \u{d7}"),
-                };
-                let mut button =
-                    egui::Button::new(RichText::new(text).color(if problem.is_some() {
-                        DARK.error
-                    } else {
-                        DARK.text
-                    }))
-                    .small();
-                if problem.is_some() {
-                    button = button.stroke(Stroke::new(1.0, DARK.error));
-                }
-                let response = ui.add(button);
-                let tip = problem.map_or_else(
-                    || "Take it out of this role".to_owned(),
-                    |p| {
-                        format!(
-                            "{}\nClick to take it out of this role.",
-                            form_panel::refusal(&p).replace(" Not applied.", "")
-                        )
-                    },
+        for row in geometry_rows(operation, role, &sets, summaries) {
+            let GeometryRow {
+                label: row_label,
+                description: row_description,
+                sets: row_sets,
+                kinds,
+            } = row;
+            ui.horizontal_wrapped(|ui| {
+                let (rect, _) = ui.allocate_exact_size(
+                    egui::vec2(
+                        crate::field_row::label_column(ui),
+                        ui.spacing().interact_size.y,
+                    ),
+                    egui::Sense::hover(),
                 );
-                if field_row::tip(response, &tip).clicked() {
-                    edit = Some(GeometryEdit::Role(role, *id, false));
-                }
-            }
-            let free: Vec<&SelectionSummary> =
-                summaries.iter().filter(|s| !sets.contains(&s.id)).collect();
-            if !free.is_empty() {
-                egui::ComboBox::from_id_salt(("role", role.name()))
-                    .selected_text("add…")
-                    .show_ui(ui, |ui| {
-                        for s in free {
-                            if ui.selectable_label(false, &s.name).clicked() {
-                                edit = Some(GeometryEdit::Role(role, s.id, true));
-                            }
+                let label = ui.put(
+                    rect,
+                    egui::Label::new(RichText::new(row_label).color(DARK.muted)),
+                );
+                label.on_hover_text(row_description);
+                for id in &row_sets {
+                    let summary = summaries.iter().find(|s| s.id == *id);
+                    let name = summary.map_or("(missing set)", |s| s.name.as_str());
+                    let problem = summary.and_then(|s| s.problem.clone());
+                    let text = match (&problem, summary) {
+                        (Some(_), Some(s)) => {
+                            format!("{name} \u{b7} {} {} not found \u{d7}", s.count, s.kind)
                         }
-                    });
-            }
-        });
+                        _ => format!("{name} \u{d7}"),
+                    };
+                    let mut button =
+                        egui::Button::new(RichText::new(text).color(if problem.is_some() {
+                            DARK.error
+                        } else {
+                            DARK.text
+                        }))
+                        .small();
+                    if problem.is_some() {
+                        button = button.stroke(Stroke::new(1.0, DARK.error));
+                    }
+                    let response = ui.add(button);
+                    let tip = problem.map_or_else(
+                        || "Take it out of this role".to_owned(),
+                        |p| {
+                            format!(
+                                "{}\nClick to take it out of this role.",
+                                form_panel::refusal(&p).replace(" Not applied.", "")
+                            )
+                        },
+                    );
+                    if field_row::tip(response, &tip).clicked() {
+                        edit = Some(GeometryEdit::Role(role, *id, false));
+                    }
+                }
+                let free: Vec<&SelectionSummary> = summaries
+                    .iter()
+                    .filter(|s| !sets.contains(&s.id) && kinds.is_none_or(|k| k.contains(&s.kind)))
+                    .collect();
+                if !free.is_empty() {
+                    egui::ComboBox::from_id_salt(("role", row_label))
+                        .selected_text("add…")
+                        .show_ui(ui, |ui| {
+                            for s in free {
+                                if ui.selectable_label(false, &s.name).clicked() {
+                                    edit = Some(GeometryEdit::Role(role, s.id, true));
+                                }
+                            }
+                        });
+                }
+            });
+        }
         // The sets' options, for a strategy that takes them (decision
         // record 0176).
         if let Some(e) = set_options(ui, operation, role, &sets, summaries, with_options) {
@@ -1939,5 +1997,78 @@ mod cut_short_tests {
             cut_short_tip(OnBreak::CutShort, SelectionRole::Check, helical),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod geometry_row_tests {
+    use super::{GeometryRow, SelectionRole, SelectionSetId, SelectionSummary, geometry_rows};
+    use openchuck_app::project::id::{ModelId, OperationId, SetupId};
+    use openchuck_app::project::{Operation, OrderKey};
+
+    fn summary(id: SelectionSetId, kind: &'static str) -> SelectionSummary {
+        SelectionSummary {
+            id,
+            name: kind.to_owned(),
+            model: ModelId::new(),
+            model_path: None,
+            kind,
+            count: 1,
+            uses: Vec::new(),
+            problem: None,
+            colour: None,
+        }
+    }
+
+    fn operation(strategy: &str, selections: Vec<SelectionSetId>) -> Operation {
+        Operation {
+            enabled: true,
+            id: OperationId::new(),
+            order: OrderKey::default(),
+            name: "Op".into(),
+            setup: SetupId::new(),
+            strategy: strategy.into(),
+            tool: None,
+            selections,
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            restriction_options: Default::default(),
+            spindle_speed: None,
+            material: None,
+            parameters: Default::default(),
+        }
+    }
+
+    fn labels(rows: &[GeometryRow]) -> Vec<(&str, Vec<SelectionSetId>)> {
+        rows.iter().map(|r| (r.label, r.sets.clone())).collect()
+    }
+
+    /// OP-28, decision 0525 D3 and D4: face-flow finishing's Cut on shows its
+    /// face sets and, apart, its guide edge sets, each offering only its own
+    /// kind; every other strategy and role keeps one row per role.
+    #[test]
+    fn req_op_28_face_flow_shows_its_guide_edge_sets_apart_from_its_faces() {
+        let (faces, edges) = (SelectionSetId::new(), SelectionSetId::new());
+        let summaries = [summary(faces, "faces"), summary(edges, "edges")];
+        let sets = vec![faces, edges];
+        let flow = operation(openchuck_app::path::face_flow::NAME, sets.clone());
+        let rows = geometry_rows(&flow, SelectionRole::Machine, &sets, &summaries);
+        assert_eq!(
+            labels(&rows),
+            vec![
+                (SelectionRole::Machine.name(), vec![faces]),
+                ("Guide edge", vec![edges])
+            ]
+        );
+        assert_eq!(rows[1].kinds, Some(&["edges"][..]));
+        assert!(rows[1].description.contains("longest side"));
+        for role in [SelectionRole::Avoid, SelectionRole::Check] {
+            assert_eq!(geometry_rows(&flow, role, &[], &summaries).len(), 1);
+        }
+        let follow = operation(openchuck_app::path::edge_following::NAME, sets.clone());
+        let rows = geometry_rows(&follow, SelectionRole::Machine, &sets, &summaries);
+        assert_eq!(labels(&rows), vec![(SelectionRole::Machine.name(), sets)]);
+        assert_eq!(rows[0].kinds, None);
     }
 }

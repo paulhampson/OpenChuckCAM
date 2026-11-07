@@ -330,6 +330,8 @@ priority = 79
 #     66.7 s  openchuck-path::simultaneous_hidden req_op_20_two_pins_side_by_side_are_cut_all_round
 #     64.8 s  openchuck-path::helical_rings req_op_12_req_op_11_rings_cover_the_surface_without_gouging
 #     64.2 s  openchuck-path::brep_outline_drop req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force
+# STALETAB 6 Nov 2026 (issue #558): stale_setup_edits' free end held and generated again,
+# 67.6 s uninstrumented beside the file's other eleven tests (58.7 s with fewer alongside).
 default-filter = '''not (
     test(~finest_setting_is_within)
   | (binary_id(=openchuck-app::integration) & test(=adaptive_example::req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spacing))
@@ -415,9 +417,11 @@ default-filter = '''not (
   | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
   | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
   | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
+  | (binary_id(=openchuck-app::integration) & test(=stale_setup_edits::req_set_09_req_ui_11_req_nfr_12_holding_the_free_end_regenerates_a_different_path))
 )'''
 
 [profile.long]
+# STALETAB 6 Nov 2026: stale_setup_edits' free end held, 67.6 s (see the coverage profile).
 # LARGEPATH 6 Nov 2026: tab_zone_clearance round a tab 351.9 s and the playback panel's
 # final cut part 77.5 s (see the coverage profile).
 # PATHBUGS 2 Nov 2026: the tutorial piece with adaptive spacing, 123.607 s, and held_region's
@@ -512,4 +516,5 @@ default-filter = '''
   | (binary_id(=openchuck-path::integration) & test(=brep_outline_drop::req_op_12_exact_outline_drop_of_every_kind_is_at_or_above_brute_force))
   | (binary_id(=openchuck-app::integration) & test(=tab_zone_clearance::req_op_21_req_set_09_roughing_and_rest_clear_round_a_tab_and_keep_it))
   | test(=playback_panel::tests::req_sim_03_req_sim_04_final_cut_part_is_published_after_play_to_end)
+  | (binary_id(=openchuck-app::integration) & test(=stale_setup_edits::req_set_09_req_ui_11_req_nfr_12_holding_the_free_end_regenerates_a_different_path))
 '''

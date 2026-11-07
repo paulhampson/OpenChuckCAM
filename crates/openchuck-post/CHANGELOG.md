@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.48.0
+## 0.49.0
 
-- **Breaking (0.48.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `PostOptions::safety_notice` (post key `safety_notice`, read as `false` when a post leaves it out; `true` in both built-in posts) and the constant `SAFETY_NOTICE`: on, the template writes the NFR-12 notice as two fixed comment lines after the generator line. A post with it on and `comments = false` is refused at load (`options.safety_notice`), and a template that does not write it while it is on is refused at posting. Struct literals of `PostOptions` add the field. Every program from a built-in post gains the two lines; no other byte changes.
+- **Breaking (0.49.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `PostOptions::safety_notice` (post key `safety_notice`, read as `false` when a post leaves it out; `true` in both built-in posts) and the constant `SAFETY_NOTICE`: on, the template writes the NFR-12 notice as two fixed comment lines after the generator line. A post with it on and `comments = false` is refused at load (`options.safety_notice`), and a template that does not write it while it is on is refused at posting. Struct literals of `PostOptions` add the field. Every program from a built-in post gains the two lines; no other byte changes.
 
 ## 0.47.0
 
