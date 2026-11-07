@@ -131,6 +131,8 @@ enum Action {
         /// The project folder.
         project: PathBuf,
         /// Folder to write G-code files into (default: print a summary only).
+        /// The export checks run first: when one blocks, such as a file
+        /// that fails its replay check, nothing is written.
         #[arg(long)]
         out: Option<PathBuf>,
         /// The post: a built-in id (`makera-z1`, `linuxcnc`) or a post folder.
@@ -726,14 +728,9 @@ fn run(cli: Cli) -> Result<()> {
                 result.toolpath.groups.len(),
                 result.gcode.len()
             );
-            // NFR-12: always printed when G-code is generated.
+            // NFR-12: always printed when G-code is generated. A file whose
+            // checks failed was a blocking check above, so none is written.
             println!("{VERIFY_GCODE_NOTICE}");
-            // A file whose checks failed is a blocking check above; without
-            // a post there are no files, so nothing more is checked here.
-            let unclean = result.reports.iter().filter(|r| !r.is_clean()).count();
-            if unclean > 0 {
-                anyhow::bail!("{unclean} G-code file(s) failed the checks above");
-            }
         }
         Action::Simulate { project, cell } => {
             let mut app = open_project(&project, threads, create)?;
