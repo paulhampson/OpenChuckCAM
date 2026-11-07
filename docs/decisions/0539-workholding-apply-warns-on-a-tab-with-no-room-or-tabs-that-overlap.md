@@ -1,6 +1,6 @@
 # 0539: Workholding Apply warns on an automatic tab with no room and on tabs that overlap (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's answer to question 5 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what a check does, so it is a record of its own.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's answer to question 5 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what a check does, so it is a record of its own. Built by lane MSGREVIEW in pull request #591, which closes OI-2095.
 - **What it amends, if accepted:** [decision 0523](0523-tab-checks-follow-the-operations-reach.md) item 4, as built. That item names only a tab outside the end zones as refusing at Apply, but the code refuses on two more findings. The requirements and the architecture are unchanged.
 - **Date:** 7 Nov 2026.
 - **Open items:** OI-2095 (raised with 0536) closes when this is built.
