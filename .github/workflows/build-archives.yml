@@ -252,7 +252,8 @@ jobs:
             esac
             echo
             echo "Commit:   $SHA ($REF)"
-            echo "Built:    $(date -u +%Y-%m-%dT%H:%MZ) in ${BUILT_IN:-the runner image} on ${ImageOS:-unknown} ${ImageVersion:-}"
+            # A container does not see the runner image's ImageOS, so it is named only when known.
+            echo "Built:    $(date -u +%Y-%m-%dT%H:%MZ) in ${BUILT_IN:-the runner image}${ImageOS:+ on $ImageOS ${ImageVersion:-}}"
             echo "Target:   $TARGET"
             echo "Compiler: $(rustc --version)"
             echo
