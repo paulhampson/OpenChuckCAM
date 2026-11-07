@@ -1146,15 +1146,18 @@ fn run(cli: Cli) -> Result<()> {
             // said and stored (decisions 0523 and 0539).
             let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
                 let found = app.check_setup_workholding(setup)?;
+                // The warnings are said whether or not a refusal follows: a
+                // warning found with a refusal is still a warning (issue
+                // #611).
+                for warning in found.iter().filter(|f| !f.refuses) {
+                    eprintln!("warning: {}", warning.text);
+                }
                 let refused: Vec<&str> = found
                     .iter()
                     .filter(|f| f.refuses)
                     .map(|f| f.text.as_str())
                     .collect();
                 anyhow::ensure!(refused.is_empty(), "{}", refused.join("\n"));
-                for warning in found.iter().filter(|f| !f.refuses) {
-                    eprintln!("warning: {}", warning.text);
-                }
                 Ok(())
             };
             refuse_findings(&app, &edited)?;

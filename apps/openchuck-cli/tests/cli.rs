@@ -1242,6 +1242,33 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
         out.stderr
     );
     assert!(out.stdout.contains("tab 3:"), "{}", out.stdout);
+    // A refusal and a warning together: the tab across the part is refused
+    // and nothing is stored, and the overlap is still said, as a warning,
+    // not left out (issue #611, decision 0539).
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-1,2,4"]));
+    assert_ne!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with("warning:") && l.contains("overlaps")),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with("error:")
+                && l.contains("is not wholly in the head or the tail zone")),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr
+            .lines()
+            .any(|l| l.starts_with("error:") && l.contains("overlaps")),
+        "{}",
+        out.stderr
+    );
 }
 
 /// NFR-16: `--version` prints every build fact in plain text, in the same format the About window
