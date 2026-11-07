@@ -8,6 +8,11 @@ layout of the build they were taken with, at 1920 x 1080; change them and the pa
 GENERATE = 75  # seconds; the Finish limited by an avoid set takes the longest, about 40 s here
 
 
+def results_end(cap):
+    """The Results list scrolled to its end: the volumes, past the feed-limit lines (#600)."""
+    cap.scroll(900, 950, 12)
+
+
 def run(cap, work):
     cap.click(243, 460, 2)                     # SELECTION SETS +: starts picking
     cap.click(577, 98, 2)                      # Front view
@@ -17,16 +22,20 @@ def run(cap, work):
     cap.click(1787, 277, 2)                    # Save as new set
     cap.key("Escape")                          # stop picking
     cap.click(148, 578, 2)                     # 2 Finish
+    cap.click(90, 550, 2)                      # hide 1 Rough's path, before generating (#607)
     cap.click(1855, 1057, GENERATE)            # Generate: the whole part, as in the tutorial
-    cap.click(90, 550, 2)                      # hide 1 Rough's path
+    cap.click(1640, 823, 1)                    # fold TOOL AND FEEDS: its feed-limit note is under review (#600)
     cap.click(452, 789, 2)                     # Results
+    results_end(cap)
     cap.shot("02-before")
     cap.click(1817, 396, 1.5)                  # Cut on: add...
     cap.click(1807, 429, 2)                    # Finial ball
     cap.click(1855, 1057, GENERATE)
+    results_end(cap)
     cap.shot("03-cut-on")
     cap.click(1834, 397, 2)                    # the x on Finial ball: Cut on is empty again
     cap.click(1817, 460, 1.5)                  # Avoid: add...
     cap.click(1807, 493, 2)                    # Finial ball
     cap.click(1855, 1057, GENERATE)
+    results_end(cap)
     cap.shot("04-avoid")
