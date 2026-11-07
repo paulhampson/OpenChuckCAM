@@ -62,4 +62,5 @@
 
 - [Troubleshooting](troubleshooting.md)
 - [Release notes](release-notes.md)
+- [Credits and licences](credits.md)
 - [Contributing to this guide](contributing.md)

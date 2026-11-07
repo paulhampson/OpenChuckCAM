@@ -13,7 +13,7 @@ The program does not know your machine, your fixture or your tool. Before you ru
 
 ## Very little has run on a real machine
 
-The project owner has run attended air cuts of two reference programs on one Makera Z1, and one small first cut in tooling board. Nothing else has been run, and nothing has been run on any other machine.
+The runs the project has recorded are attended air cuts of two reference programs on one Makera Z1, and one small first cut in tooling board, by the project owner. The maintainer has run other jobs on the same Makera Z1, but their details are not recorded here. Nothing has been run on any other machine.
 
 Some values in the built-in Makera Z1 profile have not been confirmed on a machine. The program marks them as unconfirmed, for example "6 machine values unconfirmed" in the status bar, and you must measure them on your own machine. See [Confirm machine profile values](../how-to/confirm-machine-values.md).
 
@@ -46,4 +46,10 @@ Generating toolpaths and simulating are not instant. On the tutorial's small par
 
 ## Systems
 
-Development builds exist for Linux, Windows and macOS (Apple silicon). They are not signed. Most hands-on checking has been done on Linux; the Windows and macOS builds have had less.
+Development builds exist for Linux, Windows and macOS (Apple silicon). Most hands-on checking has been done on Linux. The Windows build has had less, and the macOS build has not been tested by hand: it is built and its automatic tests run, but nobody has worked through the program on a Mac.
+
+The programs are not signed, so Windows and macOS warn or refuse the first time you start one. [Install and first run](install.md#download-a-development-build) gives the steps for each system.
+
+## Accessibility
+
+There is no screen reader support: the program does not expose its controls to a screen reader. Most of the program can be used from the keyboard, but a run through every step with the keyboard alone has not been tested, and some controls may not show their tooltip when they get keyboard focus.

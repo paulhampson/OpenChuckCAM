@@ -9,9 +9,9 @@
 * LinuxCNC (used and tested in simulation only)
 * Makera Z1 (used for real life testing)
 
-**OpenChuckCAM wants to integrate.** It has its own comprehensive front end and CLI version, but it is also architected with the intent to be able to provide 4th axis rotary CAM features to other open source software such as CAD tools which may wish to integrate it.
+**OpenChuckCAM wants to integrate.** It has its own comprehensive front end and CLI version, but it is also architected with the intent to be able to provide 4-axis rotary CAM features to other open source software such as CAD tools which may wish to integrate it.
 
-**OpenChuckCAM supports multiple machining strategies.** From the outset the aim has been to support greater flexibility in 4th axis strategies. Some exciting ones are:
+**OpenChuckCAM supports multiple machining strategies.** From the outset the aim has been to support greater flexibility in 4-axis strategies. Some exciting ones are:
 
 * Swarf - which allows the machining of more complex face geometries - for example on blades on a disk
 * Simultaneous XYZA - this moves the machine in all 4 axes to maintain the normal of the tool where needed - this means it is possible to mill items like crankshafts which have multiple centres of rotation in their design.
@@ -21,16 +21,16 @@ It is recognised that this project is likely never going to replace those high l
 ## Real world use
 This project also recognises that you put your CNC machine on the line when you load G-Code into it. It is reasonably cautious to that and so will produce a lot of warnings which it is recommended that you pay attention to - but it doesn't have full safeguards and carries the risks of bugs. *Check your G-Code!*
 
-Having said that G-Code from the system has been run for real. Currently the Makera Z1 is the only CNC machine that can be accessed for real world testing. Access to or evidence of use on other machines is very welcome! Please contact the maintainer if you can support in provision of machine access. 
+Having said that, G-Code from the system has been run for real. Currently the Makera Z1 is the only CNC machine that can be accessed for real world testing. Access to or evidence of use on other machines is very welcome! Please contact the maintainer if you can support in provision of machine access. 
 
 The first real tests were done on nightly v0.20.0 app binaries. Other real world machine jobs have been completed and evidence of these will be included in the repository to show that the project isn't without some grounding in reality.
 
 ## AI disclosure
 This project has also been an experiment in so called 'agentic development'. Today's AI workflows fundamentally have the challenge of how to control the quality of code (/slop!). This project seeks to do this through comprehensive unit tests at high code coverage levels, test first development flows, use of third-party simulation (shout out LinuxCNC!) and golden references to verify and validate output as well as comprehensive guard-rails around use of requirements and architecture to drive consistent delivery. Comprehensive decision records (see the docs/ folder) reviewed by the developer are also a key part of the workflow and guardrailing.
 
-However - it is still AI developed and you will encounter rough edges (as you would in any software!) but the intention is we find ways to hold and improve quality levels, address issues suitably and mature the software with robust testing and guardrails.
+However - it is still AI developed and you will encounter rough edges (as you would in any software!) but the intention is we find ways to hold and improve quality levels, address issues suitably and mature the software with thorough testing and guardrails.
 
-*Note* For clarity - OpenChuckCAM itself does not leverage AI or have any external network connectivity. OpenChuckCAM is deterministic in output: the same project always gives the same G-code, which makes it reproducible and testable.
+*Note* For clarity - OpenChuckCAM itself does not use AI or have any external network connectivity. OpenChuckCAM is deterministic in output: the same project always gives the same G-code, which makes it reproducible and testable.
 
 ## Platforms
 

@@ -40,6 +40,18 @@ xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-wor
 
 **Windows, the first time.** If SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**. Or, before unpacking, right-click the zip file, choose **Properties**, tick **Unblock** and click **OK**.
 
+**Linux.** Nothing extra: the archive has no signature to check. If the program does not start, check that your system meets the needs in the table above.
+
+### The command line
+
+`openchuck-cli` does the same work as the window, from a terminal: it creates a project, imports a model, sets up the machine, stock and tools, generates the toolpaths, writes the G-code and simulates. In the unpacked folder, run:
+
+```text
+./openchuck-cli --help
+```
+
+On Windows, run `openchuck-cli.exe --help`. On macOS, run the `openchuck-cli` that sits beside `OpenChuckCAM.app`. [Command line](../reference/command-line.md) describes each command.
+
 ## Build from source
 
 The program is written in Rust. The version of Rust it needs is pinned in the repository's `rust-toolchain.toml`, and `rustup` installs it for you.
