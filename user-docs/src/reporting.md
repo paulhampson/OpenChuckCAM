@@ -1,6 +1,6 @@
 # Reporting a problem or asking for a feature
 
-Use the project's issue forms on GitHub. [Open the issue chooser](https://github.com/paulhampson/OpenChuckCAM/issues/new/choose) and pick **Bug report** for something that does not work, or **Enhancement request** for a feature, a change, or a question the guide does not answer. The maintainer reads every issue and sets its priority. A request can be accepted, changed or recorded for a later phase; opening one does not promise a date.
+Use the project's issue forms on GitHub. [Open the issue chooser](https://github.com/paulhampson/OpenChuckCAM/issues/new/choose) and pick **Bug report** for something that does not work, **Enhancement request** for a feature or a change, or **Question** for something the guide does not explain. The maintainer reads every issue and sets its priority; questions are answered when time allows. A request can be accepted, changed or recorded for a later phase; opening one does not promise a date.
 
 Check [Known limitations](start/limitations.md) and [Troubleshooting](troubleshooting.md) first: what you found may already be listed.
 
@@ -17,9 +17,7 @@ Check [Known limitations](start/limitations.md) and [Troubleshooting](troublesho
 
 ## Labels on your issue
 
-The forms add two labels. `user-reported` means the issue was filed through the forms. `awaiting-triage` means the maintainer has not yet looked at it and set its severity, labels and any milestone; it is removed when they have. A bug report also gets `bug`, and an enhancement request gets `enhancement`.
-
-For a question that the guide does not answer, open a blank issue and start the title with `Question:`.
+Every form adds two labels. `user-reported` means the issue was filed through the forms. `awaiting-triage` means the maintainer has not yet looked at it and set its severity, labels and any milestone; it is removed when they have. Each form adds one more label: `bug` for a bug report, `enhancement` for an enhancement request, and `question` for a question.
 
 ## Issues are public
 
