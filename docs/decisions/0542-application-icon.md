@@ -33,11 +33,12 @@ No requirement names an icon; the work is release work for milestone 2026.1-alph
 
 ## Verification
 
-Done in the lane's container (Linux, x86_64) on branch `claude/lane-icon`; commit @@COMMIT@@.
+Done in the lane's container (Linux, x86_64) on branch `claude/lane-icon` at commit `27cdfac` (the code and assets; later commits change documents only), pull request #585.
 
 - `cargo test -p xtask icon`: the renderer gives the asked size, scales the drawing and is deterministic; invalid input is an error, not a panic (NFR-07); the ICO directory has one entry per PNG with the right size bytes, length and offset; the RES file holds the empty first resource, one `RT_ICON` per PNG and one group whose entries match; `generate` makes every committed size; `icon_same_image_allows_an_anti_aliasing_step_but_not_a_changed_drawing` checks the tolerance; and `icon_committed_files_match_the_svg` checks that every committed file is what the SVG gives.
 - `cargo test -p openchuck-ui icon`: `icon_window_icon_is_the_embedded_256_pixel_image`, `icon_window_viewport_carries_the_icon` and `icon_native_options_carry_the_application_icon` (the window the application and the benchmark open carries the 256 by 256 icon).
 - `icon.res` was linked with `rust-lld -flavor link /dll /noentry /machine:x64` into a test DLL, and `pefile` read back five `RT_ICON` resources of the PNG sizes and one `RT_GROUP_ICON` (language 1033), so the linker accepts the file. ImageMagick's `identify` reads `icon.ico` as five PNG images of 256, 64, 48, 32 and 16 pixels.
+- `cargo nextest run -p xtask -p openchuck-ui`: 814 tests passed (every icon test under 1 s uninstrumented); `cargo clippy -p xtask -p openchuck-ui --all-targets -- -D warnings`, `cargo fmt --all`, and `cargo xtask deps`, `licences`, `records` and `trace` (105 of 105 P1 requirements have tests) passed. Coverage: `openchuck-ui` is report-only and `xtask` is not in `xtask/coverage.toml`.
 - Not verified here: the icon on a real Windows title bar, taskbar and Explorer, which cannot be seen headless. Neither can the Dock on macOS. Both are OI-2109, an owner item. The Windows CI build links the resource on every pull request.
 
 ## Open items
