@@ -188,13 +188,20 @@ jobs:
       kind: ${{ needs.plan.outputs.kind }}
       version: ${{ needs.plan.outputs.version }}
 
-  # Every archive is there and readable, on a dry run and before a release alike.
+  # Every archive is there and readable, and carries the STEP reader and the OpenCASCADE licence
+  # notice and source offer (LGPL-2.1, statically linked; decision 0003, OI-29), on a dry run and
+  # before a release alike.
   check-archives:
     name: Check the archives
     needs: [plan, gate, archives]
     if: needs.plan.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
+      # Only for Cargo.lock: the notice must name the OpenCASCADE version the build compiled.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: Cargo.lock
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
           pattern: ${{ needs.plan.outputs.name }}-*
@@ -206,18 +213,33 @@ jobs:
           NAME: ${{ needs.plan.outputs.name }}
         run: |
           ls -l dist
-          for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
-            tar -tzf "dist/$NAME-$target.tar.gz" > list.txt
-            grep -q "^$NAME-$target/README.txt$" list.txt || { echo "no README in the $target archive"; exit 1; }
-            grep -q "^$NAME-$target/openchuck-ui$" list.txt || { echo "no openchuck-ui in the $target archive"; exit 1; }
-          done
-          target=x86_64-pc-windows-msvc
-          unzip -l "dist/$NAME-$target.zip" > list.txt
-          grep -q "$NAME-$target/README.txt" list.txt || { echo "no README in the $target archive"; exit 1; }
-          grep -q "$NAME-$target/openchuck-ui.exe" list.txt || { echo "no openchuck-ui.exe in the $target archive"; exit 1; }
+          occt=$(awk '/^name = "occt-sys"$/ { getline; gsub(/[^0-9.]/, "", $0); print; exit }' Cargo.lock)
+          [ -n "$occt" ] || { echo "no occt-sys version in Cargo.lock"; exit 1; }
+          # check <target> <ext> <exe suffix>: list the archive, then read the notice out of it.
+          check() {
+            target=$1; ext=$2; exe=$3; dir="$NAME-$target"
+            if [ "$ext" = zip ]; then
+              unzip -Z1 "dist/$dir.zip" > list.txt
+            else
+              tar -tzf "dist/$dir.tar.gz" > list.txt
+            fi
+            for f in README.txt "openchuck-ui$exe" "openchuck-step-worker$exe" OPENCASCADE-NOTICE.txt LICENSE_LGPL_21.txt OCCT_LGPL_EXCEPTION.txt; do
+              grep -qxF "$dir/$f" list.txt || { echo "no $f in the $target archive"; exit 1; }
+            done
+            if [ "$ext" = zip ]; then
+              unzip -p "dist/$dir.zip" "$dir/OPENCASCADE-NOTICE.txt" > notice.txt
+            else
+              tar -xzOf "dist/$dir.tar.gz" "$dir/OPENCASCADE-NOTICE.txt" > notice.txt
+            fi
+            grep -qF "occt-sys" notice.txt || { echo "the notice in the $target archive does not name occt-sys"; exit 1; }
+            grep -qF "OpenCASCADE Technology (OCCT) $occt" notice.txt || { echo "the notice in the $target archive does not name OCCT $occt (Cargo.lock)"; exit 1; }
+          }
+          check x86_64-unknown-linux-gnu tar.gz ""
+          check aarch64-apple-darwin tar.gz ""
+          check x86_64-pc-windows-msvc zip .exe
           count=$(find dist -maxdepth 1 -type f -name "$NAME-*" | wc -l)
           [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
-          echo "The three archives are complete." >> "$GITHUB_STEP_SUMMARY"
+          echo "The three archives are complete, with the STEP reader and the OpenCASCADE notice (OCCT $occt)." >> "$GITHUB_STEP_SUMMARY"
 
   # The application release: a GitHub release (not a pre-release) for the existing app-v tag.
   publish-app:
