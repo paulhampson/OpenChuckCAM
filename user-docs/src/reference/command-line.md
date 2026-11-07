@@ -135,7 +135,23 @@ The command line does not install the ready-made tools: the program window insta
 | `--setup-sheet` | off | Also writes the setup sheet as HTML and PDF. It needs `--out`. |
 | `--acknowledge-partial-path` | off | Writes the files even though an operation's path is partial (see [Operations and strategies](operations.md#a-partial-path-must-be-acknowledged)), for this run only. Without it, nothing is written while a path is partial. |
 
-After it writes, `regenerate` reads each file back and checks it. For each file it prints the number of moves and whether the replay matches the toolpath, then any check that failed, and then the notice. If a file fails its checks, the command ends with an error and exit code 1. The file is still in the output folder: do not use it.
+With `--out`, `regenerate` checks before it writes anything, as the export in the program window does. It makes each program in memory, reads it back and replays it, and runs the export's checks, then prints them under `checks before writing the G-code:`:
+
+- an `error:` line for each check that stops the export, such as a program whose replay does not match its toolpath; then `error: 1 check(s) above stop the G-code from being written; nothing was written`, and the command ends with exit code 1. No file is written.
+- a `warning:` line for each check that does not stop it, such as an operation that has not been simulated, or machine values that are not confirmed. The files are written.
+
+Then, for each file, it prints the number of moves and whether the replay matches the toolpath, and last the notice, which it prints on every run. A project with no operations writes no G-code file, and so has nothing to check.
+
+For example, with a post whose template writes a move that goes nowhere, nothing is written:
+
+```text
+checks before writing the G-code:
+error: 01-setup-1.ngc failed its checks (the replay does not match). Look at the checks in the messages and fix the operation.
+warning: Operation 'Rough' has not been simulated. Run the simulation to see what it removes.
+warning: Operation 'Finish' has not been simulated. Run the simulation to see what it removes.
+warning: These machine values are not confirmed on the machine: travel, clearance, block window, spindle speed range, spindle-to-axis distance, recommended minimum safe Z. Check them against the controller.
+error: 1 check(s) above stop the G-code from being written; nothing was written
+```
 
 `simulate PROJECT [--cell MM]`
 : Regenerates and simulates the material removal of every operation, then compares the stock left with each setup's part: the most material left and the deepest overcut, and any rapid move that removes material. It exits with 1 if it finds an overcut deeper than one cell or a rapid move through material. `--cell` sets the simulation's cell size, from 0.025 mm to 1 mm (default 0.1 mm), and saves it in the project: finer costs time and memory.
@@ -155,13 +171,26 @@ openchuck-cli simulate baluster
 openchuck-cli regenerate baluster --post makera-z1 --tool-numbers keep --out baluster-out --setup-sheet
 ```
 
-`tool-numbers` shows `T104 Z1 O-flute 3.175x25` and `T204 Z1 ball 3.175x22`. The last command writes `01-setup-1.nc`, `baluster-setup-sheet.html` and `baluster-setup-sheet.pdf` into `baluster-out`, then ends with lines like these:
+`tool-numbers` shows `T104 Z1 O-flute 3.175x25` and `T204 Z1 ball 3.175x22`. The last command checks the program, writes `01-setup-1.nc`, `baluster-setup-sheet.html` and `baluster-setup-sheet.pdf` into `baluster-out`, and prints:
 
 ```text
-baluster: 2 toolpath groups, 1 G-code files
   01-setup-1.nc: 27964 moves; replay matches the toolpath (tip 0.0007 mm, A 0.0005 deg; cut 1564.5 s, toolpath 1564.5 s)
+wrote baluster-out/baluster-setup-sheet.html
+wrote baluster-out/baluster-setup-sheet.pdf
+baluster: 2 toolpath groups, 1 G-code files
 Generated G-code must be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup.
 ```
+
+Before that, on standard error, it lists the checks that did not stop the export:
+
+```text
+checks before writing the G-code:
+warning: Operation 'Rough' has not been simulated. Run the simulation to see what it removes.
+warning: Operation 'Finish' has not been simulated. Run the simulation to see what it removes.
+warning: These machine values are not confirmed on the machine: travel, clearance, block window, spindle speed range, spindle-to-axis distance, recommended minimum safe Z. Check them against the controller.
+```
+
+Each command runs on its own, so the `simulate` run before does not count as a simulation for `regenerate`: read its result yourself. Measure the unconfirmed machine values on your machine (see [Confirm machine profile values](../how-to/confirm-machine-values.md)).
 
 "Replay matches the toolpath" means the file says what the toolpath says. It does not mean the program is right for your machine, stock or fixture.
 
