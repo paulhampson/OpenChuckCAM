@@ -95,7 +95,7 @@ The Results line names the guide, "edge 65 (49.1 mm long)", whichever way it was
 ## Common mistakes
 
 Nothing in Cut on
-: Face-flow finishing does not cut the whole part. It is refused: "Operation 'Floor finish' cannot be generated: Face-flow finishing needs a face set: select the faces to cut, save them as a set and put it in Cut on; an edge set there is the guide". The line "With nothing in Cut on, the operation cuts the whole part." at the top of the Geometry section does not apply to this strategy.
+: Face-flow finishing does not cut the whole part. It is refused: "Operation 'Floor finish' cannot be generated: Face-flow finishing needs a face set: select the faces to cut, save them as a set and put it in Cut on; an edge set there is the guide". Make a face set of the faces to cut and choose it beside **Cut on**.
 
 An edge set in Avoid or Check
 : Those roles take faces. It is refused: "Avoid takes faces, not edges, on a STEP part. Take the edge set 'Floor guide' out of Avoid, and select faces instead." Put the edge set in **Guide edge**.
