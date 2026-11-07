@@ -172,14 +172,14 @@ These are the messages the command line gives for each mistake; the export panel
 `feed_rule "linuxcnc" cannot be written in feed_mode G93: inverse_time goes with g93, the others with g94`
 : `feed_mode` and `feed_rule` do not agree.
 
-An error with the template's name and a line number
-: A mistake in the template, such as a misspelt variable (`it.taget`): the template stops at the first unknown name instead of writing empty text.
+``setup 'Setup 1': minimal.post at line 27: undefined value `it.taget` is undefined``
+: A mistake in the template, here a misspelt variable. The message names the template and the line. The template stops at the first unknown name instead of writing empty text.
 
 `replay does not match the toolpath: the G-code has moves beyond the end of the IR`
 : The template wrote a move that goes nowhere, such as two lines with the same position. The replay counts the moves, so they no longer match. The `st.at` check in the example leaves such moves out.
 
-The export is refused because the notice is missing
-: `safety_notice = true`, but the template does not write the `safety_notice` lines. Keep the `{% for notice in safety_notice %}` loop.
+``options.safety_notice: is on, but the template minimal.post does not write the notice; ...``
+: `safety_notice = true`, but the template does not write the notice lines. Keep the `{% for notice in safety_notice %}` loop after the generator line.
 
 ## What the example does not do
 
