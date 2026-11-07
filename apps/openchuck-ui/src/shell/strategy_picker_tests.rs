@@ -97,13 +97,16 @@ fn req_op_16_req_ui_14_picker_lists_disabled_strategies_with_readable_reasons() 
         .filter(|c| c.unavailable.is_some())
         .collect();
     assert!(!disabled.is_empty());
+    let labels: Vec<String> = choices.iter().map(|c| c.label.clone()).collect();
     for c in disabled {
         if !rig.shows(c.unavailable.as_ref().unwrap()) {
+            // Scroll the list with the pointer over the lowest strategy
+            // shown in it.
             let at = rig
                 .visible_text_rects()
                 .into_iter()
                 .rev()
-                .find(|(t, _)| t.contains("Swarf"))
+                .find(|(t, _)| labels.iter().any(|l| t.contains(l.as_str())))
                 .unwrap()
                 .1
                 .center();
