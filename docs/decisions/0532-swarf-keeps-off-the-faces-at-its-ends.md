@@ -7,7 +7,7 @@
 
   OP-07, OP-12 and the other requirements are unchanged. OP-12 asks for gouge checks "where defined"; the faces next to the cut face are now defined by the B-rep's edges.
 - **Date:** 7 Nov 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-2078 to OI-2080 are new; OI-237 is narrowed (item 6). OI-2081 was given to the lane and is not used.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-2078 to OI-2081 are new; OI-237 is narrowed (item 6).
 
 Numbering: 0532 and OI-2078 to OI-2081 were given by the coordinator on 6 Nov 2026. No project schema number: the new setting is a strategy parameter, and parameters are a free map (decision 0008 item 6). The workspace version is sequenced by the Merge Manager at release (0.48.0, or the next free one).
 
@@ -137,5 +137,6 @@ After the merge the owner checks the bladed disk in the application: a swarf ope
 - **OI-2078** (new): the end faces are kept off, and the faces next to the cut face measured, to the sampling of a guarded face (an eighth of the tool radius, at least 0.05 mm) and three points of each move. On the blisk that leaves up to 0.016 mm with the tolerance at 0.01 mm. A bounded check (the test kit's checker, decision 0255) or a finer sampling near the tool would close the gap; this is the same limit as OI-636 for avoid and check sets.
 - **OI-2079** (new): a face that meets the end ruling and no middle ruling is an end face, however little the tool cuts it. On the blisk, the piece of the rim at X = 60 (face 16) stops the pass 0.8 to 2.1 mm short, to keep off a 0.013 to 0.064 mm cut made by the blade's own twist. A depth below which an end face only warns is for the owner, if the strip matters.
 - **OI-2080** (new): only faces that share an edge with the cut face are found. A face that comes near the cut face's end without sharing an edge with it (the next blade, or a separate body) is not checked. The whole-model check stays OI-237.
+- **OI-2081** (new, issue #572): the entry and exit moves (lead, ramp, helix) are still checked against the face set only, in the shared entry code: a lead-out at a pass that ends at a wall runs on into it (3.000 mm on the library's fixture; not reached on the blisk, where those entries are refused on the blade). Present before this record and not changed by it; a follow-up.
 - **OI-237** (narrowed, stays open): the shank above the flute, the holder and the faces that do not share an edge with the cut face.
 - **OI-636** (unchanged): how finely a set is sampled.
