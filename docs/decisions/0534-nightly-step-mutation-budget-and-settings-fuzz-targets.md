@@ -1,6 +1,6 @@
 # 0534: The nightly STEP mutation run gets a 55-minute budget, and the settings file and facing rows get fuzz targets
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator session (decision 0049). Proposed by lane FUZZGAPS (wave 2, release blockers) on 6 Nov 2026; item 1 (that the mutation run counts as fuzzing) is the owner's decision of 6 Nov 2026, also relayed by the coordinator. OI-2086 stays open; the owner said it is not needed before the release.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049). Proposed by lane FUZZGAPS (wave 2, release blockers) on 6 Nov 2026; item 1 (that the mutation run counts as fuzzing) is the owner's decision of 6 Nov 2026, also relayed by the coordinator. OI-2086 stays open; it is not a release blocker.
 - **Date:** 6 Nov 2026.
 - **Amends:** [decision 0107](0107-malformed-input-sweep-and-fuzz-hours.md) item 4 (the STEP mutation run: 3,000 mutants a night becomes a time budget) and closes its open items OI-326 and OI-327.
 - **Relates to:** NFR-07; verification plan section 4.1; [docs/fuzzing.md](../fuzzing.md); [docs/ci-performance.md](../ci-performance.md) and [decision 0516](0516-ci-architecture.md) (the runner budget); decisions [0003](0003-step-kernel-route.md) and [0027](0027-slice-11a-step-import.md) (the STEP mutation run).
