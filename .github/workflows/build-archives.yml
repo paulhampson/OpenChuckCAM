@@ -209,9 +209,15 @@ jobs:
               SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) cargo xtask macos-app \
                 --ui "$bin/openchuck-ui" --worker "$bin/openchuck-step-worker" --out "$dir"
               plutil -lint "$dir/OpenChuckCAM.app/Contents/Info.plist"
-              # Reported, not enforced: what macOS makes of the bundle's signature state (the
-              # linker's ad-hoc signature on each arm64 binary, none on the bundle; decision 0541).
-              codesign --verify --deep --strict --verbose=2 "$dir/OpenChuckCAM.app" 2>&1 || true
+              # An ad-hoc signature over the whole bundle (owner's decision of 7 Nov 2026, decision
+              # 0541): no certificate and no Apple account, so it is not signing in the Developer ID
+              # sense. Apple silicon runs only signed code, and a bundle whose seal does not cover
+              # its Info.plist and contents can be reported as damaged instead of offering
+              # "Open Anyway". The check must pass; Gatekeeper's assessment is printed and is
+              # expected to reject the app (no Developer ID, not notarised).
+              codesign --force --deep --sign - "$dir/OpenChuckCAM.app"
+              codesign --verify --deep --strict --verbose=2 "$dir/OpenChuckCAM.app"
+              codesign --display --verbose=2 "$dir/OpenChuckCAM.app" 2>&1
               spctl --assess --type execute --verbose=4 "$dir/OpenChuckCAM.app" 2>&1 || true
               ;;
             *)

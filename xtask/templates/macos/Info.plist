@@ -10,7 +10,7 @@
 	<key>CFBundleExecutable</key>
 	<string>openchuck-ui</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.paulhampson.openchuckcam</string>
+	<string>cam.openchuck.OpenChuckCAM</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

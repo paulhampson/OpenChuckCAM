@@ -14,7 +14,9 @@
 //!     MacOS/openchuck-step-worker    the STEP reader, found beside the application (OI-118)
 //! ```
 //!
-//! The bundle is not signed or notarised (owner's decision of 7 Nov 2026, OI-135). Its tree is
+//! The bundle is not signed with a certificate or notarised (owner's decision of 7 Nov 2026,
+//! OI-135); the release build gives it an ad-hoc signature on macOS (`codesign --sign -`, no
+//! certificate; decision 0541), which this command cannot do on Linux. Its tree is
 //! deterministic: the same inputs give the same files, bytes, modes and modification times
 //! (every time is set to the given one, normally the commit time), so packing it with a sorted,
 //! owner-free tar gives the same archive.
@@ -324,7 +326,7 @@ mod tests {
         assert_eq!(value("CFBundleExecutable"), "openchuck-ui");
         assert_eq!(
             value("CFBundleIdentifier"),
-            "io.github.paulhampson.openchuckcam"
+            "cam.openchuck.OpenChuckCAM"
         );
         assert_eq!(value("CFBundleName"), "OpenChuckCAM");
         assert_eq!(value("CFBundlePackageType"), "APPL");

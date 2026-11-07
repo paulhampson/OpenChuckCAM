@@ -82,11 +82,11 @@ The next deploy publishes the change. Nothing else ever writes that branch.
 | --- | --- | --- | --- |
 | `x86_64-unknown-linux-gnu.tar.gz` | in an `ubuntu:22.04` container, pinned by digest, on `ubuntu-latest` | `openchuck-ui`, `openchuck-cli`, `openchuck-step-worker` | glibc 2.35 or newer with the libstdc++ of GCC 12 or newer: Ubuntu 22.04, Debian 12, Fedora 36 or later (x86-64) |
 | `x86_64-pc-windows-msvc.zip` | on `windows-latest` | `openchuck-ui.exe`, `openchuck-cli.exe`, `openchuck-step-worker.exe` | Windows x64 |
-| `aarch64-apple-darwin.tar.gz` | on `macos-latest` | `OpenChuckCAM.app` (with `openchuck-ui` and its own `openchuck-step-worker` in `Contents/MacOS`), `openchuck-cli`, `openchuck-step-worker` beside it | macOS 11 or later on Apple silicon |
+| `aarch64-apple-darwin.tar.gz` | on `macos-latest` | `OpenChuckCAM.app` (identifier `cam.openchuck.OpenChuckCAM`, with `openchuck-ui` and its own `openchuck-step-worker` in `Contents/MacOS`, ad-hoc signed), `openchuck-cli`, `openchuck-step-worker` beside it | macOS 11 or later on Apple silicon |
 
 Each also holds `README.txt`, the licences and notices, and `TOOL-DATA-CREDITS.txt` (the credit for the Makera Z1 tool data, OI-269).
 
-**Not signed.** The programs and the `.app` are not signed with a certificate and not notarised: signing is out of scope for 2026.1-alpha (the owner's decision of 7 Nov 2026, OI-135). What a user sees, and what the README says to do:
+**Not signed.** The programs and the `.app` are not signed with a certificate and not notarised: signing is out of scope for 2026.1-alpha (the owner's decision of 7 Nov 2026, OI-135). The `.app` carries only an ad-hoc signature (`codesign --sign -`, no certificate, the owner's answer of 7 Nov 2026), which Apple silicon needs to run it and which lets macOS offer **Open Anyway** rather than call a downloaded copy damaged. Do not change the bundle identifier between releases: macOS keys the user's preferences, permissions and **Open Anyway** approval to it. What a user sees, and what the README says to do:
 
 - **macOS** (15 and later): opening the app shows "OpenChuckCAM" Not Opened ("Apple could not verify..."), with **Done** and **Move to Trash**. The user clicks **Done**, then **System Settings, Privacy & Security**, **Open Anyway** under Security, and confirms. Or, in Terminal: `xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker`. The quarantine flag comes from the browser download; a copy made with `curl` has none.
 - **Windows**: SmartScreen may show "Windows protected your PC"; **More info**, then **Run anyway**. Or unblock the zip first (**Properties, Unblock**).
