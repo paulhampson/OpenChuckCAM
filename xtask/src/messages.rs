@@ -158,23 +158,27 @@ fn whole_word_matches(text: &str, word: &str) -> usize {
         .count()
 }
 
-/// Whether `path` holds test code only.
-fn is_test_file(path: &Path) -> bool {
-    let name = path
+/// Whether `path` holds test code only. Only its part below `root` is
+/// looked at, so a folder named `tests` above the workspace does not count.
+fn is_test_file(root: &Path, path: &Path) -> bool {
+    let below = path.strip_prefix(root).unwrap_or(path);
+    let name = below
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
     name == "tests.rs"
         || name.ends_with("_tests.rs")
-        || path.components().any(|c| c.as_os_str() == "tests")
+        || below.components().any(|c| c.as_os_str() == "tests")
 }
 
-fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+fn collect(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir).with_context(|| format!("cannot read {}", dir.display()))? {
         let path = entry?.path();
         if path.is_dir() {
-            collect(&path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") && !is_test_file(&path) {
+            collect(root, &path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
+            && !is_test_file(root, &path)
+        {
             out.push(path);
         }
     }
@@ -190,7 +194,7 @@ pub fn counts(root: &Path) -> Result<(BTreeMap<String, usize>, BTreeMap<String, 
         for krate in std::fs::read_dir(root.join(folder))? {
             let src = krate?.path().join("src");
             if src.is_dir() {
-                collect(&src, &mut files)?;
+                collect(root, &src, &mut files)?;
             }
         }
     }
@@ -337,13 +341,26 @@ mod tests {
 
     #[test]
     fn req_ui_12_test_files_are_not_scanned() {
-        assert!(is_test_file(Path::new(
-            "crates/x/src/shell/simulate_tests.rs"
-        )));
-        assert!(is_test_file(Path::new(
-            "crates/x/src/entry_safety/tests.rs"
-        )));
-        assert!(is_test_file(Path::new("crates/x/tests/a.rs")));
-        assert!(!is_test_file(Path::new("crates/x/src/overview.rs")));
+        let root = Path::new("/work/OpenChuckCAM");
+        let at = |p: &str| root.join(p);
+        assert!(is_test_file(
+            root,
+            &at("crates/x/src/shell/simulate_tests.rs")
+        ));
+        assert!(is_test_file(
+            root,
+            &at("crates/x/src/entry_safety/tests.rs")
+        ));
+        assert!(is_test_file(root, &at("crates/x/tests/a.rs")));
+        assert!(!is_test_file(root, &at("crates/x/src/overview.rs")));
+    }
+
+    /// A folder named `tests` above the workspace does not make every file a
+    /// test file: only the path below the root is looked at.
+    #[test]
+    fn req_ui_12_a_folder_above_the_workspace_is_not_read_as_tests() {
+        let root = Path::new("/home/dev/tests/OpenChuckCAM");
+        assert!(!is_test_file(root, &root.join("crates/x/src/overview.rs")));
+        assert!(is_test_file(root, &root.join("crates/x/tests/a.rs")));
     }
 }
