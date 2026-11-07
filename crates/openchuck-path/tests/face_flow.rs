@@ -582,7 +582,7 @@ fn req_op_28_the_notes_name_the_guide_and_the_passes() {
     let out = rig
         .output(&rig.strategy(&[0], &[]), &values(1.0, &[]))
         .unwrap();
-    let notes = out.notes.join("\n");
+    let notes = out.notes().join("\n");
     assert!(notes.contains("guide"), "{notes}");
     assert!(notes.contains("edge 0"), "{notes}");
     assert!(
@@ -790,7 +790,7 @@ fn req_op_28_a_three_sided_face_closes_on_its_apex() {
         top > 5.0 - 10.0 * 6.0 / 30.0 - 0.7 - 1e-6,
         "the passes stop at Y {top}"
     );
-    assert!(out.notes.join(" ").contains("point"), "{:?}", out.notes);
+    assert!(out.notes().join(" ").contains("point"), "{:?}", out.notes());
 }
 
 // ---- point 1: the guide, by default and chosen ---------------------------------------
@@ -937,11 +937,11 @@ fn req_op_28_the_walls_beside_a_floor_are_never_gouged_and_what_cannot_be_reache
         "{area} mm² reported"
     );
     assert!(
-        out.warnings
-            .iter()
-            .any(|w| w.message.contains("cannot reach")),
+        out.warnings()
+            .into_iter()
+            .any(|w| w.text.contains("cannot reach")),
         "{:?}",
-        out.warnings
+        out.warnings()
     );
 }
 
@@ -1377,7 +1377,7 @@ fn req_op_28_nfr_06_the_path_is_identical_at_1_2_and_n_threads() {
     let v = values(0.5, &[(p::LEAD_ANGLE, num(3.0))]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| openchuck_path::generate(&strategy, &rig.input(), &v, ctx)).unwrap();
-        format!("{:?} {:?} {:?}", path.group, path.notes, path.unreached).into_bytes()
+        format!("{:?} {:?} {:?}", path.group, path.notices, path.unreached).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);

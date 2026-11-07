@@ -53,6 +53,7 @@
 //! between them is allowed as well; otherwise the nodes are cut as separate
 //! passes and the shared services link them.
 
+use crate::notice::Notice;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -76,7 +77,6 @@ mod facing_scope_tests;
 #[cfg(test)]
 #[path = "roughing/legacy_identity_tests.rs"]
 mod legacy_identity_tests;
-use crate::assemble::PathWarning;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
 use crate::params::{
@@ -408,8 +408,10 @@ impl Strategy for RotaryRoughing {
         let (passes, turns, (spaced, warnings)) = rough(input, region, parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes: faces::note(&turns).into_iter().chain(spaced).collect(),
-            warnings,
+            notices: crate::strategy::notices(
+                warnings,
+                faces::note(&turns).into_iter().chain(spaced),
+            ),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -496,7 +498,7 @@ fn rough(
 }
 
 /// Adaptive spacing's note and warning.
-type Report = (Vec<String>, Vec<PathWarning>);
+type Report = (Vec<String>, Vec<Notice>);
 
 /// The note and the warning for what adaptive spacing did, when it ran
 /// (decision record 0239 items 10 and 12).
@@ -572,8 +574,7 @@ pub(crate) fn face(
     let (notes, warnings) = report(job.spacing, tally);
     Ok(StrategyOutput {
         passes,
-        notes: ring_note.into_iter().chain(notes).collect(),
-        warnings,
+        notices: crate::strategy::notices(warnings, ring_note.into_iter().chain(notes)),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

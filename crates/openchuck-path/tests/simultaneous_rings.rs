@@ -213,9 +213,9 @@ fn req_op_05_rings_turn_whole_turns_at_constant_x_no_wider_apart_than_the_stepov
             assert_eq!(reversals(&run, 1e-9), 0, "pitch {pitch}");
         }
         assert!(
-            p.notes.iter().any(|n| n.message.contains("rings")),
+            p.notices.iter().any(|n| n.text.contains("rings")),
             "{:?}",
-            p.notes
+            p.notices
         );
     }
 }
@@ -418,7 +418,7 @@ fn req_op_05_req_op_06_on_a_lobed_part_steps_hold_a_and_the_tilt_stays_in_bounds
             // Every ring is its own cut, joined by the shared services.
             assert!(cuts > 1, "{cuts}");
         }
-        assert!(p.notes.iter().any(|n| n.message.contains("rings")));
+        assert!(p.notices.iter().any(|n| n.text.contains("rings")));
     }
 }
 
@@ -469,9 +469,9 @@ fn req_op_06_the_tilt_note_does_not_count_the_lead_a_step_holds() {
     )
     .unwrap();
     let note = p
-        .notes
+        .notices
         .iter()
-        .map(|n| n.message.as_str())
+        .map(|n| n.text.as_str())
         .find(|m| m.contains("largest tilt used"))
         .unwrap();
     let used: f64 = note

@@ -50,6 +50,7 @@
 //! split. A move that still cuts in by more than the tolerance at its middle
 //! after [`MAX_DEPTH`] halvings is refused with a message naming it.
 
+use crate::notice::{Level, Notice};
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
@@ -967,7 +968,7 @@ fn run(
         ));
     }
     let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
-    let mut warnings: Vec<crate::assemble::PathWarning> = unreached_warning(
+    let mut warnings: Vec<Notice> = unreached_warning(
         &found.unreached,
         2.0 * input.tool.cutting_radius(),
         max_lean,
@@ -984,8 +985,7 @@ fn run(
     crate::axial::mark_low_links_if_asked(parameters, &mut passes);
     Ok(StrategyOutput {
         passes,
-        notes,
-        warnings,
+        notices: crate::strategy::notices(warnings, notes),
         unreached: found.unreached,
         shank_breaks,
     })
@@ -1022,7 +1022,7 @@ const BREAK_NEAR: f64 = 1.0;
 
 /// The warning for the places a pass broke because the tool's shank would
 /// meet the part (decision record 0368, the owner's answer on OI-1456).
-fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemble::PathWarning> {
+fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<Notice> {
     const LISTED: usize = 5;
     if breaks.is_empty() {
         return None;
@@ -1039,8 +1039,11 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemb
         String::new()
     };
     let plural = if breaks.len() == 1 { "" } else { "s" };
-    Some(crate::assemble::PathWarning {
-        message: format!(
+    Some(Notice {
+        level: Level::Warning,
+        topic: None,
+        segment: None,
+        text: format!(
             "simultaneous finishing breaks the path at {} place{plural} and links round them, \
              because the tool's shank is wider than its cutting part and would touch the part \
              there; the surface there is left uncut: {}{more}; check them in the simulation \
@@ -1048,8 +1051,8 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<crate::assemb
             breaks.len(),
             listed.join("; ")
         ),
-        parameter: None,
-        requires_acknowledgement: false,
+        setting: None,
+        acknowledgement: None,
     })
 }
 
@@ -1060,7 +1063,7 @@ fn unreached_warning(
     areas: &[crate::assemble::Unreached],
     diameter: f64,
     max_lean: f64,
-) -> Option<crate::assemble::PathWarning> {
+) -> Option<Notice> {
     use crate::assemble::UnreachedReason;
     if areas.is_empty() {
         return None;
@@ -1069,15 +1072,18 @@ fn unreached_warning(
     let lean = areas
         .iter()
         .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
-    Some(crate::assemble::PathWarning {
-        message: format!(
+    Some(Notice {
+        level: Level::Warning,
+        topic: None,
+        segment: None,
+        text: format!(
             "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
              uncut: {}; check them in the simulation before running the program",
             areas.len(),
             unreached_list(areas, diameter, max_lean)
         ),
-        parameter: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
-        requires_acknowledgement: false,
+        setting: lean.then(|| parameter::MAX_HIDDEN_LEAN.to_owned()),
+        acknowledgement: None,
     })
 }
 

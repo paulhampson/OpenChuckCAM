@@ -359,11 +359,11 @@ fn req_op_02_roughing_takes_sets_that_only_warn() {
                 path.group, whole.group,
                 "{form} {protection:?}: the path changed"
             );
-            assert_eq!(path.warnings.len(), 1, "{form}: {:?}", path.warnings);
+            assert_eq!(path.warnings().len(), 1, "{form}: {:?}", path.warnings());
             assert!(
-                path.warnings[0].message.starts_with(said),
+                path.warnings()[0].text.starts_with(said),
                 "{form}: {}",
-                path.warnings[0].message
+                path.warnings()[0].text
             );
         }
     }

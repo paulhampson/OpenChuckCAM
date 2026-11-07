@@ -34,7 +34,7 @@
 //!    and `t` (a compensated feed per minute, or inverse time). No move may be
 //!    shorter than the slowest axis allows at the machine's feed limits; where
 //!    that lengthens a cutting move, the contact feed there is lower than
-//!    programmed and a [`PathNote`] says so. Moves without a contact
+//!    programmed and an information [`Notice`] says so. Moves without a contact
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
@@ -48,39 +48,12 @@ use openchuck_types::job::JobContext;
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
+use crate::notice::Notice;
 use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwrap_continuous};
 use crate::stock::{CollisionOracle, StockModel};
 use crate::strategy::{CutPoint, Pass, PassStock, StrategyInput};
 use openchuck_types::machine::{MaxFeeds, RotaryInFeed};
-
-/// Something the user should know about a generated toolpath.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PathNote {
-    /// The segment it concerns, by index in the group.
-    pub segment: usize,
-    /// What happened.
-    pub message: String,
-}
-
-/// Something the user must see before the program is used: the path is
-/// made, but it does not meet a limit the operation sets, such as a cut into
-/// the finished surface deeper than the tolerance (NFR-12; decision record
-/// 0175). A host shows it as a warning beside the operation, not as a note.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PathWarning {
-    /// What is wrong, where, and what the user can do, in plain words.
-    pub message: String,
-    /// The operation parameter that, changed, would accept or remove it
-    /// (`tolerance`), for the host to point at; `None` when no one does.
-    pub parameter: Option<String>,
-    /// Whether the path is partial: it is kept, but the user must
-    /// acknowledge this result before its program is written, and it is
-    /// never called complete (adaptive spacing that met a limit or could not
-    /// confirm a place; decision record 0239 item 10). An ordinary warning
-    /// never counts as one.
-    pub requires_acknowledgement: bool,
-}
 
 /// An area of the part a strategy could not reach with the tool (OP-20;
 /// decision record 0368): the path leaves it uncut, and a warning says so.
@@ -145,12 +118,11 @@ pub struct ShankBreak {
 pub struct GeneratedPath {
     /// The moves.
     pub group: ToolpathGroup,
-    /// Notes, in segment order.
-    pub notes: Vec<PathNote>,
-    /// Warnings about the whole toolpath (decision record 0175). Each is
-    /// also one of `notes`, against the first segment, so a host that shows
-    /// only notes still says it.
-    pub warnings: Vec<PathWarning>,
+    /// What the user should know about the path: its warnings first, then
+    /// its information, each with its own level (decision record 0536 item
+    /// 6.1). A warning is said once; a host that shows every notice shows
+    /// it among them.
+    pub notices: Vec<Notice>,
     /// The areas the strategy could not reach, as it gave them (OP-20;
     /// decision record 0368).
     pub unreached: Vec<Unreached>,
@@ -160,6 +132,14 @@ pub struct GeneratedPath {
 }
 
 const EPS: f64 = 1e-9;
+
+impl GeneratedPath {
+    /// Its warnings, in order: the notices a host lists in Messages
+    /// (decision record 0536 section 5).
+    pub fn warnings(&self) -> Vec<&Notice> {
+        self.notices.iter().filter(|n| n.is_warning()).collect()
+    }
+}
 
 /// How much longer, in millimetres, positions written to three decimals can
 /// make a move: half a unit in each of two end points on three axes.
@@ -180,7 +160,7 @@ struct Builder<'a> {
     pose: ToolPose,
     contact: Point3,
     segments: Vec<Segment>,
-    notes: Vec<PathNote>,
+    notes: Vec<Notice>,
 }
 
 impl Builder<'_> {
@@ -296,15 +276,15 @@ impl Builder<'_> {
             Some(f) => {
                 let at_feed = 60.0 * length / f.0;
                 if kind == MoveKind::Cutting && axis_time > at_feed * (1.0 + 1e-6) {
-                    self.notes.push(PathNote {
-                        segment: self.segments.len(),
-                        message: format!(
+                    self.notes.push(
+                        Notice::information(format!(
                             "the machine's feed limits slow this move: the contact feed is {:.1} \
                              mm/min, not {:.1}",
                             60.0 * length / axis_time,
                             f.0
-                        ),
-                    });
+                        ))
+                        .at_segment(self.segments.len()),
+                    );
                 }
                 at_feed.max(axis_time)
             }
@@ -623,14 +603,11 @@ pub fn assemble_with_entry(
         // (NFR-07).
         b.notes.insert(
             0,
-            PathNote {
-                segment: 0,
-                message: format!(
-                    "{kept_high} of {asked_low} links between passes could not be lowered \
-                     (stock, a held region or the retract height leaves no room) and retract \
-                     as usual"
-                ),
-            },
+            Notice::information(format!(
+                "{kept_high} of {asked_low} links between passes could not be lowered \
+                 (stock, a held region or the retract height leaves no room) and retract \
+                 as usual"
+            )),
         );
     }
     context.report("assemble passes", total, Some(total));
@@ -641,8 +618,7 @@ pub fn assemble_with_entry(
             start,
             segments: b.segments,
         },
-        notes: b.notes,
-        warnings: Vec::new(),
+        notices: b.notes,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

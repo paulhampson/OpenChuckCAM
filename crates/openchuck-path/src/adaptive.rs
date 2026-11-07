@@ -47,6 +47,7 @@
 //! warning that must be acknowledged before export says where (decision
 //! record 0239 item 10).
 
+use crate::notice::{Acknowledgement, Level, Notice};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -56,7 +57,6 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::PathWarning;
 use crate::cutter::{Contact, ToolLine, bound_at, clearance_at};
 use crate::error::{PathError, Result};
 use crate::holes::Hole;
@@ -628,7 +628,7 @@ impl Outcome {
         settings: &Settings,
         limits: &Limits,
         height: &str,
-    ) -> Option<PathWarning> {
+    ) -> Option<Notice> {
         warning(&self.places, settings, limits, height)
     }
 }
@@ -676,7 +676,7 @@ impl Tally {
         settings: &Settings,
         limits: &Limits,
         height: &str,
-    ) -> Option<PathWarning> {
+    ) -> Option<Notice> {
         warning(&self.places, settings, limits, height)
     }
 }
@@ -702,18 +702,16 @@ fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) 
 }
 
 /// The warning for `places` not confirmed (decision record 0239 item 10).
-fn warning(
-    places: &[Place],
-    settings: &Settings,
-    limits: &Limits,
-    height: &str,
-) -> Option<PathWarning> {
+fn warning(places: &[Place], settings: &Settings, limits: &Limits, height: &str) -> Option<Notice> {
     let first = places.first()?;
     let reasons: BTreeSet<Reason> = places.iter().map(|p| p.reason).collect();
     let why: Vec<String> = reasons.iter().map(|r| r.words(limits, settings)).collect();
     let count = places.len();
-    Some(PathWarning {
-        message: format!(
+    Some(Notice {
+        level: Level::Warning,
+        topic: None,
+        segment: None,
+        text: format!(
             "adaptive spacing could not confirm that the material left between the passes \
              is within the allowed excess of {:.3} mm at {count} place{}, the first near \
              X {:.3} A {:.1}: {}. The path made so far is kept; it is not complete. \
@@ -724,8 +722,8 @@ fn warning(
             first.a,
             why.join("; ")
         ),
-        parameter: Some(height.to_owned()),
-        requires_acknowledgement: true,
+        setting: Some(height.to_owned()),
+        acknowledgement: Some(Acknowledgement::PartialPath),
     })
 }
 
@@ -1309,9 +1307,9 @@ mod tests {
         let warning = outcome
             .warning(&settings, &Limits::OWNER, "scallop")
             .unwrap();
-        assert!(warning.message.contains("smallest spacing of 0.300 mm"));
-        assert!(warning.message.contains("not complete"));
-        assert_eq!(warning.parameter.as_deref(), Some("scallop"));
+        assert!(warning.text.contains("smallest spacing of 0.300 mm"));
+        assert!(warning.text.contains("not complete"));
+        assert_eq!(warning.setting.as_deref(), Some("scallop"));
     }
 
     #[test]
@@ -1364,9 +1362,9 @@ mod tests {
             assert!(outcome.added() as u64 <= limits.passes);
             let warning = outcome.warning(&SETTINGS, &limits, "scallop").unwrap();
             assert!(
-                warning.message.contains(&reason.words(&limits, &SETTINGS)),
+                warning.text.contains(&reason.words(&limits, &SETTINGS)),
                 "{}",
-                warning.message
+                warning.text
             );
         }
     }
