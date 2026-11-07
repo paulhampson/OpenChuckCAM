@@ -36,7 +36,7 @@ In the setup's **Workholding** section:
 
 Edits are a draft until you press **Apply**, which checks them against the part and the tools and stores them in the setup; **Revert** drops them. While a draft is not applied, Messages warns that the toolpaths, the simulation and the G-code still use the stored tabs. **Check against the part and tools** runs the same check without storing anything.
 
-Apply refuses a tab outside the zones, an automatic tab with no room, and tabs that overlap, and marks the row with the reason. It stores a tab that is shorter than the tools are wide, and keeps the warning on its row.
+Apply refuses only a tab outside the zones: it stores nothing and marks the row with the reason. It stores, with a warning kept on the tab's row, a tab shorter than the tools are wide, an automatic tab that has no room at its end of the part (it keeps its last position), and an automatic tab that overlaps one placed by hand. Read those warnings: the part is still held, but you may want to move the part, shorten the held region or remove a tab.
 
 ## After the job
 
