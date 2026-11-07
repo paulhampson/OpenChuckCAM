@@ -59,6 +59,8 @@ Also avoid: asides that comment on how easy something is ("simply", "just", "of 
 - Screenshots show the real program, taken with `user-docs/tools/capture.py` at 1366 x 768 (decision 0400 section G), and only the repository's example models or generated ones. Never show a private project. The script records the commit in `src/tutorial/images/CAPTURED.toml`; see `user-docs/README.md`, Taking the screenshots.
 - A diagram is inline SVG drawn with `currentColor`, so it works in the light and the dark theme, with a `<title>` and `<desc>`.
 
+- On a worked example page (`src/examples/`), each figure's image is a link to the same image at full size, `<a href="images/x/01.png"><img src="images/x/01.png" ...></a>`, because a 1920 x 1080 screenshot is shown about 700 px wide *(checked)*. Crop to the part of the window a step is about where only that part matters.
+
 ## Versions
 
 The guide published as *latest* is the nightly build: it is built from the commit of the `nightly` pre-release and its footer says "Describes the nightly build of <date>, commit <commit>". Write each page for the program as it is on `main`, and change it in the same pull request as the behaviour it describes; it reaches readers with the next nightly build. A release's copy is fixed when the release is made.
