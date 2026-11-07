@@ -26,5 +26,6 @@ def run(cap, work):
     cap.click(300, 54, 3)
     cap.click(148, 578, 2)                     # 2 Finish
     cap.fill(1810, 988, "0.01")                # Scallop height; the Inspector now has the Last run note
+    cap.click(1640, 696, 1)                    # fold TOOL AND FEEDS: its feed-limit note is under review (#600)
     cap.shot("03-scallop-height")
     export_times(cap, "04-time-scallop-0.01")
