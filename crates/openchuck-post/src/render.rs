@@ -77,6 +77,15 @@ pub trait PostProcessor {
     fn post(&self, toolpath: &Toolpath, job: &PostJob) -> Result<PostOutput>;
 }
 
+/// The NFR-12 notice a post writes as comment lines after the generator line when its
+/// `safety_notice` option is on (decision 0533, OI-2000). Fixed text, so no post can reword
+/// it, with no date, clock or commit, so it keeps the output deterministic (GC-07, NFR-06).
+/// It does not say the program is safe or checked: the user verifies it (NFR-12).
+pub const SAFETY_NOTICE: &[&str] = &[
+    "This program has not been run on your machine. Check it before you run it.",
+    "Simulate it and air cut it first. You are responsible for what the machine does.",
+];
+
 /// Replaces what a G-code comment cannot hold: parentheses, control
 /// characters and anything that is not ASCII (decision 0019 item 4, OI-84).
 pub fn sanitise_comment(text: &str) -> String {
@@ -96,6 +105,7 @@ struct Context<'a> {
     title: String,
     revision: Option<String>,
     generator: Option<String>,
+    safety_notice: &'static [&'static str],
     opt: &'a PostOptions,
     steps: &'a [Step],
 }
@@ -216,6 +226,11 @@ impl PostProcessor for TemplatePost {
             title: sanitise_comment(&job.title),
             revision: job.revision.as_deref().map(sanitise_comment),
             generator: job.generator.as_deref().map(sanitise_comment),
+            safety_notice: if options.safety_notice {
+                SAFETY_NOTICE
+            } else {
+                &[]
+            },
             opt: &options,
             steps: &steps,
         };
@@ -228,6 +243,21 @@ impl PostProcessor for TemplatePost {
         let text = template
             .render(Serde(&context))
             .map_err(|e| PostError::Template(engine::describe(&e)))?;
+        if options.safety_notice
+            && SAFETY_NOTICE
+                .iter()
+                .any(|notice| !text.contains(&format!("({notice})")))
+        {
+            return Err(PostError::Setting {
+                name: "options.safety_notice".into(),
+                reason: format!(
+                    "is on, but the template {} does not write the notice; write each line of \
+                     `safety_notice` as a comment after the generator line, or set \
+                     safety_notice = false",
+                    d.template_name
+                ),
+            });
+        }
         let estimated_seconds = if short_blocks.enabled()
             && short_blocks.mode == openchuck_types::machine::ShortBlockMode::SlowDown
         {

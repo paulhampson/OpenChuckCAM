@@ -611,6 +611,35 @@ fn req_gc_16_a_bad_settings_file_asks_again_with_a_message_and_is_kept_and_other
 }
 
 #[test]
+fn req_nfr_07_req_gc_16_the_acknowledgement_text_read_gives_a_message_never_a_panic() {
+    // OI-327: the pure read behind the `settings_toml` fuzz target.
+    let ack = Acknowledgements::in_folder(std::path::Path::new("config"));
+    let project = std::path::Path::new("/no/such/project");
+    let key = project.to_string_lossy();
+    let good =
+        format!("[export]\nacknowledged = [\"{key}\"]\nstock_skipped_acknowledged = [\"{key}\"]\n");
+    let (a, s) = ack.lookup_text(&good, project);
+    assert!(a.acknowledged && s.acknowledged && a.problem.is_none());
+    let (a, s) = ack.lookup_text("", project);
+    assert!(!a.acknowledged && !s.acknowledged && a.problem.is_none());
+    // Damaged text and values of the wrong type ask again, with a message only for damage.
+    let (a, _) = ack.lookup_text("this is = = not toml", project);
+    assert!(!a.acknowledged && a.problem.unwrap().contains("could not be read"));
+    for odd in [
+        "export = 5",
+        "[export]\nacknowledged = 3",
+        "[export]\nacknowledged = [1, 2, [3]]",
+        "[export]\nacknowledged = \"x\"",
+    ] {
+        let (a, s) = ack.lookup_text(odd, project);
+        assert!(
+            !a.acknowledged && !s.acknowledged && a.problem.is_none(),
+            "{odd}"
+        );
+    }
+}
+
+#[test]
 fn req_gc_05_writing_puts_each_file_in_the_chosen_folder() {
     let (dir, mut app) = project("write", false);
     let run = post(&mut app, OutputGrouping::Operation);

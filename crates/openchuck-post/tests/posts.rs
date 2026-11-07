@@ -35,7 +35,16 @@ fn golden(name: &str, text: &str) {
 fn req_nfr_16_both_posts_name_the_tool_and_version_after_the_title() {
     for id in ["linuxcnc", "makera-z1"] {
         let text = post_text(id);
-        let head: Vec<_> = text.lines().take(3).collect();
+        // The NFR-12 notice lines (decision 0533) sit between the generator and the revision.
+        let head: Vec<_> = text
+            .lines()
+            .filter(|l| {
+                !openchuck_post::SAFETY_NOTICE
+                    .iter()
+                    .any(|n| *l == format!("({n})"))
+            })
+            .take(3)
+            .collect();
         assert_eq!(
             head,
             [
@@ -61,7 +70,9 @@ fn req_nfr_16_both_posts_name_the_tool_and_version_after_the_title() {
         let manifest = std::fs::read_to_string(dir.join("post.toml")).unwrap();
         std::fs::write(
             dir.join("post.toml"),
-            manifest.replace("comments = true", "comments = false"),
+            manifest
+                .replace("comments = true", "comments = false")
+                .replace("safety_notice = true", "safety_notice = false"),
         )
         .unwrap();
         let text = TemplatePost::new(PostDefinition::load_dir(&dir).unwrap())
@@ -395,9 +406,10 @@ fn req_nfr_07_comments_from_project_text_are_made_safe() {
         .unwrap()
         .text;
     assert!(
-        text.starts_with("(a [b])\n(OpenChuckCAM 0.10.0)\n(revision abc1234)\n"),
+        text.starts_with("(a [b])\n(OpenChuckCAM 0.10.0)\n"),
         "{text}"
     );
+    assert!(text.contains("\n(revision abc1234)\n"), "{text}");
 }
 
 #[test]
@@ -429,5 +441,156 @@ fn req_gc_04_req_op_13_a_feed_word_keeps_three_significant_figures() {
         (1e-12, 1, "0.000000000"),
     ] {
         assert_eq!(feed_str(value, decimals), text, "{value} at {decimals}");
+    }
+}
+
+/// A copy of a built-in post with `edit` applied to its manifest and template.
+fn edited_post(id: &str, manifest_edit: (&str, &str), template_edit: (&str, &str)) -> String {
+    let manifest = std::fs::read_to_string(posts_path(&format!("{id}/post.toml"))).unwrap();
+    let template = std::fs::read_to_string(posts_path(&format!("{id}/main.post"))).unwrap();
+    assert!(manifest.contains(manifest_edit.0), "{}", manifest_edit.0);
+    assert!(template.contains(template_edit.0), "{}", template_edit.0);
+    let def = PostDefinition::from_parts(
+        "t",
+        &manifest.replace(manifest_edit.0, manifest_edit.1),
+        &template.replace(template_edit.0, template_edit.1),
+    )
+    .unwrap();
+    TemplatePost::new(def)
+        .post(&small_part(), &job())
+        .unwrap()
+        .text
+}
+
+/// NFR-12 (OI-2000, decision 0533): both built-in posts ship with the notice on and write it
+/// as comment lines right after the generator line, before the revision and the header codes.
+#[test]
+fn req_nfr_12_both_posts_write_the_safety_notice_after_the_generator() {
+    assert!(!openchuck_post::SAFETY_NOTICE.is_empty());
+    for id in ["linuxcnc", "makera-z1"] {
+        assert!(builtin_post(id).definition().options.safety_notice, "{id}");
+        let text = post_text(id);
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines[0], "(Small part)", "{id}");
+        assert_eq!(lines[1], "(OpenChuckCAM 0.10.0)", "{id}");
+        for (i, notice) in openchuck_post::SAFETY_NOTICE.iter().enumerate() {
+            assert_eq!(lines[2 + i], format!("({notice})"), "{id}");
+        }
+        assert_eq!(
+            lines[2 + openchuck_post::SAFETY_NOTICE.len()],
+            "(revision abc1234)",
+            "{id}"
+        );
+    }
+}
+
+/// NFR-12 and NFR-07: the notice is plain printable ASCII a comment can hold on both
+/// controllers (no parentheses, short lines), and it never says the program is safe or checked.
+#[test]
+fn req_nfr_12_req_nfr_07_the_notice_is_comment_safe_and_claims_nothing() {
+    for line in openchuck_post::SAFETY_NOTICE {
+        assert_eq!(openchuck_post::sanitise_comment(line), *line);
+        assert!(!line.contains('(') && !line.contains(')'), "{line}");
+        assert!(line.len() <= 80, "{line}");
+        let lower = line.to_lowercase();
+        for claim in ["is safe", "verified", "guarantee", "tested"] {
+            assert!(!lower.contains(claim), "{line}");
+        }
+    }
+}
+
+/// NFR-12 and GC-04: a post with the option off writes no notice and is otherwise unchanged.
+#[test]
+fn req_nfr_12_req_gc_04_notice_off_writes_nothing_else_changes() {
+    for id in ["linuxcnc", "makera-z1"] {
+        let on = post_text(id);
+        let off = edited_post(
+            id,
+            ("safety_notice = true", "safety_notice = false"),
+            ("", ""),
+        );
+        for notice in openchuck_post::SAFETY_NOTICE {
+            assert!(!off.contains(notice), "{id}: {off}");
+        }
+        let without: String = on
+            .lines()
+            .filter(|l| {
+                !openchuck_post::SAFETY_NOTICE
+                    .iter()
+                    .any(|n| *l == format!("({n})"))
+            })
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert_eq!(off, without, "{id}");
+    }
+}
+
+/// GC-04 and GC-03: a post written before the option (no `safety_notice` key) still loads
+/// and writes exactly what it wrote before: the option is off when the key is left out.
+#[test]
+fn req_gc_04_req_gc_03_a_post_without_the_key_loads_with_the_notice_off() {
+    let off = edited_post(
+        "linuxcnc",
+        ("safety_notice = true", "safety_notice = false"),
+        ("", ""),
+    );
+    let absent = edited_post("linuxcnc", ("safety_notice = true\n", ""), ("", ""));
+    assert_eq!(absent, off);
+}
+
+/// NFR-12 and NFR-07: the notice is a comment, so asking for it with comments off is refused
+/// when the post is loaded, naming the option, instead of being dropped without a word.
+#[test]
+fn req_nfr_12_req_nfr_07_notice_with_comments_off_is_refused() {
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
+    let e = PostDefinition::from_parts(
+        "t",
+        &manifest.replace("comments = true", "comments = false"),
+        &template,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("options.safety_notice"), "{e}");
+    assert!(e.contains("comments"), "{e}");
+}
+
+/// NFR-12 and NFR-07: a copied template that does not write the notice cannot drop it
+/// silently while the option is on: posting is refused with a message saying so.
+#[test]
+fn req_nfr_12_req_nfr_07_a_template_that_drops_the_notice_is_refused() {
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
+    let start = template.find("{% for notice in safety_notice %}").unwrap();
+    let end = template[start..].find("{% endfor %}").unwrap() + start + "{% endfor %}".len();
+    let mut dropped = template.clone();
+    dropped.replace_range(start..end, "");
+    let def = PostDefinition::from_parts("t", &manifest, &dropped).unwrap();
+    let e = TemplatePost::new(def)
+        .post(&small_part(), &job())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("safety_notice"), "{e}");
+}
+
+/// NFR-12, GC-07 and NFR-06: with the notice on, the program is the same bytes on 1, 2 and
+/// N threads; the notice carries no date, clock or commit.
+#[test]
+fn req_nfr_12_req_gc_07_notice_output_is_byte_identical_on_1_2_and_n_threads() {
+    for id in ["linuxcnc", "makera-z1"] {
+        let reference = post_text(id);
+        assert!(reference.contains(openchuck_post::SAFETY_NOTICE[0]), "{id}");
+        let n = std::thread::available_parallelism().map_or(4, |n| n.get().max(3));
+        for threads in [1, 2, n] {
+            let handles: Vec<_> = (0..threads)
+                .map(|_| {
+                    let id = id.to_owned();
+                    std::thread::spawn(move || post_text(&id))
+                })
+                .collect();
+            for h in handles {
+                assert_eq!(h.join().unwrap(), reference, "{id} at {threads} threads");
+            }
+        }
     }
 }

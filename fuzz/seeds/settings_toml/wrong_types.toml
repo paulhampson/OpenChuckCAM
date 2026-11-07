@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[export]
+acknowledged = [1, [2], "x"]
+[interface]
+scale = "big"
+checkpoint_minutes = 99999

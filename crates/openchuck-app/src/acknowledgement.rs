@@ -75,23 +75,28 @@ impl Acknowledgements {
 
     fn read(&self) -> (toml::Table, Option<String>) {
         match std::fs::read_to_string(&self.file) {
-            Ok(text) => match text.parse::<toml::Table>() {
-                Ok(table) => (table, None),
-                Err(e) => (
-                    toml::Table::new(),
-                    Some(format!(
-                        "The settings file '{}' could not be read ({}), so exports ask again.",
-                        self.file.display(),
-                        e.message()
-                    )),
-                ),
-            },
+            Ok(text) => self.parse(&text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (toml::Table::new(), None),
             Err(e) => (
                 toml::Table::new(),
                 Some(format!(
                     "The settings file '{}' could not be read ({e}), so exports ask again.",
                     self.file.display()
+                )),
+            ),
+        }
+    }
+
+    /// The text of the file as a table, or an empty one and a sentence for the user.
+    fn parse(&self, text: &str) -> (toml::Table, Option<String>) {
+        match text.parse::<toml::Table>() {
+            Ok(table) => (table, None),
+            Err(e) => (
+                toml::Table::new(),
+                Some(format!(
+                    "The settings file '{}' could not be read ({}), so exports ask again.",
+                    self.file.display(),
+                    e.message()
                 )),
             ),
         }
@@ -120,6 +125,20 @@ impl Acknowledgements {
     /// record 0168, OI-602).
     pub fn lookup_stock_skipped(&self, project: &Path) -> Lookup {
         self.lookup_field(project, STOCK_SKIPPED)
+    }
+
+    /// The same lookups as [`Self::lookup`] and [`Self::lookup_stock_skipped`]
+    /// on the text of a settings file, with no file access: the entry point of
+    /// the `settings_toml` fuzz target (NFR-07, OI-327). Damaged text gives
+    /// "not acknowledged" with a sentence for the user, never a panic.
+    pub fn lookup_text(&self, text: &str, project: &Path) -> (Lookup, Lookup) {
+        let (table, problem) = self.parse(text);
+        let key = Self::key(project);
+        let found = |field: &str| Lookup {
+            acknowledged: Self::listed(&table, field).contains(&key),
+            problem: problem.clone(),
+        };
+        (found(ACKNOWLEDGED), found(STOCK_SKIPPED))
     }
 
     fn lookup_field(&self, project: &Path, field: &str) -> Lookup {

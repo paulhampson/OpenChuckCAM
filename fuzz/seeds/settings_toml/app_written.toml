@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[export]
+acknowledged = ["/fuzz/project", "/home/user/other"]
+stock_skipped_acknowledged = ["/fuzz/project"]
+
+[interface]
+scale = 1.25
+theme = "dark"
+units = "mm"
+window = [1280.0, 800.0]
+recent = ["/home/user/a", "/home/user/b"]
+record_actions = true
+checkpoint_minutes = 5
+
+[interface.project_panel]
+size = 264.0
+collapsed = false
+
+[interface.open_sections]
+operation = ["feeds", "links"]
