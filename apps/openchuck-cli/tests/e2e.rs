@@ -1381,3 +1381,88 @@ fn req_gc_16_cli_writes_a_setup_collision_only_when_acknowledged() {
     assert!(std::fs::read_dir(&out).unwrap().next().is_some());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The arguments of `regenerate` for `project` with the post `post`, writing
+/// into `out`.
+fn regenerate_args(project: &Path, post: &str, out: &Path) -> Vec<OsString> {
+    [
+        "regenerate",
+        &project.to_string_lossy(),
+        "--post",
+        post,
+        "--tool-numbers",
+        "keep",
+        "--out",
+        &out.to_string_lossy(),
+    ]
+    .iter()
+    .map(OsString::from)
+    .collect()
+}
+
+/// A copy of the built-in LinuxCNC post in `folder` whose template writes
+/// every X 1 mm off, so the program its files hold does not replay as the
+/// toolpath: a check that blocks writing (GC-15).
+fn shifted_post(folder: &Path) -> PathBuf {
+    let builtin =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/openchuck-post/posts/linuxcnc");
+    let post = folder.join("shifted-post");
+    std::fs::create_dir_all(&post).unwrap();
+    std::fs::copy(builtin.join("post.toml"), post.join("post.toml")).unwrap();
+    let template = std::fs::read_to_string(builtin.join("main.post")).unwrap();
+    let exact = "{% set x = t.x|fixed(opt.decimals.pos) %}";
+    assert!(template.contains(exact), "the template's X line changed");
+    std::fs::write(
+        post.join("main.post"),
+        template.replace(exact, "{% set x = (t.x + 1.0)|fixed(opt.decimals.pos) %}"),
+    )
+    .unwrap();
+    post
+}
+
+/// A G-code file that fails its own checks is not written from the command
+/// line, as the export dialog does not write it (GC-15; decision record
+/// 0540): the blocking check is an error, nothing reaches the folder, and the
+/// verify notice is still printed (NFR-12, GC-16).
+#[test]
+fn req_gc_15_req_gc_16_cli_writes_nothing_when_a_check_blocks() {
+    let root = scratch("blocking-check");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    let post = shifted_post(&root);
+    let out = root.join("out");
+    let refused = cli(&regenerate_args(project, &post.to_string_lossy(), &out));
+    assert_ne!(refused.code, Some(0), "{}", refused.stdout);
+    let written = std::fs::read_dir(&out).map_or(0, |d| d.count());
+    assert_eq!(written, 0, "nothing is written:\n{}", refused.stderr);
+    assert!(
+        refused.stderr.contains("error:") && refused.stderr.contains("failed its checks"),
+        "{}",
+        refused.stderr
+    );
+    assert!(
+        refused.stdout.contains("must be verified by the user"),
+        "{}",
+        refused.stdout
+    );
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// The command line prints the export dialog's warnings before it writes,
+/// and still writes (GC-15; decision record 0540): an operation not
+/// simulated is said.
+#[test]
+fn req_gc_15_cli_prints_the_export_warnings() {
+    let root = scratch("export-warnings");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    let out = root.join("out");
+    let run = cli_ok(&regenerate_args(project, "linuxcnc", &out));
+    assert!(
+        run.stderr
+            .lines()
+            .any(|l| l.starts_with("warning:") && l.contains("has not been simulated")),
+        "{}",
+        run.stderr
+    );
+    assert!(std::fs::read_dir(&out).unwrap().next().is_some());
+    std::fs::remove_dir_all(root).ok();
+}
