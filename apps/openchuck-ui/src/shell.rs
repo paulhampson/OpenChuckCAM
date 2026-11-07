@@ -257,6 +257,9 @@ pub struct Shell {
     machine_library: crate::machine_library_window::MachineLibraryWindow,
     /// The chosen setup's workholding and tabs (SET-09, OP-21).
     workholding_panel: Option<WorkholdingPanel>,
+    /// The setup whose workholding section holds changes that are not
+    /// applied, as Messages last said (issue #558).
+    unapplied_workholding: Option<SetupId>,
     /// Typed text and refused values in the inspector's fields.
     form: FormState,
     /// The setup row whose committed value the pending command applies.
@@ -385,6 +388,7 @@ impl Shell {
             machine_panel: None,
             machine_library: crate::machine_library_window::MachineLibraryWindow::new(None, None),
             workholding_panel: None,
+            unapplied_workholding: None,
             form: FormState::default(),
             pending_field: None,
             selection: SelectionPanel::default(),
@@ -696,6 +700,17 @@ impl Shell {
             }
             return;
         };
+        // A workholding draft applied, reverted or begun changes Messages
+        // (issue #558).
+        let unapplied = self
+            .workholding_panel
+            .as_ref()
+            .filter(|p| p.has_unapplied_changes())
+            .map(WorkholdingPanel::setup);
+        if unapplied != self.unapplied_workholding {
+            self.unapplied_workholding = unapplied;
+            self.overview_dirty = true;
+        }
         let events = app.drain_events();
         if !events.is_empty() {
             // Only the jobs the log lists change an item's state or a
@@ -741,6 +756,12 @@ impl Shell {
             }
             if let Some(problem) = &self.settings_problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            }
+            if let Some(message) = self
+                .unapplied_workholding
+                .and_then(|id| unapplied_workholding_message(app.project(), id))
+            {
+                overview.push(message);
             }
             if let Some(problem) = &self.recovery.problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
@@ -1898,6 +1919,32 @@ impl Shell {
         self.viewport.set_selected_solid(Some(item));
     }
 
+    /// Takes the result of the workholding section's Apply when its check
+    /// finishes, whether or not the section is drawn, and stores the draft
+    /// (issue #558; UI-11, NFR-12). Called after the inspector, which takes
+    /// it first while the section is shown.
+    fn workholding_apply_frame(&mut self, ctx: &egui::Context) {
+        let (Some(app), Some(panel)) = (&mut self.app, &mut self.workholding_panel) else {
+            return;
+        };
+        let Some(setup) = app.project().setup(panel.setup()).cloned() else {
+            return;
+        };
+        panel.follow_project(&setup);
+        let Some(command) = panel.poll_apply(ctx, app, &setup) else {
+            return;
+        };
+        match app.execute(command) {
+            Ok(()) => {
+                if let Some(stored) = app.project().setup(panel.setup()) {
+                    panel.follow_project(stored);
+                }
+                self.rebuild_scene(false);
+            }
+            Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+        }
+    }
+
     /// Gives the view what the workholding section shows (7.5, 11.7; OI-334
     /// k, OI-355): the draft while it has unapplied changes, whatever is
     /// selected, and, while its setup is selected, the default tabs offered,
@@ -2744,6 +2791,7 @@ impl Shell {
             self.shortcuts(&ctx);
         }
         self.layout(ui);
+        self.workholding_apply_frame(&ctx);
         self.workholding_view_frame(&ctx);
         self.pick_frame(&ctx);
         self.run_frame(&ctx);
@@ -2764,6 +2812,30 @@ impl Shell {
         self.text_had_focus = ctx.egui_wants_keyboard_input();
         self.record_actions_frame(&ctx);
     }
+}
+
+/// What Messages says while the workholding section of setup `id` holds
+/// changes that are not applied (issue #558): the view draws the draft,
+/// while generation, Simulate and export read what the setup stores.
+fn unapplied_workholding_message(
+    project: &openchuck_app::project::Project,
+    id: SetupId,
+) -> Option<Message> {
+    let setup = project.setup(id)?;
+    Some(Message::new(
+        Severity::Warning,
+        format!(
+            "The workholding of '{}' has changes that are not applied. The view shows them, but \
+             the toolpaths, the simulation and the G-code use the held regions and tabs stored \
+             in the setup: apply or revert the changes in its workholding section",
+            setup.name
+        ),
+        Some((
+            ItemRef::SetupPart(id, SetupPart::Workholding),
+            setup.name.clone(),
+        )),
+        Some(MessageAction::EditWorkholding(id)),
+    ))
 }
 
 #[cfg(test)]

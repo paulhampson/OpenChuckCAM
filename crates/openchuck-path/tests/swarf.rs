@@ -1484,15 +1484,16 @@ fn req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_ho
 #[test]
 fn req_op_16_req_op_07_strategies_say_in_their_registration_whether_they_need_a_step_part() {
     // Decision 0174 (issue #206): the host disables a strategy on a mesh
-    // part from its registration, not from a fixed list. Swarf and radial
-    // drilling read exact faces; the others work on a mesh.
+    // part from its registration, not from a fixed list. Swarf, radial
+    // drilling and face-flow finishing (OP-28) read exact faces; the others
+    // work on a mesh.
     let registry = Registry::builtin();
     let needs: Vec<&str> = registry
         .iter()
         .filter(|s| s.needs_brep_part().is_some())
         .map(|s| s.name())
         .collect();
-    assert_eq!(needs, ["radial_drilling", "swarf"]);
+    assert_eq!(needs, ["face_flow", "radial_drilling", "swarf"]);
     for s in registry.iter() {
         if let Some(why) = s.needs_brep_part() {
             assert!(why.contains("STEP"), "{}: {why}", s.name());
