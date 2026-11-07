@@ -100,4 +100,4 @@ The rest operation removes almost nothing
 The rest tool is the same size as the earlier one
 : It then finds little or nothing it can reach. Choose a tool smaller than the one that left the material.
 
-Related: [Roughing and finishing](../concepts/roughing-and-finishing.md), [The flute-length warning](flute-length-warning.md).
+Related: [Roughing and finishing](../concepts/roughing-and-finishing.md).
