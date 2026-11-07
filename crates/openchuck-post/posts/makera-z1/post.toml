@@ -27,6 +27,9 @@ feed_mode = "g94"
 # controller plans one rotation instead of one per step (decision 0506, accepted).
 combine_rotary_runs = true
 comments = true
+# The NFR-12 notice (the program is yours to check before you run it), written as comment
+# lines after the generator line (decision 0533). Needs comments; false leaves it out.
+safety_notice = true
 file_extension = "nc"
 
 [options.tool_change]

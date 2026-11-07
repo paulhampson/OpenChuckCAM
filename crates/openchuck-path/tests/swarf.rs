@@ -173,6 +173,7 @@ impl Fixture {
             max_material_left: LIMIT,
             reverse_tip_end: false,
             reverse_direction: false,
+            keep_off_end_faces: true,
         }
     }
 
@@ -1054,6 +1055,7 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
         max_material_left: 0.0,
         reverse_tip_end: false,
         reverse_direction: false,
+        keep_off_end_faces: true,
     };
     let with_stock = Settings {
         stock_to_leave: 0.5,
@@ -2634,4 +2636,395 @@ fn req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stoc
     let path = generated(&f, &reversed);
     assert!(path.group.segments.len() > 10);
     assert!(flute_clear(&path), "{:?}", path.warnings);
+}
+
+// ---- the faces next to the cut face (issue #442; decision record 0532) ----
+
+/// `model` with its one face numbered `id`, so it can stand beside the
+/// limit wall (face 0) as one of the faces next to it.
+fn numbered(mut model: BrepModel, id: u32) -> BrepModel {
+    for face in &mut model.faces {
+        face.id = openchuck_types::brep::FaceId(id);
+    }
+    model
+}
+
+/// The faces of `models` as one B-rep, each keeping its number.
+fn joined_models(models: &[BrepModel]) -> BrepModel {
+    let mut out = models.first().cloned().expect("a model");
+    for m in models.iter().skip(1) {
+        out.faces.extend(m.faces.iter().cloned());
+    }
+    out
+}
+
+/// A wall across the end of the limit wall at X = 38 that leans back over
+/// it: the plane through the line X = 38, Y = 8 at `degrees` to the wall,
+/// so the corner between them, where the pass ends, is that angle (90 is
+/// [`cross_plane`]). It runs 12 mm from the corner and faces into the
+/// corner.
+fn leaning_end_wall(degrees: f64, id: u32) -> BrepModel {
+    let (s, c) = degrees.to_radians().sin_cos();
+    numbered(
+        single_face(
+            Surface::Plane {
+                frame: Frame {
+                    origin: Point3::new(38.0, 8.0, 0.0),
+                    x: Vec3::new(0.0, 0.0, 1.0),
+                    y: Vec3::new(-c, s, 0.0),
+                    z: Vec3::new(-s, -c, 0.0),
+                },
+            },
+            [Z0, Z1, 0.0, 12.0],
+            false,
+        ),
+        id,
+    )
+}
+
+/// The perpendicular end wall at X = 38, as face `id`.
+fn end_wall(id: u32) -> BrepModel {
+    numbered(cross_plane(38.0, 8.0, 20.0, Z0, Z1), id)
+}
+
+/// The limit wall cut with `neighbours` beside it.
+fn beside(
+    f: &Fixture,
+    neighbours: &BrepSurface,
+    settings: &Settings,
+) -> openchuck_path::Result<swarf::FacePath> {
+    let region = RegionConstraint {
+        neighbours: Some(neighbours),
+        ..RegionConstraint::default()
+    };
+    limited(f, &region, settings)
+}
+
+/// The furthest X the flank's contact reaches.
+fn furthest_contact(path: &swarf::FacePath) -> f64 {
+    path.poses().map(|p| p.contact.x).fold(f64::MIN, f64::max)
+}
+
+/// The deepest cut into `model` (any number of plane faces) by the
+/// independent checker over the machine's motion.
+fn cut_into_planes(tool: &RevolvedProfile, path: &swarf::FacePath, model: &BrepModel) -> f64 {
+    model
+        .faces
+        .iter()
+        .map(|face| {
+            let one = BrepModel {
+                faces: vec![face.clone()],
+                ..model.clone()
+            };
+            cut_into(tool, path, &one)
+        })
+        .fold(0.0, f64::max)
+}
+
+/// How far short of X = 38 the pass must stop for a flank of `radius`
+/// standing `radius` off the wall to keep off an end wall at `degrees` to
+/// it: the centre of the tool is then `radius` from both, `radius` times
+/// the cotangent of half the corner from it along the wall.
+fn needed_stop(radius: f64, degrees: f64) -> f64 {
+    radius / (0.5 * degrees.to_radians()).tan()
+}
+
+#[test]
+fn req_op_07_req_op_12_a_swarf_pass_stops_short_of_an_end_wall_by_the_clearance_it_needs() {
+    // Issue #442 (decision record 0532 item 1): at the end of a pass the
+    // tool reached past the end of the face into the wall that meets it
+    // there, by up to the tool radius, and nothing measured it. The pass
+    // now stops short by the least length that keeps the tool off that
+    // wall, which is a tool radius for a square corner and more where the
+    // wall leans over the face (the owner's choice, D1 option A).
+    for degrees in [90.0, 60.0] {
+        let f = Fixture::brep(&limit_wall(), flat());
+        let wall = leaning_end_wall(degrees, 1);
+        let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
+        assert!(
+            cut_into_planes(&f.tool, &plain, &wall) > 1.0,
+            "{degrees}: without the faces beside it the tool cuts the end wall"
+        );
+        let neighbours = BrepSurface::new(&wall).unwrap();
+        let path = beside(&f, &neighbours, &f.settings()).unwrap();
+        let stop = needed_stop(TOOL_RADIUS, degrees);
+        let reached = furthest_contact(&path);
+        // The tool may reach the wall by the tolerance, as an avoid face,
+        // measured square to the wall: along the pass that is the tolerance
+        // over the sine of the corner, with the guard's sampling.
+        let slack = (TOL + CHECKER_SLACK) / degrees.to_radians().sin();
+        assert!(
+            reached <= 38.0 - stop + slack && reached >= 38.0 - stop - 0.05,
+            "{degrees}: the pass stops {} mm short, needed {stop}",
+            38.0 - reached
+        );
+        assert!(
+            cut_into_planes(&f.tool, &path, &wall) <= TOL + CHECKER_SLACK,
+            "{degrees}: the end wall is kept clear by the checker"
+        );
+        // The start of the pass, which nothing meets, is cut as before.
+        let start = path.poses().map(|p| p.contact.x).fold(f64::MAX, f64::min);
+        assert!((start - 22.0).abs() < 1e-6, "{start}");
+        // The strip left at that end is left on purpose: not material left.
+        assert!(path.left <= TOL, "{degrees}: {}", path.left);
+        assert!(path.refusal(LIMIT).is_none());
+        let stopped = &path.limits.end_stops;
+        assert_eq!(stopped.len(), 1, "{stopped:?}");
+        assert_eq!(stopped[0].face, 1);
+        assert!(
+            (stopped[0].length - (38.0 - reached)).abs() < 0.05,
+            "{stopped:?}"
+        );
+        let note = path.note(TOL, LIMIT);
+        assert!(
+            note.contains(&format!(
+                "The pass stops short of face 1, which meets this face at an end, so the tool \
+                 keeps off it: about {:.3} mm along the face is left uncut there.",
+                stopped[0].length
+            )),
+            "{note}"
+        );
+    }
+}
+
+#[test]
+fn req_op_07_an_open_end_a_convex_end_and_a_flush_continuation_stop_nothing_short() {
+    // Decision record 0532 item 1: only what the tool would cut stops the
+    // pass. An end with nothing beside it, the end cap of a bar (the tool
+    // goes past it into the air), and the same wall carried on past the end
+    // (the flank lies on it) leave the whole face cut.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let cap = numbered(cross_plane(38.0, 0.0, 8.0, Z0, Z1), 1);
+    let flush = numbered(wall_plane(8.0, 38.0, 50.0, Z0, Z1), 2);
+    let floor = numbered(floor_plane(Z0, 15.0, 45.0, 8.0, 30.0), 3);
+    for model in [&cap, &flush, &floor] {
+        let neighbours = BrepSurface::new(model).unwrap();
+        let path = beside(&f, &neighbours, &f.settings()).unwrap();
+        assert!(
+            (furthest_contact(&path) - 38.0).abs() < 1e-6,
+            "{}",
+            furthest_contact(&path)
+        );
+        assert!(path.limits.end_stops.is_empty(), "{:?}", path.limits);
+        assert!(path.limits.neighbour_cuts.is_empty(), "{:?}", path.limits);
+        assert!(
+            path.note(TOL, LIMIT).contains(
+                "The faces that share an edge with this face were checked against the tool's \
+                 cutting part; the shank, the holder and other faces were not."
+            ),
+            "{}",
+            path.note(TOL, LIMIT)
+        );
+    }
+}
+
+#[test]
+fn req_op_07_req_op_12_a_ball_and_a_tapered_ball_stop_short_of_the_end_wall_too() {
+    // The rule uses the tool's own profile (decision record 0532 item 1),
+    // so a ball's round end and a tapered ball's taper are kept off the end
+    // wall as a flat end is.
+    let wall = end_wall(1);
+    let neighbours = BrepSurface::new(&wall).unwrap();
+    for tool in [ball(), tapered(6.0)] {
+        let f = Fixture::brep(&limit_wall(), tool);
+        let path = beside(&f, &neighbours, &f.settings()).unwrap();
+        assert!(furthest_contact(&path) < 38.0 - 1.0, "{:?}", path.limits);
+        assert!(
+            cut_into_planes(&f.tool, &path, &wall) <= TOL + CHECKER_SLACK,
+            "{:?}",
+            path.limits
+        );
+    }
+}
+
+#[test]
+fn req_op_07_req_op_12_req_nfr_12_with_keep_off_end_faces_off_the_cut_into_the_end_wall_is_warned()
+{
+    // The owner's D2, option A (decision record 0532 item 2): Keep off the
+    // end faces is on by default; off, the pass runs to the end as before,
+    // and the cut into the end wall is measured and warned of, naming the
+    // face, the depth and the setting, never silently.
+    let wall = end_wall(1);
+    let neighbours = BrepSurface::new(&wall).unwrap();
+    let f = Fixture::brep(&limit_wall(), flat());
+    let region = RegionConstraint {
+        neighbours: Some(&neighbours),
+        ..RegionConstraint::default()
+    };
+    let schema = Swarf.schema();
+    let spec = schema
+        .parameters
+        .iter()
+        .find(|p| p.name == swarf::parameter::KEEP_OFF_END_FACES)
+        .expect("the setting");
+    assert_eq!(spec.label, "Keep off the end faces");
+    assert!(matches!(
+        spec.kind,
+        openchuck_path::params::ParameterKind::Flag { default: true }
+    ));
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    let off = [(
+        swarf::parameter::KEEP_OFF_END_FACES,
+        ParameterValue::Flag(false),
+    )];
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&off), ctx)).unwrap();
+    let settings = Settings {
+        keep_off_end_faces: false,
+        ..f.settings()
+    };
+    let path = beside(&f, &neighbours, &settings).unwrap();
+    assert!((furthest_contact(&path) - 38.0).abs() < 1e-6);
+    assert!(path.limits.end_stops.is_empty());
+    let cut = &path.limits.neighbour_cuts;
+    assert_eq!(cut.len(), 1, "{cut:?}");
+    assert_eq!(cut[0].face, 1);
+    assert!(cut[0].end);
+    assert!((cut[0].depth - TOOL_RADIUS).abs() < 0.05, "{cut:?}");
+    let warning = made
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("face 1"))
+        .unwrap_or_else(|| panic!("{:?}", made.warnings));
+    assert_eq!(
+        warning.parameter.as_deref(),
+        Some(swarf::parameter::KEEP_OFF_END_FACES)
+    );
+    assert!(
+        warning.message.starts_with(&format!(
+            "Swarf on face 0 cuts {:.3} mm into face 1, which meets it at an end of the pass,",
+            cut[0].depth
+        )) && warning
+            .message
+            .contains("Keep off the end faces is off for this operation")
+            && warning
+                .message
+                .contains("check the program and the simulation before running it"),
+        "{}",
+        warning.message
+    );
+}
+
+#[test]
+fn req_op_07_req_op_12_req_nfr_12_a_floor_a_ball_cuts_into_is_measured_and_warned_of() {
+    // The owner's D3, option A (decision record 0532 item 3): the faces next
+    // to the cut face along the ends of its rulings, such as the floor, are
+    // measured too; a cut deeper than the tolerance is a warning naming the
+    // face and depth and the remedies. The G-code is not changed by it.
+    let floor = numbered(floor_model(), 1);
+    let neighbours = BrepSurface::new(&floor).unwrap();
+    let f = Fixture::brep(&limit_wall(), ball());
+    let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
+    let path = beside(&f, &neighbours, &f.settings()).unwrap();
+    assert_eq!(
+        format!("{:?}", plain.runs),
+        format!("{:?}", path.runs),
+        "the floor changes no pose"
+    );
+    let cut = &path.limits.neighbour_cuts;
+    assert_eq!(cut.len(), 1, "{cut:?}");
+    assert_eq!(cut[0].face, 1);
+    assert!(!cut[0].end);
+    let checked = cut_into_planes(&f.tool, &path, &floor);
+    assert!(
+        (cut[0].depth - checked).abs() < 0.02 && checked > TOOL_RADIUS - 0.01,
+        "{cut:?} against the checker's {checked}"
+    );
+    let region = RegionConstraint {
+        neighbours: Some(&neighbours),
+        ..RegionConstraint::default()
+    };
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    let warning = made
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("into face 1"))
+        .unwrap_or_else(|| panic!("{:?}", made.warnings));
+    assert_eq!(
+        warning.parameter.as_deref(),
+        Some(swarf::parameter::TIP_EXTENSION)
+    );
+    assert!(
+        warning.message.starts_with(&format!(
+            "Swarf on face 0 cuts {:.3} mm into face 1, which meets it along the ends of its \
+             rulings,",
+            cut[0].depth
+        )) && warning.message.contains("put face 1 in an avoid set")
+            && warning.message.contains("negative Tip extension"),
+        "{}",
+        warning.message
+    );
+    // With the floor in an avoid set the tool is lifted clear of it
+    // (decision record 0491), and it is not measured again here.
+    let avoid = BrepSurface::new(&floor).unwrap();
+    let both = RegionConstraint {
+        neighbours: Some(&neighbours),
+        avoid: Some(&avoid),
+        ..RegionConstraint::default()
+    };
+    let lifted = limited(&f, &both, &f.settings()).unwrap();
+    assert!(
+        lifted.limits.neighbour_cuts.is_empty(),
+        "{:?}",
+        lifted.limits
+    );
+    assert!(lifted.limits.tip_lifted > TOOL_RADIUS - 0.01);
+}
+
+#[test]
+fn req_op_07_req_nfr_07_a_face_the_end_walls_leave_nothing_of_is_refused_naming_them() {
+    // Decision record 0532 item 4: walls at both ends closer together than
+    // the tool leave no position that keeps off them; the face is refused,
+    // naming the walls and what to change (NFR-07).
+    let f = Fixture::brep(&wall_plane(8.0, 22.0, 26.0, Z0, Z1), flat());
+    let walls = joined_models(&[
+        numbered(cross_plane(26.0, 8.0, 20.0, Z0, Z1), 1),
+        numbered(
+            single_face(
+                Surface::Plane {
+                    frame: Frame {
+                        origin: Point3::new(22.0, 0.0, 0.0),
+                        x: Vec3::new(0.0, 0.0, 1.0),
+                        y: Vec3::new(0.0, -1.0, 0.0),
+                        z: Vec3::new(1.0, 0.0, 0.0),
+                    },
+                },
+                [Z0, Z1, -20.0, -8.0],
+                false,
+            ),
+            2,
+        ),
+    ]);
+    let neighbours = BrepSurface::new(&walls).unwrap();
+    let err = beside(&f, &neighbours, &f.settings())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("swarf cannot cut face 0")
+            && err.contains("face 1")
+            && err.contains("face 2")
+            && err.contains("Keep off the end faces"),
+        "{err}"
+    );
+}
+
+#[test]
+fn req_nfr_06_req_op_07_a_pass_stopped_short_of_an_end_wall_is_identical_at_1_2_and_n_threads() {
+    let f = Fixture::brep(&limit_wall(), ball());
+    let model = joined_models(&[leaning_end_wall(60.0, 1), numbered(floor_model(), 2)]);
+    let neighbours = BrepSurface::new(&model).unwrap();
+    let region = RegionConstraint {
+        neighbours: Some(&neighbours),
+        ..RegionConstraint::default()
+    };
+    let runs = openchuck_testkit::determinism::check(|| {
+        let made =
+            run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+        format!("{:?}{:?}{:?}", made.group, made.notes, made.warnings).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
 }

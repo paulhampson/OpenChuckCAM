@@ -166,6 +166,13 @@ pub struct RegionConstraint<'a> {
     /// region, so the tool does not roll over the selection's edge (issue
     /// #555; decision record 0527). `None` keeps the old rule.
     pub outside: Option<&'a dyn SurfaceSource>,
+    /// The faces that share an edge with the selected faces, for a strategy
+    /// that reads faces itself (swarf, decision record 0532): swarf stops
+    /// each pass short of those that meet an end of the face, and measures
+    /// the cut into each of them. A selected face may be among them; the
+    /// face being cut is passed over by its number. Other strategies do not
+    /// read it.
+    pub neighbours: Option<&'a dyn SurfaceSource>,
 }
 
 /// How a boundary limits a strategy that offers a choice (decision record

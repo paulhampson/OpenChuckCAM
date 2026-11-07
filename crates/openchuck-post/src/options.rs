@@ -149,6 +149,11 @@ pub struct PostOptions {
     pub combine_rotary_runs: bool,
     /// Write comments.
     pub comments: bool,
+    /// Write the NFR-12 notice ([`crate::SAFETY_NOTICE`]) as comment lines after the
+    /// generator line (decision 0533, OI-2000). Needs `comments`. A post that leaves it
+    /// out writes no notice, as before; both built-in posts set it.
+    #[serde(default)]
+    pub safety_notice: bool,
     /// The extension of program files, without the dot (`ngc`, `nc`).
     pub file_extension: String,
 }
@@ -274,6 +279,13 @@ impl PostOptions {
             && !(max.is_finite() && max > 0.0)
         {
             return Err(bad("max_feed", "must be a number greater than 0"));
+        }
+        if self.safety_notice && !self.comments {
+            return Err(bad(
+                "safety_notice",
+                "is written as comment lines, so it needs comments = true; \
+                 set comments = true, or safety_notice = false",
+            ));
         }
         Ok(())
     }
