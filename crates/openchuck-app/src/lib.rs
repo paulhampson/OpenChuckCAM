@@ -37,6 +37,7 @@ mod export;
 pub mod facing;
 pub mod form;
 mod jobs;
+pub mod lead_in;
 pub mod library;
 pub mod machine_edit;
 pub mod machine_library;

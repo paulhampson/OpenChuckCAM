@@ -28,6 +28,7 @@ mod coverage;
 mod deps;
 mod golden;
 mod licences;
+mod messages;
 mod publish;
 mod records;
 mod registers;
@@ -51,8 +52,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Check {
-    /// Dependency rules (architecture sections 4 and 12).
+    /// Dependency rules (architecture sections 4 and 12), and the message
+    /// rules (decision record 0536), which CI runs with them.
     Deps,
+    /// The message rules alone: messages built outside `Message::about`, and
+    /// words that claim safety (decision record 0536 item 6.3; NFR-12).
+    Messages,
     /// SPDX headers and crate licence fields.
     Licences,
     /// Dependency pins, single declaration and NFR-14 records.
@@ -149,7 +154,11 @@ fn run() -> Result<bool> {
     let cli = Cli::parse();
     let root = workspace_root()?;
     let checks: Vec<(&str, Findings)> = match cli.check {
-        Check::Deps => vec![("deps", deps::check(&root)?)],
+        Check::Deps => vec![
+            ("deps", deps::check(&root)?),
+            ("messages", messages::check(&root)?),
+        ],
+        Check::Messages => vec![("messages", messages::check(&root)?)],
         Check::Licences => vec![("licences", licences::check(&root)?)],
         Check::Records => vec![("records", records::check(&root)?)],
         Check::Trace { tests_from, report } => {
@@ -205,6 +214,7 @@ fn run() -> Result<bool> {
         ),
         Check::All => vec![
             ("deps", deps::check(&root)?),
+            ("messages", messages::check(&root)?),
             ("licences", licences::check(&root)?),
             ("records", records::check(&root)?),
             ("testdata", testdata::check(&root)?),

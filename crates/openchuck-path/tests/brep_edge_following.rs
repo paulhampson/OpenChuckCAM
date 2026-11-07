@@ -526,7 +526,7 @@ fn req_nfr_06_req_op_08_brep_edge_following_is_identical_at_1_2_and_n_threads() 
     let v = values(&[(p::DEPTH, num(0.3)), (p::DEPTH_PER_PASS, num(0.15))]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -658,7 +658,7 @@ fn req_nfr_06_req_op_08_brep_exact_edge_following_is_identical_at_1_2_and_n_thre
     let v = values(&[(p::DEPTH, num(0.3))]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);

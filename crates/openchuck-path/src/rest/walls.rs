@@ -725,16 +725,16 @@ mod tests {
         let areas = group(found, 0.1, &rotary);
         let warning = crate::rest::unreached_warning(&areas, 3.175).unwrap();
         assert!(
-            warning.message.starts_with("rest machining cannot reach "),
+            warning.text.starts_with("rest machining cannot reach "),
             "{}",
-            warning.message
+            warning.text
         );
         assert!(
             warning
-                .message
+                .text
                 .contains(&crate::simultaneous::unreached_list(&areas, 3.175, 0.0)),
             "{}",
-            warning.message
+            warning.text
         );
     }
 

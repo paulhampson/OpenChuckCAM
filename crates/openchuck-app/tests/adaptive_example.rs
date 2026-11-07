@@ -58,8 +58,8 @@ fn req_op_04_req_nfr_12_the_tutorial_piece_finishes_completely_with_adaptive_spa
         .groups
         .iter()
         .flat_map(|g| &g.warnings)
-        .filter(|w| w.requires_acknowledgement)
-        .map(|w| w.message.as_str())
+        .filter(|w| w.acknowledgement.is_some())
+        .map(|w| w.text.as_str())
         .collect();
     assert!(partial.is_empty(), "{partial:?}: {warnings:#?}");
     assert!(

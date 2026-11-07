@@ -1053,11 +1053,11 @@ fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
     assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
     // The note says the passes ran on past both ends of the part.
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("past both ends")),
+            .any(|n| n.text.contains("past both ends")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -1069,7 +1069,7 @@ fn req_nfr_06_req_gc_07_end_faces_beside_a_short_tab_are_identical_at_1_2_and_n_
     for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
         let runs = openchuck_testkit::determinism::check(|| {
             let path = job.path(strategy, &[]);
-            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+            format!("{:?}{:?}", path.group, path.notices).into_bytes()
         })
         .unwrap();
         assert_eq!(runs.len(), 4, "{}", strategy.name());
@@ -1102,11 +1102,11 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
     let turns = turns_in_place(&path);
     assert!(turns.iter().all(|&x| x < 30.0), "{turns:?}");
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("X 31.589") && n.message.contains("gripped length")),
+            .any(|n| n.text.contains("X 31.589") && n.text.contains("gripped length")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -1190,9 +1190,9 @@ fn free_face(step: f64) -> Vec<Point3> {
 }
 
 fn messages(path: &GeneratedPath) -> String {
-    path.notes
+    path.notices
         .iter()
-        .map(|n| n.message.clone())
+        .map(|n| n.text.clone())
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1283,12 +1283,12 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
 
 /// The free-end warnings of a path (decision record 0531).
 fn free_end_warnings(path: &GeneratedPath) -> Vec<String> {
-    path.warnings
-        .iter()
+    path.warnings()
+        .into_iter()
         .filter(|w| {
-            w.parameter.as_deref() == Some("face_free_ends") && w.message.contains("mm of flute")
+            w.setting.as_deref() == Some("face_free_ends") && w.text.contains("mm of flute")
         })
-        .map(|w| w.message.clone())
+        .map(|w| w.text.clone())
         .collect()
 }
 
@@ -1333,7 +1333,11 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_warned_and_not_fac
         );
         // Also one of its notes, and needing no acknowledgement.
         assert!(messages(&path).contains("not faced"), "{}", strategy.name());
-        assert!(path.warnings.iter().all(|w| !w.requires_acknowledgement));
+        assert!(
+            path.warnings()
+                .into_iter()
+                .all(|w| !w.acknowledgement.is_some())
+        );
     }
 }
 
@@ -1520,9 +1524,9 @@ fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_war
     let path = run(|ctx| generate(&HelicalFinishing, &input, &free_end_values(), ctx)).unwrap();
     // Each warning names its own face (the review of #490).
     let warnings: Vec<&str> = path
-        .warnings
-        .iter()
-        .map(|w| w.message.as_str())
+        .warnings()
+        .into_iter()
+        .map(|w| w.text.as_str())
         .filter(|m| {
             m.contains("nothing in this setup holds the part on the other side of the ring")
         })
@@ -1578,7 +1582,7 @@ fn req_nfr_06_req_gc_07_free_end_turns_are_identical_at_1_2_and_n_threads() {
     for strategy in [&HelicalFinishing as &dyn Strategy, &AxialFinishing] {
         let runs = openchuck_testkit::determinism::check(|| {
             let path = job.path(strategy, &[("stepdown", 2.0)]);
-            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+            format!("{:?}{:?}", path.group, path.notices).into_bytes()
         })
         .unwrap();
         assert_eq!(runs.len(), 4, "{}", strategy.name());
