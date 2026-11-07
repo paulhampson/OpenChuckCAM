@@ -604,7 +604,9 @@ fn generate_unnamed(
     };
     // Swarf on a STEP part is limited by face sets (decision 0176).
     let brep_limits = match (&placed.brep, &brep_choice) {
-        (Some(brep), Some(choice)) => BrepLimits::of(brep, choice)?,
+        (Some(brep), Some(choice)) => {
+            BrepLimits::of(brep, choice, operation.strategy == swarf::NAME)?
+        }
         _ => None,
     };
     let watch = brep_limits
@@ -1295,20 +1297,32 @@ struct BrepLimits {
     avoid: Option<BrepSurface>,
     check: Option<BrepSurface>,
     watched: Vec<(String, Protection, BrepSurface)>,
+    /// The faces that share an edge with the face set (decision 0532).
+    neighbours: Option<BrepSurface>,
     warnings: Vec<PathWarning>,
 }
 
 impl BrepLimits {
-    /// `None` when `choice` has no boundary, avoid or check sets.
-    fn of(brep: &BrepModel, choice: &BrepChoice) -> Result<Option<Self>, AppError> {
-        if choice.boundary.is_none() && choice.avoid.is_empty() && choice.check.is_empty() {
-            return Ok(None);
-        }
+    /// `None` when `choice` has no boundary, avoid or check sets and, for
+    /// swarf (`swarf`), its face set has no face next to it.
+    fn of(brep: &BrepModel, choice: &BrepChoice, swarf: bool) -> Result<Option<Self>, AppError> {
         let surface = |faces: &[FaceId]| {
             (!faces.is_empty())
                 .then(|| BrepSurface::with_faces(brep, faces))
                 .transpose()
         };
+        let neighbours = if swarf {
+            surface(&faces_next_to(brep, &choice.faces))?
+        } else {
+            None
+        };
+        if choice.boundary.is_none()
+            && choice.avoid.is_empty()
+            && choice.check.is_empty()
+            && neighbours.is_none()
+        {
+            return Ok(None);
+        }
         let mut warnings = Vec::new();
         let mut boundary = None;
         let mut boundary_limits = BoundaryLimits::default();
@@ -1367,6 +1381,7 @@ impl BrepLimits {
             avoid: surface(&avoid)?,
             check: surface(&check)?,
             watched,
+            neighbours,
             warnings,
         }))
     }
@@ -1392,8 +1407,32 @@ impl BrepLimits {
             boundary_limits: self.boundary_limits,
             watch,
             ..RegionConstraint::default()
+            neighbours: self.neighbours.as_ref().map(|s| s as _),
         }
     }
+}
+
+/// The faces of `brep` that share an edge with any of `faces`, the faces
+/// themselves among them where two of them meet (decision 0532): swarf
+/// stops short of those that meet an end of a face it cuts, and measures
+/// the cut into each.
+fn faces_next_to(brep: &BrepModel, faces: &[FaceId]) -> Vec<FaceId> {
+    let mut next: Vec<FaceId> = brep
+        .edges
+        .iter()
+        .filter(|e| e.faces.iter().any(|f| faces.contains(f)))
+        .flat_map(|e| e.faces.iter().copied())
+        .filter(|f| {
+            !faces.contains(f)
+                || brep.edges.iter().any(|e| {
+                    e.faces.contains(f) && e.faces.iter().any(|g| g != f && faces.contains(g))
+                })
+        })
+        .filter(|f| brep.faces.iter().any(|x| x.id == *f))
+        .collect();
+    next.sort_unstable();
+    next.dedup();
+    next
 }
 
 /// The warning for a set whose options leave it limiting nothing (decision
@@ -2033,6 +2072,21 @@ mod tests {
 
         fn run(&self) -> Result<OperationPath, AppError> {
             self.run_on(false)
+        }
+
+        /// Joins faces `a` and `b` of the part by an edge, as a STEP file's
+        /// faces that meet are (decision 0532).
+        fn join_faces(&mut self, a: FaceId, b: FaceId) {
+            let id = openchuck_types::brep::EdgeId(
+                u32::try_from(self.brep.edges.len()).unwrap_or(u32::MAX),
+            );
+            self.brep.edges.push(openchuck_types::brep::BrepEdge {
+                id,
+                faces: vec![a, b],
+                vertices: None,
+                polyline: Vec::new(),
+                curve: None,
+            });
         }
 
         /// Runs the operation on the placed part, or with `as_mesh` on its
@@ -2822,6 +2876,49 @@ mod tests {
                 && err.contains("face 0 is in the face set it cuts and in the check set 'chosen'"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn req_op_07_req_op_12_swarf_on_a_step_part_stops_short_of_a_face_that_meets_an_end() {
+        // Issue #442 (decision 0532): the faces that share an edge with the
+        // face set are passed to swarf, which stops each pass short of one
+        // that meets an end of the face. The end wall of the limits fixture
+        // (face 1), joined to the wall by the B-rep edge between them, stops
+        // the pass a tool radius short of it with no set chosen; with Keep
+        // off the end faces off the pass runs to the end, and the cut into
+        // face 1 is warned of, naming the setting.
+        let joined = |parameters: &[(&str, Value)]| {
+            let mut f = swarf_limits_fixture(parameters);
+            f.join_faces(FaceId(0), FaceId(1));
+            f
+        };
+        let path = joined(&[]).run().unwrap();
+        let reach = furthest_cut(&path);
+        assert!((reach - (38.0 - 0.5 * FLAT)).abs() < 0.02, "{reach}");
+        assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n
+                    .contains("The pass stops short of face 1, which meets this face at an end")),
+            "{:?}",
+            path.notes
+        );
+        let off = joined(&[(swarf::parameter::KEEP_OFF_END_FACES, Value::Flag(false))])
+            .run()
+            .unwrap();
+        assert!((furthest_cut(&off) - 38.0).abs() < 0.02);
+        assert!(
+            off.warnings
+                .iter()
+                .any(|w| w.message.contains("into face 1")
+                    && w.parameter.as_deref() == Some(swarf::parameter::KEEP_OFF_END_FACES)),
+            "{:?}",
+            off.warnings
+        );
+        // Without the edge nothing is known to meet the face: unchanged.
+        let plain = swarf_limits_fixture(&[]).run().unwrap();
+        assert!((furthest_cut(&plain) - 38.0).abs() < 0.02);
     }
 
     /// The fixture of the swarf floor (decision 0491, issue #435): the flat

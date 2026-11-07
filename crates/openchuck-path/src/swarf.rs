@@ -1722,6 +1722,20 @@ fn end_rulings(
         .collect()
 }
 
+/// The rulings a quarter, half and three quarters of the way along the
+/// whole face, where a face met by the ends of the rulings all along the
+/// pass (a floor, or the face along the top) meets them too (decision
+/// record 0532 item 1).
+fn middle_rulings(face: &dyn ParametricFace, family: Family, whole: &[(f64, f64)]) -> Vec<Ruling> {
+    let (Some(first), Some(last)) = (whole.first(), whole.last()) else {
+        return Vec::new();
+    };
+    [0.25, 0.5, 0.75]
+        .iter()
+        .filter_map(|f| ruling_at(face, family, first.0 + (last.1 - first.0) * f))
+        .collect()
+}
+
 /// A face next to the cut face (decision record 0532), sampled as an avoid
 /// face is.
 struct Neighbour {
@@ -1733,15 +1747,19 @@ struct Neighbour {
 
 /// The faces of the region's neighbours other than the cut face `number`
 /// and those in its avoid, check or watched sets, each sampled no further
-/// apart than `spacing`. A face meets an end of the cut face when it lies
-/// along one of `ends`: it has a sample within its own spacing and
-/// `tolerance` of the points a quarter, half and three quarters along the
-/// ruling. A floor or the face along the top meets an end ruling only at
-/// its end, so is not an end face.
+/// apart than `spacing`. A face meets an end of the cut face when it meets
+/// one of the rulings at the ends, `ends` (it has a sample within its own
+/// spacing and `tolerance` of a point at its ends, a quarter, half or three
+/// quarters along it), and meets none of the ends of `middles`: a floor or
+/// the face along the top meets the ends of the rulings all along the pass,
+/// and is measured, not stopped short of. Where a twisted face meets a wall
+/// at its end obliquely, the last ruling is only a corner, and the wall is
+/// still an end face, as it meets no ruling in the middle.
 fn neighbour_samples(
     region: &RegionConstraint<'_>,
     number: u32,
     ends: &[Ruling],
+    middles: &[Ruling],
     spacing: f64,
     tolerance: f64,
 ) -> Vec<Neighbour> {
@@ -1755,21 +1773,26 @@ fn neighbour_samples(
         .flat_map(|s| s.exact_faces().into_iter().map(|f| f.number))
         .collect();
     sets.push(number);
-    let along = |samples: &[(Point3, Vec3, f64)], r: &Ruling| {
-        [0.25, 0.5, 0.75].iter().all(|f| {
-            let q = r.lo + (r.hi - r.lo) * *f;
-            samples
-                .iter()
-                .any(|(p, _, h)| p.distance(q) <= h + tolerance)
-        })
+    let near = |samples: &[(Point3, Vec3, f64)], q: Point3| {
+        samples
+            .iter()
+            .any(|(p, _, h)| p.distance(q) <= h + tolerance)
     };
+    let meets_end = |samples: &[(Point3, Vec3, f64)], r: &Ruling| {
+        [0.0, 0.25, 0.5, 0.75, 1.0]
+            .iter()
+            .any(|f| near(samples, r.lo + (r.hi - r.lo) * *f))
+    };
+    let meets_middle =
+        |samples: &[(Point3, Vec3, f64)], r: &Ruling| near(samples, r.lo) || near(samples, r.hi);
     let mut out: Vec<Neighbour> = source
         .exact_faces()
         .into_iter()
         .filter(|f| !sets.contains(&f.number))
         .map(|f| {
             let samples = face_samples(f.face, spacing);
-            let end = ends.iter().any(|r| along(&samples, r));
+            let end = ends.iter().any(|r| meets_end(&samples, r))
+                && !middles.iter().any(|r| meets_middle(&samples, r));
             Neighbour {
                 face: f.number,
                 samples,
@@ -2089,6 +2112,7 @@ pub fn face_path(
         region,
         number,
         &end_rulings(face, family, &whole, face_closed),
+        &middle_rulings(face, family, &whole),
         guard_spacing(radius),
         settings.tolerance,
     );

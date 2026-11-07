@@ -713,3 +713,162 @@ fn free_ends_off(strategy: &str) -> BTreeMap<String, ParameterValue> {
     }
     out
 }
+
+// ---- swarf keeps off the faces at the ends of a blade (issue #442) --------
+
+/// A model point turned about X by `degrees`.
+fn turned_about_x(p: Vec3, degrees: f64) -> Vec3 {
+    let (s, c) = degrees.to_radians().sin_cos();
+    Vec3::new(p.x, c * p.y - s * p.z, s * p.y + c * p.z)
+}
+
+/// The tool at every pose of `path` and at the quarter, half and three
+/// quarter points of each move between them, on the machine's straight
+/// move in X, Y, Z and A (decision 0255 item 5), as (tip, axis) in the
+/// model frame. The sense in which A turns the part is read from the poses.
+fn swarf_stations(path: &openchuck_path::swarf::FacePath) -> Vec<(Point3, Vec3)> {
+    let up = Vec3::new(0.0, 0.0, 1.0);
+    let sense = |s: f64| {
+        path.poses()
+            .map(|p| (turned_about_x(p.axis.get(), s * p.a.0) - up).length())
+            .fold(0.0, f64::max)
+    };
+    let s = if sense(1.0) < sense(-1.0) { 1.0 } else { -1.0 };
+    let mut out = Vec::new();
+    for run in &path.runs {
+        for (i, p) in run.iter().enumerate() {
+            out.push((p.tip, p.axis.get()));
+            let Some(q) = run.get(i + 1) else { continue };
+            let (mp, mq) = (
+                turned_about_x(p.tip.to_vec(), s * p.a.0),
+                turned_about_x(q.tip.to_vec(), s * q.a.0),
+            );
+            for f in [0.25, 0.5, 0.75] {
+                let a = p.a.0 + (q.a.0 - p.a.0) * f;
+                let tip = turned_about_x(mp + (mq - mp) * f, -s * a);
+                out.push((Point3::new(tip.x, tip.y, tip.z), turned_about_x(up, -s * a)));
+            }
+        }
+    }
+    out
+}
+
+/// The deepest cut into face `face` of `model` by the tool at `stations`,
+/// proven by the test kit's bounded checker (decision 0255): the largest
+/// upper bound of the cut, mm (zero when it keeps clear).
+fn bounded_cut(
+    model: &BrepModel,
+    face: u32,
+    tool: &openchuck_types::tool::profile::RevolvedProfile,
+    stations: &[(Point3, Vec3)],
+) -> f64 {
+    use openchuck_testkit::contact::{ConvexTool, Geometry, Settings};
+    let mut one = model.clone();
+    one.faces.retain(|f| f.id.0 == face);
+    let geometry = Geometry::of_faces(&one).unwrap();
+    let convex = ConvexTool::new(tool).unwrap();
+    let settings = Settings {
+        margin: 5.0,
+        tolerance: 0.0005,
+        budget: 4_000_000,
+    };
+    stations
+        .iter()
+        .map(|(tip, axis)| {
+            let b = geometry.clearance(&convex, *tip, *axis, &settings).unwrap();
+            -b.lower
+        })
+        .fold(0.0, f64::max)
+}
+
+#[test]
+fn req_op_07_req_op_12_swarf_on_the_blisk_keeps_off_the_wall_at_the_end_of_a_twisted_blade() {
+    // Issue #442 (decision 0532): on the repository's blisk, blade 9 meets
+    // the disc's wall (face 2) at X = 20 obliquely and the end plane (face
+    // 15) at X = 60. Before, a 3 mm flat end mill cut the wall 1.5 mm deep;
+    // with the faces next to the blade given, the pass stops short of the
+    // wall (by more than the tool radius, the blade being twisted) and the
+    // bounded checker finds the wall and the end plane cut by no more than
+    // the tolerance and the sampling of a guarded face (OI-636, OI-2078).
+    // The hub (face 8), met by the ends of the rulings all along, is
+    // measured and reported, not stopped short of.
+    use openchuck_path::region::RegionConstraint;
+    use openchuck_path::swarf::{Settings, face_path};
+    use openchuck_types::brep::FaceId;
+    let model = placed("blisk", &[TransformStep::CentreOnRotaryAxis]);
+    let blade = FaceId(9);
+    let next: Vec<FaceId> = model
+        .edges
+        .iter()
+        .filter(|e| e.faces.contains(&blade))
+        .flat_map(|e| e.faces.iter().copied())
+        .filter(|f| *f != blade)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    assert!(
+        next.contains(&FaceId(2)) && next.contains(&FaceId(15)),
+        "{next:?}"
+    );
+    let selected = BrepSurface::with_faces(&model, &[blade]).unwrap();
+    let face = selected.exact_faces().into_iter().next().unwrap();
+    let neighbours = BrepSurface::with_faces(&model, &next).unwrap();
+    let tool = Tool {
+        shape: ToolShape::FlatEnd,
+        diameter: openchuck_types::units::Millimetres(3.0),
+        flute_length: openchuck_types::units::Millimetres(30.0),
+        overall_length: openchuck_types::units::Millimetres(80.0),
+        shank_diameter: openchuck_types::units::Millimetres(3.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    }
+    .profile()
+    .unwrap();
+    let rotary = openchuck_path::RotaryMapping::of_profile(
+        &openchuck_types::machine::MachineProfile::example_x_rotary(),
+    );
+    let settings = Settings {
+        tolerance: 0.01,
+        stock_to_leave: 0.0,
+        tip_extension: 0.0,
+        max_material_left: 0.1,
+        reverse_tip_end: false,
+        reverse_direction: false,
+        keep_off_end_faces: true,
+    };
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let made = |region: &RegionConstraint<'_>| {
+        face_path(face, &tool, rotary, &settings, region, &ctx).unwrap()
+    };
+    let before = made(&RegionConstraint::default());
+    assert!(
+        bounded_cut(&model, 2, &tool, &swarf_stations(&before)) > 1.4,
+        "before, the wall at X = 20 is cut"
+    );
+    let path = made(&RegionConstraint {
+        neighbours: Some(&neighbours),
+        ..RegionConstraint::default()
+    });
+    let stations = swarf_stations(&path);
+    for wall in [2, 15] {
+        let cut = bounded_cut(&model, wall, &tool, &stations);
+        assert!(cut <= 0.02, "face {wall} is cut {cut} mm");
+    }
+    let wall = path
+        .limits
+        .end_stops
+        .iter()
+        .find(|e| e.face == 2)
+        .unwrap_or_else(|| panic!("{:?}", path.limits.end_stops));
+    assert!(wall.length > 6.0, "{wall:?}: more than the tool radius");
+    let hub = path
+        .limits
+        .neighbour_cuts
+        .iter()
+        .find(|c| c.face == 8)
+        .unwrap_or_else(|| panic!("{:?}", path.limits.neighbour_cuts));
+    assert!(!hub.end && hub.depth > 0.2, "{hub:?}");
+    assert!(path.refusal(settings.material_left_limit()).is_none());
+}

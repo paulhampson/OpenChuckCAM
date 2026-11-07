@@ -180,6 +180,11 @@ fn main() {
         .expect("usage: swarf_ends <file.step> --faces 7,9,13");
     let mut faces: Vec<u32> = vec![7, 9, 13];
     let mut exts: Vec<f64> = vec![0.0];
+    // `--before` runs swarf as before decision record 0532, with no faces
+    // next to the cut face given; `--off` gives them with Keep off the end
+    // faces off.
+    let mut before = false;
+    let mut keep = true;
     let mut ends_of: Vec<(u32, Vec<u32>)> =
         vec![(7, vec![2, 15]), (9, vec![2, 15]), (13, vec![3, 15])];
     while let Some(x) = it.next() {
@@ -206,6 +211,8 @@ fn main() {
                     })
                     .collect()
             }
+            "--before" => before = true,
+            "--off" => keep = false,
             "--extensions" => {
                 exts = it
                     .next()
@@ -296,6 +303,12 @@ fn main() {
         ));
         let selected = BrepSurface::with_faces(&model, &[FaceId(*n)]).unwrap();
         let face = selected.exact_faces().into_iter().next().unwrap();
+        let ids: Vec<FaceId> = neighbours.iter().map(|f| FaceId(*f)).collect();
+        let next_to = BrepSurface::with_faces(&model, &ids).unwrap();
+        let region = RegionConstraint {
+            neighbours: (!before).then_some(&next_to as &dyn SurfaceSource),
+            ..RegionConstraint::default()
+        };
         for (name, profile) in &tools {
             let ct = ConvexTool::new(profile).unwrap();
             for ext in &exts {
@@ -306,16 +319,49 @@ fn main() {
                     max_material_left: 0.1,
                     reverse_tip_end: false,
                     reverse_direction: false,
+                    keep_off_end_faces: keep,
                 };
-                let path = match swarf::face_path(
-                    face,
-                    profile,
-                    rotary,
-                    &settings,
-                    &RegionConstraint::default(),
-                    &ctx,
-                ) {
-                    Ok(p) => p,
+                let started = std::time::Instant::now();
+                let made = swarf::face_path(face, profile, rotary, &settings, &region, &ctx);
+                let took = started.elapsed().as_secs_f64();
+                let path = match made {
+                    Ok(p) => {
+                        let stops: Vec<String> = p
+                            .limits
+                            .end_stops
+                            .iter()
+                            .map(|e| format!("face {} {:.3} mm", e.face, e.length))
+                            .collect();
+                        let cuts: Vec<String> = p
+                            .limits
+                            .neighbour_cuts
+                            .iter()
+                            .map(|c| {
+                                format!(
+                                    "face {} {:.3} mm{}",
+                                    c.face,
+                                    c.depth,
+                                    if c.end { " (end)" } else { "" }
+                                )
+                            })
+                            .collect();
+                        println!(
+                            "| {n} | {name} | {ext} | swarf in {took:.2} s: gouge {:.4}, left {:.4}; stops short of {}; warns of {} |",
+                            p.gouge,
+                            p.left,
+                            if stops.is_empty() {
+                                "nothing".to_owned()
+                            } else {
+                                stops.join(", ")
+                            },
+                            if cuts.is_empty() {
+                                "nothing".to_owned()
+                            } else {
+                                cuts.join(", ")
+                            },
+                        );
+                        p
+                    }
                     Err(e) => {
                         println!("| {n} | {name} | {ext} | refused: {e} |");
                         continue;
