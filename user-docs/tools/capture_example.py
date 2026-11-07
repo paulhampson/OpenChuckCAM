@@ -6,7 +6,7 @@
 
 NAME is a script in user-docs/tools/examples/ (for example `custom_machine`). Each example's
 script holds its own steps and click positions, so examples are added as new files, never by
-editing a shared list. It runs the program the way capture.py does (Xvfb at 1366 x 768, Mesa's
+editing a shared list. It runs the program the way capture.py does (Xvfb at 1920 x 1080, Mesa's
 lavapipe software Vulkan driver, `xdotool`), with a scratch HOME so it never reads or changes your
 settings, libraries or projects, on a fresh copy of the tutorial's finished project
 (testdata/examples/baluster/baluster-project) unless the example says otherwise.
@@ -32,6 +32,8 @@ sys.path.insert(0, str(HERE / "examples"))
 import capture  # noqa: E402  (the shared helpers: click, fill, key, scroll, shot, record)
 
 REPO = capture.REPO
+# The guide's screenshots are 1920 x 1080 at 100 % scale (the owner's choice of 7 Nov 2026).
+W, H = 1920, 1080
 
 
 def main():
@@ -56,6 +58,17 @@ def main():
     shutil.copytree(REPO / getattr(example, "PROJECT", "testdata/examples/baluster/baluster-project"), project)
 
     capture.WORK, capture.OUT, capture.HERO = work, out, out
+    capture.WINDOW = f"{W}x{H}"
+
+    def shot(name):
+        """As capture.shot, with the mouse parked on the status bar of the larger window."""
+        capture.pause(1.0)
+        capture.move(1000, H - 22)
+        capture.pause(0.7)
+        capture.grab(out / f"{name}.png")
+        print("captured", f"{name}.png", flush=True)
+
+    capture.shot = shot
     capture.ENV = dict(
         os.environ,
         DISPLAY=":99",
@@ -68,7 +81,7 @@ def main():
     if icd:
         capture.ENV["VK_ICD_FILENAMES"] = str(icd)
 
-    xvfb = subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1366x768x24"], env=capture.ENV,
+    xvfb = subprocess.Popen(["Xvfb", ":99", "-screen", "0", f"{W}x{H}x24"], env=capture.ENV,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     capture.pause(2)
     ui = subprocess.Popen([args.ui, str(project)], env=capture.ENV,
@@ -77,7 +90,7 @@ def main():
         capture.pause(12)
         win = capture.run("xdotool", "search", "--onlyvisible", "--name", ".", stdout=subprocess.PIPE,
                           text=True).stdout.split()[0]
-        capture.run("xdotool", "windowmove", win, "0", "0", "windowsize", win, "1366", "768")
+        capture.run("xdotool", "windowmove", win, "0", "0", "windowsize", win, str(W), str(H))
         capture.run("xdotool", "windowfocus", win)
         capture.pause(3)
         example.run(capture, work)
