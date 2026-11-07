@@ -1,0 +1,79 @@
+[
+ {
+  "id": "A1-C1",
+  "group": "colour",
+  "label": "C1 slate and orange (on A1)",
+  "light": "A1-C1",
+  "dark": "A1-C1"
+ },
+ {
+  "id": "A1-C2",
+  "group": "colour",
+  "label": "C2 light tile (on A1)",
+  "light": "A1-C2",
+  "dark": "A1-C2"
+ },
+ {
+  "id": "A1-C3",
+  "group": "colour",
+  "label": "C3 one colour (ink / white) (on A1)",
+  "light": "A1-C3-ink",
+  "dark": "A1-C3-white"
+ },
+ {
+  "id": "A1-C4",
+  "group": "colour",
+  "label": "C4 bold blue and amber (on A1)",
+  "light": "A1-C4",
+  "dark": "A1-C4"
+ },
+ {
+  "id": "A1-C5",
+  "group": "colour",
+  "label": "C5 graphite and signal orange (on A1)",
+  "light": "A1-C5",
+  "dark": "A1-C5"
+ },
+ {
+  "id": "A2-C1",
+  "group": "variation",
+  "label": "A2 heavy ring 64, stepped jaws, no body disc, squircle (C1)",
+  "light": "A2-C1",
+  "dark": "A2-C1"
+ },
+ {
+  "id": "A3-C1",
+  "group": "variation",
+  "label": "A3 circle tile, thin ring 32, tapered jaws (C1)",
+  "light": "A3-C1",
+  "dark": "A3-C1"
+ },
+ {
+  "id": "A4-C1",
+  "group": "variation",
+  "label": "A4 mark without tile, jaws spaced from the stock (C1; centre darkened on light)",
+  "light": "A4-C1-onlight",
+  "dark": "A4-C1-ondark"
+ },
+ {
+  "id": "A5-C1",
+  "group": "variation",
+  "label": "A5 wide gap and large arrowhead, short jaws, stock with a centre bore (C1)",
+  "light": "A5-C1",
+  "dark": "A5-C1"
+ },
+ {
+  "id": "A6-C1",
+  "group": "variation",
+  "label": "A6 small-size glyph on the 16 px grid: ring 2 px, no body disc, short wide jaws, 1 px gaps (C1)",
+  "light": "A6-C1",
+  "dark": "A6-C1"
+ },
+ {
+  "id": "A6-C3",
+  "group": "variation",
+  "label": "A6 small-size glyph, one colour (C3)",
+  "light": "A6-C3-ink",
+  "dark": "A6-C3-white"
+ }
+]

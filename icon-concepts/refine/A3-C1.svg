@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<circle cx="256" cy="256" r="250" fill="#22344A" stroke="#4A6280" stroke-width="12"/>
+<circle cx="256" cy="256" r="128" fill="#3E4F64"/>
+<g transform="rotate(0 256 256)"><path d="M236 196 H276 L296 104 H216 Z" fill="#AEBBC9" stroke="#AEBBC9" stroke-width="8" stroke-linejoin="round"/></g>
+<g transform="rotate(120 256 256)"><path d="M236 196 H276 L296 104 H216 Z" fill="#AEBBC9" stroke="#AEBBC9" stroke-width="8" stroke-linejoin="round"/></g>
+<g transform="rotate(240 256 256)"><path d="M236 196 H276 L296 104 H216 Z" fill="#AEBBC9" stroke="#AEBBC9" stroke-width="8" stroke-linejoin="round"/></g>
+<circle cx="256" cy="256" r="64" fill="#E8EEF4"/>
+<path d="M238.6 56.8 A200.0 200.0 0 1 1 59.0 221.3" fill="none" stroke="#F59E1B" stroke-width="32" stroke-linecap="round"/>
+<polygon points="71.5,150.4 13.0,217.2 103.6,233.2" fill="#F59E1B" stroke="#F59E1B" stroke-width="10" stroke-linejoin="round"/>
+</svg>

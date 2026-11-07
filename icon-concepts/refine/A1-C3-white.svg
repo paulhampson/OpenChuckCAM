@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<g transform="rotate(0 256 256)"><rect x="224.0" y="96" width="64" height="72" rx="8" fill="#F2F4F7"/></g>
+<g transform="rotate(120 256 256)"><rect x="224.0" y="96" width="64" height="72" rx="8" fill="#F2F4F7"/></g>
+<g transform="rotate(240 256 256)"><rect x="224.0" y="96" width="64" height="72" rx="8" fill="#F2F4F7"/></g>
+<circle cx="256" cy="256" r="64" fill="#F2F4F7"/>
+<path d="M239.3 64.7 A192.0 192.0 0 1 1 66.9 222.7" fill="none" stroke="#F2F4F7" stroke-width="48" stroke-linecap="round"/>
+<polygon points="81.5,139.9 13.0,217.2 119.4,236.0" fill="#F2F4F7" stroke="#F2F4F7" stroke-width="10" stroke-linejoin="round"/>
+</svg>
