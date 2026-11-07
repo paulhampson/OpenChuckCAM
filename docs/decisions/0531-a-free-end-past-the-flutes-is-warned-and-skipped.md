@@ -1,6 +1,6 @@
 # 0531: A free end past the flutes is warned of and not faced, not refused (OP-04, TL-04, NFR-07, NFR-12; lane FREEEND)
 
-- **Status:** proposed. The project owner chose this behaviour ("option B") on 6 Nov 2026, relayed by the coordinator; the record itself is not accepted. Only the owner accepts it.
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator (decision 0049). The owner chose this behaviour ("option B") on 6 Nov 2026, relayed by the coordinator.
 - **Date:** 6 Nov 2026.
 - **Number:** 0531, reserved by the Merge Manager on 6 Nov 2026.
 - **Amends:** [0344](0344-finishing-stepdown-and-free-ends.md) item 7 ("A face deeper than the flutes refuses the operation") and [0509](0509-flute-length-against-the-deepest-cut.md) item 4 (free ends use the same measure for their refusal). [0522](0522-the-flute-check-warns.md) item 5 (third bullet), which kept the free-end refusal until the owner chose, is settled by this record. The measure ([0509](0509-flute-length-against-the-deepest-cut.md) items 1 and 2, with the reach profile of [0524](0524-flute-check-reads-the-stock-in-the-tools-reach.md)) is unchanged.
