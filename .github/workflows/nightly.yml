@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_recovery, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_recovery, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition, settings_toml, facing_rows]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -88,6 +88,12 @@ jobs:
       - name: Seed the recovery checkpoint corpus
         if: matrix.target == 'project_recovery'
         run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
+      - name: Seed the settings file corpus
+        if: matrix.target == 'settings_toml'
+        run: mkdir -p fuzz/corpus/settings_toml && cp fuzz/seeds/settings_toml/* fuzz/corpus/settings_toml/
+      - name: Seed the facing rows corpus
+        if: matrix.target == 'facing_rows'
+        run: mkdir -p fuzz/corpus/facing_rows && cp fuzz/seeds/facing_rows/* fuzz/corpus/facing_rows/
       - name: Seed the project file corpus from the fixtures
         if: matrix.target == 'project_files'
         run: |
@@ -160,20 +166,24 @@ jobs:
         run: cargo build --locked --release -p openchuck-import --features kernel --bins --example step_mutations
       # The run number is the seed, so each night imports different mutants (decision 0107); the
       # CPU time, the worker processes' included, is written as an annotation like the fuzz jobs'.
-      - name: Mutate and import 3000 files
+      # A time budget of 55 minutes (decision 0534, OI-326): the count is a ceiling the budget ends
+      # first, so the job takes about an hour and the CPU time counts towards the advisory 24 hours.
+      - name: Mutate and import for 55 minutes
         shell: bash
         env:
           SEED: ${{ github.run_number }}
         run: |
           TIMEFORMAT='%U %S'
           set +e
-          { time cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000 "$SEED" ; } 2> cpu.txt
+          { time cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 10000000 "$SEED" 3300 > mutations.log ; } 2> cpu.txt
           code=$?
           set -e
+          cat mutations.log
           read -r user sys < <(tail -n 1 cpu.txt)
           head -n -1 cpu.txt >&2 || true
           seconds=$(awk -v u="$user" -v s="$sys" 'BEGIN { printf "%d", u + s }')
-          echo "::notice title=Fuzz CPU time step_mutations::step_mutations ${seconds} CPU seconds, 3000 mutants, seed $SEED, exit $code, commit $GITHUB_SHA"
+          mutants=$(sed -n 's/^\([0-9]*\) mutants (seed.*/\1/p' mutations.log | tail -n 1)
+          echo "::notice title=Fuzz CPU time step_mutations::step_mutations ${seconds} CPU seconds, ${mutants:-unknown} mutants, seed $SEED, exit $code, commit $GITHUB_SHA"
           exit "$code"
       - uses: actions/upload-artifact@v7
         if: failure()

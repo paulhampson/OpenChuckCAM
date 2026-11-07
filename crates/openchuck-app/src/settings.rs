@@ -385,32 +385,43 @@ impl SettingsFile {
 
     /// Reads the settings. Never fails: see the module notes.
     pub fn load(&self) -> Loaded {
-        let problem = |reason: String| {
-            Some(format!(
+        match self.read_table() {
+            Err(reason) => self.unreadable(reason),
+            Ok(table) => self.settings_in(&table),
+        }
+    }
+
+    /// The same read on the text of a settings file, with no file access: the
+    /// entry point of the `settings_toml` fuzz target (NFR-07, OI-327).
+    pub fn load_text(&self, text: &str) -> Loaded {
+        match text.parse::<toml::Table>() {
+            Err(e) => self.unreadable(e.message().to_owned()),
+            Ok(table) => self.settings_in(&table),
+        }
+    }
+
+    fn unreadable(&self, reason: String) -> Loaded {
+        Loaded {
+            settings: UserSettings::default(),
+            problem: Some(format!(
                 "Your settings in '{}' could not be read ({reason}), so the defaults are used.",
                 self.file.display()
-            ))
-        };
-        match self.read_table() {
-            Err(reason) => Loaded {
+            )),
+        }
+    }
+
+    fn settings_in(&self, table: &toml::Table) -> Loaded {
+        match table.get(TABLE) {
+            None => Loaded {
                 settings: UserSettings::default(),
-                problem: problem(reason),
+                problem: None,
             },
-            Ok(table) => match table.get(TABLE) {
-                None => Loaded {
-                    settings: UserSettings::default(),
+            Some(value) => match value.clone().try_into::<UserSettings>() {
+                Ok(settings) => Loaded {
+                    settings: settings.clamped(),
                     problem: None,
                 },
-                Some(value) => match value.clone().try_into::<UserSettings>() {
-                    Ok(settings) => Loaded {
-                        settings: settings.clamped(),
-                        problem: None,
-                    },
-                    Err(e) => Loaded {
-                        settings: UserSettings::default(),
-                        problem: problem(e.message().to_owned()),
-                    },
-                },
+                Err(e) => self.unreadable(e.message().to_owned()),
             },
         }
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Mutation run for the STEP importer (NFR-07; decision record 0003; open item OI-27).
 //!
-//! `cargo run -p openchuck-import --features kernel --example step_mutations -- <count> [seed]`
+//! `cargo run -p openchuck-import --features kernel --example step_mutations -- <count> [seed] [max_seconds]`
 //!
 //! The OpenCASCADE reader segfaults on damaged files, which is why the
 //! importer runs it in a child process. This takes the valid corpus files,
@@ -13,7 +13,9 @@
 //! reported as errors, never as a crash of this process. Mutants that crashed
 //! or hung the worker are kept in `target/step-mutations` for study.
 //!
-//! The generator is a fixed xorshift, so the same seed gives the same mutants.
+//! The generator is a fixed xorshift, so the same seed gives the same mutants. With `max_seconds`
+//! the run stops at `count` mutants or at that time, whichever comes first, and reports how many it
+//! imported (decision 0534, OI-326).
 
 // A test program, not library code: it reports on the terminal and indexes its own fixed tables.
 #![allow(
@@ -26,7 +28,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportError, ImportOptions, ModelImporter};
@@ -80,6 +82,12 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let count: usize = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(100);
     let seed: u64 = args.get(2).and_then(|a| a.parse().ok()).unwrap_or(1).max(1);
+    // An optional time budget in seconds (decision 0534, OI-326): the run stops after the first
+    // mutant that ends past it, so a night can import as many mutants as its hour holds.
+    let deadline = args
+        .get(3)
+        .and_then(|a| a.parse::<u64>().ok())
+        .map(|s| Instant::now() + Duration::from_secs(s));
     let seeds: Vec<(String, Vec<u8>)> = ["cylinder", "box", "filleted_box", "rotary_blank_drilled"]
         .iter()
         .filter_map(|n| {
@@ -100,7 +108,12 @@ fn main() -> ExitCode {
     let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
     let mut outcomes: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut failed = false;
+    let mut done = 0usize;
     for i in 0..count {
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            break;
+        }
+        done += 1;
         let (name, data) = &seeds[rng.below(seeds.len())];
         let mutant = mutate(data, &mut rng);
         let (cancel, progress) = (CancelToken::new(), NoProgress);
@@ -134,7 +147,7 @@ fn main() -> ExitCode {
         };
         *outcomes.entry(key).or_default() += 1;
     }
-    println!("{count} mutants (seed {seed}):");
+    println!("{done} mutants (seed {seed}):");
     for (key, n) in &outcomes {
         println!("  {key}: {n}");
     }

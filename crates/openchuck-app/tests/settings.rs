@@ -425,3 +425,34 @@ fn req_ui_15_a_folder_answer_forgets_only_what_it_was_asked_about() {
     // Nothing missing: nothing changes.
     assert!(!settings.forget_missing_in(&[a.clone(), b.clone()], &[a, b]));
 }
+
+#[test]
+fn req_nfr_07_req_ui_15_the_settings_text_read_gives_defaults_and_a_message_never_a_panic() {
+    // OI-327: the pure read behind the `settings_toml` fuzz target.
+    let file = SettingsFile::in_folder(std::path::Path::new("config"));
+    let ok = file.load_text("[interface]\ncheckpoint_minutes = 7\n");
+    assert_eq!(ok.settings.checkpoint_minutes, 7);
+    assert!(ok.problem.is_none());
+    let none = file.load_text("");
+    assert_eq!(none.settings, UserSettings::default());
+    assert!(none.problem.is_none());
+    for bad in [
+        "not = = toml",
+        "interface = 5",
+        "[interface]\ncheckpoint_minutes = \"soon\"",
+    ] {
+        let loaded = file.load_text(bad);
+        assert_eq!(loaded.settings, UserSettings::default(), "{bad}");
+        assert!(
+            loaded.problem.unwrap().contains("could not be read"),
+            "{bad}"
+        );
+    }
+    // A value out of range is brought into range.
+    assert_eq!(
+        file.load_text("[interface]\ncheckpoint_minutes = 60000")
+            .settings
+            .checkpoint_minutes,
+        15
+    );
+}
