@@ -9,8 +9,6 @@
 	<string>OpenChuckCAM</string>
 	<key>CFBundleExecutable</key>
 	<string>openchuck-ui</string>
-	<key>CFBundleIconFile</key>
-	<string>OpenChuckCAM</string>
 	<key>CFBundleIdentifier</key>
 	<string>cam.openchuck.OpenChuckCAM</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -206,8 +206,13 @@ jobs:
               # The application as a bundle (decision 0541, OI-300); the command-line program stays
               # a plain executable, with its own copy of the STEP reader beside it.
               cp "$bin/openchuck-cli" "$bin/openchuck-step-worker" "$dir/"
+              # The icon, once the project has one (OI-2106, lane ICON): a 512 by 512 PNG at this
+              # path. Until then the bundle has no icon and macOS shows its generic one.
+              icon=()
+              png=apps/openchuck-ui/assets/icon/icon-512.png
+              if [ -f "$png" ]; then icon=(--icon "$png"); fi
               SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) cargo xtask macos-app \
-                --ui "$bin/openchuck-ui" --worker "$bin/openchuck-step-worker" --out "$dir"
+                --ui "$bin/openchuck-ui" --worker "$bin/openchuck-step-worker" --out "$dir" "${icon[@]}"
               plutil -lint "$dir/OpenChuckCAM.app/Contents/Info.plist"
               # An ad-hoc signature over the whole bundle (owner's decision of 7 Nov 2026, decision
               # 0541): no certificate and no Apple account, so it is not signing in the Developer ID
@@ -299,8 +304,7 @@ jobs:
                 echo "message about OpenChuckCAM under Security, click \"Open Anyway\" and confirm."
                 echo "Or, in Terminal, in this folder, remove the download's quarantine flag:"
                 echo "  xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker"
-                echo "Needs macOS 11 or later on Apple silicon (an M-series Mac). The app's icon"
-                echo "is the default one of the egui toolkit; OpenChuckCAM has none of its own yet." ;;
+                echo "Needs macOS 11 or later on Apple silicon (an M-series Mac)." ;;
               *windows*)
                 echo
                 echo "Windows: the programs are not signed, so Microsoft Defender SmartScreen may"

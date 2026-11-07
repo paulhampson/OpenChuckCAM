@@ -151,7 +151,7 @@ enum Check {
         /// `SOURCE_DATE_EPOCH`).
         #[arg(long)]
         mtime: Option<u64>,
-        /// A 512 by 512 PNG for the icon (default: eframe's window icon, the egui logo).
+        /// A 512 by 512 PNG for the icon (default: no icon).
         #[arg(long)]
         icon: Option<PathBuf>,
     },

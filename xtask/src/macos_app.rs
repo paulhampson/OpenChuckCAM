@@ -10,7 +10,7 @@
 //!   Contents/
 //!     Info.plist                     the template, with the workspace version
 //!     PkgInfo                        "APPL????"
-//!     Resources/OpenChuckCAM.icns    the icon (CFBundleIconFile)
+//!     Resources/OpenChuckCAM.icns    the icon (CFBundleIconFile), only when one is given
 //!     MacOS/openchuck-ui             the desktop application (CFBundleExecutable)
 //!     MacOS/openchuck-step-worker    the STEP reader, found beside the application (OI-118)
 //! ```
@@ -19,10 +19,9 @@
 //! OI-135); the release build gives it an ad-hoc signature on macOS (`codesign --sign -`, no
 //! certificate; decision 0541), which this command cannot do on Linux.
 //!
-//! The icon is, for now, the one the program already shows in its window bar: eframe's default,
-//! the egui logo (`data/icon.png` of the `eframe` crate, MIT OR Apache-2.0, listed in the
-//! archive's third-party notices), wrapped as a one-image `.icns` (owner's decision of 7 Nov
-//! 2026; OpenChuckCAM has no icon of its own yet). Its tree is
+//! The icon is optional: given a 512 by 512 PNG (`--icon`), the command wraps it as a one-image
+//! `.icns` and names it in `CFBundleIconFile`; without one the bundle has no icon and macOS shows
+//! its generic application icon. OpenChuckCAM has no icon of its own yet (OI-2106, lane ICON). Its tree is
 //! deterministic: the same inputs give the same files, bytes, modes and modification times
 //! (every time is set to the given one, normally the commit time), so packing it with a sorted,
 //! owner-free tar gives the same archive.
@@ -60,7 +59,7 @@ pub struct Options {
     /// Modification time of every file and folder, seconds since 1970 (normally the commit
     /// time, `git log -1 --format=%ct`).
     pub mtime: u64,
-    /// A 512 by 512 PNG for the icon; eframe's default icon when `None`.
+    /// A 512 by 512 PNG for the icon; no icon when `None`.
     pub icon: Option<PathBuf>,
 }
 
@@ -96,24 +95,6 @@ pub fn icns(png: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// eframe's default window icon (`data/icon.png` in the `eframe` package the workspace uses).
-pub fn eframe_icon(root: &Path) -> Result<PathBuf> {
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .manifest_path(root.join("Cargo.toml"))
-        .exec()
-        .context("cannot run cargo metadata")?;
-    let package = metadata
-        .packages
-        .iter()
-        .find(|p| p.name.as_str() == "eframe")
-        .context("the workspace does not use eframe")?;
-    let dir = package
-        .manifest_path
-        .parent()
-        .context("eframe's manifest has no folder")?;
-    Ok(dir.join("data").join("icon.png").into_std_path_buf())
-}
-
 /// A version macOS accepts in `CFBundleShortVersionString`: one to three non-negative integers
 /// separated by dots, so a pre-release suffix such as `-alpha` is refused.
 pub fn check_version(version: &str) -> Result<()> {
@@ -129,16 +110,33 @@ pub fn check_version(version: &str) -> Result<()> {
     Ok(())
 }
 
-/// The Info.plist text: the template with its version marks replaced.
-pub fn info_plist(template: &str, version: &str) -> Result<String> {
+/// The Info.plist text: the template with its version marks replaced, and `CFBundleIconFile`
+/// added when the bundle has an icon.
+pub fn info_plist(template: &str, version: &str, with_icon: bool) -> Result<String> {
     check_version(version)?;
     ensure!(
         template.contains(VERSION_MARK),
         "the Info.plist template has no {VERSION_MARK} mark"
     );
-    let text = template.replace(VERSION_MARK, version);
+    let mut text = template.replace(VERSION_MARK, version);
+    ensure!(
+        !text.contains("<key>CFBundleIconFile</key>"),
+        "the Info.plist template names an icon; the command adds it when one is given"
+    );
+    if with_icon {
+        let anchor = "\t<key>CFBundleIdentifier</key>";
+        ensure!(
+            text.contains(anchor),
+            "the Info.plist template has no CFBundleIdentifier"
+        );
+        let stem = ICON.trim_end_matches(".icns");
+        text = text.replacen(
+            anchor,
+            &format!("\t<key>CFBundleIconFile</key>\n\t<string>{stem}</string>\n{anchor}"),
+            1,
+        );
+    }
     for key in [
-        "CFBundleIconFile",
         "CFBundleExecutable",
         "CFBundleIdentifier",
         "CFBundlePackageType",
@@ -180,13 +178,14 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
     let template_path = root.join(TEMPLATE);
     let template = fs::read_to_string(&template_path)
         .with_context(|| format!("reading {}", template_path.display()))?;
-    let plist = info_plist(&template, &version)?;
-    let icon_path = match &options.icon {
-        Some(path) => path.clone(),
-        None => eframe_icon(root)?,
+    let plist = info_plist(&template, &version, options.icon.is_some())?;
+    let icon = match &options.icon {
+        Some(path) => {
+            let png = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+            Some(icns(&png).with_context(|| format!("reading {}", path.display()))?)
+        }
+        None => None,
     };
-    let png = fs::read(&icon_path).with_context(|| format!("reading {}", icon_path.display()))?;
-    let icon = icns(&png).with_context(|| format!("reading {}", icon_path.display()))?;
     for (what, path) in [
         ("openchuck-ui", &options.ui),
         ("the STEP reader", &options.worker),
@@ -208,10 +207,12 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
     let contents = bundle.join("Contents");
     let macos = contents.join("MacOS");
     let resources = contents.join("Resources");
-    for dir in [&macos, &resources] {
-        fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    fs::create_dir_all(&macos).with_context(|| format!("creating {}", macos.display()))?;
+    if let Some(icon) = &icon {
+        fs::create_dir_all(&resources)
+            .with_context(|| format!("creating {}", resources.display()))?;
+        write_file(&resources.join(ICON), icon, 0o644)?;
     }
-    write_file(&resources.join(ICON), &icon, 0o644)?;
     write_file(&contents.join("Info.plist"), plist.as_bytes(), 0o644)?;
     write_file(&contents.join("PkgInfo"), b"APPL????", 0o644)?;
     for (from, name) in [(&options.ui, UI_EXE), (&options.worker, WORKER_EXE)] {
@@ -221,18 +222,19 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
 
     // Times last, children before parents, so writing a file does not change a folder's time.
     let time = SystemTime::UNIX_EPOCH + Duration::from_secs(options.mtime);
-    for path in [
+    let mut paths = vec![
         macos.join(UI_EXE),
         macos.join(WORKER_EXE),
         contents.join("Info.plist"),
         contents.join("PkgInfo"),
-        resources.join(ICON),
         macos,
-        resources,
-        contents,
-        bundle.clone(),
-    ] {
-        set_time(&path, time)?;
+    ];
+    if icon.is_some() {
+        paths.extend([resources.join(ICON), resources]);
+    }
+    paths.extend([contents, bundle.clone()]);
+    for path in &paths {
+        set_time(path, time)?;
     }
     Ok(bundle)
 }
@@ -293,15 +295,13 @@ mod tests {
         fs::write(&worker, b"worker program").expect("worker");
         let out = dir.join("out");
         fs::create_dir_all(&out).expect("out");
-        let icon = dir.join("icon.png");
-        fs::write(&icon, png(512, 512)).expect("icon");
         Options {
             ui,
             worker,
             out,
             version: Some("1.2.3".into()),
             mtime: MTIME,
-            icon: Some(icon),
+            icon: None,
         }
     }
 
@@ -362,8 +362,6 @@ mod tests {
                 "Contents/MacOS/openchuck-step-worker",
                 "Contents/MacOS/openchuck-ui",
                 "Contents/PkgInfo",
-                "Contents/Resources",
-                "Contents/Resources/OpenChuckCAM.icns",
             ]
         );
         assert_eq!(
@@ -391,14 +389,13 @@ mod tests {
         assert_eq!(mode("Contents/MacOS/openchuck-step-worker"), 0o755);
         assert_eq!(mode("Contents/Info.plist"), 0o644);
         assert_eq!(mode("Contents/PkgInfo"), 0o644);
-        assert_eq!(mode("Contents/Resources/OpenChuckCAM.icns"), 0o644);
         fs::remove_dir_all(&dir).expect("clean up");
     }
 
     #[test]
     fn req_nfr_02_the_info_plist_names_the_program_identifier_and_version() {
         let template = fs::read_to_string(root().join(TEMPLATE)).expect("template");
-        let text = info_plist(&template, "0.49.0").expect("plist");
+        let text = info_plist(&template, "0.49.0", false).expect("plist");
         assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
         assert!(text.contains("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\""));
         assert!(!text.contains("@VERSION@"));
@@ -418,7 +415,10 @@ mod tests {
         assert_eq!(value("CFBundleShortVersionString"), "0.49.0");
         assert_eq!(value("CFBundleVersion"), "0.49.0");
         assert_eq!(value("LSMinimumSystemVersion"), "11.0");
-        assert_eq!(value("CFBundleIconFile"), "OpenChuckCAM");
+        assert!(
+            !text.contains("CFBundleIconFile"),
+            "no icon unless one is given"
+        );
         // Balanced: one plist, one dict, and every key has its value.
         assert_eq!(text.matches("<dict>").count(), 1);
         assert_eq!(text.matches("</dict>").count(), 1);
@@ -471,23 +471,33 @@ mod tests {
         assert_eq!(&icns[8..12], b"ic09");
         assert_eq!(icns[12..16], (total - 8).to_be_bytes());
         assert_eq!(&icns[16..], source.as_slice());
-        let dir = scratch("icon");
-        let bundle = build(&root(), &inputs(&dir)).expect("bundle");
-        assert_eq!(
-            fs::read(bundle.join("Contents/Resources/OpenChuckCAM.icns")).expect("icon"),
-            icns
-        );
-        fs::remove_dir_all(&dir).expect("clean up");
     }
 
     #[test]
-    fn req_nfr_17_the_default_icon_is_the_window_icon_eframe_shows() {
-        // The owner's decision of 7 Nov 2026 (decision 0541): the icon the program shows in its
-        // window bar, eframe's default, until OpenChuckCAM has its own.
-        let path = eframe_icon(&root()).expect("eframe icon");
-        assert!(path.ends_with("data/icon.png"), "{}", path.display());
-        let png = fs::read(&path).expect("read");
-        icns(&png).expect("a 512 by 512 PNG");
+    fn req_nfr_17_a_given_icon_is_in_the_bundle_and_named_in_the_plist() {
+        let dir = scratch("icon");
+        let mut options = inputs(&dir);
+        let icon = dir.join("icon-512.png");
+        fs::write(&icon, png(512, 512)).expect("icon");
+        options.icon = Some(icon);
+        let bundle = build(&root(), &options).expect("bundle");
+        assert_eq!(
+            fs::read(bundle.join("Contents/Resources/OpenChuckCAM.icns")).expect("icon"),
+            icns(&png(512, 512)).expect("icns")
+        );
+        let tree = tree(&bundle);
+        assert_eq!(tree["Contents/Resources/OpenChuckCAM.icns"].0, 0o644);
+        let time = SystemTime::UNIX_EPOCH + Duration::from_secs(MTIME);
+        assert!(
+            tree.values().all(|(_, t, _)| *t == time),
+            "every time is normalised"
+        );
+        let plist = fs::read_to_string(bundle.join("Contents/Info.plist")).expect("plist");
+        assert!(
+            plist.contains("<key>CFBundleIconFile</key>\n\t<string>OpenChuckCAM</string>\n\t<key>CFBundleIdentifier</key>"),
+            "{plist}"
+        );
+        fs::remove_dir_all(&dir).expect("clean up");
     }
 
     #[test]
@@ -526,7 +536,7 @@ mod tests {
             .expect_err("missing out")
             .to_string();
         assert!(error.contains("output folder"), "{error}");
-        let error = info_plist("<plist/>", "1.0.0")
+        let error = info_plist("<plist/>", "1.0.0", false)
             .expect_err("no mark")
             .to_string();
         assert!(error.contains("@VERSION@"), "{error}");

@@ -87,7 +87,7 @@ The next deploy publishes the change. Nothing else ever writes that branch.
 | --- | --- | --- | --- |
 | `x86_64-unknown-linux-gnu.tar.gz` | in an `ubuntu:22.04` container, pinned by digest, on `ubuntu-latest` | `openchuck-ui`, `openchuck-cli`, `openchuck-step-worker` | glibc 2.35 or newer with the libstdc++ of GCC 12 or newer: Ubuntu 22.04, Debian 12, Fedora 36 or later (x86-64) |
 | `x86_64-pc-windows-msvc.zip` | on `windows-latest` | `openchuck-ui.exe`, `openchuck-cli.exe`, `openchuck-step-worker.exe` | Windows x64 |
-| `aarch64-apple-darwin.tar.gz` | on `macos-latest` | `OpenChuckCAM.app` (identifier `cam.openchuck.OpenChuckCAM`; icon: the egui toolkit's default window icon, for now; with `openchuck-ui` and its own `openchuck-step-worker` in `Contents/MacOS`, ad-hoc signed), `openchuck-cli`, `openchuck-step-worker` beside it | macOS 11 or later on Apple silicon |
+| `aarch64-apple-darwin.tar.gz` | on `macos-latest` | `OpenChuckCAM.app` (identifier `cam.openchuck.OpenChuckCAM`; no icon until the project has one, OI-2106; with `openchuck-ui` and its own `openchuck-step-worker` in `Contents/MacOS`, ad-hoc signed), `openchuck-cli`, `openchuck-step-worker` beside it | macOS 11 or later on Apple silicon |
 
 Each also holds `README.txt`, the licences and notices, and `TOOL-DATA-CREDITS.txt` (the credit for the Makera Z1 tool data, OI-269).
 
