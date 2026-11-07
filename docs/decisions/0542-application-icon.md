@@ -3,7 +3,7 @@
 - **Status:** proposed by lane ICON on 7 Nov 2026. It records the owner's choices of 7 Nov 2026, relayed by the coordinator: the design (concept A, @@CHOICE@@), embedding the Windows program icon with no new dependency (option 1), and rendering the PNGs with `resvg` in `xtask` only (option 1). Only the owner accepts this record (decision 0049).
 - **What it amends, if accepted:** nothing in the requirements or the architecture. It adds files to `openchuck-ui` (its assets, a build script and one module), a command to `xtask`, a dependency to `xtask` only, and the user guide's favicon. No library API change and no project schema change.
 - **Date:** 7 Nov 2026.
-- **Open items:** closes @@OI-ICON@@ (OpenChuckCAM has no icon of its own, raised with [decision 0541](0541-macos-app-bundle-linux-glibc-floor-and-release-tags.md)) when merged. Raises OI-2109 (the native check on Windows, an owner item).
+- **Open items:** closes OI-2106 (OpenChuckCAM has no icon of its own on any platform, raised with [decision 0541](0541-macos-app-bundle-linux-glibc-floor-and-release-tags.md)) when merged. Raises OI-2109 (the native check on Windows, an owner item).
 
 ## Context
 
@@ -11,9 +11,9 @@ Until now the program had no icon of its own:
 
 - the window and taskbar showed eframe's default icon, the egui logo, which the owner will not ship;
 - the Windows `.exe` embedded no icon, so Explorer showed the generic one;
-- the macOS bundle (lane PACKAGING, decision 0541) used the egui logo for now (OI-2106).
+- the macOS bundle (lane PACKAGING, decision 0541) had none of its own (OI-2106).
 
-No requirement names an icon; the work is release work for milestone 2026.1-alpha, asked for by the owner through @@OI-ICON@@.
+No requirement names an icon; the work is release work for milestone 2026.1-alpha, asked for by the owner through OI-2106.
 
 ## Decision (proposed)
 
