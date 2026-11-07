@@ -1,0 +1,75 @@
+name: Enhancement request
+description: Ask for a feature, a change, or help with something the guide does not cover.
+title: "[Request]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The maintainer triages requests. A request may be accepted, changed, or recorded for a later phase; opening one does not promise a date. Describing the problem you are trying to solve helps most.
+
+        Issues on GitHub are public. See [Reporting a problem or asking for a feature](https://paulhampson.github.io/OpenChuckCAM/latest/reporting.html) in the user guide.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem or workflow you cannot do today
+      description: What are you trying to make or do, and what stops you?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should the program do? A sketch of the steps you would take is enough.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you tried, including another program or a manual step.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the program
+      options:
+        - Import
+        - Setup and workholding
+        - Tools
+        - Operations and strategies
+        - Simulation
+        - Export and post
+        - Interface
+        - Command line
+        - Documentation
+        - Other or not sure
+    validations:
+      required: false
+  - type: input
+    id: machine
+    attributes:
+      label: Affected machine
+      description: For example Makera Z1, a LinuxCNC machine, or another controller.
+    validations:
+      required: false
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample model or project
+      description: |
+        **Attach only data you are happy to share publicly.** This issue, and anything attached to it, is visible to everyone. A small public model that shows the need is better than your own project; otherwise describe the part.
+    validations:
+      required: false
+  - type: dropdown
+    id: testing
+    attributes:
+      label: Could you test a build?
+      options:
+        - "Yes"
+        - Maybe
+        - "No"
+    validations:
+      required: false
