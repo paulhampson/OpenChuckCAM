@@ -504,6 +504,16 @@ mod tests {
         assert!(same_image(&png, b"not a png").is_err());
     }
 
+    /// The macOS bundle's icon (decision 0541) is the committed 512-pixel PNG, and
+    /// `cargo xtask macos-app` accepts it as its `.icns` image (decision 0542).
+    #[test]
+    fn icon_the_bundle_takes_the_committed_512_pixel_png() {
+        let root = crate::workspace_root().unwrap();
+        let png = std::fs::read(root.join(ICON_DIR).join("icon-512.png")).unwrap();
+        let icns = crate::macos_app::icns(&png).expect("the bundle accepts the icon");
+        assert_eq!(&icns[..4], b"icns");
+    }
+
     /// The committed icon files are what `cargo xtask icon` makes from the committed SVG
     /// (decision 0542: reproducible from the SVG, no network or renderer at build time).
     #[test]
