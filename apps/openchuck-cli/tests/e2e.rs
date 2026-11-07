@@ -1320,3 +1320,64 @@ fn req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged() {
     assert!(std::fs::read_dir(&out).unwrap().next().is_some());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// A setup-level possible collision (decision record 0538): a safe cylinder
+/// inside the setup's minimum clearance is written from the command line only
+/// with `--acknowledge-collision-warnings`, and the refusal names the setup.
+#[test]
+fn req_gc_16_cli_writes_a_setup_collision_only_when_acknowledged() {
+    let root = scratch("setup-collision");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    cli_ok(&["resave".as_ref(), project.as_os_str()]);
+    let setups = project.join("setups");
+    let file = std::fs::read_dir(&setups)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let mut text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("clearance_rules"), "{text}");
+    text.push_str("\n[clearance_rules]\nmin_radius = 100.0\n");
+    std::fs::write(&file, text).unwrap();
+    let out = root.join("out");
+    let args = |acknowledge: bool| {
+        let mut a: Vec<OsString> = [
+            "regenerate",
+            &project.to_string_lossy(),
+            "--post",
+            "linuxcnc",
+            "--tool-numbers",
+            "keep",
+            "--out",
+            &out.to_string_lossy(),
+        ]
+        .iter()
+        .map(OsString::from)
+        .collect();
+        if acknowledge {
+            a.push("--acknowledge-collision-warnings".into());
+        }
+        a
+    };
+    let refused = cli(&args(false));
+    assert_ne!(refused.code, Some(0), "{}", refused.stdout);
+    assert!(
+        refused.stderr.contains("possible collision")
+            && refused.stderr.contains("Setup 'Setup 1'")
+            && refused.stderr.contains("--acknowledge-collision-warnings"),
+        "{}",
+        refused.stderr
+    );
+    assert!(!out.exists(), "nothing is written");
+    let written = cli_ok(&args(true));
+    assert!(
+        written
+            .stderr
+            .contains("possible collision acknowledged for this run"),
+        "{}",
+        written.stderr
+    );
+    assert!(std::fs::read_dir(&out).unwrap().next().is_some());
+    std::fs::remove_dir_all(root).ok();
+}

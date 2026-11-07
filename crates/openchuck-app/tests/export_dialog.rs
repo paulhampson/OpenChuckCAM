@@ -1635,3 +1635,192 @@ fn req_gc_05_req_gc_07_naming_from_the_kept_split_matches_output_files() {
     assert!(app.name_outputs(&run, &kept).is_err());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// Changes the first setup of `app` with `edit`.
+fn edit_setup(app: &mut Application, edit: impl FnOnce(&mut Setup)) {
+    let mut setup = app.project().setups()[0].clone();
+    edit(&mut setup);
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+}
+
+/// Links of every operation of `app` retract to the safe Z, so a safe
+/// cylinder inside the stock still makes a path (OP-14 refuses links at a
+/// clearance the stock reaches past).
+fn retract_to_safe_z(app: &mut Application) {
+    for operation in app.project().operations().to_vec() {
+        let mut operation = operation.clone();
+        operation
+            .parameters
+            .insert("retract".to_owned(), ParameterValue::Text("safe_z".into()));
+        app.execute(Command::Replace(Item::Operation(operation)))
+            .unwrap();
+    }
+}
+
+/// Decision 0538, the setup-level rows: the setup check that `fragment`
+/// names is a possible collision. The export lists it under its setup,
+/// writing waits for the tick of this result, the files written are the
+/// run's own bytes (GC-07), and the setup's mark and its message say it
+/// needs acknowledging.
+fn setup_collision_needs_acknowledging(app: &mut Application, fragment: &str) {
+    let run = std::sync::Arc::new(post(app, OutputGrouping::Setup));
+    let found = openchuck_app::collision_warnings(app.project(), &run);
+    assert!(
+        found
+            .iter()
+            .any(|f| f.starts_with("Setup 'Setup 1': ") && f.contains(fragment)),
+        "{found:?}"
+    );
+    assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
+    let checks = app.export_checks(Some(&run), None, None);
+    assert!(checks.can_write(), "{:?}", blockers(&checks));
+    let w = warnings(&checks);
+    assert!(
+        w.iter().any(|t| t.starts_with(
+            "Setup 'Setup 1' has a possible collision, which must be acknowledged before the files are written: "
+        ) && t.contains(fragment)),
+        "{w:?}"
+    );
+    // Writing waits for the tick, then writes the run's own bytes.
+    let out = folder("setup-collision-out");
+    let mut plan = app.prepare_output(&out, &run).unwrap();
+    assert_eq!(plan.collisions(), found.as_slice());
+    let refused = app.write_output(&plan, false);
+    assert!(refused.written.is_empty());
+    let reason = &refused.failed.as_ref().unwrap().reason;
+    assert!(
+        reason.contains("possible collision") && reason.contains("Setup 'Setup 1'"),
+        "{reason}"
+    );
+    assert!(!out.exists(), "nothing is written");
+    plan.acknowledge_collisions();
+    let report = app.write_output(&plan, false);
+    assert!(report.is_complete(), "{report:?}");
+    let mut written: Vec<Vec<u8>> = plan
+        .paths()
+        .iter()
+        .filter(|p| {
+            let name = p.to_string_lossy();
+            !name.ends_with(".pdf") && !name.ends_with(".html")
+        })
+        .map(|p| std::fs::read(p).unwrap())
+        .collect();
+    let mut made: Vec<Vec<u8>> = run
+        .gcode
+        .iter()
+        .map(|(_, text)| text.as_bytes().to_vec())
+        .collect();
+    written.sort();
+    made.sort();
+    assert_eq!(written, made);
+    std::fs::remove_dir_all(&out).ok();
+    // The setup's mark and its message.
+    let checked = app.start_checks(None).wait().unwrap();
+    let overview = app.overview(Some(&checked), &openchuck_app::JobLog::default());
+    assert!(
+        overview
+            .items
+            .values()
+            .any(|s| s.cause.starts_with("Needs acknowledging: ")),
+        "{:?}",
+        overview.items
+    );
+    assert!(
+        overview
+            .messages
+            .iter()
+            .any(|m| m.to_acknowledge && m.text.contains(fragment)),
+        "{:?}",
+        overview.messages
+    );
+}
+
+#[test]
+fn req_gc_16_a_safe_cylinder_that_does_not_enclose_the_stock_needs_acknowledging() {
+    let (dir, mut app) = project("cylinder-stock", false);
+    retract_to_safe_z(&mut app);
+    // The stock reaches 10 mm from the axis.
+    edit_setup(&mut app, |s| {
+        s.clearance = Some(openchuck_types::machine::Clearance {
+            radius: Millimetres(9.0),
+            safe_z: Millimetres(30.0),
+        });
+    });
+    setup_collision_needs_acknowledging(&mut app, "does not enclose the stock");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_16_a_safe_cylinder_that_does_not_enclose_the_part_needs_acknowledging() {
+    let (dir, mut app) = project("cylinder-part", false);
+    retract_to_safe_z(&mut app);
+    edit_setup(&mut app, |s| {
+        s.clearance = Some(openchuck_types::machine::Clearance {
+            radius: Millimetres(2.0),
+            safe_z: Millimetres(30.0),
+        });
+    });
+    setup_collision_needs_acknowledging(&mut app, "does not enclose the part");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_16_a_safe_cylinder_inside_the_minimum_clearance_needs_acknowledging() {
+    let (dir, mut app) = project("cylinder-minimum", false);
+    edit_setup(&mut app, |s| {
+        s.clearance = Some(openchuck_types::machine::Clearance {
+            radius: Millimetres(15.0),
+            safe_z: Millimetres(30.0),
+        });
+        s.clearance_rules.min_radius = Some(Millimetres(25.0));
+    });
+    setup_collision_needs_acknowledging(&mut app, "minimum");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_16_a_tool_too_long_to_clear_the_workholding_needs_acknowledging() {
+    let (dir, mut app) = project("tool-too-long", false);
+    // The tools stick out 15 mm (10 mm of flute and 5), so on a spindle 25 mm
+    // from the axis their tips rise no higher than 10 mm: inside the 12 mm
+    // minimum clearance (decision records 0318, 0495).
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.automatic_tool_length = true;
+    machine.spindle_to_axis = Some(Millimetres(25.0));
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    edit_setup(&mut app, |s| {
+        s.clearance = Some(openchuck_types::machine::Clearance {
+            radius: Millimetres(15.0),
+            safe_z: Millimetres(30.0),
+        });
+        s.clearance_rules.min_radius = Some(Millimetres(12.0));
+    });
+    setup_collision_needs_acknowledging(&mut app, "too long");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// A travel limit is not a collision (decision 0538): the controller stops
+/// at it, so it asks for no tick.
+#[test]
+fn req_gc_16_a_tool_past_the_top_of_the_z_travel_asks_no_tick() {
+    let (dir, mut app) = project("tool-past-top", false);
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.automatic_tool_length = true;
+    machine.spindle_to_axis = Some(Millimetres(40.0));
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    edit_setup(&mut app, |s| {
+        s.clearance = Some(openchuck_types::machine::Clearance {
+            radius: Millimetres(15.0),
+            safe_z: Millimetres(30.0),
+        });
+    });
+    let run = post(&mut app, OutputGrouping::Setup);
+    assert!(
+        openchuck_app::collision_warnings(app.project(), &run).is_empty(),
+        "{:?}",
+        openchuck_app::collision_warnings(app.project(), &run)
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

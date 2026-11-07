@@ -164,6 +164,73 @@ pub fn collision_warnings(project: &Project, run: &Regeneration) -> Vec<String> 
         }
         out.extend(rapid_cuts(run, operation));
     }
+    out.extend(
+        setup_collisions(run)
+            .into_iter()
+            .map(|(setup, text)| format!("Setup '{setup}': {text}")),
+    );
+    out
+}
+
+/// The possible collisions of the run's setups (decision record 0538), as
+/// (setup name, the check's text): a safe cylinder that does not enclose the
+/// stock or the part, or is inside the minimum clearance, and a tool that may
+/// be too long to clear the workholding. Read from the project the run was
+/// made from and the part bounds it measured, so they are this result's.
+fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
+    let project = &run.project;
+    let Some(machine) = project.machine() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for setup in project.setups() {
+        let Some(group) = run.groups.iter().find(|g| g.setup == setup.id) else {
+            continue;
+        };
+        let part = crate::setup::part_extent(&group.part_bounds);
+        let found = openchuck_types::setup::check_setup(&openchuck_types::setup::SetupCheck {
+            profile: machine,
+            frame: &setup.frame,
+            stock: setup.stock.as_ref(),
+            clearance: setup.clearance.as_ref(),
+            rules: &setup.clearance_rules,
+            part: Some(&part),
+        });
+        out.extend(
+            found
+                .iter()
+                .filter(|w| crate::setup::is_possible_collision(&w.kind))
+                .map(|w| (setup.name.clone(), crate::overview::setup_warning_text(w))),
+        );
+        // The tools of the setup's operations in this run, in the tool
+        // list's order, as the setup check names them.
+        let effective = crate::setup::effective_clearance(machine, setup, Some(&group.part_bounds));
+        let minimum = effective.minimum.map(|(r, _)| r.0);
+        for snapshot in project.tools().iter().filter(|t| {
+            run.groups.iter().any(|g| {
+                g.setup == setup.id
+                    && project.operation(g.operation).and_then(|o| o.tool) == Some(t.id)
+            })
+        }) {
+            if let Some(height) = crate::setup::spindle_height(
+                machine,
+                effective.clearance.safe_z.0,
+                minimum,
+                &snapshot.tool,
+            )
+            .filter(|h| h.below_minimum.is_some())
+            {
+                out.push((
+                    setup.name.clone(),
+                    crate::setup::spindle_height_text(
+                        snapshot.controller.number,
+                        &snapshot.name,
+                        &height,
+                    ),
+                ));
+            }
+        }
+    }
     out
 }
 
@@ -584,6 +651,15 @@ pub(crate) fn export_checks_with(
                         ),
                     );
                 }
+            }
+            for (setup, text) in setup_collisions(run) {
+                push(
+                    CheckLevel::Warning,
+                    format!(
+                        "Setup '{setup}' has a possible collision, which must be acknowledged \
+                         before the files are written: {text}"
+                    ),
+                );
             }
             let diagnostics = posted.unwrap_or(run);
             for report in &diagnostics.short_blocks {
