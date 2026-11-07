@@ -1,6 +1,6 @@
 # 0540: The command line checks before it writes (lane MSGREVIEW; issue #567)
 
-- **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). It records the owner's answer to question 6 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what the command line does, so it is a record of its own.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's answer to question 6 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what the command line does, so it is a record of its own.
 - **What it amends, if accepted:** the command line's `regenerate --out` (`apps/openchuck-cli`). The requirements are unchanged; this brings the command line into line with GC-15, as the export dialog already is.
 - **Date:** 7 Nov 2026.
 - **Open items:** OI-2096 (raised with 0536) closes when this is built.
