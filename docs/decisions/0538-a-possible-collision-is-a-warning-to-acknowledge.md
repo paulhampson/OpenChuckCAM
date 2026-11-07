@@ -1,6 +1,6 @@
 # 0538: A possible collision is a warning to acknowledge (lane MSGREVIEW; issue #567)
 
-- **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536. The owner's answers to questions 8 to 10 (7 Nov 2026, relayed, each option A) settle which rows qualify. The record is ready for acceptance.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written: 11 checks, one tick per result, a flag on the command line. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536. The owner's answers to questions 8 to 10 (7 Nov 2026, relayed, each option A) settle which rows qualify.
 - **What it amends, if accepted:**
   - [decision 0175](0175-swarf-overcut-is-a-warning.md) item 2: a path warning needs no tick, unless it is a possible collision;
   - [decision 0522](0522-the-flute-check-warns.md) item 1 and [decision 0523](0523-tab-checks-follow-the-operations-reach.md) item 4: the flute and tab warnings need a tick;
@@ -9,7 +9,7 @@
   The requirements are unchanged. GC-16's own confirmation (that the user will verify the G-code) stays as it is. The export already asks for ticks of this kind, for a partial path (decision 0239) and for a skipped stock simulation (decision 0168). GC-16's rule that the command line asks for no confirmation is kept, because a flag asks nothing.
 - **Date:** 7 Nov 2026.
 - **Depends on:** decision 0536 item 6.1. The library type carries the reason for a tick, so a collision is never called partial.
-- **Open items:** OI-2100 (the owner's acceptance; its three open rows were answered on 7 Nov 2026) and OI-2101 (the verification plan's GC-16 entry). Both are new, raised with 0536.
+- **Open items:** OI-2100 (the owner's acceptance; closed on 7 Nov 2026 with this record) and OI-2101 (the verification plan's GC-16 entry). Both are new, raised with 0536.
 
 ## Context
 
