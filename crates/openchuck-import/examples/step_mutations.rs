@@ -84,10 +84,17 @@ fn main() -> ExitCode {
     let seed: u64 = args.get(2).and_then(|a| a.parse().ok()).unwrap_or(1).max(1);
     // An optional time budget in seconds (decision 0534, OI-326): the run stops after the first
     // mutant that ends past it, so a night can import as many mutants as its hour holds.
-    let deadline = args
-        .get(3)
-        .and_then(|a| a.parse::<u64>().ok())
-        .map(|s| Instant::now() + Duration::from_secs(s));
+    let deadline = match args.get(3).map(|a| a.parse::<u64>()) {
+        None => None,
+        Some(Ok(seconds)) => Some(Instant::now() + Duration::from_secs(seconds)),
+        Some(Err(_)) => {
+            eprintln!(
+                "max_seconds must be a whole number of seconds, got '{}'",
+                args[3]
+            );
+            return ExitCode::from(2);
+        }
+    };
     let seeds: Vec<(String, Vec<u8>)> = ["cylinder", "box", "filleted_box", "rotary_blank_drilled"]
         .iter()
         .filter_map(|n| {
