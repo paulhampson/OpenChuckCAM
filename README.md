@@ -2,7 +2,7 @@
 
 > **Read this first.** OpenChuckCAM is in early development. Generated G-code **must be verified by you before it is run on a machine** (NFR-12). OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup, and it has not been approved for any machine. Very little has been run on a real machine: see the [known limitations](https://paulhampson.github.io/OpenChuckCAM/latest/start/limitations.html).
 
-**OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.** Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often outside the reach of makers and hobbyists. OpenChuckCAM has been developed with the vision to close the gap that exists for makers and hobbyists in the CNC world for 4-axis machining.
+**OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.** Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often out of reach for home and small-workshop users. OpenChuckCAM has been developed with the vision to close that gap.
 
 <table>
 <tr>
