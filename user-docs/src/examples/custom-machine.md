@@ -11,10 +11,10 @@ You need the tutorial's finished project, [`testdata/examples/baluster/baluster-
 
 1. Click **Setup** at the top of the window.
 2. In the project panel, under **Setup 1**, click **Machine profile**. The Inspector shows the project's machine, the built-in Makera Z1.
-3. Scroll the Inspector down to **Machine profiles**.
+3. Find **Machine profiles** at the bottom of the Inspector; in a smaller window, scroll the Inspector down to it.
 
 <figure>
-<img src="images/custom_machine/01-machine-section.png" width="1366" height="768" alt="The Setup step with the Inspector scrolled to Machine profiles: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1).">
+<a href="images/custom_machine/01-machine-section.png"><img src="images/custom_machine/01-machine-section.png" width="1920" height="1080" alt="The Setup step with the Inspector scrolled to Machine profiles: the library folder does not exist yet, with the buttons Create the library folder and Manage machines..., and the list showing Makera Z1 (built-in makera-z1)."></a>
 <figcaption><b>Figure 1.</b> The machine section of the Inspector. "Matches built-in makera-z1" says the project's copy is the same as the built-in profile.</figcaption>
 </figure>
 
@@ -29,7 +29,7 @@ Starting from a copy is quicker than **New machine**, which leaves 18 values for
 3. Click **Copy to edit**. A new profile, "Makera Z1 copy", appears under **LIBRARY** as "(new)": it is a draft, and nothing is written until you save.
 
 <figure>
-<img src="images/custom_machine/02-built-in.png" width="1366" height="768" alt="The Machine library window with the built-in Makera Z1 selected, the note Built in: it cannot be edited and the Copy to edit button, and its values: rotary axis X, A+ direction Positive, A range Continuous, axis height -48.600 mm, each confirmed on the machine.">
+<a href="images/custom_machine/02-built-in.png"><img src="images/custom_machine/02-built-in.png" width="1920" height="1080" alt="The Machine library window with the built-in Makera Z1 selected, the note Built in: it cannot be edited and the Copy to edit button, and its values: rotary axis X, A+ direction Positive, A range Continuous, axis height -48.600 mm, each confirmed on the machine."></a>
 <figcaption><b>Figure 2.</b> The built-in Makera Z1 profile. The ticks mark values confirmed on a Z1, not on your machine.</figcaption>
 </figure>
 
@@ -45,7 +45,7 @@ Type each value and press <kbd>Enter</kbd>. For the example router:
 | Lowest X, Lowest Y, Lowest Z | `-600`, `-300`, `-120` mm | The travel limits; the highest are 0 on this machine, as on the Z1. |
 
 <figure>
-<img src="images/custom_machine/03-copy-edited.png" width="1366" height="768" alt="The draft Example router in the Machine library, New: not saved yet, with rotary reference X -300.000, Y -150.000, axis height -80.000 marked Not confirmed on the machine with a Mark confirmed... button, and travel Lowest X -600.000, Lowest Y -300.000, Lowest Z -120.000.">
+<a href="images/custom_machine/03-copy-edited.png"><img src="images/custom_machine/03-copy-edited.png" width="1920" height="1080" alt="The draft Example router in the Machine library, New: not saved yet, with rotary reference X -300.000, Y -150.000, axis height -80.000 marked Not confirmed on the machine with a Mark confirmed... button, and travel Lowest X -600.000, Lowest Y -300.000, Lowest Z -120.000."></a>
 <figcaption><b>Figure 3.</b> A changed value is marked "Not confirmed on the machine". The rotary axis, A direction and A range keep the Z1's ticks, because they were not changed.</figcaption>
 </figure>
 
@@ -63,14 +63,14 @@ Scroll down the form and go on:
 Set **Safe Z** before **Safe cylinder radius**: the safe Z cannot be below the safe cylinder, and a radius of 50 mm is refused while the safe Z is still the Z1's 40 mm.
 
 <figure>
-<img src="images/custom_machine/04-feeds-and-clearance.png" width="1366" height="768" alt="The Maximum feeds, Clearance and Tools and spindle groups of the draft: feeds 3000, 1500 and 7200, rapids 5000, 3000 and 7200, A in the feed word Separate, safe cylinder radius 50.000, safe Z 60.000, highest tool number 99, each changed value Not confirmed on the machine.">
+<a href="images/custom_machine/04-feeds-and-clearance.png"><img src="images/custom_machine/04-feeds-and-clearance.png" width="1920" height="1080" alt="The Maximum feeds, Clearance and Tools and spindle groups of the draft: feeds 3000, 1500 and 7200, rapids 5000, 3000 and 7200, A in the feed word Separate, safe cylinder radius 50.000, safe Z 60.000, highest tool number 99, each changed value Not confirmed on the machine."></a>
 <figcaption><b>Figure 4.</b> The feeds, the clearance and the highest tool number of the example router.</figcaption>
 </figure>
 
 Scroll further, and set **Highest spindle speed** to `24000` and **Lowest spindle speed** to `6000` rpm. An operation whose spindle speed is outside this range cannot be posted.
 
 <figure>
-<img src="images/custom_machine/05-spindle-and-short-moves.png" width="1366" height="768" alt="The Tools and spindle, Short moves and Spindle height groups: spindle speeds 6000 to 24000 rpm, minimum block time 7 ms still confirmed on the machine, block window 32 not confirmed, short moves Report, tool length measurement ticked and confirmed.">
+<a href="images/custom_machine/05-spindle-and-short-moves.png"><img src="images/custom_machine/05-spindle-and-short-moves.png" width="1920" height="1080" alt="The Tools and spindle, Short moves and Spindle height groups: spindle speeds 6000 to 24000 rpm, minimum block time 7 ms still confirmed on the machine, block window 32 not confirmed, short moves Report, tool length measurement ticked and confirmed."></a>
 <figcaption><b>Figure 5.</b> The values below were left as the Z1's. Some still carry the Z1's ticks, such as Minimum block time and Tool length measurement, although nobody measured them on the router.</figcaption>
 </figure>
 
@@ -82,7 +82,7 @@ Figure 5 shows the trap of a copy. **Minimum block time**, **Tool length measure
 2. Click **Save**. The draft becomes "Saved in the library", and the window says "Saved Example router in the machine library."
 
 <figure>
-<img src="images/custom_machine/06-saved.png" width="1366" height="768" alt="The Machine library with Example router under LIBRARY and the status Saved in the library; the line at the bottom reads Saved Example router in the machine library.">
+<a href="images/custom_machine/06-saved.png"><img src="images/custom_machine/06-saved.png" width="1920" height="1080" alt="The Machine library with Example router under LIBRARY and the status Saved in the library; the line at the bottom reads Saved Example router in the machine library."></a>
 <figcaption><b>Figure 6.</b> The saved profile. It is a file, <code>example-router.toml</code>, in the library folder.</figcaption>
 </figure>
 
@@ -93,7 +93,7 @@ Figure 5 shows the trap of a copy. **Minimum block time**, **Tool length measure
 When you have measured a value on the machine, click **Mark confirmed...** next to it and say how you confirmed it, for example "Measured with the probe on the chuck face, 7 Nov 2026". Do not confirm a value you have not checked: the mark is what tells you, and anyone you share the profile with, that the value is real.
 
 <figure>
-<img src="images/custom_machine/07-mark-confirmed.png" width="1366" height="768" alt="The Mark confirmed dialog for the axis height: Mark the axis height confirmed on the machine. Say how it was confirmed, for example what was measured and when, with an empty text box and the buttons Mark confirmed and Cancel.">
+<a href="images/custom_machine/07-mark-confirmed.png"><img src="images/custom_machine/07-mark-confirmed.png" width="1920" height="1080" alt="The Mark confirmed dialog for the axis height: Mark the axis height confirmed on the machine. Say how it was confirmed, for example what was measured and when, with an empty text box and the buttons Mark confirmed and Cancel."></a>
 <figcaption><b>Figure 7.</b> Confirming a value asks how it was confirmed. The example router's values are made up, so here the dialog is cancelled.</figcaption>
 </figure>
 
@@ -106,7 +106,7 @@ When you have measured a value on the machine, click **Mark confirmed...** next 
 3. Click **Use this machine**. The project takes its own copy of the profile.
 
 <figure>
-<img src="images/custom_machine/08-in-use.png" width="1366" height="768" alt="The Setup step with Setup 1 now on Example router: the view shows Safe Z +60 and Clearance R50; the Setup checks list four warnings, among them Safe Z cannot be checked against the Z travel because the axis height is not confirmed, and Tool 104 may take the spindle above the top of the Z travel at the safe Z; the status bar says 8 machine values unconfirmed.">
+<a href="images/custom_machine/08-in-use.png"><img src="images/custom_machine/08-in-use.png" width="1920" height="1080" alt="The Setup step with Setup 1 now on Example router: the view shows Safe Z +60 and Clearance R50; the Setup checks list four warnings, among them Safe Z cannot be checked against the Z travel because the axis height is not confirmed, and Tool 104 may take the spindle above the top of the Z travel at the safe Z; the status bar says 8 machine values unconfirmed."></a>
 <figcaption><b>Figure 8.</b> The project on the example router. The view shows the new safe Z and clearance, and the setup checks show what the new values mean for this job.</figcaption>
 </figure>
 
