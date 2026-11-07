@@ -385,6 +385,24 @@ fn narrow_findings(
         .collect()
 }
 
+/// Whether a zone finding stops Apply and stores nothing: only a tab
+/// outside the head and tail zones, which a decision names (decision
+/// records 0523 item 5 and 0539 item 3). Every other kind is a warning, so a
+/// kind added later warns until a decision makes it refuse.
+fn refuses(kind: &SetupWarningKind) -> bool {
+    matches!(kind, SetupWarningKind::TabOutsideEndZones { .. })
+}
+
+/// The row, from zero, of the tab a zone finding is about: the automatic
+/// tab with no room, or the automatic tab that overlaps one placed by hand.
+fn finding_tab(kind: &SetupWarningKind) -> Option<usize> {
+    match kind {
+        SetupWarningKind::AutoTabNoRoom { tab, .. } => tab.checked_sub(1),
+        SetupWarningKind::TabsOverlap { auto_tab, .. } => auto_tab.checked_sub(1),
+        _ => None,
+    }
+}
+
 /// What is wrong with the workholding of `setup` as it would be stored: tabs
 /// outside the head and tail zones (OI-180), then tabs shorter along X than a tool of
 /// its operations (OI-159). Reads and places the part for its extent; empty
@@ -411,7 +429,7 @@ pub(crate) fn findings_of(
             .map(|kind| match kind {
                 SetupWarningKind::TabOutsideEndZones { tab, x } => WorkholdingFinding {
                     tab: tab.checked_sub(1),
-                    refuses: true,
+                    refuses: refuses(&kind),
                     text: format!(
                         "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
                          zone. Tabs lie between the held region (or the end of the stock) and \
@@ -419,9 +437,13 @@ pub(crate) fn findings_of(
                         x.0, x.1
                     ),
                 },
+                // Every other finding is a warning: the workholding is stored
+                // and the finding stays on its tab's row, as it is a warning
+                // when generating (decision record 0539). Only a finding a
+                // decision names refuses; a new kind warns until one does.
                 other => WorkholdingFinding {
-                    tab: None,
-                    refuses: true,
+                    tab: finding_tab(&other),
+                    refuses: refuses(&other),
                     text: openchuck_types::setup::SetupWarning {
                         kind: other,
                         unconfirmed: Vec::new(),
@@ -1123,6 +1145,39 @@ fn inside(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn req_ui_25_a_new_zone_finding_warns_unless_named() {
+        use openchuck_types::setup::SetupWarningKind as K;
+        use openchuck_types::workholding::TabEnd;
+        assert!(super::refuses(&K::TabOutsideEndZones {
+            tab: 1,
+            x: (0.0, 1.0)
+        }));
+        for kind in [
+            K::AutoTabNoRoom {
+                tab: 1,
+                end: TabEnd::Head,
+            },
+            K::TabsOverlap {
+                auto_tab: 1,
+                hand_tab: 2,
+                x: (0.0, 1.0),
+            },
+            K::NoStock,
+            K::PartOutsideStock,
+        ] {
+            assert!(!super::refuses(&kind), "{kind:?} only warns");
+        }
+        assert_eq!(
+            super::finding_tab(&K::TabsOverlap {
+                auto_tab: 2,
+                hand_tab: 1,
+                x: (0.0, 1.0)
+            }),
+            Some(1)
+        );
+    }
+
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
     use openchuck_types::geometry::Aabb;
