@@ -47,6 +47,10 @@ required-features = ["kernel-tests"]
 name = "swarf_ends"
 required-features = ["kernel-tests"]
 
+[[example]]
+name = "face_flow_blisk"
+required-features = ["kernel-tests"]
+
 # The exact face and trim queries, measured for correctness and cost (lane
 # STEPALL-X1, issue 348): it reads STEP files, so it needs the kernel.
 [[example]]

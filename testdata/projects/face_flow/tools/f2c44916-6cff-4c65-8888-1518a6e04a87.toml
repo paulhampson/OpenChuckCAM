@@ -1,0 +1,24 @@
+schema = 27
+id = "f2c44916-6cff-4c65-8888-1518a6e04a87"
+order = "V"
+name = "3 mm ball"
+
+[tool]
+diameter = 3.0
+flute_length = 8.0
+overall_length = 40.0
+shank_diameter = 3.0
+flute_count = 2
+
+[tool.shape]
+type = "ball_end"
+
+[controller]
+number = 1
+
+[cutting_data.oak]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02
+plunge_feed = 150.0
+stepover = 1.0
+stepdown = 1.0

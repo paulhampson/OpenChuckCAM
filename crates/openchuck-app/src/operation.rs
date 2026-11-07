@@ -22,7 +22,7 @@ use openchuck_path::{
     CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
     PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, Shank, StockModel,
     Strategy, StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following,
-    generate, generate_in_region, generate_in_zones, pencil, swarf,
+    face_flow, generate, generate_in_region, generate_in_zones, pencil, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
 use openchuck_project::{
@@ -495,10 +495,12 @@ fn generate_unnamed(
     context.check_cancelled()?;
     // A strategy that takes a region on a mesh takes face sets on a STEP
     // part as the triangles of their faces (OP-02, OP-11; decision 0209
-    // item 3); swarf, drilling and edge following read the faces and edges
-    // themselves.
-    let faces_as_triangles =
-        placed.brep.is_some() && strategy.honours_region() && operation.strategy != swarf::NAME;
+    // item 3); swarf, face-flow finishing, drilling and edge following read
+    // the faces and edges themselves.
+    let faces_as_triangles = placed.brep.is_some()
+        && strategy.honours_region()
+        && operation.strategy != swarf::NAME
+        && operation.strategy != face_flow::NAME;
     // A STEP part is machined on its exact faces (IMP-02; decision 0056).
     let brep_choice = match &placed.brep {
         Some(brep) if !faces_as_triangles => {
@@ -520,8 +522,13 @@ fn generate_unnamed(
     let exact = placed.brep.is_some()
         && openchuck_path::contact::exact_drops(strategy, &stored_values(operation), &profile)
         && !grown_has_no_exact_drop(strategy, &profile, contact_leave);
+    // Face-flow finishing chooses its own faces and drops onto the whole part
+    // (OP-28; decision 0525), so its entries, exits and links are checked
+    // against the whole part too, walls its face set leaves out included.
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
-        (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
+        (Some(brep), Some(choice))
+            if !choice.faces.is_empty() && operation.strategy != face_flow::NAME =>
+        {
             Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
         }
         (Some(brep), _) => Arc::new(BrepSurface::new(brep)?.with_exact_drops(exact)),
@@ -830,6 +837,19 @@ fn generate_unnamed(
         Some(brep) if operation.strategy == pencil::NAME => Some(PencilFinishing::on_brep(brep)?),
         _ => None,
     };
+    // Face-flow finishing cuts the faces of its face sets, each from its
+    // guide: the edges of its edge sets where they bound a face, the
+    // longest side otherwise (OP-28; decision 0525, D3).
+    let face_flow_on_brep = match (&placed.brep, &brep_choice) {
+        (Some(brep), Some(choice)) if operation.strategy == face_flow::NAME => {
+            Some(face_flow::FaceFlow::on_brep(
+                Arc::new(brep.clone()),
+                choice.faces.clone(),
+                choice.edges.clone(),
+            ))
+        }
+        _ => None,
+    };
     let strategy: &dyn Strategy = match (brep_edges, mesh_edges) {
         (Some(source), _) => {
             with_edges = EdgeFollowing::with_source(source);
@@ -843,9 +863,11 @@ fn generate_unnamed(
             );
             &with_edges
         }
-        (None, None) => pencil_on_brep
-            .as_ref()
-            .map_or(strategy, |p| p as &dyn Strategy),
+        (None, None) => match (&pencil_on_brep, &face_flow_on_brep) {
+            (Some(p), _) => p as &dyn Strategy,
+            (None, Some(f)) => f as &dyn Strategy,
+            (None, None) => strategy,
+        },
     };
     let path = if zones.is_empty() {
         match &constraint {
@@ -993,7 +1015,14 @@ fn contact_note(
     leave: f64,
 ) -> Option<String> {
     use openchuck_path::contact::ExactContact;
-    if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
+    if [
+        drill::NAME,
+        swarf::NAME,
+        edge_following::NAME,
+        face_flow::NAME,
+    ]
+    .contains(&name)
+    {
         return None;
     }
     let deflection = openchuck_types::brep::TessellationSettings::default().linear;
@@ -1160,12 +1189,22 @@ pub(crate) fn brep_only(
 const SWARF_NEEDS_FACES: &str = "swarf needs a face set: select the ruled walls to cut with the \
      side of the tool, save them as a set and put it in the operation";
 
-/// Why `operation` cannot run yet when its strategy is swarf on a STEP part
-/// and none of its selection sets is a face set (decision 0111 item 1), for
-/// the parameter form. Whether the faces suit swarf is judged when it is
-/// generated ([`swarf_compatibility`]).
-pub(crate) fn swarf_needs_faces(project: &Project, operation: &Operation) -> Option<String> {
-    if operation.strategy != swarf::NAME || !on_step_part(project, operation) {
+/// Why face-flow finishing on a STEP part with no face set is refused
+/// (OP-28; decision 0525).
+const FACE_FLOW_NEEDS_FACES: &str = "Face-flow finishing needs a face set: select the faces to \
+     cut, save them as a set and put it in Cut on; an edge set there is the guide";
+
+/// Why `operation` cannot run yet when its strategy is swarf (decision 0111
+/// item 1) or face-flow finishing (OP-28) on a STEP part and none of its
+/// selection sets is a face set, for the parameter form. Whether the faces
+/// suit swarf is judged when it is generated ([`swarf_compatibility`]).
+pub(crate) fn needs_faces(project: &Project, operation: &Operation) -> Option<String> {
+    let reason = match operation.strategy.as_str() {
+        swarf::NAME => SWARF_NEEDS_FACES,
+        face_flow::NAME => FACE_FLOW_NEEDS_FACES,
+        _ => return None,
+    };
+    if !on_step_part(project, operation) {
         return None;
     }
     let has_faces = operation.selections.iter().any(|id| {
@@ -1174,7 +1213,7 @@ pub(crate) fn swarf_needs_faces(project: &Project, operation: &Operation) -> Opt
             .iter()
             .any(|s| s.id == *id && matches!(&s.target, SelectionTarget::Faces(f) if !f.is_empty()))
     });
-    (!has_faces).then(|| SWARF_NEEDS_FACES.to_owned())
+    (!has_faces).then(|| reason.to_owned())
 }
 
 /// Checks, before swarf runs, that every face of `surface` (the operation's
@@ -1553,6 +1592,8 @@ fn brep_selection(
                     "it selects no faces; select the ruled walls to cut with the side of the \
                      tool"
                         .to_owned()
+                } else if operation.strategy == face_flow::NAME {
+                    "it selects no faces; select the faces to cut".to_owned()
                 } else {
                     "it selects no faces; select the hole walls to drill, or take the set out \
                      of the operation to drill every hole"
@@ -1560,11 +1601,15 @@ fn brep_selection(
                 }));
             }
             SelectionTarget::Edges(edges) if edges.is_empty() => {
-                return Err(bad(
+                return Err(bad(if operation.strategy == face_flow::NAME {
+                    "it selects no edges; select the guide edges, or take the set out of the \
+                     operation to start each face from its longest side"
+                        .to_owned()
+                } else {
                     "it selects no edges; select the edges to follow, or take the set out of \
                      the operation to follow every edge"
-                        .to_owned(),
-                ));
+                        .to_owned()
+                }));
             }
             SelectionTarget::Faces(faces) => {
                 if let Some(face) = faces
@@ -1608,6 +1653,10 @@ fn brep_selection(
     // (the owner's change to decision 0061 item 1, decision 0111 item 1).
     if operation.strategy == swarf::NAME && choice.faces.is_empty() {
         return Err(fail(SWARF_NEEDS_FACES.to_owned()));
+    }
+    // Face-flow finishing cuts only the faces the user chose (OP-28).
+    if operation.strategy == face_flow::NAME && choice.faces.is_empty() {
+        return Err(fail(FACE_FLOW_NEEDS_FACES.to_owned()));
     }
     // A wall that is cut cannot also be kept clear of (decision 0176).
     for (ids, role) in [(&operation.avoid, "avoid"), (&operation.check, "check")] {
@@ -3669,14 +3718,15 @@ mod tests {
                      set 'chosen' out of the operation.",
                 ));
             }
-            if name != edge_following::NAME {
+            if name != edge_following::NAME && name != face_flow::NAME {
                 cases.push((
                     name.clone(),
                     edges(),
                     Role::Machine,
                     None,
-                    "Only edge following follows chosen edges. Take the edge set 'chosen' out \
-                     of the operation, or use edge following.",
+                    "Only edge following follows chosen edges, and face-flow finishing takes \
+                     them as its guide. Take the edge set 'chosen' out of the operation, or use \
+                     one of those.",
                 ));
             }
             for role in [Role::Boundary, Role::Avoid, Role::Check] {
@@ -3810,5 +3860,269 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A flat face at Z `FLOOR` from X 0 to 30 and Y -5 to 5 (in the
+    /// model's own frame), facing +Z, with its four straight edges: 0 at Y
+    /// -5, 1 at X 30, 2 at Y 5 and 3 at X 0 (OP-28).
+    const FLOOR: f64 = 10.0;
+
+    fn floor_brep() -> BrepModel {
+        use openchuck_types::brep::{
+            BrepEdge, BrepFace, BrepVertex, EdgeCurve, Frame, Surface, TrimLoop, UvPoint, VertexId,
+        };
+        use openchuck_types::geometry::Vec3;
+        use openchuck_types::mesh::TriangleMesh;
+        let corners = [(0.0, -5.0), (30.0, -5.0), (30.0, 5.0), (0.0, 5.0)];
+        let p = |(x, y): (f64, f64)| Point3::new(x, y, FLOOR);
+        let edges = (0..4u32)
+            .map(|i| {
+                let (a, b) = (corners[i as usize], corners[(i as usize + 1) % 4]);
+                let (pa, pb) = (p(a), p(b));
+                let len = pa.distance(pb);
+                BrepEdge {
+                    id: EdgeId(i),
+                    faces: vec![FaceId(0)],
+                    vertices: Some([VertexId(i), VertexId((i + 1) % 4)]),
+                    polyline: vec![pa, pb],
+                    curve: Some(EdgeCurve::Line {
+                        origin: pa,
+                        direction: (pb - pa) * (1.0 / len),
+                        first: 0.0,
+                        last: len,
+                    }),
+                }
+            })
+            .collect();
+        let mut tessellation = TriangleMesh::default();
+        for c in corners {
+            tessellation.vertices.push(p(c));
+        }
+        tessellation.triangles = vec![[0, 1, 2], [0, 2, 3]];
+        BrepModel {
+            faces: vec![BrepFace {
+                id: FaceId(0),
+                surface: openchuck_types::brep::SurfaceKind::Plane,
+                body: 0,
+                edges: (0..4).map(EdgeId).collect(),
+                geometry: Surface::Plane {
+                    frame: Frame {
+                        origin: Point3::new(0.0, 0.0, FLOOR),
+                        x: Vec3::new(1.0, 0.0, 0.0),
+                        y: Vec3::new(0.0, 1.0, 0.0),
+                        z: Vec3::new(0.0, 0.0, 1.0),
+                    },
+                },
+                reversed: false,
+                uv_bounds: [0.0, 30.0, -5.0, 5.0],
+                trims: vec![TrimLoop(
+                    corners.iter().map(|&(u, v)| UvPoint { u, v }).collect(),
+                )],
+                tessellation,
+            }],
+            edges,
+            vertices: corners
+                .iter()
+                .enumerate()
+                .map(|(i, &c)| BrepVertex {
+                    id: VertexId(i as u32),
+                    point: p(c),
+                })
+                .collect(),
+            tessellation: Default::default(),
+        }
+    }
+
+    /// [`floor_brep`] sunk 3 mm into a raised face on every side (faces 1 to
+    /// 4): walls the face set leaves out.
+    fn floor_between_ledges() -> BrepModel {
+        use openchuck_types::brep::{
+            BrepEdge, BrepFace, BrepVertex, EdgeCurve, Frame, Surface, TrimLoop, UvPoint, VertexId,
+        };
+        use openchuck_types::geometry::Vec3;
+        use openchuck_types::mesh::TriangleMesh;
+        let mut brep = floor_brep();
+        let z = FLOOR + 3.0;
+        let ledges = [
+            (1u32, (-20.0, 50.0), (-20.0, -5.0)),
+            (2, (-20.0, 50.0), (5.0, 20.0)),
+            (3, (-20.0, 0.0), (-5.0, 5.0)),
+            (4, (30.0, 50.0), (-5.0, 5.0)),
+        ];
+        for (face, (left, right), (low, high)) in ledges {
+            let corners = [(left, low), (right, low), (right, high), (left, high)];
+            let p = |(x, y): (f64, f64)| Point3::new(x, y, z);
+            let base = 4 * face;
+            for i in 0..4u32 {
+                let (a, b) = (corners[i as usize], corners[(i as usize + 1) % 4]);
+                let (pa, pb) = (p(a), p(b));
+                let len = pa.distance(pb);
+                brep.edges.push(BrepEdge {
+                    id: EdgeId(base + i),
+                    faces: vec![FaceId(face)],
+                    vertices: Some([VertexId(base + i), VertexId(base + (i + 1) % 4)]),
+                    polyline: vec![pa, pb],
+                    curve: Some(EdgeCurve::Line {
+                        origin: pa,
+                        direction: (pb - pa) * (1.0 / len),
+                        first: 0.0,
+                        last: len,
+                    }),
+                });
+                brep.vertices.push(BrepVertex {
+                    id: VertexId(base + i),
+                    point: p(a),
+                });
+            }
+            let mut tessellation = TriangleMesh::default();
+            for c in corners {
+                tessellation.vertices.push(p(c));
+            }
+            tessellation.triangles = vec![[0, 1, 2], [0, 2, 3]];
+            brep.faces.push(BrepFace {
+                id: FaceId(face),
+                surface: openchuck_types::brep::SurfaceKind::Plane,
+                body: 0,
+                edges: (base..base + 4).map(EdgeId).collect(),
+                geometry: Surface::Plane {
+                    frame: Frame {
+                        origin: Point3::new(0.0, 0.0, z),
+                        x: Vec3::new(1.0, 0.0, 0.0),
+                        y: Vec3::new(0.0, 1.0, 0.0),
+                        z: Vec3::new(0.0, 0.0, 1.0),
+                    },
+                },
+                reversed: false,
+                uv_bounds: [left, right, low, high],
+                trims: vec![TrimLoop(
+                    corners.iter().map(|&(u, v)| UvPoint { u, v }).collect(),
+                )],
+                tessellation,
+            });
+        }
+        brep
+    }
+
+    fn face_flow_fixture() -> Fixture {
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(3.0),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        fixture_on(
+            face_flow::NAME,
+            &[],
+            floor_brep(),
+            Vec::new(),
+            "floor.step",
+            ball,
+            15.0,
+        )
+    }
+
+    #[test]
+    fn req_op_28_face_flow_cuts_the_face_set_from_its_longest_side() {
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let path = f.run().unwrap();
+        assert!(!path.group.segments.is_empty());
+        let notes = path.notes.join("\n");
+        // The longest sides tie at 30 mm: edge 0, the lower ID, is the guide.
+        assert!(
+            notes.contains("face 0 is cut from its guide, edge 0"),
+            "{notes}"
+        );
+        // Always on the exact faces: no Exact STEP surface contact note
+        // (OP-27; the owner's D5, decision 0525).
+        assert!(!notes.contains("tessellation"), "{notes}");
+    }
+
+    #[test]
+    fn req_op_28_req_op_14_face_flow_entries_are_checked_against_the_faces_left_out() {
+        // A lead-in arc of 12 mm on either side of a pass on the floor runs
+        // under the raised faces round it, which the face set leaves out: it is
+        // checked against the whole part, so it is refused, not cut into them.
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(3.0),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            face_flow::NAME,
+            &[
+                ("entry", Value::Text("lead".to_owned())),
+                ("lead_radius", Value::Number(12.0)),
+            ],
+            floor_between_ledges(),
+            Vec::new(),
+            "floor.step",
+            ball,
+            15.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("into the finished surface"), "{err}");
+    }
+
+    #[test]
+    fn req_op_28_an_edge_set_in_cut_on_is_the_guide() {
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f.select(SelectionTarget::Edges([EdgeId(2)].into()), f.hash);
+        assert!(
+            crate::step_sets::refusals(
+                &f.project,
+                &Registry::builtin(),
+                f.project.operation(f.operation).unwrap()
+            )
+            .is_empty()
+        );
+        let notes = f.run().unwrap().notes.join("\n");
+        assert!(
+            notes.contains("face 0 is cut from its guide, edge 2"),
+            "{notes}"
+        );
+    }
+
+    #[test]
+    fn req_op_28_req_nfr_07_face_flow_needs_a_face_set_and_a_step_part() {
+        let f = face_flow_fixture();
+        let operation = f.project.operation(f.operation).unwrap();
+        let said = needs_faces(&f.project, operation).unwrap();
+        assert!(
+            said.starts_with("Face-flow finishing needs a face set"),
+            "{said}"
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("needs a face set"), "{err}");
+        // An empty face set, and an empty guide set, are refused naming the
+        // set and what to do.
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces(BTreeSet::new()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("'chosen'") && err.contains("select the faces to cut"),
+            "{err}"
+        );
+        let mut f = face_flow_fixture();
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        f.select(SelectionTarget::Edges(BTreeSet::new()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("select the guide edges"), "{err}");
+        // On a mesh (STL) part it is blocked with the plain reason
+        // (decision 0174).
+        let mesh = fixture_with(face_flow::NAME, &[], &[], "blank.stl");
+        let err = mesh.run_on(true).unwrap_err().to_string();
+        assert!(err.contains("STEP"), "{err}");
     }
 }

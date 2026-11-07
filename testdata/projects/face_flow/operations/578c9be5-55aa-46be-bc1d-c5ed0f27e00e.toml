@@ -1,0 +1,12 @@
+schema = 27
+id = "578c9be5-55aa-46be-bc1d-c5ed0f27e00e"
+order = "V"
+name = "Floor"
+setup = "d481d474-6815-4f24-add3-7d16e24e9b3b"
+strategy = "face_flow"
+tool = "f2c44916-6cff-4c65-8888-1518a6e04a87"
+selections = ["47aa9602-ba75-4050-ac0b-595f907863b0"]
+
+[parameters]
+stepover = 1.5
+tolerance = 0.01

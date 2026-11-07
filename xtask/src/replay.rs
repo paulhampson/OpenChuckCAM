@@ -57,6 +57,7 @@ const EXPECTED_SECONDS: &[(&str, u64)] = &[
     ("cone_axial_linuxcnc.ngc", 278),
     ("cone_held_tabs_linuxcnc.ngc", 223),
     ("groove_linuxcnc.ngc", 159),
+    ("face_flow_linuxcnc.ngc", 126),
     ("cone_linuxcnc.ngc", 124),
     ("lobed_linuxcnc.ngc", 114),
     ("swarf_linuxcnc.ngc", 110),
@@ -714,7 +715,9 @@ mod tests {
     #[test]
     fn req_gc_10_req_nfr_06_first_cut_is_expanded_before_sharding_without_losing_a_chunk() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let prepared = prepare_programs(default_programs(&root).unwrap()).unwrap();
+        let whole = default_programs(&root).unwrap();
+        let count = whole.len();
+        let prepared = prepare_programs(whole).unwrap();
         assert!(prepared.boundaries.len() > 1);
         assert!(
             !prepared
@@ -730,7 +733,12 @@ mod tests {
         let mut expected = prepared.programs.clone();
         expected.sort();
         assert_eq!(all, expected);
-        assert_eq!(prepared.programs.len(), 11 + prepared.boundaries.len());
+        // Every program but the first cut is kept whole; the first cut is
+        // replaced by one program per chunk.
+        assert_eq!(
+            prepared.programs.len(),
+            count - 1 + prepared.boundaries.len()
+        );
     }
 
     #[test]
