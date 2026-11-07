@@ -26,7 +26,12 @@ Publishing cannot be undone. A published version can be yanked (new projects sto
 1. Sign in to [crates.io](https://crates.io) with the GitHub account that owns the crates (`paulhampson`).
 2. **Account Settings, API Tokens, New Token.** Name it for this repository (for example `OpenChuckCAM release workflow`), give it an expiry, tick the scope **publish-update** only, and restrict it to the crate pattern `openchuck-*`. Copy the token: crates.io shows it once.
 3. In the GitHub repository: **Settings, Environments, `crates-io`, Environment secrets, Add secret**, named `CARGO_REGISTRY_TOKEN`, holding the token, so only the publish job can read it. (A repository secret of the same name also works.)
-4. **Settings, Environments, `crates-io`** (create it, or the first run creates it), add yourself as a **required reviewer**. The publish job then waits for your approval before it runs (the owner's decision, 20 Oct 2026).
+4. **Settings, Environments, `crates-io`** (create it, or the first run creates it):
+   - Tick **Required reviewers** and add yourself. The publish job then waits for your approval before it runs (the owner's decision, 20 Oct 2026). Leave **Prevent self-review** off: as the only maintainer you start the run and approve it, which that setting would forbid.
+   - Consider turning off **Allow administrators to bypass configured protection rules**, so the approval is asked for every time, of the owner too.
+   - Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, choose the type **Tag**, and enter `lib-v*`. Add no branch rule. Only a run on a library release tag can then use the token (the same pattern as `docs-release`, step 3 of the documentation setup below).
+
+   The menu names were checked against this document's other steps, not clicked through (lane PACKAGING, 7 Nov 2026).
 
 Renew the token before it expires and replace the secret. Revoke it on crates.io if it may have leaked.
 
@@ -100,17 +105,21 @@ To move the floor: change the image and its digest in `build-archives.yml` and `
 
 ## Protect the release tags
 
-What the owner does once, so that only the maintainer can create, move or delete the tags that start a publishing release run (`lib-v*`, `app-v*`; OI-305). The release workflow cannot change repository settings. It only reports, in its first job: a warning when no active tag ruleset covers `lib-v*` and `app-v*`, or when the run was not started by the repository owner. The warning never fails the run, so a token that cannot read the rulesets does not block the first release; it can become a failure once a run has shown that the check works (decision 0541).
+What the owner does once, so that only the maintainer can create, move or delete the tags that start a publishing release run (`lib-v*`, `app-v*`; OI-305).
+
+**Why it matters most for `app-v` tags.** Pushing an `app-v` tag starts a release run that publishes the application release with no further step (after the gate and the checks pass), so whoever can push such a tag can publish. A `lib-v` tag push publishes nothing: crates reach crates.io only through a manual run with `publish_crates` ticked, in the `crates-io` environment, after the owner approves it (above). The ruleset closes the first door; the environment closes the second. The release workflow cannot change repository settings. It only reports, in its first job: a warning when no active tag ruleset covers `lib-v*` and `app-v*`, or when the run was not started by the repository owner. The warning never fails the run, so a token that cannot read the rulesets does not block the first release; it can become a failure once a run has shown that the check works (decision 0541).
 
 1. In the repository, **Settings**; under "Code, planning, and automation" in the left sidebar, **Rules**, then **Rulesets**.
 2. **New ruleset**, then **New tag ruleset**.
 3. **Ruleset name:** `Release tags are created by the maintainer only`. **Enforcement status:** **Active**.
-4. Under **Bypass list**, click **Add bypass**, choose the role **Repository admin**, and click **Add selected**; leave it as **Always allow**. Add nobody else, and not the docs release App: it writes the `docs-releases` branch, never a tag.
-5. Under **Target tags**, click **Add target**, **Include by pattern**, and enter `lib-v*`; then again for `app-v*`.
+4. Under **Bypass list**, click **Add bypass**, choose the role **Repository admin** (the owner, who can still create the tags), and click **Add selected**; leave it as **Always allow**. Add nobody else, and not the docs release App: it writes the `docs-releases` branch, never a tag.
+5. Under **Target tags**, click **Add target**, **Include by pattern**, and enter `lib-v*`; then again for `app-v*` (GitHub stores them as `refs/tags/lib-v*` and `refs/tags/app-v*`).
 6. Under **Tag rules** (*unchecked*: GitHub's documentation may call this section "Rules" or "Tag protections"), tick **Restrict creations**, **Restrict updates**, **Restrict deletions** and **Block force pushes**.
 7. Click **Create**.
 
-To check it: run the Release workflow by hand on `main` with `dry_run` ticked. Its summary should say "An active tag ruleset covers lib-v*" and the same for `app-v*`. If it warns that it could not read the rulesets, check the ruleset by hand in **Settings, Rules, Rulesets** before each release.
+The menu names were checked against this document's other ruleset steps (step 4 of the documentation setup), not clicked through (lane PACKAGING, 7 Nov 2026).
+
+To check it: the ruleset's **Insights** tab lists the pushes it evaluated; a tag push by anyone outside the bypass list (a collaborator) must be refused, naming the ruleset. Also run the Release workflow by hand on `main` with `dry_run` ticked. Its summary should say "An active tag ruleset covers lib-v*" and the same for `app-v*`. If it warns that it could not read the rulesets, check the ruleset by hand in **Settings, Rules, Rulesets** before each release.
 
 ## One-time setup for the documentation site
 
