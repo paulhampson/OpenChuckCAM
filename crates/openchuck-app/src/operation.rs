@@ -522,8 +522,13 @@ fn generate_unnamed(
     let exact = placed.brep.is_some()
         && openchuck_path::contact::exact_drops(strategy, &stored_values(operation), &profile)
         && !grown_has_no_exact_drop(strategy, &profile, contact_leave);
+    // Face-flow finishing chooses its own faces and drops onto the whole part
+    // (OP-28; decision 0525), so its entries, exits and links are checked
+    // against the whole part too, walls its face set leaves out included.
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
-        (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
+        (Some(brep), Some(choice))
+            if !choice.faces.is_empty() && operation.strategy != face_flow::NAME =>
+        {
             Arc::new(BrepSurface::with_faces(brep, &choice.faces)?.with_exact_drops(exact))
         }
         (Some(brep), _) => Arc::new(BrepSurface::new(brep)?.with_exact_drops(exact)),
@@ -3831,6 +3836,76 @@ mod tests {
         }
     }
 
+    /// [`floor_brep`] sunk 3 mm into a raised face on every side (faces 1 to
+    /// 4): walls the face set leaves out.
+    fn floor_between_ledges() -> BrepModel {
+        use openchuck_types::brep::{
+            BrepEdge, BrepFace, BrepVertex, EdgeCurve, Frame, Surface, TrimLoop, UvPoint, VertexId,
+        };
+        use openchuck_types::geometry::Vec3;
+        use openchuck_types::mesh::TriangleMesh;
+        let mut brep = floor_brep();
+        let z = FLOOR + 3.0;
+        let ledges = [
+            (1u32, (-20.0, 50.0), (-20.0, -5.0)),
+            (2, (-20.0, 50.0), (5.0, 20.0)),
+            (3, (-20.0, 0.0), (-5.0, 5.0)),
+            (4, (30.0, 50.0), (-5.0, 5.0)),
+        ];
+        for (face, (left, right), (low, high)) in ledges {
+            let corners = [(left, low), (right, low), (right, high), (left, high)];
+            let p = |(x, y): (f64, f64)| Point3::new(x, y, z);
+            let base = 4 * face;
+            for i in 0..4u32 {
+                let (a, b) = (corners[i as usize], corners[(i as usize + 1) % 4]);
+                let (pa, pb) = (p(a), p(b));
+                let len = pa.distance(pb);
+                brep.edges.push(BrepEdge {
+                    id: EdgeId(base + i),
+                    faces: vec![FaceId(face)],
+                    vertices: Some([VertexId(base + i), VertexId(base + (i + 1) % 4)]),
+                    polyline: vec![pa, pb],
+                    curve: Some(EdgeCurve::Line {
+                        origin: pa,
+                        direction: (pb - pa) * (1.0 / len),
+                        first: 0.0,
+                        last: len,
+                    }),
+                });
+                brep.vertices.push(BrepVertex {
+                    id: VertexId(base + i),
+                    point: p(a),
+                });
+            }
+            let mut tessellation = TriangleMesh::default();
+            for c in corners {
+                tessellation.vertices.push(p(c));
+            }
+            tessellation.triangles = vec![[0, 1, 2], [0, 2, 3]];
+            brep.faces.push(BrepFace {
+                id: FaceId(face),
+                surface: openchuck_types::brep::SurfaceKind::Plane,
+                body: 0,
+                edges: (base..base + 4).map(EdgeId).collect(),
+                geometry: Surface::Plane {
+                    frame: Frame {
+                        origin: Point3::new(0.0, 0.0, z),
+                        x: Vec3::new(1.0, 0.0, 0.0),
+                        y: Vec3::new(0.0, 1.0, 0.0),
+                        z: Vec3::new(0.0, 0.0, 1.0),
+                    },
+                },
+                reversed: false,
+                uv_bounds: [left, right, low, high],
+                trims: vec![TrimLoop(
+                    corners.iter().map(|&(u, v)| UvPoint { u, v }).collect(),
+                )],
+                tessellation,
+            });
+        }
+        brep
+    }
+
     fn face_flow_fixture() -> Fixture {
         let ball = Tool {
             shape: ToolShape::BallEnd,
@@ -3868,6 +3943,38 @@ mod tests {
         // Always on the exact faces: no Exact STEP surface contact note
         // (OP-27; the owner's D5, decision 0525).
         assert!(!notes.contains("tessellation"), "{notes}");
+    }
+
+    #[test]
+    fn req_op_28_req_op_14_face_flow_entries_are_checked_against_the_faces_left_out() {
+        // A lead-in arc of 12 mm on either side of a pass on the floor runs
+        // under the raised faces round it, which the face set leaves out: it is
+        // checked against the whole part, so it is refused, not cut into them.
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(3.0),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            face_flow::NAME,
+            &[
+                ("entry", Value::Text("lead".to_owned())),
+                ("lead_radius", Value::Number(12.0)),
+            ],
+            floor_between_ledges(),
+            Vec::new(),
+            "floor.step",
+            ball,
+            15.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("into the finished surface"), "{err}");
     }
 
     #[test]

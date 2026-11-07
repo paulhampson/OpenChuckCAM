@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+- FACEFLOW PR B (issue #512, decision 0525, accepted): face-flow finishing (OP-28) on a STEP part. The operation's face sets are cut and its edge sets are the guide; it is refused with no face set, an empty face set or an empty guide set, and blocked on a mesh part. Its entries, exits and links are checked against the whole part, not only the face set. New committed reference job `face_flow` (the blisk's blade floor), with golden programs for both posts.
+
 - STALETAB (issue #558, decision 0528, accepted): tests only. `tests/stale_setup_edits.rs` holds that every setup, workholding, machine, tool and simulation edit makes the operations stale (tree state, Simulate out of date, export blocked), that a tab or held-region edit gives a different path, and the edit sequences of #558 (during a run, undo and redo with the cache, save and reopen, an automatic tab, two setups). No code or API change.
 
 - FLUTE-TABS PR3 (issue #547, decision 0524, accepted): the stock earlier operations left (`LeftByEarlier`) passes on the simulation's reach profile, so the flute check reads the stock within the tool's reach.
