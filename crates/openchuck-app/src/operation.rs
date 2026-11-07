@@ -1406,8 +1406,8 @@ impl BrepLimits {
             check: self.check.as_ref().map(|s| s as _),
             boundary_limits: self.boundary_limits,
             watch,
-            ..RegionConstraint::default()
             neighbours: self.neighbours.as_ref().map(|s| s as _),
+            ..RegionConstraint::default()
         }
     }
 }

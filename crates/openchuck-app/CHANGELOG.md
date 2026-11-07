@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.48.0
+
+- **Changed output (0.48.0, or the next free version; SWARFEND; issue #442, sev2; decision 0532, proposed):** swarf on a STEP part passes the faces that share an edge with its face set to the pathing library (`RegionConstraint::neighbours`). A swarf pass now stops short of a face that meets an end of the face it cuts, by the least length that keeps the tool off it, and the note says how much is left uncut; a cut deeper than the tolerance into any face next to it (such as a floor a ball tool reaches) is a warning naming the face, the depth and the setting to change. New swarf setting, Keep off the end faces (on by default; off, the pass runs to the ends and the cut into those faces is warned of). Saved swarf operations whose faces meet another face at an end may give different G-code after the update; the repository's swarf reference job is unchanged.
+
 ## 0.47.0
 
 - **Changed output (0.47.0, TABCUT; issue #555, sev1; decision 0527, accepted):** an operation with a machine selection gives the faces it leaves out as `RegionConstraint::outside`, so its path no longer runs past its selected faces at a convex edge (on the owner's carving it came down beside the end face onto the tab). Whole-part operations are unchanged.
