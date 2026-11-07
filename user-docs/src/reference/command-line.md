@@ -98,7 +98,7 @@ A model can be named by its ID, its path or its file name.
 | `--tab SPEC` | A tab: `cylinder=X_START,LENGTH,DIAMETER` or `frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER`, optionally followed by `@COUNT,START_ANGLE,RADIAL_OFFSET`. Repeat it for more tabs. |
 | `--clear-tabs`, `--default-tabs` | Remove the tabs first, or add the default head and tail tabs worked out from the part. |
 
-A tab outside the head and tail zones is refused before anything is saved. The printout includes where to set the work offset on the machine, for example "set G54 to machine X ... Y ... Z ... at A 0".
+The workholding is checked as **Apply** checks it: a tab outside the head and tail zones is refused, and nothing is saved; a tab shorter than a tool of the setup is wide, an automatic tab with no room and tabs that overlap are saved, each with a `warning:` line. The printout includes where to set the work offset on the machine, for example "set G54 to machine X ... Y ... Z ... at A 0".
 
 ## Tools
 
