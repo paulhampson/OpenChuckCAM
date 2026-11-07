@@ -1274,7 +1274,11 @@ fn req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged() {
         .path();
     let text = std::fs::read_to_string(&file).unwrap();
     assert!(text.contains("flute_length = 8.0"), "{text}");
-    std::fs::write(&file, text.replace("flute_length = 8.0", "flute_length = 0.5")).unwrap();
+    std::fs::write(
+        &file,
+        text.replace("flute_length = 8.0", "flute_length = 1.6"),
+    )
+    .unwrap();
     let out = root.join("out");
     let args = |acknowledge: bool| {
         let mut a: Vec<OsString> = [

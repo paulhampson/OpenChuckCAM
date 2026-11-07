@@ -3132,7 +3132,9 @@ mod tests {
         let status = &overview.items[&ItemRef::Operation(op)];
         assert_eq!(status.state, ItemState::Warning, "{status:?}");
         assert!(
-            status.cause.starts_with("Needs acknowledging: Flute length (operation 'Walls'"),
+            status
+                .cause
+                .starts_with("Needs acknowledging: Flute length (operation 'Walls'"),
             "{}",
             status.cause
         );
@@ -3143,7 +3145,11 @@ mod tests {
             .collect();
         assert!(warnings[0].to_acknowledge, "{warnings:?}");
         assert!(warnings[0].text.starts_with("Flute length"), "{warnings:?}");
-        assert!(warnings.iter().any(|m| m.text == "An ordinary warning." && !m.to_acknowledge));
+        assert!(
+            warnings
+                .iter()
+                .any(|m| m.text == "An ordinary warning." && !m.to_acknowledge)
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
