@@ -44,6 +44,10 @@ name = "swarf_floor"
 required-features = ["kernel-tests"]
 
 [[example]]
+name = "swarf_ends"
+required-features = ["kernel-tests"]
+
+[[example]]
 name = "face_flow_blisk"
 required-features = ["kernel-tests"]
 

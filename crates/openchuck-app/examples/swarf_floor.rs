@@ -363,6 +363,7 @@ fn main() {
                         max_material_left: 0.1,
                         reverse_tip_end: false,
                         reverse_direction: false,
+                        keep_off_end_faces: true,
                     };
                     let region = RegionConstraint {
                         avoid: avoid.then_some(&floor as &dyn SurfaceSource),
