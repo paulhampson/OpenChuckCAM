@@ -409,7 +409,7 @@ mod tests {
             rest[start..end].to_owned()
         };
         assert_eq!(value("CFBundleExecutable"), "openchuck-ui");
-        assert_eq!(value("CFBundleIdentifier"), "cam.openchuck.OpenChuckCAM");
+        assert_eq!(value("CFBundleIdentifier"), "cam.openchuck.desktop");
         assert_eq!(value("CFBundleName"), "OpenChuckCAM");
         assert_eq!(value("CFBundlePackageType"), "APPL");
         assert_eq!(value("CFBundleShortVersionString"), "0.49.0");
