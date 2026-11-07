@@ -4,6 +4,8 @@ Two kinds of release, each started by a tag: the library family on crates.io (`l
 
 - [The library family on crates.io](#the-library-family-on-cratesio)
 - [Each application release](#each-application-release)
+- [What the application archives hold](#what-the-application-archives-hold)
+- [Protect the release tags](#protect-the-release-tags)
 - [One-time setup for the documentation site](#one-time-setup-for-the-documentation-site)
 - [Up-to-date rule relaxed](#up-to-date-rule-relaxed)
 
@@ -45,6 +47,8 @@ Generated G-code is the user's to verify before running it on a machine (NFR-12)
 
 Before pushing the tag `app-v<version>`, the project owner ticks these items and records them in the release's verification report (verification plan section 9, Records). The release workflow checks the items marked *(checked)* and refuses to publish if they fail ([decision 0400](decisions/0400-user-documentation-site.md), section R).
 
+- [ ] An active tag ruleset protects `lib-v*` and `app-v*` ([Protect the release tags](#protect-the-release-tags), OI-305). *(reported: the run's plan job warns when it cannot see one, or when the run was not started by the repository owner; it never fails the run)*
+- [ ] The unsigned first run works as the README says, on a downloaded copy of the dry run's archives (decision 0541, OI-2107): on a Mac, open `OpenChuckCAM.app` from the macOS archive as downloaded and follow the README's steps (the "Not Opened" dialog, then **Open Anyway**, or the `xattr` command); on Windows, start `openchuck-ui.exe` from the zip as downloaded and check the SmartScreen steps. Record what macOS and Windows showed in the verification report.
 - [ ] The Makera Z1 air cut has been run, or the release notes say which Z1 values are unconfirmed ([decision 0106](decisions/0106-air-cut-is-a-manual-release-step.md)).
 - [ ] The tutorial screenshots match this release: re-captured with `user-docs/tools/capture.py` at the release commit, or checked against the release build and marked reviewed in `user-docs/src/tutorial/images/CAPTURED.toml`. *(checked: the capture or review commit is not older than the last change to the screens)*
 - [ ] Every setting, operation, strategy, machine-profile field and command-line command added or changed since the previous release is described in the reference pages of the user guide.
@@ -69,6 +73,44 @@ A released version of the guide is never changed. If one holds an error that mat
 3. adds a line to that release's notes giving the new manifest's SHA-256.
 
 The next deploy publishes the change. Nothing else ever writes that branch.
+
+## What the application archives hold
+
+[Decision 0541](decisions/0541-macos-app-bundle-linux-glibc-floor-and-release-tags.md) (OI-300, OI-301, OI-135). `build-archives.yml` builds one archive per platform for the nightly build and the release alike.
+
+| Archive | Built | Holds | Runs on |
+| --- | --- | --- | --- |
+| `x86_64-unknown-linux-gnu.tar.gz` | in an `ubuntu:22.04` container, pinned by digest, on `ubuntu-latest` | `openchuck-ui`, `openchuck-cli`, `openchuck-step-worker` | glibc 2.35 or newer with the libstdc++ of GCC 12 or newer: Ubuntu 22.04, Debian 12, Fedora 36 or later (x86-64) |
+| `x86_64-pc-windows-msvc.zip` | on `windows-latest` | `openchuck-ui.exe`, `openchuck-cli.exe`, `openchuck-step-worker.exe` | Windows x64 |
+| `aarch64-apple-darwin.tar.gz` | on `macos-latest` | `OpenChuckCAM.app` (with `openchuck-ui` and its own `openchuck-step-worker` in `Contents/MacOS`), `openchuck-cli`, `openchuck-step-worker` beside it | macOS 11 or later on Apple silicon |
+
+Each also holds `README.txt`, the licences and notices, and `TOOL-DATA-CREDITS.txt` (the credit for the Makera Z1 tool data, OI-269).
+
+**Not signed.** The programs and the `.app` are not signed with a certificate and not notarised: signing is out of scope for 2026.1-alpha (the owner's decision of 7 Nov 2026, OI-135). What a user sees, and what the README says to do:
+
+- **macOS** (15 and later): opening the app shows "OpenChuckCAM" Not Opened ("Apple could not verify..."), with **Done** and **Move to Trash**. The user clicks **Done**, then **System Settings, Privacy & Security**, **Open Anyway** under Security, and confirms. Or, in Terminal: `xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker`. The quarantine flag comes from the browser download; a copy made with `curl` has none.
+- **Windows**: SmartScreen may show "Windows protected your PC"; **More info**, then **Run anyway**. Or unblock the zip first (**Properties, Unblock**).
+- **Linux**: nothing; the archive has no signature to check.
+
+**The glibc floor.** A Linux program needs at least the glibc it was linked against; built on `ubuntu-latest` (now 26.04) the nightly `openchuck-ui` needed `GLIBC_2.43` on 7 Nov 2026, which only the newest distributions have. The Linux leg therefore builds in Ubuntu 22.04, and `cargo xtask glibc-floor` reads each binary's version needs and fails the build if one needs a newer `GLIBC_`, `GLIBCXX_`, `CXXABI_` or `GCC_` version than the floor. The floor is stated once, as `GLIBC_FLOOR` and `LINUX_FLOOR_TEXT` in `build-archives.yml`; the archive README takes its wording from there. The nightly UI smoke test (`ui-smoke.yml`) also launches the Linux archive in the same Ubuntu 22.04 image, which shows that the floor holds in practice. The OpenCASCADE install of the container build is cached under its own variant (`ubuntu2204`), so it is never mixed with the runner image's (decisions 0039, 0251).
+
+To move the floor: change the image and its digest in `build-archives.yml` and `ui-smoke.yml`, the variant name, `GLIBC_FLOOR` and `LINUX_FLOOR_TEXT`, the Linux row above, the user guide's install page, and record why in a decision record. The first build on a new variant builds OpenCASCADE once (about 21 minutes).
+
+**What a dry run proves, and what it does not.** A dry run (Actions, Release, Run workflow, `dry_run` ticked) runs the same build: it proves the container build, the glibc check, the STEP reader's tests on the shipped Linux build, the bundle, `Check the archives` (the bundle's files, the version in its `Info.plist`, the floor in the Linux README, the tool data credit), and whether the plan job can read the rulesets. Only a real `app-v` run proves the published release with these archives and the tag check on a real tag push; the first-run dialogs on a downloaded copy are checked by hand (the checklist above).
+
+## Protect the release tags
+
+What the owner does once, so that only the maintainer can create, move or delete the tags that start a publishing release run (`lib-v*`, `app-v*`; OI-305). The release workflow cannot change repository settings. It only reports, in its first job: a warning when no active tag ruleset covers `lib-v*` and `app-v*`, or when the run was not started by the repository owner. The warning never fails the run, so a token that cannot read the rulesets does not block the first release; it can become a failure once a run has shown that the check works (decision 0541).
+
+1. In the repository, **Settings**; under "Code, planning, and automation" in the left sidebar, **Rules**, then **Rulesets**.
+2. **New ruleset**, then **New tag ruleset**.
+3. **Ruleset name:** `Release tags are created by the maintainer only`. **Enforcement status:** **Active**.
+4. Under **Bypass list**, click **Add bypass**, choose the role **Repository admin**, and click **Add selected**; leave it as **Always allow**. Add nobody else, and not the docs release App: it writes the `docs-releases` branch, never a tag.
+5. Under **Target tags**, click **Add target**, **Include by pattern**, and enter `lib-v*`; then again for `app-v*`.
+6. Under **Tag rules** (*unchecked*: GitHub's documentation may call this section "Rules" or "Tag protections"), tick **Restrict creations**, **Restrict updates**, **Restrict deletions** and **Block force pushes**.
+7. Click **Create**.
+
+To check it: run the Release workflow by hand on `main` with `dry_run` ticked. Its summary should say "An active tag ruleset covers lib-v*" and the same for `app-v*`. If it warns that it could not read the rulesets, check the ruleset by hand in **Settings, Rules, Rulesets** before each release.
 
 ## One-time setup for the documentation site
 

@@ -7,6 +7,12 @@
 # workflow artifact (unzipped, so the Unix executable bits survive). The caller publishes them.
 # The notices travel between the jobs as `<kind>-notices` (`nightly-notices` for the nightly build,
 # as before the build was shared).
+#
+# Decision 0541 (OI-300, OI-301): the Linux leg builds in an Ubuntu 22.04 container, so the archive
+# runs on any system with glibc 2.35 or newer (the floor below, checked on every build); the macOS
+# archive carries the application as OpenChuckCAM.app (`cargo xtask macos-app`), not signed or
+# notarised (owner's decision of 7 Nov 2026, OI-135). The tar.gz archives are packed with sorted
+# names, no owners and the commit time, so the same files give the same archive.
 name: Build archives
 
 on:
@@ -42,6 +48,13 @@ env:
   # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
   # cmake_minimum_required (decision 0003).
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # The Linux floor (decision 0541, OI-301), stated once: the newest symbol version of each family
+  # the Linux binaries may need (`cargo xtask glibc-floor`), and the README's wording of it. It is
+  # what Ubuntu 22.04 (the build container) provides, with the libstdc++ of GCC 12.
+  GLIBC_FLOOR: GLIBC=2.35 GLIBCXX=3.4.30 CXXABI=1.3.13 GCC=7.0.0
+  LINUX_FLOOR_TEXT: >-
+    glibc 2.35 or newer and the C++ runtime (libstdc++) of GCC 12 or newer, as on Ubuntu 22.04,
+    Debian 12, Fedora 36 or later
 
 jobs:
   notices:
@@ -83,6 +96,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
             exe: ""
             archive: tar.gz
+            # The glibc floor (decision 0541): Ubuntu 22.04, pinned by digest. Its OpenCASCADE
+            # install is cached under its own variant, never mixed with the runner image's.
+            container: ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11
+            built-in: an Ubuntu 22.04 container
+            occt-variant: ubuntu2204
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             exe: .exe
@@ -92,18 +110,43 @@ jobs:
             exe: ""
             archive: tar.gz
     runs-on: ${{ matrix.os }}
+    # Empty on Windows and macOS: no container.
+    container: ${{ matrix.container }}
     defaults:
       run:
         shell: bash
     env:
       NAME: ${{ inputs.name }}-${{ matrix.target }}
     steps:
+      # The container starts bare: git before the checkout (so the build can read the commit,
+      # NFR-16), the C and C++ toolchain and CMake for OpenCASCADE, zstd for the caches, rustup.
+      - name: Prepare the build container (Linux)
+        if: matrix.container
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates curl git build-essential \
+            cmake pkg-config perl zstd xz-utils
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          ldd --version | head -n 1
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Install the pinned Rust toolchain (Linux container)
+        if: matrix.container
+        run: |
+          # The checkout belongs to another user inside the container; git must still read it.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          rustup toolchain install
+          rustc --version
+          cmake --version | head -n 1
       # The STEP kernel (OpenCASCADE, built by occt-sys) takes 8 to 71 minutes cold, so its install
       # is cached per platform on its own (decision 0039).
       - uses: ./.github/actions/occt
+        with:
+          variant: ${{ matrix.occt-variant || 'plain' }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: step-kernel
@@ -123,6 +166,23 @@ jobs:
       # application down (decision 0003); the application finds it beside itself (OI-118).
       - name: Build the STEP reader (release, with the OpenCASCADE kernel)
         run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-import --features kernel --bin openchuck-step-worker
+      # The Linux floor holds (decision 0541, OI-301): no binary needs a newer glibc or libstdc++
+      # than GLIBC_FLOOR, so the archive starts on every system the README names.
+      - name: Check the glibc floor (Linux)
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          floors=()
+          for f in $GLIBC_FLOOR; do floors+=(--floor "$f"); done
+          cargo xtask glibc-floor "${floors[@]}" "target/$TARGET/release/openchuck-cli" \
+            "target/$TARGET/release/openchuck-ui" "target/$TARGET/release/openchuck-step-worker"
+      # The shipped Linux worker is built by the container's toolchain, which no pull request job
+      # uses, so its STEP tests run here, on the release build (decisions 0490 and 0541): among them
+      # the clean exit that the OpenCASCADE type registry fix guards.
+      - name: Test the STEP reader as built for the archive (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test --release --locked --target ${{ matrix.target }} -p openchuck-import --features kernel --test step
       - uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.kind }}-notices
@@ -136,10 +196,28 @@ jobs:
           REF: ${{ github.ref_name }}
           KIND: ${{ inputs.kind }}
           VERSION: ${{ inputs.version }}
+          BUILT_IN: ${{ matrix.built-in }}
         run: |
           dir="dist/$NAME"
           mkdir -p "$dir"
-          cp "target/$TARGET/release/openchuck-cli$EXE" "target/$TARGET/release/openchuck-ui$EXE" "target/$TARGET/release/openchuck-step-worker$EXE" "$dir/"
+          bin="target/$TARGET/release"
+          case "$TARGET" in
+            *apple*)
+              # The application as a bundle (decision 0541, OI-300); the command-line program stays
+              # a plain executable, with its own copy of the STEP reader beside it.
+              cp "$bin/openchuck-cli" "$bin/openchuck-step-worker" "$dir/"
+              SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) cargo xtask macos-app \
+                --ui "$bin/openchuck-ui" --worker "$bin/openchuck-step-worker" --out "$dir"
+              plutil -lint "$dir/OpenChuckCAM.app/Contents/Info.plist"
+              # Reported, not enforced: what macOS makes of the bundle's signature state (the
+              # linker's ad-hoc signature on each arm64 binary, none on the bundle; decision 0541).
+              codesign --verify --deep --strict --verbose=2 "$dir/OpenChuckCAM.app" 2>&1 || true
+              spctl --assess --type execute --verbose=4 "$dir/OpenChuckCAM.app" 2>&1 || true
+              ;;
+            *)
+              cp "$bin/openchuck-cli$EXE" "$bin/openchuck-ui$EXE" "$bin/openchuck-step-worker$EXE" "$dir/"
+              ;;
+          esac
           cp LICENSES/AGPL-3.0-or-later.txt "$dir/LICENSE.txt"
           # OpenCASCADE is LGPL-2.1 with an exception, linked into the STEP reader: ship both licence
           # texts from the source occt-sys built, and our notice with the source offer.
@@ -150,6 +228,8 @@ jobs:
           # The IBM Plex fonts compiled into openchuck-ui (OFL-1.1, NFR-10): the notice and the licence text.
           cp LICENSES/IBM-Plex-NOTICE.txt "$dir/FONT-NOTICE.txt"
           cp LICENSES/OFL-1.1.txt "$dir/"
+          # The credit for the Makera Z1 tool data (owner's decision of 7 Nov 2026, OI-269).
+          cp LICENSES/TOOL-DATA-CREDITS.txt "$dir/"
           # The NFR-12 notice, read from its one definition in the code.
           notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
           [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
@@ -161,7 +241,7 @@ jobs:
             esac
             echo
             echo "Commit:   $SHA ($REF)"
-            echo "Built:    $(date -u +%Y-%m-%dT%H:%MZ) on ${ImageOS:-unknown} ${ImageVersion:-}"
+            echo "Built:    $(date -u +%Y-%m-%dT%H:%MZ) in ${BUILT_IN:-the runner image} on ${ImageOS:-unknown} ${ImageVersion:-}"
             echo "Target:   $TARGET"
             echo "Compiler: $(rustc --version)"
             echo
@@ -180,39 +260,69 @@ jobs:
             echo "$notice"
             echo
             echo "Contents:"
+            case "$TARGET" in
+              *apple*)
+                printf '  %-26s %s\n' \
+                  "OpenChuckCAM.app" "the desktop application, with its own STEP reader inside" \
+                  "openchuck-cli" "the command-line front end (run it with --help)" \
+                  "openchuck-step-worker" "reads STEP files for openchuck-cli; keep it beside it" ;;
+              *)
+                printf '  %-26s %s\n' \
+                  "openchuck-cli$EXE" "the command-line front end (run it with --help)" \
+                  "openchuck-ui$EXE" "the desktop application" \
+                  "openchuck-step-worker$EXE" "reads STEP files for the others; keep it beside them" ;;
+            esac
             printf '  %-26s %s\n' \
-              "openchuck-cli$EXE" "the command-line front end (run it with --help)" \
-              "openchuck-ui$EXE" "the desktop application" \
-              "openchuck-step-worker$EXE" "reads STEP files for the others; keep it beside them" \
               "LICENSE.txt" "GNU Affero General Public License v3.0 or later" \
               "THIRD-PARTY-NOTICES.html" "licences of the bundled third-party crates" \
               "OPENCASCADE-NOTICE.txt" "the STEP kernel's notice and source offer" \
               "FONT-NOTICE.txt" "the bundled IBM Plex fonts: source, version, copyright" \
               "OFL-1.1.txt" "SIL Open Font License 1.1, the licence of the fonts" \
               "LICENSE_LGPL_21.txt" "OpenCASCADE licence (LGPL-2.1)" \
-              "OCCT_LGPL_EXCEPTION.txt" "OpenCASCADE licence exception"
+              "OCCT_LGPL_EXCEPTION.txt" "OpenCASCADE licence exception" \
+              "TOOL-DATA-CREDITS.txt" "the sources of the Makera Z1 tool data, credited"
             echo
             echo "Source: https://github.com/$GITHUB_REPOSITORY/tree/$SHA"
             case "$TARGET" in
               *apple*)
                 echo
-                echo "macOS: the binaries are not signed or notarised. If macOS blocks them,"
-                echo "run: xattr -d com.apple.quarantine openchuck-cli openchuck-ui openchuck-step-worker" ;;
+                echo "macOS: the application and the programs are not signed with an Apple"
+                echo "Developer ID and not notarised, so macOS blocks them the first time."
+                echo "To open OpenChuckCAM.app: double-click it and close the \"Not Opened\""
+                echo "dialog with Done; then open System Settings, Privacy & Security, find the"
+                echo "message about OpenChuckCAM under Security, click \"Open Anyway\" and confirm."
+                echo "Or, in Terminal, in this folder, remove the download's quarantine flag:"
+                echo "  xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker"
+                echo "Needs macOS 11 or later on Apple silicon (an M-series Mac)." ;;
               *windows*)
                 echo
-                echo "Windows: the binaries are not signed, so SmartScreen may warn on first run." ;;
+                echo "Windows: the programs are not signed, so Microsoft Defender SmartScreen may"
+                echo "show \"Windows protected your PC\" the first time. Click \"More info\", then"
+                echo "\"Run anyway\". Or, before unpacking, right-click the zip file, choose"
+                echo "Properties, tick Unblock and click OK." ;;
               *linux*)
                 echo
-                echo "Linux: built against the glibc of the runner image above. The desktop"
-                echo "application needs a Vulkan or OpenGL driver and X11 or Wayland." ;;
+                echo "Linux: needs $LINUX_FLOOR_TEXT"
+                echo "(x86-64 only). The desktop application needs a Vulkan or OpenGL driver"
+                echo "and X11 or Wayland." ;;
             esac
           } > "$dir/README.txt"
           if [ "$RUNNER_OS" = "Windows" ]; then
             sed -i 's/$/\r/' "$dir/README.txt"
           fi
+      # Sorted names, no owners, every time the commit time and no time in the gzip header, so the
+      # same files give the same archive (GNU tar: `tar` on Linux, `gtar` on the macOS runners).
       - name: Pack (tar.gz)
         if: matrix.archive == 'tar.gz'
-        run: tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+        run: |
+          tar=tar
+          if [ "$RUNNER_OS" = macOS ]; then
+            tar=gtar
+            command -v gtar > /dev/null || brew install gnu-tar
+          fi
+          "$tar" --version | head -n 1
+          "$tar" -C dist --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 \
+            --numeric-owner --format=gnu -cf - "$NAME" | gzip -n -9 > "dist/$NAME.tar.gz"
       - name: Pack (zip)
         if: matrix.archive == 'zip'
         run: cd dist && 7z a -tzip -bso0 "$NAME.zip" "$NAME"

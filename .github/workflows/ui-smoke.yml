@@ -17,6 +17,10 @@
 # default branch, so it is not a pull request check and is not in the required
 # checks. The native-graphics launch on the reference machines is not tested
 # here; it stays a hands-on step (slice 8).
+#
+# Decision 0541: on macOS the program is launched from inside OpenChuckCAM.app, as Finder does;
+# a fourth leg launches the Linux archive in an Ubuntu 22.04 container, the oldest system its
+# glibc floor names, which is the proof that the floor holds.
 name: UI smoke test of the archives
 
 on:
@@ -86,7 +90,7 @@ jobs:
           echo "Launching the archives of nightly build run $RUN_ID (commit $sha)." >> "$GITHUB_STEP_SUMMARY"
 
   launch:
-    name: Launch the archive (${{ matrix.target }})
+    name: Launch the archive (${{ matrix.target }}${{ matrix.container && ', Ubuntu 22.04' || '' }})
     needs: select
     if: needs.select.outputs.smoke == 'true'
     strategy:
@@ -96,6 +100,11 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             exe: ""
+          # The glibc floor (build-archives.yml, decision 0541): the same image as the build.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ""
+            container: ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             exe: .exe
@@ -103,11 +112,22 @@ jobs:
             target: aarch64-apple-darwin
             exe: ""
     runs-on: ${{ matrix.os }}
+    # Empty except on the floor leg: no container.
+    container: ${{ matrix.container }}
     timeout-minutes: 20
     defaults:
       run:
         shell: bash
     steps:
+      # The floor container starts bare: git for the sparse checkout.
+      - name: Prepare the container (Ubuntu 22.04)
+        if: matrix.container
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates git
+          ldd --version | head -n 1
       # Only the corpus models are needed; the archive carries the program.
       - uses: actions/checkout@v7
         with:
@@ -140,17 +160,28 @@ jobs:
           dir=$(ls -d openchuckcam-nightly-*/)
           cd "$dir"
           ls -l
-          for f in "openchuck-ui$EXE" "openchuck-cli$EXE" "openchuck-step-worker$EXE" LICENSE.txt THIRD-PARTY-NOTICES.html README.txt; do
+          # macOS: the application is OpenChuckCAM.app, with its own STEP reader (decision 0541).
+          ui="openchuck-ui$EXE"
+          extra=""
+          if [ "$RUNNER_OS" = macOS ]; then
+            ui=OpenChuckCAM.app/Contents/MacOS/openchuck-ui
+            extra="OpenChuckCAM.app/Contents/Info.plist OpenChuckCAM.app/Contents/MacOS/openchuck-step-worker"
+          fi
+          for f in "$ui" $extra "openchuck-cli$EXE" "openchuck-step-worker$EXE" LICENSE.txt THIRD-PARTY-NOTICES.html README.txt; do
             [ -s "$f" ] || { echo "::error title=Archive incomplete::$f is missing or empty"; exit 1; }
           done
           echo "ARCHIVE_DIR=$PWD" >> "$GITHUB_ENV"
+          echo "UI=$ui" >> "$GITHUB_ENV"
       - name: Software Vulkan and a virtual display (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # Root in the floor container, which has no sudo.
+          sudo=sudo
+          if [ "$(id -u)" = 0 ]; then sudo=; fi
+          $sudo apt-get update
           # As in ci.yml: xvfb-run needs xauth, and winit loads libxkbcommon-x11
           # and the other X11 client libraries at run time.
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
+          DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
             libxkbcommon-x11-0 libxkbcommon0 libx11-xcb1 libxcursor1 libxrandr2 libxi6
       - name: Launch openchuck-ui from the archive (3 s scripted camera path)
         timeout-minutes: 8
@@ -161,7 +192,7 @@ jobs:
           model="$PWD/testdata/stl/cube_ascii.stl"
           report="$RUNNER_TEMP/report.txt"
           cd "$ARCHIVE_DIR"
-          run() { "$@" "./openchuck-ui$EXE" --bench "$model" --seconds 3 --out "$report"; }
+          run() { "$@" "./$UI" --bench "$model" --seconds 3 --out "$report"; }
           set +e
           if [ "$RUNNER_OS" = Linux ]; then
             run xvfb-run -a -s "-screen 0 1920x1080x24" > "$RUNNER_TEMP/launch.log" 2>&1
