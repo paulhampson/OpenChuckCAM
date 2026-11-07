@@ -1,5 +1,7 @@
 (golden - Setup 1 - Touch up A)
 (OpenChuckCAM <version>)
+(This program has not been run on your machine. Check it before you run it.)
+(Simulate it and air cut it first. You are responsible for what the machine does.)
 G90 G21 G17
 G54
 (operation Touch up A, tool T1 4 mm ball, about 15 s)

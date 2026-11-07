@@ -1,0 +1,23 @@
+Makera Z1 tool data: sources and credit
+
+OpenChuckCAM's ready-made Makera Z1 tools and the Z1 default tool set are
+written from facts that others published. We credit and thank:
+
+- Makera, for the tool pages of its store
+  (https://global.makera.com/en-gb/products/) and the repository
+  MakeraInc/CarveraProfiles (https://github.com/MakeraInc/CarveraProfiles).
+  These are the main source of the tools' dimensions and cutting parameters.
+
+- The Carvera community, for the community profiles in
+  Carvera-Community/Carvera_Community_Profiles
+  (https://github.com/Carvera-Community/Carvera_Community_Profiles), used
+  for what Makera's pages do not state, such as stepover and flute counts.
+
+This is a credit, not a licence. Neither repository has a licence file.
+OpenChuckCAM uses only facts from these sources (dimensions, parameters, tool
+numbers and cutting parameters), each recorded with its source in the header
+of its tool file in the OpenChuckCAM source; it copies no descriptions,
+images or file structures. No legal clearance of this use is claimed.
+OpenChuckCAM is an independent project, not made or endorsed by Makera.
+
+Check every program OpenChuckCAM writes before you run it on a machine.

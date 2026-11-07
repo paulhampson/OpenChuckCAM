@@ -16,6 +16,13 @@ the commit named there. Because the kernel is linked statically, you may rebuild
 openchuck-step-worker against a modified OCCT: build it from that commit with
 "cargo build --release -p openchuck-import --features kernel --bin openchuck-step-worker",
 setting the environment variable OCCT_ROOT to your own OCCT installation.
+What you can do: replace the openchuck-step-worker file in your copy of the application
+with the one you built, and the application will use it, because it finds the worker beside
+itself, unless the environment variable OPENCHUCK_STEP_WORKER names a worker program (the
+application then uses that one, and the file beside it is not used). On macOS the application
+is OpenChuckCAM.app, which holds its own copy in OpenChuckCAM.app/Contents/MacOS, and another
+copy sits beside openchuck-cli; replace both. This is a description of how the build works, not
+legal advice.
 
 The Open CASCADE exception text and the LGPL-2.1 text govern the kernel; where this
 notice and those texts differ, they win.

@@ -38,7 +38,7 @@ The owner's carving project is private; only numbers are given here.
    - low links stay the approach distance above the stock and never go below either end (0496 item 3), and retracts go to the clearance;
    - entries come down onto a pass's first point, which is allowed.
 
-   A generic check of the moves the fit never sees is open as OI-2054, belt and braces at the cost of drops on the whole part along every link.
+   An optional check after assembly is open as OI-2054: no cutting contact outside the selection, and no collision of any move with the part, the tabs or the held regions. Non-cutting moves over unselected areas are acceptable as long as they do not collide (the owner, 6 Nov 2026: not now, left open to be refined).
 4. **No carried-stock clearance.** The lane's planned second pull request (keep clear of the stock earlier operations left on a tab, the owner's earlier choice) is cancelled. Nothing outside the selection is touched now, so the tab is not either.
 5. **Generated G-code remains the user's to verify (NFR-12).**
 
@@ -61,4 +61,4 @@ Tests first, named after the requirements:
   - **Why it moved.** It expected some cuts beside the cube's edges where the ball rode the neighbouring faces' 1 mm, with its contact on the edge between the top and a side. Those contacts are no longer on the selection, so every cut keeps the selection's 0.3 mm, and the test says so.
   - **What it no longer shows.** The rest of the part's whole-number 1 mm; its first half still shows the operation's.
   - **Unchanged.** The whole `openchuck-path` suite and the rest of the `openchuck-app` suite pass unchanged.
-- **Open items.** OI-2054 is new (the optional generic check). OI-2047 (free ends ignore the region) stays open: with Face free ends on, a limited operation still faces both ends of the part.
+- **Open items.** OI-2054 is new (the optional check for cutting contact outside the selection and for collisions; not now). OI-2047 (free ends ignore the region) stays open: with Face free ends on, a limited operation still faces both ends of the part.

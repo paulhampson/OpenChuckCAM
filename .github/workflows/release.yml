@@ -138,6 +138,40 @@ jobs:
             echo "- Publishes: $publish"
             echo "- Publishes the library family to crates.io: $crates"
           } >> "$GITHUB_STEP_SUMMARY"
+      # The release tags should be protected by a tag ruleset, so only the maintainer can create
+      # the tags that start a publishing run (OI-305; docs/releasing.md, "Protect the release
+      # tags"). The repository setting is the owner's; this step only reports. It warns, and never
+      # fails, on every run (the coordinator's instruction of 7 Nov 2026, decision 0541): whether
+      # GITHUB_TOKEN can read the rulesets is not known until a run shows it, and a check that
+      # could not read them must not block the first release. It may become a failure later.
+      - name: Are the release tags protected? (warning only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          warn() {
+            echo "::warning title=Release tags (OI-305)::$1"
+            echo "- Warning: $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          if [ "$ACTOR" != "$OWNER" ]; then
+            warn "This run was started by $ACTOR, not by the repository owner $OWNER."
+          fi
+          if ! ids=$(gh api "repos/$REPO/rulesets?targets=tag&includes_parents=true" --jq '.[] | select(.enforcement == "active") | .id' 2>&1); then
+            warn "Could not read the repository's rulesets ($ids); check by hand that an active tag ruleset protects lib-v* and app-v*."
+            exit 0
+          fi
+          patterns=""
+          for id in $ids; do
+            patterns="$patterns $(gh api "repos/$REPO/rulesets/$id" --jq '.conditions.ref_name.include[]?' 2>/dev/null | tr '\n' ' ' || true)"
+          done
+          for tag in lib-v app-v; do
+            case " $patterns " in
+              *" refs/tags/$tag* "*|*" $tag* "*|*" ~ALL "*) echo "- An active tag ruleset covers $tag*." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) warn "No active tag ruleset covers $tag* (found:${patterns:- none}). See docs/releasing.md." ;;
+            esac
+          done
 
   # The release gate (slice 20 item 9). The tag check, the dependency rules, cargo deny, every
   # golden-file test (with the STEP kernel, for the `drilling` reference job) and the LinuxCNC
@@ -188,13 +222,20 @@ jobs:
       kind: ${{ needs.plan.outputs.kind }}
       version: ${{ needs.plan.outputs.version }}
 
-  # Every archive is there and readable, on a dry run and before a release alike.
+  # Every archive is there and readable, and carries the STEP reader and the OpenCASCADE licence
+  # notice and source offer (LGPL-2.1, statically linked; decision 0003, OI-29), on a dry run and
+  # before a release alike.
   check-archives:
     name: Check the archives
     needs: [plan, gate, archives]
     if: needs.plan.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
+      # Only for Cargo.lock: the notice must name the OpenCASCADE version the build compiled.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: Cargo.lock
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
           pattern: ${{ needs.plan.outputs.name }}-*
@@ -204,20 +245,55 @@ jobs:
       - name: Check the archives
         env:
           NAME: ${{ needs.plan.outputs.name }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           ls -l dist
-          for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
-            tar -tzf "dist/$NAME-$target.tar.gz" > list.txt
-            grep -q "^$NAME-$target/README.txt$" list.txt || { echo "no README in the $target archive"; exit 1; }
-            grep -q "^$NAME-$target/openchuck-ui$" list.txt || { echo "no openchuck-ui in the $target archive"; exit 1; }
-          done
-          target=x86_64-pc-windows-msvc
-          unzip -l "dist/$NAME-$target.zip" > list.txt
-          grep -q "$NAME-$target/README.txt" list.txt || { echo "no README in the $target archive"; exit 1; }
-          grep -q "$NAME-$target/openchuck-ui.exe" list.txt || { echo "no openchuck-ui.exe in the $target archive"; exit 1; }
+          occt=$(awk '/^name = "occt-sys"$/ { getline; gsub(/[^0-9.]/, "", $0); print; exit }' Cargo.lock)
+          [ -n "$occt" ] || { echo "no occt-sys version in Cargo.lock"; exit 1; }
+          # check <target> <ext> <exe suffix>: list the archive, then read the notice out of it.
+          # macOS carries the application as OpenChuckCAM.app with its own STEP reader, and the
+          # STEP reader again beside openchuck-cli (decision 0541, OI-300).
+          app=OpenChuckCAM.app/Contents
+          check() {
+            target=$1; ext=$2; exe=$3; dir="$NAME-$target"
+            if [ "$ext" = zip ]; then
+              unzip -Z1 "dist/$dir.zip" > list.txt
+            else
+              tar -tzf "dist/$dir.tar.gz" > list.txt
+            fi
+            case "$target" in
+              *apple*) programs="$app/Info.plist $app/_CodeSignature/CodeResources $app/MacOS/openchuck-ui $app/MacOS/openchuck-step-worker openchuck-cli openchuck-step-worker" ;;
+              *) programs="openchuck-ui$exe openchuck-step-worker$exe openchuck-cli$exe" ;;
+            esac
+            for f in README.txt $programs OPENCASCADE-NOTICE.txt LICENSE_LGPL_21.txt OCCT_LGPL_EXCEPTION.txt TOOL-DATA-CREDITS.txt; do
+              grep -qxF "$dir/$f" list.txt || { echo "no $f in the $target archive"; exit 1; }
+            done
+            case "$target" in
+              *apple*)
+                tar -xzOf "dist/$dir.tar.gz" "$dir/$app/Info.plist" > plist.txt
+                grep -qF "<string>$VERSION</string>" plist.txt || { echo "the bundle's Info.plist does not name the version $VERSION"; exit 1; } ;;
+              *linux*)
+                tar -xzOf "dist/$dir.tar.gz" "$dir/README.txt" > readme.txt
+                grep -q "^Linux: needs glibc " readme.txt || { echo "the Linux README states no glibc floor"; exit 1; } ;;
+            esac
+            if [ "$ext" = zip ]; then
+              unzip -p "dist/$dir.zip" "$dir/OPENCASCADE-NOTICE.txt" > notice.txt
+            else
+              tar -xzOf "dist/$dir.tar.gz" "$dir/OPENCASCADE-NOTICE.txt" > notice.txt
+            fi
+            # Whole version tokens: 7.8.10 or 7.8.1.2 must not pass for 7.8.1, and both places that name
+            # the version (the introduction and the source offer) must agree with Cargo.lock.
+            v=$(printf '%s' "$occt" | sed 's/\./\\./g')
+            vend='($|[^0-9.]|\.($|[^0-9]))'
+            grep -Eq "OpenCASCADE Technology \(OCCT\) $v$vend" notice.txt || { echo "the notice in the $target archive does not name OCCT $occt (Cargo.lock) in its introduction"; exit 1; }
+            grep -Eq "\"occt-sys\" $v$vend" notice.txt || { echo "the source offer in the $target archive does not name occt-sys $occt (Cargo.lock)"; exit 1; }
+          }
+          check x86_64-unknown-linux-gnu tar.gz ""
+          check aarch64-apple-darwin tar.gz ""
+          check x86_64-pc-windows-msvc zip .exe
           count=$(find dist -maxdepth 1 -type f -name "$NAME-*" | wc -l)
           [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
-          echo "The three archives are complete." >> "$GITHUB_STEP_SUMMARY"
+          echo "The three archives are complete, with the STEP reader and the OpenCASCADE notice (OCCT $occt)." >> "$GITHUB_STEP_SUMMARY"
 
   # The application release: a GitHub release (not a pre-release) for the existing app-v tag.
   publish-app:
@@ -262,7 +338,9 @@ jobs:
             echo
             echo "Makera Z1 machine values that have not been confirmed on the machine are labelled unconfirmed in the application. The Z1 air cut is a manual release step, recorded in the project's decision records (decision 0106)."
             echo
-            echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the STEP reader, the licences, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
+            echo "Each archive holds \`openchuck-cli\`, the desktop application (\`openchuck-ui\`; on macOS \`OpenChuckCAM.app\`), the STEP reader, the licences, the third-party notices, the tool data credits and a README."
+            echo
+            echo "**The programs are not signed or notarised.** macOS blocks them the first time and Windows SmartScreen may warn; the README in each archive says how to open them. The Linux archive's README names the oldest glibc it needs; the macOS archive is for Apple silicon only."
           } > notes.md
           # Upload to a draft first, so the release appears only once it holds all three archives.
           gh release create "$TAG" dist/"$NAME"-* -R "$REPO" --verify-tag --draft \

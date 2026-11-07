@@ -52,7 +52,7 @@ Update the specification, verification plan, work breakdown and registers in the
 
 At the UI-only checkpoint, registration strings were unchanged while OI-986 was
 open. The owner subsequently accepted all eleven strings in
-[0237-strategy-explanations.txt](0237-strategy-explanations.txt); they are now applied.
+[docs/archive/0237-strategy-explanations/0237-strategy-explanations.txt](../archive/0237-strategy-explanations/0237-strategy-explanations.txt); they are now applied.
 No PR was opened at that earlier checkpoint.
 
 Requirement-first regressions failed before fixes: the closed list showed multiple

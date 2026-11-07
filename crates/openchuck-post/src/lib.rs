@@ -35,7 +35,9 @@ pub use options::{
     UnwindMode,
 };
 pub use program::{MachineProgram, Step, Target};
-pub use render::{PostJob, PostOutput, PostProcessor, TemplatePost, sanitise_comment};
+pub use render::{
+    PostJob, PostOutput, PostProcessor, SAFETY_NOTICE, TemplatePost, sanitise_comment,
+};
 
 pub use block_time::{BlockTimeReport, BlockTimeSettings, block_time_reports};
 pub use short_blocks::{SettingSource, ShortBlockReport, ShortBlockSettings, ShortBlockSources};

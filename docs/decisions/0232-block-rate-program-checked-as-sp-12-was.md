@@ -30,11 +30,11 @@ Requirements: GC-09 (the Z1 post), GC-10 (the verification post), NFR-12 (the us
 
 The document edit below was proposed with this record and is made with its acceptance:
 
-- `docs/verification-plan.md` section 1, policy 6: after "The one exception is the SP-12 conventions program: …", add "The Z1 block-rate air-cut program of decision 0222 is treated the same way ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md)): read by hand, its LinuxCNC copy replayed by gate 3, then run only as an attended air cut under the gate 4 rules."
+- `docs/verification-plan.md` section 1, policy 6: after "The one exception is the SP-12 conventions program: …", add "The Z1 block-rate air-cut program of decision 0222 is treated the same way ([decision 0232](0232-block-rate-program-checked-as-sp-12-was.md)): read by hand, its LinuxCNC copy replayed by gate 3, then run only as an attended air cut under the gate 4 rules."
 - `docs/open-items.md`: OI-925 closed.
 
 NFR-12 still applies: the user verifies every program before it runs on a machine.
 
 ## Trial-specific release waiver, 25 Oct 2026
 
-The [owner’s submitted trial](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358) says K4 was waived before the machine run. In the takeover session the owner explicitly chose “Retain K4 as a release waiver”. This is the recorded owner disposition for that trial only: K4 remains waived, not passed; it does not remove this record’s pre-run replay requirement for future trials. A subsequent local LinuxCNC replay passed, as detailed in the [results audit](../z1-gates-4-5-test-instructions.md#104-initial-takeover-verification-before-implementation-25-oct-2026). Decision 0222 is accepted in its own lane; no reacceptance of it, 0221 or this record is requested.
+The [owner’s submitted trial](https://github.com/paulhampson/OpenChuckCAM/pull/284#issuecomment-6399134358) says K4 was waived before the machine run. In the takeover session the owner explicitly chose “Retain K4 as a release waiver”. This is the recorded owner disposition for that trial only: K4 remains waived, not passed; it does not remove this record’s pre-run replay requirement for future trials. A subsequent local LinuxCNC replay passed, as detailed in the [results audit](../archive/0244-z1-gates-4-5/z1-gates-4-5-results-and-review-record.md#104-initial-takeover-verification-before-implementation-25-oct-2026). Decision 0222 is accepted in its own lane; no reacceptance of it, 0221 or this record is requested.
