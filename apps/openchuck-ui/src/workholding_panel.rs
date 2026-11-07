@@ -300,6 +300,45 @@ impl WorkholdingPanel {
         self.draft.is_changed()
     }
 
+    /// Takes the result of a check the section started, whether or not the
+    /// section is drawn this frame, and returns the command that stores the
+    /// draft when it was an Apply that found nothing refusing (issue #558).
+    /// The shell calls it every frame: an Apply whose check finishes after
+    /// the user has moved to an operation is stored then, not left unapplied
+    /// until the section is next shown, while the view draws the draft and
+    /// generation reads the stored setup (UI-11, NFR-12).
+    pub fn poll_apply(
+        &mut self,
+        ctx: &egui::Context,
+        app: &Application,
+        setup: &Setup,
+    ) -> Option<Command> {
+        self.poll_check(ctx, app, setup)
+    }
+
+    /// Starts again from what `setup` stores when another edit (an undo, the
+    /// command line) or the section's own Apply changed it, saying so if that
+    /// threw changes away. The section does it when drawn, and the shell
+    /// every frame, so a draft stored while the section is not shown stops
+    /// counting as unapplied at once (issue #558).
+    pub fn follow_project(&mut self, setup: &Setup) {
+        if *self.draft.stored() != setup.workholding {
+            self.follow_stored(&setup.workholding);
+        }
+    }
+
+    /// True while a check the section started is running.
+    #[cfg(test)]
+    pub fn is_checking(&self) -> bool {
+        self.checking.is_some()
+    }
+
+    /// Presses Apply, from a test, as the section's button does.
+    #[cfg(test)]
+    pub fn press_apply(&mut self, app: &Application, setup: &Setup) {
+        self.start_check(app, setup, true);
+    }
+
     /// Opens the row of `item` with its first field focused, as a click on
     /// its solid in the view asks (7.5).
     pub fn open_item(&mut self, item: HeldItem) {
@@ -444,11 +483,7 @@ impl WorkholdingPanel {
         setup: &Setup,
         context: &Context,
     ) -> Option<Command> {
-        // Another edit (an undo, the command line) changed the project: start
-        // again from what it holds, saying so if that threw changes away.
-        if *self.draft.stored() != setup.workholding {
-            self.follow_stored(&setup.workholding);
-        }
+        self.follow_project(setup);
         self.poll_facts(ui.ctx(), app, setup);
         self.focused = None;
 

@@ -1,0 +1,16 @@
+schema = 27
+name = "face_flow"
+
+[[models]]
+id = "1128e69c-2092-4cb3-8cae-722dbccab777"
+path = "models/blisk.step"
+hash = "blake3:883a66d9e35b50c8b8ff2e5380d698a14566c0e7d14eb92efc8dfb225de1c616"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"
+
+[[models.transform]]
+kind = "translate"
+x = 10.0
+y = 0.0
+z = 0.0

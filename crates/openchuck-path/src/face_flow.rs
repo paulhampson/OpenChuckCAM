@@ -1738,7 +1738,7 @@ fn face_flow(
         cuts.push(cut_face(f, &tooling, &profile, context)?);
     }
     context.report("face-flow finishing", total as u64, Some(total as u64));
-    assemble(cuts, &tooling, input)
+    assemble(cuts, &tooling, input, context)
 }
 
 /// The order the faces are cut in (decision 0525 D2): the face with the
@@ -1938,6 +1938,7 @@ fn assemble(
     cuts: Vec<FaceCut>,
     tooling: &Tooling<'_>,
     input: &StrategyInput<'_>,
+    context: &JobContext<'_>,
 ) -> Result<StrategyOutput> {
     let settings = tooling.settings;
     let mut out_passes: Vec<Pass> = Vec::new();
@@ -2022,7 +2023,7 @@ fn assemble(
         }
         stretches.append(&mut cut.stretches);
     }
-    let unreached = areas(&stretches);
+    let unreached = areas(&stretches, context)?;
     let diameter = 2.0 * input.tool.cutting_radius();
     if out_passes.is_empty() {
         let why = if unreached.is_empty() {
@@ -2066,7 +2067,7 @@ fn assemble(
 
 /// The unreachable stretches joined into areas: stretches of neighbouring
 /// passes of one face whose spans along the guide overlap, of one reason.
-fn areas(stretches: &[Stretch]) -> Vec<Unreached> {
+fn areas(stretches: &[Stretch], context: &JobContext<'_>) -> Result<Vec<Unreached>> {
     // Union-find over the stretches.
     let n = stretches.len();
     let mut parent: Vec<usize> = (0..n).collect();
@@ -2083,19 +2084,30 @@ fn areas(stretches: &[Stretch]) -> Vec<Unreached> {
         }
         i
     }
-    for i in 0..n {
-        for j in i + 1..n {
-            let (Some(a), Some(b)) = (stretches.get(i), stretches.get(j)) else {
-                continue;
-            };
-            let next = a.pass + 1 == b.pass || b.pass + 1 == a.pass;
-            let overlap = a.s.0 <= b.s.1 + 1e-9 && b.s.0 <= a.s.1 + 1e-9;
-            if a.face == b.face && next && overlap && a.reason == b.reason {
-                let (ri, rj) = (root(&mut parent, i), root(&mut parent, j));
-                if ri != rj
-                    && let Some(slot) = parent.get_mut(ri.max(rj))
-                {
-                    *slot = ri.min(rj);
+    // Only stretches of one face on neighbouring passes can join: compare
+    // each pass's stretches with the next pass's, not every pair.
+    let mut by_pass: BTreeMap<(FaceId, usize), Vec<usize>> = BTreeMap::new();
+    for (i, s) in stretches.iter().enumerate() {
+        by_pass.entry((s.face, s.pass)).or_default().push(i);
+    }
+    for ((face, pass), here) in &by_pass {
+        context.check_cancelled()?;
+        let Some(next) = by_pass.get(&(*face, pass + 1)) else {
+            continue;
+        };
+        for &i in here {
+            for &j in next {
+                let (Some(a), Some(b)) = (stretches.get(i), stretches.get(j)) else {
+                    continue;
+                };
+                let overlap = a.s.0 <= b.s.1 + 1e-9 && b.s.0 <= a.s.1 + 1e-9;
+                if overlap && a.reason == b.reason {
+                    let (ri, rj) = (root(&mut parent, i), root(&mut parent, j));
+                    if ri != rj
+                        && let Some(slot) = parent.get_mut(ri.max(rj))
+                    {
+                        *slot = ri.min(rj);
+                    }
                 }
             }
         }
@@ -2143,7 +2155,7 @@ fn areas(stretches: &[Stretch]) -> Vec<Unreached> {
         })
         .collect();
     out.sort_by(|a, b| b.area.total_cmp(&a.area).then(a.x.0.total_cmp(&b.x.0)));
-    out
+    Ok(out)
 }
 
 /// The areas for a message: the largest five, each with where, how large

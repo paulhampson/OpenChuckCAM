@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.0
+
+- **Family release (0.47.0, TABCUT; issue #555; decision 0527, accepted):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.
+
 ## 0.34.0
 
 - **Breaking family release (0.34.0, lane CLEARANCE, issue #336; decision 0495, accepted):** no change in this crate; all family crates advance together under 0048.

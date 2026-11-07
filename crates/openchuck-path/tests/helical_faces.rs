@@ -1281,37 +1281,68 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
     );
 }
 
+/// The free-end warnings of a path (decision record 0531).
+fn free_end_warnings(path: &GeneratedPath) -> Vec<String> {
+    path.warnings
+        .iter()
+        .filter(|w| {
+            w.parameter.as_deref() == Some("face_free_ends") && w.message.contains("mm of flute")
+        })
+        .map(|w| w.message.clone())
+        .collect()
+}
+
 #[test]
-fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_refused() {
-    // The face is 10 mm deep; a tool with 8 mm of flute cannot face it.
+fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_warned_and_not_faced() {
+    // Decision record 0531 (amends 0344 item 7): the face is 10.3 mm deep; a
+    // tool with 8 mm of flute cannot face it, so that end is skipped with a
+    // warning and the rest of the path is made, for every strategy that
+    // faces free ends.
     let job = free_end(true, 8.0);
-    let tag = tags();
-    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
-    let values: BTreeMap<String, ParameterValue> = [
-        (names::STEPOVER, STEPOVER),
-        (names::FEED, 600.0),
-        (names::PLUNGE_FEED, 150.0),
-        (names::TOLERANCE, TOLERANCE),
-        ("stepdown", 2.0),
-    ]
-    .into_iter()
-    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
-    .collect();
-    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
-        .unwrap_err()
-        .to_string();
-    // Named at the switch the user acts on, with the face, the depth, the
-    // flutes and each remedy (the owner's choice on OI-1396).
-    assert!(
-        err.contains("face_free_ends")
-            && err.contains("X 0.000")
-            && err.contains("10.300 mm deep")
-            && err.contains("8.000 mm of flute")
-            && err.contains("longer flutes")
-            && err.contains("turn off Face free ends for this operation")
-            && err.contains("Facing"),
-        "{err}"
-    );
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    for strategy in [
+        &HelicalFinishing as &dyn Strategy,
+        &AxialFinishing,
+        &RestMachining,
+    ] {
+        let path = job.path(strategy, &[("stepdown", 2.0)]);
+        assert!(!path.group.segments.is_empty(), "{}", strategy.name());
+        // No ring is cut at that end.
+        assert!(
+            turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6),
+            "{}: a ring was cut",
+            strategy.name()
+        );
+        let warnings = free_end_warnings(&path);
+        assert_eq!(warnings.len(), 1, "{}: {warnings:?}", strategy.name());
+        let text = &warnings[0];
+        assert!(
+            text.starts_with("Flute length: ")
+                && text.contains("X 0.000")
+                && text.contains("not faced")
+                && text.contains("10.300 mm deep")
+                && !text.contains("up to")
+                && text.contains("8.000 mm of flute")
+                && text.contains("longer flutes")
+                && text.contains("Facing operation")
+                && text.contains("turn off Face free ends")
+                && text.contains("Check the path before you run it")
+                && !text.to_lowercase().contains("safe"),
+            "{}: {text}",
+            strategy.name()
+        );
+        // Also one of its notes, and needing no acknowledgement.
+        assert!(messages(&path).contains("not faced"), "{}", strategy.name());
+        assert!(path.warnings.iter().all(|w| !w.requires_acknowledgement));
+    }
+}
+
+#[test]
+fn req_gc_07_a_free_end_within_the_flutes_has_no_free_end_warning() {
+    // Within the flutes the end is faced as before and says nothing of depth.
+    let job = free_end(true, 12.0);
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    assert!(free_end_warnings(&path).is_empty());
 }
 
 #[test]
@@ -1362,38 +1393,28 @@ impl StockModel for Bounded {
 }
 
 #[test]
-fn req_nfr_07_req_nfr_12_a_free_end_refused_on_a_bound_says_it_is_a_bound() {
-    // CodeRabbit on #534 (review of 6580f9b): where the free end's depth is
-    // the bound from the stock's farthest radius (10.3 + 1 mm over the axis),
-    // not a measure, the refusal says so rather than naming it as the stock's
-    // depth.
+fn req_nfr_07_req_nfr_12_a_free_end_skipped_on_a_bound_says_it_is_a_bound() {
+    // Where the free end's depth is the bound from the stock's farthest
+    // radius (10.3 + 1 mm over the axis), not a measure, the warning says so
+    // rather than naming it as the stock's depth.
     let mut job = free_end(true, 8.0);
     job.stock = Box::new(Bounded(AnalyticStock::Cylinder {
         radius: 10.3,
         x_start: -5.0,
         x_end: 30.0,
     }));
-    let tag = tags();
-    let input = input_for(job.surface.as_ref(), job.stock.as_ref(), &job.profile, &tag);
-    let values: BTreeMap<String, ParameterValue> = [
-        (names::STEPOVER, STEPOVER),
-        (names::FEED, 600.0),
-        (names::PLUNGE_FEED, 150.0),
-        (names::TOLERANCE, TOLERANCE),
-        ("stepdown", 2.0),
-    ]
-    .into_iter()
-    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
-    .collect();
-    let err = run(|ctx| generate(&HelicalFinishing, &input, &values, ctx))
-        .unwrap_err()
-        .to_string();
+    let path = job.path(&HelicalFinishing, &[("stepdown", 2.0)]);
+    let warnings = free_end_warnings(&path);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
+    assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    let text = &warnings[0];
     assert!(
-        err.contains("face_free_ends")
-            && err.contains("up to 11.300 mm deep")
-            && err.contains("a bound")
-            && err.contains("8.000 mm of flute"),
-        "{err}"
+        text.contains("up to 11.300 mm deep")
+            && text.contains("a bound")
+            && text.contains("8.000 mm of flute")
+            && text.contains("not faced"),
+        "{text}"
     );
 }
 

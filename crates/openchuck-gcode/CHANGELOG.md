@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.0
+
+- **Family release (0.49.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.
+
+## 0.47.0
+
+- **Family release (0.47.0, TABCUT; issue #555; decision 0527, accepted):** `openchuck-path`'s `RegionConstraint` gains the public field `outside`, a breaking change; no change to this crate.
+
 ## 0.46.0
 
 - **Family release (0.46.0, STEPALL-CLOSE; issue #351; decision 0526, accepted):** `openchuck-path`'s `Strategy::exact_contact` returns the kind of Exact STEP surface contact a strategy offers, a breaking change; no change to this crate.
