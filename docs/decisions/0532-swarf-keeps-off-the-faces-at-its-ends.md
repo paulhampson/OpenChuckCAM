@@ -1,6 +1,6 @@
 # 0532: Swarf stops short of the faces at the ends of a face, and measures every face next to it (OP-07, OP-12, OP-16, GC-07, NFR-06, NFR-07, NFR-12; issue #442; lane SWARFEND)
 
-- **Status:** proposed (7 Nov 2026, lane SWARFEND). The owner's decisions D1, D2 and D3 (option A each, 6 Nov 2026, relayed by the coordinator; decision 0049) are built here; only the owner accepts the record.
+- **Status:** accepted (7 Nov 2026, by the project owner, relayed by the coordinator; decision 0049). Proposed by lane SWARFEND on 7 Nov 2026. It builds the owner's decisions D1, D2 and D3 (option A each, 6 Nov 2026, relayed by the coordinator). OI-2079 stays open; the owner asked for it to be noted on issue #442.
 - **What it amends:**
   - **accepted [decision 0061](0061-slice-17-swarf.md) item 7 (the gate measures the selected faces only, OI-237):** the faces that share an edge with the cut face are now measured too, and those at the ends of the face stop the pass short (items 1 to 3).
   - **accepted [decision 0491](0491-swarf-keeps-the-tip-off-a-floor.md) item 3 (OI-1622, the owner's option C: the tool running past the ends of the face is issue #442):** this record is that issue's change.

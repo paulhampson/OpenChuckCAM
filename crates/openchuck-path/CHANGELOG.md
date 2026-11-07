@@ -2,7 +2,7 @@
 
 ## 0.48.0
 
-- **Breaking, changed output (0.48.0, or the next free version, as the Merge Manager sequences it; SWARFEND; issue #442, sev2; decision 0532, proposed):** swarf stops each pass short of the faces that meet the ends of the face it cuts, by the least length that keeps the tool off them, and measures the cut into every face next to it.
+- **Breaking, changed output (0.48.0, or the next free version, as the Merge Manager sequences it; SWARFEND; issue #442, sev2; decision 0532, accepted):** swarf stops each pass short of the faces that meet the ends of the face it cuts, by the least length that keeps the tool off them, and measures the cut into every face next to it.
   - **API.** `RegionConstraint` gains `neighbours` (the faces that share an edge with the selected faces). `swarf::Settings` gains `keep_off_end_faces`; `swarf::Limits` gains `neighbours_checked`, `end_stops` and `neighbour_cuts`, with the new `swarf::EndStop` and `swarf::NeighbourCut`; `swarf::FacePath::neighbour_warnings`; `swarf::parameter::KEEP_OFF_END_FACES` (`keep_off_end_faces`, a flag, on by default, in swarf's schema).
   - **Output.** With `neighbours` not set, paths are byte-identical. A host that sets it changes swarf paths where the tool reached a face at an end of the face (shorter passes), and adds warnings where the tool cuts a face next to it by more than the tolerance; the G-code is not changed by those warnings.
 
