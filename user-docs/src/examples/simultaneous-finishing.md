@@ -87,7 +87,7 @@ Largest angle step
 : The largest change of A between two points of the path. The default is 5°.
 
 Largest lean on hidden surfaces
-: How far the tool may lean from the normal to reach a hidden surface, between 0° and 90°. The default, 90°, lets the tool cut a wall with its side.
+: A limit, between 0° and 90° (the default is 90°), on how far the tool may lean from the normal to reach a hidden surface. Read what it did in the note about surfaces hidden from the drive, which gives the largest lean used. On the build these screens were taken with, setting it to 0 did not change this example's path; that is under review (#619).
 
 Now give the finish a lead:
 
