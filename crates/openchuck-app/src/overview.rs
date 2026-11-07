@@ -398,6 +398,10 @@ pub struct Message {
     /// Further links beside `action`: one "Show in view N" for each area a
     /// warning of unreachable areas lists (decision record 0515 item 5).
     pub views: Vec<MessageAction>,
+    /// Whether it is a warning that must be acknowledged before the program
+    /// is written, such as a possible collision: such warnings come first
+    /// among the warnings (decision record 0538).
+    pub to_acknowledge: bool,
 }
 
 impl Message {
@@ -419,6 +423,7 @@ impl Message {
             source_name,
             action,
             views: Vec::new(),
+            to_acknowledge: false,
         }
     }
 
@@ -439,6 +444,20 @@ impl Message {
             source,
             action,
         )
+    }
+
+    /// Where it sorts: by severity, and among warnings those to acknowledge
+    /// first (decision record 0538).
+    fn order(&self) -> (Severity, bool) {
+        (self.severity, !self.to_acknowledge)
+    }
+
+    /// This message, marked as a warning that must be acknowledged before
+    /// the program is written (decision record 0538).
+    #[must_use]
+    pub fn to_acknowledge(mut self) -> Self {
+        self.to_acknowledge = true;
+        self
     }
 
     /// This message with the links `views`.
@@ -697,7 +716,7 @@ impl Overview {
         let at = self
             .messages
             .iter()
-            .position(|m| m.severity > message.severity)
+            .position(|m| m.order() > message.order())
             .unwrap_or(self.messages.len());
         self.messages.insert(at, message);
     }
@@ -1844,14 +1863,30 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && let Some(made) = made
             && let Some(first) = made.warnings.first()
         {
-            status = ItemStatus::new(
-                ItemState::Warning,
-                sentence(&crate::operation::warning_text(
-                    project,
-                    o,
-                    &first.sentence(),
-                )),
-            );
+            // A possible collision names itself first: it must be
+            // acknowledged before the program is written (decision record
+            // 0538).
+            let collision = |w: &&openchuck_path::Notice| {
+                w.acknowledgement == Some(openchuck_path::Acknowledgement::PossibleCollision)
+            };
+            status = match made.warnings.iter().find(collision) {
+                Some(c) => ItemStatus {
+                    state: ItemState::Warning,
+                    cause: format!(
+                        "Needs acknowledging: {}",
+                        sentence(&crate::operation::warning_text(project, o, &c.sentence()))
+                    ),
+                    progress: None,
+                },
+                None => ItemStatus::new(
+                    ItemState::Warning,
+                    sentence(&crate::operation::warning_text(
+                        project,
+                        o,
+                        &first.sentence(),
+                    )),
+                ),
+            };
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
@@ -1866,19 +1901,22 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     Vec::new()
                 };
-                messages.push(
-                    Message::new(
-                        Severity::Warning,
-                        crate::operation::warning_text(project, o, &warning.sentence()),
-                        Some((item, label.clone())),
-                        Some(if warning.setting.is_some() {
-                            MessageAction::ShowSetting(o.id)
-                        } else {
-                            MessageAction::Show(item)
-                        }),
-                    )
-                    .with_views(views),
-                );
+                let message = Message::new(
+                    Severity::Warning,
+                    crate::operation::warning_text(project, o, &warning.sentence()),
+                    Some((item, label.clone())),
+                    Some(if warning.setting.is_some() {
+                        MessageAction::ShowSetting(o.id)
+                    } else {
+                        MessageAction::Show(item)
+                    }),
+                )
+                .with_views(views);
+                messages.push(if warning.acknowledgement.is_some() {
+                    message.to_acknowledge()
+                } else {
+                    message
+                });
             }
         }
         // A strategy that needs a STEP part on a mesh part: said at once,
@@ -2388,7 +2426,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
 
     // Order: errors, warnings, information; the sort is stable, so each
     // keeps the order above.
-    messages.sort_by_key(|m| m.severity);
+    messages.sort_by_key(Message::order);
 
     // Steps (specification section 4).
     let has_model = !project.models().is_empty();
@@ -3005,6 +3043,107 @@ mod tests {
         })
         .unwrap();
         assert_eq!(state_of(&app, op).state, ItemState::Stale);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// An application whose one operation, "Walls", has an up-to-date path
+    /// made with `warnings`.
+    fn warned_app(
+        name: &str,
+        warnings: Vec<openchuck_path::Notice>,
+    ) -> (std::path::PathBuf, Application, OperationId) {
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                spindle_speed: None,
+                material: None,
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
+                facing: None,
+                operation: op,
+                setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings,
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        (dir, app, op)
+    }
+
+    #[test]
+    fn req_gc_16_req_ui_12_a_possible_collision_needs_acknowledging_and_comes_first() {
+        // Decision 0538: the operation's mark says the warning needs
+        // acknowledging, and Messages lists it first among the warnings,
+        // whatever order the path gave them in.
+        let collision = "Flute length: the stock stands up to 3.000 mm above the tool's tip.";
+        let (dir, app, op) = warned_app(
+            "collision-mark",
+            vec![
+                openchuck_path::Notice::warning("an ordinary warning."),
+                openchuck_path::Notice::warning(collision)
+                    .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
+            ],
+        );
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(
+            status.cause.starts_with("Needs acknowledging: Flute length (operation 'Walls'"),
+            "{}",
+            status.cause
+        );
+        let warnings: Vec<&Message> = overview
+            .messages
+            .iter()
+            .filter(|m| m.severity == Severity::Warning)
+            .collect();
+        assert!(warnings[0].to_acknowledge, "{warnings:?}");
+        assert!(warnings[0].text.starts_with("Flute length"), "{warnings:?}");
+        assert!(warnings.iter().any(|m| m.text == "An ordinary warning." && !m.to_acknowledge));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

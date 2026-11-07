@@ -2955,6 +2955,12 @@ fn req_op_07_req_op_12_req_nfr_12_a_floor_a_ball_cuts_into_is_measured_and_warne
         warning.setting.as_deref(),
         Some(swarf::parameter::TIP_EXTENSION)
     );
+    // The side of the tool meets another face of the part: a possible
+    // collision, to acknowledge before writing (decision record 0538).
+    assert_eq!(
+        warning.acknowledgement,
+        Some(openchuck_path::Acknowledgement::PossibleCollision)
+    );
     assert!(
         warning.text.starts_with(&format!(
             "Swarf on face 0 cuts {:.3} mm into face 1, which meets it along the ends of its \

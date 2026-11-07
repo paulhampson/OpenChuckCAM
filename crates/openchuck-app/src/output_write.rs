@@ -24,6 +24,11 @@ pub struct OutputPlan {
     partial: Vec<String>,
     /// Whether the user acknowledged the partial paths of this plan's run.
     acknowledged: bool,
+    /// The possible collisions of the run (decision record 0538).
+    collisions: Vec<String>,
+    /// Whether the user acknowledged the possible collisions of this plan's
+    /// run.
+    collisions_acknowledged: bool,
 }
 
 impl OutputPlan {
@@ -45,6 +50,24 @@ impl OutputPlan {
     /// Whether the partial paths of this plan's run were acknowledged.
     pub fn partial_path_acknowledged(&self) -> bool {
         self.acknowledged
+    }
+
+    /// The possible collisions of this plan's run, one sentence each naming
+    /// its operation (decision record 0538). Writing asks for an
+    /// acknowledgement of this result first.
+    pub fn collisions(&self) -> &[String] {
+        &self.collisions
+    }
+
+    /// Acknowledges the possible collisions of this plan's run, and of no
+    /// other: a plan made for another run starts unacknowledged.
+    pub fn acknowledge_collisions(&mut self) {
+        self.collisions_acknowledged = true;
+    }
+
+    /// Whether the possible collisions of this plan's run were acknowledged.
+    pub fn collisions_acknowledged(&self) -> bool {
+        self.collisions_acknowledged
     }
 
     /// Every full destination, in write order, including both setup sheets.
@@ -167,6 +190,7 @@ pub(crate) fn prepare(
     run: Arc<Regeneration>,
     files: Vec<(String, Vec<u8>)>,
     partial: Vec<String>,
+    collisions: Vec<String>,
 ) -> Result<OutputPlan, AppError> {
     let folder = std::path::absolute(folder).map_err(|e| io_error(folder, e))?;
     let mut paths = Vec::new();
@@ -201,6 +225,8 @@ pub(crate) fn prepare(
         existing,
         partial,
         acknowledged: false,
+        collisions,
+        collisions_acknowledged: false,
     })
 }
 
@@ -419,6 +445,7 @@ mod tests {
                 ("two.nc".into(), b"two".to_vec()),
                 ("three.nc".into(), b"three".to_vec()),
             ],
+            Vec::new(),
             Vec::new(),
         )
         .unwrap();
