@@ -165,11 +165,12 @@ Generated G-code must be verified by the user before it is run on a machine. Ope
 
 "Replay matches the toolpath" means the file says what the toolpath says. It does not mean the program is right for your machine, stock or fixture.
 
-On this project, `validate` and `regenerate` also print one warning line for each move the machine's feed limits slow down: many thousands. To read the rest, send the warnings to a file:
-
-```text
-openchuck-cli regenerate baluster --post makera-z1 --tool-numbers keep --out baluster-out 2> warnings.txt
-```
+> [!NOTE]
+> For now, `validate` and `regenerate` also print one warning line for each move the machine's feed limits slow down: on this project, many thousands. One summary for each operation is planned instead; this note goes when it comes. Until then, to read the rest, send the warnings to a file:
+>
+> ```text
+> openchuck-cli regenerate baluster --post makera-z1 --tool-numbers keep --out baluster-out 2> warnings.txt
+> ```
 
 A project started on the command line goes as far as the setup and its tools; add the operations in the program window:
 
