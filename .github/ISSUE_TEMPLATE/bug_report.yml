@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 name: Bug report
 description: Something in OpenChuckCAM does not work as it should, or generated G-code looks wrong.
 title: "[Bug]: "

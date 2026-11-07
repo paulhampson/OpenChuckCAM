@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Issue chooser. The three forms (bug report, enhancement request, question)
 # replace blank issues, which are off (owner's decision of 7 Nov 2026; the
 # maintainer's own tasks are created through the API, which this does not affect).

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 name: Question
 description: Ask how to do something, or about something the user guide does not explain.
 title: "[Question]: "
