@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Written by user-docs/tools/capture.py. Add reviewed_at = "<commit>" after checking the
 # screens against a later build without re-capturing (user-docs/STYLE.md, Figures).
-captured_at = "b0f6cf9c07e9d4dfe86bd97f252cc2f2ebf27119"
+captured_at = "fd971248457b6ef8cea86d0bda2afe39097be970"
 captured_on = "2026-11-07"
 renderer = "Mesa lavapipe (software Vulkan) on Xvfb"
 window = "1920x1080"

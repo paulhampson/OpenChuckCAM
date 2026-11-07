@@ -28,10 +28,10 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 ## 2. Generate and read what it did
 
 1. Click **Generate**.
-2. Under the view, click **Results**.
+2. Under the view, click **Results**. In Figure 2, **Information** is turned off, so the list shows the warnings only.
 
 <figure>
-<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths and numbered black-and-white markers labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab begins 3 operation(s), 32759 moves, and lists the warnings of each operation, the last starting operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
+<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths and numbered black-and-white markers labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab, with Information turned off, reads 3 operation(s), 32759 moves, and lists the warnings of each operation, among them operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
 <figcaption><b>Figure 2.</b> The numbered markers show where material is left that the rest tool cannot reach.</figcaption>
 </figure>
 
@@ -73,7 +73,7 @@ To see what happens when the rest operation has nothing to follow, turn the othe
 2. Click **Generate**.
 
 <figure>
-<a href="images/rest/04-no-earlier-operation.png"><img src="images/rest/04-no-earlier-operation.png" width="1920" height="1080" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock; the Results tab reads 1 operation(s), 106196 moves, 40.3 s to generate, and operation 'Rest': Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left."></a>
+<a href="images/rest/04-no-earlier-operation.png"><img src="images/rest/04-no-earlier-operation.png" width="1920" height="978" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock; the Results tab, with Information turned off, reads 1 operation(s), 106196 moves, and first operation 'Rest': Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left."></a>
 <figcaption><b>Figure 4.</b> With no earlier operation, the rest operation starts from the whole stock and cuts all of it with the 2 mm ball.</figcaption>
 </figure>
 
