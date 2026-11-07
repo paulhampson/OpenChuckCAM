@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.0
+
+- **Family release (0.49.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.
+
 ## 0.48.0
 
 - **Breaking, changed output (0.48.0, or the next free version, as the Merge Manager sequences it; SWARFEND; issue #442, sev2; decision 0532, accepted):** swarf stops each pass short of the faces that meet the ends of the face it cuts, by the least length that keeps the tool off them, and measures the cut into every face next to it.

@@ -1,5 +1,7 @@
 (golden - Setup 1 - T1 4 mm ball)
 (OpenChuckCAM <version>)
+(This program has not been run on your machine. Check it before you run it.)
+(Simulate it and air cut it first. You are responsible for what the machine does.)
 G90 G21 G17
 G54
 (operation Finish A, tool T1 4 mm ball, about 17 s)

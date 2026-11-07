@@ -1,5 +1,7 @@
 (cone_held_tabs - Setup 1)
 (OpenChuckCAM <version>)
+(This program has not been run on your machine. Check it before you run it.)
+(Simulate it and air cut it first. You are responsible for what the machine does.)
 G90 G21 G17
 G61
 G54

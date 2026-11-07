@@ -9,6 +9,9 @@
 {% if generator is not none %}
 {{ line("(" ~ generator ~ ")") }}
 {% endif %}
+{% for notice in safety_notice %}
+{{ line("(" ~ notice ~ ")") }}
+{% endfor %}
 {% if revision is not none %}
 {{ line("(revision " ~ revision ~ ")") }}
 {% endif %}
