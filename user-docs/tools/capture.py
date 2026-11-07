@@ -64,7 +64,7 @@ def click(x, y, wait=1.0):
 
 
 def type_text(text):
-    run("xdotool", "type", "--delay", "60", text)
+    run("xdotool", "type", "--delay", "60", "--", text)
     pause(0.5)
 
 
