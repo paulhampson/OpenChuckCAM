@@ -1,6 +1,6 @@
 # 0538: A possible collision is a warning to acknowledge (lane MSGREVIEW; issue #567)
 
-- **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536.
+- **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536. The owner's answers to questions 8 to 10 (7 Nov 2026, relayed, each option A) settle which rows qualify. The record is ready for acceptance.
 - **What it amends, if accepted:**
   - [decision 0175](0175-swarf-overcut-is-a-warning.md) item 2: a path warning needs no tick, unless it is a possible collision;
   - [decision 0522](0522-the-flute-check-warns.md) item 1 and [decision 0523](0523-tab-checks-follow-the-operations-reach.md) item 4: the flute and tab warnings need a tick;
@@ -9,7 +9,7 @@
   The requirements are unchanged. GC-16's own confirmation (that the user will verify the G-code) stays as it is. The export already asks for ticks of this kind, for a partial path (decision 0239) and for a skipped stock simulation (decision 0168). GC-16's rule that the command line asks for no confirmation is kept, because a flag asks nothing.
 - **Date:** 7 Nov 2026.
 - **Depends on:** decision 0536 item 6.1. The library type carries the reason for a tick, so a collision is never called partial.
-- **Open items:** OI-2100 (the owner's acceptance, and the "?" rows below) and OI-2101 (the verification plan's GC-16 entry). Both are new, raised with 0536.
+- **Open items:** OI-2100 (the owner's acceptance; its three open rows were answered on 7 Nov 2026) and OI-2101 (the verification plan's GC-16 entry). Both are new, raised with 0536.
 
 ## Context
 
@@ -27,7 +27,7 @@ That holds whether the check measured the collision or could not rule it out (st
 
 ### 2. The checks that qualify
 
-"Yes" rows are proposed. "?" rows are for the owner (OI-2100). "No" rows are listed so the reason is on record.
+"Yes" rows need a tick. "No" rows stay plain warnings, listed so the reason is on record. The owner settled the three rows left open (questions 8 to 10, 7 Nov 2026, relayed): the swarf overcut into its own face stays a plain warning, a touched check set needs a tick and an avoid set does not, and a part cut free at a free end needs a tick while the stock ring does not.
 
 | Check | Where (`main` at `e869d932`) | Level today | Qualifies | Why |
 | --- | --- | --- | --- | --- |
@@ -37,9 +37,11 @@ That holds whether the check measured the collision or could not rule it out (st
 | Flute length at a free end that is not faced (decision 0531) | `finishing.rs:296-311` | warning, no tick | no | the end is skipped, so the tool does not go there |
 | Tab length: a tab shorter than the tool is wide (decisions 0494, 0523) | `openchuck-app` `workholding.rs` (`TAB_LENGTH_LEAD`) and the setup note at `workholding.rs:221-243` | warning, no tick (shown twice today) | **yes** | the tool may cut through the tab, and the part may come loose |
 | Swarf cuts into a face next to it, at the end of its rulings or at an end of the pass (decision 0532) | `swarf.rs:907-953` | warning, no tick | **yes** | the side of the tool meets another face of the part |
-| Swarf cuts into its own finished face beyond the tolerance (decision 0175) | `swarf.rs:859-890` | warning, no tick (the owner chose no tick in 0175) | **?** | a gouge, often the face's own error of hundredths of a millimetre, not a collision; the recommendation is to leave it a plain warning |
-| A selection's check set is touched, or its avoid set cut, where the set only warns | `region.rs:441-462`, `swarf.rs:3082-3093` | warning, no tick | **?** | a check set often stands for a clamp or fixture; the recommendation is yes for a check set, and no for an avoid set (a gouge) |
-| A free end faced down to the rotary axis with nothing holding the part on the other side (decisions 0344, 0500) | `finishing.rs:428-439` (and the stock cut free at `finishing.rs:390-403`) | warning, no tick | **?** | a part or stock piece cut free can be thrown into the tool; the recommendation is yes for the part cut free, no for the stock ring |
+| Swarf cuts into its own finished face beyond the tolerance (decision 0175) | `swarf.rs:859-890` | warning, no tick (the owner chose no tick in 0175) | no (owner, Q8) | a gouge, often the face's own error of hundredths of a millimetre, not a collision; it stays a plain warning, with "Show setting" on Tolerance |
+| A selection's check set is touched, where the set only warns | `region.rs:441-462`, `swarf.rs:3082-3093` | warning, no tick | **yes** (owner, Q9) | a check set often stands for a clamp, a fixture or another part |
+| A selection's avoid set is cut, where the set only warns | same | warning, no tick | no (owner, Q9) | a gouge of a surface of the part, not a collision |
+| A free end faced down to the rotary axis with nothing holding the part on the other side, so the part is cut free (decisions 0344, 0500) | `finishing.rs:428-439` | warning, no tick | **yes** (owner, Q10) | the part cut free can be thrown into the tool or the machine |
+| A free end faced down to the rotary axis, cutting the stock past the facing ring free | `finishing.rs:390-403` | warning, no tick | no (owner, Q10) | an offcut ring is expected when facing an end |
 | A rapid that removes material, found by the simulation | `openchuck-app` `pipeline.rs:441`; Results line `run_panel.rs:205` | a note in the Results tab (and a "problem" line); not in Messages or the export | **yes** | a rapid through material is a crash. It is known only after a stock simulation; a project that skips it already ticks that (decision 0168) |
 | The setup's safe cylinder does not enclose the stock, or the part | `openchuck-types` `setup.rs:466-475` | setup warning, no tick | **yes** | links at the clearance pass through material |
 | The safe cylinder is inside the machine's minimum clearance | `setup.rs` (`ClearanceBelowMinimum`) | setup warning, no tick | **yes** | its own text says links may hit the chuck, jaws, headstock or tailstock |

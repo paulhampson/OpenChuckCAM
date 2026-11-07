@@ -225,5 +225,5 @@ The author's test of section 2 names 0538.
 | OI-2097 | NFR-12 wording to remove: "verified path geometry", "certify", "certificate", "Good to go", "No overcut". |
 | OI-2098 | The shell's status line is never drawn, so its confirmations and refusals reach nobody. Answered (question 7, A): section 8; built in step 5. |
 | OI-2099 | Outside this record unless the owner says otherwise: the command-line help text, the setup sheet (it shows no warnings; GC-12 does not ask for them), and the log, About and crash texts, which keep the log crate's levels. |
-| OI-2100 | Decision 0538: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, and the answers to its "?" rows (the swarf overcut into its own face, check and avoid sets that only warn, a part cut free at a free end). |
+| OI-2100 | Decision 0538: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, its "?" rows answered on 7 Nov 2026 (questions 8 to 10). |
 | OI-2101 | Decision 0538's tests in the verification plan: the GC-16 entry gains the collision acknowledgements, when 0538 is built. |
