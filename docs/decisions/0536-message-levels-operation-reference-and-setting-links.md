@@ -2,7 +2,16 @@
 
 - **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). Nothing here is built yet: issue #567 asks for the proposal first, and code follows, test first, only after the owner's answers.
   - **The owner's answer to question 1** (7 Nov 2026, relayed by the coordinator): the levels and the author's test are accepted in principle, with option B, so information is shown in the Results tab only and Messages keeps errors and warnings. Sections 1, 2 and 5 below follow that answer.
-  - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. Because that changes what the export does, it is part B of this record (below), which the owner accepts separately from part A (sections 1 to 7).
+  - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. That changes what the export does, so it is [decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md) (proposed), accepted separately.
+  - **The owner's answers to questions 2 to 7** (7 Nov 2026, relayed by the coordinator), each the recommended option:
+    - 2, A: the one form for every message and every item (section 3).
+    - 3, A: a link keyed to the setting, for every field kind, with the new targets tool, setup field and post (section 4).
+    - 4, A: one level-carrying library type, one message constructor and the checks, with a library minor version bump (section 6).
+    - 5, A: workholding Apply stores and warns on an automatic tab with no room and on tabs that overlap. That is [decision 0539](0539-workholding-apply-warns-on-a-tab-with-no-room-or-tabs-that-overlap.md) (proposed).
+    - 6, A: the command line runs the checks before it writes, and prints the export dialog's warnings. That is [decision 0540](0540-the-command-line-checks-before-it-writes.md) (proposed).
+    - 7, A: the lost status lines are split by kind, with each level set by the author's test (section 8).
+
+  This record is ready for the owner to accept. Decisions 0538, 0539 and 0540 change a check's behaviour and are accepted on their own.
 - **What it amends, if accepted:**
   - [decision 0175](0175-swarf-overcut-is-a-warning.md) items 2 and 3 (how a path warning and a note carry their level; "Show setting" opens one setting);
   - [decision 0430](0430-results-feed-limit-summary-and-copyable-results.md) item 1 and [decision 0519](0519-results-in-the-lower-dock.md) (the Results lines take each message's own level);
@@ -11,7 +20,7 @@
 
   The requirements and the architecture are unchanged.
 - **Date:** 7 Nov 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-2094 to OI-2101 are new (OI-2100 and OI-2101 are part B).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-2094 to OI-2101 are new (OI-2100 and OI-2101 belong to decision 0538).
 - **The inventory** is in [docs/message-review/](../message-review/README.md): about 900 rows, one per message or family, read from `main` at `e869d932`.
 
 ## Context
@@ -67,12 +76,12 @@ The gaps that cut across areas:
 7. **NFR-12 wording.** "Facing coverage complete (verified path geometry)" is shown in the Simulate results for every Facing operation. The Facing check's texts say "certify" and "certificate". "Good to go" and "No overcut" read as claims (OI-2097).
 8. **The command line labels levels by command.** The same fact is `note:` in one command, `warning:` in another, or has no level word at all. Every run note is printed as `warning:`, one line per move for feed limits, where the interface shows one information line per operation (decision 0430).
 
-Two findings change what a check does, not only its level, so they are kept out of this record and left to the owner as decisions of their own:
+Two findings change what a check does, not only its level, so they are kept out of this record as decisions of their own, on the owner's answers to questions 5 and 6:
 
-- **OI-2095:** workholding Apply refuses on findings that generation only warns of. `workholding::findings_of` marks every zone finding other than "tab outside the end zones" as refusing, including an automatic tab with no room and tabs that overlap.
-- **OI-2096:** `openchuck-cli regenerate --out` writes the G-code files before it reports failed checks, and exits with an error leaving them in the folder. The export dialog does not write in that case (GC-15).
+- **OI-2095** is [decision 0539](0539-workholding-apply-warns-on-a-tab-with-no-room-or-tabs-that-overlap.md). Workholding Apply refuses on findings that generation only warns of: `workholding::findings_of` marks every zone finding other than "tab outside the end zones" as refusing, including an automatic tab with no room and tabs that overlap.
+- **OI-2096** is [decision 0540](0540-the-command-line-checks-before-it-writes.md). `openchuck-cli regenerate --out` writes the G-code files before it reports failed checks, and exits with an error leaving them in the folder. The export dialog does not write in that case (GC-15).
 
-## Decision, part A (proposed): levels, form and links
+## Decision (proposed): levels, form and links
 
 ### 1. The levels
 
@@ -90,7 +99,7 @@ Two findings change what a check does, not only its level, so they are kept out 
 Ask in order; the first yes sets the level.
 
 1. Is nothing made, or would what is made not match what the project asks for? **Error.**
-2. Is the output made but partial, so the user must accept it before it is written? **Warning, to acknowledge.** If part B is accepted: is it a finding that may be a collision of the tool, its shank or its holder with the part, the stock, a tab or a held region? Also **warning, to acknowledge**.
+2. Is the output made but partial, so the user must accept it before it is written? **Warning, to acknowledge.** If decision 0538 is accepted: is it a finding that may be a collision of the tool, its shank or its holder with the part, the stock, a tab or a held region? Also **warning, to acknowledge**.
 3. Left unread, could the message lead to a problem on the machine, or to a result the user would not expect from their settings? Examples: material cut or left that the settings did not ask for, a limit passed, a machine value not confirmed, a part of the job skipped, a setting ignored. **Warning.**
 4. Was the goal met, with a compromise or a choice the user may want to know? Examples: a slower feed, more passes, another entry, a link raised. **Information.**
 5. Otherwise it is not a message: leave it out, or show it as status.
@@ -144,7 +153,7 @@ When an author cannot tell a warning from information, it is a warning (NFR-12 l
    - the acknowledgement flag, warnings only;
    - the move, where a note is about one.
 
-   This breaks the library API. The workspace version goes from 0.48.0 to 0.49.0, with entries in the changelogs of `openchuck-path` and `openchuck-app` (decision 0048). The Merge Manager sequences the version with the other lanes.
+   This breaks the library API. The workspace version goes up one minor version (0.49.0 on `main` today, so 0.50.0 is expected, or the next free minor version at release), with entries in the changelogs of `openchuck-path` and `openchuck-app` (decision 0048). The Merge Manager sequences the version with the other lanes.
 2. **One constructor for messages in the application.** It builds a `Message` from the level, topic, context, sentences and link, and writes the lead-in. `Message::new` becomes private to that module. The interface and the command line both print from it.
 3. **Checks that fail when the rule is broken:**
    - a unit test that builds the messages of a fixture project with one of each kind and checks each row against the form;
@@ -163,68 +172,30 @@ Each pull request is a draft, test first, pushed once at release (decision 0055)
 3. The lead-in for every message, and "Show setting" with the setting key for every field kind.
 4. Setup, model, post and export messages: the form, the links, and the field labels in place of internal names (the machine editor's mapping, reused; OI-360).
 5. Interface: the lost status lines (OI-2098), error dialogs that name the action that failed, recovery messages at their level, and the NFR-12 wording (OI-2097).
-6. Part B, only if the owner accepts it: the acknowledgement for possible collisions, after step 1, whose library type carries the reason for a tick. It is its own pull request with the tests of B4.
+6. Decisions 0538, 0539 and 0540, each as its own pull request with its own tests, once the owner accepts it. 0538 comes after step 1, because it uses the library type. 0539 and 0540 can come at any time.
 
-## Decision, part B (proposed; a change of check behaviour, accepted separately): a possible collision is a warning to acknowledge
+### 8. The lost status lines (the owner's answer to question 7)
 
-The owner's clarification of 7 Nov 2026, relayed with the answer to question 1, was this: checks that relate to a potential collision, such as the flute length check, should be upgraded to a warning requiring acknowledgement (the GC-16 level).
+The status line of the interface shell is never drawn (OI-2098). Each text it holds is placed by the author's test of section 2. Information is shown in the Results tab only (question 1), and a reminder that loses work if it is missed is not information.
 
-This changes what the export and the command line do, not only how a message looks. So it is kept apart from part A, has its own open item (OI-2100) and its own build step, and is accepted on its own. No existing acknowledgement is weakened: the partial-path tick of decision 0239 item 10 and the stock-simulation-skipped tick of decision 0168 stay as they are.
+| Text today | Where | Test | Level and place |
+| --- | --- | --- | --- |
+| "Recovered checkpoint. Save explicitly to keep these changes." | `shell.rs:965` | unread, the recovered work is lost at close (unexpected behaviour) | **Warning** in Messages, on the project, with the action "Save", until the project is saved or the recovered changes are undone |
+| "Tool numbers changed. Undo with Ctrl Z; save the project to keep them." | `export_panel.rs:690` | the program just written uses the new numbers; unsaved, the project reopens with the old ones and the next program differs from the tool table (a machining problem) | **Warning** in Messages, on the tools, with the actions "Save" and "Undo", until saved or undone |
+| "Open or create a project before importing a model." | `shell.rs:2067` | the command did nothing | **Error dialog**: a command the user gave failed outright (specification section 9) |
+| "The selected geometry changed; select it again." | `shell/pending.rs:44` | the pick was dropped, so nothing was made | **Error** in Messages on the selection set, with "Reselect", until it is picked again, as for the other selection-set problems |
+| "Saved …", "Opened …", "Added …", "Copied n models into the project folder" | `shell.rs:556-557, 597, 820, 2047` | no compromise and no consequence | **Not a message**: left out. The title bar shows the save state, and the tree shows what was added |
+| Tool library and machine library lines ("Removed …", "Imported into …") | their windows | shown in the window's own line already | unchanged |
 
-### B1. The rule
+The shell's unused status field is removed with them. The recovery notices in Messages stay warnings (losing recovery data is unexpected behaviour), except a checkpoint that could not be written, which is an error because the action failed.
 
-A finding that may be a collision of the tool, its shank or its holder with the part, the stock, a tab or a held region is a **warning to acknowledge**, not a plain warning.
+## Behaviour changes, in records of their own
 
-That holds whether the check measured the collision or could not rule it out (stock of unknown size, a position that is not a number). A finding that only leaves material uncut, or that the strategy already avoided by changing the path, is not a collision.
+- [Decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md): a possible collision is a warning to acknowledge (the owner's clarification with question 1).
+- [Decision 0539](0539-workholding-apply-warns-on-a-tab-with-no-room-or-tabs-that-overlap.md): workholding Apply warns on an automatic tab with no room and on tabs that overlap (question 5).
+- [Decision 0540](0540-the-command-line-checks-before-it-writes.md): the command line checks before it writes (question 6).
 
-### B2. The checks that qualify
-
-"Yes" rows are proposed. "?" rows are for the owner (question B). "No" rows are listed so the reason is on record.
-
-| Check | Where (`main` at `e869d932`) | Level today | Qualifies | Why |
-| --- | --- | --- | --- | --- |
-| Flute length: the stock stands above the flutes along the path (decisions 0509, 0522, 0524) | `openchuck-path` `flutes.rs:647-672` | warning, no tick | **yes** | the shank or holder may rub the stock |
-| Flute length: the stock's size is not known, so the flutes could not be checked | `flutes.rs:640-645` | warning, no tick | **yes** | a collision cannot be ruled out |
-| Flute length: a tool position is not a finite number | `flutes.rs:634-639` | warning, no tick | **yes** | as above; a defect, so it also says to regenerate |
-| Flute length at a free end that is not faced (decision 0531) | `finishing.rs:296-311` | warning, no tick | no | the end is skipped, so the tool does not go there |
-| Tab length: a tab shorter than the tool is wide (decisions 0494, 0523) | `openchuck-app` `workholding.rs` (`TAB_LENGTH_LEAD`) and the setup note at `workholding.rs:221-243` | warning, no tick (shown twice today) | **yes** | the tool may cut through the tab, and the part may come loose |
-| Swarf cuts into a face next to it, at the end of its rulings or at an end of the pass (decision 0532) | `swarf.rs:907-953` | warning, no tick | **yes** | the side of the tool meets another face of the part |
-| Swarf cuts into its own finished face beyond the tolerance (decision 0175) | `swarf.rs:859-890` | warning, no tick (the owner chose no tick in 0175) | **?** | a gouge, often the face's own error of hundredths of a millimetre, not a collision; the recommendation is to leave it a plain warning |
-| A selection's check set is touched, or its avoid set cut, where the set only warns | `region.rs:441-462`, `swarf.rs:3082-3093` | warning, no tick | **?** | a check set often stands for a clamp or fixture; the recommendation is yes for a check set, and no for an avoid set (a gouge) |
-| A free end faced down to the rotary axis with nothing holding the part on the other side (decisions 0344, 0500) | `finishing.rs:428-439` (and the stock cut free at `finishing.rs:390-403`) | warning, no tick | **?** | a part or stock piece cut free can be thrown into the tool; the recommendation is yes for the part cut free, no for the stock ring |
-| A rapid that removes material, found by the simulation | `openchuck-app` `pipeline.rs:441`; Results line `run_panel.rs:205` | a note in the Results tab (and a "problem" line); not in Messages or the export | **yes** | a rapid through material is a crash. It is known only after a stock simulation; a project that skips it already ticks that (decision 0168) |
-| The setup's safe cylinder does not enclose the stock, or the part | `openchuck-types` `setup.rs:466-475` | setup warning, no tick | **yes** | links at the clearance pass through material |
-| The safe cylinder is inside the machine's minimum clearance | `setup.rs` (`ClearanceBelowMinimum`) | setup warning, no tick | **yes** | its own text says links may hit the chuck, jaws, headstock or tailstock |
-| A tool may be too long to clear the workholding within the Z travel (decision 0318) | `openchuck-app` `setup.rs` (`spindle_height_text`) | setup warning, no tick | **yes** | the tool may meet the workholding |
-| A tool may take the spindle above the top of the Z travel | same | setup warning, no tick | no | a travel limit, which the controller stops at; not a collision with the job |
-| A point of the job is outside the machine's travel | `setup.rs` (`OutsideTravel`) | setup warning, no tick | no | a travel limit, as above |
-| The shank is wider than the cutting part, so simultaneous finishing breaks the path and links round | `simultaneous.rs:1042-1053` | warning, no tick | no | the strategy avoided the collision; the warning says where it changed the path |
-| Unreached areas, material no tool can reach, a selection that reaches a held region, links that could not be lowered | various | warning or note | no | material is left; the tool keeps clear |
-| The simulation's overcut lines | `run_panel.rs` | a "problem" line | no | a gouge, measured after the fact; it stays where it is |
-
-Entry, ramp, held-region and tab-zone refusals are errors already; nothing is made, so they are unchanged.
-
-### B3. What changes for each check that qualifies
-
-- **Export (GC-16).** Writing waits for a tick, as for a partial path today. The dialog lists each collision warning of the result with its operation or setup, and one tick acknowledges them for this result. Proposed label: "I have read the possible collisions listed for this result and will check them before running the program". It names nothing as safe (NFR-12). A new run asks again (decision 0239 item 10). The partial-path tick stays its own tick, with its own label.
-- **Command line.** `regenerate --out` refuses to write without a flag (proposed: `--acknowledge-collision-warnings`), as it does for a partial path today. The refusal names each warning.
-- **Operation and setup marks.** The Warning mark, with the cause starting "Needs acknowledging:".
-- **Messages.** Warnings to acknowledge come first among the warnings, each with its link. The rapid cut, which today reaches only the Results tab, is listed on its operation while the simulation that found it is current.
-- **Not "partial".** Today the only warning that needs a tick is a partial path, and the export reads every such warning as partial (`export.rs`, `partial_operations`). The library type of part A, item 6.1, carries the reason for the tick: partial, or a possible collision. Only a partial path is "not complete". Setup warnings take their reason from their kind in the application.
-- **Output.** G-code is unchanged, byte for byte, with or without the tick (GC-07).
-
-### B4. Test plan
-
-Each test is named after its requirement, written first and watched fail.
-
-- **For each check marked yes:** `req_gc_16_<check>_needs_acknowledging`, for example `req_gc_16_flute_length_needs_acknowledging`. Each test checks four things:
-  - the export refuses to write without the tick, and writes with it;
-  - the written files are byte-identical to a run with no warning (GC-07);
-  - the command line refuses without the flag and writes with it;
-  - the operation's or setup's mark reads "Needs acknowledging".
-- `req_gc_16_partial_path_acknowledgement_is_unchanged`: a partial path still asks its own tick, is still called partial, and a collision warning is never called partial.
-- `req_gc_16_a_warning_that_is_not_a_collision_asks_no_tick`: an unreached-areas warning is still a plain warning.
-- `req_ui_12_warnings_to_acknowledge_come_first`: the order in Messages.
+The author's test of section 2 names 0538.
 
 ## Alternatives considered
 
@@ -242,17 +213,17 @@ Each test is named after its requirement, written first and watched fail.
 - Message texts change in the interface and on the command line. No project file, cache key or G-code changes.
 - OI-360 (internal names in library errors) is taken up by build step 4 and closes when it is done.
 - OI-373 (Results lines belong in Messages) is not closed, and the owner's answer to question 1 narrows it: warnings and errors reach Messages, while information belongs in the Results tab by design. The information rows Messages shows today move out of it (section 5).
-- Part B, if accepted, changes what the export and the command line do for the checks it lists. The export asks for a tick before writing, and the command line needs a flag. Its test plan is in part B.
+- Decisions 0538, 0539 and 0540 change what the export, workholding Apply and the command line do. Each has its own test plan and is accepted on its own.
 
 ## Open items
 
 | ID | Item |
 | --- | --- |
-| OI-2094 | The owner's answers to this record: the level policy, the one form, the links and the mechanism. |
-| OI-2095 | Workholding Apply refuses on findings that generation only warns of (an automatic tab with no room, tabs that overlap). This changes a check's behaviour, so it is a separate decision. |
-| OI-2096 | The command line writes G-code before it reports failed checks, and leaves the files when it exits with an error. This changes behaviour, so it is a separate decision. |
+| OI-2094 | The owner's answers to this record: the level policy, the one form, the links and the mechanism. Answered on 7 Nov 2026 (questions 1 to 7); it closes when the owner accepts the record. |
+| OI-2095 | Workholding Apply refuses on findings that generation only warns of (an automatic tab with no room, tabs that overlap): decision 0539. |
+| OI-2096 | The command line writes G-code before it reports failed checks, and leaves the files when it exits with an error: decision 0540. |
 | OI-2097 | NFR-12 wording to remove: "verified path geometry", "certify", "certificate", "Good to go", "No overcut". |
-| OI-2098 | The shell's status line is never drawn, so its confirmations and refusals reach nobody. Where should they go? |
-| OI-2100 | Part B: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, and the answers to its "?" rows (the swarf overcut into its own face, check and avoid sets that only warn, a part cut free at a free end). |
+| OI-2098 | The shell's status line is never drawn, so its confirmations and refusals reach nobody. Answered (question 7, A): section 8; built in step 5. |
 | OI-2099 | Outside this record unless the owner says otherwise: the command-line help text, the setup sheet (it shows no warnings; GC-12 does not ask for them), and the log, About and crash texts, which keep the log crate's levels. |
-| OI-2101 | Part B's tests in the verification plan: the GC-16 entry gains the collision acknowledgements of B4, when part B is built. |
+| OI-2100 | Decision 0538: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, and the answers to its "?" rows (the swarf overcut into its own face, check and avoid sets that only warn, a part cut free at a free end). |
+| OI-2101 | Decision 0538's tests in the verification plan: the GC-16 entry gains the collision acknowledgements, when 0538 is built. |
