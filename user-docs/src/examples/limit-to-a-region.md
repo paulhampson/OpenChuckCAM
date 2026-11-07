@@ -35,7 +35,7 @@ A path limited to a selection stops at the edge between a selected surface and a
 4. Type `Finial ball` in the name box and press <kbd>Enter</kbd>.
 
 <figure>
-<img src="images/region/01-pick-the-ball.png" width="1920" height="1080" alt="The Operations step in the Front view with the pick tools open and By angle (E) chosen; the ball of the finial is drawn blue; the Inspector shows New selection, 1,104 triangles selected, the name Finial ball, and the buttons Save as new set and Clear, with select by angle within 30 degrees.">
+<a href="images/region/01-pick-the-ball.png"><img src="images/region/01-pick-the-ball.png" width="1920" height="1080" alt="The Operations step in the Front view with the pick tools open and By angle (E) chosen; the ball of the finial is drawn blue; the Inspector shows New selection, 1,104 triangles selected, the name Finial ball, and the buttons Save as new set and Clear, with select by angle within 30 degrees."></a>
 <figcaption><b>Figure 1.</b> The ball picked by angle: one click selects the triangles that join without a sharp turn.</figcaption>
 </figure>
 
@@ -51,7 +51,7 @@ A path limited to a selection stops at the edge between a selected surface and a
 4. Under the view, click **Results**.
 
 <figure>
-<img src="images/region/02-before.png" width="1920" height="1080" alt="The Front view with the helical finishing path drawn in orange over the whole baluster from the collar to the finial; the Results tab reads 2 operation(s), 29098 moves, 18.6 s to generate, and Setup 'Setup 1': stock 28503 mm³ before, 14293 mm³ after (14210 mm³ removed).">
+<a href="images/region/02-before.png"><img src="images/region/02-before.png" width="1920" height="1080" alt="The Front view with the helical finishing path drawn in orange over the whole baluster from the collar to the finial; the Results tab reads 2 operation(s), 29098 moves, 18.6 s to generate, and Setup 'Setup 1': stock 28503 mm³ before, 14293 mm³ after (14210 mm³ removed)."></a>
 <figcaption><b>Figure 2.</b> The finish over the whole part: 29,098 moves for both operations, of which the roughing is 9,946.</figcaption>
 </figure>
 
@@ -61,7 +61,7 @@ A path limited to a selection stops at the edge between a selected surface and a
 2. Click **Generate**.
 
 <figure>
-<img src="images/region/03-cut-on.png" width="1920" height="1080" alt="The Front view with the finishing path only on the ball of the finial; the Inspector shows Cut on: Finial ball; the Results tab reads 2 operation(s), 12182 moves, Generated: Finish, Reused (nothing they depend on changed): Rough, and Rough: 12100 mm³ removed in 9946 moves.">
+<a href="images/region/03-cut-on.png"><img src="images/region/03-cut-on.png" width="1920" height="1080" alt="The Front view with the finishing path only on the ball of the finial; the Inspector shows Cut on: Finial ball; the Results tab reads 2 operation(s), 12182 moves, Generated: Finish, Reused (nothing they depend on changed): Rough, and Rough: 12100 mm³ removed in 9946 moves."></a>
 <figcaption><b>Figure 3.</b> With <b>Cut on</b> set, the finish covers the ball and stops at its edge. Only the finish was generated again; the roughing was reused.</figcaption>
 </figure>
 
@@ -74,7 +74,7 @@ The finish now has 2,236 moves instead of about 19,150, and removes 204 mm³. Th
 3. Click **Generate**.
 
 <figure>
-<img src="images/region/04-avoid.png" width="1920" height="1080" alt="The Front view with the finishing path over the whole baluster except the ball, which is drawn in the set's colour; the Inspector shows Avoid: Finial ball with Cut short chosen and Warn only and Ignore beside it; the Results tab reads 2 operation(s), 84864 moves, 35.7 s to generate, and stock 28503 mm³ before, 14436 mm³ after (14067 mm³ removed).">
+<a href="images/region/04-avoid.png"><img src="images/region/04-avoid.png" width="1920" height="1080" alt="The Front view with the finishing path over the whole baluster except the ball, which is drawn in the set's colour; the Inspector shows Avoid: Finial ball with Cut short chosen and Warn only and Ignore beside it; the Results tab reads 2 operation(s), 84864 moves, 35.7 s to generate, and stock 28503 mm³ before, 14436 mm³ after (14067 mm³ removed)."></a>
 <figcaption><b>Figure 4.</b> With the ball in <b>Avoid</b>, the finish stops short of it. The ball keeps the roughing's stock to leave.</figcaption>
 </figure>
 

@@ -21,7 +21,7 @@ The tutorial's finishing tool, **Z1 ball 3.175x22**, has *R* = 1.5875 mm. The pr
 2. In the Inspector, under **Pattern and tolerance**, set **Stepover** to `0.9` and press <kbd>Enter</kbd>.
 
 <figure>
-<img src="images/scallop/01-stepover.png" width="1920" height="1080" alt="The Finish operation's Inspector with Stepover 0.900 mm, a button beside it to go back to the tool's value, Stock to leave 0.000 default, Scallop height 0.000 default, Passes Spiral, and Material preset No preset; the operation is marked Stale.">
+<a href="images/scallop/01-stepover.png"><img src="images/scallop/01-stepover.png" width="1920" height="1080" alt="The Finish operation's Inspector with Stepover 0.900 mm, a button beside it to go back to the tool's value, Stock to leave 0.000 default, Scallop height 0.000 default, Passes Spiral, and Material preset No preset; the operation is marked Stale."></a>
 <figcaption><b>Figure 1.</b> The stepover set to 0.9 mm. A value typed into the operation is kept with it and shows a button to go back to the tool's value.</figcaption>
 </figure>
 
@@ -29,7 +29,7 @@ The tutorial's finishing tool, **Z1 ball 3.175x22**, has *R* = 1.5875 mm. The pr
 4. Under **Files**, choose **One file per operation**, so that the table lists each operation's programmed time.
 
 <figure>
-<img src="images/scallop/02-time-stepover-0.9.png" width="1920" height="1080" alt="The Post and export dialog with One file per operation chosen; Files to write lists 01-setup-1-rough.nc, Setup 1, 9189 lines, 13 min 25 s, and 02-setup-1-finish.nc, Setup 1, 9096 lines, 8 min 04 s; the text says Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.">
+<a href="images/scallop/02-time-stepover-0.9.png"><img src="images/scallop/02-time-stepover-0.9.png" width="1920" height="1080" alt="The Post and export dialog with One file per operation chosen; Files to write lists 01-setup-1-rough.nc, Setup 1, 9189 lines, 13 min 25 s, and 02-setup-1-finish.nc, Setup 1, 9096 lines, 8 min 04 s; the text says Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time."></a>
 <figcaption><b>Figure 2.</b> With a 0.9 mm stepover the finish is 8 min 04 s of programmed time, against 14 min 55 s at the tutorial's stepover.</figcaption>
 </figure>
 
@@ -43,14 +43,14 @@ Close the dialog with the **×** at its top right: nothing is written until you 
 2. Leave **Stepover** at `0.9`, and set **Scallop height** to `0.01`.
 
 <figure>
-<img src="images/scallop/03-scallop-height.png" width="1920" height="1080" alt="The Finish operation's Inspector with Stepover 0.900 and Scallop height 0.010, both with a button to go back to the default; the view still shows the earlier path with the wide stepover.">
+<a href="images/scallop/03-scallop-height.png"><img src="images/scallop/03-scallop-height.png" width="1920" height="1080" alt="The Finish operation's Inspector with Stepover 0.900 and Scallop height 0.010, both with a button to go back to the default; the view still shows the earlier path with the wide stepover."></a>
 <figcaption><b>Figure 3.</b> A scallop height of 0.01 mm with the stepover still at 0.9 mm. The scallop height wins: it allows only about 0.356 mm between passes.</figcaption>
 </figure>
 
 3. Generate, and open **Post and export...** again.
 
 <figure>
-<img src="images/scallop/04-time-scallop-0.01.png" width="1920" height="1080" alt="The Post and export dialog: 01-setup-1-rough.nc, 9189 lines, 13 min 25 s, and 02-setup-1-finish.nc, 25730 lines, 18 min 37 s; behind it the Simulate step's Inspector shows Within ±0.100 mm 92.8 %.">
+<a href="images/scallop/04-time-scallop-0.01.png"><img src="images/scallop/04-time-scallop-0.01.png" width="1920" height="1080" alt="The Post and export dialog: 01-setup-1-rough.nc, 9189 lines, 13 min 25 s, and 02-setup-1-finish.nc, 25730 lines, 18 min 37 s; behind it the Simulate step's Inspector shows Within ±0.100 mm 92.8 %."></a>
 <figcaption><b>Figure 4.</b> With a 0.01 mm scallop height the finish is 18 min 37 s. The roughing does not change.</figcaption>
 </figure>
 

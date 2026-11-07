@@ -19,7 +19,7 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 4. Name the operation `Rest`.
 
 <figure>
-<img src="images/rest/01-add-rest.png" width="1920" height="1080" alt="The Add operation dialog with the name Rest, the strategy Rest machining and its description, Setup 1, the tool Z1 ball 2x12 and the material preset Setup's stock material: Hardwood.">
+<a href="images/rest/01-add-rest.png"><img src="images/rest/01-add-rest.png" width="1920" height="1080" alt="The Add operation dialog with the name Rest, the strategy Rest machining and its description, Setup 1, the tool Z1 ball 2x12 and the material preset Setup's stock material: Hardwood."></a>
 <figcaption><b>Figure 1.</b> The rest operation, with a 2 mm ball: smaller than the 3.175 mm tools of the roughing and the finish.</figcaption>
 </figure>
 
@@ -31,7 +31,7 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 2. Under the view, click **Results**.
 
 <figure>
-<img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths and numbered black-and-white markers labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab begins 3 operation(s), 32759 moves, and lists the warnings of each operation, the last starting operation 'Rest': move 0: rest machining cannot reach 9 areas of the part.">
+<a href="images/rest/02-rest-after-finish.png"><img src="images/rest/02-rest-after-finish.png" width="1920" height="1080" alt="The three operations generated; the view shows the paths and numbered black-and-white markers labelled Unreachable (Rest) in the legend, near the held end and along the part; the Results tab begins 3 operation(s), 32759 moves, and lists the warnings of each operation, the last starting operation 'Rest': move 0: rest machining cannot reach 9 areas of the part."></a>
 <figcaption><b>Figure 2.</b> The numbered markers show where material is left that the rest tool cannot reach.</figcaption>
 </figure>
 
@@ -49,7 +49,7 @@ What it cannot reach
 Scroll the Results list down to the volumes:
 
 <figure>
-<img src="images/rest/03-rest-results.png" width="1920" height="1080" alt="The Results tab scrolled to the end: Setup 'Setup 1': stock 28503 mm³ before, 14242 mm³ after (14261 mm³ removed); Rough: 12100 mm³ removed in 9946 moves; Finish: 2110 mm³ removed in 19152 moves; Rest: 51 mm³ removed in 3661 moves; Most material left: 0.825 mm at X 10.00, Y 7.00, Z -0.41; Deepest cut below the surface: 0.049 mm, within the simulation's error.">
+<a href="images/rest/03-rest-results.png"><img src="images/rest/03-rest-results.png" width="1920" height="1080" alt="The Results tab scrolled to the end: Setup 'Setup 1': stock 28503 mm³ before, 14242 mm³ after (14261 mm³ removed); Rough: 12100 mm³ removed in 9946 moves; Finish: 2110 mm³ removed in 19152 moves; Rest: 51 mm³ removed in 3661 moves; Most material left: 0.825 mm at X 10.00, Y 7.00, Z -0.41; Deepest cut below the surface: 0.049 mm, within the simulation's error."></a>
 <figcaption><b>Figure 3.</b> The rest operation removes 51 mm³ in 3,661 moves.</figcaption>
 </figure>
 
@@ -73,7 +73,7 @@ To see what happens when the rest operation has nothing to follow, turn the othe
 2. Click **Generate**.
 
 <figure>
-<img src="images/rest/04-no-earlier-operation.png" width="1920" height="1080" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock; the Results tab reads 1 operation(s), 106196 moves, 40.3 s to generate, and operation 'Rest': Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left.">
+<a href="images/rest/04-no-earlier-operation.png"><img src="images/rest/04-no-earlier-operation.png" width="1920" height="1080" alt="Only 3 Rest is ticked; the view shows a dense path over the whole stock; the Results tab reads 1 operation(s), 106196 moves, 40.3 s to generate, and operation 'Rest': Rest machining cleans up material that earlier operations left, and no earlier operation of this setup has cut: the setup's own stock is taken, so all of the part counts as having material left."></a>
 <figcaption><b>Figure 4.</b> With no earlier operation, the rest operation starts from the whole stock and cuts all of it with the 2 mm ball.</figcaption>
 </figure>
 

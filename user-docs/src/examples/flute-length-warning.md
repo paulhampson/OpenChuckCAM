@@ -24,7 +24,7 @@ A tool that fits within the flutes can still be too short in other ways: the hol
 4. Set **Flute length** to `3`.
 
 <figure>
-<img src="images/flutes/01-short-flutes.png" width="1920" height="1080" alt="The Tool library window on the project's copy of T204: the note The project's copy: each change can be undone, Name Short-flute ball 3.175x3, Type Ball end mill, Diameter 3.175, Flute length 3.000, Overall length 38.000, Shank diameter 3.175, 2 flutes, carbide; on the right, Differs from the library: name, flute length.">
+<a href="images/flutes/01-short-flutes.png"><img src="images/flutes/01-short-flutes.png" width="1920" height="1080" alt="The Tool library window on the project's copy of T204: the note The project's copy: each change can be undone, Name Short-flute ball 3.175x3, Type Ball end mill, Diameter 3.175, Flute length 3.000, Overall length 38.000, Shank diameter 3.175, 2 flutes, carbide; on the right, Differs from the library: name, flute length."></a>
 <figcaption><b>Figure 1.</b> The project's copy of the finishing tool, with 3 mm of flute. The library's tool is not changed.</figcaption>
 </figure>
 
@@ -33,7 +33,7 @@ A tool that fits within the flutes can still be too short in other ways: the hol
 ## 2. Read the two warnings
 
 <figure>
-<img src="images/flutes/02-flute-warnings.png" width="1920" height="1080" alt="The Operations step after generating: 2 Finish has a warning triangle; the Messages list shows Warnings 3, two of them starting Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'), each with the links 2 Finish and Show setting.">
+<a href="images/flutes/02-flute-warnings.png"><img src="images/flutes/02-flute-warnings.png" width="1920" height="1080" alt="The Operations step after generating: 2 Finish has a warning triangle; the Messages list shows Warnings 3, two of them starting Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'), each with the links 2 Finish and Show setting."></a>
 <figcaption><b>Figure 2.</b> Two flute-length warnings for the finish. The path was made: the operation shows a warning, not an error.</figcaption>
 </figure>
 
@@ -70,7 +70,7 @@ This is the first thing to try. Set **Flute length** back to `22`, or choose the
 3. Set **Stepdown** to `2`, less than the 3 mm of flute, and click **Generate**.
 
 <figure>
-<img src="images/flutes/03-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Face free ends ticked, Finish allowance 0.100 default, Finishing layers ticked, Stepdown 2.000, and Material preset No preset; the Messages list shows Warnings 2, the remaining one being the flute-length warning about the end face at X 61.000.">
+<a href="images/flutes/03-finishing-layers.png"><img src="images/flutes/03-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Face free ends ticked, Finish allowance 0.100 default, Finishing layers ticked, Stepdown 2.000, and Material preset No preset; the Messages list shows Warnings 2, the remaining one being the flute-length warning about the end face at X 61.000."></a>
 <figcaption><b>Figure 3.</b> With finishing layers of 2 mm, the warning about the passes is gone. The warning about the end face remains.</figcaption>
 </figure>
 
@@ -85,7 +85,7 @@ The end-face warning remains, because the stock beside the end is still deeper t
 1. Untick **Face free ends** and click **Generate**.
 
 <figure>
-<img src="images/flutes/04-face-free-ends-off.png" width="1920" height="1080" alt="The Results tab after generating with Face free ends unticked: 2 operation(s), 46948 moves, Generated: Finish, Reused: Rough; no flute-length warning is listed; the notes listed are about the roughing's shoulder, the step at X 8.589, the stepdown override and the finishing layers.">
+<a href="images/flutes/04-face-free-ends-off.png"><img src="images/flutes/04-face-free-ends-off.png" width="1920" height="1080" alt="The Results tab after generating with Face free ends unticked: 2 operation(s), 46948 moves, Generated: Finish, Reused: Rough; no flute-length warning is listed; the notes listed are about the roughing's shoulder, the step at X 8.589, the stepdown override and the finishing layers."></a>
 <figcaption><b>Figure 4.</b> No flute-length warning remains. The end of the finial is left as the roughing cut it.</figcaption>
 </figure>
 
