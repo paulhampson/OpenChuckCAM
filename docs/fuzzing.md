@@ -11,7 +11,7 @@ Before pushing a public library API change, compile the separate fuzz workspace 
 | Format | Parser (entry point) | Fuzz target | Pull request | Nightly | Corpus seeds |
 | --- | --- | --- | --- | --- | --- |
 | STL model (IMP-01) | `openchuck_import::import_bytes`, then `check_mesh` and `place` | `stl_import` | Group B | Yes | `testdata/stl/*.stl` |
-| STEP model (IMP-02) | `StepImporter` (the OpenCASCADE reader in a child process, decision 0003) | Mutation run, not libFuzzer: `crates/openchuck-import/examples/step_mutations.rs` (decision 0027 item 9, OI-27) | 150 mutants in the STEP kernel job | 3,000 mutants, seeded by the run number | `testdata/step/valid/` (4 files); `testdata/step/broken/` and `crash/` in the import tests |
+| STEP model (IMP-02) | `StepImporter` (the OpenCASCADE reader in a child process, decision 0003) | Mutation run, not libFuzzer: `crates/openchuck-import/examples/step_mutations.rs` (decision 0027 item 9, OI-27). It counts as fuzzing for NFR-07 and towards the 24 hours (decision 0534); the release report calls it "mutation run" | 150 mutants in the STEP kernel job | A 55-minute budget (about an hour with the build), seeded by the run number (decision 0534) | `testdata/step/valid/` (4 files); `testdata/step/broken/` and `crash/` in the import tests |
 | Project file, one at a time, with schema and migration checks (PRJ-01, PRJ-04) | `openchuck_project::file::parse_file` | `project_files` | Group B | Yes | The fixture files in `crates/openchuck-project/tests/fixtures/`, each after the byte that picks its kind (from decision 0107; none before) |
 | Project folder, with the checks across files (PRJ-01, PRJ-05, PRJ-06) | `openchuck_project::file::load_files`, the checks of `file::load` | `project_folder` (decision 0107) | Group A | Yes (decision 0107) | The fixture folders in `crates/openchuck-project/tests/fixtures/`, each written as `=== <path>` blocks |
 | Recovery checkpoint container (PRJ-08, NFR-07) | `openchuck_project::recovery::Snapshot::decode`, then project validation; fuzz both raw envelopes and checksummed arbitrary inner payloads | `project_recovery` | Group B | Yes | `fuzz/seeds/project_recovery/`; local 60-second smoke is not counted as nightly CPU hours |
@@ -24,7 +24,9 @@ Before pushing a public library API change, compile the separate fuzz workspace 
 | Post definition and template (GC-03) | `PostDefinition::from_parts`, then a render of a small toolpath with `TemplatePost::post` (from decision 0107) | `post_definition` | Group C | Yes (decision 0107) | `crates/openchuck-post/posts/*/` (`post.toml`, a line `---`, `main.post`) |
 | G-code program (GC-08, the `gcode-sim` and replay commands) | `openchuck_gcode::read`, then `replay` in both dialects | `gcode_reader` | Group C | Yes (decision 0107) | `testdata/gcode/`, `testdata/golden/post_*.ngc`, `testdata/golden/reference/` |
 | Toolpath IR, serialised (GC-01) | `serde_json` into `Toolpath`, then `validate` and `total_duration` | `toolpath_ir_json` | Group A | Yes | None |
-| Export acknowledgement, `settings.toml` (GC-16) | `openchuck_app::acknowledgement::Acknowledgements` | None: a corpus test only (OI-327) | No | No | `req_gc_16_a_bad_settings_file_asks_again_with_a_message_and_is_kept_and_other_keys_survive` |
+| `settings.toml`: export acknowledgements (GC-16) and the `[interface]` table (UI-15) | `openchuck_app::Acknowledgements::lookup_text` and `openchuck_app::settings::SettingsFile::load_text` | `settings_toml` (decision 0534, OI-327) | Group C | Yes (decision 0534) | `fuzz/seeds/settings_toml/` |
+| Facing operation rows, JSON text in a project parameter (OP-24) | `openchuck_path::facing::selection::decode_rows`, then `encode_rows` and decode again | `facing_rows` (decision 0534) | Group A | Yes (decision 0534) | `fuzz/seeds/facing_rows/` |
+| Checkpoint index files and recovery `state.toml` (PRJ-08) | Strict serde structs in `openchuck-app` `checkpoints.rs` and `openchuck-project` recovery/store.rs | None: written by the application, size-capped (OI-2086) | No | No | |
 | Tool library folder (TL-01) | `ToolLibrary::open`: each file through the parsers above, then lookups by ID | The per-file target `tool_library_toml` | Group B | Yes | As above |
 | DXF and SVG (IMP-06) | Not built | None yet | | | |
 
@@ -47,7 +49,11 @@ Updated from the nightly runs on `main` by a session with the Actions API (decis
 | `post_definition` | 0 (not in the nightly job before decision 0107) | 0.0 | 0 | |
 | `gcode_reader` | 0 (not in the nightly job before decision 0107) | 0.0 | 0 | |
 | `toolpath_ir_json` | 6 | 6.0 | 0 | 17 Oct 2026 |
-| STEP mutation run | 3 runs (15 to 17 Oct) of the same 3,000 mutants | 0.06 distinct (0.17 run) | 0 | 17 Oct 2026 |
+| STEP mutation run | 3 runs (15 to 17 Oct) of the same 3,000 mutants; from the first night after decision 0534, about 55 minutes of new mutants a night | 0.06 distinct (0.17 run) | 0 | 17 Oct 2026 |
+| `settings_toml` | 0 (new, decision 0534) | 0.0 | 0 | |
+| `facing_rows` | 0 (new, decision 0534) | 0.0 | 0 | |
+
+The totals above are not yet updated from the nightly runs after 17 Oct 2026. The fuzz jobs were green in nightly runs 23 to 29 (1 to 6 Nov); the next update from the annotations is due (decision 0107 item 5).
 
 Nights before decision 0107 had no CPU annotation; they are counted at 60 minutes for each successful fuzz step (the steps took 60.5 to 61.6 minutes, the build included). The STEP mutation steps took 2.9, 4.0 and 3.5 minutes.
 

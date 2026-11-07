@@ -744,11 +744,11 @@ jobs:
       matrix:
         group:
           - name: A
-            targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder facing_rows
           - name: B
             targets: project_files project_recovery stl_import tool_library_toml
           - name: C
-            targets: tool_profile_toml gcode_reader post_definition
+            targets: tool_profile_toml gcode_reader post_definition settings_toml
     steps:
       - uses: actions/checkout@v7
         with:
@@ -785,6 +785,12 @@ jobs:
       - name: Seed the recovery checkpoint corpus
         if: contains(format(' {0} ', matrix.group.targets), ' project_recovery ')
         run: mkdir -p fuzz/corpus/project_recovery && cp fuzz/seeds/project_recovery/* fuzz/corpus/project_recovery/
+      - name: Seed the settings file corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' settings_toml ')
+        run: mkdir -p fuzz/corpus/settings_toml && cp fuzz/seeds/settings_toml/* fuzz/corpus/settings_toml/
+      - name: Seed the facing rows corpus
+        if: contains(format(' {0} ', matrix.group.targets), ' facing_rows ')
+        run: mkdir -p fuzz/corpus/facing_rows && cp fuzz/seeds/facing_rows/* fuzz/corpus/facing_rows/
       - name: Seed the project file corpus from the fixtures
         if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
         run: |
