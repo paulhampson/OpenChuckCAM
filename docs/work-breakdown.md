@@ -1187,6 +1187,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 - [x] A deliberately failing check blocks the release tag (17 Oct 2026, lane TR: `req_gc_09_req_gc_10_req_nfr_08_a_failing_check_blocks_the_release_gate` in `xtask`; the release workflow's build and publish jobs need the gate's job, [decision 0091](decisions/0091-release-workflow-and-gate.md))
 - [ ] The library crates pass a publish dry run, and the `openchuck-*` names are reserved
 - [ ] Licences are compatible and the known-issues list is written
+- [ ] The OpenCASCADE (LGPL-2.1) licence notice and source offer are in every release archive: `Check the archives` in `release.yml` fails a release whose archive lacks `openchuck-step-worker`, `OPENCASCADE-NOTICE.txt`, `LICENSE_LGPL_21.txt` or `OCCT_LGPL_EXCEPTION.txt`, or whose notice does not name the `occt-sys` version in `Cargo.lock`; the first release run is checked by hand ([releasing.md](releasing.md), OI-29, OI-304; the wording's legal review is OI-23)
 - [ ] Gates 1 to 4 have passed for the reference job set and gates 1 to 5 for the first-cut project, with results stored, and the G93 result is recorded (instructions and results forms: [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md))
 - [ ] No severity 1 or 2 defect is open, and the verification report names the commit it covers
 - [x] The safe-practice checklist has been reviewed by the Z1 operator (14 Oct 2026, [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md))
