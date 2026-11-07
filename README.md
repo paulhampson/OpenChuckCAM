@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/openchuck-ui/assets/icon/mark-white.svg">
+    <img src="apps/openchuck-ui/assets/icon/mark-ink.svg" alt="The OpenChuckCAM logo: a chuck seen end-on, three jaws around round stock, inside an arrow for the A-axis rotation." width="96" height="96">
+  </picture>
+</p>
+
 # OpenChuckCAM
 
 OpenChuckCAM is a CAM program: you give it a 3D model, and it works out the tool movements and writes the G-code that a CNC machine reads. It is for **true 4-axis (XYZA) machining**, where the work is held in a chuck and turned by a rotary axis (called A) while the cutter moves along and around it. The first machine it supports is the **Makera Z1**; a LinuxCNC post is also included and is used to check the output.

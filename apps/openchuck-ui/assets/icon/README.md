@@ -8,13 +8,13 @@ The project's own icon ([decision 0542](../../../../docs/decisions/0542-applicat
 | File | What it is | Used by |
 | --- | --- | --- |
 | `icon.svg` | Master of the application icon: the white mark on the near-black tile, on a 512 by 512 canvas | Every PNG, `icon.ico`, `icon.res` and the favicon PNG are made from it |
-| `mark-ink.svg`, `mark-white.svg` | The mark without a tile, in ink (for light backgrounds) and white (for dark ones) | One-colour uses: documents, print, a future menu-bar icon |
-| `favicon-adaptive.svg` | The mark without a tile, ink, or white when the browser uses a dark colour scheme | Copied to `user-docs/theme/favicon.svg` |
+| `mark-ink.svg`, `mark-white.svg` | The mark without a tile, in ink (for light backgrounds) and white (for dark ones) | The repository `README.md` (a `<picture>` by colour scheme); one-colour uses such as documents, print or a future menu-bar icon |
+| `favicon-adaptive.svg` | The mark without a tile, ink, or white when the browser uses a dark colour scheme | Copied to `user-docs/favicon/favicon.svg` |
 | `icon-512.png`, `icon-256.png`, `icon-128.png`, `icon-64.png`, `icon-48.png`, `icon-32.png`, `icon-16.png` | `icon.svg` rendered at each size | `icon-256.png`: the window and taskbar icon (`src/app_icon.rs`, embedded at compile time). `icon-512.png`: the macOS bundle (`cargo xtask macos-app`, decision 0541) |
 | `icon.ico` | Windows icon file, PNG entries at 256, 64, 48, 32 and 16 | For anyone who needs a `.ico` (installers, shortcuts) |
 | `icon.res` | Compiled Windows resource holding the same images as one icon group | `build.rs` links it into `openchuck-ui.exe` on the MSVC target, so Explorer and the taskbar show the icon |
 
-The user guide's favicon is `user-docs/theme/favicon.svg` (a copy of `favicon-adaptive.svg`), with `favicon.png` (`icon.svg` at 32 pixels) for browsers that do not take SVG favicons.
+The user guide's favicon is `user-docs/favicon/favicon.svg` (a copy of `favicon-adaptive.svg`), with `favicon.png` (`icon.svg` at 32 pixels) for browsers that do not take SVG favicons; the guide's build copies both to the site. The guide's header draws the mark as an inline SVG in `user-docs/theme/index.hbs` (in the text colour, so it follows the theme): if the mark's shapes change, change them there too.
 
 ## Colours
 

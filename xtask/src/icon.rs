@@ -5,7 +5,7 @@
 //! `cargo xtask icon --check` renders in memory and reports any committed file that differs,
 //! so the committed files are always reproducible from the SVG. Nothing here runs at build
 //! time: the product build only reads the committed files. The user guide's favicon is
-//! written too: `user-docs/theme/favicon.svg` is a copy of `favicon-adaptive.svg` (the
+//! written too: `user-docs/favicon/favicon.svg` is a copy of `favicon-adaptive.svg` (the
 //! tile-less mark, ink or white by the browser's colour scheme) and `favicon.png`, for
 //! browsers without SVG favicons, is the application icon at 32 pixels.
 
@@ -31,8 +31,9 @@ pub const PIXEL_TOLERANCE: u8 = 2;
 /// Where the icon files live, relative to the workspace root.
 pub const ICON_DIR: &str = "apps/openchuck-ui/assets/icon";
 
-/// Where the user guide's theme lives, relative to the workspace root.
-pub const FAVICON_DIR: &str = "user-docs/theme";
+/// Where the user guide's favicon files live, relative to the workspace root; the guide's build
+/// copies them to the site unchanged (`user-docs/tools/build.py`).
+pub const FAVICON_DIR: &str = "user-docs/favicon";
 
 /// Every generated file, by its path relative to the workspace root, with its contents.
 pub type Generated = Vec<(String, Vec<u8>)>;
@@ -471,8 +472,8 @@ mod tests {
                 "apps/openchuck-ui/assets/icon/icon-16.png",
                 "apps/openchuck-ui/assets/icon/icon.ico",
                 "apps/openchuck-ui/assets/icon/icon.res",
-                "user-docs/theme/favicon.svg",
-                "user-docs/theme/favicon.png",
+                "user-docs/favicon/favicon.svg",
+                "user-docs/favicon/favicon.png",
             ]
         );
         for ((name, bytes), size) in files[..7].iter().zip(SIZES) {
