@@ -85,6 +85,39 @@ jobs:
           path: THIRD-PARTY-NOTICES.html
           retention-days: 1
 
+  # The example projects (testdata/examples/) as one zip beside the platform archives, built once
+  # here and not per platform (lane EXAMPLEZIP). `cargo xtask examples-zip` packs whatever is under
+  # that folder, sorted and with fixed times so the same tree gives the same bytes, and refuses
+  # anything outside it or any file type not on its allow-list; the finished zip is checked again.
+  examples:
+    name: Example projects (zip)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and check the zip
+        env:
+          NAME: ${{ inputs.name }}-examples
+        run: |
+          mkdir dist
+          cargo xtask examples-zip --name "$NAME" --out "dist/$NAME.zip"
+          cargo xtask examples-zip --name "$NAME" --check "dist/$NAME.zip"
+          unzip -tq "dist/$NAME.zip"
+          unzip -Z1 "dist/$NAME.zip"
+          {
+            echo "Examples zip \`$NAME.zip\`, SHA-256:"
+            echo '```'
+            (cd dist && sha256sum "$NAME.zip")
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/${{ inputs.name }}-examples.zip
+          archive: false
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
+
   build:
     name: Build (${{ matrix.target }})
     needs: notices
