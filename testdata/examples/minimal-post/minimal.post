@@ -1,0 +1,40 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later
+    The smallest useful post template, for the user guide's how-to "Create a post-processing
+    template". It writes every axis word on every move, which is longer than the built-in
+    posts' output and easier to read. A move that would repeat the last position is left out:
+    the read-back check counts the moves, and a line that goes nowhere is not a move. -#}
+{% set st = namespace(at="") %}
+({{ title }})
+{% if generator is not none %}
+({{ generator }})
+{% endif %}
+{% for notice in safety_notice %}
+({{ notice }})
+{% endfor %}
+{% for h in opt.header %}
+{{ h }}
+{% endfor %}
+{{ opt.work_offset }}
+{% for it in steps %}
+{% if it.step == "comment" %}
+({{ it.text }})
+{% elif it.step == "tool_change" %}
+M5
+T{{ it.number }} M6
+{% elif it.step == "spindle_on" %}
+S{{ it.rpm|fixed(0) }} M3
+{% elif it.step == "rapid" or it.step == "feed" %}
+{% set at = "X" ~ it.target.x|fixed(opt.decimals.pos) ~ " Y" ~ it.target.y|fixed(opt.decimals.pos) ~ " Z" ~ it.target.z|fixed(opt.decimals.pos) ~ " A" ~ it.target.a|fixed(opt.decimals.a) %}
+{% if at != st.at %}
+{% if it.step == "rapid" %}
+G0 {{ at }}
+{% else %}
+G1 {{ at }} F{{ it.feed.value|feed(opt.decimals.f) }}
+{% endif %}
+{% set st.at = at %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for f in opt.footer %}
+{{ f }}
+{% endfor %}

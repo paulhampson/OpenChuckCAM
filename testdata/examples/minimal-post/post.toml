@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The smallest useful post, for the user guide's how-to "Create a post-processing template".
+# It is an example for learning the format, written for LinuxCNC's dialect: it is not set up for
+# any machine, and a program it writes is yours to check before you run it (NFR-12).
+schema = 1
+name = "Minimal example"
+template = "minimal.post"
+feed_rule = "linuxcnc"
+
+[options]
+units = "mm"
+a_letter = "A"
+a_direction = "same"
+unwind = "rotate"
+header = ["G90 G21 G17"]
+footer = ["M5", "M30"]
+work_offset = "G54"
+coolant = "off"
+feed_mode = "g94"
+comments = true
+safety_notice = true
+file_extension = "ngc"
+
+[options.tool_change]
+stop_spindle_first = true
+length_offset = false
+
+[options.line_numbers]
+enabled = false
+start = 10
+step = 10
+
+[options.decimals]
+pos = 3
+a = 3
+f = 1
