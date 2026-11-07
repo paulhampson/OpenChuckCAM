@@ -45,6 +45,7 @@
 
 - [Create a custom machine](examples/custom-machine.md)
 - [Create a post-processing template](examples/create-a-post.md)
+- [Simultaneous finishing](examples/simultaneous-finishing.md)
 
 # Safety and verification
 
