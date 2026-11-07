@@ -594,3 +594,41 @@ fn req_nfr_12_req_gc_07_notice_output_is_byte_identical_on_1_2_and_n_threads() {
         }
     }
 }
+
+/// NFR-12 and NFR-07: the check looks for the notice as whole comment lines, in order, in the
+/// comment block at the top: the text inside a longer line, or the lines written only after
+/// the program has started, are refused; with line numbers on the notice is still found.
+#[test]
+fn req_nfr_12_req_nfr_07_the_notice_must_be_whole_lines_at_the_top() {
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
+    let block =
+        "{% for notice in safety_notice %}\n{{ line(\"(\" ~ notice ~ \")\") }}\n{% endfor %}\n";
+    assert!(template.contains(block));
+    let refused = |template: &str| {
+        let def = PostDefinition::from_parts("t", &manifest, template).unwrap();
+        TemplatePost::new(def)
+            .post(&small_part(), &job())
+            .unwrap_err()
+            .to_string()
+    };
+    // Inside a longer line.
+    let inside = template.replace(
+        block,
+        "{% for notice in safety_notice %}\n{{ line(\"(note: \" ~ notice ~ \")\") }}\n{% endfor %}\n",
+    );
+    assert!(refused(&inside).contains("safety_notice"));
+    // Only after the program has started (moved below the work offset).
+    let late = template.replace(block, "").replace(
+        "{% if opt.feed_mode == \"g93\" %}",
+        &format!("{block}{{% if opt.feed_mode == \"g93\" %}}"),
+    );
+    assert_ne!(late, template);
+    assert!(refused(&late).contains("safety_notice"));
+    // With line numbers, the N word is not part of the comment.
+    let numbered = edited_post("linuxcnc", ("enabled = false", "enabled = true"), ("", ""));
+    assert!(
+        numbered.contains(&format!("N30 ({})", openchuck_post::SAFETY_NOTICE[0])),
+        "{numbered}"
+    );
+}

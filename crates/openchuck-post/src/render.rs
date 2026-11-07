@@ -86,6 +86,28 @@ pub const SAFETY_NOTICE: &[&str] = &[
     "Simulate it and air cut it first. You are responsible for what the machine does.",
 ];
 
+/// Whether the program opens with the notice: every line of [`SAFETY_NOTICE`], in order,
+/// as whole comment lines (after an optional `N` word) in the comment block at the top,
+/// before the first line that is not a comment. Text that only appears inside a longer
+/// line, out of order or after the program has started does not count (decision 0533).
+fn writes_notice(text: &str) -> bool {
+    let header: Vec<&str> = text
+        .lines()
+        .map(|line| match line.strip_prefix('N') {
+            Some(rest) => match rest.split_once(' ') {
+                Some((number, body)) if number.chars().all(|c| c.is_ascii_digit()) => body,
+                _ => line,
+            },
+            None => line,
+        })
+        .take_while(|line| line.starts_with('('))
+        .collect();
+    let wanted: Vec<String> = SAFETY_NOTICE.iter().map(|n| format!("({n})")).collect();
+    header
+        .windows(wanted.len())
+        .any(|block| block.iter().zip(&wanted).all(|(line, want)| line == want))
+}
+
 /// Replaces what a G-code comment cannot hold: parentheses, control
 /// characters and anything that is not ASCII (decision 0019 item 4, OI-84).
 pub fn sanitise_comment(text: &str) -> String {
@@ -243,11 +265,7 @@ impl PostProcessor for TemplatePost {
         let text = template
             .render(Serde(&context))
             .map_err(|e| PostError::Template(engine::describe(&e)))?;
-        if options.safety_notice
-            && SAFETY_NOTICE
-                .iter()
-                .any(|notice| !text.contains(&format!("({notice})")))
-        {
+        if options.safety_notice && !writes_notice(&text) {
             return Err(PostError::Setting {
                 name: "options.safety_notice".into(),
                 reason: format!(
