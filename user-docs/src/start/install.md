@@ -11,25 +11,34 @@ When the program's code changes, the project builds it for three systems and pub
 
 | System | Archive | Notes |
 | --- | --- | --- |
-| Linux | x86-64 | Needs a Vulkan or OpenGL driver, and X11 or Wayland. |
+| Linux | x86-64 | Needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later), a Vulkan or OpenGL driver, and X11 or Wayland. |
 | Windows | x64 | Not signed: Windows SmartScreen may warn before it runs. |
-| macOS | Apple silicon | Not signed: macOS quarantines it. The README in the archive gives the command that clears this. |
+| macOS | Apple silicon, macOS 11 or later | Not signed or notarised: macOS blocks it the first time (see below). |
+
+The programs are not signed. Signing is not part of the first release.
 
 Each archive holds:
 
 | File | What it is |
 | --- | --- |
-| `openchuck-ui` | The program with a window. This is the one most people use. |
+| `openchuck-ui` (on macOS, `OpenChuckCAM.app`) | The program with a window. This is the one most people use. |
 | `openchuck-cli` | The command-line program, which does the same work without a window. |
-| `openchuck-step-worker` | The reader for STEP files. Keep it in the same folder as the other two. |
-| Licence and README | The licence texts, the third-party notices, and notes for the system. |
+| `openchuck-step-worker` | The reader for STEP files. Keep it in the same folder as the other two. On macOS the application carries its own copy inside `OpenChuckCAM.app`, and this one is for `openchuck-cli`. |
+| Licence and README | The licence texts, the third-party notices, the credits for the Makera Z1 tool data, and notes for the system. |
 
 To install it:
 
 1. Download the archive for your system from the [`nightly` pre-release](https://github.com/paulhampson/OpenChuckCAM/releases/tag/nightly).
 2. Unpack it into a folder of its own.
-3. On macOS, run the command from the archive's README to clear the quarantine.
-4. Start `openchuck-ui`.
+3. Start `openchuck-ui`, or on macOS open `OpenChuckCAM.app`, as below for the first time.
+
+**macOS, the first time.** macOS says "OpenChuckCAM" Not Opened, because Apple could not check it. Click **Done**. Open **System Settings > Privacy & Security**; under **Security** there is a line about OpenChuckCAM: click **Open Anyway** and confirm with your password. After that it opens normally. Alternatively, in Terminal, in the unpacked folder, remove the download's quarantine flag:
+
+```text
+xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker
+```
+
+**Windows, the first time.** If SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**. Or, before unpacking, right-click the zip file, choose **Properties**, tick **Unblock** and click **OK**.
 
 ## Build from source
 
