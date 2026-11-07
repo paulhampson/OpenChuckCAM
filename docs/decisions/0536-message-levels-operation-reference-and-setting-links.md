@@ -1,6 +1,6 @@
 # 0536: Message levels, the operation reference and links to the setting (lane MSGREVIEW; issue #567)
 
-- **Status:** proposed (7 Nov 2026, lane MSGREVIEW). Only the project owner accepts it (decision 0049). Nothing here is built yet: issue #567 asks for the proposal first, and code follows, test first, only after the owner's answers.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Nothing here is built yet; code follows, test first. Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
   - **The owner's answer to question 1** (7 Nov 2026, relayed by the coordinator): the levels and the author's test are accepted in principle, with option B, so information is shown in the Results tab only and Messages keeps errors and warnings. Sections 1, 2 and 5 below follow that answer.
   - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. That changes what the export does, so it is [decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md) (proposed), accepted separately.
   - **The owner's answers to questions 2 to 7** (7 Nov 2026, relayed by the coordinator), each the recommended option:
@@ -11,7 +11,7 @@
     - 6, A: the command line runs the checks before it writes, and prints the export dialog's warnings. That is [decision 0540](0540-the-command-line-checks-before-it-writes.md) (proposed).
     - 7, A: the lost status lines are split by kind, with each level set by the author's test (section 8).
 
-  This record is ready for the owner to accept. Decisions 0538, 0539 and 0540 change a check's behaviour and are accepted on their own.
+  Decisions 0538, 0539 and 0540 change a check's behaviour and are accepted on their own.
 - **What it amends, if accepted:**
   - [decision 0175](0175-swarf-overcut-is-a-warning.md) items 2 and 3 (how a path warning and a note carry their level; "Show setting" opens one setting);
   - [decision 0430](0430-results-feed-limit-summary-and-copyable-results.md) item 1 and [decision 0519](0519-results-in-the-lower-dock.md) (the Results lines take each message's own level);
@@ -219,7 +219,7 @@ The author's test of section 2 names 0538.
 
 | ID | Item |
 | --- | --- |
-| OI-2094 | The owner's answers to this record: the level policy, the one form, the links and the mechanism. Answered on 7 Nov 2026 (questions 1 to 7); it closes when the owner accepts the record. |
+| OI-2094 | The owner's answers to this record: the level policy, the one form, the links and the mechanism. Closed on 7 Nov 2026: answered (questions 1 to 7) and the record accepted. |
 | OI-2095 | Workholding Apply refuses on findings that generation only warns of (an automatic tab with no room, tabs that overlap): decision 0539. |
 | OI-2096 | The command line writes G-code before it reports failed checks, and leaves the files when it exits with an error: decision 0540. |
 | OI-2097 | NFR-12 wording to remove: "verified path geometry", "certify", "certificate", "Good to go", "No overcut". |
