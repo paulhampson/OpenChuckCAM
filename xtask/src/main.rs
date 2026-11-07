@@ -15,6 +15,8 @@
 //! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
+//! - `icon`: writes the application icon's PNG sizes, `.ico` and `.res` from its SVG;
+//!   `icon --check` reports committed files that differ (decision 0542; not part of `all`).
 //! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
 //! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
 //! - `release-gate`: the release gate (slice 20 item 9): `deps`, `cargo deny`, the golden G-code
@@ -31,6 +33,7 @@ mod coverage;
 mod deps;
 mod glibc_floor;
 mod golden;
+mod icon;
 mod licences;
 mod macos_app;
 mod publish;
@@ -132,6 +135,13 @@ enum Check {
         #[arg(long)]
         tag: Option<String>,
     },
+    /// The application icon (decision 0542): render `apps/openchuck-ui/assets/icon/icon.svg`
+    /// to the committed PNG sizes and write `icon.ico` and `icon.res` from them.
+    Icon {
+        /// Write nothing; report each committed file that differs from what the SVG gives.
+        #[arg(long)]
+        check: bool,
+    },
     /// Build the macOS application bundle `OpenChuckCAM.app` from the Info.plist template, with
     /// `openchuck-ui` and the STEP reader inside it. Not signed or notarised.
     MacosApp {
@@ -207,6 +217,11 @@ fn run() -> Result<bool> {
             coverage::check(&root, lcov.as_deref(), report.as_deref(), enforce)?,
         )],
         Check::Golden => vec![("golden", golden::check(&root)?)],
+        Check::Icon { check: true } => vec![("icon", icon::check(&root)?)],
+        Check::Icon { check: false } => {
+            icon::write(&root)?;
+            return Ok(true);
+        }
         Check::Replay {
             programs,
             docker,

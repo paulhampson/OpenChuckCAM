@@ -28,6 +28,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 
 mod about;
+mod app_icon;
 mod arith;
 mod bench;
 mod export_panel;
@@ -88,6 +89,8 @@ fn native_options(vsync: bool) -> eframe::NativeOptions {
         multisampling: 0,
         ..Default::default()
     };
+    // The application's own icon on the window and taskbar (decision 0542).
+    options.viewport = app_icon::with_icon(options.viewport);
     options.wgpu_options.wgpu_setup = graphics::setup();
     if !vsync {
         options.wgpu_options.surface.present_mode =
@@ -201,6 +204,22 @@ fn run_bench(options: bench::Options) -> ExitCode {
             eprintln!("error: the benchmark did not finish");
             logging::to_file(log::Level::Error, "the benchmark did not finish");
             ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The window the application and the benchmark open carries the application's own
+    /// icon, not the toolkit's default (decision 0542).
+    #[test]
+    fn icon_native_options_carry_the_application_icon() {
+        for vsync in [true, false] {
+            let icon = super::native_options(vsync)
+                .viewport
+                .icon
+                .expect("the window has an icon");
+            assert_eq!((icon.width, icon.height), (256, 256));
         }
     }
 }
