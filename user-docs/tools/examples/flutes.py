@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Screens of the worked example "The flute-length warning" (user-docs/src/examples/flute-length-warning.md).
+
+Run with `python3 user-docs/tools/capture_example.py flutes`. The click positions belong to the
+layout of the build they were taken with, at 1920 x 1080; change them and the page together.
+"""
+
+GENERATE = 75  # seconds; the finish in layers takes the longest, under 30 s here
+
+
+def run(cap, work):
+    cap.click(148, 578, 2)                     # 2 Finish
+    cap.click(1764, 600, 2)                    # Edit tool...: the project's copy of T204
+    cap.fill(1000, 257, "Short-flute ball 3.175x3")   # Name: not the library's tool any more
+    cap.fill(850, 353, "3")                    # Flute length
+    cap.shot("01-short-flutes")
+    cap.click(1419, 883, 2)                    # Close
+    cap.click(1855, 1057, GENERATE)            # Generate
+    cap.shot("02-flute-warnings")
+    cap.click(1499, 953, 2)                    # Show setting, on the second warning
+    cap.scroll(1740, 600, 25)                  # the Inspector down to Face free ends
+    cap.click(1763, 761, 1.5)                  # Finishing layers
+    cap.fill(1810, 792, "2")                   # Stepdown, required with layers
+    cap.click(1855, 1057, GENERATE)
+    cap.shot("03-finishing-layers")
+    cap.click(1763, 764, 1.5)                  # untick Face free ends
+    cap.click(1855, 1057, GENERATE)
+    cap.click(452, 789, 2)                     # Results
+    cap.shot("04-face-free-ends-off")
