@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Question
+description: Ask how to do something, or about something the user guide does not explain.
+title: "[Question]: "
+labels:
+  - question
+  - user-reported
+  - awaiting-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Look in the [user guide](https://paulhampson.github.io/OpenChuckCAM/latest/), [Troubleshooting](https://paulhampson.github.io/OpenChuckCAM/latest/troubleshooting.html) and [Known limitations](https://paulhampson.github.io/OpenChuckCAM/latest/start/limitations.html) first.
+
+        The maintainer answers questions when time allows. Issues on GitHub are public: do not paste a project or model you do not want to share. Generated G-code is yours to verify before you run it on a machine (NFR-12).
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you are trying to do
+      description: The part you want to make, or the result you want.
+    validations:
+      required: false
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you have already tried or read
+      description: Which user guide pages you read, and what you tried in the program.
+    validations:
+      required: false
+  - type: input
+    id: version-os
+    attributes:
+      label: Version and operating system
+      description: The version is in Help > About.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the program
+      options:
+        - Import
+        - Setup and workholding
+        - Tools
+        - Operations and strategies
+        - Simulation
+        - Export and post
+        - Interface
+        - Command line
+        - Documentation
+        - Other or not sure
+    validations:
+      required: false

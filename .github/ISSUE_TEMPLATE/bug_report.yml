@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Bug report
+description: Something in OpenChuckCAM does not work as it should, or generated G-code looks wrong.
+title: "[Bug]: "
+labels:
+  - bug
+  - user-reported
+  - awaiting-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Generated G-code is yours to verify before you run it on a machine (NFR-12).** OpenChuckCAM does not guarantee that a program is safe or correct. If you ran a program on a machine, say so below.
+
+        Issues on GitHub are public. The program sends nothing to the project (there is no telemetry); only what you post here is shared. See [Reporting a problem or asking for a feature](https://paulhampson.github.io/OpenChuckCAM/latest/reporting.html) in the user guide.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe what you saw, including any message the program showed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from a new or opened project. A short list that someone else can follow is the most useful part of a report.
+      placeholder: |
+        1. Create a project and import the model
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Application version
+      description: Open Help > About and copy the version and commit. For the command line, run `openchuck-cli --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: Windows 11 23H2, macOS 14.5 (Apple silicon), Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: post
+    attributes:
+      label: Machine and post
+      description: The post you used, if the problem is in the G-code or the export.
+      options:
+        - Not applicable
+        - Makera Z1 post
+        - LinuxCNC post
+        - Another post
+    validations:
+      required: false
+  - type: dropdown
+    id: gcode
+    attributes:
+      label: Does this concern generated G-code?
+      description: A program that looks wrong or unsafe is reported here, not run. Tell us if it was run on a machine, and what happened.
+      options:
+        - No, not about G-code
+        - Yes, the G-code looks wrong or unsafe; I did not run it on a machine
+        - Yes, the G-code was run on a machine (describe what happened above)
+    validations:
+      required: false
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity (your guess)
+      description: The maintainer sets the final severity and the repository label (sev1, sev2 or sev3). Critical is sev1, Major is sev2, and Minor and Trivial are both sev3.
+      options:
+        - Not sure
+        - "1 Critical (sev1): wrong or unsafe G-code, a crash or data loss"
+        - "2 Major (sev2): a feature fails or output is outside tolerance, with no workaround"
+        - "3 Minor (sev3): a feature works with a workaround, or a cosmetic fault that affects use"
+        - "4 Trivial (sev3): cosmetic or wording"
+    validations:
+      required: false
+  - type: textarea
+    id: files
+    attributes:
+      label: Project, model or other files
+      description: |
+        **Attach only data you are happy to share publicly.** This issue, and anything attached to it, is visible to everyone, and a project folder holds your model and settings. If you can, reproduce the problem with a small public model (the examples in the repository work) and attach that. Otherwise describe the model: its size, units, and what is unusual about it.
+    validations:
+      required: false
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: |
+        The program keeps a log file, `openchuckcam.log`, on your computer; Help > About has a button that opens its folder. It holds start-up information, the graphics adapter, warnings and errors, the text of a crash, and a list of the names of the actions you took (never the values you typed or the contents of files; Settings can turn the action list off). It includes the paths of project files, which may contain your user name. **Read it before you paste it** and remove anything you do not want to share. Paste the last part, around the problem.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images in here. Do not show a project or model you do not want to share.
+    validations:
+      required: false
