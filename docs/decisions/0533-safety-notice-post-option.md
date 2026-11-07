@@ -1,11 +1,11 @@
 # 0533: The NFR-12 safety notice as a post option, on in the built-in posts (lane SAFETYNOTICE; OI-2000)
 
-- **Status:** proposed (6 Nov 2026). The two choices in it are the owner's, relayed by the coordinator (session_01CFw3bzew7zizFQ91L5tvT7) on 6 Nov 2026 (decision 0049): the built-in posts ship with the notice on (decision 1 of 2), and the two-line wording of item 3 (decision 2 of 2). The record as a whole waits for the owner's acceptance.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049). Proposed 6 Nov 2026. The two choices in it are the owner's, relayed by the coordinator (session_01CFw3bzew7zizFQ91L5tvT7) on 6 Nov 2026 (decision 0049): the built-in posts ship with the notice on (decision 1 of 2), and the two-line wording of item 3 (decision 2 of 2). At acceptance the owner also closed OI-2082: no per-export switch is wanted, the post option is the switch.
 - **Date:** 6 Nov 2026.
 - **Lane:** SAFETYNOTICE (wave 2, release blockers), branch `claude/lane-safetynotice`, from `main` at `c5aec1d` (library family 0.46.0), rebased on `main` `3c3b3f57` (0.47.0).
 - **Requirements:** NFR-12 (P1), GC-03, GC-04, GC-07, NFR-06, NFR-07, GC-09, GC-10. Work breakdown slice 20 item 1 and its review box; verification plan NFR-12 row.
 - **Builds on:** [0019](0019-sp-10-template-engine.md) (template engine, comment cleaning), [0020](0020-slice-6-post-and-round-trip.md) (the built-in posts), [0028](0028-slice-19-output-options-and-setup-sheet.md) (the setup sheet already carries the NFR-12 notice), [0048](0048-pre-1-0-api-changes.md) (breaking change before the first release), [0103](0103-built-in-posts-live-in-the-post-crate.md) (built-in posts inside the post crate).
-- **Open items:** OI-2000 closed by this change. New: OI-2082 (no per-export switch for the notice).
+- **Open items:** OI-2000 closed by this change. OI-2082 (no per-export switch for the notice) raised and closed by the owner on 7 Nov 2026: not needed.
 - **Numbers:** record 0533 and OI-2082 to OI-2085 assigned by the coordinator; only OI-2082 is used. No project schema number: nothing is stored in the project. Library version 0.48.0: `main` held 0.47.0 (TABCUT #562) and no unmerged branch held 0.48.0 on 7 Nov 2026; the Merge Manager may reassign it at release.
 
 ## Context
@@ -32,7 +32,7 @@ Slice 20 item 1 asks for the NFR-12 notice ("generated G-code must be verified b
 
 ## Alternatives considered
 
-- **An export or CLI switch stored with the project.** Would need a project schema number and UI work for a setting the post already expresses; left as OI-2082 if a user needs it.
+- **An export or CLI switch stored with the project.** Would need a project schema number and UI work for a setting the post already expresses; not wanted: the owner closed OI-2082 on 7 Nov 2026, the post option is the switch.
 - **Wording in `post.toml`.** Lets a post say anything, including that a program is safe; refused for NFR-12.
 - **Off by default.** No golden file would move, but a notice the user has to find and switch on does little (the owner chose on).
 - **One line, closer to the GC-16 sentence** ("Generated G-code: verify it before you run it on a machine."). Says that the user must, not what to do; not chosen.
@@ -45,6 +45,4 @@ Nothing in this change says that a program is safe to run: the notice says the o
 
 ## Open items
 
-| # | Item | Decide in | Needs |
-| --- | --- | --- | --- |
-| 1 | OI-2082: no per-export switch (UI or CLI) for the notice; it is set in the post. | When a user needs it | The owner's choice |
+None open. OI-2082 (a per-export switch in the UI or CLI) was closed by the owner on 7 Nov 2026: not needed, the post option is the switch.
