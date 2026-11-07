@@ -815,6 +815,24 @@ fn turns_in_place(path: &GeneratedPath) -> Vec<f64> {
     out
 }
 
+/// The A turned, in degrees, by cutting moves that stay at X `x` (the tip's
+/// X unchanged): any facing cut at that end, whole turn or part of one
+/// (CodeRabbit on #566: `turns_in_place` cannot see a run under a turn).
+fn turned_in_place_at(path: &GeneratedPath, x: f64) -> f64 {
+    let mut from = path.group.start;
+    let mut turned = 0.0;
+    for s in &path.group.segments {
+        if s.kind == MoveKind::Cutting
+            && (s.end.tip.x - from.tip.x).abs() < 1e-9
+            && (s.end.tip.x - x).abs() < 1e-6
+        {
+            turned += (s.end.a.0 - from.a.0).abs();
+        }
+        from = s.end;
+    }
+    turned
+}
+
 #[test]
 fn req_op_04_one_turn_at_each_face_where_the_side_touches_it() {
     let job = Job::shaft(ToolShape::FlatEnd);
@@ -1222,6 +1240,12 @@ fn req_op_04_req_op_09_a_free_end_is_faced_in_layers_down_to_the_axis() {
             .filter(|t| (t - x).abs() < 1e-6)
             .collect();
         assert_eq!(turns.len(), 6, "{}: {turns:?}", strategy.name());
+        // The detector sees the rings: six whole turns at that X.
+        assert!(
+            turned_in_place_at(&path, x) >= 6.0 * 359.999,
+            "{}",
+            strategy.name()
+        );
         // The warning names the face and the depth, and says what can happen
         // to the stock past the ring (owner's choice, OI-1390).
         let text = messages(&path);
@@ -1307,10 +1331,16 @@ fn req_nfr_07_req_nfr_12_a_free_end_deeper_than_the_flutes_is_warned_and_not_fac
     ] {
         let path = job.path(strategy, &[("stepdown", 2.0)]);
         assert!(!path.group.segments.is_empty(), "{}", strategy.name());
-        // No ring is cut at that end.
+        // No ring is cut at that end, not even part of one.
         assert!(
             turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6),
             "{}: a ring was cut",
+            strategy.name()
+        );
+        assert_eq!(
+            turned_in_place_at(&path, x),
+            0.0,
+            "{}: part of a ring was cut",
             strategy.name()
         );
         let warnings = free_end_warnings(&path);
@@ -1408,6 +1438,7 @@ fn req_nfr_07_req_nfr_12_a_free_end_skipped_on_a_bound_says_it_is_a_bound() {
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     let x = -(0.5 * DIAMETER) - 0.1 * TOLERANCE;
     assert!(turns_in_place(&path).iter().all(|t| (t - x).abs() > 1e-6));
+    assert_eq!(turned_in_place_at(&path, x), 0.0);
     let text = &warnings[0];
     assert!(
         text.contains("up to 11.300 mm deep")
