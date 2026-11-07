@@ -1145,10 +1145,14 @@ fn inside(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use openchuck_types::geometry::Aabb;
+    use openchuck_types::workholding::{HeldRegion, TabEnd};
+
     #[test]
     fn req_ui_25_a_new_zone_finding_warns_unless_named() {
         use openchuck_types::setup::SetupWarningKind as K;
-        use openchuck_types::workholding::TabEnd;
         assert!(super::refuses(&K::TabOutsideEndZones {
             tab: 1,
             x: (0.0, 1.0)
@@ -1177,11 +1181,6 @@ mod tests {
             Some(1)
         );
     }
-
-    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-    use super::*;
-    use openchuck_types::geometry::Aabb;
-    use openchuck_types::workholding::{HeldRegion, TabEnd};
 
     fn part(lo: f64, hi: f64) -> PartExtent {
         PartExtent {
