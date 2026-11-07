@@ -1,6 +1,6 @@
 # 0029: Slice 8 design refinement: viewport and application shell
 
-- **Status:** proposed. Slice 8 is in progress, not closed. Item 4 (OI-13) was accepted by the owner on 14 Oct 2026, and verification plan 4.2 now says what "edges" means.
+- **Status:** accepted by the project owner on 6 Nov 2026, relayed by the coordinator session (decision 0049): "Accept 0029." The owner accepted it on that instruction without re-reading the record in this session, because three accepted records (0037, 0040, 0071) already relied on it; recorded by lane DOCS-WAVE1. Before that it was proposed while slice 8 was in progress. Slice 8 is still in progress, not closed. Item 4 (OI-13) was accepted by the owner on 14 Oct 2026, and verification plan 4.2 now says what "edges" means.
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Project schema:** 6 is claimed for lane A (slice 8) in the work breakdown's claims table: the operation `enabled` flag (item 10) and the machine copy's ID (item 16). No other lane had claimed it; slice 10's expected row moves to 7.

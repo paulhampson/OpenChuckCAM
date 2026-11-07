@@ -1,6 +1,6 @@
 # 0164: Tool windows go back inside the main window (lane BUG-IMP; #222; OI-580)
 
-- **Status:** accepted by the project owner (20 Oct 2026), on the owner's instruction given in the lane BUG-IMP session. The owner had chosen option A earlier (relayed by the coordinator session). It amends [decision 0029](0029-slice-8-ui-shell.md) item 17; the user interface specification text is not edited here (proposed wording below).
+- **Status:** accepted by the project owner (20 Oct 2026), on the owner's instruction given in the lane BUG-IMP session. The owner had chosen option A earlier (relayed by the coordinator session). It amends [decision 0029](0029-slice-8-viewport-and-shell.md) item 17; the user interface specification text is not edited here (proposed wording below).
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-580.
 

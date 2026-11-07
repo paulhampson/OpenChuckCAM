@@ -43,8 +43,8 @@ A check moves off the pull request run only by an owner's decision recorded in a
 ## Build size and disk
 
 - CI builds with `CARGO_PROFILE_DEV_DEBUG` and `CARGO_PROFILE_TEST_DEBUG` set to `line-tables-only` (none in Fast checks and coverage). A full-debug-info test build was 23 GB; the Ubuntu runner has about 19 GB free (0516). Do not turn full debug info back on in CI, and do not change `Cargo.toml`'s profiles to work around it.
-- Every build job prints `df -h` and `du -sh target` before and after the build. Read them when a change adds dependencies or test binaries.
-- Do not add large artefacts: an upload keeps a short retention (`retention-days`) and only what a later job or a person needs. The `rust-cache` entries save on `main` only (0358); a new cache needs room under the 10 GB repository limit.
+- The Build jobs of `build-and-test.yml` print `df -h` and `du -sh target` before and after the build (the other workflows do not). Read them when a change adds dependencies or test binaries.
+- Do not add large artefacts: an upload keeps a short retention (`retention-days`) and only what a later job or a person needs. Pull request runs never save a `rust-cache` entry (0358); the `ci.yml` jobs save on `main` only, and the release, nightly and coverage workflows save from the ref they run on; a new cache needs room under the 10 GB repository limit.
 
 ## Measuring
 
