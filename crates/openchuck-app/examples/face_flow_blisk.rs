@@ -245,7 +245,7 @@ fn main() {
                     a.iter().copied().fold(f64::NEG_INFINITY, f64::max)
                 );
             }
-            for n in &out.notes {
+            for n in out.notes() {
                 println!("note: {n}");
             }
             let total: f64 = out.unreached.iter().map(|u| u.area).sum();
