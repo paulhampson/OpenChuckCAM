@@ -14,11 +14,17 @@ use anyhow::{Context, Result, bail};
 use crate::Findings;
 
 /// The PNG sizes committed beside the SVG, largest first.
-pub const SIZES: [u32; 6] = [512, 256, 128, 64, 32, 16];
+pub const SIZES: [u32; 7] = [512, 256, 128, 64, 48, 32, 16];
 
 /// The sizes in the Windows `.ico` and `.res`: Windows picks 16, 32 and 48 for small
-/// views and 256 for large ones; 48 is rendered for these files only.
+/// views and 256 for large ones.
 pub const ICO_SIZES: [u32; 5] = [256, 64, 48, 32, 16];
+
+/// The largest difference in any colour or alpha channel, out of 255, allowed between a
+/// committed PNG and a fresh rendering. The renderer's anti-aliasing can differ by a step
+/// between processors (the tests run on x86-64 and ARM); a change to the drawing moves
+/// whole shapes and differs by far more.
+pub const PIXEL_TOLERANCE: u8 = 2;
 
 /// Where the icon files live, relative to the workspace root.
 pub const ICON_DIR: &str = "apps/openchuck-ui/assets/icon";
@@ -54,11 +60,14 @@ pub fn render_png(svg: &[u8], size: u32) -> Result<Vec<u8>> {
 /// If the bytes are not a PNG with an `IHDR` chunk first.
 pub fn png_size(png: &[u8]) -> Result<(u32, u32)> {
     const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-    if png.len() < 24 || png[..8] != SIGNATURE || &png[12..16] != b"IHDR" {
-        bail!("not a PNG file");
+    let be = |at: usize| -> Option<u32> {
+        let bytes: [u8; 4] = png.get(at..at + 4)?.try_into().ok()?;
+        Some(u32::from_be_bytes(bytes))
+    };
+    match (png.get(..8), png.get(12..16), be(16), be(20)) {
+        (Some(sig), Some(b"IHDR"), Some(w), Some(h)) if sig == SIGNATURE => Ok((w, h)),
+        _ => bail!("not a PNG file"),
     }
-    let be = |at: usize| u32::from_be_bytes([png[at], png[at + 1], png[at + 2], png[at + 3]]);
-    Ok((be(16), be(20)))
 }
 
 /// The byte a directory entry gives for a dimension: 0 means 256.
@@ -127,7 +136,7 @@ fn resource(out: &mut Vec<u8>, kind: u16, name: u16, flags: u16, data: &[u8]) ->
     out.extend_from_slice(&0u32.to_le_bytes()); // version
     out.extend_from_slice(&0u32.to_le_bytes()); // characteristics
     out.extend_from_slice(data);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     Ok(())
@@ -168,6 +177,18 @@ pub fn res(pngs: &[Vec<u8>]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// The Windows files made from the PNGs of [`ICO_SIZES`], each found by `png_of(size)`.
+fn windows_files(png_of: impl Fn(u32) -> Result<Vec<u8>>) -> Result<Generated> {
+    let pngs = ICO_SIZES
+        .iter()
+        .map(|&size| png_of(size))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(vec![
+        (format!("{ICON_DIR}/icon.ico"), ico(&pngs)?),
+        (format!("{ICON_DIR}/icon.res"), res(&pngs)?),
+    ])
+}
+
 /// Every file `cargo xtask icon` writes, generated from the SVG.
 ///
 /// # Errors
@@ -180,20 +201,33 @@ pub fn generate(svg: &[u8]) -> Result<Generated> {
             render_png(svg, size)?,
         ));
     }
-    let mut ico_pngs = Vec::new();
-    for size in ICO_SIZES {
+    let rendered = files.clone();
+    files.extend(windows_files(|size| {
         let name = format!("{ICON_DIR}/icon-{size}.png");
-        let png = match files.iter().find(|(n, _)| *n == name) {
-            Some((_, png)) => png.clone(),
-            None => render_png(svg, size)?,
-        };
-        ico_pngs.push(png);
-    }
-    files.push((format!("{ICON_DIR}/icon.ico"), ico(&ico_pngs)?));
-    files.push((format!("{ICON_DIR}/icon.res"), res(&ico_pngs)?));
+        rendered
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, png)| png.clone())
+            .with_context(|| format!("{size} is not one of the committed sizes"))
+    })?);
     files.push((format!("{FAVICON_DIR}/favicon.svg"), svg.to_vec()));
     files.push((format!("{FAVICON_DIR}/favicon.png"), render_png(svg, 32)?));
     Ok(files)
+}
+
+/// Whether two PNGs show the same image within [`PIXEL_TOLERANCE`].
+///
+/// # Errors
+/// If either is not a PNG.
+pub fn same_image(a: &[u8], b: &[u8]) -> Result<bool> {
+    let a = resvg::tiny_skia::Pixmap::decode_png(a).context("not a PNG file")?;
+    let b = resvg::tiny_skia::Pixmap::decode_png(b).context("not a PNG file")?;
+    Ok(a.width() == b.width()
+        && a.height() == b.height()
+        && a.data()
+            .iter()
+            .zip(b.data())
+            .all(|(x, y)| x.abs_diff(*y) <= PIXEL_TOLERANCE))
 }
 
 fn icon_dir(root: &Path) -> PathBuf {
@@ -216,22 +250,45 @@ pub fn write(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Compares the committed files with what the SVG generates now.
+/// Compares the committed files with what the SVG generates now: each PNG within
+/// [`PIXEL_TOLERANCE`], the favicon SVG byte for byte, and the `.ico` and `.res` byte for byte
+/// against the committed PNGs they are made of.
 ///
 /// # Errors
-/// If the SVG cannot be read.
+/// If the SVG cannot be read or does not render.
 pub fn check(root: &Path) -> Result<Findings> {
     let dir = icon_dir(root);
     let svg = std::fs::read(dir.join("icon.svg"))
         .with_context(|| format!("cannot read {}/icon.svg", dir.display()))?;
     let mut findings = Findings::new();
-    for (name, bytes) in generate(&svg)? {
-        match std::fs::read(root.join(&name)) {
-            Ok(committed) if committed == bytes => {}
-            Ok(_) => findings.push(format!(
-                "{name} differs from what {ICON_DIR}/icon.svg gives; run `cargo xtask icon`"
-            )),
-            Err(_) => findings.push(format!("{name} is missing; run `cargo xtask icon`")),
+    let fix = "run `cargo xtask icon`";
+    let mut generated = generate(&svg)?;
+    generated.retain(|(name, _)| !name.ends_with(".ico") && !name.ends_with(".res"));
+    for (name, bytes) in generated {
+        let Ok(committed) = std::fs::read(root.join(&name)) else {
+            findings.push(format!("{name} is missing; {fix}"));
+            continue;
+        };
+        let same = if name.ends_with(".png") {
+            same_image(&committed, &bytes).unwrap_or(false)
+        } else {
+            committed == bytes
+        };
+        if !same {
+            findings.push(format!(
+                "{name} differs from what {ICON_DIR}/icon.svg gives; {fix}"
+            ));
+        }
+    }
+    if findings.is_empty() {
+        let committed_png = |size: u32| {
+            let path = dir.join(format!("icon-{size}.png"));
+            std::fs::read(&path).with_context(|| format!("cannot read {}", path.display()))
+        };
+        for (name, bytes) in windows_files(committed_png)? {
+            if std::fs::read(root.join(&name)).ok().as_deref() != Some(bytes.as_slice()) {
+                findings.push(format!("{name} is not what the committed PNGs give; {fix}"));
+            }
         }
     }
     Ok(findings)
@@ -398,6 +455,7 @@ mod tests {
                 "apps/openchuck-ui/assets/icon/icon-256.png",
                 "apps/openchuck-ui/assets/icon/icon-128.png",
                 "apps/openchuck-ui/assets/icon/icon-64.png",
+                "apps/openchuck-ui/assets/icon/icon-48.png",
                 "apps/openchuck-ui/assets/icon/icon-32.png",
                 "apps/openchuck-ui/assets/icon/icon-16.png",
                 "apps/openchuck-ui/assets/icon/icon.ico",
@@ -406,13 +464,32 @@ mod tests {
                 "user-docs/theme/favicon.png",
             ]
         );
-        for ((name, bytes), size) in files[..6].iter().zip(SIZES) {
+        for ((name, bytes), size) in files[..7].iter().zip(SIZES) {
             assert_eq!(png_size(bytes).unwrap(), (size, size), "{name}");
         }
-        let ico_file = &files[6].1;
+        let ico_file = &files[7].1;
         assert_eq!(le16(ico_file, 4), u16::try_from(ICO_SIZES.len()).unwrap());
-        assert_eq!(files[8].1, SQUARE.as_bytes());
-        assert_eq!(png_size(&files[9].1).unwrap(), (32, 32));
+        assert_eq!(files[9].1, SQUARE.as_bytes());
+        assert_eq!(png_size(&files[10].1).unwrap(), (32, 32));
+    }
+
+    #[test]
+    fn icon_same_image_allows_an_anti_aliasing_step_but_not_a_changed_drawing() {
+        let png = render_png(SQUARE.as_bytes(), 32).unwrap();
+        let mut pixmap = resvg::tiny_skia::Pixmap::decode_png(&png).unwrap();
+        // One channel of one pixel off by the tolerance: the same image.
+        let data = pixmap.data_mut();
+        data[0] = data[0].saturating_sub(PIXEL_TOLERANCE);
+        let nudged = pixmap.encode_png().unwrap();
+        assert!(same_image(&png, &nudged).unwrap());
+        // A changed drawing: the red half moved.
+        let moved = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect x="32" y="0" width="256" height="512" fill="#FF0000"/></svg>"##;
+        let other = render_png(moved.as_bytes(), 32).unwrap();
+        assert!(!same_image(&png, &other).unwrap());
+        // A different size is never the same image.
+        let small = render_png(SQUARE.as_bytes(), 16).unwrap();
+        assert!(!same_image(&png, &small).unwrap());
+        assert!(same_image(&png, b"not a png").is_err());
     }
 
     /// The committed icon files are what `cargo xtask icon` makes from the committed SVG
