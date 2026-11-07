@@ -45,6 +45,9 @@
 
 - [Create a custom machine](examples/custom-machine.md)
 - [Create a post-processing template](examples/create-a-post.md)
+- [Selection sets on a blisk](examples/selection-sets.md)
+- [Face-flow finishing on a blisk floor](examples/faceflow.md)
+- [Swarf on a blisk blade](examples/swarf.md)
 
 # Safety and verification
 
