@@ -35,8 +35,9 @@ The grip is still 8 mm long, so it now holds X = -13 to -5, and the bar from X =
 <figcaption><b>Figure 1.</b> A 5 mm head zone and a 4 mm tail zone. The amber line under <b>Retaining tabs (0)</b> says the part stays joined to the stock at the held end.</figcaption>
 </figure>
 
+<!-- Workaround for issue #604 (default-tab lines stale after a stock change). Remove this note when #604 is fixed. -->
 > [!NOTE]
-> On the build these screens were taken with, the lines under **Retaining tabs** can still say "No room for a default tab at the head: the held region reaches the part." after you change the stock, and **Add default tabs** stays greyed, until you save the project and open it again. The zone lines above them are right. This example uses **Head tab** and **Tail tab**, which do not depend on those lines.
+> After you change the stock, the lines under **Retaining tabs** can still say "No room for a default tab at the head: the held region reaches the part." and **Add default tabs** can stay greyed. The zone lines above them are right. To bring them up to date, save the project (**File > Save**) and open it again. This example uses **Head tab** and **Tail tab**, which do not depend on those lines.
 
 ## 2. Add a head and a tail tab
 
@@ -115,17 +116,20 @@ The held region now runs from X = -13 to 0, up to the part, and Tab 1 has nowher
 
 2. Press **Apply**.
 
-On the build these screens were taken with, Apply refuses: the tab rows turn red and the section stays "Not applied", so the stored workholding keeps the 8 mm grip and both tabs. The short tab's warnings also show in red while Apply is refused, although on their own they do not stop it.
+Apply stores the workholding with the 13 mm grip and keeps a warning for the tab. Tab 1 stays where it was last placed, X = -5 to 0, which is now inside the held region, and the section says "Head zone: no room for a tab". The operations become stale, because the held region changed.
 
 <figure>
-<a href="images/tabs_held/06-apply-refused.png"><img src="images/tabs_held/06-apply-refused.png" width="1920" height="1080" alt="After Apply, the Inspector shows the rows of Tab 1 and Tab 2 in red: Tab 1 with the no-room text, Tab 2 with its two lines about being shorter than the tools; the view still says Showing unapplied workholding and the status bar Workholding changes not applied."></a>
-<figcaption><b>Figure 6.</b> Apply refused while an automatic tab has no room. Nothing was stored.</figcaption>
+<a href="images/tabs_held/06-apply-warns.png"><img src="images/tabs_held/06-apply-warns.png" width="1920" height="1080" alt="After Apply, the Inspector shows Held span X -13.000 to 0.000 mm and Head zone: no room for a tab; Tab 1's row has an amber triangle and the text Tab 1 is placed automatically at the head of the part, but there is no room there; the Messages list shows Warnings 3: that line and the two lines about Tab 2 being shorter than the tools; the Generate button reads Generate stale (2)."></a>
+<figcaption><b>Figure 6.</b> Apply stores the workholding and warns about the tab with no room. Nothing is refused.</figcaption>
 </figure>
 
-> [!NOTE]
-> This is being changed: a later build stores the workholding and warns instead of refusing when an automatic tab has no room or two tabs overlap. Until then, fix the tab first.
+The warning in the Messages list reads:
 
-To fix it, do one of these, then press **Apply**:
+> Tab 1 is placed automatically at the head of the part, but there is no room there: the held region at the start (or the start of the stock) reaches the part. It keeps its last position; move the part or shorten the held region, or untick "Place automatically" and place it by hand.
+
+A tab with no room is a warning because the job can still be made: the tab only takes up space that the grip already holds. Read it as "this tab is not doing what you set it up to do". Apply also stores and warns when two tabs overlap.
+
+To fix it, do one of these, then press **Apply** again:
 
 - Shorten the grip so the zone comes back (here, `8` again).
 - Move the part along the stock (**Offset along X** under **Part position**), or lengthen the stock.

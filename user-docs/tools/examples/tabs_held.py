@@ -35,5 +35,5 @@ def run(cap, work):
     cap.pause(2)
     cap.shot("05-no-room")
     cap.scroll(1750, 600, 10)
-    cap.click(1878, 1016, 6)                   # Apply: refused while a tab has no room
-    cap.shot("06-apply-refused")
+    cap.click(1878, 1016, 6)                   # Apply: stored, with a warning for the tab with no room
+    cap.shot("06-apply-warns")
