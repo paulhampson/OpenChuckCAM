@@ -262,7 +262,7 @@ jobs:
               tar -tzf "dist/$dir.tar.gz" > list.txt
             fi
             case "$target" in
-              *apple*) programs="$app/Info.plist $app/_CodeSignature/CodeResources $app/MacOS/openchuck-ui $app/MacOS/openchuck-step-worker openchuck-cli openchuck-step-worker" ;;
+              *apple*) programs="$app/Info.plist $app/_CodeSignature/CodeResources $app/Resources/OpenChuckCAM.icns $app/MacOS/openchuck-ui $app/MacOS/openchuck-step-worker openchuck-cli openchuck-step-worker" ;;
               *) programs="openchuck-ui$exe openchuck-step-worker$exe openchuck-cli$exe" ;;
             esac
             for f in README.txt $programs OPENCASCADE-NOTICE.txt LICENSE_LGPL_21.txt OCCT_LGPL_EXCEPTION.txt TOOL-DATA-CREDITS.txt; do
@@ -340,7 +340,7 @@ jobs:
             echo
             echo "Each archive holds \`openchuck-cli\`, the desktop application (\`openchuck-ui\`; on macOS \`OpenChuckCAM.app\`), the STEP reader, the licences, the third-party notices, the tool data credits and a README."
             echo
-            echo "**The programs are not signed or notarised.** macOS blocks them the first time and Windows SmartScreen may warn; the README in each archive says how to open them. The Linux archive's README names the oldest glibc it needs; the macOS archive is for Apple silicon only."
+            echo "**The programs are not signed or notarised.** macOS blocks them the first time and Windows SmartScreen may warn; the README in each archive says how to open them. The Linux archive's README names the oldest glibc it needs; the macOS archive is for Apple silicon only. OpenChuckCAM has no icon of its own yet: the window and the macOS app show the default icon of the egui toolkit."
           } > notes.md
           # Upload to a draft first, so the release appears only once it holds all three archives.
           gh release create "$TAG" dist/"$NAME"-* -R "$REPO" --verify-tag --draft \

@@ -299,7 +299,8 @@ jobs:
                 echo "message about OpenChuckCAM under Security, click \"Open Anyway\" and confirm."
                 echo "Or, in Terminal, in this folder, remove the download's quarantine flag:"
                 echo "  xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-worker"
-                echo "Needs macOS 11 or later on Apple silicon (an M-series Mac)." ;;
+                echo "Needs macOS 11 or later on Apple silicon (an M-series Mac). The app's icon"
+                echo "is the default one of the egui toolkit; OpenChuckCAM has none of its own yet." ;;
               *windows*)
                 echo
                 echo "Windows: the programs are not signed, so Microsoft Defender SmartScreen may"

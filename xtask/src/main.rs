@@ -151,6 +151,9 @@ enum Check {
         /// `SOURCE_DATE_EPOCH`).
         #[arg(long)]
         mtime: Option<u64>,
+        /// A 512 by 512 PNG for the icon (default: eframe's window icon, the egui logo).
+        #[arg(long)]
+        icon: Option<PathBuf>,
     },
     /// Fail if a Linux binary needs a newer symbol version than the floor of its family.
     GlibcFloor {
@@ -243,6 +246,7 @@ fn run() -> Result<bool> {
             out,
             version,
             mtime,
+            icon,
         } => {
             let mtime = match mtime {
                 Some(m) => m,
@@ -259,6 +263,7 @@ fn run() -> Result<bool> {
                     out,
                     version,
                     mtime,
+                    icon,
                 },
             )?;
             println!("wrote {}", bundle.display());

@@ -10,13 +10,19 @@
 //!   Contents/
 //!     Info.plist                     the template, with the workspace version
 //!     PkgInfo                        "APPL????"
+//!     Resources/OpenChuckCAM.icns    the icon (CFBundleIconFile)
 //!     MacOS/openchuck-ui             the desktop application (CFBundleExecutable)
 //!     MacOS/openchuck-step-worker    the STEP reader, found beside the application (OI-118)
 //! ```
 //!
 //! The bundle is not signed with a certificate or notarised (owner's decision of 7 Nov 2026,
 //! OI-135); the release build gives it an ad-hoc signature on macOS (`codesign --sign -`, no
-//! certificate; decision 0541), which this command cannot do on Linux. Its tree is
+//! certificate; decision 0541), which this command cannot do on Linux.
+//!
+//! The icon is, for now, the one the program already shows in its window bar: eframe's default,
+//! the egui logo (`data/icon.png` of the `eframe` crate, MIT OR Apache-2.0, listed in the
+//! archive's third-party notices), wrapped as a one-image `.icns` (owner's decision of 7 Nov
+//! 2026; OpenChuckCAM has no icon of its own yet). Its tree is
 //! deterministic: the same inputs give the same files, bytes, modes and modification times
 //! (every time is set to the given one, normally the commit time), so packing it with a sorted,
 //! owner-free tar gives the same archive.
@@ -33,6 +39,8 @@ pub const BUNDLE: &str = "OpenChuckCAM.app";
 pub const UI_EXE: &str = "openchuck-ui";
 /// The STEP reader inside `Contents/MacOS`, beside the application.
 pub const WORKER_EXE: &str = "openchuck-step-worker";
+/// The icon file inside `Contents/Resources`, as `CFBundleIconFile` names it.
+pub const ICON: &str = "OpenChuckCAM.icns";
 /// The template, relative to the workspace root.
 pub const TEMPLATE: &str = "xtask/templates/macos/Info.plist";
 const VERSION_MARK: &str = "@VERSION@";
@@ -52,6 +60,58 @@ pub struct Options {
     /// Modification time of every file and folder, seconds since 1970 (normally the commit
     /// time, `git log -1 --format=%ct`).
     pub mtime: u64,
+    /// A 512 by 512 PNG for the icon; eframe's default icon when `None`.
+    pub icon: Option<PathBuf>,
+}
+
+/// An `.icns` file holding one 512 by 512 PNG (the `ic09` entry), the form macOS reads for a
+/// bundle icon. The PNG must be 512 by 512 pixels.
+pub fn icns(png: &[u8]) -> Result<Vec<u8>> {
+    ensure!(
+        png.get(..8) == Some(b"\x89PNG\r\n\x1a\n".as_slice())
+            && png.get(12..16) == Some(b"IHDR".as_slice()),
+        "the icon is not a PNG file"
+    );
+    let size = |at: usize| -> Result<u32> {
+        let bytes: [u8; 4] = png
+            .get(at..at + 4)
+            .context("the icon PNG ends inside its header")?
+            .try_into()
+            .context("the icon PNG ends inside its header")?;
+        Ok(u32::from_be_bytes(bytes))
+    };
+    let (width, height) = (size(16)?, size(20)?);
+    ensure!(
+        width == 512 && height == 512,
+        "the icon PNG is {width} by {height} pixels; the bundle icon needs 512 by 512"
+    );
+    let entry = u32::try_from(png.len() + 8).context("the icon PNG is too large")?;
+    let total = entry.checked_add(8).context("the icon PNG is too large")?;
+    let mut out = Vec::with_capacity(total as usize);
+    out.extend_from_slice(b"icns");
+    out.extend_from_slice(&total.to_be_bytes());
+    out.extend_from_slice(b"ic09");
+    out.extend_from_slice(&entry.to_be_bytes());
+    out.extend_from_slice(png);
+    Ok(out)
+}
+
+/// eframe's default window icon (`data/icon.png` in the `eframe` package the workspace uses).
+pub fn eframe_icon(root: &Path) -> Result<PathBuf> {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(root.join("Cargo.toml"))
+        .exec()
+        .context("cannot run cargo metadata")?;
+    let package = metadata
+        .packages
+        .iter()
+        .find(|p| p.name.as_str() == "eframe")
+        .context("the workspace does not use eframe")?;
+    let dir = package
+        .manifest_path
+        .parent()
+        .context("eframe's manifest has no folder")?;
+    Ok(dir.join("data").join("icon.png").into_std_path_buf())
 }
 
 /// A version macOS accepts in `CFBundleShortVersionString`: one to three non-negative integers
@@ -78,6 +138,7 @@ pub fn info_plist(template: &str, version: &str) -> Result<String> {
     );
     let text = template.replace(VERSION_MARK, version);
     for key in [
+        "CFBundleIconFile",
         "CFBundleExecutable",
         "CFBundleIdentifier",
         "CFBundlePackageType",
@@ -120,6 +181,12 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
     let template = fs::read_to_string(&template_path)
         .with_context(|| format!("reading {}", template_path.display()))?;
     let plist = info_plist(&template, &version)?;
+    let icon_path = match &options.icon {
+        Some(path) => path.clone(),
+        None => eframe_icon(root)?,
+    };
+    let png = fs::read(&icon_path).with_context(|| format!("reading {}", icon_path.display()))?;
+    let icon = icns(&png).with_context(|| format!("reading {}", icon_path.display()))?;
     for (what, path) in [
         ("openchuck-ui", &options.ui),
         ("the STEP reader", &options.worker),
@@ -140,7 +207,11 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
     }
     let contents = bundle.join("Contents");
     let macos = contents.join("MacOS");
-    fs::create_dir_all(&macos).with_context(|| format!("creating {}", macos.display()))?;
+    let resources = contents.join("Resources");
+    for dir in [&macos, &resources] {
+        fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    write_file(&resources.join(ICON), &icon, 0o644)?;
     write_file(&contents.join("Info.plist"), plist.as_bytes(), 0o644)?;
     write_file(&contents.join("PkgInfo"), b"APPL????", 0o644)?;
     for (from, name) in [(&options.ui, UI_EXE), (&options.worker, WORKER_EXE)] {
@@ -155,7 +226,9 @@ pub fn build(root: &Path, options: &Options) -> Result<PathBuf> {
         macos.join(WORKER_EXE),
         contents.join("Info.plist"),
         contents.join("PkgInfo"),
+        resources.join(ICON),
         macos,
+        resources,
         contents,
         bundle.clone(),
     ] {
@@ -220,13 +293,25 @@ mod tests {
         fs::write(&worker, b"worker program").expect("worker");
         let out = dir.join("out");
         fs::create_dir_all(&out).expect("out");
+        let icon = dir.join("icon.png");
+        fs::write(&icon, png(512, 512)).expect("icon");
         Options {
             ui,
             worker,
             out,
             version: Some("1.2.3".into()),
             mtime: MTIME,
+            icon: Some(icon),
         }
+    }
+
+    /// The start of a PNG file of the given size: signature and header chunk.
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut out = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        out.extend_from_slice(&width.to_be_bytes());
+        out.extend_from_slice(&height.to_be_bytes());
+        out.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        out
     }
 
     /// Every path under `dir`, relative, with its mode, time and (for files) bytes.
@@ -277,6 +362,8 @@ mod tests {
                 "Contents/MacOS/openchuck-step-worker",
                 "Contents/MacOS/openchuck-ui",
                 "Contents/PkgInfo",
+                "Contents/Resources",
+                "Contents/Resources/OpenChuckCAM.icns",
             ]
         );
         assert_eq!(
@@ -304,6 +391,7 @@ mod tests {
         assert_eq!(mode("Contents/MacOS/openchuck-step-worker"), 0o755);
         assert_eq!(mode("Contents/Info.plist"), 0o644);
         assert_eq!(mode("Contents/PkgInfo"), 0o644);
+        assert_eq!(mode("Contents/Resources/OpenChuckCAM.icns"), 0o644);
         fs::remove_dir_all(&dir).expect("clean up");
     }
 
@@ -324,15 +412,13 @@ mod tests {
             rest[start..end].to_owned()
         };
         assert_eq!(value("CFBundleExecutable"), "openchuck-ui");
-        assert_eq!(
-            value("CFBundleIdentifier"),
-            "cam.openchuck.OpenChuckCAM"
-        );
+        assert_eq!(value("CFBundleIdentifier"), "cam.openchuck.OpenChuckCAM");
         assert_eq!(value("CFBundleName"), "OpenChuckCAM");
         assert_eq!(value("CFBundlePackageType"), "APPL");
         assert_eq!(value("CFBundleShortVersionString"), "0.49.0");
         assert_eq!(value("CFBundleVersion"), "0.49.0");
         assert_eq!(value("LSMinimumSystemVersion"), "11.0");
+        assert_eq!(value("CFBundleIconFile"), "OpenChuckCAM");
         // Balanced: one plist, one dict, and every key has its value.
         assert_eq!(text.matches("<dict>").count(), 1);
         assert_eq!(text.matches("</dict>").count(), 1);
@@ -373,6 +459,45 @@ mod tests {
         );
         fs::remove_dir_all(&first).expect("clean up");
         fs::remove_dir_all(&second).expect("clean up");
+    }
+
+    #[test]
+    fn req_nfr_17_the_icon_is_a_one_image_icns_of_the_png() {
+        let source = png(512, 512);
+        let icns = icns(&source).expect("icns");
+        let total = (source.len() + 16) as u32;
+        assert_eq!(&icns[..4], b"icns");
+        assert_eq!(icns[4..8], total.to_be_bytes());
+        assert_eq!(&icns[8..12], b"ic09");
+        assert_eq!(icns[12..16], (total - 8).to_be_bytes());
+        assert_eq!(&icns[16..], source.as_slice());
+        let dir = scratch("icon");
+        let bundle = build(&root(), &inputs(&dir)).expect("bundle");
+        assert_eq!(
+            fs::read(bundle.join("Contents/Resources/OpenChuckCAM.icns")).expect("icon"),
+            icns
+        );
+        fs::remove_dir_all(&dir).expect("clean up");
+    }
+
+    #[test]
+    fn req_nfr_17_the_default_icon_is_the_window_icon_eframe_shows() {
+        // The owner's decision of 7 Nov 2026 (decision 0541): the icon the program shows in its
+        // window bar, eframe's default, until OpenChuckCAM has its own.
+        let path = eframe_icon(&root()).expect("eframe icon");
+        assert!(path.ends_with("data/icon.png"), "{}", path.display());
+        let png = fs::read(&path).expect("read");
+        icns(&png).expect("a 512 by 512 PNG");
+    }
+
+    #[test]
+    fn req_nfr_07_an_icon_of_the_wrong_kind_or_size_is_a_clear_error() {
+        let error = icns(b"GIF89a").expect_err("not a PNG").to_string();
+        assert!(error.contains("not a PNG"), "{error}");
+        let error = icns(&png(256, 256)).expect_err("too small").to_string();
+        assert!(error.contains("256 by 256"), "{error}");
+        let error = icns(&png(512, 512)[..18]).expect_err("cut").to_string();
+        assert!(error.contains("ends inside"), "{error}");
     }
 
     #[test]
