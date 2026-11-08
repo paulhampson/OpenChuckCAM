@@ -970,14 +970,16 @@ fn generate_unnamed(
     warnings.extend(reach_notes.into_iter().map(openchuck_path::Notice::warning));
     // The registry's strategy: a B-rep edge source uses the crease angle and
     // the shortest chain, so the warning that they are not used does not
-    // apply. A setting the operation ignores is a warning (P53; P54 to P57
-    // until the owner answers, question Q-D).
-    warnings.extend(
-        registry_strategy
-            .parameter_warnings(&profile, &parameters)
-            .into_iter()
-            .map(openchuck_path::Notice::warning),
-    );
+    // apply. A setting the operation ignores is a warning (P53), except edge
+    // following's, which are redundant settings with the goal met:
+    // information (decision 0536 step 2, the owner's answer to question Q-D;
+    // P54 to P57).
+    let ignored = registry_strategy.parameter_warnings(&profile, &parameters);
+    if operation.strategy == edge_following::NAME {
+        notes.extend(ignored);
+    } else {
+        warnings.extend(ignored.into_iter().map(openchuck_path::Notice::warning));
+    }
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
     // material left, which is rarely what was meant: a warning (decision
@@ -3941,6 +3943,32 @@ mod tests {
             !path.notes.iter().any(|n| n.contains(said)),
             "{:?}",
             path.notes
+        );
+    }
+
+    #[test]
+    fn req_ui_12_req_op_08_an_edge_following_setting_it_does_not_use_is_information() {
+        // The owner's answer to question Q-D (decision 0536 step 2; path
+        // inventory P54 to P57): a setting edge following does not use is
+        // redundant and the goal is met, so it is information.
+        let f = fixture(
+            edge_following::NAME,
+            &[
+                ("depth", Value::Number(0.2)),
+                (edge_following::parameter::CARVE_WIDTH, Value::Number(1.0)),
+            ],
+        );
+        let path = f.run().unwrap();
+        let said = "the carve width is used only in carve mode";
+        assert!(
+            path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
         );
     }
 
