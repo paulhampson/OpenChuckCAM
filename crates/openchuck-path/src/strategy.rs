@@ -937,6 +937,36 @@ mod tests {
         assert!(internal_references("A 3-axis tool, 0.5 mm, T-slot, G-code").is_empty());
     }
 
+    /// The Exact STEP surface contact tooltip says what the setting does,
+    /// what it costs and that a mesh part is not affected, and nothing more
+    /// (issue #634, the owner's answer of 8 Nov 2026).
+    #[test]
+    fn req_ui_12_the_exact_contact_tooltip_is_short() {
+        let registry = Registry::builtin();
+        let tooltip = |strategy: &str| {
+            registry
+                .get(strategy)
+                .unwrap()
+                .schema()
+                .parameters
+                .into_iter()
+                .find(|p| p.name == crate::contact::parameter::EXACT_CONTACT)
+                .unwrap()
+                .description
+        };
+        assert_eq!(
+            tooltip("helical_finishing"),
+            "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of its \
+             tessellation. More accurate and can be slower. No effect on a mesh part."
+        );
+        assert_eq!(
+            tooltip("axial_finishing"),
+            "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's exact \
+             surfaces instead of its tessellation. More accurate and much slower. No effect on a \
+             mesh part."
+        );
+    }
+
     /// No strategy's description, nor any setting's label, tooltip or
     /// choice, names a decision record, an open item or a requirement
     /// (interface specification section 15: no internal language; issue

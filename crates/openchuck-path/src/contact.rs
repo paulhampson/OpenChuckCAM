@@ -78,16 +78,18 @@ impl ExactContact {
 
     fn description(self) -> &'static str {
         match self {
-            // Only what the setting does and what it costs (issue #634;
-            // specification section 15). The measurements behind "slower"
-            // are in decision records 0277 and 0338, not in the tooltip.
+            // What the setting does, what it costs and that a mesh part is
+            // not affected: nothing more (issue #634, the owner's answer of
+            // 8 Nov 2026; specification section 15). The measurements behind
+            // "slower" are in decision records 0277 and 0338.
             Self::Ball => {
                 "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of \
-                 its tessellation. More accurate and can be slower."
+                 its tessellation. More accurate and can be slower. No effect on a mesh part."
             }
             Self::Outline => {
                 "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's \
-                 exact surfaces instead of its tessellation. More accurate and much slower."
+                 exact surfaces instead of its tessellation. More accurate and much slower. No \
+                 effect on a mesh part."
             }
         }
     }
