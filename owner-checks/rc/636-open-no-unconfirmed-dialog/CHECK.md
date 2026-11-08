@@ -23,12 +23,14 @@ Use the release candidate, or a build from `main` that holds the fix (**Help > A
 3. Click in the **Project folder** field, paste the path with <kbd>Ctrl</kbd>+<kbd>V</kbd>, and click **OK** straight away (do **not** press <kbd>Enter</kbd> first).
 4. Choose **File > Open project...** again, paste the same path, and this time press <kbd>Enter</kbd> in the field. (Enter may open the project at once, or only confirm the field; either is fine.)
 5. Choose **File > New project...**, type a parent folder and a project name, and click **OK** without pressing <kbd>Enter</kbd> (then close the new project; it can be deleted).
+6. Choose **File > Open project...**, paste the path, and click **Cancel** without pressing <kbd>Enter</kbd>. Do the same with **File > New project...** (type a folder and a name, then **Cancel**).
 
 ## Expected result
 
 - **Step 3**: the project opens ("Baluster" in the title bar). No "Unconfirmed changes" dialog appears.
 - **Step 4**: the project opens, with no "Unconfirmed changes" dialog.
 - **Step 5**: the new project is made, with no "Unconfirmed changes" dialog.
+- **Step 6**: each dialog closes and what you typed is abandoned: nothing is opened or made, and no "Unconfirmed changes" dialog appears. (The fix, in lane MSGSTEP5, covers both folder dialogs: **OK** accepts the fields, **Cancel** abandons them.)
 - An "Unconfirmed changes" dialog still appears where it should: change a number in the Inspector without pressing Enter, then choose **File > Open project...**: the dialog lists that field (this guards against losing an edit; it is not part of the bug).
 
 **Old behaviour (today, `main` at `1f3675d52`):** after step 3 a dialog titled **Unconfirmed changes** says "You have changed these fields but not confirmed them:", lists **Project folder**, asks "Keep the changes or discard them?" and offers **Keep**, **Discard** and **Cancel**. By reading the code (`apps/openchuck-ui/src/shell.rs`, the Open and New project dialog), the folder field and the project name field are made with the same pending-edit control as the Inspector's fields, so **New project** is expected to do the same.

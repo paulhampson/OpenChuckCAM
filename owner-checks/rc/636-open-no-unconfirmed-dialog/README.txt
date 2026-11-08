@@ -8,6 +8,8 @@ DRAFT: to run on the release candidate, once the fix is merged.
 Expected: the project opens. No "Unconfirmed changes" dialog.
 3. File > New project...: type a folder and a name, click OK without Enter.
 Expected: the project is made, no "Unconfirmed changes" dialog.
+4. Open project / New project again, type, then Cancel.
+Expected: the dialog closes, nothing is opened or made, no dialog.
 Old behaviour: "Unconfirmed changes ... Project folder ... Keep the changes
 or discard them?" with Keep / Discard / Cancel.
 
