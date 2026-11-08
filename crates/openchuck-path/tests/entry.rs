@@ -312,7 +312,7 @@ fn req_op_11_req_nfr_07_a_single_point_pass_under_a_ramp_needs_allow_single_poin
         generated
             .notices
             .iter()
-            .any(|n| n.text.contains("passes 1 are single points")),
+            .any(|n| n.text.contains("pass 1 is a single point")),
         "{:?}",
         generated.notices
     );

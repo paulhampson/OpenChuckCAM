@@ -261,6 +261,12 @@ fn req_op_11_feeds_and_stepover_default_from_the_tool_cutting_data() {
     // an operation value equal to the material's says nothing.
     let notes = app.regenerate().unwrap().notes;
     assert_eq!(notes.len(), 1, "{notes:?}");
+    // In the one form, under its topic (decision record 0536 section 3).
+    assert!(
+        notes[0].starts_with("Cutting data (operation 'Ring'): feed 250 set on the operation"),
+        "{}",
+        notes[0]
+    );
     for part in ["'Ring'", "feed 250", "400", "'4 mm ball'", "'oak'"] {
         assert!(notes[0].contains(part), "{part}: {}", notes[0]);
     }
@@ -1008,7 +1014,7 @@ fn req_op_09_req_sim_06_rest_machining_after_an_operation_is_generated_on_its_st
         first
             .notes
             .iter()
-            .any(|n| n.contains("rest machining:") && n.contains("material left")),
+            .any(|n| n.starts_with("Rest machining (operation ") && n.contains("material left")),
         "{:?}",
         first.notes
     );
@@ -2217,7 +2223,12 @@ fn req_op_24_req_gc_07_req_set_09_legacy_default_with_workholding_matches_pre_sc
             .iter()
             .map(|w| (&w.text, &w.setting))
             .collect::<Vec<_>>();
-        serde_json::to_vec(&(&path.group, &path.notes, warnings)).unwrap()
+        let notes = path
+            .notes
+            .iter()
+            .map(|n| (&n.topic, &n.text, n.segment))
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&(&path.group, notes, warnings)).unwrap()
     };
     assert_eq!(bytes(&after), bytes(&before));
     assert!(after.facing.is_none());

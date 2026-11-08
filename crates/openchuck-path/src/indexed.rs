@@ -18,6 +18,7 @@ use openchuck_types::units::Degrees;
 use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
 use crate::axial::{AlongX, parameter as axial_parameter};
 use crate::error::{PathError, Result};
+use crate::notice::{Notice, topic};
 use crate::params::{
     MAX_ANGLES, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
@@ -241,14 +242,14 @@ fn output(made: Made) -> Result<StrategyOutput> {
 struct Made {
     passes: Vec<Pass>,
     range: (f64, f64),
-    layered: Option<String>,
+    layered: Option<Notice>,
     spaced: Option<(adaptive::Settings, adaptive::Outcome)>,
 }
 
 /// The note an indexed operation carries when its passes cut past the ends
 /// of the part (`x0` to `x1`), where the tool's side faces an end face the
 /// target stops short of (decision record 0343). `None` when they did not.
-fn beyond_note(passes: &[Pass], x0: f64, x1: f64) -> Option<String> {
+fn beyond_note(passes: &[Pass], x0: f64, x1: f64) -> Option<Notice> {
     let points = || passes.iter().flat_map(|p| p.points.iter());
     let start = points().any(|c| c.tip.x < x0);
     let end = points().any(|c| c.tip.x > x1);
@@ -258,11 +259,14 @@ fn beyond_note(passes: &[Pass], x0: f64, x1: f64) -> Option<String> {
         (false, true) => "past the far end of the part",
         (false, false) => return None,
     };
-    Some(format!(
-        "the passes run on {ends} by up to the tool's radius, so its side faces each end face \
-         where the target stops short of it, along each position only: between the positions \
-         the end face keeps what earlier operations left"
-    ))
+    Some(
+        Notice::information(format!(
+            "the passes run on {ends} by up to the tool's radius, so its side faces each end \
+             face where the target stops short of it, along each position only: between the \
+             positions the end face keeps what earlier operations left"
+        ))
+        .about(topic::PAST_THE_ENDS),
+    )
 }
 
 /// The positions for `parameters`, in the order to cut.

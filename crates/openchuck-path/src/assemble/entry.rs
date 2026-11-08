@@ -439,12 +439,15 @@ impl Entry {
                 })
                 .count();
             if reversals > 0 {
-                b.notes.push(crate::notice::Notice::information(format!(
-                    "Ramp entry: pass {} starts with too short a stretch to ramp along without \
-                     turning the part, so its ramp goes back and forth over the pass's own path, \
-                     reversing A {reversals} times during the entry",
-                    pass + 1
-                )));
+                b.notes.push(
+                    crate::notice::Notice::information(format!(
+                        "pass {} starts with too short a stretch to ramp along without turning \
+                         the part, so its ramp goes back and forth over the pass's own path, \
+                         reversing A {reversals} times during the entry",
+                        pass + 1
+                    ))
+                    .about(crate::notice::topic::RAMP_ENTRY),
+                );
             }
         }
         Ok(())

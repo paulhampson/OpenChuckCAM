@@ -14,7 +14,7 @@
 //! before it is migrated to off (project schema 23), so it machines as
 //! before.
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -153,7 +153,7 @@ const AROUND: usize = 72;
 #[derive(Debug, Default)]
 pub(crate) struct FreeEnds {
     pub(crate) passes: Vec<Pass>,
-    pub(crate) notes: Vec<String>,
+    pub(crate) notes: Vec<Notice>,
     pub(crate) warnings: Vec<Notice>,
 }
 
@@ -196,11 +196,14 @@ pub(crate) fn free_ends(
     }) {
         // Information: there is nothing to face (decision 0536 step 2, the
         // owner's answer to question Q-B; P49).
-        out.notes.push(format!(
-            "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
-             face. If the real blank is longer, set the stock's length to match it",
-            e.face
-        ));
+        out.notes.push(
+            Notice::information(format!(
+                "the stock ends at the part's end at X {:.3}: there is no stock past this end \
+                 to face. If the real blank is longer, set the stock's length to match it",
+                e.face
+            ))
+            .about(topic::FREE_ENDS),
+        );
     }
     let ends: Vec<&FreeEnd> = ends
         .iter()
@@ -222,7 +225,7 @@ pub(crate) fn free_ends(
         if stepdown.is_nan() || stepdown <= 0.0 {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FREE_ENDS.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
@@ -242,7 +245,7 @@ pub(crate) fn free_ends(
         if stock.max_radius().is_none() {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FREE_ENDS.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: the \
@@ -303,16 +306,15 @@ pub(crate) fn free_ends(
             };
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FLUTE_LENGTH.to_owned()),
                 segment: None,
                 text: format!(
-                    "{}the end face at X {face:.3} has nothing beyond it and is not faced: the \
+                    "the end face at X {face:.3} has nothing beyond it and is not faced: the \
                      stock beside it is {up_to}{:.3} mm deep{bound}, more than the tool's \
                      {:.3} mm of flute, so no turn is cut there and the end keeps what earlier \
                      operations left; {}. Use a tool with longer flutes, or face it with a \
                      Facing operation, or turn off Face free ends for this operation. Check \
                      the path before you run it",
-                    crate::flutes::WARNING_LEAD,
                     top.max(deepest),
                     input.tool.top(),
                     crate::flutes::stock_words(stock),
@@ -363,16 +365,22 @@ pub(crate) fn free_ends(
         // setup's own stock, which the real blank must match, is a warning of
         // its own (decision 0536 step 2, the owner's answer to question Q-C;
         // P50).
-        out.notes.push(format!(
-            "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
-             in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
-             axis in each"
-        ));
+        out.notes.push(
+            Notice::information(format!(
+                "the end face at X {face:.3} has nothing beyond it: the tool goes down beside \
+                 it in {layers} layers of {stepdown} mm to the rotary axis, turning once round \
+                 the axis in each"
+            ))
+            .about(topic::FREE_ENDS),
+        );
         if !stock.left_by_earlier_operations() {
-            out.warnings.push(Notice::warning(format!(
-                "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
+            out.warnings.push(
+                Notice::warning(format!(
+                    "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
                  own stock with no earlier operation in this setup: the real blank must match it"
-            )));
+                ))
+                .about(topic::FREE_ENDS),
+            );
         }
         rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
@@ -402,7 +410,7 @@ pub(crate) fn free_ends(
             if found {
                 out.warnings.push(Notice {
                     level: Level::Warning,
-                    topic: None,
+                    topic: Some(topic::PART_CUT_FREE.to_owned()),
                     segment: None,
                     text: format!(
                         "the end face at X {face:.3} is faced down to the rotary axis: the tool \
@@ -443,7 +451,7 @@ pub(crate) fn free_ends(
         if !held {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::PART_CUT_FREE.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} is faced down to the rotary axis: the tool cuts \
@@ -479,7 +487,7 @@ pub(crate) fn layers(
     input: &StrategyInput<'_>,
     passes: Vec<Pass>,
     parameters: &Parameters,
-) -> Result<(Vec<Pass>, Option<String>)> {
+) -> Result<(Vec<Pass>, Option<Notice>)> {
     if !parameters
         .flag(parameter::FINISHING_LAYERS)
         .unwrap_or(false)
@@ -562,12 +570,13 @@ pub(crate) fn layers(
         } else {
             "the setup's own stock, with no earlier operation in this setup"
         };
-        format!(
-            "finishing layers: up to {} layers of {stepdown} mm above a finish allowance of \
+        Notice::information(format!(
+            "up to {} layers of {stepdown} mm above a finish allowance of \
              {allowance} mm, then the final pass on the surface; the layers start from {from}, \
              so the depth of each cut is not uniform and no engagement is promised",
             heights.len()
-        )
+        ))
+        .about(topic::FINISHING_LAYERS)
     });
     out.extend(passes);
     Ok((out, note))
@@ -628,5 +637,6 @@ pub(crate) fn across_axis_warning(
              one turn where the part lies on both sides of it. To face the end of the part or \
              the stock, use Facing with Shape End"
         ))
+        .about(topic::FACES_ACROSS_THE_AXIS)
     })
 }

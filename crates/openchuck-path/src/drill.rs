@@ -46,7 +46,7 @@ use openchuck_types::units::Degrees;
 
 use crate::error::{PathError, Result};
 use crate::holes::{Hole, HoleEnd};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::params::{
     EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
@@ -341,7 +341,7 @@ fn drill(
                  the axis tolerance of {axis_tolerance} degrees, and a four-axis machine cannot \
                  tilt the tool",
                     describe(&site)
-                ))
+                )).about(topic::HOLES_LEFT_OUT)
                 .with_setting(parameter::AXIS_TOLERANCE),
             );
             continue;
@@ -353,6 +353,7 @@ fn drill(
                  tolerance of {diameter_tolerance} mm from it",
                     describe(&site)
                 ))
+                .about(topic::HOLES_LEFT_OUT)
                 .with_setting(parameter::DIAMETER_TOLERANCE),
             );
             continue;

@@ -15,6 +15,103 @@
 //! record 0522 item 3). Nothing a notice says may call a path safe or
 //! verified (NFR-12).
 
+/// The topics of the warnings and the information this crate makes: short
+/// names of the checks, in sentence case, the same for the same check
+/// wherever it is made (decision record 0536 section 3). A host puts the
+/// topic first, then the items concerned, then the text.
+pub mod topic {
+    /// The path stops short of the material it was asked to cut, or could
+    /// not confirm it, and is kept as a partial path.
+    pub const PARTIAL_PATH: &str = "Partial path";
+    /// The tool reaches into an avoid set that only warns.
+    pub const AVOID_SET: &str = "Avoid set";
+    /// The tool touches, or comes closer than the stock to leave to, a
+    /// check set that only warns.
+    pub const CHECK_SET: &str = "Check set";
+    /// A selection set whose options leave it limiting nothing.
+    pub const SELECTION_SET: &str = "Selection set";
+    /// More material is left than the operation asks for.
+    pub const MATERIAL_LEFT: &str = "Material left";
+    /// Areas of the part the tool cannot reach stay uncut, or are not
+    /// checked.
+    pub const UNREACHED_AREAS: &str = "Unreached areas";
+    /// The stock stands above the tool's flutes.
+    pub const FLUTE_LENGTH: &str = "Flute length";
+    /// The tool holder is not checked against the part.
+    pub const TOOL_HOLDER: &str = "Tool holder";
+    /// The tool's shank would touch the part, so the path breaks round it.
+    pub const SHANK_CLEARANCE: &str = "Shank clearance";
+    /// What is left uncut beside a held region, where the workholding grips
+    /// the stock.
+    pub const HELD_REGION: &str = "Held region";
+    /// The tool cuts into the finished surface or a face beside it by more
+    /// than the tolerance.
+    pub const OVERCUT: &str = "Overcut";
+    /// Inside corners a tool leaves material in, or does not follow.
+    pub const INSIDE_CORNERS: &str = "Inside corners";
+    /// An end face with nothing beyond it that is not faced, or is faced
+    /// from the setup's own stock.
+    pub const FREE_ENDS: &str = "Free ends";
+    /// Facing an end down to the rotary axis may cut the part or the stock
+    /// free.
+    pub const PART_CUT_FREE: &str = "Part cut free";
+    /// Selected faces that lie across the rotary axis.
+    pub const FACES_ACROSS_THE_AXIS: &str = "Faces across the axis";
+    /// Selected holes the drilling leaves out.
+    pub const HOLES_LEFT_OUT: &str = "Holes left out";
+    /// Selected chains the edge following leaves out.
+    pub const CHAINS_LEFT_OUT: &str = "Chains left out";
+    /// The machine's feed limits slow a move below the feed set.
+    pub const FEED_LIMIT: &str = "Feed limit";
+    /// A turn of A with the contact point at the rotary axis, whose time
+    /// the rotary axis's speed limit sets.
+    pub const ROTARY_AXIS: &str = "Rotary axis";
+    /// Links between passes asked to be low that retract as usual.
+    pub const LINKS: &str = "Links";
+    /// The passes adaptive spacing added between the passes, or that it
+    /// added none.
+    pub const ADAPTIVE_SPACING: &str = "Adaptive spacing";
+    /// The extra turns round the axis at steps across it, so each shoulder
+    /// keeps only the stock to leave.
+    pub const SHOULDERS: &str = "Shoulders";
+    /// What cutting by region did to the order of the passes, or why it
+    /// did not.
+    pub const PASS_ORDER: &str = "Pass order";
+    /// Rings cut as whole turns at one place along the part, and how far
+    /// apart.
+    pub const RINGS: &str = "Rings";
+    /// The finishing layers above the final pass.
+    pub const FINISHING_LAYERS: &str = "Finishing layers";
+    /// Passes that run on past the ends of the part.
+    pub const PAST_THE_ENDS: &str = "Past the ends";
+    /// How the tool axis leans from the surface normal.
+    pub const TOOL_TILT: &str = "Tool tilt";
+    /// A tolerance measured against the mesh, not the design surface.
+    pub const TESSELLATION: &str = "Tessellation";
+    /// A section that does not surround the rotary axis, followed round its
+    /// own centre.
+    pub const OFF_AXIS_SECTION: &str = "Off-axis section";
+    /// Surfaces hidden from the drive, finished with passes of their own.
+    pub const HIDDEN_SURFACES: &str = "Hidden surfaces";
+    /// What rest machining found left and cut.
+    pub const REST_MACHINING: &str = "Rest machining";
+    /// The chains, passes and depth of edge following.
+    pub const EDGE_FOLLOWING: &str = "Edge following";
+    /// The faces and passes of face-flow finishing.
+    pub const FACE_FLOW: &str = "Face-flow finishing";
+    /// The creases and passes of pencil clean-up.
+    pub const PENCIL: &str = "Pencil clean-up";
+    /// How swarf cutting follows a ruled face.
+    pub const SWARF: &str = "Swarf";
+    /// How a ramp entry followed the pass's own toolpath (decision record
+    /// 0543): passes plunged as single points, ramps that followed a steep
+    /// drop of the pass, A reversed during an entry.
+    pub const RAMP_ENTRY: &str = "Ramp entry";
+    /// The move to an entry's start, raised to clear the stock beside the
+    /// first cut point (decision record 0544 item 6).
+    pub const ENTRY: &str = "Entry";
+}
+
 /// How serious a [`Notice`] is (decision record 0536 section 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Level {

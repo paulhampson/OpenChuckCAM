@@ -129,7 +129,7 @@ pub use field::HeightStock;
 pub use helical::HelicalFinishing;
 pub use holes::{Hole, HoleEnd, find_holes};
 pub use indexed::IndexedFinishing;
-pub use notice::{Acknowledgement, Level, Notice};
+pub use notice::{Acknowledgement, Level, Notice, topic};
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,

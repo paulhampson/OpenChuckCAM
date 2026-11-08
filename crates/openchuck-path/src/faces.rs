@@ -46,7 +46,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
 
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::parallel;
 use crate::strategy::StrategyInput;
 
@@ -440,7 +440,7 @@ fn find(
 /// The note an operation carries when it turned at faces across the axis:
 /// how many and where, so the user knows the path differs from a plain helix
 /// there (decision record 0297). `None` with no turns.
-pub(crate) fn note(turns: &[f64]) -> Option<String> {
+pub(crate) fn note(turns: &[f64]) -> Option<Notice> {
     let (last, rest) = turns.split_last()?;
     let at = |x: &f64| format!("{x:.3}");
     let xs = if rest.is_empty() {
@@ -462,11 +462,14 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
             "each",
         )
     };
-    Some(format!(
-        "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
-         makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
-         {each} shoulder keeps only the stock to leave"
-    ))
+    Some(
+        Notice::information(format!(
+            "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
+             {each} shoulder keeps only the stock to leave"
+        ))
+        .about(topic::SHOULDERS),
+    )
 }
 
 /// The warning an operation carries when a held region kept it from turning
@@ -496,10 +499,13 @@ pub(crate) fn held_warning(held: &[f64]) -> Option<Notice> {
             "those shoulders keep",
         )
     };
-    Some(Notice::warning(format!(
-        "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
+    Some(
+        Notice::warning(format!(
+            "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
          length of the stock, so {keeps} what earlier operations left"
-    )))
+        ))
+        .about(topic::HELD_REGION),
+    )
 }
 
 /// The X of the face a turn at `x` stands beside: `radius` (the dropped
@@ -539,7 +545,7 @@ pub(crate) fn corner_warning(faces: &[f64], radius: f64) -> Option<Notice> {
          end (radius {radius:.3} mm) leaves up to about {:.2} mm across it; a flat end can finish \
          {it}",
         radius * (std::f64::consts::SQRT_2 - 1.0)
-    )))
+    )).about(topic::INSIDE_CORNERS))
 }
 
 /// A face found on one line of A: the X of its low side, where the side of
@@ -659,13 +665,13 @@ mod tests {
     fn req_op_04_the_note_says_where_the_tool_turns() {
         assert_eq!(note(&[]), None);
         assert_eq!(
-            note(&[8.4115]).unwrap(),
+            note(&[8.4115]).unwrap().text,
             "the part has a step across the rotary axis (a shoulder facing along X): the tool \
              makes one extra turn round the axis, without moving along it, at X 8.412, so the \
              shoulder keeps only the stock to leave"
         );
         assert_eq!(
-            note(&[1.0, 2.0, 3.5]).unwrap(),
+            note(&[1.0, 2.0, 3.5]).unwrap().text,
             "the part has 3 steps across the rotary axis (shoulders facing along X): the tool \
              makes one extra turn round the axis, without moving along it, at each of X 1.000, \
              2.000 and 3.500, so each shoulder keeps only the stock to leave"
@@ -679,6 +685,7 @@ mod tests {
         assert_eq!(held_warning(&[]), None);
         let one = held_warning(&[31.5886]).unwrap();
         assert!(one.is_warning(), "{one:?}");
+        assert_eq!(one.topic.as_deref(), Some(topic::HELD_REGION));
         assert_eq!(
             one.text,
             "the tool does not turn at a step across the rotary axis (a shoulder facing along \
@@ -760,6 +767,7 @@ mod tests {
         );
         let one = corner_warning(&[15.0], 3.0).unwrap();
         assert!(one.is_warning(), "{one:?}");
+        assert_eq!(one.topic.as_deref(), Some(topic::INSIDE_CORNERS));
         let one = one.text;
         assert!(
             one.starts_with("at X 15.000 a face across the rotary axis meets a section"),

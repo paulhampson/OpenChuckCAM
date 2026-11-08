@@ -49,7 +49,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwrap_continuous};
 use crate::stock::{CollisionOracle, StockModel};
@@ -290,23 +290,32 @@ impl Builder<'_> {
                     // barely moves it: the feed there rounds to zero and says
                     // nothing, so the note says what the move is (issue
                     // #600). It is not a feed-limit note to summarise.
-                    let text = if contact_feed < 0.05 {
-                        format!(
-                            "A turns with the contact point at the rotary axis during this \
+                    let (topic, text) = if contact_feed < 0.05 {
+                        (
+                            topic::ROTARY_AXIS,
+                            format!(
+                                "A turns with the contact point at the rotary axis during this \
                              move, so the contact point barely moves and the rotary axis's speed \
                              limit sets the time taken ({axis_time:.3} s); the feed set is \
                              {:.1} mm/min",
-                            f.0
+                                f.0
+                            ),
                         )
                     } else {
-                        format!(
-                            "the machine's feed limits slow this move: the contact feed is \
+                        (
+                            topic::FEED_LIMIT,
+                            format!(
+                                "the machine's feed limits slow this move: the contact feed is \
                              {contact_feed:.1} mm/min, not {:.1}",
-                            f.0
+                                f.0
+                            ),
                         )
                     };
-                    self.notes
-                        .push(Notice::information(text).at_segment(self.segments.len()));
+                    self.notes.push(
+                        Notice::information(text)
+                            .about(topic)
+                            .at_segment(self.segments.len()),
+                    );
                 }
                 at_feed.max(axis_time)
             }
@@ -628,28 +637,40 @@ pub fn assemble_with_entry(
     };
     if !b.single_point_plunges.is_empty() {
         let text = format!(
-            "Ramp entry: passes {} are single points, so they are entered by a straight plunge \
-             (Allow single-point plunge is on)",
-            list(&b.single_point_plunges)
+            "{} with no path for a ramp to follow, so {} entered by a straight plunge, as \
+             Allow single-point plunge asks",
+            if b.single_point_plunges.len() == 1 {
+                format!("pass {} is a single point", list(&b.single_point_plunges))
+            } else {
+                format!("passes {} are single points", list(&b.single_point_plunges))
+            },
+            if b.single_point_plunges.len() == 1 {
+                "it is"
+            } else {
+                "they are"
+            }
         );
-        b.notes.insert(0, Notice::information(text));
+        b.notes
+            .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
     }
     if !b.steep_ramps.is_empty() {
         let text = format!(
-            "Ramp entry: passes {} drop more steeply than the ramp angle just before their first \
-             point, so their ramps follow that drop there, as the passes themselves do",
+            "passes {} drop more steeply than the ramp angle just before their first point, so \
+             their ramps follow that drop there, as the passes themselves do",
             list(&b.steep_ramps)
         );
-        b.notes.insert(0, Notice::information(text));
+        b.notes
+            .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
     }
     if b.raised_entries > 0 {
         b.notes.insert(
             0,
             Notice::information(format!(
-                "Entry: {} entries start higher than the link before them ends, so the move to \
-                 the entry's start stays clear of the stock beside the first cut point",
+                "{} entries start higher than the link before them ends, so the move to the \
+                 entry's start stays clear of the stock beside the first cut point",
                 b.raised_entries
-            )),
+            ))
+            .about(topic::ENTRY),
         );
     }
     if kept_high > 0 {
@@ -661,7 +682,8 @@ pub fn assemble_with_entry(
                 "{kept_high} of {asked_low} links between passes could not be lowered \
                  (stock, a held region or the retract height leaves no room) and retract \
                  as usual"
-            )),
+            ))
+            .about(topic::LINKS),
         );
     }
     context.report("assemble passes", total, Some(total));

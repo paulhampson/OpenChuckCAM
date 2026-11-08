@@ -155,7 +155,7 @@ A warning about a tab is about whether the tool can cut beside it, not whether t
 "No tabs are stored. The part stays joined to the stock at the held end."
 : Not a mistake on its own: the part is held by its uncut end. Add tabs when an operation will cut the part free of the held end.
 
-"The workholding of 'Setup 1' has changes that are not applied."
+"Workholding (setup 'Setup 1'): it has changes that are not applied."
 : You changed the workholding and did not press **Apply**. The view shows the change, but generation does not use it.
 
 "Tab length (operation ...): ... shorter than the tool is wide"

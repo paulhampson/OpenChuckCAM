@@ -1,8 +1,12 @@
 # Changelog
 
+## 0.52.0
+
+- **Family release (0.52.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639, #642; decision 0543, proposed):** `openchuck-path`'s `EntryParameters` gains `allow_single_point_plunge` and loses `back_and_forth`, and `StrategyInput::entry_safety` and the `entry_safety` module are removed (decision 0543 D10), a breaking change; no change to this crate.
+
 ## 0.51.0
 
-- **Family release (0.51.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639, #642; decision 0543, proposed):** `openchuck-path`'s `EntryParameters` gains `allow_single_point_plunge` and loses `back_and_forth`, and `StrategyInput::entry_safety` and the `entry_safety` module are removed (decision 0543 D10), a breaking change; no change to this crate.
+- **Family release (0.51.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 3; issue #567; decision 0536, accepted):** `openchuck-path` removes `flutes::WARNING_LEAD` and adds the `topic` module, a breaking change; no change to this crate.
 
 ## 0.50.0
 
