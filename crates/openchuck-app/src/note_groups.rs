@@ -257,6 +257,59 @@ fn read_feed_note(note: &str) -> Option<(f64, f64)> {
     }
 }
 
+/// A run's information for a reader (decision record 0430; decision 0536
+/// section 5): one line for each operation the machine's feed limits slowed,
+/// in place of its per-move notes, then the run's other notes in order.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Information {
+    /// One line per operation the feed limits slowed, named as it is in the
+    /// project.
+    pub summaries: Vec<String>,
+    /// The run's notes, less the per-move feed-limit notes a summary says.
+    pub notes: Vec<String>,
+}
+
+/// The information of `run`, its operations named as they are in `project`.
+/// The per-move feed-limit notes of an operation are left out only when it
+/// has a summary line and no other operation of the run has its name: notes
+/// carry only the name, so those of a shared name cannot be told apart, and
+/// none is hidden (NFR-12).
+pub fn information(run: &crate::Regeneration, project: &openchuck_project::Project) -> Information {
+    let mut summaries = Vec::new();
+    let mut summarised = Vec::new();
+    for (id, limit) in &run.feed_limits {
+        let operation = project
+            .operation(*id)
+            .map_or_else(|| "(removed operation)".to_owned(), |o| o.name.clone());
+        summaries.push(limit.describe_for(&operation));
+        // The notes carry the name the operation had when the run was made,
+        // which the run's own project snapshot still holds.
+        let made_as = run
+            .project
+            .operation(*id)
+            .map_or(operation, |o| o.name.clone());
+        let shared = run
+            .project
+            .operations()
+            .iter()
+            .filter(|o| o.name == made_as)
+            .count()
+            > 1;
+        if !shared {
+            summarised.push(format!("operation '{made_as}': "));
+        }
+    }
+    let notes = run
+        .notes
+        .iter()
+        .filter(|n| {
+            !(is_feed_limit_note(n) && summarised.iter().any(|p| n.starts_with(p.as_str())))
+        })
+        .cloned()
+        .collect();
+    Information { summaries, notes }
+}
+
 /// Whether `note` is one the feed-limit summary reads, so the Results window
 /// may leave it out in favour of the summary. A note this cannot read is
 /// not one, and stays in the list (NFR-12).

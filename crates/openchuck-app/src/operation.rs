@@ -209,7 +209,7 @@ pub struct OperationPath {
     /// What the user must see before using the path: it was made, but does
     /// not meet a limit the operation sets, such as swarf cutting into the
     /// finished surface deeper than the tolerance (NFR-12; decision record
-    /// 0175). Each is in `notes` too.
+    /// 0175). They are not repeated in `notes` (decision 0536 section 5).
     pub warnings: Vec<openchuck_path::Notice>,
     /// The areas of the part the strategy could not reach, with the surface
     /// points in each (OP-20; decision record 0515): what the viewport marks
@@ -918,9 +918,9 @@ fn generate_unnamed(
     ) {
         check_travel_along(operation, machine, &path.group)?;
     }
-    // A set the operation's options leave limiting nothing is a warning,
-    // said first in the notes as well (decision 0176), as the library does
-    // for its own warnings.
+    // A set the operation's options leave limiting nothing is a warning
+    // (decision 0176). A warning is said once, as a warning, and not repeated
+    // among the notes (decision 0536 section 5).
     let mut warnings = brep_limits
         .as_ref()
         .map(|l| l.warnings.clone())
@@ -931,12 +931,9 @@ fn generate_unnamed(
             .into_iter()
             .map(openchuck_path::Notice::warning),
     );
-    // Notes about the values come first, then the notes about moves.
-    let mut notes: Vec<String> = warnings
-        .iter()
-        .map(openchuck_path::Notice::sentence)
-        .collect();
-    notes.extend(resolved.notes);
+    // Notes about the values come first, then the notes about moves. They
+    // are information: the goal is met (decision 0536 section 1).
+    let mut notes: Vec<String> = resolved.notes;
     notes.extend(leave_notes);
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
@@ -957,19 +954,27 @@ fn generate_unnamed(
     notes.extend(registry_strategy.parameter_warnings(&profile, &parameters));
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
-    // material left, which is rarely what was meant.
+    // material left, which is rarely what was meant: a warning (decision
+    // 0536 step 2, path inventory P42).
     if carried.is_none() && strategy.needs_earlier_operations() {
-        notes.push(format!(
+        warnings.push(openchuck_path::Notice::warning(format!(
             "{} cleans up material that earlier operations left, and no earlier operation of \
              this setup has cut: the setup's own stock is taken, so all of the part counts as \
              having material left",
             strategy.label()
-        ));
+        )));
     }
+    // The path's information; its warnings go with the warnings below. A
+    // note about one move names it; a note about the whole path names none
+    // (#622).
     notes.extend(
         path.notices
             .iter()
-            .map(|n| format!("move {}: {}", n.segment.unwrap_or(0), n.sentence())),
+            .filter(|n| !n.is_warning())
+            .map(|n| match n.segment {
+                Some(segment) => format!("move {segment}: {}", n.sentence()),
+                None => n.sentence(),
+            }),
     );
     let facing = facing_setup
         .as_ref()
@@ -2623,8 +2628,15 @@ mod tests {
             "{}",
             warning.text
         );
+        // Said once, as a warning: not repeated as a note, and no note
+        // claims a move it is not about (decision 0536 section 5; #622).
         assert!(
-            path.notes.iter().any(|n| n.contains(&warning.text)),
+            !path.notes.iter().any(|n| n.contains(&warning.text)),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.starts_with("move 0:")),
             "{:?}",
             path.notes
         );
@@ -2837,7 +2849,9 @@ mod tests {
             warning.text
         );
         assert_eq!(warning.setting, None);
-        assert_eq!(path.notes.first(), Some(&warning.text));
+        // A warning is said once, not repeated as a note (decision 0536
+        // section 5).
+        assert!(!path.notes.contains(&warning.text), "{:?}", path.notes);
         // Limit A alone stops the pass at the strip as before.
         let mut f = swarf_limits_fixture(&[]);
         f.select_as(
@@ -3813,6 +3827,27 @@ mod tests {
         );
         let operation = f.project.operation(f.operation).unwrap();
         assert!(crate::step_sets::refusals(&f.project, &registry, operation).is_empty());
+    }
+
+    /// Rest machining with no earlier operation in its setup takes the
+    /// setup's own stock, so all of the part counts as having material left:
+    /// rarely what was meant, so a warning, said once and not as a note
+    /// (decision 0536 step 2, path inventory P42).
+    #[test]
+    fn req_ui_12_req_op_09_rest_machining_with_no_earlier_operation_is_a_warning() {
+        let f = bar_fixture(openchuck_path::rest::NAME, "bar.stl");
+        let path = f.run().unwrap();
+        let said = "cleans up material that earlier operations left";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "{:?}",
+            path.warnings
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
     }
 
     #[test]

@@ -335,6 +335,13 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 - The tab sits after Jobs and has no menu entry. Its label is "Results (n)", n being the warning and error lines of the latest run, one more for a failed run, a grouped line once; information is not counted and the chips do not change it. A failed run selects the tab and opens the dock.
 - A wrapping top row holds the summary line, "Copy all" and the chips Errors, Warnings and Information with their counts (all on, kept for the session only). Below it one scroll area holds the error of a failed run, the changed-project line, the lines (a group opens on its moves), "Results as plain text" and the verify-G-code notice, so a dock 120 pt high reaches everything.
 - The chips filter the lines. Copy all and the plain-text box hold every line and the build information whatever the chips show. When the chips hide every line the tab says "No lines at this level.".
+- Each line takes its message's own level ([decision 0536](../decisions/0536-message-levels-operation-reference-and-setting-links.md) section 5, build step 2):
+  - an operation's warning is one Warning line in the form of decision 0522, said once, and not repeated as a "move 0" note;
+  - the run's own warnings are Warning lines: material no tool can reach, a rapid that removes material (unless the simulation's own line already lists it), and short blocks left in the program;
+  - the notes are Information, the goal met with a compromise or a decision. A note about one move names it ("move 12: …"); a note about the whole path names no move;
+  - the machine's feed limits are one Information line per operation, in place of the per-move notes (decision 0430);
+  - a turn of A with the contact point at the rotary axis says so and that the rotary axis's limit sets its time. It never reads as a contact feed of 0.0 mm/min (#600).
+- The command line prints the same lines: warnings as `warning:`, information as `note:`.
 
 **Messages** *(UI-12)*:
 

@@ -2022,11 +2022,11 @@ fn req_sim_05_req_sim_15_a_bore_no_tool_reaches_shows_on_the_cut_part_and_can_be
     let mut rig = simulate(Rig::tube("sim-bore"));
     let run = rig.shell.run.last().unwrap().clone();
     let warnings: Vec<_> = run
-        .notes
+        .warnings
         .iter()
         .filter(|n| n.contains(openchuck_app::simulation::ENCLOSED_WORDS))
         .collect();
-    assert_eq!(warnings.len(), 1, "{:?}", run.notes);
+    assert_eq!(warnings.len(), 1, "{:?}", run.warnings);
     // In the Messages panel too, as a warning on the setup.
     assert!(rig.shell.overview.messages.iter().any(|m| {
         m.severity == openchuck_app::overview::Severity::Warning

@@ -1337,3 +1337,35 @@ fn req_gc_15_cli_prints_the_export_warnings() {
     assert!(std::fs::read_dir(&out).unwrap().next().is_some());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The command line prints each message at its own level (decision 0536
+/// section 5): a run's information as `note:`, its warnings as `warning:`,
+/// and never a note as a warning.
+#[test]
+fn req_ui_12_cli_prints_each_run_message_at_its_level() {
+    let root = scratch("levels");
+    let project = &write_projects(&root, &["cone".to_owned()]).unwrap()[0];
+    let out = cli_ok(&["regenerate".as_ref(), project.as_os_str()]);
+    // The machine's feed limits slow many moves of the finish: one `note:`
+    // line for the operation, as in the Results tab, and no line per move
+    // (decision record 0430).
+    assert!(
+        !out.stderr.contains("feed limits slow this move"),
+        "{}",
+        out.stderr
+    );
+    let summaries: Vec<&str> = out
+        .stderr
+        .lines()
+        .filter(|l| l.contains("were limited by the machine's feed limits"))
+        .collect();
+    assert_eq!(summaries.len(), 1, "{}", out.stderr);
+    assert!(
+        summaries[0].starts_with("note: ") && summaries[0].contains("during 'Finish'"),
+        "{}",
+        summaries[0]
+    );
+    // Information is never printed as a warning.
+    assert!(!out.stderr.contains("warning:"), "{}", out.stderr);
+    std::fs::remove_dir_all(root).ok();
+}

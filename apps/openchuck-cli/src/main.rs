@@ -448,6 +448,27 @@ enum LibraryAction {
     },
 }
 
+/// Prints a run's messages on standard error, each at its own level
+/// (decision 0536 section 5): each operation's warnings and the run's own as
+/// `warning:`, and its information as `note:`, with one feed-limit line per
+/// operation in place of the per-move notes (decision record 0430), as the
+/// Results tab shows them.
+fn print_run(project: &openchuck_app::project::Project, run: &openchuck_app::Regeneration) {
+    for warning in run.operation_warnings(project) {
+        eprintln!("warning: {warning}");
+    }
+    for warning in &run.warnings {
+        eprintln!("warning: {warning}");
+    }
+    let information = openchuck_app::note_groups::information(run, project);
+    for summary in &information.summaries {
+        eprintln!("note: {summary}");
+    }
+    for note in &information.notes {
+        eprintln!("note: {note}");
+    }
+}
+
 fn main() -> ExitCode {
     match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -582,9 +603,7 @@ fn run(cli: Cli) -> Result<()> {
                     eprintln!("warning: tool '{}': {warning}", report.name);
                 }
             }
-            for note in app.regenerate()?.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &app.regenerate()?);
             println!("{}: valid", project.display());
         }
         Action::Resave { project } => {
@@ -614,9 +633,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             app.set_post(post.as_deref().map(PostSelection::parse));
             let result = app.regenerate()?;
-            for note in &result.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &result);
             if let Some((settings, sources)) = result.effective_short_blocks {
                 eprintln!(
                     "short-block settings: {} ({}), {:.3} ms ({}), {} {} ({})",
@@ -751,9 +768,7 @@ fn run(cli: Cli) -> Result<()> {
             let start = std::time::Instant::now();
             let result = app.simulate()?;
             let seconds = start.elapsed().as_secs_f64();
-            for note in &result.notes {
-                eprintln!("warning: {note}");
-            }
+            print_run(app.project(), &result);
             let report = result
                 .simulation
                 .context("the pipeline returned no simulation report")?;

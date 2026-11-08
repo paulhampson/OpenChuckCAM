@@ -223,8 +223,10 @@ fn req_sim_05_req_nfr_12_an_enclosed_leftover_gives_one_warning_per_setup_with_i
 {
     let (dir, app) = project("tube", &tube_stl(8.0, 4.0, 20.0), 20.0, 20.0);
     let run = app.simulate().unwrap();
-    let notes = enclosed_notes(&run.notes);
-    assert_eq!(notes.len(), 1, "{:?}", run.notes);
+    // A warning of the run, not a note (decision 0536 step 2).
+    let notes = enclosed_notes(&run.warnings);
+    assert_eq!(notes.len(), 1, "{:?}", run.warnings);
+    assert!(enclosed_notes(&run.notes).is_empty(), "{:?}", run.notes);
     let note = notes[0];
     println!("{note}");
     let setup = &run.simulation.as_ref().unwrap().setups[0];
@@ -269,7 +271,7 @@ fn req_sim_05_req_nfr_12_an_enclosed_leftover_gives_one_warning_per_setup_with_i
     // The same from the cache, without comparing again (decision 0217).
     let again = app.simulate().unwrap();
     assert!(again.compared.is_empty());
-    assert_eq!(enclosed_notes(&again.notes), notes);
+    assert_eq!(enclosed_notes(&again.warnings), notes);
     assert_eq!(again.simulation, run.simulation);
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -282,7 +284,11 @@ fn req_sim_05_material_left_within_reach_gives_no_enclosed_warning() {
     .unwrap();
     let (dir, app) = project("cube", &cube, 20.0, 10.0);
     let run = app.simulate().unwrap();
-    assert!(enclosed_notes(&run.notes).is_empty(), "{:?}", run.notes);
+    assert!(
+        enclosed_notes(&run.warnings).is_empty(),
+        "{:?}",
+        run.warnings
+    );
     let reach = run.simulation.as_ref().unwrap().setups[0]
         .reach
         .as_ref()
@@ -307,7 +313,11 @@ fn req_sim_05_req_nfr_12_a_necked_tool_leaves_the_leftover_unclassified() {
     snapshot.tool.shank_diameter = Millimetres(3.0);
     app.execute(Command::Replace(Item::Tool(snapshot))).unwrap();
     let run = app.simulate().unwrap();
-    assert!(enclosed_notes(&run.notes).is_empty(), "{:?}", run.notes);
+    assert!(
+        enclosed_notes(&run.warnings).is_empty(),
+        "{:?}",
+        run.warnings
+    );
     let reach = run.simulation.as_ref().unwrap().setups[0]
         .reach
         .as_ref()

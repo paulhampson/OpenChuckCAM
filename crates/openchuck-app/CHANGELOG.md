@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (MSGREVIEW, decision 0536 step 2)
+
+- **Changed (decision 0536 step 2, accepted; issue #567):** each message of a run has its own level. `OperationPath::notes` and `Regeneration::notes` are information only: a warning is no longer repeated among the notes (it was copied as a "move 0" note), and a note about the whole path names no move (#622). New `Regeneration::warnings` holds the run's own warnings (material no tool can reach, a rapid that removes material, short blocks left in the program in Report mode); a short block the post slowed down and a feed lowered to the post's maximum are information. New `Regeneration::operation_warnings` gives each operation's warnings in the form of decision 0522, and `note_groups::information` the feed-limit summaries and the notes they leave. `openchuck-cli` prints warnings as `warning:` and information as `note:`, with one feed-limit line per operation in place of a line per move, and a turn of A at the rotary axis is no longer said as a contact feed of 0.0 mm/min (#600). Rest machining or pencil clean-up with no earlier operation in its setup is a warning (path inventory P42).
+
 ## 0.50.0
 
 - **Changed (0.50.0, or the next free version; MSGREVIEW step 1; issue #567; decision 0536, accepted):** the application reads the pathing library's new `Notice` type; what the user sees is unchanged. New `lead_in` module (`Context`, `lead_in`, `in_form`) writes the one form every message takes, `<Topic> (<context>): <text>`, and `Message::about` builds a message in it; the flute and tab warnings use it. `cargo xtask messages` (also run by `cargo xtask deps`) counts the messages built with `Message::new` and the words that claim safety against `xtask/messages.toml`, which may only fall.
