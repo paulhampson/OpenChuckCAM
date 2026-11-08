@@ -511,7 +511,8 @@ fn req_op_11_a_single_point_pass_under_lead_is_plunged_with_a_note_naming_it() {
     assert!(
         path.notices
             .iter()
-            .any(|n| n.text.starts_with("Lead entry: passes 1 are single points")),
+            .any(|n| n.topic.as_deref() == Some("Lead entry")
+                && n.text.starts_with("pass 1 is a single point")),
         "{:?}",
         path.notices
     );

@@ -440,24 +440,40 @@ impl Entry {
 /// Notes that pass `pass` is a single point, entered by a plunge (0544
 /// item 4): one note names every such pass.
 pub(super) fn note_single_point(b: &mut Builder<'_>, pass: usize) {
-    const MARK: &str = "Lead entry: passes ";
-    const REST: &str = " are single points, so they have no cut to lead into: each is \
-                        entered by a straight plunge and has no lead-out";
+    use crate::notice::{Notice, topic};
+    const ONE: (&str, &str) = (
+        "pass ",
+        " is a single point, so it has no cut to lead into: it is entered by a straight \
+         plunge and has no lead-out",
+    );
+    const MANY: (&str, &str) = (
+        "passes ",
+        " are single points, so they have no cut to lead into: each is entered by a straight \
+         plunge and has no lead-out",
+    );
+    let listed = |text: &str| {
+        [ONE, MANY].iter().find_map(|(head, tail)| {
+            text.strip_prefix(head)
+                .and_then(|rest| rest.strip_suffix(tail))
+                .map(|list| list.split(", ").map(str::to_owned).collect::<Vec<_>>())
+        })
+    };
     let found = b
         .notes
         .iter()
-        .position(|n| n.text.starts_with(MARK) && n.text.ends_with(REST));
-    let mut passes: Vec<String> = found
+        .position(|n| n.topic.as_deref() == Some(topic::LEAD_ENTRY) && listed(&n.text).is_some());
+    let mut passes = found
         .and_then(|i| b.notes.get(i))
-        .and_then(|n| n.text.strip_prefix(MARK))
-        .and_then(|rest| rest.strip_suffix(REST))
-        .map(|list| list.split(", ").map(str::to_owned).collect())
+        .and_then(|n| listed(&n.text))
         .unwrap_or_default();
     passes.push((pass + 1).to_string());
-    let text = format!("{MARK}{}{REST}", passes.join(", "));
+    let (head, tail) = if passes.len() == 1 { ONE } else { MANY };
+    let text = format!("{head}{}{tail}", passes.join(", "));
     match found.and_then(|i| b.notes.get_mut(i)) {
         Some(note) => note.text = text,
-        None => b.notes.push(crate::notice::Notice::information(text)),
+        None => b
+            .notes
+            .push(Notice::information(text).about(topic::LEAD_ENTRY)),
     }
 }
 
