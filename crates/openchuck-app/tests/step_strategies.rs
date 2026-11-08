@@ -1111,3 +1111,28 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
         .unwrap();
     assert_eq!(runs.len(), 4);
 }
+
+/// A ramp entry on a STEP part (decision 0543, the owner's answers; D10):
+/// the back-and-forth ramp was refused on every STEP part, its clearance
+/// certificate needing triangles with a proved error. Following the pass,
+/// the ramp needs no certificate: helical finishing ramps round its rings
+/// and its spiral, and roughing round its layers, without gouging the exact
+/// surface, the same at 1, 2 and N threads.
+#[test]
+fn req_op_11_req_imp_02_a_ramp_on_a_step_part_follows_the_pass_without_gouging() {
+    let ramp = |shape: &str| {
+        vec![
+            ("max_angle_step", n(10.0)),
+            ("entry", ParameterValue::Text("ramp".into())),
+            ("pass_shape", ParameterValue::Text(shape.into())),
+            ("allow_single_point_plunge", ParameterValue::Flag(true)),
+        ]
+    };
+    for (part, shape) in [("cone", "rings"), ("revolved_spline", "helix")] {
+        check(&Job {
+            part,
+            transform: onto_axis(),
+            operations: vec![("helical_finishing", ramp(shape))],
+        });
+    }
+}
