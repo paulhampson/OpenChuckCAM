@@ -44,55 +44,19 @@ The peak on the ring itself falls from 2.20 mm (sharp: the ring after a step sta
 
 ### Drawings
 
-The surface of the part unrolled into a plan view: A (the degrees turned from the **Start angle**, not wrapped, so A builds up) runs to the right, and X (along the part) runs down. A ring is a whole turn, 360 degrees at one X. One character is 20 degrees; the gaps between rows are not to scale.
+The surface of the part unrolled into a plan view: A (the degrees turned from the **Start angle**, not wrapped, so A builds up) runs to the right, and X (along the part) runs down. A ring (blue) is a whole turn, 360 degrees at one X. The gaps between rings are not to scale.
 
 **1. The step between rings, today and blended (items 1 and 2).**
 
-```text
-Sharp (today; Steps between rings = Sharp)
-
-        0                 360               720               1080
-x_k     o=================+
-                          |  step: X moves s_k with A held (a 90-degree corner at each end)
-x_k+1                     +=================+
-                                            |  step
-x_k+2                                       +=================+ (last ring: nothing after it)
-
-Blended (Steps between rings = Blended; drawn at Blend over phi = 40 degrees)
-
-        0                 360                 720+phi             1080+2phi
-x_k     o=================+
-                           \ blend: X moves s_k while A turns phi
-x_k+1                       +=================+  ring k+1 from 360+phi
-                                               \ blend
-x_k+2                                           +=================+  ring k+2 from 720+2phi (last ring: nothing after it)
-```
+![Steps between rings. Sharp, today: each ring is followed by a step along X with A held, a 90-degree corner at each end. Blended: each ring is followed by a blend in which X moves s_k while A turns phi, so ring k+1 starts at 360 + phi and ring k+2 at 720 + 2 phi; the last ring has nothing after it.](0545-step-today-vs-blended.svg)
 
 **2. Where the blend starts and ends (D1).**
 
-```text
-Option A (chosen, D1): the ring is whole, then the blend.
-x_k     o=================+
-                           \ blend: starts where ring k closes (x_k, a_k + 360),
-x_k+1                       +=====   ends where ring k+1 starts (x_k+1, a_k + 360 + phi)
-
-Option B (not chosen): the blend replaces the last phi of each ring.
-x_k     o===============+          ring k is only 360 - phi long, so it is not a whole turn at x_k
-                         \
-x_k+1                     +=====
-```
+![Where the blend starts and ends. Option A, chosen: the blend starts where ring k closes, at x_k and a_k + 360, and ends where ring k+1 starts, at x_k+1 and a_k + 360 + phi. Option B, not chosen: the blend replaces the last phi of ring k, so ring k is not a whole turn.](0545-blend-start-and-end.svg)
 
 **3. The blend's angle off the ring (D2, item 6).** In the unrolled surface at radius r, the blend crosses one gap s_k while it goes r · phi round the part. At s_k = 1.27 mm, r = 10 mm and phi = 45 degrees the angle is 9 degrees (the model's 9.2); nearer the axis (smaller r) it is steeper, and a larger phi makes it shallower.
 
-```text
-x_k     ===+ - - - - - - - - - - - - - - - - -+    the ring's direction: r * phi of arc round the part
-            `--..__                           :
-                   `--..__                    :  s_k, the gap to the next ring (along X)
-                          `--..__             :
-x_k+1                            `--..__      :
-                                        `--..+=====  ring k+1
-            \___ the blend; its angle off the ring = atan(s_k / (r * phi))
-```
+![The blend in the unrolled surface at radius r: it crosses the gap s_k along X while it goes r times phi round the part, so its angle off the ring is atan(s_k / (r * phi)); 9 degrees for s_k 1.27 mm, r 10 mm and phi 45 degrees.](0545-blend-angle.svg)
 
 **4. The gap s_k against the ring spacing.** The ring places are unchanged (`helical::ring_places`, 0390 item 3): the part's length is split into n equal gaps s, each no wider than the stepover, with a ring at each end and one at each face across the axis (0297). Each blend turns the same phi whatever its gap, so a shorter gap gives a shallower blend:
 

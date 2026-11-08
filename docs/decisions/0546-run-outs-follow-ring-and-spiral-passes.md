@@ -32,31 +32,9 @@ Rest machining and simultaneous finishing do not extend past the stock (0212 par
 3. **Height.** Each point of the run-out is at the height along the tool axis of the pass's end point (today's rule, unchanged), raised over the target where it stands higher, so it rises over a tab or a held solid rather than cutting it (0212 "As built" item 4). An added ring is at the end ring's height at the same A, which on a part whose end is not round keeps the shape of the end ring.
 4. **The checks are unchanged.** A run-out towards a held end is refused as today (SET-09); the application's travel check covers the longer X range unchanged; low links (0521) and finishing layers (0345) treat the run-out as part of the pass, as today. A note gives the turns or rings added at each end and the length of path they add, and the user guide's Extend past the stock section says that on a ring or spiral pass the run-out is that much longer (the owner accepted the time).
 
-**Drawing.** The surface unrolled as in decision 0545's drawings: A runs to the right (not wrapped), X runs down from the extended end X_ext to the part's first ring at x_0. One character is 20 degrees; rows are not to scale. The far end is the same, mirrored.
+**Drawing.** The surface unrolled as in decision 0545's drawings: A runs to the right (not wrapped), X runs down from the extended end X_ext to the part's first ring at x_0. Rows are not to scale. The far end is the same, mirrored.
 
-```text
-Today (0212 part B item 3): a line along X at one A, then a 90-degree turn into the pass.
-
-X_ext   o                   X_ext: the stock's end + the tool radius + Distance past the stock
-        |   run-out along X at the pass's start A: cuts one strip of the stock past the part
-        |
-x_0     +=================+   the pass's first ring (or the start of its spiral)
-
-Option 1 (chosen, Q1), rings: rings at the ring spacing out to X_ext, joined by the operation's own steps.
-
-X_ext   o=================+
-                           \   blend (a | step with Steps between rings = Sharp)
-x_0-s                       +=================+
-                                               \
-x_0                                             +=================+   the pass's first ring
-
-Option 1 (chosen, Q1), spiral: the spiral continued at its own pitch p, one turn per p of X.
-
-X_ext   o~~~~~~~~~~~~~~~~~~
-                           ~~~~~~~~~~~~~~~~~~
-x_0-p                                        ~~~~~~~~~~~~~~~~~~
-x_0                                                            +~~~~~~  the pass's first point, on its spiral
-```
+![The run-out past the stock. Today: a line along X at the pass's start A from X_ext to x_0, cutting one strip, then a 90-degree turn into the pass. Option 1, rings: rings at the ring spacing from X_ext to the pass's first ring at x_0, joined by blends (steps with Sharp). Option 1, spiral: the spiral continued at its pitch p, one turn per p of X, from X_ext to the pass's first point.](0546-run-out-today-vs-option-1.svg)
 
 Consequences of option 1: no corner in the cut, and the stock between the part and the extended end is cleared all round at the pass's own stepover, as on the part. It is longer: for a 3.175 mm tool at the default distance (0.3 mm), with 2 mm of stock past the part's end, the gap is about 3.9 mm, which at a 0.3 mm finishing pitch is 13 turns at each end, about 820 mm of path at a 10 mm radius (about 49 s at 1000 mm/min), where today's line is 3.9 mm long.
 
