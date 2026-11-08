@@ -669,7 +669,7 @@ pub(crate) fn assemble_limited(
 /// down, is left as it is. A note that the machine's limits set the move's
 /// time no longer holds once this sets it, so it is dropped.
 fn limit_descent(b: &mut Builder<'_>, index: usize, down: f64, limit: FeedRate) {
-    if down <= EPS || !(limit.0 > 0.0) {
+    if down <= EPS || limit.0.is_nan() || limit.0 <= 0.0 {
         return;
     }
     let least = 60.0 * (down + WRITTEN_UNIT) / limit.0;

@@ -2,7 +2,7 @@
 
 ## Unreleased (PATHFEED, issue #643; decision 0548; additive API, no version bump)
 
-- **Changed output (decision 0548, proposed, written to the owner's answers of 8 Nov 2026):** in rotary roughing and in Facing's Flat and Round modes, a cutting move inside a pass that goes down along the tool axis faster than the plunge feed is slowed so its tip goes down at the plunge feed: its time becomes the descent at the plunge feed and its contact feed is lowered to match. Nothing else changes: a move already that slow, a level or rising move, entries, exits and links keep their feeds, and every other strategy (finishing included) is unchanged (OI-2134). A program changes only where a roughing pass came down faster than the plunge feed; no stored golden program is a roughing job.
+- **Changed output (decision 0548, accepted by the owner on 8 Nov 2026):** in rotary roughing and in Facing's Flat and Round modes, a cutting move inside a pass that goes down along the tool axis faster than the plunge feed is slowed so its tip goes down at the plunge feed: its time becomes the descent at the plunge feed and its contact feed is lowered to match. Nothing else changes: a move already that slow, a level or rising move, entries, exits and links keep their feeds, and every other strategy (finishing included) is unchanged (OI-2134). A program changes only where a roughing pass came down faster than the plunge feed; no stored golden program is a roughing job.
 - **Added:** `Strategy::limits_descent_feed` (a provided method, `false` by default) says whether a strategy takes that rule; `RotaryRoughing` returns `true`, and `Facing` returns `true` for the Flat and Round shapes.
 
 ## Unreleased (MSGREVIEW, decision 0538 part a and decision 0536 step 2)

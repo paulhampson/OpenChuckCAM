@@ -5,7 +5,8 @@
 //! NFR-06; decision record 0548, issue #643).
 //!
 //! The example's plunge feed is lowered to 100 mm/min so that some of its
-//! drops off the raised floors would otherwise go down faster.
+//! drops off the raised floors would otherwise go down faster, and its
+//! Stepdown and Stepover are raised to 2 and 3 mm so the tests stay short.
 //!
 //! The G-code these tests produce is not checked on a machine: generated
 //! G-code is the user's to verify before it is run (NFR-12).
@@ -46,12 +47,15 @@ fn project(name: &str) -> PathBuf {
         text.contains("plunge_feed = 300.0\n"),
         "the example has changed"
     );
+    assert!(text.contains("stepdown = 1.0\n"), "the example has changed");
     std::fs::write(
         &rough,
         text.replace(
             "plunge_feed = 300.0\n",
             &format!("plunge_feed = {PLUNGE:.1}\n"),
-        ),
+        )
+        .replace("stepdown = 1.0\n", "stepdown = 2.0\n")
+        .replace("stepover = 2.2225\n", "stepover = 3.0\n"),
     )
     .unwrap();
     let finish = dir.join(format!("operations/{FINISH}.toml"));
@@ -160,6 +164,14 @@ fn req_op_11_req_op_03_baluster_roughing_goes_down_no_faster_than_the_plunge_fee
         written <= PLUNGE + 0.1,
         "the program goes down at {written:.3} mm/min"
     );
+    let slowed = run
+        .toolpath
+        .groups
+        .iter()
+        .flat_map(|g| &g.segments)
+        .filter(|s| s.kind == MoveKind::Cutting && s.contact_feed.is_some_and(|f| f.0 < 1000.0))
+        .count();
+    assert!(slowed > 0, "the case must have a drop that is slowed");
 }
 
 /// The same programs at 1, 2 and 4 threads, with both posts (GC-07, NFR-06).
