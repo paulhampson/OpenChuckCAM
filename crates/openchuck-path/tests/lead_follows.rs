@@ -412,21 +412,44 @@ fn req_op_11_req_nfr_06_turning_leads_are_the_same_at_one_two_and_many_threads()
 }
 
 #[test]
-fn req_op_11_req_op_15_helical_finishing_of_the_blisk_in_rings_leads_in_the_plane_of_the_cut() {
+fn req_op_11_req_op_15_helical_finishing_of_the_blisk_in_rings_gives_each_end_the_lead_its_shape_asks_for()
+ {
     // The repository's public stand-in, `testdata/stl/blisk.stl`: a real
-    // part whose rings are not round.
+    // part whose rings are not round. Each end of a pass gets the lead its
+    // shape asks for (decision 0544 item 2): the lead in the plane of the
+    // cut where it turns A, the unchanged line lead where it is a line.
     let f = Fixture::new(MeshSurface::new(&blisk()).unwrap(), 21.0, &ball(3.0));
     let mut v = finishing("rings");
     v.insert(names::STEPOVER.into(), n(5.0));
     let path = make(&f, &HelicalFinishing, &v, &[]).unwrap();
     let ins = lead_ins(&path);
     let outs = lead_outs(&path);
-    assert!(ins.len() >= 5, "{} lead-ins", ins.len());
-    for lead in ins.iter().filter(|l| l.moves.iter().any(|s| s.kind == MoveKind::LeadIn)) {
-        assert_turning_lead_in(&f, lead);
+    // The rings are one pass, each stepping to the next without lifting.
+    assert!(!ins.is_empty() && !outs.is_empty());
+    for lead in &ins {
+        let head = lead.moves.last().unwrap().end;
+        if (lead.cut[0].a.0 - head.a.0).abs() > 1e-9 {
+            assert_turning_lead_in(&f, lead);
+        } else {
+            // This pass starts with a short line along X up the blisk's end
+            // before its rings, so it keeps the line lead (decision 0544
+            // item 2): A fixed through the arc.
+            assert!(
+                lead.moves
+                    .iter()
+                    .all(|s| (s.end.a.0 - head.a.0).abs() < 1e-9)
+            );
+        }
     }
     for lead in &outs {
-        assert_turning_lead_out(&f, lead);
+        if (lead.cut[1].a.0 - lead.before.a.0).abs() > 1e-9 {
+            assert_turning_lead_out(&f, lead);
+        } else {
+            // As at the start, the pass ends with a line down the blisk's
+            // other end, so it keeps the line lead-out.
+            let a = lead.before.a.0;
+            assert!(lead.moves.iter().all(|s| (s.end.a.0 - a).abs() < 1e-9));
+        }
     }
 }
 
