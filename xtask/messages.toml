@@ -14,7 +14,6 @@
 # (OI-2097), so the table is empty and stays empty: no product text may use one.
 
 [message_new]
-"apps/openchuck-ui/src/shell.rs" = 2
 "crates/openchuck-app/src/overview.rs" = 25
 
 [claims]
