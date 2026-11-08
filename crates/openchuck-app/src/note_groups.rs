@@ -497,7 +497,8 @@ mod tests {
         let notes: Vec<String> = (12..=14)
             .map(|m| {
                 format!(
-                    "operation 'Roughing': move {m} is a rapid that removes 0.100 mm3 of material"
+                    "Rapid cut (operation 'Roughing'): move {m} is a rapid that removes 0.100 mm³ \
+                     of material"
                 )
             })
             .collect();
@@ -505,8 +506,8 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(
             groups[0].text,
-            "operation 'Roughing': moves 12 to 14 (3 moves): each is a rapid that removes \
-             0.100 mm3 of material"
+            "Rapid cut (operation 'Roughing'): moves 12 to 14 (3 moves): each is a rapid that \
+             removes 0.100 mm³ of material"
         );
     }
 

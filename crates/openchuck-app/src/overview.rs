@@ -368,6 +368,18 @@ impl SettingRef {
         }
     }
 
+    /// The machine profile of setup `setup`, in its machine section: the
+    /// short-block mode, for example.
+    pub fn setup_machine(setup: SetupId) -> Self {
+        Self {
+            place: SettingPlace::Setup(setup),
+            key: Self::MACHINE.to_owned(),
+        }
+    }
+
+    /// The key of a setup's machine profile.
+    pub const MACHINE: &'static str = "machine";
+
     /// The field `key` of tool `tool`, in the tool library (a name of
     /// [`crate::tool_edit::fields`]).
     pub fn tool(tool: ToolId, key: impl Into<String>) -> Self {
@@ -1107,6 +1119,12 @@ struct Made {
     warnings: Vec<openchuck_path::Notice>,
     /// How many areas its strategy could not reach (decision record 0515).
     unreached: usize,
+    /// The rapid moves the run's stock simulation found removing material,
+    /// as (move, mm³): warnings to acknowledge (decision record 0538).
+    rapid_cuts: Vec<(usize, f64)>,
+    /// What the post found of short blocks it left in the program (Report
+    /// mode): warnings (decision record 0536, the owner's answer (e)).
+    short_blocks: Vec<openchuck_post::ShortBlockReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -1201,6 +1219,22 @@ impl GenerationRecord {
                     .filter(|g| g.operation == *id)
                     .map(|g| g.unreached.len())
                     .sum();
+                let rapid_cuts = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .flat_map(|g| g.rapid_cuts.iter().copied())
+                    .collect();
+                let short_blocks = run
+                    .short_blocks
+                    .iter()
+                    .filter(|r| {
+                        r.operation == id.to_string()
+                            && r.affected_windows > 0
+                            && r.settings.mode == openchuck_types::machine::ShortBlockMode::Report
+                    })
+                    .cloned()
+                    .collect();
                 s.generated.insert(
                     *id,
                     Made {
@@ -1208,6 +1242,8 @@ impl GenerationRecord {
                         before,
                         warnings,
                         unreached,
+                        rapid_cuts,
+                        short_blocks,
                     },
                 );
                 if simulated {
@@ -2081,6 +2117,47 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     message
                 });
+            }
+        }
+        // What the run found of the path in the stock simulation and the
+        // post, while the path is current: a rapid that removes material, a
+        // warning to acknowledge (decision record 0538), and short blocks
+        // left in the program, a warning; each marks the operation as a
+        // path's warning does (decision record 0536, the owner's answer
+        // (e); OI-373).
+        if up_to_date && let Some(made) = made {
+            for &(segment, volume) in &made.rapid_cuts {
+                let text = crate::export::rapid_cut_text(&o.name, segment, volume);
+                if status.state == ItemState::UpToDate
+                    || (status.state == ItemState::Warning
+                        && !status.cause.starts_with(NEEDS_ACKNOWLEDGING))
+                {
+                    status = ItemStatus::needs_acknowledging(&text);
+                }
+                messages.push(
+                    Message::formed(
+                        Severity::Warning,
+                        text,
+                        Some((item, label.clone())),
+                        Some(MessageAction::Show(item)),
+                    )
+                    .to_acknowledge(),
+                );
+            }
+            for report in &made.short_blocks {
+                let text = crate::posting::short_block_note(project, report);
+                if status.state == ItemState::UpToDate {
+                    status = ItemStatus::new(ItemState::Warning, sentence(&text));
+                }
+                messages.push(Message::formed(
+                    Severity::Warning,
+                    text,
+                    Some((item, label.clone())),
+                    // The short-block mode is the machine profile's.
+                    Some(MessageAction::ShowSetting(SettingRef::setup_machine(
+                        o.setup,
+                    ))),
+                ));
             }
         }
         // A strategy that needs a STEP part on a mesh part: said at once,
@@ -3213,6 +3290,7 @@ mod tests {
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
                 warnings: Vec::new(),
+                rapid_cuts: Vec::new(),
             }],
             ..crate::Regeneration::default()
         };
@@ -3292,6 +3370,16 @@ mod tests {
         name: &str,
         warnings: Vec<openchuck_path::Notice>,
     ) -> (std::path::PathBuf, Application, OperationId) {
+        made_app(name, warnings, Vec::new())
+    }
+
+    /// As [`warned_app`], with `rapid_cuts` found by the run's stock
+    /// simulation.
+    fn made_app(
+        name: &str,
+        warnings: Vec<openchuck_path::Notice>,
+        rapid_cuts: Vec<(usize, f64)>,
+    ) -> (std::path::PathBuf, Application, OperationId) {
         use openchuck_project::{Item, Operation, OrderKey, Placement};
         let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -3347,6 +3435,7 @@ mod tests {
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
                 warnings,
+                rapid_cuts,
             }],
             ..crate::Regeneration::default()
         };
@@ -3411,6 +3500,37 @@ mod tests {
         assert!(warnings.iter().any(|m| m.text
             == "Overcut (operation 'Walls'): an ordinary warning."
             && !m.to_acknowledge));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn req_gc_16_req_ui_12_a_rapid_that_removes_material_is_in_messages_to_acknowledge() {
+        // Decision record 0536, the owner's answer (e), and OI-373: a rapid
+        // the run's stock simulation found removing material reaches
+        // Messages as a warning to acknowledge, in the one form, and marks
+        // the operation, while its path is current.
+        let (dir, app, op) = made_app("rapid-cut", Vec::new(), vec![(9, 0.1234)]);
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(
+            status
+                .cause
+                .starts_with("Needs acknowledging: Rapid cut (operation 'Walls')"),
+            "{}",
+            status.cause
+        );
+        let message = overview
+            .messages
+            .iter()
+            .find(|m| m.source == Some(ItemRef::Operation(op)))
+            .unwrap();
+        assert_eq!(message.severity, Severity::Warning);
+        assert!(message.to_acknowledge);
+        assert_eq!(
+            message.text,
+            "Rapid cut (operation 'Walls'): move 9 is a rapid that removes 0.123 mm³ of material."
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -3483,6 +3603,7 @@ mod tests {
                         .about(openchuck_path::topic::OVERCUT)
                         .with_setting("tolerance".to_owned()),
                 ],
+                rapid_cuts: Vec::new(),
             }],
             ..crate::Regeneration::default()
         };

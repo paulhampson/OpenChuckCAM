@@ -26,8 +26,8 @@ use crate::theme::DARK;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::new_folder;
 use openchuck_app::overview::{
-    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SettingPlace, SetupPart,
-    Severity, Step,
+    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SettingPlace, SettingRef,
+    SetupPart, Severity, Step,
 };
 use openchuck_app::project::ItemId;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId};
@@ -1459,8 +1459,13 @@ impl Shell {
                     }
                     SettingPlace::Setup(setup) => {
                         let field = openchuck_app::setup_form::SetupField::from_key(&setting.key);
+                        let section = if setting.key == SettingRef::MACHINE {
+                            Some(SetupPart::Machine)
+                        } else {
+                            field.map(inspector::setup_field_section)
+                        };
                         self.open_step(Step::Setup);
-                        self.choose_setup(setup, field.map(inspector::setup_field_section));
+                        self.choose_setup(setup, section);
                         if let Some(field) = field {
                             self.form
                                 .show_setting(inspector::setup_field_key(field), text);

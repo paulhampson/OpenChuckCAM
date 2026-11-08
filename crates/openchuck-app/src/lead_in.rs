@@ -171,6 +171,10 @@ pub mod topic {
     pub const IMPORT: &str = "Import";
     /// The project's checks, when they fail to run.
     pub const PROJECT_CHECKS: &str = "Project checks";
+    /// A rapid move the stock simulation found removing material.
+    pub const RAPID_CUT: &str = "Rapid cut";
+    /// Moves shorter than the controller can run at their feed.
+    pub const SHORT_BLOCKS: &str = "Short blocks";
 
     /// Every topic above, for a check that a message takes one.
     pub const ALL: &[&str] = &[
@@ -202,6 +206,8 @@ pub mod topic {
         MODEL_NOTES,
         IMPORT,
         PROJECT_CHECKS,
+        RAPID_CUT,
+        SHORT_BLOCKS,
     ];
 }
 

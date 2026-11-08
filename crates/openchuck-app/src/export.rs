@@ -231,25 +231,26 @@ fn setup_collisions(run: &Regeneration) -> Vec<String> {
 /// removing material, as a sentence naming the operation (decision record
 /// 0538): a crash, not a cut.
 fn rapid_cuts(run: &Regeneration, operation: &Operation) -> Vec<String> {
-    // The simulation names an operation as it was called when the run was
-    // made (issue 209).
-    let made_as = run
-        .project
-        .operation(operation.id)
-        .map_or(operation.name.as_str(), |o| o.name.as_str());
-    run.simulation
+    // By the operation's id, so the current name is the one shown (issue
+    // 209).
+    run.groups
         .iter()
-        .flat_map(|s| s.setups.iter())
-        .flat_map(|s| s.operations.iter())
-        .filter(|o| o.operation == made_as)
-        .flat_map(|o| o.rapid_cuts.iter())
-        .map(|cut| {
-            format!(
-                "Operation '{}': move {} is a rapid that removes {:.3} mm³ of material",
-                operation.name, cut.segment, cut.volume
-            )
-        })
+        .filter(|g| g.operation == operation.id)
+        .flat_map(|g| g.rapid_cuts.iter())
+        .map(|&(segment, volume)| rapid_cut_text(&operation.name, segment, volume))
         .collect()
+}
+
+/// A rapid move of the operation named `operation` that removes material, in
+/// the one form (decision record 0536 section 3): "Rapid cut (operation
+/// '<name>'): move N is a rapid that removes V mm³ of material". The same in
+/// Messages, the Results tab, the export checks and on the command line.
+pub(crate) fn rapid_cut_text(operation: &str, segment: usize, volume: f64) -> String {
+    crate::lead_in::in_form(
+        crate::lead_in::topic::RAPID_CUT,
+        &crate::lead_in::Context::operation(operation),
+        &format!("move {segment} is a rapid that removes {volume:.3} mm³ of material"),
+    )
 }
 
 /// A warning of `operation`'s path naming the operation: in the one form of
