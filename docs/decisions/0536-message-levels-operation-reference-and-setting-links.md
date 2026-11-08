@@ -230,6 +230,40 @@ The author's test of section 2 names 0538.
 
 ## Verification
 
+### Build step 5
+
+Built by lane MSGSTEP5 on `claude/lane-msgstep5-wip`, on step 3's backup `5ac2b8d8` (lane MSGREVIEW, on `main` at `1f3675d5`, #625 merged). Run in the session's Linux container with `cargo nextest run`, uninstrumented.
+
+What changed:
+
+- **The status line (OI-2098, section 8).** The shell's `status` field is removed. "Saved …", "Opened …", "Added …" and "Copied n models into the project folder" are finished entries in the Jobs tab (`JobLog::record`, `JobOutcome::Action`), never messages and never counted. Their time reads how long ago ("just now", "3 min ago"), from the session's clock: the owner's answer of 8 Nov 2026 (relayed by the coordinator) to the lane's question, option A of three (how long ago; the local time of day, which needs a time-zone crate; the UTC time of day). A recovered checkpoint not yet saved is a warning, "Recovered checkpoint: …", with Save (`Application::is_recovered_unsaved`). Tool numbers the export changed are a warning, "Tool numbers: …", with Save and Undo, while a tool's number differs from the saved project (`Application::tool_numbers_unsaved`), so saving or undoing clears it. A pick dropped because the geometry changed is an error, "Pick: …", on the selection set (Reselect) or the setup's workholding (Edit workholding), until a pick is made. Dropping a model with no project open is an error dialog. `MessageAction::Save` and `MessageAction::Undo` are new, at the end of the enum.
+- **Error dialogs.** `Dialog::Error` carries a `Failure`: its title names the action that failed ("Save failed") and its text takes the one form, led by that action ("Save: …"). Every site that opened one (about 30) names its action. The export dialog's error does the same.
+- **Recovery messages at their level.** The recovery notices are led by "Recovery:" and stay warnings. A checkpoint that could not be written is an error, "Recovery checkpoint: …", with Save, until a later checkpoint is written. "Recovery worker …" reads "Recovery checkpoints …". The settings notice is led by "Settings:".
+- **NFR-12 wording (OI-2097).** The badge reads "Nothing to report" (the owner's answer (c)). The Facing line reads "Facing covered the end faces it was asked to; the simulation shows what it removed" (answer (c2)). The Facing check's refusals and the back-and-forth ramp's precision refusals say "check" and "check result" in place of "certify", "certified", "certificate" and "verified". "No overcut" reads "No overcut found at the simulation's resolution" in the Results tab and on the command line, and "No overcut at this point" on the probe.
+- **The messages check.** `xtask/messages.toml` allows no claim word (an empty `[claims]` table). Its scan stopped at the first `#[cfg(test)] mod x_tests;` declaration, so most of `shell.rs` was never read. It now stops only at a test module written in the file. That found three `Message::new` calls in `shell.rs`: the settings notice is converted here, and the viewport notes and the unapplied-workholding message are left for step 3 (baseline 2).
+
+Tests, each named by requirement:
+
+- `jobs::tests::req_ui_09_what_the_user_did_is_a_finished_jobs_entry_with_its_time`, `req_ui_09_the_time_of_what_the_user_did_reads_as_how_long_ago`.
+- `shell::reminder_tests`: what the user did is in the Jobs tab and not in Messages or any count; the recovered-checkpoint warning with Save until saved; the tool-numbers warning with Save and Undo until either; the dropped pick's error; the recovery notices' levels; the import error dialog naming its action; the lower-case text after a lead-in.
+- `failure::tests`: the dialog's title and its one-form text.
+- `checkpoint_tests::req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writes` now reads the failed write as an error and the recovered changes as a warning, on a real recovery whose checkpoints cannot be written.
+- `posting::req_gc_14_req_ui_12_changed_tool_numbers_read_as_unsaved_until_saved_or_undone`; `checkpoints::req_prj_08_worker_snapshot_and_recovery_do_not_modify_saved_project` reads `is_recovered_unsaved`.
+- `overview::tests::req_ui_12_save_and_undo_links_name_their_actions_in_plain_words`.
+- `messages::tests::req_nfr_12_no_product_text_claims_safety` (an empty baseline and no claim word in any product file) and `req_nfr_12_a_declared_test_module_does_not_hide_the_rest_of_the_file`.
+- Each new test runs in under 1 s.
+
+Suites, before the rebase onto `5ac2b8d8` (the same content as step 3's earlier backup): `openchuck-app`, `openchuck-ui`, `openchuck-cli` and `xtask` together ran 1,789 tests in 29 min 56 s: 1,788 passed and 1 failed, `facing::tests::req_op_24_req_ui_03_req_sim_05_facing_display_keeps_coverage_sweep_and_global_deviation_distinct`, which read "complete" from the Facing line. It now checks the new wording and passes. After the rebase, `openchuck-path` ran 851 tests, all passing (1 skipped). `cargo clippy` on the changed crates is clean; `cargo xtask messages`, `records`, `trace`, `deps` and `licences` pass.
+
+Coverage: checked on the changed crates' tests that reach the changed files (131 tests of `openchuck-ui` and `openchuck-app`, instrumented with `cargo llvm-cov nextest --profile coverage`; a full instrumented run of both crates did not fit the session). Line coverage of the changed files: `failure.rs` 100%, `jobs.rs` 97.5%, `shell/reminders.rs` 86.8% before the dropped-pick test was extended to a selection set (its one uncovered branch, now run), `export_panel.rs` 90.1%, `shell/checkpoints.rs` 89.2%. The new lines in `Application` (`is_recovered_unsaved`, `tool_numbers_unsaved`) and the Jobs tab's new arm in `dock.rs` are run; the lines left uncovered in those files are older ones (the other Jobs outcomes, the per-revision comparison counter).
+
+Figures to retake (the release recapture is a separate docs lane): the user guide's figure `examples/images/tabs_held/03-length-vs-tools.png` shows the badge "Good to go" (now "Nothing to report"); the text of `examples/tabs-and-held-regions.md` is updated here. Every full-window figure of a project with nothing to report shows the same badge, so the recapture checks each. No figure shows the Facing line, "No overcut", the Jobs tab's list, an error dialog or a recovery notice. Of the 83 figures, 55 were looked at; the other 28 (`blisk_selection_sets` 02 to 10, `blisk_swarf` 01 to 07, `custom_machine` 01 to 08, `flutes` 01 to 04) could not be read in this session and are left to the recapture. The tool library's own status line in `tutorial/images/08-tools-in-project.png` ("Added to the project as T204 …") is unchanged (section 8).
+
+Not verified here:
+
+- The STEP kernel tests (`kernel-tests`) cannot be built in this container; no STEP text changed.
+- The dialogs' and the Jobs tab's look in the running application; the interface tests draw them headless.
+
 ### Build step 2
 
 Built by lane MSGREVIEW on `claude/lane-msgreview-step2`, from `main` at `77479c85`, with `main` at `3b99ea23` (decision 0538) merged in. Run in the session's Linux container with `cargo nextest run`, uninstrumented.

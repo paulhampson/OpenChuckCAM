@@ -158,11 +158,16 @@ fn req_ui_12_a_dropped_pick_is_an_error_on_what_it_was_for_until_a_pick_is_made(
         "{}",
         message.text
     );
-    // On a selection set: it links to the set and offers Reselect.
-    if let Some(set) = project.selection_sets().first() {
-        let message = super::reminders::dropped_pick(&project, DroppedPick::Set(set.id));
-        assert_eq!(message.source, Some(ItemRef::SelectionSet(set.id)));
-        assert_eq!(message.action, Some(MessageAction::Reselect(set.id)));
+    // On a selection set: it offers Reselect, and links to the set while
+    // the project has it (a set deleted since has nothing to link).
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    let message = super::reminders::dropped_pick(&project, DroppedPick::Set(set));
+    assert_eq!(message.severity, Severity::Error);
+    assert_eq!(message.action, Some(MessageAction::Reselect(set)));
+    assert_eq!(message.source, None);
+    if let Some(stored) = project.selection_sets().first() {
+        let message = super::reminders::dropped_pick(&project, DroppedPick::Set(stored.id));
+        assert_eq!(message.source, Some(ItemRef::SelectionSet(stored.id)));
     }
 }
 
