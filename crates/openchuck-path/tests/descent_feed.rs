@@ -42,7 +42,11 @@ impl RadialPart for RaisedBand {
         (0.0, 24.0)
     }
     fn radius_at(&self, x: f64, _angle: f64) -> f64 {
-        if (10.0..=14.0).contains(&x) { 10.0 } else { 6.0 }
+        if (10.0..=14.0).contains(&x) {
+            10.0
+        } else {
+            6.0
+        }
     }
 }
 
@@ -59,7 +63,11 @@ impl RadialPart for RaisedLobe {
     }
     fn radius_at(&self, _x: f64, angle: f64) -> f64 {
         let a = angle.rem_euclid(std::f64::consts::TAU);
-        if a < std::f64::consts::FRAC_PI_2 { 10.0 } else { 6.0 }
+        if a < std::f64::consts::FRAC_PI_2 {
+            10.0
+        } else {
+            6.0
+        }
     }
 }
 
@@ -85,7 +93,11 @@ fn fixture(part: &dyn RadialPart) -> Fixture {
     Fixture::new(surface, 11.0, &tool(ToolShape::FlatEnd, 3.0))
 }
 
-fn path(strategy: &dyn Strategy, part: &dyn RadialPart, v: &BTreeMap<String, ParameterValue>) -> GeneratedPath {
+fn path(
+    strategy: &dyn Strategy,
+    part: &dyn RadialPart,
+    v: &BTreeMap<String, ParameterValue>,
+) -> GeneratedPath {
     let f = fixture(part);
     run(|ctx| generate(strategy, &f.input(), v, ctx)).unwrap()
 }
@@ -130,7 +142,11 @@ fn req_op_11_req_op_03_roughing_drop_off_a_raised_floor_goes_down_no_faster_than
         let p = path(&RotaryRoughing, part, &values(&[]));
         let all = descents(&p.group);
         let steep = all.iter().filter(|d| d.down > 0.5).count();
-        assert!(steep > 0, "{}: the case must come down off the raised floor", part.name());
+        assert!(
+            steep > 0,
+            "{}: the case must come down off the raised floor",
+            part.name()
+        );
         let worst = all.iter().map(|d| d.rate).fold(0.0, f64::max);
         assert!(
             worst <= PLUNGE * (1.0 + 1e-9),
@@ -142,7 +158,9 @@ fn req_op_11_req_op_03_roughing_drop_off_a_raised_floor_goes_down_no_faster_than
 
 /// Only a move that would go down faster than the plunge feed changes, and
 /// then only as much as needed: every other cutting move keeps the cutting
-/// feed, and a slowed one goes down at exactly the plunge feed.
+/// feed, and a slowed one takes exactly its descent plus one written unit
+/// (0.001 mm, the most that rounding its two heights to three decimals can
+/// add) at the plunge feed.
 #[test]
 fn req_op_11_shallow_descent_and_level_moves_keep_the_cutting_feed() {
     let p = path(&RotaryRoughing, &RaisedBand, &values(&[]));
@@ -154,9 +172,10 @@ fn req_op_11_shallow_descent_and_level_moves_keep_the_cutting_feed() {
         }
         slowed += 1;
         assert!(d.feed < FEED, "a feed is raised: {}", d.feed);
+        let expected = PLUNGE * d.down / (d.down + 0.001);
         assert!(
-            (d.rate - PLUNGE).abs() <= 1e-6 * PLUNGE,
-            "a slowed move goes down at {:.4} mm/min, not the plunge feed",
+            (d.rate - expected).abs() <= 1e-6 * PLUNGE,
+            "a slowed move goes down at {:.4} mm/min, not {expected:.4}",
             d.rate
         );
     }
@@ -175,7 +194,10 @@ fn req_op_11_shallow_descent_and_level_moves_keep_the_cutting_feed() {
 fn req_op_11_finishing_descent_is_unchanged() {
     let p = path(&HelicalFinishing, &RaisedBand, &values(&[]));
     let all = descents(&p.group);
-    assert!(all.iter().all(|d| d.feed == FEED), "finishing changed a feed");
+    assert!(
+        all.iter().all(|d| d.feed == FEED),
+        "finishing changed a feed"
+    );
     assert!(
         all.iter().any(|d| d.rate > PLUNGE),
         "the case must have a finishing descent faster than the plunge feed"
@@ -192,7 +214,12 @@ fn req_op_11_only_roughing_strategies_limit_their_descents() {
     let rough = values(&[]);
     assert!(RotaryRoughing.limits_descent_feed(&resolve(&RotaryRoughing, &rough)));
     assert!(!HelicalFinishing.limits_descent_feed(&resolve(&HelicalFinishing, &rough)));
-    for (shape, limited) in [("flat", true), ("round", true), ("end", false), ("box", false)] {
+    for (shape, limited) in [
+        ("flat", true),
+        ("round", true),
+        ("end", false),
+        ("box", false),
+    ] {
         let v = values(&[
             (
                 openchuck_path::facing::parameter::SHAPE,

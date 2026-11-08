@@ -42,10 +42,16 @@ fn project(name: &str) -> PathBuf {
     );
     let rough = dir.join(format!("operations/{ROUGH}.toml"));
     let text = std::fs::read_to_string(&rough).unwrap();
-    assert!(text.contains("plunge_feed = 300.0\n"), "the example has changed");
+    assert!(
+        text.contains("plunge_feed = 300.0\n"),
+        "the example has changed"
+    );
     std::fs::write(
         &rough,
-        text.replace("plunge_feed = 300.0\n", &format!("plunge_feed = {PLUNGE:.1}\n")),
+        text.replace(
+            "plunge_feed = 300.0\n",
+            &format!("plunge_feed = {PLUNGE:.1}\n"),
+        ),
     )
     .unwrap();
     let finish = dir.join(format!("operations/{FINISH}.toml"));
@@ -72,7 +78,7 @@ fn copy(from: &Path, to: &Path) {
 }
 
 fn post(dir: &Path, post: &str, threads: usize) -> Regeneration {
-    let app = Application::open(dir, Threads::Exactly(threads)).unwrap();
+    let mut app = Application::open(dir, Threads::Exactly(threads)).unwrap();
     app.start_regenerate_with_post(PostSelection::Builtin(post.into()), OutputGrouping::Setup)
         .wait()
         .unwrap_or_else(|e| panic!("{post}: {e}"))
@@ -111,7 +117,9 @@ fn fastest_written_descent(program: &str) -> f64 {
         let mut next = at;
         for word in code.split_whitespace() {
             let (letter, value) = word.split_at(1);
-            let Ok(v) = value.parse::<f64>() else { continue };
+            let Ok(v) = value.parse::<f64>() else {
+                continue;
+            };
             match letter {
                 "G" if v == 0.0 => rapid = true,
                 "G" if v == 1.0 => rapid = false,
@@ -133,9 +141,11 @@ fn fastest_written_descent(program: &str) -> f64 {
 }
 
 /// Decision 0548 on the Baluster: no cutting move of the path, and no fed
-/// move of the LinuxCNC program, goes down faster than the plunge feed (the
-/// written words are rounded to one decimal of a millimetre per minute and
-/// three of a millimetre, so the program is allowed that rounding).
+/// move of the LinuxCNC program, goes down faster than the plunge feed, read
+/// from the written words themselves to the F word's written resolution of
+/// 0.1 mm/min (the assembly allows for rounding the heights to three
+/// decimals; the F word is rounded to one, which on `main` already writes
+/// an entry plunge at this plunge feed as `F100.1`).
 #[test]
 fn req_op_11_req_op_03_baluster_roughing_goes_down_no_faster_than_the_plunge_feed() {
     let run = post(&project("rate"), "linuxcnc", 2);
@@ -147,7 +157,7 @@ fn req_op_11_req_op_03_baluster_roughing_goes_down_no_faster_than_the_plunge_fee
     assert_eq!(run.gcode.len(), 1);
     let written = fastest_written_descent(&run.gcode[0].1);
     assert!(
-        written <= PLUNGE * 1.01,
+        written <= PLUNGE + 0.1,
         "the program goes down at {written:.3} mm/min"
     );
 }
@@ -159,7 +169,11 @@ fn req_gc_07_req_nfr_06_descent_feed_is_deterministic_at_1_2_n_threads() {
     for name in ["linuxcnc", "makera-z1"] {
         let one = post(&dir, name, 1).gcode;
         for threads in [2, 4] {
-            assert_eq!(post(&dir, name, threads).gcode, one, "{name} at {threads} threads");
+            assert_eq!(
+                post(&dir, name, threads).gcode,
+                one,
+                "{name} at {threads} threads"
+            );
         }
     }
 }

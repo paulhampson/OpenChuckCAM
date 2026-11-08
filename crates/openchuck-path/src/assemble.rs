@@ -662,14 +662,17 @@ pub(crate) fn assemble_limited(
 /// Slows the cutting move `index` of `b`, which takes the tip `down` along
 /// the tool axis, so it goes down no faster than `limit` (decision record
 /// 0548): its time becomes at least the descent at that feed, and its
-/// contact feed is lowered to match. A move already that slow, or not going
+/// contact feed is lowered to match. The descent is taken a written unit
+/// longer, the most rounding both ends' heights to the written decimals can
+/// add to it, so the program as written goes down no faster either
+/// (decision record 0034's allowance, for the tool axis). A move already that slow, or not going
 /// down, is left as it is. A note that the machine's limits set the move's
 /// time no longer holds once this sets it, so it is dropped.
 fn limit_descent(b: &mut Builder<'_>, index: usize, down: f64, limit: FeedRate) {
     if down <= EPS || !(limit.0 > 0.0) {
         return;
     }
-    let least = 60.0 * down / limit.0;
+    let least = 60.0 * (down + WRITTEN_UNIT) / limit.0;
     let Some(segment) = b.segments.get_mut(index) else {
         return;
     };
