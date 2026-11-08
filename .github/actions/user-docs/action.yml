@@ -76,7 +76,6 @@ runs:
         VERSION: ${{ inputs.version }}
         NIGHTLY: ${{ inputs.nightly-date }}
         RELEASES: ${{ inputs.releases }}
-        REPO_NAME: ${{ github.event.repository.name }}
       run: |
         set -euo pipefail
         export MDBOOK=~/docs-tools/bin/mdbook
@@ -101,10 +100,11 @@ runs:
             screens=strict ;;
           *) echo "::error::unknown mode '$MODE'"; exit 1 ;;
         esac
-        # Under a folder named like the repository, so root-relative links (the 404 page) resolve.
-        site="$work/pages/$REPO_NAME"
+        # The site is served at the root of its custom domain, https://openchuck.cam/, so the
+        # root-relative links of the 404 page start at /.
+        site="$work/pages"
         python3 user-docs/tools/assemble.py site --latest "$guide" ${RELEASES:+--releases "$RELEASES"} \
-          --out "$site" --base "/$REPO_NAME/"
+          --out "$site" --base "/"
         python3 user-docs/tools/check.py --site "$site" --screens "$screens"
         ~/docs-tools/bin/lychee --offline --include-fragments --no-progress --root-dir "$work/pages" "$site"
         java -jar ~/docs-tools/vnu/vnu.jar --skip-non-html --errors-only "$site/latest" "$site/index.html" "$site/versions.html" "$site/404.html"

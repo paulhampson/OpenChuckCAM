@@ -1,0 +1,11 @@
+schema = 27
+name = "Crankshaft simultaneous"
+
+[[models]]
+id = "249c3373-d6ab-4b7f-bfc0-b49bedab74f1"
+path = "models/4fbc3c01f54cf2efe2fa97e8e6720d55.step"
+hash = "blake3:4fbc3c01f54cf2efe2fa97e8e6720d55d197c7de3c3f78b6f7dbcd83b38c6251"
+name = "crankshaft.step"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"

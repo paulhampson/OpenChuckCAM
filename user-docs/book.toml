@@ -6,7 +6,7 @@
 [book]
 title = "OpenChuckCAM user guide"
 language = "en"
-description = "How to use OpenChuckCAM to make G-code for 4-axis rotary machining."
+description = "The user guide for OpenChuckCAM, free, open source CAM for 4-axis rotary CNC: how to turn a 3D model into G-code, and what to check before you run it."
 
 [output.html]
 theme = "theme"

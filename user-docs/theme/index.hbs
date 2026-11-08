@@ -5,7 +5,7 @@
 <html lang="{{ language }}" dir="{{ text_direction }}">
 <head>
   <meta charset="utf-8">
-  <title>{{ title }}</title>
+  <title>{{#if is_index}}OpenChuckCAM: free, open source CAM for 4-axis rotary CNC{{else}}{{ title }}{{/if}}</title>
   {{#if is_print }}<meta name="robots" content="noindex">{{/if}}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ description }}">
