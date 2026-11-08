@@ -5,7 +5,7 @@ This example cuts one side of one blade of a bladed disk (a blisk) with [swarf](
 > [!WARNING]
 > Swarf checks the faces that share an edge with the blade, and only against the cutting part of the tool: not the shank, the holder or the rest of the part. Generated G-code must be verified by you before it is run on a machine: watch the [simulation](../glossary.md#simulation), read every warning, and run an [air cut](../glossary.md#air-cut) first.
 
-You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**. Swarf needs a STEP part. The numbers on this page come from OpenChuckCAM 0.49.0 on Linux.
+You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**. Swarf needs a STEP part. The numbers on this page come from OpenChuckCAM 0.50.0 on Linux (main at 5dfb28e).
 
 ## How swarf cuts a blade
 
@@ -31,7 +31,7 @@ Make two face sets as in step 1 of [Selection sets on a blisk](selection-sets.md
 <figcaption><b>Figure 1.</b> A swarf operation with only the face to cut.</figcaption>
 </figure>
 
-3. Click **Generate stale**. It took about 28 s on the test computer.
+3. Click **Generate stale**. It took about 29 s on the test computer.
 
 <figure>
 <a href="images/blisk_swarf/02-flat.png"><img src="images/blisk_swarf/02-flat.png" width="1920" height="1080" alt="The swarf pass drawn in orange along the blade root. Results: 1 operation(s), 47 moves, Generated Blade swarf, and the warnings quoted in the text."></a>

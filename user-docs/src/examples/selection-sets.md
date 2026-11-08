@@ -7,7 +7,7 @@ This example makes the five kinds of [selection set](../glossary.md#selection-se
 
 You need the example project [`testdata/examples/blisk-start/blisk-project`](https://github.com/paulhampson/OpenChuckCAM/tree/main/testdata/examples/blisk-start/blisk-project). Copy it to a folder of your own and open the copy with **File > Open project**, so the example in the repository stays as it is. It holds the public blisk model (a STEP file), the built-in Makera Z1, oak stock 42 mm across, a 3 mm flat end mill (T1) and a 3 mm ball end mill (T2), and no sets or operations yet. Reading a STEP file needs the STEP reader that comes with the program ([Import a STEP file](../how-to/import-step.md)).
 
-The numbers on this page come from OpenChuckCAM 0.49.0 on Linux. Another version can give other numbers.
+The numbers on this page come from OpenChuckCAM 0.50.0 on Linux (main at 5dfb28e). Another version can give other numbers.
 
 ## What the sets are for
 
@@ -91,10 +91,10 @@ Face-flow finishing cuts the faces in **Cut on** with passes that run along a gu
 
 A check set keeps the tool the operation's stock to leave away from its faces. Here the tool stays 0.2 mm clear of the blade wall, and leaves 0.2 mm on the floor too, since the stock to leave is the operation's.
 
-6. Click **Generate stale** at the bottom right. It took about 28 s on the test computer.
+6. Click **Generate stale** at the bottom right. It took about 26 s on the test computer.
 
 <figure>
-<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with dotted patches marking the unreachable area along the blade walls, and the check set Blade wall hatched. Results: 1 operation(s), 2133 moves, 28.1 s to generate, and the lines quoted in the text."></a>
+<a href="images/blisk_selection_sets/06-faceflow-result.png"><img src="images/blisk_selection_sets/06-faceflow-result.png" width="1920" height="1080" alt="The face-flow passes in orange along the hub floor, with dotted patches marking the unreachable area along the blade walls, and the check set Blade wall hatched. Results: 1 operation(s), 2133 moves, 26.3 s to generate, and the lines quoted in the text."></a>
 <figcaption><b>Figure 6.</b> The passes follow the floor along the guide. The dotted area beside the walls is the part of the floor the 3 mm ball cannot reach.</figcaption>
 </figure>
 
