@@ -1,6 +1,6 @@
 # 0536: Message levels, the operation reference and links to the setting (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595. Build step 2 (path notes take their levels; the Results tab and the command line follow) is built in the step 2 pull request, with some levels interim until the owner answers (see Verification). Steps 3 to 5 follow, test first. Decisions 0538, 0539 and 0540 are built (#623, #591, #584). Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595. Build step 2 (path notes take their levels; the Results tab and the command line follow) is built in the step 2 pull request, with the owner's answers of 8 Nov 2026 on the rows marked "?" (see Verification). Steps 3 to 5 follow, test first. Decisions 0538, 0539 and 0540 are built (#623, #591, #584). Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
   - **The owner's answer to question 1** (7 Nov 2026, relayed by the coordinator): the levels and the author's test are accepted in principle, with option B, so information is shown in the Results tab only and Messages keeps errors and warnings. Sections 1, 2 and 5 below follow that answer.
   - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. That changes what the export does, so it is [decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md) (proposed), accepted separately.
   - **The owner's answers to questions 2 to 7** (7 Nov 2026, relayed by the coordinator), each the recommended option:
@@ -242,20 +242,19 @@ What changed:
 - **Command line:** `validate`, `regenerate` and `simulate` print each warning as `warning:` and each note as `note:`, with the same feed-limit summary.
 - **Issue #600:** a move that turns A with the contact point at the rotary axis no longer reads "the contact feed is 0.0 mm/min". Its note says the axis's speed limit sets how long the move takes.
 
-Interim levels, waiting for the owner. The coordinator ruled that a "?" row stays a warning until the owner answers (NFR-12: nothing that may be a problem is shown less). Each answer lands as its own one-line change:
+The owner's answers on the rows marked "?" (8 Nov 2026, relayed by the coordinator, one question at a time). Until each answer came, the row was a warning, on the coordinator's ruling (NFR-12: nothing that may be a problem is shown less). Each answer is its own commit:
 
-- Q-A, P48: indexed finishing's passes run on past the part's ends. **Answered on 8 Nov 2026** (relayed by the coordinator): information, so it stays a note.
-- Q-B, P49: the stock ends at the part's end, so there is nothing to face.
-- Q-C, P50: the "real blank must match it" tail of the free-end facing note. Only that variant is a warning; the rest is information.
-- Q-D, P54 to P57: edge following says a setting is not used.
-- Q-E, P74: simultaneous finishing's hidden-surface passes, because the tool holder is not checked.
-- Q-F, P75j: swarf's "the shank, the holder and other faces were not checked".
-- Q-G, P76: the application's notes. The stock to leave applied differently and the reach limit are warnings. The contact note is information, except its "Exact STEP surface contact does not apply" variant, which is a warning.
+- **Q-A, P48:** indexed finishing's passes run on past the part's ends. Information: it stays a note.
+- **Q-B, P49:** the stock ends at the part's end, so there is nothing to face. Information.
+- **Q-C, P50:** how a free end is faced down to the rotary axis is information. That it is faced from the setup's own stock, which the real blank must match, is a warning of its own.
+- **Q-D, P54 to P57:** edge following says a setting is not used. Information. P53, an ignored scallop height, stays a warning.
+- **Q-E, P74:** simultaneous finishing's passes over surfaces hidden from the drive are information. That the tool holder is not checked on them is a warning of its own, with nothing to acknowledge.
+- **Q-F, P75j:** swarf's "the shank, the holder and other faces were not checked". Information: it stays in swarf's per-face description.
+- **Q-G, P76:** the application's notes. The stock to leave applied differently and the reach limit are warnings. The contact note is information, except its "Exact STEP surface contact does not apply" variant, which is a warning.
 
-Not done in this step:
+The [path inventory](../message-review/path.md) records each answer on its row.
 
-- P75c (swarf's tool end reaching past the rulings): it stays a sentence in swarf's per-face description. Whether it should be said at all when the tool is lifted clear is issue #624.
-- P75j (Q-F): stays in the same description until the owner answers.
+Not done in this step: P75c (swarf's tool end reaching past the rulings) stays a sentence in swarf's per-face description. Whether it should be said at all when the tool is lifted clear is issue #624.
 
 Tests, each named by requirement:
 
@@ -263,7 +262,7 @@ Tests, each named by requirement:
 - **Results tab:** `run_panel::tests::req_ui_12_each_results_line_takes_its_own_level`.
 - **Command line:** `e2e::req_ui_12_cli_prints_each_run_message_at_its_level` uses the cone example. It prints one `note:` feed-limit summary, no per-move feed lines and no `warning:`.
 - **Issue #600:** `req_op_13_req_ui_12_a_turn_at_the_rotary_axis_never_reads_as_a_feed_of_zero`.
-- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The indexed finishing test checks that P48 is a note, on the owner's answer to Q-A.
+- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The tests of P48, P49, P50, P54 to P57 and P74 check each owner answer, including `req_ui_12_req_op_08_an_edge_following_setting_it_does_not_use_is_information`.
 - **Suites:** before `main` was merged, `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli`, `openchuck-sim` and `xtask` together ran 2,687 tests: 2,678 passed and 9 failed, all of them tests that read a moved message. Those 9 were updated. After merging `main` (decision 0538), the same crates without `openchuck-sim` ran 2,620 tests, all passing (3 skipped). `cargo clippy --workspace --all-targets` is clean, and `cargo xtask records`, `trace`, `deps` (with `messages`) and `licences` pass.
 
 Not verified here:
