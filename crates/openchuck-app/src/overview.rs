@@ -1465,6 +1465,24 @@ pub(crate) fn setup_warning_text(warning: &SetupWarning) -> String {
     text
 }
 
+/// How serious `status` is, for choosing the mark to show: an error, then
+/// a warning that needs acknowledging (decision record 0538), then any other
+/// warning, then the rest.
+fn status_rank(status: &ItemStatus) -> u8 {
+    match status.state {
+        ItemState::Error => 3,
+        ItemState::Warning if status.cause.starts_with(NEEDS_ACKNOWLEDGING) => 2,
+        ItemState::Warning => 1,
+        _ => 0,
+    }
+}
+
+/// The most serious of `rows` by [`status_rank`], the last of equals, as
+/// the setup row chose before: what a row that stands for them shows.
+fn worst_of(rows: impl IntoIterator<Item = ItemStatus>) -> Option<ItemStatus> {
+    rows.into_iter().max_by_key(status_rank)
+}
+
 /// The start of the cause of a mark whose warning must be acknowledged
 /// before the program is written (decision record 0538).
 const NEEDS_ACKNOWLEDGING: &str = "Needs acknowledging: ";
@@ -1473,14 +1491,8 @@ const NEEDS_ACKNOWLEDGING: &str = "Needs acknowledging: ";
 /// warning over the rest). Of two warnings, one that needs acknowledging
 /// names itself first (decision record 0538).
 fn raise(items: &mut BTreeMap<ItemRef, ItemStatus>, item: ItemRef, status: ItemStatus) {
-    let rank = |s: &ItemStatus| match s.state {
-        ItemState::Error => 4,
-        ItemState::Warning if s.cause.starts_with(NEEDS_ACKNOWLEDGING) => 2,
-        ItemState::Warning => 1,
-        _ => 0,
-    };
     match items.get(&item) {
-        Some(old) if rank(old) >= rank(&status) => {}
+        Some(old) if status_rank(old) >= status_rank(&status) => {}
         _ => {
             items.insert(item, status);
         }
@@ -2313,14 +2325,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         }
         // The setup row shows the worst of its rows (problems go up the
         // tree).
-        let worst = SetupPart::ALL
-            .into_iter()
-            .filter_map(|p| items.get(&at(p)).cloned())
-            .max_by_key(|status| match status.state {
-                ItemState::Error => 2,
-                ItemState::Warning => 1,
-                _ => 0,
-            });
+        // (problems go up the tree), the mark that needs acknowledging
+        // over an ordinary warning (decision record 0538).
+        let worst = worst_of(
+            SetupPart::ALL
+                .into_iter()
+                .filter_map(|p| items.get(&at(p)).cloned()),
+        );
         if let Some(worst) = worst {
             raise(&mut items, setup, worst);
         }
@@ -3151,6 +3162,27 @@ mod tests {
         };
         app.record.succeeded(app.project(), false, &run);
         (dir, app, op)
+    }
+
+    /// The setup row shows the worst of its rows, and of two warnings the
+    /// one that needs acknowledging, wherever it is in the setup (decision
+    /// record 0538; CodeRabbit on #623).
+    #[test]
+    fn req_gc_16_the_setup_row_keeps_the_mark_that_needs_acknowledging() {
+        let acknowledge = ItemStatus::needs_acknowledging("a tool may be too long");
+        let ordinary = ItemStatus::new(ItemState::Warning, "a tab is short");
+        for rows in [
+            vec![acknowledge.clone(), ordinary.clone()],
+            vec![ordinary.clone(), acknowledge.clone()],
+        ] {
+            assert_eq!(worst_of(rows), Some(acknowledge.clone()));
+        }
+        let error = ItemStatus::new(ItemState::Error, "no stock");
+        assert_eq!(
+            worst_of(vec![acknowledge.clone(), error.clone(), ordinary]),
+            Some(error)
+        );
+        assert_eq!(worst_of(Vec::new()), None);
     }
 
     #[test]
