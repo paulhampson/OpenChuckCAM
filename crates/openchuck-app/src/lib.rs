@@ -37,6 +37,7 @@ mod export;
 pub mod facing;
 pub mod form;
 mod jobs;
+pub mod lead_in;
 pub mod library;
 pub mod machine_edit;
 pub mod machine_library;
@@ -99,10 +100,11 @@ pub use command::{
 };
 pub use error::AppError;
 pub use export::{
-    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL,
-    EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary,
-    builtin_post_summaries, partial_operations, partial_path_refusal, post_summary, run_is_current,
-    simulation_out_of_date, write_gcode_files,
+    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_COLLISION_LABEL, EXPORT_NOTICE,
+    EXPORT_PARTIAL_PATH_LABEL, EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL,
+    ExportChecks, PostSummary, builtin_post_summaries, collision_refusal, collision_warnings,
+    partial_operations, partial_path_refusal, post_summary, run_is_current, simulation_out_of_date,
+    write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
@@ -1831,7 +1833,14 @@ impl Application {
         files.push((html, sheet.to_html().into_bytes()));
         files.push((pdf, sheet.to_pdf()));
         let partial = export::partial_operations(&self.document.project, run);
-        output_write::prepare(folder, std::sync::Arc::clone(run), files, partial)
+        let collisions = export::collision_warnings(&self.document.project, run);
+        output_write::prepare(
+            folder,
+            std::sync::Arc::clone(run),
+            files,
+            partial,
+            collisions,
+        )
     }
 
     /// The final names of the program files and, for each, the index of its
@@ -1915,6 +1924,12 @@ impl Application {
                 plan.paths(),
                 plan.paths().first().cloned().unwrap_or_default(),
                 export::partial_path_refusal(plan.partial_operations()),
+            )
+        } else if !plan.collisions().is_empty() && !plan.collisions_acknowledged() {
+            OutputReport::refused(
+                plan.paths(),
+                plan.paths().first().cloned().unwrap_or_default(),
+                export::collision_refusal(plan.collisions()),
             )
         } else {
             output_write::write(plan, replace)

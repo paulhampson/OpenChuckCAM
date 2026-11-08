@@ -185,7 +185,7 @@ fn req_tl_04_req_nfr_12_stock_in_the_tools_reach_is_still_held_to_the_bound() {
     };
     let e = check(&input, &pass(&f, 0.0, 20.0, &full_turn()), None)
         .expect("warned")
-        .message;
+        .text;
     assert!(e.contains("may stand up to"), "{e}");
     assert!(e.contains("2.500 mm of flute"), "{e}");
     // A full turn at X 0.5 has each corner over the tip in turn.
@@ -218,7 +218,7 @@ fn req_tl_04_req_nfr_12_stock_beside_the_tool_counts_when_the_turn_brings_it_ove
     assert!(warning.is_none(), "{warning:?}");
     let e = check(&input, &pass(&f, 5.0, 15.0, &full_turn()), None)
         .expect("warned")
-        .message;
+        .text;
     assert!(e.contains("may stand up to"), "{e}");
     let worst = deepest(&input, &pass(&f, 5.0, 15.0, &full_turn()), 0.0).unwrap();
     assert!(worst.depth >= 12.0 - BAR, "{worst:?}");
