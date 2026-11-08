@@ -16,6 +16,16 @@ Warning to acknowledge
 Information
 : A blue "i". A note about what the program did, such as how many links stayed low or that an STL file has only triangles. Nothing to do, but worth reading once.
 
+## How a message reads
+
+Every message starts with what it is about, then says what happened, why and what to change:
+
+```text
+Flute length (operation 'Finish', tool 'Z1 ball 3.175x22'): the stock stands up to 27.249 mm above the tool's tip …
+```
+
+The first words name the check ("Flute length", "Held region", "Feed limit"), the same in Messages, the **Results** tab, the export checks and on the command line. The brackets name the items it is about as they are called now: the operation, and the tool when its size or flutes matter. Rename an operation and its messages follow.
+
 ## The Messages tab
 
 The **Messages** tab of the dock lists every current message; its name shows how many errors and warnings there are, for example "Messages (3)". The chips **Errors**, **Warnings** and **Information** show or hide each level.
@@ -28,7 +38,7 @@ Each message has up to two links:
 | Action | What it does |
 | --- | --- |
 | **Show** | Selects the item. |
-| **Show setting** | Selects the operation and marks the setting its warning is about. |
+| **Show setting** | Opens the operation at the setting the message names, brings it into view and marks it, whether it is a number, a tick box or a list. |
 | **Show in view 1** (2, 3 ...) | Turns the view to an area simultaneous finishing could not reach. |
 | **Review setup** | Opens the Setup step on that setup. |
 | **Edit workholding** | Opens the setup's Workholding section. |

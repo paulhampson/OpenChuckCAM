@@ -38,7 +38,7 @@ A tool cannot cut a corner tighter than its own radius, or a groove narrower tha
 The rest operation reports in several lines. Read them in this order.
 
 What it found
-: "rest machining: 549718 of 1400280 points sampled on the part have more than 0.15 mm of material left; 87 passes cut where it is left". The roughing left 0.3 mm on purpose, and the finish took most of it; these are the places it did not reach.
+: "Rest machining (operation 'Rest'): 549718 of 1400280 points sampled on the part have more than 0.15 mm of material left; 87 passes cut where it is left". The roughing left 0.3 mm on purpose, and the finish took most of it; these are the places it did not reach.
 
 What it added for steep walls
 : "rest machining added 20 rings between X 11.984 and 60.998, as close as 0.1442 mm apart, where its tool's side meets a wall with material left, so that a steep wall keeps about 0.15 mm or less between them". On a wall that faces along the axis, passes spaced for a flat surface would leave tall ridges, so the operation adds rings there.
