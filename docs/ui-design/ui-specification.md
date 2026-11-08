@@ -347,12 +347,12 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 - **Rows.** Each row has:
   - a severity icon (error, red triangle; warning, amber triangle; information, blue "i");
-  - one or two plain sentences saying what happened and why;
+  - the message in one form: its topic, the items it is about as they are named now, then one or two plain sentences saying what happened, why and what to change ("Flute length (operation '1 Rough', tool 'T2 Flat 6'): …"; decision 0536 section 3);
   - the source item, as a link;
   - an action link ("Reselect", "Review setup", "Generate").
 - **Order.** Errors first, then warnings, then information. Messages are worked out from the project's state and carry no time, so within a severity they follow a fixed order of their sources, from the latest kind of news to the earliest: job failures, generation, selection sets, setups, models.
 - **Filters.** Chips for each severity with their counts.
-- **Links.** Choosing the source selects the item in the tree and the view.
+- **Links.** Choosing the source selects the item in the tree and the view. **Show setting** opens the item that holds the setting the message names, brings that setting into view and marks it, for every kind of field: numbers, text, tick boxes and drop-down lists (decision 0536 section 4).
 - **Where messages come from:**
   - changed and missing model files when a project opens (decision 0029 item 13);
   - the import check;
@@ -956,7 +956,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 
 - **Style.** Plain British English, in sentence case. Labels are nouns ("Stock to leave"); buttons are verbs ("Generate stale (1)").
 - **Leave out internal language.** No requirement IDs, decision or open-item numbers, internal type names, "IR" or "schema" in the interface.
-- **Messages** say what happened, why, and what to do, in that order.
+- **Messages** say what happened, why, and what to do, in that order. Each starts with its topic and the items it is about, named as they are now: `<Topic> (<context>): <text>`, the same in Messages, the Results tab, the export checks and on the command line (decision 0536 section 3).
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).

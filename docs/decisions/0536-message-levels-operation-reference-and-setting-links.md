@@ -169,7 +169,7 @@ Each pull request is a draft, test first, pushed once at release (decision 0055)
 
 1. The library type and the message constructor, with the checks of item 6, and the workspace minor version bump.
 2. Path notes take their levels. The Results tab and the command line follow, and the notes that describe a real problem become warnings.
-3. The lead-in for every message, and "Show setting" with the setting key for every field kind.
+3. The lead-in for every message, and "Show setting" with the setting key for every field kind. The setting's place (an operation, a tool, a setup or the post) travels with the key; the operation is opened at its setting in this step, and the tool, setup and post places in step 4, with the messages that point at them.
 4. Setup, model, post and export messages: the form, the links, and the field labels in place of internal names (the machine editor's mapping, reused; OI-360). Also the command-line help text, in the same plain words and terms as the messages and the user guide's Command line page, with no requirement numbers or internal terms (the owner's answer of 8 Nov 2026 to question (f), relayed by the coordinator), and a rapid that removes material and Report-mode short blocks in Messages (OI-373).
 5. Interface: the lost status lines (OI-2098), error dialogs that name the action that failed, recovery messages at their level, and the NFR-12 wording (OI-2097).
 6. Decisions 0538, 0539 and 0540, each as its own pull request with its own tests, once the owner accepts it. 0538 comes after step 1, because it uses the library type. 0539 and 0540 can come at any time.
