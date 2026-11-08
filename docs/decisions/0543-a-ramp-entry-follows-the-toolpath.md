@@ -139,6 +139,33 @@ In the drawing (5 mm of descent, Ramp angle 3 degrees, maximum 15): fixed, a rin
 
 *What stays.* D4 (a)'s measure on the real path is kept: the option only chooses the angle for a pass, and the descent is still measured on the tip's real path. The 10-turn bound is kept. Lines and arcs that go back and forth are not affected. With the option off, the output is as built.
 
+*The owner's alternative: plunge the core (8 Nov 2026, relayed; he invites challenge).* "Once a suitable diameter of material is all that remains, the tool can plunge that aspect to remove the remaining material. This could be set at the tool diameter by default or be a user setting." Proposed below for his decision; not built.
+
+![Roughing rings narrowing to a core that is plunged](0543-core-plunge.svg)
+
+*How it would work.*
+- **Which passes.** Rotary roughing (and rest roughing) in Rings or as a spiral, only. Never finishing: a finishing pass leaves the surface exact, and a plunge at the axis would not.
+- **When.** At a place along X where the material still to remove is a core round the axis no wider than the threshold, and the part leaves nothing inside that core (the core is all stock: past the part's free end, a cut-off, a waist the part does not fill). The core's width is the diameter of the deepest layer's ring there (twice the tip's distance from the axis), and the part's absence inside it is checked with the gouge drop along the tool axis at the axis itself.
+- **What replaces what.** The ring layers whose tip would be inside the core are not cut; one plunge at the axis at that X, at the plunge feed, removes the core (several plunges, one tool diameter apart along X, where the core is longer along X than the tool is wide). The layers above the core are ramped round as now.
+- **Setting.** **Plunge the core** (`plunge_core`, a flag, off by default) with **Core diameter** (`core_diameter`, mm, default the tool's cutting diameter, from 0 up to the tool's cutting diameter), in Entry, links and retract, roughing only.
+- **What the user sees.** A note in the form of decision 0536: "Plunge the core (operation '<name>'): the core no wider than N mm round the axis at X a to b mm is removed by K plunges instead of ring layers".
+
+*Challenges, honestly.*
+- **Centre cutting.** Only a tool that can cut straight down can plunge; with any other tool the setting would be refused naming the tool (as D7's plunge is).
+- **Load.** A plunge at the axis engages the tool's full width in solid stock, with poor chip evacuation; a ball tool leaves a small point at the axis that the next operation must take. This is the load a ramp exists to avoid.
+- **Width.** One plunge clears a core no wider than the tool's cutting diameter, so the threshold cannot exceed it.
+- **Scope against single points (D7).** The plunge is told apart by where it is: only at the axis, only in the core of a roughing pass in Rings or a spiral, only where the part leaves nothing inside the core. It does not change Allow single-point plunge, which stays for genuine single points.
+- **Option (b) (point 2).** An end-face ring on the axis keeps option (b); the core plunge would usually remove such places before that ring is reached.
+- **10-turn bound.** Unchanged for every ring that is still ramped. Where the part does fill the core (a thin neck), the core cannot be plunged, and those rings still need the 10-turn bound, or (i).
+- **The finishing pass after it.** Unchanged where the part is: the core plunge removes only material outside the part. A ball tool's point at the axis is stock the next operation meets.
+
+*Comparison.*
+- **(i) Steeper ramp near the axis.** Works wherever a small ring is ramped, part present or not; keeps every entry a ramp; the angle rises only as far as needed and never past a limit the user sets. Does not help where even the maximum angle needs more than 10 turns.
+- **(ii) Plunge the core.** Fewer turns and less time near the axis where the core is free stock; but a full-width plunge, centre-cutting tools only, roughing only, and no help where the part fills the core.
+- **(iii) Both.** (ii) where the core is free stock, (i) for the small rings that remain.
+
+*Recommendation (for the owner's decision): (i) now; (ii) later, if a machine trial shows the core rings are a problem.* (i) covers every case that refuses today, including rings round a thin part where (ii) cannot apply, and keeps the entry a ramp, the reason the user chose Ramp. (ii) brings back the full-width plunge the ramp avoids, so it is better added as its own option once there is evidence it is worth that load. (iii) is the complete answer if the owner wants both now; it costs the most to build and test before the freeze.
+
 **Where the tool's ability to plunge is checked (D7).** The path library does not know whether the tool is centre cutting. The application checks after generation: a Ramp or Lead operation whose path holds a plunge (a single-point pass) is refused, naming the tool, when the tool cannot plunge. This also covers decision 0544 item 7.
 
 ## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
