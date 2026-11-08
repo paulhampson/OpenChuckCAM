@@ -975,7 +975,6 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,

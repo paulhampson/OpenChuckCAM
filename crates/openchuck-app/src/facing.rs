@@ -233,7 +233,6 @@ mod tests {
             clearance: machine.clearance,
             max_feeds: machine.max_feeds,
             tags: &tags,
-            entry_safety: None,
             facing: Some(&setup),
             keep_out: &[],
             shank: None,

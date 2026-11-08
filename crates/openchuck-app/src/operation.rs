@@ -694,7 +694,6 @@ fn generate_unnamed(
         clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: facing_setup.as_ref(),
         keep_out: &keep_out,
         shank: shank_of(&profile, &snapshot.tool),

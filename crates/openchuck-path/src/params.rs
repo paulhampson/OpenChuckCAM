@@ -577,8 +577,6 @@ pub struct EntryParameters {
     pub style: EntryStyle,
     /// Descent angle of a ramp or helix.
     pub ramp_angle: Degrees,
-    /// Repeated descending legs; read and inactive (decision 0543 D1).
-    pub back_and_forth: bool,
     /// Enter a single-point pass under a ramp by a plunge instead of
     /// refusing (decision 0543 D7).
     pub allow_single_point_plunge: bool,
@@ -593,7 +591,6 @@ impl EntryParameters {
     pub const PLUNGE: Self = Self {
         style: EntryStyle::Plunge,
         ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
-        back_and_forth: false,
         allow_single_point_plunge: false,
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
@@ -620,7 +617,6 @@ impl EntryParameters {
         Ok(Self {
             style: EntryStyle::parse(p.text(ENTRY)?),
             ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
-            back_and_forth: p.flag(RAMP_BACK_AND_FORTH)?,
             allow_single_point_plunge: p.flag(ALLOW_SINGLE_POINT_PLUNGE)?,
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),

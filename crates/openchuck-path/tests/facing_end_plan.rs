@@ -652,7 +652,6 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
         clearance: machine.clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: Some(&setup),
         keep_out: &[],
         shank: None,

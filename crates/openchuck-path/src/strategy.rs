@@ -147,8 +147,6 @@ pub struct StrategyInput<'a> {
     pub max_feeds: MaxFeeds,
     /// Tags for the toolpath group.
     pub tags: &'a PathTags,
-    /// Whole-target clearance inputs for optional back-and-forth ramp entry.
-    pub entry_safety: Option<&'a crate::entry_safety::EntrySafety<'a>>,
     /// Whole placed setup for Facing's model-derived targets and extents.
     /// This is separate from selected/composite surfaces and entry clearance;
     /// it is not a complete-tool safety certificate. None preserves legacy

@@ -74,7 +74,6 @@ fn run(strategy: &dyn Strategy, v: &BTreeMap<String, ParameterValue>) -> DexelSt
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: None,
         facing: None,
         keep_out: &[],
         shank: None,

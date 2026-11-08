@@ -122,7 +122,6 @@ impl<S: SurfaceSource> Job<S> {
             },
             max_feeds: machine.max_feeds,
             tags: &self.tags,
-            entry_safety: None,
             facing: None,
             keep_out: &[],
             shank: None,
