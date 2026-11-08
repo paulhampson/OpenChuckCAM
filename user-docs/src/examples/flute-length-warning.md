@@ -13,8 +13,7 @@ The flutes are the cutting length of the tool. Above them is the shank, which do
 
 A tool that fits within the flutes can still be too short in other ways: the holder, the collet and the spindle are not checked against the stock by this warning.
 
-> [!NOTE]
-> A way to acknowledge a possible collision before the G-code is written is being built. On the build these screens were taken with, the flute-length warnings do not need to be acknowledged: they are listed, and nothing asks you to acknowledge them before the G-code is written.
+Because the shank may meet the stock, the program treats this warning as a possible collision: you must acknowledge it before the G-code is written. Section 3 shows where.
 
 ## 1. Shorten the flutes
 
@@ -51,9 +50,29 @@ The second warning is about the end of the part:
 
 > Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'): the end face at X 61.000 has nothing beyond it and is not faced: the stock beside it is up to 5.462 mm deep (a bound, from how far the stock reaches from the rotary axis: that stock is not measured exactly across the tool), more than the tool's 3.000 mm of flute, so no turn is cut there and the end keeps what earlier operations left; the stock is what the earlier operations in this setup left. Use a tool with longer flutes, or face it with a Facing operation, or turn off Face free ends for this operation. Check the path before you run it.
 
-A finishing operation with **Face free ends** ticked steps down beside each end face that has nothing beyond it, such as the point of the finial, and turns round there. When the stock beside the face is deeper than the flutes, it leaves that end out, and says so. Unlike the first warning, this one changes the path: the end is not cut.
+A finishing operation with **Face free ends** ticked steps down beside each end face that has nothing beyond it, such as the point of the finial, and turns round there. When the stock beside the face is deeper than the flutes, it leaves that end out, and says so. Unlike the first warning, this one changes the path: the end is not cut, so it is not a possible collision and needs no acknowledgement.
 
-## 3. What to change
+## 3. Acknowledge the possible collision
+
+Hold the mouse over the warning mark beside **2 Finish** in the project panel:
+
+<figure>
+<a href="images/flutes/03-needs-acknowledging.png"><img src="images/flutes/03-needs-acknowledging.png" width="1920" height="1080" alt="The project panel with the mouse on the amber warning mark of 2 Finish; its tooltip reads Needs acknowledging: Flute length (operation 'Finish', tool 'Short-flute ball 3.175x3'): the stock may stand up to 6.712 mm above the tool's tip along its axis ..."></a>
+<figcaption><b>Figure 3.</b> The mark of an operation with a possible collision starts "Needs acknowledging".</figcaption>
+</figure>
+
+Click **Continue to simulate**, then **Post and export...**, and scroll the dialog down to its checks:
+
+<figure>
+<a href="images/flutes/04-export-acknowledge.png"><img src="images/flutes/04-export-acknowledge.png" width="1920" height="1080" alt="The Post and export dialog scrolled to its checks: Warning: Operation 'Finish' has a possible collision, which must be acknowledged before the files are written: Flute length ...; the box Verify this G-code before you run it with the tick I will verify this G-code before running it on a machine; then These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program, the flute-length warning, and the unticked box I have read the possible collisions listed for this result and will check them before running the program."></a>
+<figcaption><b>Figure 4.</b> <b>Write G-code</b> waits for a second tick: "I have read the possible collisions listed for this result and will check them before running the program".</figcaption>
+</figure>
+
+The checks say "Operation 'Finish' has a possible collision, which must be acknowledged before the files are written", and list it under "These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program". The tick says that you have read them and will check them; it does not make the path any different. On the command line, `openchuck-cli regenerate` writes the files only with `--acknowledge-collision-warnings`.
+
+Close the dialog with the **×** at its top right: here, you fix the cause instead.
+
+## 4. What to change
 
 The warnings name three changes. Try them in this order.
 
@@ -65,13 +84,13 @@ This is the first thing to try. Set **Flute length** back to `22`, or choose the
 
 **Finishing layers** cuts the finish in layers along the tool's axis, so no one pass is deeper than the **Stepdown**.
 
-1. Scroll the Inspector down to **Face free ends** and **Finishing layers**. **Show setting** beside a warning in the Messages list also takes you to the operation.
+1. Click **Operations** at the top and **2 Finish** in the project panel, and scroll the Inspector down to **Face free ends** and **Finishing layers**. **Show setting** beside a warning in the Messages list also takes you to the operation.
 2. Tick **Finishing layers**. **Stepdown** now says "required".
 3. Set **Stepdown** to `2`, less than the 3 mm of flute, and click **Generate**.
 
 <figure>
-<a href="images/flutes/03-finishing-layers.png"><img src="images/flutes/03-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Face free ends ticked, Finish allowance 0.100 default, Finishing layers ticked, Stepdown 2.000, and Material preset No preset; the Messages list shows Warnings 2, the remaining one being the flute-length warning about the end face at X 61.000."></a>
-<figcaption><b>Figure 3.</b> With finishing layers of 2 mm, the warning about the passes is gone. The warning about the end face remains.</figcaption>
+<a href="images/flutes/05-finishing-layers.png"><img src="images/flutes/05-finishing-layers.png" width="1920" height="1080" alt="The finish generated in layers: more rapid moves round the part in the view; the Inspector shows Face free ends ticked, Finish allowance 0.100 default, Finishing layers ticked, Stepdown 2.000, and Material preset No preset, with the Tool and feeds section folded; the Messages list shows Warnings 2, the remaining one being the flute-length warning about the end face at X 61.000."></a>
+<figcaption><b>Figure 5.</b> With finishing layers of 2 mm, the warning about the passes is gone. The warning about the end face remains.</figcaption>
 </figure>
 
 The Results tab now says: "finishing layers: up to 3 layers of 2 mm above a finish allowance of 0.1 mm, then the final pass on the surface; the layers start from the stock the earlier operations left, known to a simulation cell, so the depth of each cut is not uniform and no engagement is promised".
@@ -85,8 +104,8 @@ The end-face warning remains, because the stock beside the end is still deeper t
 1. Untick **Face free ends** and click **Generate**.
 
 <figure>
-<a href="images/flutes/04-face-free-ends-off.png"><img src="images/flutes/04-face-free-ends-off.png" width="1920" height="1080" alt="The Results tab after generating with Face free ends unticked: 2 operation(s), 46948 moves, Generated: Finish, Reused: Rough; no flute-length warning is listed; the notes listed are about the roughing's shoulder, the step at X 8.589, the stepdown override and the finishing layers."></a>
-<figcaption><b>Figure 4.</b> No flute-length warning remains. The end of the finial is left as the roughing cut it.</figcaption>
+<a href="images/flutes/06-face-free-ends-off.png"><img src="images/flutes/06-face-free-ends-off.png" width="1920" height="1080" alt="The Results tab, with Information turned off, after generating with Face free ends unticked: 2 operation(s), 46948 moves, Warnings 5; no flute-length warning is listed, and the mark beside 2 Finish is green; the notes listed are about the roughing's shoulder, the step at X 8.589, the stepdown override and the finishing layers."></a>
+<figcaption><b>Figure 6.</b> No flute-length warning remains. The end of the finial is left as the roughing cut it.</figcaption>
 </figure>
 
 ## Read the result
@@ -108,6 +127,9 @@ A longer-flute tool is the change that keeps the path the same. Layers make the 
 
 Reading the warning as a collision report
 : The flute-length check is about the flutes. It does not check the holder or the spindle, and its depth is often a bound.
+
+Ticking the acknowledgement to make the warning go away
+: The tick lets the files be written; the possible collision is still there. Check it in the simulation, or change the tool or the operation so the warning goes.
 
 Changing the library's tool to make the warning go
 : Edit the project's copy only when your tool really is different. Do not raise the flute length above what your cutter has.
