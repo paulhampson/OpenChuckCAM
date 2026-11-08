@@ -32,6 +32,8 @@ mod brep_queries;
 mod carving;
 #[path = "cutter.rs"]
 mod cutter;
+#[path = "descent_feed.rs"]
+mod descent_feed;
 #[path = "drill.rs"]
 mod drill;
 #[path = "drop_threads.rs"]

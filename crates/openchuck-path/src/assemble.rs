@@ -387,6 +387,20 @@ pub fn assemble_with_entry(
     entry: &EntryParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
+    assemble_limited(passes, input, common, entry, None, context)
+}
+
+/// [`assemble_with_entry`], with every cutting move inside a pass that goes
+/// down along the tool axis slowed, where needed, so its tip goes down no
+/// faster than `descent_limit` (the plunge feed; decision record 0548).
+pub(crate) fn assemble_limited(
+    passes: &[Pass],
+    input: &StrategyInput<'_>,
+    common: &CommonParameters,
+    entry: &EntryParameters,
+    descent_limit: Option<FeedRate>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
     let rotary = input.rotary;
     let link_height = match common.retract {
         Retract::Clearance => input.clearance.radius.0,
@@ -598,7 +612,15 @@ pub fn assemble_with_entry(
             if doubling.is_some_and(|r| r.contains(&k)) {
                 b.push(MoveKind::Rapid, end, None, None)?;
             } else {
+                let from = b.at().height;
+                let before = b.segments.len();
                 b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+                if let Some(limit) = descent_limit
+                    && b.segments.len() > before
+                {
+                    let down = from - rotary.to_axis(p.tip, p.a).height;
+                    limit_descent(&mut b, before, down, limit);
+                }
             }
         }
         entry.exit(&mut b, common, input, i, points)?;
@@ -635,6 +657,31 @@ pub fn assemble_with_entry(
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })
+}
+
+/// Slows the cutting move `index` of `b`, which takes the tip `down` along
+/// the tool axis, so it goes down no faster than `limit` (decision record
+/// 0548): its time becomes at least the descent at that feed, and its
+/// contact feed is lowered to match. A move already that slow, or not going
+/// down, is left as it is. A note that the machine's limits set the move's
+/// time no longer holds once this sets it, so it is dropped.
+fn limit_descent(b: &mut Builder<'_>, index: usize, down: f64, limit: FeedRate) {
+    if down <= EPS || !(limit.0 > 0.0) {
+        return;
+    }
+    let least = 60.0 * down / limit.0;
+    let Some(segment) = b.segments.get_mut(index) else {
+        return;
+    };
+    if segment.duration.0 >= least {
+        return;
+    }
+    let length = segment.contact_length.0;
+    if length > EPS {
+        segment.contact_feed = Some(FeedRate(60.0 * length / least));
+    }
+    segment.duration = Seconds(least);
+    b.notes.retain(|n| n.segment != Some(index));
 }
 
 /// Points either side of a contact averaged with it to measure the contact
