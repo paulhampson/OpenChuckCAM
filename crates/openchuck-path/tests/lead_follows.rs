@@ -516,3 +516,189 @@ fn req_op_11_a_single_point_pass_under_lead_is_plunged_with_a_note_naming_it() {
         path.notices
     );
 }
+
+/// One pass at `x` that turns A from 0 to `a_end` degrees in 2 degree
+/// steps, dropped onto the part, or held at `height` above the axis when
+/// set; it carries `stock` when set, as roughing does. Not a product
+/// strategy.
+#[derive(Debug)]
+struct Arc {
+    x: f64,
+    a_end: f64,
+    height: Option<f64>,
+    stock: Option<openchuck_path::AnalyticStock>,
+}
+
+impl Strategy for Arc {
+    fn name(&self) -> &str {
+        "test_arc"
+    }
+
+    fn label(&self) -> &str {
+        "Arc (test)"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        _p: &Parameters,
+        _context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let steps = (self.a_end / 2.0).round() as u32;
+        let points = (0..=steps)
+            .filter_map(|j| {
+                let a = Degrees(f64::from(j) * 2.0);
+                match self.height {
+                    Some(height) => {
+                        let tip = input.rotary.to_model(
+                            openchuck_path::rotary::AxisPosition {
+                                along: self.x,
+                                across: 0.0,
+                                height,
+                            },
+                            a,
+                        );
+                        Some(CutPoint {
+                            tip,
+                            a,
+                            contact: tip,
+                        })
+                    }
+                    None => {
+                        let line = input
+                            .rotary
+                            .tool_line(Millimetres(self.x), a, Millimetres(0.0));
+                        input
+                            .surface
+                            .drop_tool(input.tool, &line)
+                            .map(|c| CutPoint {
+                                tip: c.tip,
+                                a,
+                                contact: c.contact,
+                            })
+                    }
+                }
+            })
+            .collect();
+        Ok(vec![Pass {
+            points,
+            stock: self
+                .stock
+                .map(|s| openchuck_path::PassStock(std::sync::Arc::new(s))),
+            ..Pass::default()
+        }])
+    }
+}
+
+fn lead_values() -> BTreeMap<String, ParameterValue> {
+    let mut v = BTreeMap::new();
+    v.insert(names::STEPOVER.into(), n(2.0));
+    v.insert(names::FEED.into(), n(FEED));
+    v.insert(names::PLUNGE_FEED.into(), n(100.0));
+    v.insert(names::ENTRY.into(), t("lead"));
+    v
+}
+
+#[test]
+fn req_op_11_req_op_15_a_partial_ring_gets_the_lead_in_the_plane_of_the_cut_at_both_ends() {
+    let f = cylinder();
+    let s = Arc {
+        x: 20.0,
+        a_end: 180.0,
+        height: None,
+        stock: None,
+    };
+    let path = make(&f, &s, &lead_values(), &[]).unwrap();
+    let ins = lead_ins(&path);
+    let outs = lead_outs(&path);
+    assert_eq!((ins.len(), outs.len()), (1, 1));
+    assert_turning_lead_in(&f, &ins[0]);
+    assert_turning_lead_out(&f, &outs[0]);
+}
+
+#[test]
+fn req_op_11_req_op_14_in_roughing_a_lead_beside_a_partial_ring_through_uncut_stock_is_refused_naming_entry()
+ {
+    // The pass carries stock 16 mm from the axis; the arc rises 3 mm above
+    // the 15 mm part beside the half turn, which the pass does not cut.
+    let f = cylinder();
+    let s = Arc {
+        x: 20.0,
+        a_end: 180.0,
+        height: None,
+        stock: Some(openchuck_path::AnalyticStock::Cylinder {
+            radius: 16.0,
+            x_start: -1.0,
+            x_end: 41.0,
+        }),
+    };
+    let err = make(&f, &s, &lead_values(), &[]).unwrap_err();
+    assert!(err.starts_with("Lead entry: pass 1"), "{err}");
+    assert!(err.contains("stock the pass has not cleared"), "{err}");
+    assert!(err.contains("Set Entry to Plunge, Ramp or Helix"), "{err}");
+    // A whole ring in the same stock lies over stock the pass itself
+    // removes, so it is allowed (decision 0544, the owner's answer).
+    let ring = Arc { a_end: 360.0, ..s };
+    make(&f, &ring, &lead_values(), &[]).unwrap();
+}
+
+/// A part with twelve lobes. With `lobe` negative a ring at A = 0 starts in
+/// a valley, where the ball's path has a cusp: behind the first point it
+/// rises faster than any arc tangent to the cut. With `lobe` positive it
+/// starts on a crest.
+fn lobed(lobe: f64) -> Fixture {
+    let part = openchuck_testkit::parts::LobedVase {
+        base: 15.0,
+        wave: 0.0,
+        wave_length: 40.0,
+        lobe,
+        lobes: 12,
+        length: 40.0,
+    };
+    Fixture::new(
+        MeshSurface::new(&part.mesh(40, 720)).unwrap(),
+        18.0,
+        &ball(6.0),
+    )
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_turning_lead_that_would_cut_the_finished_surface_is_refused_naming_lead_radius()
+ {
+    let f = lobed(-2.0);
+    let s = Arc {
+        x: 20.0,
+        a_end: 360.0,
+        height: None,
+        stock: None,
+    };
+    let err = make(&f, &s, &lead_values(), &[]).unwrap_err();
+    assert!(err.starts_with("Lead entry: pass 1"), "{err}");
+    assert!(err.contains("into the finished surface"), "{err}");
+    assert!(err.contains("Make Lead radius smaller"), "{err}");
+    // The same ring starting on a crest gets its lead.
+    let path = make(&lobed(2.0), &s, &lead_values(), &[]).unwrap();
+    assert_turning_lead_in(&lobed(2.0), &lead_ins(&path)[0]);
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_turning_pass_with_its_tip_on_the_rotary_axis_is_refused_by_name() {
+    let f = cylinder();
+    let s = Arc {
+        x: 20.0,
+        a_end: 90.0,
+        height: Some(0.0),
+        stock: None,
+    };
+    let err = make(&f, &s, &lead_values(), &[]).unwrap_err();
+    assert!(err.contains("Lead entry: pass 1"), "{err}");
+    assert!(err.contains("on the rotary axis"), "{err}");
+}

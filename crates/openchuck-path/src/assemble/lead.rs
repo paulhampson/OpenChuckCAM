@@ -179,14 +179,29 @@ impl Entry {
         // A cut that only moves the tip up or down has no way round: the
         // lead meets it as if it went round level.
         let d = along.filter(|d| d.0 > 1e-6).unwrap_or((1.0, 0.0));
-        // The side away from the part.
-        let n = (-d.1, d.0);
+        // The arc turns, towards the side away from the part, between the
+        // cut's direction `theta` and straight down (a lead-in) or straight
+        // up (a lead-out), so the tool meets or leaves the cut tangentially
+        // and never moves back round the part: A turns the pass's way only
+        // (OP-15). For a level cut it is a quarter circle one lead radius
+        // back (or on) and one up.
+        let theta = d.1.atan2(d.0);
+        let (from, to) = if entering {
+            (-FRAC_PI_2, theta)
+        } else {
+            (theta, FRAC_PI_2)
+        };
         let r = self.lead_radius;
-        let m = self.arc_segments(r);
-        let place = |phi: f64| {
-            let back = if entering { -1.0 } else { 1.0 };
-            let s = r * n.0 - r * n.0 * phi.cos() + back * r * d.0 * phi.sin();
-            let h = r * n.1 - r * n.1 * phi.cos() + back * r * d.1 * phi.sin();
+        let m = ((self.arc_segments(r) as f64) * (to - from) / FRAC_PI_2)
+            .ceil()
+            .max(2.0) as usize;
+        // The centre is one lead radius from the end, across the cut on
+        // the side away from the part; at tangent angle `alpha` the tool is
+        // at `centre + r (sin alpha, -cos alpha)`.
+        let centre = (-r * theta.sin(), r * theta.cos());
+        let place = |alpha: f64| {
+            let s = centre.0 + r * alpha.sin();
+            let h = centre.1 - r * alpha.cos();
             (
                 AxisPosition {
                     height: p.height + h,
@@ -195,14 +210,11 @@ impl Entry {
                 Degrees(end.a.0 + sign * (s / rho).to_degrees()),
             )
         };
+        let at = |j: usize| from + (to - from) * j as f64 / m as f64;
         let moves = if entering {
-            (0..m)
-                .map(|j| place(FRAC_PI_2 * (1.0 - j as f64 / m as f64)))
-                .collect()
+            (0..m).map(|j| place(at(j))).collect()
         } else {
-            (1..=m)
-                .map(|j| place(FRAC_PI_2 * j as f64 / m as f64))
-                .collect()
+            (1..=m).map(|j| place(at(j))).collect()
         };
         Ok(TurnLead { moves })
     }
@@ -259,7 +271,7 @@ impl Entry {
     ) -> Result<()> {
         let r = self.lead_radius;
         if let Some(g) = self.gouge_turning(b, input, &lead.moves) {
-            return Err(self.refuse_turning(input, pass, name, g));
+            return Err(self.refuse_turning(pass, name, g));
         }
         if let openchuck_types::machine::ARange::Limited { min, max } = input.rotary.range
             && let Some((_, a)) = lead
@@ -304,26 +316,11 @@ impl Entry {
     }
 
     /// The refusal of a lead on a pass that turns A that would cut the
-    /// finished surface (decision 0536 form).
-    fn refuse_turning(
-        &self,
-        input: &StrategyInput<'_>,
-        pass: usize,
-        name: &str,
-        found: Gouge,
-    ) -> PathError {
+    /// finished surface (decision 0536 form). Such a lead never leaves the
+    /// pass's X, so it can reach a held region only where the pass itself
+    /// does, which generation has already refused.
+    fn refuse_turning(&self, pass: usize, name: &str, found: Gouge) -> PathError {
         let r = self.lead_radius;
-        let mid = crate::strategy::part_middle(input);
-        if let Some(end) = crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
-            let held = crate::strategy::held_names(&std::collections::BTreeSet::from([end]));
-            return PathError::Strategy(format!(
-                "Lead entry: pass {}: the {name} on an arc of radius {r:.3} mm would run over \
-                 {held} at X {:.3} mm, where the workholding grips the stock. Make Lead radius \
-                 smaller, or set Entry to Plunge, Ramp or Helix.",
-                pass + 1,
-                found.x
-            ));
-        }
         PathError::Strategy(format!(
             "Lead entry: pass {}: the {name} on an arc of radius {r:.3} mm would cut {:.3} mm \
              into the finished surface at position {} of its path, more than the tolerance of \
