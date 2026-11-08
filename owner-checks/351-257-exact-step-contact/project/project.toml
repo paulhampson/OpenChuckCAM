@@ -1,0 +1,16 @@
+schema = 25
+name = "Owner check 351 and 257"
+
+[[models]]
+id = "0c0c0351-0000-4000-8000-000000000001"
+path = "models/shouldered_shaft.step"
+hash = "blake3:c7ac2c385f28ab810ba098b2438b7ca1fe843c5f0babc939d2fdf3edc6756726"
+name = "shouldered_shaft.step"
+
+[[models.transform]]
+kind = "rotate"
+axis = "y"
+angle = 90.0
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"

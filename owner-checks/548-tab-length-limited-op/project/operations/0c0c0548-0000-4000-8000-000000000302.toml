@@ -1,0 +1,14 @@
+schema = 25
+id = "0c0c0548-0000-4000-8000-000000000302"
+order = "W"
+name = "Whole part"
+setup = "0c0c0000-0000-4000-8000-000000000002"
+strategy = "axial_finishing"
+tool = "0c0c0548-0000-4000-8000-000000000101"
+selections = []
+
+[parameters]
+adaptive_spacing = false
+face_free_ends = false
+stepover = 1.0
+tolerance = 0.01

@@ -1,0 +1,11 @@
+schema = 25
+name = "Owner check 558"
+
+[[models]]
+id = "0c0c0558-0000-4000-8000-000000000001"
+path = "models/crankshaft.step"
+hash = "blake3:4fbc3c01f54cf2efe2fa97e8e6720d55d197c7de3c3f78b6f7dbcd83b38c6251"
+name = "crankshaft.step"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"

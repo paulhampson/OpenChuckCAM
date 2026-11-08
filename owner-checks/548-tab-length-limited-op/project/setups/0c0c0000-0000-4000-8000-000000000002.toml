@@ -1,0 +1,31 @@
+schema = 25
+id = "0c0c0000-0000-4000-8000-000000000002"
+order = "V"
+name = "Setup 1"
+part = "0c0c0000-0000-4000-8000-000000000001"
+material = "Hardwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 24.0
+length = 78.0
+x_start = -13.0
+
+[workholding.start]
+length = 8.0
+
+[[workholding.tabs]]
+x_start = -5.0
+length = 5.0
+
+[workholding.tabs.shape]
+type = "cylinder"
+diameter = 14.0
+
+[workholding.tabs.layout]
+type = "on_axis"
