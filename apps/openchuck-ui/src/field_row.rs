@@ -381,10 +381,9 @@ fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
 
 /// The reason in red under the value, indented past the label column.
 fn reason_line(ui: &mut egui::Ui, reason: &str, colour: egui::Color32) {
-    ui.horizontal_wrapped(|ui| {
-        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
-        ui.label(RichText::new(reason).color(colour));
-    });
+    // The whole width under the field, one block, as a warning is (issue
+    // #635).
+    ui.add(egui::Label::new(RichText::new(reason).color(colour)).wrap());
 }
 
 /// Draws a text or number row. Returns what the user did.
@@ -638,14 +637,15 @@ pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
 }
 
 /// A warning under a field or a section: the warning shape the tree uses and
-/// a plain sentence, indented past the label column. It says what is missing
-/// (issue 224; UI-11) or why a setting is marked by its path's warning
-/// (decision record 0175).
+/// a plain sentence. It says what is missing (issue 224; UI-11) or why a
+/// setting is marked by its path's warning (decision record 0175). It spans
+/// the whole width under the field as one block, every line starting after
+/// the shape, for every kind of field (issue #635): not a first line pushed
+/// past the label column with the rest flush left.
 pub fn warning_line(ui: &mut egui::Ui, text: &str) {
-    ui.horizontal_wrapped(|ui| {
-        ui.add_space(label_column(ui) + ui.spacing().item_spacing.x);
+    ui.horizontal_top(|ui| {
         crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
-        ui.label(RichText::new(text).color(DARK.warning));
+        ui.add(egui::Label::new(RichText::new(text).color(DARK.warning)).wrap());
     });
 }
 

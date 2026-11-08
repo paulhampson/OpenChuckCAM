@@ -800,6 +800,122 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_an_inline_warning_spans_the_inspector_under_its_field() {
+        // Issue #635: the warning under a field uses the whole width of the
+        // inspector, one block whose lines all start at the same place, for
+        // every kind of field, not a first line pushed past the label column
+        // and the rest flush left.
+        let field = |name: &str, kind: FieldKind, value: ParameterValue| Field {
+            name: name.into(),
+            label: name.into(),
+            description: String::new(),
+            kind,
+            set: None,
+            value: Some(value),
+            source: Source::Default,
+            section: FormSection::PatternAndTolerance,
+            problem: None,
+        };
+        let number = FieldKind::Number {
+            unit: "mm",
+            min: Some(0.0),
+            min_exclusive: true,
+            max: None,
+        };
+        let form = ParameterForm {
+            operation: openchuck_app::project::id::OperationId::new(),
+            strategy: "swarf".into(),
+            fields: vec![
+                field("tolerance", number, ParameterValue::Number(0.01)),
+                field("flag", FieldKind::Flag, ParameterValue::Flag(true)),
+            ],
+            notes: Vec::new(),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "pattern", true, &DEFAULT_OPEN);
+        let width = 434.0;
+        for name in ["tolerance", "flag"] {
+            let marks = Marks {
+                warned: vec![name.into()],
+                ..Marks::default()
+            };
+            let mut state = FormState::default();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(width, 600.0),
+                )),
+                ..Default::default()
+            };
+            let mut content = egui::Rect::NOTHING;
+            let mut label_column = 0.0;
+            let mut output = ctx.run_ui(input, |ui| {
+                content = ui.max_rect();
+                label_column = field_row::label_column(ui);
+                show(ui, &form, &mut state, &mut settings, &[], None, &marks);
+            });
+            output.textures_delta.clear();
+            let galleys: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == WARNED_SETTING => Some(t.clone()),
+                    _ => None,
+                })
+                .collect();
+            // One block of text, wrapped as a whole.
+            assert_eq!(galleys.len(), 1, "{name}: the warning is split");
+            let rect = galleys[0].visual_bounding_rect();
+            assert!(
+                galleys[0].galley.rows.len() > 1,
+                "{name}: it should wrap at this width"
+            );
+            // The warning shape sits just before the text, on its first line,
+            // not alone further along the line above it.
+            let at = output
+                .shapes
+                .iter()
+                .position(|c| {
+                    matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == WARNED_SETTING)
+                })
+                .unwrap();
+            let shape = output.shapes[at - 1].shape.visual_bounding_rect();
+            let text = galleys[0].pos;
+            assert!(
+                shape.max.x <= text.x + 0.5 && shape.min.y < text.y + 15.0 && shape.max.y > text.y,
+                "{name}: the shape is at {shape:?}, the text at {text:?}"
+            );
+            // Every line starts at the same place: the first is not pushed
+            // in further than the rest.
+            let starts: Vec<f32> = galleys[0]
+                .galley
+                .rows
+                .iter()
+                .map(|r| galleys[0].pos.x + r.rect().min.x)
+                .collect();
+            assert!(
+                starts.iter().all(|x| (x - starts[0]).abs() < 1.0),
+                "{name}: the lines start at {starts:?}"
+            );
+            // It starts left of where the field's box starts, near the
+            // inspector's edge, and runs to its right edge.
+            assert!(
+                rect.min.x < content.min.x + label_column,
+                "{name}: starts at {} (label column ends at {})",
+                rect.min.x,
+                content.min.x + label_column
+            );
+            assert!(
+                rect.max.x > content.max.x - 0.25 * content.width(),
+                "{name}: ends at {} of {}",
+                rect.max.x,
+                content.max.x
+            );
+        }
+    }
+
+    #[test]
     fn req_op_11_req_nfr_07_a_back_and_forth_ramp_problem_shows_under_its_field() {
         // Issue #291: what the application knows before Generate about the
         // back-and-forth ramp is a warning line under the field, in the
