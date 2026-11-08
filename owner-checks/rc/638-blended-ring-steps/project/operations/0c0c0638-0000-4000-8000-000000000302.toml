@@ -1,0 +1,16 @@
+schema = 25
+id = "0c0c0638-0000-4000-8000-000000000302"
+order = "W"
+name = "Rings, blended"
+setup = "0c0c0000-0000-4000-8000-000000000002"
+strategy = "helical_finishing"
+tool = "0c0c0638-0000-4000-8000-000000000102"
+selections = []
+
+[parameters]
+adaptive_spacing = false
+face_free_ends = false
+pass_shape = "rings"
+ring_blend_angle = 45.0
+ring_step = "blended"
+stepover = 1.0

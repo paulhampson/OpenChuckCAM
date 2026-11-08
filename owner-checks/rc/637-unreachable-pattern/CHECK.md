@@ -1,7 +1,7 @@
 # Check for issue #637: the mark on areas a strategy could not reach is comfortable to look at
 
 > [!NOTE]
-> **Draft, to run on the release candidate.** The fix for #637 (lane VIEWHATCH) is not merged yet (8 Nov 2026). This file gives today's behaviour, read from `main` at `1f3675d52` and checked again at `81bade8a3` (decision 0536 steps 3 and 5 merged; the fix for this issue, lane VIEWHATCH, is not), and what the issue asks for. When the fix merges, the new mark is described here from that build, its pull request is named, and this note is removed.
+> **Draft, to run on the release candidate.** [Decision 0549](https://github.com/paulhampson/OpenChuckCAM/pull/651/files) (lane VIEWHATCH, accepted by the owner on 8 Nov 2026, pattern A) is in docs pull request #651; the code is in draft pull request #652 and not merged. This file gives today's behaviour, read from `main` at `1f3675d52` and checked again at `81bade8a3`, and what the record says the fix does. When it merges, its pull request is named here and this note is removed.
 
 **What is to be fixed:** the view marks the areas a strategy could not reach with dots. The dots stay still on the screen while the part turns, instead of being painted on the surface, which is uncomfortable to look at and may trigger trypophobia. The issue asks for a better pattern.
 
@@ -25,9 +25,10 @@ Use the release candidate, or a build from `main` that holds the fix (**Help > A
 
 ## Expected result
 
-- The unreached area is marked with the new pattern (to be described from the merged build).
-- The pattern moves with the surface when the part turns and zooms: it is painted on the part, not fixed on the screen.
-- It is comfortable to look at, and the area still stands out from the cut surfaces and from the other marks (selection, hover, deviation colours).
+- The unreached strip is **hatched**: black diagonal lines in a white casing, 1 mm apart, painted on the surface. They move, turn and foreshorten with the part when you turn and zoom; they do not stay still on the screen.
+- From far away, or at a steep angle, the lines fade into a flat dark tint instead of shimmering. No small circles remain anywhere.
+- The part's grey and any deviation colours show between the lines. The legend row "Unreachable (Floor finish)" shows a swatch of two hatch lines.
+- The strip reads as one closed area along its length (the owner asked for the area's edge to be cleaned up): no single ticks across a narrow strip with gaps between them.
 - The Messages line still names the area: "Unreached areas (operation 'Floor finish'): face-flow finishing cannot reach 1 area of the selected faces, which stay uncut: X 20.000 to 60.000 near A 282 (208.6 mm2), a neighbouring face is in the way of the tool; check them in the simulation before running the program" (as `main` at `81bade8a3` prints it).
 
 **Old behaviour (today):** dots that stay still on the screen while the part turns (the issue's screenshot).

@@ -1,0 +1,11 @@
+schema = 25
+name = "Owner check 643"
+
+[[models]]
+id = "75b05aaf-5593-4e0f-9bcb-76e2fef56cad"
+path = "models/9fd8d40508a0e423dd17ef53b9f3b74f.stl"
+hash = "blake3:9fd8d40508a0e423dd17ef53b9f3b74fd2206526a19e7437fe03cf2f6a46a28f"
+name = "blisk.stl"
+
+[[models.transform]]
+kind = "centre_on_rotary_axis"

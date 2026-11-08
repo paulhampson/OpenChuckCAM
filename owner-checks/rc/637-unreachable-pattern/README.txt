@@ -5,8 +5,9 @@ DRAFT: to run on the release candidate, once the fix is merged.
 2. Operations, Generate, click "1 Floor finish".
 3. Look at the unreached strip on the hub floor next to the far blade;
    turn the part and zoom.
-Expected: the new pattern is painted on the surface (it moves with the
-part), is comfortable to look at, and still stands out.
+Expected: the strip is hatched: black diagonal lines in a white casing,
+1 mm apart, painted on the surface (they move with the part), fading to a
+flat tint far away; one closed area along the strip, no single ticks.
 Old behaviour: dots that stay still on the screen while the part turns.
 
 Nothing in this check shows that a program is safe to run. Do not run this
