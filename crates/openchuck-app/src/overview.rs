@@ -376,12 +376,6 @@ pub enum MessageAction {
     EditWorkholding(SetupId),
     /// Generate the stale operations.
     Generate,
-    /// Save the project, for changes that are lost unless saved (a recovered
-    /// checkpoint, changed tool numbers; decision record 0536 section 8).
-    Save,
-    /// Undo the last command, for a change the message warns of (changed
-    /// tool numbers; decision record 0536 section 8).
-    Undo,
     /// Open the item that holds the setting the message names, scroll to the
     /// setting and mark it, so the user can change it (decision records 0175
     /// and 0536 section 4).
@@ -403,6 +397,12 @@ pub enum MessageAction {
         /// The area's number, from 1.
         area: u8,
     },
+    /// Save the project, for changes that are lost unless saved (a recovered
+    /// checkpoint, changed tool numbers; decision record 0536 section 8).
+    Save,
+    /// Undo the last command, for a change the message warns of (changed
+    /// tool numbers; decision record 0536 section 8).
+    Undo,
 }
 
 /// The words of "Show in view N" for the areas a warning offers it for.
@@ -424,8 +424,6 @@ impl MessageAction {
             Self::ReviewSetup(_) => "Review setup",
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
-            Self::Save => "Save",
-            Self::Undo => "Undo",
             Self::ShowSetting(_) => "Show setting",
             Self::OpenRecovery(_) => "Open project",
             Self::LocateRecovery(_) => "Locate folder",
@@ -434,6 +432,8 @@ impl MessageAction {
                 .and_then(|i| SHOW_IN_VIEW.get(i))
                 .copied()
                 .unwrap_or("Show in view"),
+            Self::Save => "Save",
+            Self::Undo => "Undo",
         }
     }
 }
