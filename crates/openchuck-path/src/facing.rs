@@ -217,13 +217,15 @@ impl Strategy for Facing {
         }
         if shape == parameter::END {
             for spec in &mut schema.parameters {
-                if spec.name == roughing::STEPDOWN {
-                    spec.label = "Axial stepdown".into();
-                    spec.description="Maximum axial slice thickness, distributed equally to the exact end target; bounded by the tool's diameter and declared limits.".into();
-                }
+                // Stepover is across the tool and Stepdown along it, as the
+                // tool's cutting data defines them (decision record 0547).
                 if spec.name == crate::params::names::STEPOVER {
-                    spec.label = "Flute band spacing".into();
-                    spec.description="Maximum spacing along the flute direction between end-facing bands. Must not exceed the active flute length; axial slice depth is separate.".into();
+                    spec.label = "Stepover (slice thickness along X)".into();
+                    spec.description = "The most the end is cut back along X in one slice: a width across the tool, distributed equally to the exact end target. At most the tool's diameter.".into();
+                }
+                if spec.name == roughing::STEPDOWN {
+                    spec.label = "Stepdown (band along the tool)".into();
+                    spec.description = "The most each band reaches along the tool: a depth along the flutes. At most the flute length.".into();
                 }
             }
         }

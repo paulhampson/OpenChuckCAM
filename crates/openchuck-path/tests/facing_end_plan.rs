@@ -501,8 +501,9 @@ fn req_op_24_stored_end_settings_control_axial_depth_flute_spacing_and_start_vie
         ("shape", ParameterValue::Text("end".into())),
         ("feed", ParameterValue::Number(600.)),
         ("plunge_feed", ParameterValue::Number(200.)),
-        ("stepover", ParameterValue::Number(1.)),
-        ("stepdown", ParameterValue::Number(2.)),
+        // Decision 0547: Stepover is the slice along X, Stepdown the band.
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(1.)),
         ("stock_to_leave", ParameterValue::Number(0.2)),
         ("start_angle", ParameterValue::Number(30.)),
         ("max_angle_step", ParameterValue::Number(2.)),
@@ -624,8 +625,9 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
         ("shape", ParameterValue::Text("end".into())),
         ("feed", ParameterValue::Number(600.)),
         ("plunge_feed", ParameterValue::Number(200.)),
-        ("stepover", ParameterValue::Number(1.)),
-        ("stepdown", ParameterValue::Number(2.)),
+        // Decision 0547: Stepover is the slice along X, Stepdown the band.
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(1.)),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v))
@@ -683,7 +685,8 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
     // a default no-op would wrongly accept the strict stock/tool witness below.
     let mut checked_values = values.clone();
     checked_values.insert("stock_to_leave".into(), ParameterValue::Number(0.2));
-    checked_values.insert("stepover".into(), ParameterValue::Number(10.));
+    // The 10 mm band of `settings()` is the Stepdown (decision 0547).
+    checked_values.insert("stepdown".into(), ParameterValue::Number(10.));
     let checked_parameters = Facing.resolve_parameters(&checked_values).unwrap();
     Facing
         .validate_path(&input, &checked_parameters, &path, &ctx)
@@ -1391,4 +1394,69 @@ fn req_op_24_facing_a_flush_end_with_no_stock_to_leave_says_there_is_nothing_pas
     };
     let plan = plan_end(&setup, &flush, &ctx).unwrap();
     assert!(!plan.passes.is_empty());
+}
+
+/// Decision 0547 item 3: End facing reads the Stepover as the slice along X
+/// (a radial width, across the tool) and the Stepdown as the band along the
+/// tool (an axial depth), as a tool's cutting data defines them (TL-05). A
+/// Stepdown deeper than the tool's diameter, as a preset may give, is a
+/// band, not a slice, and is not refused.
+#[test]
+fn req_op_24_req_tl_05_end_reads_stepover_across_and_stepdown_along_the_tool() {
+    use openchuck_path::{Facing, ParameterValue, Strategy};
+    let values = [
+        ("shape", ParameterValue::Text("end".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(1.5)),
+        ("stepdown", ParameterValue::Number(7.)),
+        ("stock_to_leave", ParameterValue::Number(0.2)),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.into(), v))
+    .collect();
+    let p = EndFacingParameters::read(&Facing.resolve_parameters(&values).unwrap()).unwrap();
+    assert_eq!(p.axial_stepdown, 1.5, "the slice along X is the Stepover");
+    assert_eq!(p.flute_step, 7., "the band along the tool is the Stepdown");
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0., -10., -12.),
+            max: Point3::new(60., 10., 12.),
+        },
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let plan = plan_end(&setup, &p, &ctx).unwrap();
+    // 9.8 mm from the stock end at 60 to the target at 50.2, in slices of
+    // at most 1.5 mm: seven equal slices of 1.4 mm.
+    assert_eq!(plan.axial_planes.len(), 7);
+    for band in &plan.bands {
+        assert!(band.heights.1 - band.heights.0 <= 7. + 1e-9, "{band:?}");
+    }
+}
+
+/// Decision 0547 item 3: the End labels say which setting is which.
+#[test]
+fn req_op_24_req_op_16_end_labels_name_the_slice_and_the_band() {
+    use openchuck_path::{Facing, ParameterValue, Strategy};
+    let values = [("shape".to_owned(), ParameterValue::Text("end".into()))]
+        .into_iter()
+        .collect();
+    let schema = Facing.schema_for(&values);
+    let label = |name: &str| schema.get(name).unwrap().label.clone();
+    assert_eq!(label("stepover"), "Stepover (slice thickness along X)");
+    assert_eq!(label("stepdown"), "Stepdown (band along the tool)");
 }

@@ -25,9 +25,11 @@ pub struct EndFacingParameters {
     pub extent: FacingExtent,
     /// Margin at all four projected edges.
     pub margin: f64,
-    /// Maximum inward axial slice, limited by the cutting diameter.
+    /// Maximum inward axial slice, limited by the cutting diameter: the
+    /// operation's Stepover, a width across the tool (decision record 0547).
     pub axial_stepdown: f64,
-    /// Maximum spacing between flute bands; no greater than flute length.
+    /// Maximum spacing between flute bands; no greater than flute length:
+    /// the operation's Stepdown, a depth along the tool (decision record 0547).
     pub flute_step: f64,
     /// Initial displayed A for end-facing views.
     pub start_angle: Degrees,
@@ -56,8 +58,11 @@ impl EndFacingParameters {
         Ok(Self {
             extent: FacingExtent::from_name(parameters.text(parameter::EXTENT)?)?,
             margin: parameters.number(parameter::MARGIN)?,
-            axial_stepdown: parameters.number(roughing::STEPDOWN)?,
-            flute_step: parameters.number(names::STEPOVER)?,
+            // The slice along X is across the tool and the band along it,
+            // as a tool's cutting data defines Stepover and Stepdown (TL-05;
+            // decision record 0547 item 3).
+            axial_stepdown: parameters.number(names::STEPOVER)?,
+            flute_step: parameters.number(roughing::STEPDOWN)?,
             start_angle: Degrees(parameters.number(roughing::START_ANGLE)?),
             max_angle_step: Degrees(parameters.number(roughing::MAX_ANGLE_STEP)?),
             allowance: parameters.number(names::STOCK_TO_LEAVE)?,
@@ -131,7 +136,7 @@ pub fn plan_end(
         || parameters.axial_stepdown > setup.tool.diameter.0
     {
         return Err(refuse(
-            "axial stepdown must be above zero and no greater than cutting diameter",
+            "the Stepover (slice thickness along X) must be above zero and no greater than the cutting diameter",
         ));
     }
     if !parameters.flute_step.is_finite()
@@ -139,7 +144,7 @@ pub fn plan_end(
         || parameters.flute_step > setup.tool.flute_length.0
     {
         return Err(refuse(
-            "flute band spacing must be above zero and no greater than flute length",
+            "the Stepdown (band along the tool) must be above zero and no greater than the flute length",
         ));
     }
     if !parameters.start_angle.0.is_finite()
