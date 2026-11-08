@@ -1,6 +1,6 @@
 # 0543: A ramp entry follows the pass's own toolpath, for every strategy that uses the shared entry (OP-11, OP-13, OP-14, OP-15, SET-09, OP-21, OP-02, NFR-07, NFR-12, GC-07, NFR-06; issue #639; lane RAMPENTRY)
 
-- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), on the condition that the clarification of "ramp to the first cut point" (the ramp reaches the pass's own depth at the first point) is in the record: it is, in section 1 and its worked examples. Proposed the same day by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers (relayed): every recommendation D1 to D10 as a package, with D7 made a setting on the operation, **Allow single-point plunge**, off by default; D10 as its own commit. Of the three points found while building (section 4, "Found while building"), the owner accepted the first as built (8 Nov 2026, relayed); the second he decided as option (b), the tip descending on the axis while A turns; the third is a proposed option, not built until he accepts it.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), on the condition that the clarification of "ramp to the first cut point" (the ramp reaches the pass's own depth at the first point) is in the record: it is, in section 1 and its worked examples. Proposed the same day by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers (relayed): every recommendation D1 to D10 as a package, with D7 made a setting on the operation, **Allow single-point plunge**, off by default; D10 as its own commit. **Amendments (8 Nov 2026, relayed by the coordinator):** the owner decided the points found while building, as amendments to this accepted record: point 1 accepted as built; point 2 decided as option (b), the tip descending on the axis while A turns; point 3 decided as (iii), both the steeper ramp near the axis and the plunge to remove face nubs. The record is accepted as amended.
 - **What it would amend or supersede:**
   - accepted [decision 0026](0026-entry-moves.md): item 5 (A does not move during a ramp) and the as-built ramp direction ("the ramp runs back from the first cut point along the first horizontal move of the pass"). Items 1 to 4 and 6 to 8 are unchanged; the helix keeps item 5 (D9).
   - accepted [decision 0242](0242-optional-back-and-forth-ramp.md): items 1 to 3, 5 and 8 (the flag, the fixed-A corridor, its one-diameter minimum and its certificate) are superseded; items 4 (no cut changed to make an entry fit), 6 (bounds, cancellation, no partial operation) and 7 (slotting and the NFR-12 notice) carry over to every ramp.
@@ -120,7 +120,7 @@ A pass that starts above the stock has nothing to ramp down into. It is entered 
 
 *Alternatives, kept for the record.* (a) Treat it as a single point under D7 (built first, replaced by this decision): refused unless Allow single-point plunge is on. (c) Always refuse. (d) Always plunge, without A turning.
 
-**3. A steeper ramp near the axis (D4): change requested; proposed below, not built until the owner accepts the proposed behaviour.**
+**3. Rings near the axis: decided (iii), both options below (owner, 8 Nov 2026, relayed).** The steeper ramp near the axis and the plunge to remove face nubs are both built, each off by default. When both are on, the nub plunge applies first: it removes the narrow material round the axis where the part leaves none, so those ring layers are not cut; the steeper ramp then handles the rings that remain.
 
 ![Turns against radius, fixed and adapted angle](0543-turns-against-radius.svg)
 
@@ -139,7 +139,7 @@ In the drawing (5 mm of descent, Ramp angle 3 degrees, maximum 15): fixed, a rin
 
 *What stays.* D4 (a)'s measure on the real path is kept: the option only chooses the angle for a pass, and the descent is still measured on the tip's real path. The 10-turn bound is kept. Lines and arcs that go back and forth are not affected. With the option off, the output is as built.
 
-*The owner's alternative: plunge the core (8 Nov 2026, relayed; he invites challenge).* "Once a suitable diameter of material is all that remains, the tool can plunge that aspect to remove the remaining material. This could be set at the tool diameter by default or be a user setting." Proposed below for his decision; not built.
+*The owner's second option: plunge to remove face nubs.* "Once a suitable diameter of material is all that remains, the tool can plunge that aspect to remove the remaining material. This could be set at the tool diameter by default or be a user setting." Decided (iii), with the names below. In user-facing text the material is a *face nub*, never a core.
 
 ![Roughing rings narrowing to a core that is plunged](0543-core-plunge.svg)
 
@@ -147,8 +147,8 @@ In the drawing (5 mm of descent, Ramp angle 3 degrees, maximum 15): fixed, a rin
 - **Which passes.** Rotary roughing (and rest roughing) in Rings or as a spiral, only. Never finishing: a finishing pass leaves the surface exact, and a plunge at the axis would not.
 - **When.** At a place along X where the material still to remove is a core round the axis no wider than the threshold, and the part leaves nothing inside that core (the core is all stock: past the part's free end, a cut-off, a waist the part does not fill). The core's width is the diameter of the deepest layer's ring there (twice the tip's distance from the axis), and the part's absence inside it is checked with the gouge drop along the tool axis at the axis itself.
 - **What replaces what.** The ring layers whose tip would be inside the core are not cut; one plunge at the axis at that X, at the plunge feed, removes the core (several plunges, one tool diameter apart along X, where the core is longer along X than the tool is wide). The layers above the core are ramped round as now.
-- **Setting.** **Plunge the core** (`plunge_core`, a flag, off by default) with **Core diameter** (`core_diameter`, mm, default the tool's cutting diameter, from 0 up to the tool's cutting diameter), in Entry, links and retract, roughing only.
-- **What the user sees.** A note in the form of decision 0536: "Plunge the core (operation '<name>'): the core no wider than N mm round the axis at X a to b mm is removed by K plunges instead of ring layers".
+- **Setting.** **Plunge to remove face nubs** (`plunge_face_nubs`, a flag, off by default) with **Face nub diameter** (`face_nub_diameter`, mm; empty means the tool's cutting diameter; from 0 up to the tool's cutting diameter), in Entry, links and retract, roughing only. Tooltip: "Where roughing in rings has narrowed the stock round the rotary axis to a nub no wider than the Face nub diameter, and the part leaves nothing inside it, the tool plunges at the axis to remove the nub instead of ramping round ever smaller rings. The tool must be able to plunge (centre cutting), and it cuts with its full width."
+- **What the user sees.** A note in the form of decision 0536: "Face nubs (operation '<name>'): the nub no wider than N mm round the rotary axis at X a to b mm is removed by K plunges instead of ring layers."
 
 *Challenges, honestly.*
 - **Centre cutting.** Only a tool that can cut straight down can plunge; with any other tool the setting would be refused naming the tool (as D7's plunge is).
@@ -164,7 +164,7 @@ In the drawing (5 mm of descent, Ramp angle 3 degrees, maximum 15): fixed, a rin
 - **(ii) Plunge the core.** Fewer turns and less time near the axis where the core is free stock; but a full-width plunge, centre-cutting tools only, roughing only, and no help where the part fills the core.
 - **(iii) Both.** (ii) where the core is free stock, (i) for the small rings that remain.
 
-*Recommendation (for the owner's decision): (i) now; (ii) later, if a machine trial shows the core rings are a problem.* (i) covers every case that refuses today, including rings round a thin part where (ii) cannot apply, and keeps the entry a ramp, the reason the user chose Ramp. (ii) brings back the full-width plunge the ramp avoids, so it is better added as its own option once there is evidence it is worth that load. (iii) is the complete answer if the owner wants both now; it costs the most to build and test before the freeze.
+*The lane's recommendation was (i) now and (ii) later; the owner decided (iii), both.* (i) covers every case that refuses today, including rings round a thin part where (ii) cannot apply, and keeps the entry a ramp, the reason the user chose Ramp. (ii) brings back the full-width plunge the ramp avoids, so it is better added as its own option once there is evidence it is worth that load. (iii) is the complete answer if the owner wants both now; it costs the most to build and test before the freeze.
 
 **Where the tool's ability to plunge is checked (D7).** The path library does not know whether the tool is centre cutting. The application checks after generation: a Ramp or Lead operation whose path holds a plunge (a single-point pass) is refused, naming the tool, when the tool cannot plunge. This also covers decision 0544 item 7.
 
