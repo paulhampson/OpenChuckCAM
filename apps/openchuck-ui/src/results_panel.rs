@@ -88,6 +88,20 @@ pub fn probe_text(by: ColourBy, value: Option<(f64, bool)>, tolerance: f64) -> S
     }
 }
 
+/// The Facing line of an operation: what was covered, and, only when the
+/// run was simulated, that the simulation shows what it removed (NFR-12;
+/// decision 0536, the owner's answer of 8 Nov 2026 to (c2), refined).
+fn facing_line(name: &str, simulated: bool) -> String {
+    if simulated {
+        format!(
+            "{name}: Facing covered the end faces it was asked to; the simulation shows what it \
+             removed."
+        )
+    } else {
+        format!("{name}: Facing covered the end faces it was asked to.")
+    }
+}
+
 /// The fixed bin edges of the histogram, millimetres: the thresholds of the
 /// part's colour bands (`DeviationBand`), mirrored below the surface for the
 /// overcut. Only the edges beyond the tolerance and within the extremes are
@@ -671,9 +685,7 @@ impl ResultsPanel {
                     .project
                     .operation(info.operation)
                     .map_or("Facing", |o| o.name.as_str());
-                ui.label(format!(
-                    "{name}: Facing covered the end faces it was asked to; the simulation shows what it removed."
-                ));
+                ui.label(facing_line(name, run.simulation.is_some()));
             }
             for note in &run.notes {
                 if note.contains("Intentionally unfaced:") {
@@ -1382,6 +1394,21 @@ mod tests {
         assert_eq!(overcut_text(&none), "none");
         assert!(none.histogram.is_empty());
         assert!(histogram(&[f64::NAN], tolerance).is_empty());
+    }
+
+    #[test]
+    fn req_nfr_12_the_facing_line_names_the_simulation_only_when_there_is_one() {
+        // The owner's answer of 8 Nov 2026 to (c2), refined (decision 0536):
+        // a run that was only generated has no simulation to point to.
+        assert_eq!(
+            facing_line("2 Face", false),
+            "2 Face: Facing covered the end faces it was asked to."
+        );
+        assert_eq!(
+            facing_line("2 Face", true),
+            "2 Face: Facing covered the end faces it was asked to; the simulation shows what it \
+             removed."
+        );
     }
 
     #[test]

@@ -1068,7 +1068,12 @@ fn generate_unnamed(
         .transpose()?
         .flatten();
     if let Some(proof) = &facing {
-        notes.push(openchuck_path::Notice::information("Facing covered the end faces it was asked to; the simulation shows what it removed, limited by its resolution, and the whole-part deviation is unchanged"));
+        // Generation knows of no simulation, so the note says what was covered
+        // only; the Simulate results add what the simulation shows (the
+        // owner's answer of 8 Nov 2026 to (c2), refined; decision 0536).
+        notes.push(openchuck_path::Notice::information(
+            "Facing covered the end faces it was asked to.",
+        ));
         if proof.description()?.extent != openchuck_path::facing::extents::FacingExtent::WholeStock
         {
             notes.push(openchuck_path::Notice::information("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted."));

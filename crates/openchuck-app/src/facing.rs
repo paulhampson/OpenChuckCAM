@@ -480,7 +480,7 @@ mod tests {
         // (decision record 0536 step 5, OI-2097).
         assert_eq!(
             display.completion,
-            "Facing covered the end faces it was asked to; the simulation shows what it removed"
+            "Facing covered the end faces it was asked to."
         );
         let project = crate::test_project::TestProject::new("facing-pane-agreement");
         let view = crate::scene::SceneView {

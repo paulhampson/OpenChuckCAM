@@ -105,9 +105,9 @@ impl FacingVerification {
             }
             from = to;
         }
-        display.completion =
-            "Facing covered the end faces it was asked to; the simulation shows what it removed"
-                .into();
+        // The diagram is of the path, not of a simulation (decision 0536,
+        // the owner's answer of 8 Nov 2026 to (c2), refined).
+        display.completion = "Facing covered the end faces it was asked to.".into();
         Ok(display)
     }
 }

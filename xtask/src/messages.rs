@@ -62,7 +62,8 @@ pub fn product_code(text: &str) -> &str {
         // code.
         if line.trim() == "#[cfg(test)]"
             && lines.peek().is_some_and(|next| {
-                let next = next.trim();
+                // The declaration, without a trailing comment.
+                let next = next.split("//").next().unwrap_or_default().trim();
                 next.starts_with("mod ") && !next.ends_with(';')
             })
         {
@@ -313,6 +314,10 @@ mod tests {
                     #[cfg(test)]\nmod tests {\n    fn g() { Message::new(s, t, None, None); }\n}\n";
         assert_eq!(message_new_count(product_code(code)), 1);
         assert_eq!(claim_count(product_code(code)), 1);
+        // A trailing comment on the declaration changes nothing.
+        let commented = code.replace("mod shell_tests;", "mod shell_tests; // its own file");
+        assert_eq!(message_new_count(product_code(&commented)), 1);
+        assert_eq!(claim_count(product_code(&commented)), 1);
     }
 
     /// Every claim word is gone from the product texts (OI-2097, decision
