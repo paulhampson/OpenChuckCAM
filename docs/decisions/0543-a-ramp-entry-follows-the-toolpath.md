@@ -86,6 +86,12 @@ No refusal recommends a smaller angle (0242 item 6). Plunge and Helix remain the
 
 A pass that starts above the stock has nothing to ramp down into. It is entered as a plunge entry would enter it, the descent passing through air, as the single-line ramp of decision 0026 did; it is not refused. Refusing it, as 0312 item 3 did for the back-and-forth ramp, would refuse many roughing layers that start partly in air, since every ramp now follows the toolpath.
 
+**Found while building, on the public baluster example (8 Nov 2026; within D3, D4 and D7, reported to the owner with this record).**
+
+- *A step shorter than the minimum before a ring (D3).* Roughing in Rings starts some passes with a step along X shorter than the tool radius before its ring. Refusing it would refuse that roughing often. The back-and-forth continues over the pass's own path past the step, into the ring, up to the first rapid; A reverses during the entry only, inside the pass's footprint, and the note counts the reversals.
+- *A ring with its tip on the rotary axis (D7).* A finishing ring at an end face can keep its tip on the axis: it turns A but does not move relative to the part, so it has no path to follow. It takes D7's rule for a single point: refused unless Allow single-point plunge is on.
+- *The angle on the real path (D4 (a)).* The descent is measured on the tip's real path relative to the part: at each step, the arc at that step's own distance from the axis, plus any move across the machine. Measuring at the ring's smallest radius, as first written, gives no length at all on a ring that touches the axis. The 10-turn bound is unchanged; the refusal names the tip's mean distance from the axis.
+
 **Where the tool's ability to plunge is checked (D7).** The path library does not know whether the tool is centre cutting. The application checks after generation: a Ramp or Lead operation whose path holds a plunge (a single-point pass) is refused, naming the tool, when the tool cannot plunge. This also covers decision 0544 item 7.
 
 ## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
