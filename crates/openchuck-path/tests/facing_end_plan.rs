@@ -977,7 +977,7 @@ fn req_op_24_req_nfr_05_source_error_does_not_change_nominal_end_coordinate_or_l
 /// the same allowance for stock longer than modelled as one that stops
 /// above the stock top.
 #[test]
-fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_stock() {
+fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_face() {
     let part = part();
     let tool = tool();
     let machine = MachineProfile::example_x_rotary();
