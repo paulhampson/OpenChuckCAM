@@ -105,7 +105,9 @@ impl FacingVerification {
             }
             from = to;
         }
-        display.completion = "Facing coverage complete (verified path geometry)".into();
+        display.completion =
+            "Facing covered the end faces it was asked to; the simulation shows what it removed"
+                .into();
         Ok(display)
     }
 }
@@ -344,11 +346,11 @@ pub(crate) fn preview(
                     if display.description.source_projection_error.is_none() {
                         label
                             .text
-                            .push_str(" · tessellation bounds; source accuracy unverified");
+                            .push_str(" · tessellation bounds; source accuracy not checked");
                     }
                 }
                 if display.description.source_projection_error.is_none() {
-                    view.notes.push(format!("{}: Facing source projection accuracy is unknown; these tessellation bounds do not enable certified generation",operation.name));
+                    view.notes.push(format!("{}: Facing source projection accuracy is unknown; so Facing cannot be checked against these tessellation bounds",operation.name));
                 }
                 view.lines.extend(display.lines);
                 view.labels.extend(display.labels);

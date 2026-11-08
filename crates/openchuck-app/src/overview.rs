@@ -85,7 +85,8 @@ impl Step {
 /// colour and, for a user who cannot tell colours apart, its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StepHealth {
-    /// Good to go: green, a filled circle.
+    /// Nothing to report: green, a filled circle. It never says the program
+    /// is right for the machine (NFR-12; decision record 0536, OI-2097).
     Good,
     /// Something is stale or needs attention: amber, a triangle outline.
     Attention,
@@ -107,7 +108,7 @@ impl StepHealth {
     /// The words for the legend and the tooltip.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Good => "Good to go",
+            Self::Good => "Nothing to report",
             Self::Attention => "Needs attention",
             Self::Error => "Error to fix",
         }

@@ -5,8 +5,10 @@
 //! 0460, amending 0243 items 7 and 8). Startup discovery never opens a
 //! dialog: another project's kept recovery data is one line in Messages,
 //! whose action opens that project (or locates a moved one).
+use super::reminders::lower_first;
 use super::{Next, Shell};
 use eframe::egui::{self, Id};
+use openchuck_app::lead_in::Context;
 use openchuck_app::overview::{Message, MessageAction, Severity};
 use openchuck_app::project::recovery::{Catalog, Kind};
 use openchuck_app::{
@@ -16,6 +18,10 @@ use openchuck_app::{
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, UNIX_EPOCH};
+
+/// The topic of the recovery notices in Messages (decision record 0536
+/// section 3).
+const RECOVERY: &str = "Recovery";
 
 /// How often the Open recent menu polls for the folder check's answer.
 const RECENT_POLL: Duration = Duration::from_millis(50);
@@ -113,7 +119,14 @@ pub(super) struct State {
     pub(super) changed: bool,
     retiring: Vec<Session>,
     close_next: Option<Next>,
+    /// A recovery notice for Messages, at the Warning level: losing
+    /// recovery data is unexpected behaviour (decision record 0536
+    /// section 8).
     pub(super) problem: Option<String>,
+    /// Why the open project's latest checkpoint could not be written, until
+    /// one is: an Error, because the action failed (decision record 0536
+    /// section 8).
+    pub(super) write_failed: Option<String>,
 }
 
 pub(super) enum Effect {
@@ -153,6 +166,7 @@ impl State {
         // An offer belongs to the open that found it, never to a later one.
         self.offer = None;
         self.opened = None;
+        self.write_failed = None;
         if let Some(mut previous) = self.active.take() {
             match previous.close(previous_revision) {
                 Ok(()) => self.retiring.push(previous),
@@ -358,27 +372,66 @@ impl State {
                 let (text, action) = match (&c.problem, &c.catalog) {
                     (Some(_), _) | (None, None) => (
                         format!(
-                            "Recovery data was kept for a project last in {folder}, but it is not there now. If you moved the project, locate its new folder"
+                            "recovery data was kept for a project last in {folder}, but it is not there now. If you moved the project, locate its new folder"
                         ),
                         MessageAction::LocateRecovery(index),
                     ),
                     (None, Some(catalog)) if catalog.recovery_needed => (
                         format!(
-                            "Unsaved changes to '{}' in {folder} were kept when it closed unexpectedly. Open that project to recover or discard them",
+                            "unsaved changes to '{}' in {folder} were kept when it closed unexpectedly. Open that project to recover or discard them",
                             name.unwrap_or_else(|| "a project".into())
                         ),
                         MessageAction::OpenRecovery(index),
                     ),
                     (None, Some(_)) => (
                         format!(
-                            "Some recovery files for the project in {folder} are damaged. They were kept; open that project to see them"
+                            "some recovery files for the project in {folder} are damaged. They were kept; open that project to see them"
                         ),
                         MessageAction::OpenRecovery(index),
                     ),
                 };
-                Message::new(Severity::Warning, text, None, Some(action))
+                Message::about(
+                    Severity::Warning,
+                    RECOVERY,
+                    &Context::default(),
+                    &text,
+                    None,
+                    Some(action),
+                )
             })
             .collect()
+    }
+
+    /// The open project's recovery notices for Messages, each at its level
+    /// (decision record 0536 section 8): a recovery problem is a warning,
+    /// and a checkpoint that could not be written is an error, with "Save"
+    /// to keep the changes it would have protected.
+    pub(super) fn notices(&self) -> Vec<Message> {
+        let problem = self.problem.as_ref().map(|problem| {
+            Message::about(
+                Severity::Warning,
+                RECOVERY,
+                &Context::default(),
+                &lower_first(problem),
+                None,
+                None,
+            )
+        });
+        let failed = self.write_failed.as_ref().map(|e| {
+            Message::about(
+                Severity::Error,
+                "Recovery checkpoint",
+                &Context::default(),
+                &format!(
+                    "the latest checkpoint could not be written ({e}), so the unsaved changes \
+                     since the last one are not kept if the application closes unexpectedly. \
+                     Save the project to keep them"
+                ),
+                None,
+                Some(MessageAction::Save),
+            )
+        });
+        problem.into_iter().chain(failed).collect()
     }
 
     fn choose(&mut self, choice: Choice, minutes: u16) {
@@ -640,8 +693,11 @@ impl State {
                 self.problem = Some(e);
             }
             for notice in session.poll(session.elapsed()) {
-                if let Notice::Problem(e) = notice {
-                    self.problem = Some(format!("Recovery checkpoint failed: {e}"));
+                match notice {
+                    Notice::Problem(e) => self.write_failed = Some(e),
+                    // A checkpoint written clears the failure.
+                    Notice::Published { .. } => self.write_failed = None,
+                    _ => {}
                 }
             }
             if let Some(app) = app {
@@ -763,7 +819,10 @@ impl State {
 
 impl Shell {
     pub(super) fn checkpoint_frame(&mut self, ctx: &egui::Context) {
-        let previous = self.recovery.problem.clone();
+        let previous = (
+            self.recovery.problem.clone(),
+            self.recovery.write_failed.clone(),
+        );
         let allow_offer = self.dialog.is_none()
             && !self.edit_guard.active()
             && self.recovery_project.is_none()
@@ -775,7 +834,12 @@ impl Shell {
             self.settings.checkpoint_minutes,
             allow_offer,
         );
-        if self.recovery.problem != previous || std::mem::take(&mut self.recovery.changed) {
+        if (
+            self.recovery.problem.clone(),
+            self.recovery.write_failed.clone(),
+        ) != previous
+            || std::mem::take(&mut self.recovery.changed)
+        {
             self.overview_dirty = true;
         }
         for effect in effects {

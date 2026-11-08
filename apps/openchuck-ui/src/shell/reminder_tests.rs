@@ -186,3 +186,64 @@ fn req_ui_12_req_nfr_07_importing_with_no_project_is_an_error_dialog_naming_the_
     }
     assert!(rig.shows("Import model failed"), "{:?}", rig.texts());
 }
+
+#[test]
+fn req_ui_12_req_prj_08_recovery_notices_are_warnings_and_a_failed_write_an_error() {
+    let mut rig = Rig::cube("reminder-recovery", None);
+    rig.shell.recovery.problem = Some(
+        "Another application instance owns this project's checkpoints. Recovery writing is \
+         unavailable here."
+            .to_owned(),
+    );
+    rig.shell.recovery.write_failed = Some("the disk is full".to_owned());
+    rig.shell.overview_dirty = true;
+    rig.settle();
+    let notices = about(&rig, "Recovery");
+    assert_eq!(notices.len(), 2, "{:?}", rig.shell.overview.messages);
+    // Errors first: the checkpoint that could not be written.
+    let failed = notices
+        .iter()
+        .find(|m| m.severity == Severity::Error)
+        .unwrap();
+    assert_eq!(
+        failed.text,
+        "Recovery checkpoint: the latest checkpoint could not be written (the disk is full), so \
+         the unsaved changes since the last one are not kept if the application closes \
+         unexpectedly. Save the project to keep them."
+    );
+    assert_eq!(failed.action, Some(MessageAction::Save));
+    let warning = notices
+        .iter()
+        .find(|m| m.severity == Severity::Warning)
+        .unwrap();
+    assert!(
+        warning
+            .text
+            .starts_with("Recovery: another application instance owns"),
+        "{}",
+        warning.text
+    );
+    // A later checkpoint written clears the error.
+    rig.shell.recovery.write_failed = None;
+    rig.shell.overview_dirty = true;
+    rig.settle();
+    assert!(
+        about(&rig, "Recovery")
+            .iter()
+            .all(|m| m.severity == Severity::Warning)
+    );
+}
+
+/// The text after a lead-in goes on in lower case, but a name in capitals
+/// stays as it is (decision record 0536 section 3).
+#[test]
+fn req_ui_12_the_text_after_a_lead_in_starts_in_lower_case_unless_a_name() {
+    use super::reminders::lower_first;
+    assert_eq!(
+        lower_first("Your settings could not be read"),
+        "your settings could not be read"
+    );
+    assert_eq!(lower_first("STEP file missing"), "STEP file missing");
+    assert_eq!(lower_first("x"), "x");
+    assert_eq!(lower_first(""), "");
+}

@@ -10,20 +10,11 @@
 #
 # [claims]: uses of a word that claims safety ("verified", "certified", "ready to run" and
 # the others of `CLAIMS` in xtask/src/messages.rs) in a product file's string literals
-# (NFR-12; interface specification section 15). The texts listed are reworded in build
-# step 5 (OI-2097); some are internal refusal texts of the Facing check.
+# (NFR-12; interface specification section 15). Build step 5 reworded the last of them
+# (OI-2097), so the table is empty and stays empty: no product text may use one.
 
 [message_new]
-"apps/openchuck-ui/src/shell/checkpoints.rs" = 1
+"apps/openchuck-ui/src/shell.rs" = 2
 "crates/openchuck-app/src/overview.rs" = 25
 
 [claims]
-"apps/openchuck-ui/src/results_panel.rs" = 1
-"crates/openchuck-app/src/facing/display.rs" = 2
-"crates/openchuck-app/src/facing/written.rs" = 4
-"crates/openchuck-app/src/operation.rs" = 1
-"crates/openchuck-app/src/overview.rs" = 1
-"crates/openchuck-app/src/posting.rs" = 1
-"crates/openchuck-path/src/facing/validation.rs" = 1
-"crates/openchuck-path/src/facing/validation/end_layers.rs" = 1
-"crates/openchuck-path/src/facing/validation/legacy.rs" = 1

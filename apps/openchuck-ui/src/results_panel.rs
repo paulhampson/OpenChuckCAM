@@ -84,7 +84,7 @@ pub fn probe_text(by: ColourBy, value: Option<(f64, bool)>, tolerance: f64) -> S
         ColourBy::Remaining if v > 0.0 => left(),
         ColourBy::Remaining => "No material left".to_owned(),
         ColourBy::Overcut if v < 0.0 => overcut(),
-        ColourBy::Overcut => "No overcut".to_owned(),
+        ColourBy::Overcut => "No overcut at this point".to_owned(),
     }
 }
 
@@ -672,7 +672,7 @@ impl ResultsPanel {
                     .operation(info.operation)
                     .map_or("Facing", |o| o.name.as_str());
                 ui.label(format!(
-                    "{name}: Facing coverage complete (verified path geometry)."
+                    "{name}: Facing covered the end faces it was asked to; the simulation shows what it removed."
                 ));
             }
             for note in &run.notes {
@@ -1421,7 +1421,7 @@ mod tests {
         );
         assert_eq!(
             probe_text(ColourBy::Overcut, Some((0.35, false)), t),
-            "No overcut"
+            "No overcut at this point"
         );
     }
 

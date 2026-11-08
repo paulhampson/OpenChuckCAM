@@ -705,13 +705,8 @@ impl Shell {
         let Some(app) = &self.app else {
             if self.overview_dirty {
                 self.overview = Overview::no_project();
-                if let Some(problem) = &self.recovery.problem {
-                    self.overview.push(Message::new(
-                        Severity::Warning,
-                        problem.clone(),
-                        None,
-                        None,
-                    ));
+                for message in self.recovery.notices() {
+                    self.overview.push(message);
                 }
                 for message in self.recovery.messages() {
                     self.overview.push(message);
@@ -782,7 +777,14 @@ impl Shell {
                 ));
             }
             if let Some(problem) = &self.settings_problem {
-                overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+                overview.push(Message::about(
+                    Severity::Warning,
+                    "Settings",
+                    &openchuck_app::lead_in::Context::default(),
+                    &reminders::lower_first(problem),
+                    None,
+                    None,
+                ));
             }
             if let Some(message) = self
                 .unapplied_workholding
@@ -790,8 +792,8 @@ impl Shell {
             {
                 overview.push(message);
             }
-            if let Some(problem) = &self.recovery.problem {
-                overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            for message in self.recovery.notices() {
+                overview.push(message);
             }
             for message in self.recovery.messages() {
                 overview.push(message);

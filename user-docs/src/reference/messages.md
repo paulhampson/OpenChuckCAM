@@ -45,6 +45,27 @@ Each message has up to two links:
 | **Reselect** | Starts picking the selection set again. |
 | **Generate** | Generates the out-of-date operations. |
 | **Show result** | Opens a kept export result again. |
+| **Save** | Saves the project, for changes that are lost unless saved. |
+| **Undo** | Undoes the change the warning is about, as **Edit > Undo** does. |
+
+### Work that is lost unless you save
+
+Some warnings stay until you save the project, because the work they are about is kept only in memory:
+
+- "Recovered checkpoint: ..." after you recover a project from a recovery copy. The recovered changes are lost when the project closes unless you save it. Click **Save**.
+- "Tool numbers: ..." after the export changed the tool numbers. The program you wrote uses the new numbers, but the project reopens with the old ones until you save it, and the next program would not match your tool table. Click **Save** to keep them, or **Undo** to put them back.
+
+A recovery copy that could not be written is an error, "Recovery checkpoint: ...": the changes since the last copy are not protected if the program closes unexpectedly. Save the project, and see [Troubleshooting](../troubleshooting.md). The other recovery notices, led by "Recovery:", are warnings.
+
+A pick that was dropped because the part changed before it was added is an error, "Pick: ...", on the selection set or the setup's workholding, until you pick again.
+
+### When a command fails
+
+A command you gave that fails outright (a save, an undo, importing with no project open) opens a dialog. Its title names what failed, for example "Save failed", and its text starts with the same words: "Save: the folder cannot be written."
+
+### What you did is in the Jobs tab
+
+"Saved ...", "Opened ...", "Added ..." and "Copied 2 models into the project folder" are not messages. They are listed in the **Jobs** tab with how long ago they happened, and no count includes them.
 
 The **Results** tab holds the full text of the last run, grouped by operation, with the same three level chips. Each line takes its message's level, and a warning appears once. The moves the machine's feed limits slowed are one line for each operation, and notes about consecutive moves that say the same thing are one line. **Copy all** copies every line, with the build information, for a bug report.
 
@@ -66,9 +87,9 @@ Each item in the project panel has a mark; the legend under the panel names them
 
 ## The overall status
 
-At the right end of the bar along the top, one badge sums up the project: "Good to go", "Needs attention" or "Error to fix", the worst of the four steps. Its tooltip lists what is not right on each step. Click it to go to the first problem: a missing value, then an error, then an out-of-date operation, then a warning.
+At the right end of the bar along the top, one badge sums up the project: "Nothing to report", "Needs attention" or "Error to fix", the worst of the four steps. Its tooltip lists what is not right on each step. Click it to go to the first problem: a missing value, then an error, then an out-of-date operation, then a warning.
 
-"Good to go" means only that the program found nothing more to report. It does not mean the program is right for your machine.
+"Nothing to report" means only that the program found nothing more to report. It does not mean the program is right for your machine.
 
 The status bar at the bottom also shows how many machine values are not confirmed, as a link to the machine section; see [Confirm machine profile values](../how-to/confirm-machine-values.md).
 

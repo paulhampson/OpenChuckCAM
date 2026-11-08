@@ -97,3 +97,16 @@ pub(super) fn dropped_pick(project: &Project, dropped: DroppedPick) -> Message {
     };
     Message::about(Severity::Error, "Pick", &context, text, source, action)
 }
+
+/// `text` with its first letter in lower case, for the text after a
+/// lead-in, unless it starts a name in capitals ("STEP").
+pub(super) fn lower_first(text: &str) -> String {
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), Some(second)) if first.is_uppercase() && !second.is_uppercase() => first
+            .to_lowercase()
+            .chain(text[first.len_utf8()..].chars())
+            .collect(),
+        _ => text.to_owned(),
+    }
+}

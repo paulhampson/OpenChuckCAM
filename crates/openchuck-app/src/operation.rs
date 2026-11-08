@@ -1068,7 +1068,7 @@ fn generate_unnamed(
         .transpose()?
         .flatten();
     if let Some(proof) = &facing {
-        notes.push(openchuck_path::Notice::information("Facing coverage complete (verified path geometry); simulation remains resolution-limited and whole-part deviation is unchanged"));
+        notes.push(openchuck_path::Notice::information("Facing covered the end faces it was asked to; the simulation shows what it removed, limited by its resolution, and the whole-part deviation is unchanged"));
         if proof.description()?.extent != openchuck_path::facing::extents::FacingExtent::WholeStock
         {
             notes.push(openchuck_path::Notice::information("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted."));

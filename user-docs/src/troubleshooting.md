@@ -57,6 +57,24 @@ See [Simulation and deviation colours](concepts/simulation.md).
 
 **Write G-code** stays greyed out while something blocks it; the line above the button says what, and **Checks before writing** lists each problem marked **Blocks writing**. The usual cause is an operation that is out of date: generate again. The other common one is a box not yet ticked: the line then starts "Tick the box to say ...", for example "Tick the box to say you have read the possible collisions of these files." Read what the box is about before you tick it. On the command line, a result with possible collisions is written only with `--acknowledge-collision-warnings`. See [Export G-code and the setup sheet](how-to/export.md).
 
+## Messages about recovery copies
+
+"Recovered checkpoint: the project holds changes recovered from a checkpoint, ..."
+: A warning, after you recovered a project. The changes are kept only in memory until you save. Click **Save** in the message, or use **File > Save**.
+
+"Recovery checkpoint: the latest checkpoint could not be written (...), ..."
+: An error: the program could not write a recovery copy, for example because the project folder cannot be written. The changes since the last copy are not protected if the program closes unexpectedly. Save the project, then check that its folder can be written. The error goes when a later copy is written.
+
+"Recovery: another application instance owns this project's checkpoints. ..."
+: The project is open in another copy of the program, so this one writes no recovery copies. Close the other copy.
+
+"Recovery: this project folder is a copy of ..."
+: The recovery copies in the folder belong to the project it was copied from, so they are not offered here. They are kept aside, in a folder inside the project folder.
+
+## A command fails with a dialog
+
+The dialog's title names what failed, for example "Save failed" or "Import model failed", and its text says why. "Import model: there is no project open." means the model was dropped on the window with no project open: open or create a project first.
+
 ## The controller rejects a program, or the machine does something unexpected
 
 The program is not connected to the machine and cannot see what the controller does.
