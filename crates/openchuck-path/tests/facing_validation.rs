@@ -282,6 +282,7 @@ fn req_op_24_req_op_16_final_validation_runs_after_keepout_assembly_and_diagnost
                          stock is cut: no part of the tool reaches over the gripped length of \
                          the stock."
                     )
+                    .about(openchuck_path::topic::HELD_REGION)
                 ]
             );
             assert!(
