@@ -1039,3 +1039,101 @@ fn req_set_09_the_grip_field_says_how_much_of_the_part_the_grip_covers() {
         None
     );
 }
+
+/// The findings of `draft` for the first setup of a project with a 10 mm cube
+/// in stock from X -2 to 12: the head zone is X -2 to 0.
+fn findings(
+    name: &str,
+    draft: Workholding,
+) -> (
+    std::path::PathBuf,
+    Vec<openchuck_app::workholding::WorkholdingFinding>,
+) {
+    let (dir, app, _) = selection_project(name, Workholding::default());
+    let setup = app.project().setups()[0].id;
+    let found = app.start_check_workholding(setup, &draft).wait().unwrap();
+    (dir, found)
+}
+
+/// Applies `draft` as the workholding section does (it stores the draft
+/// unless a finding refuses), then checks that it is stored and that the
+/// stored workholding's check still gives `found`, on the same tab's row
+/// (decision record 0539 item 1).
+fn apply_stores(
+    name: &str,
+    draft: &Workholding,
+    found: &[openchuck_app::workholding::WorkholdingFinding],
+) {
+    let (dir, mut app, _) = selection_project(name, Workholding::default());
+    let setup = app.project().setups()[0].id;
+    assert!(found.iter().all(|f| !f.refuses), "{found:?}");
+    store(&mut app, setup, draft.clone());
+    let stored = app.project().setup(setup).unwrap().workholding.clone();
+    assert_eq!(&stored, draft, "the draft is stored");
+    let again = app.start_check_workholding(setup, &stored).wait().unwrap();
+    assert_eq!(again, found, "the warning stays on its row once stored");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// An automatic tab with no room at its end is a warning at Apply, as it is
+/// at generation: the workholding is stored and the finding stays on the
+/// tab's row (decision record 0539 item 1).
+#[test]
+fn req_ui_25_apply_stores_with_an_automatic_tab_that_has_no_room() {
+    let mut head = cylinder_tab(-2.0, 1.0, 4.0);
+    head.auto = Some(TabEnd::Head);
+    let draft = Workholding {
+        // The held region fills the head zone, so the head tab has no room.
+        start: Some(held(2.0)),
+        tabs: vec![head],
+        ..Workholding::default()
+    };
+    let (dir, found) = findings("no-room", draft.clone());
+    assert_eq!(found.len(), 1, "{found:?}");
+    // On the automatic tab's row, the first.
+    assert_eq!(found[0].tab, Some(0), "{found:?}");
+    assert!(found[0].text.contains("no room"), "{}", found[0].text);
+    assert!(!found[0].refuses, "a warning, not a refusal");
+    std::fs::remove_dir_all(dir).unwrap();
+    apply_stores("no-room-stored", &draft, &found);
+}
+
+/// An automatic tab over a tab placed by hand is a warning at Apply: the
+/// part is held by both and the G-code is not wrong (decision record 0539
+/// item 1).
+#[test]
+fn req_ui_25_apply_stores_with_tabs_that_overlap() {
+    let mut head = cylinder_tab(-2.0, 2.0, 4.0);
+    head.auto = Some(TabEnd::Head);
+    let draft = Workholding {
+        tabs: vec![head, cylinder_tab(-1.5, 1.0, 4.0)],
+        ..Workholding::default()
+    };
+    let (dir, found) = findings("overlap", draft.clone());
+    assert_eq!(found.len(), 1, "{found:?}");
+    // On the automatic tab's row, the first.
+    assert_eq!(found[0].tab, Some(0), "{found:?}");
+    assert!(found[0].text.contains("overlaps"), "{}", found[0].text);
+    assert!(!found[0].refuses, "a warning, not a refusal");
+    std::fs::remove_dir_all(dir).unwrap();
+    apply_stores("overlap-stored", &draft, &found);
+}
+
+/// A tab outside the head and tail zones is still refused at Apply
+/// (decision record 0523 item 5; decision record 0539 item 2).
+#[test]
+fn req_ui_25_apply_refuses_a_tab_outside_the_end_zones() {
+    let draft = Workholding {
+        tabs: vec![cylinder_tab(3.0, 2.0, 4.0)],
+        ..Workholding::default()
+    };
+    let (dir, found) = findings("outside", draft);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0]
+            .text
+            .contains("is not wholly in the head or the tail zone")
+    );
+    assert!(found[0].refuses);
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -289,7 +289,7 @@ fn req_tl_04_stock_left_by_earlier_operations_is_measured_not_the_blank() {
         stock: &roughed,
         ..thin.input()
     };
-    let e = check(&input, &turn(&thin, BAR), None).unwrap().message;
+    let e = check(&input, &turn(&thin, BAR), None).unwrap().text;
     assert!(
         e.contains("what the earlier operations in this setup left"),
         "{e}"
@@ -300,8 +300,8 @@ fn req_tl_04_stock_left_by_earlier_operations_is_measured_not_the_blank() {
 fn req_nfr_07_req_nfr_12_the_warning_gives_the_numbers_in_plain_words() {
     let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), 25.0);
     let warning = check(&f.input(), &turn(&f, -2.5), Some("finishing_layers")).unwrap();
-    assert_eq!(warning.parameter.as_deref(), Some("finishing_layers"));
-    let e = warning.message;
+    assert_eq!(warning.setting.as_deref(), Some("finishing_layers"));
+    let e = warning.text;
     eprintln!("{e}");
     for words in [
         "Flute length: the stock stands up to 27.249 mm above the tool's tip",
@@ -336,26 +336,24 @@ fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> 
 
 /// The flute check's warning on a generated path (decision record 0522), if
 /// it has one.
-fn flute_warning(path: &openchuck_path::GeneratedPath) -> Option<openchuck_path::PathWarning> {
-    path.warnings
-        .iter()
-        .find(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
+fn flute_warning(path: &openchuck_path::GeneratedPath) -> Option<openchuck_path::Notice> {
+    path.warnings()
+        .into_iter()
+        .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
         .cloned()
 }
 
 /// The flute warning of a generation that must be made and warned: the
 /// check never refuses, and never stays silent past the flutes (decision
 /// record 0522). Each warning is a note too (decision record 0175).
-fn warned(
-    result: openchuck_path::Result<openchuck_path::GeneratedPath>,
-) -> openchuck_path::PathWarning {
+fn warned(result: openchuck_path::Result<openchuck_path::GeneratedPath>) -> openchuck_path::Notice {
     let path = result.unwrap_or_else(|e| panic!("refused, not warned: {e}"));
     let warning = flute_warning(&path).unwrap_or_else(|| panic!("no flute warning"));
     assert!(
-        path.notes.iter().any(|n| n.message == warning.message),
+        path.notices.iter().any(|n| n.text == warning.text),
         "the warning is not a note"
     );
-    assert!(!warning.requires_acknowledgement);
+    assert!(!warning.acknowledgement.is_some());
     warning
 }
 
@@ -403,10 +401,10 @@ fn refused_and_accepted_at(
     flutes: (f64, f64),
 ) {
     let warning = warned(on_box(strategy, flutes.0, extra));
-    let text = &warning.message;
+    let text = &warning.text;
     assert!(text.contains("mm of flute"), "{}: {text}", strategy.name());
     assert!(text.contains("35.000 x 35.000 mm box"), "{text}");
-    assert_eq!(warning.parameter.as_deref(), parameter, "{text}");
+    assert_eq!(warning.setting.as_deref(), parameter, "{text}");
     clean(on_box(strategy, flutes.1, extra));
 }
 
@@ -483,7 +481,7 @@ fn req_tl_04_req_nfr_07_pencil_finishing_is_warned_with_short_flutes() {
         f.surface = stepped();
         run(|ctx| support::generate(&pencil, &f.input(), &values(&[]), ctx))
     };
-    let e = warned(at(box_depth() - 0.5)).message;
+    let e = warned(at(box_depth() - 0.5)).text;
     assert!(e.contains("mm of flute"), "{e}");
     clean(at(box_depth() + 0.5));
 }
@@ -601,7 +599,7 @@ fn below_the_axis(strategy: &dyn openchuck_path::Strategy, extra: &[(&str, Param
         f.surface = pin();
         run(|ctx| support::generate(strategy, &f.input(), &values(extra), ctx))
     };
-    let e = warned(on(24.0)).message;
+    let e = warned(on(24.0)).text;
     let depth = named_depth(&e);
     eprintln!("{}: {e}", strategy.name());
     assert!(
@@ -673,7 +671,7 @@ fn crank(flutes: f64, z: (f64, f64)) -> openchuck_path::Result<openchuck_path::G
 fn req_tl_04_req_nfr_07_the_crankshaft_in_35_by_35_box_stock_is_warned_with_25_mm_of_flute() {
     // The pins' sides facing the axis are 2.5 mm from it: with a pin under
     // the axis the tip is 2.5 mm below it (bound 24.749 + 2.502).
-    let e = warned(crank(25.0, (-17.5, 17.5))).message;
+    let e = warned(crank(25.0, (-17.5, 17.5))).text;
     eprintln!("centred: {e}");
     assert!(e.contains("25.000 mm of flute"), "{e}");
     assert!(e.contains("35.000 x 35.000 mm box"), "{e}");
@@ -682,7 +680,7 @@ fn req_tl_04_req_nfr_07_the_crankshaft_in_35_by_35_box_stock_is_warned_with_25_m
     // The same box 2.5 mm off the axis in Z, as bounding-box stock can be:
     // its farthest corner is hypot(17.5, 20) = 26.575 mm from the axis, and
     // the cut approaches 30 mm (the owner's report).
-    let e = warned(crank(25.0, (-15.0, 20.0))).message;
+    let e = warned(crank(25.0, (-15.0, 20.0))).text;
     eprintln!("off the axis: {e}");
     assert!(e.contains("26.575 mm from the rotary axis"), "{e}");
     assert!(named_depth(&e) > 26.0, "{e}");
@@ -703,7 +701,7 @@ fn req_tl_04_req_nfr_07_pencil_finishing_on_the_crankshaft_is_warned_at_the_dept
         });
         run(|ctx| support::generate(&pencil, &f.input(), &values(&[]), ctx))
     };
-    let e = warned(on(1.0)).message;
+    let e = warned(on(1.0)).text;
     eprintln!("pencil: {e}");
     let depth = named_depth(&e);
     warned(on(depth - 0.05));
@@ -833,7 +831,7 @@ fn req_tl_04_req_nfr_07_stock_with_no_exact_answer_is_held_to_a_conservative_bou
     let at = |flutes: f64, stock: &dyn StockModel| {
         let f = fixture(boxed((-17.5, 17.5), (-17.5, 17.5)), flutes);
         let input = openchuck_path::StrategyInput { stock, ..f.input() };
-        check(&input, &turn(&f, BAR), None).map(|w| w.message)
+        check(&input, &turn(&f, BAR), None).map(|w| w.text)
     };
     // Exact for the same round: 0.5 mm.
     assert!(at(0.6, &round).is_none());
@@ -1014,7 +1012,7 @@ fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
     };
     let first = vec![vec![350.0, 170.0]];
     let neg = (-25.0, 10.0);
-    let e = warned(on(25.0, first.clone(), neg, neg)).message;
+    let e = warned(on(25.0, first.clone(), neg, neg)).text;
     assert!(e.contains("30.355 mm"), "{e}");
     let cut = on(31.0, first, neg, neg).unwrap();
     assert!(flute_warning(&cut).is_none());
@@ -1032,7 +1030,7 @@ fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
     // deeper.
     let pos = (-10.0, 25.0);
     let carried = vec![vec![0.0, 90.0, 180.0, 270.0, 360.0], vec![10.0, 190.0]];
-    let e = warned(on(25.0, carried.clone(), pos, pos)).message;
+    let e = warned(on(25.0, carried.clone(), pos, pos)).text;
     assert!(e.contains("30.355 mm"), "{e}");
     clean(on(31.0, carried, pos, pos));
     // The owner's Codex review of #534: a first pass given as 270 then 90,
@@ -1040,7 +1038,7 @@ fn req_tl_04_req_nfr_07_the_generation_checks_the_turn_assembly_writes() {
     // to -90 then -270 and reaches 30.355 mm (at -225); the raw step's
     // nearest turn, 270 to 450, reads 21.926 mm only.
     let codex = (vec![vec![270.0, 90.0]], (-10.0, 25.0), (-25.0, 10.0));
-    let e = warned(on(25.0, codex.0.clone(), codex.1, codex.2)).message;
+    let e = warned(on(25.0, codex.0.clone(), codex.1, codex.2)).text;
     assert!(e.contains("30.355 mm"), "{e}");
     clean(on(31.0, codex.0.clone(), codex.1, codex.2));
     // And the same half turn after a pass that wraps: after 0 to 360, the
@@ -1109,9 +1107,7 @@ fn req_tl_04_req_nfr_07_stock_between_two_readings_of_a_move_is_not_missed() {
     // Neither end alone meets it.
     assert!(check(&f.input(), &pass(&[start]), None).is_none());
     assert!(check(&f.input(), &pass(&[end]), None).is_none());
-    let e = check(&f.input(), &pass(&[start, end]), None)
-        .unwrap()
-        .message;
+    let e = check(&f.input(), &pass(&[start, end]), None).unwrap().text;
     assert!(e.contains("1.000 mm of flute"), "{e}");
     assert!(named_depth(&e) >= 15.0 - 1e-6, "{e}");
     // With 15.1 mm of flute the same move is accepted: the bound between
@@ -1174,8 +1170,7 @@ fn written(
                 segment(MoveKind::Rapid, pose(14.0, 40.0)),
             ],
         },
-        notes: Vec::new(),
-        warnings: Vec::new(),
+        notices: Vec::new(),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     }
@@ -1207,7 +1202,7 @@ fn req_tl_04_req_nfr_07_fed_moves_deeper_than_the_cut_are_warned_and_rapids_are_
         let e = run(|ctx| check_path(&f.input(), &written(&f, kind, 5.0, 15.0), None, ctx))
             .unwrap()
             .unwrap()
-            .message;
+            .text;
         assert!(e.contains("stands up to 12.500 mm"), "{kind:?}: {e}");
         assert!(e.contains("10.000 mm of flute"), "{kind:?}: {e}");
     }
@@ -1328,7 +1323,7 @@ fn req_tl_04_req_nfr_07_stock_flush_with_the_flutes_is_settled_in_bounded_work()
             stock: &stock,
             ..f.input()
         };
-        let result = check(&input, &turn(&f, BAR), None).map(|w| w.message);
+        let result = check(&input, &turn(&f, BAR), None).map(|w| w.text);
         let took = started.elapsed().as_secs_f64();
         assert!(took < 1.0, "{took} s");
         result
@@ -1416,7 +1411,7 @@ fn req_tl_04_req_nfr_07_stock_of_unknown_reach_between_readings_is_not_missed() 
     assert!(check(&input, &through(&[end], a), None).is_none());
     let e = check(&input, &through(&[start, end], a), None)
         .unwrap()
-        .message;
+        .text;
     assert!(e.contains("1.000 mm of flute"), "{e}");
     assert!(named_depth(&e) >= 15.0 - 1e-6, "{e}");
 
@@ -1429,7 +1424,7 @@ fn req_tl_04_req_nfr_07_stock_of_unknown_reach_between_readings_is_not_missed() 
         stock: &stock,
         ..f.input()
     };
-    let e = check(&input, &turn(&f, BAR), None).unwrap().message;
+    let e = check(&input, &turn(&f, BAR), None).unwrap().text;
     assert!(e.contains("the stock's size is not known"), "{e}");
 }
 
@@ -1467,7 +1462,7 @@ fn req_tl_04_req_nfr_07_a_cut_exactly_at_the_flutes_is_read_in_bounded_work() {
         };
         let passes = through(&[at(0.0), at(100.0)], a);
         let started = std::time::Instant::now();
-        let result = check(&f.input(), &passes, None).map(|w| w.message);
+        let result = check(&f.input(), &passes, None).map(|w| w.text);
         let took = started.elapsed().as_secs_f64();
         assert!(took < 1.0, "{took} s");
         result
@@ -1559,7 +1554,7 @@ fn req_nfr_07_req_tl_04_a_place_or_answer_that_is_not_a_number_is_warned() {
                 .collect(),
             ..Pass::default()
         }];
-        let e = check(&f.input(), &passes, None).unwrap().message;
+        let e = check(&f.input(), &passes, None).unwrap().text;
         assert!(e.contains("not a finite number"), "{e}");
     }
     // With 10 mm of flute, so the farthest radius (20 mm) does not settle
@@ -1573,7 +1568,7 @@ fn req_nfr_07_req_tl_04_a_place_or_answer_that_is_not_a_number_is_warned() {
         };
         let e = check(&input, &through(&[at(0.0), at(5.0)], Degrees(0.0)), None)
             .unwrap()
-            .message;
+            .text;
         assert!(e.contains("the stock's size is not known"), "{top}: {e}");
     }
 }
@@ -1641,8 +1636,7 @@ fn req_tl_04_req_nfr_07_a_move_of_many_turns_is_read_all_round() {
                     contact_length: Millimetres(1.0),
                 }],
             },
-            notes: Vec::new(),
-            warnings: Vec::new(),
+            notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         }
@@ -1653,7 +1647,7 @@ fn req_tl_04_req_nfr_07_a_move_of_many_turns_is_read_all_round() {
         let e = run(|ctx| check_path(&f.input(), &many(&f, turns), None, ctx))
             .unwrap()
             .unwrap()
-            .message;
+            .text;
         assert!(
             (named_depth(&e) - (17.5_f64.hypot(17.5) - BAR)).abs() < 1e-3,
             "{turns}: {e}"
@@ -1706,7 +1700,7 @@ fn req_tl_04_req_nfr_07_a_shank_wider_than_the_flutes_is_read_over_its_width() {
         }),
         ..f.input()
     };
-    let e = check(&input, &passes, None).unwrap().message;
+    let e = check(&input, &passes, None).unwrap().text;
     assert!((named_depth(&e) - 20.0).abs() < 1e-6, "{e}");
 }
 
@@ -1737,7 +1731,7 @@ fn req_tl_04_req_nfr_07_a_fed_move_after_a_rapid_point_is_read_along_it() {
         rapids: vec![1],
         ..Pass::default()
     }];
-    let e = check(&f.input(), &passes, None).unwrap().message;
+    let e = check(&f.input(), &passes, None).unwrap().text;
     assert!((named_depth(&e) - 17.5_f64.hypot(17.5)).abs() < 1e-3, "{e}");
 }
 
@@ -1770,7 +1764,7 @@ fn req_nfr_07_req_tl_04_a_rapid_point_that_is_not_a_number_is_warned_not_a_panic
         rapids: vec![0],
         ..Pass::default()
     }];
-    let e = check(&f.input(), &passes, None).unwrap().message;
+    let e = check(&f.input(), &passes, None).unwrap().text;
     assert!(e.contains("not a finite number"), "{e}");
     // The closed forms give no answer for a place that is not a number,
     // rather than panicking.

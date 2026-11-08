@@ -15,6 +15,8 @@
 //! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
+//! - `icon`: writes the application icon's PNG sizes, `.ico` and `.res` from its SVG;
+//!   `icon --check` reports committed files that differ (decision 0542; not part of `all`).
 //! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
 //! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
 //! - `release-gate`: the release gate (slice 20 item 9): `deps`, `cargo deny`, the golden G-code
@@ -34,8 +36,10 @@ mod deps;
 mod examples_zip;
 mod glibc_floor;
 mod golden;
+mod icon;
 mod licences;
 mod macos_app;
+mod messages;
 mod publish;
 mod records;
 mod registers;
@@ -59,8 +63,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Check {
-    /// Dependency rules (architecture sections 4 and 12).
+    /// Dependency rules (architecture sections 4 and 12), and the message
+    /// rules (decision record 0536), which CI runs with them.
     Deps,
+    /// The message rules alone: messages built outside `Message::about`, and
+    /// words that claim safety (decision record 0536 item 6.3; NFR-12).
+    Messages,
     /// SPDX headers and crate licence fields.
     Licences,
     /// Dependency pins, single declaration and NFR-14 records.
@@ -135,6 +143,13 @@ enum Check {
         #[arg(long)]
         tag: Option<String>,
     },
+    /// The application icon (decision 0542): render `apps/openchuck-ui/assets/icon/icon.svg`
+    /// to the committed PNG sizes and write `icon.ico` and `icon.res` from them.
+    Icon {
+        /// Write nothing; report each committed file that differs from what the SVG gives.
+        #[arg(long)]
+        check: bool,
+    },
     /// Build the macOS application bundle `OpenChuckCAM.app` from the Info.plist template, with
     /// `openchuck-ui` and the STEP reader inside it. Not signed or notarised.
     MacosApp {
@@ -204,7 +219,11 @@ fn run() -> Result<bool> {
     let cli = Cli::parse();
     let root = workspace_root()?;
     let checks: Vec<(&str, Findings)> = match cli.check {
-        Check::Deps => vec![("deps", deps::check(&root)?)],
+        Check::Deps => vec![
+            ("deps", deps::check(&root)?),
+            ("messages", messages::check(&root)?),
+        ],
+        Check::Messages => vec![("messages", messages::check(&root)?)],
         Check::Licences => vec![("licences", licences::check(&root)?)],
         Check::Records => vec![("records", records::check(&root)?)],
         Check::Trace { tests_from, report } => {
@@ -225,6 +244,11 @@ fn run() -> Result<bool> {
             coverage::check(&root, lcov.as_deref(), report.as_deref(), enforce)?,
         )],
         Check::Golden => vec![("golden", golden::check(&root)?)],
+        Check::Icon { check: true } => vec![("icon", icon::check(&root)?)],
+        Check::Icon { check: false } => {
+            icon::write(&root)?;
+            return Ok(true);
+        }
         Check::Replay {
             programs,
             docker,
@@ -296,6 +320,7 @@ fn run() -> Result<bool> {
         }
         Check::All => vec![
             ("deps", deps::check(&root)?),
+            ("messages", messages::check(&root)?),
             ("licences", licences::check(&root)?),
             ("records", records::check(&root)?),
             ("testdata", testdata::check(&root)?),

@@ -2214,7 +2214,7 @@ fn req_op_24_req_gc_07_req_set_09_legacy_default_with_workholding_matches_pre_sc
         let warnings = path
             .warnings
             .iter()
-            .map(|w| (&w.message, &w.parameter))
+            .map(|w| (&w.text, &w.setting))
             .collect::<Vec<_>>();
         serde_json::to_vec(&(&path.group, &path.notes, warnings)).unwrap()
     };

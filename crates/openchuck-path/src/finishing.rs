@@ -14,13 +14,13 @@
 //! before it is migrated to off (project schema 23), so it machines as
 //! before.
 
+use crate::notice::{Level, Notice};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::PathWarning;
 use crate::error::{PathError, Result};
 use crate::faces::FreeEnd;
 use crate::params::{
@@ -154,7 +154,7 @@ const AROUND: usize = 72;
 pub(crate) struct FreeEnds {
     pub(crate) passes: Vec<Pass>,
     pub(crate) notes: Vec<String>,
-    pub(crate) warnings: Vec<PathWarning>,
+    pub(crate) warnings: Vec<Notice>,
 }
 
 /// The turns at the part's free ends `ends` (decision record 0344): with
@@ -218,8 +218,11 @@ pub(crate) fn free_ends(
         let face = end.face;
         // Zero (none given) or NaN: no Stepdown.
         if stepdown.is_nan() || stepdown <= 0.0 {
-            out.warnings.push(PathWarning {
-                message: format!(
+            out.warnings.push(Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
                      keeps what earlier operations left. Set Stepdown to the depth of each \
                      layer, or add cutting data for this tool and material in the tool \
@@ -227,22 +230,25 @@ pub(crate) fn free_ends(
                      section: the project keeps its own copy of the tool, so a change in the \
                      library reaches it only then."
                 ),
-                parameter: Some(parameter::STEPDOWN.to_owned()),
-                requires_acknowledgement: false,
+                setting: Some(parameter::STEPDOWN.to_owned()),
+                acknowledgement: None,
             });
             continue;
         }
         // With no earlier operation in the setup its own stock is what is on
         // the machine (OI-1394); only a stock of no known size is skipped.
         if stock.max_radius().is_none() {
-            out.warnings.push(PathWarning {
-                message: format!(
+            out.warnings.push(Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: the \
                      setup's stock has no known size, so the tool would cut there blind. \
                      Define the stock, or turn off Face free ends."
                 ),
-                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
-                requires_acknowledgement: false,
+                setting: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                acknowledgement: None,
             });
             continue;
         }
@@ -293,8 +299,11 @@ pub(crate) fn free_ends(
             } else {
                 ("", "")
             };
-            out.warnings.push(PathWarning {
-                message: format!(
+            out.warnings.push(Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "{}the end face at X {face:.3} has nothing beyond it and is not faced: the \
                      stock beside it is {up_to}{:.3} mm deep{bound}, more than the tool's \
                      {:.3} mm of flute, so no turn is cut there and the end keeps what earlier \
@@ -306,8 +315,8 @@ pub(crate) fn free_ends(
                     input.tool.top(),
                     crate::flutes::stock_words(stock),
                 ),
-                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
-                requires_acknowledgement: false,
+                setting: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                acknowledgement: None,
             });
             continue;
         }
@@ -387,8 +396,11 @@ pub(crate) fn free_ends(
                     })
                 });
             if found {
-                out.warnings.push(PathWarning {
-                    message: format!(
+                out.warnings.push(Notice {
+                    level: Level::Warning,
+                    topic: None,
+                    segment: None,
+                    text: format!(
                         "the end face at X {face:.3} is faced down to the rotary axis: the tool \
                          cuts a ring {width:.3} mm wide from X {:.3} to {:.3} down to the axis, \
                          and the stock past the ring is not held by anything in this setup, so \
@@ -398,8 +410,8 @@ pub(crate) fn free_ends(
                         from.min(to),
                         from.max(to)
                     ),
-                    parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
-                    requires_acknowledgement: false,
+                    setting: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                    acknowledgement: None,
                 });
             }
         }
@@ -425,8 +437,11 @@ pub(crate) fn free_ends(
             }
         });
         if !held {
-            out.warnings.push(PathWarning {
-                message: format!(
+            out.warnings.push(Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "the end face at X {face:.3} is faced down to the rotary axis: the tool cuts \
                      a ring {width:.3} mm wide from X {from:.3} to {to:.3} down to the axis, and \
                      nothing in this setup holds the part on the other side of the ring (no held \
@@ -434,8 +449,8 @@ pub(crate) fn free_ends(
                      cut free there and thrown while the rotary axis turns. Before running this \
                      program, check the stock and the workholding on the machine"
                 ),
-                parameter: Some(parameter::FACE_FREE_ENDS.to_owned()),
-                requires_acknowledgement: false,
+                setting: Some(parameter::FACE_FREE_ENDS.to_owned()),
+                acknowledgement: None,
             });
         }
     }

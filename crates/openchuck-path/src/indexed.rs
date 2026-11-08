@@ -223,13 +223,14 @@ fn output(made: Made) -> Result<StrategyOutput> {
         ));
     }
     Ok(StrategyOutput {
-        notes: beyond_note(&made.passes, x0, x1)
-            .into_iter()
-            .chain(spaced)
-            .chain(made.layered)
-            .collect(),
+        notices: crate::strategy::notices(
+            warnings,
+            beyond_note(&made.passes, x0, x1)
+                .into_iter()
+                .chain(spaced)
+                .chain(made.layered),
+        ),
         passes: made.passes,
-        warnings,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

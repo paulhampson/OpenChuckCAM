@@ -37,6 +37,7 @@ mod export;
 pub mod facing;
 pub mod form;
 mod jobs;
+pub mod lead_in;
 pub mod library;
 pub mod machine_edit;
 pub mod machine_library;
@@ -533,7 +534,7 @@ impl Application {
     pub fn check_setup_workholding(
         &self,
         s: &openchuck_project::Setup,
-    ) -> Result<Vec<String>, AppError> {
+    ) -> Result<Vec<workholding::WorkholdingFinding>, AppError> {
         let document = self.document.clone();
         let s = s.clone();
         self.jobs
@@ -545,7 +546,6 @@ impl Application {
                 },
             )
             .wait()
-            .map(|found| found.into_iter().map(|f| f.text).collect())
     }
 
     /// Notes about the selections of `operation` that reach a held region or a

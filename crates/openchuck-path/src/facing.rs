@@ -260,8 +260,7 @@ impl Strategy for Facing {
         match region {
             Some(region) => Ok(StrategyOutput {
                 passes: self.passes_in_region(input, region, parameters, context)?,
-                notes: Vec::new(),
-                warnings: Vec::new(),
+                notices: Vec::new(),
                 unreached: Vec::new(),
                 shank_breaks: Vec::new(),
             }),
@@ -320,8 +319,7 @@ impl Facing {
             }
             return Ok(StrategyOutput {
                 passes,
-                notes: Vec::new(),
-                warnings: Vec::new(),
+                notices: Vec::new(),
                 unreached: Vec::new(),
                 shank_breaks: Vec::new(),
             });

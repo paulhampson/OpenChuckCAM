@@ -289,11 +289,9 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     let (dir, mut app) = project("checks-warned", false);
     let mut run = post(&mut app, OutputGrouping::Setup);
     let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm.";
-    run.groups[0].warnings.push(openchuck_path::PathWarning {
-        message: message.to_owned(),
-        parameter: Some("tolerance".to_owned()),
-        requires_acknowledgement: false,
-    });
+    run.groups[0].warnings.push(
+        openchuck_path::Notice::warning(message.to_owned()).with_setting("tolerance".to_owned()),
+    );
     let name = app
         .project()
         .operation(run.groups[0].operation)
@@ -1469,11 +1467,11 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     let mut run = post(&mut app, OutputGrouping::Setup);
     let message = "adaptive spacing could not confirm that the material left between the \
                    passes is within the allowed excess of 0.010 mm at 1 place";
-    run.groups[0].warnings.push(openchuck_path::PathWarning {
-        message: message.to_owned(),
-        parameter: Some("scallop".to_owned()),
-        requires_acknowledgement: true,
-    });
+    run.groups[0].warnings.push(
+        openchuck_path::Notice::warning(message.to_owned())
+            .with_setting("scallop".to_owned())
+            .to_acknowledge(openchuck_path::Acknowledgement::PartialPath),
+    );
     let name = app
         .project()
         .operation(run.groups[0].operation)
@@ -1526,11 +1524,7 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
     let mut ordinary = post(&mut app, OutputGrouping::Setup);
     ordinary.groups[0]
         .warnings
-        .push(openchuck_path::PathWarning {
-            message: "a warning".to_owned(),
-            parameter: None,
-            requires_acknowledgement: false,
-        });
+        .push(openchuck_path::Notice::warning("a warning".to_owned()));
     assert!(openchuck_app::partial_operations(app.project(), &ordinary).is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }

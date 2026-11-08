@@ -1114,12 +1114,22 @@ fn run(cli: Cli) -> Result<()> {
                 edited.workholding.tabs.push(parse_tab(text)?);
             }
             let id = edited.id;
-            // Tabs outside the head and tail zones, and tabs shorter along X than a
-            // tool the setup uses, are refused as they are when generating
-            // (OI-159, OI-180; decision 0045 item 4).
+            // The workholding is checked as Apply checks it: a tab outside the
+            // head and tail zones is refused and nothing is stored (OI-180;
+            // decision 0523 item 5); a tab shorter along X than a tool, an
+            // automatic tab with no room and tabs that overlap are warnings,
+            // said and stored (decisions 0523 and 0539).
             let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
                 let found = app.check_setup_workholding(setup)?;
-                anyhow::ensure!(found.is_empty(), "{}", found.join("\n"));
+                let refused: Vec<&str> = found
+                    .iter()
+                    .filter(|f| f.refuses)
+                    .map(|f| f.text.as_str())
+                    .collect();
+                anyhow::ensure!(refused.is_empty(), "{}", refused.join("\n"));
+                for warning in found.iter().filter(|f| !f.refuses) {
+                    eprintln!("warning: {}", warning.text);
+                }
                 Ok(())
             };
             refuse_findings(&app, &edited)?;

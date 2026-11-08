@@ -131,10 +131,11 @@ pub fn partial_operations(project: &Project, run: &Regeneration) -> Vec<String> 
         .iter()
         .filter(|o| o.enabled)
         .filter(|o| {
-            run.groups
-                .iter()
-                .filter(|g| g.operation == o.id)
-                .any(|g| g.warnings.iter().any(|w| w.requires_acknowledgement))
+            run.groups.iter().filter(|g| g.operation == o.id).any(|g| {
+                g.warnings
+                    .iter()
+                    .any(openchuck_path::Notice::is_partial_path)
+            })
         })
         .map(|o| o.name.clone())
         .collect()
@@ -466,11 +467,12 @@ pub(crate) fn export_checks_with(
                     for warning in &group.warnings {
                         // A partial path is written only once this result
                         // is acknowledged (decision record 0239 item 10).
-                        let text = if warning.requires_acknowledgement {
+                        let text = if warning.is_partial_path() {
                             format!(
                                 "Operation '{}' has a partial path, which must be acknowledged \
                                  before the files are written: {}",
-                                operation.name, warning.message
+                                operation.name,
+                                warning.sentence()
                             )
                         } else {
                             format!(
@@ -479,7 +481,7 @@ pub(crate) fn export_checks_with(
                                 crate::operation::warning_text(
                                     project,
                                     operation,
-                                    &warning.message
+                                    &warning.sentence()
                                 )
                             )
                         };
