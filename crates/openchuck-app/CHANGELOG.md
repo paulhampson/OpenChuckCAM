@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.51.0
+
+- **Changed output (0.51.0, or the next free version; RAMPENTRY; issues #639, #642; decision 0543, proposed):** every ramp entry follows the pass's own toolpath (see `openchuck-path`), so the program of every operation with Entry Ramp changes. The back-and-forth ramp's application checks are removed with it: the refusal on a STEP part and with a shank wider than the cutter (`ramp_entry`, its line in the form and its message in the overview) and the post-precision certificate in posting. The form shows Back-and-forth ramp only where a saved operation has it on, labelled inactive, and the new Allow single-point plunge setting in Entry, links and retract (inactive unless Entry is Ramp). A Ramp or Lead operation whose path plunges into a single-point pass is refused, naming the tool, when the tool cannot cut straight down (decision 0543 D7, decision 0544 item 7).
+
 ## Unreleased (MSGREVIEW, decision 0538 and decision 0536 step 2)
 
 - **Changed (decision 0538, accepted):** a possible collision is a warning to acknowledge. `collision_warnings` lists a result's possible collisions (the path's, a tab shorter than the tool, and each rapid the stock simulation found removing material), `collision_refusal` says why writing waits, and `EXPORT_COLLISION_LABEL` is the tick box's label. `OutputPlan` gains `collisions`, `acknowledge_collisions` and `collisions_acknowledged`, and `write_output` refuses until the tick. The export checks list each one ("has a possible collision, which must be acknowledged..."), with the rapid cuts the simulation found. The operation's mark reads "Needs acknowledging: ...", and `Message::to_acknowledge` puts such warnings first among the warnings in Messages. The files written are unchanged.

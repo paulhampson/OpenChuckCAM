@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.51.0
+
+- **Breaking, changed output (0.51.0, or the next free version, as the Merge Manager sequences it; RAMPENTRY; issues #639 and #642; decision 0543, proposed, the owner's answers of 8 Nov 2026 relayed; decision 0544 item 6):** every ramp entry follows the pass's own toolpath.
+  - **Output.** The program of every operation with Entry Ramp changes. A ramp starts the approach distance above the highest stock under the stretch of the pass it uses and descends at no more than the ramp angle to the first cut point, where the pass is cut unchanged:
+    - a line, or an arc shorter than a whole turn: back and forth over the start of the pass, an even number of legs, the last ending at the first cut point (minimum the tool radius; 10,000 legs at most);
+    - a ring: round the ring before its first point, A turning the pass's way, within the angle at the ring's smallest tip radius, at most 10 turns, the extra A counted against a limited A range;
+    - a spiral: round the rotary axis at the spiral's start X;
+    - where the pass itself falls more steeply than the angle just before its first point, the ramp follows that fall there, and a note names the passes.
+    The straight ramp behind the first cut point and the back-and-forth corridor are gone, so ramps beside a held region, on a rising part and on passes that turn A generate where they were refused. Plunge, lead and helix entries are unchanged on line passes. A pass that starts above the stock is entered as a plunge would be.
+  - **Output (issue #642).** Before a lead-in or a ramp moves across at the link's height to its start, the stock under the tool is checked along that whole move; where it is not clear by the approach distance the tool rises first (never above the retract height), and a note counts such entries.
+  - **API.** `EntryParameters` gains `allow_single_point_plunge` (common parameter `allow_single_point_plunge`, a flag, off by default; `params::names::ALLOW_SINGLE_POINT_PLUNGE`): off, a single-point pass under a ramp refuses the operation naming the setting; on, it is plunged, with a note naming the passes. `ramp_back_and_forth` is still read and has no effect.
+  - **Hosts.** A host that knows the tool cannot cut straight down refuses a Ramp or Lead path that holds a plunge (the application does). Generated G-code remains the user's to verify before running it on a machine.
+
 ## Unreleased (MSGREVIEW, decision 0538 part a and decision 0536 step 2)
 
 - **Changed (decision 0538, accepted):** the warnings that may be a collision carry `Acknowledgement::PossibleCollision`, so a host asks for a tick before writing: the flute check's warning (every case of `flutes::check_path`), swarf cutting into a face next to it (`FacePath::neighbour_warnings`), a touched check set that only warns (not an avoid set), and a free end faced down to the axis with nothing holding the part on the other side (not the stock ring). The API, the paths and the texts are unchanged.
