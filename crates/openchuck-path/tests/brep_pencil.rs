@@ -196,11 +196,11 @@ fn req_op_09_brep_no_false_creases_between_the_facets_of_a_fillet() {
     )
     .unwrap();
     assert!(
-        out.notes
-            .iter()
+        out.notes()
+            .into_iter()
             .any(|n| n.contains("1 concave crease") && n.contains("edges")),
         "{:?}",
-        out.notes
+        out.notes()
     );
     for pass in &out.passes {
         for c in &pass.points {
@@ -223,10 +223,10 @@ fn req_op_04_req_op_09_pencil_says_it_leaves_the_end_faces() {
     )
     .unwrap();
     assert!(
-        out.notes.iter().any(|n| n.contains("end faces")
+        out.notes().into_iter().any(|n| n.contains("end faces")
             && n.contains("helical finishing, rest machining or Facing")),
         "{:?}",
-        out.notes
+        out.notes()
     );
 }
 
@@ -355,7 +355,7 @@ fn req_nfr_06_req_op_09_brep_pencil_is_identical_at_1_2_and_n_threads() {
     let v = values(&[(pencil_parameter::MAX_STEP, 0.5)]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -410,11 +410,11 @@ fn req_op_09_req_nfr_12_brep_an_edge_whose_side_cannot_be_told_is_left_out_and_s
     let f = Fixture::new(&model);
     let out = pencil(&f, &PencilFinishing::on_brep(&model).unwrap(), &[]).unwrap();
     assert!(
-        out.notes
-            .iter()
+        out.notes()
+            .into_iter()
             .any(|n| n.contains("1 edge of the part that may be an inside corner is not followed")),
         "{:?}",
-        out.notes
+        out.notes()
     );
 }
 

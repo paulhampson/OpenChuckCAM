@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- OpenChuckCAM icon, decision 0542: the user guide favicon, the one-colour mark in ink, or white when the browser is dark. Original work for the project.
+     Grid: 512 canvas, 32-unit cells (one cell is one pixel at 16 px); the mark's
+     shapes are drawn about the centre (256, 256). Edit this file, then run cargo xtask icon. -->
+<style>g{color:#1B1F24}@media (prefers-color-scheme: dark){g{color:#F2F4F7}}</style>
+<g transform="translate(256 256) scale(0.94) translate(-256 -256)" fill="currentColor" stroke="currentColor">
+  <!-- three jaws, 64 wide, 40 deep, 24 clear of the stock -->
+  <rect x="224" y="128" width="64" height="40" rx="8"/>
+  <rect x="224" y="128" width="64" height="40" rx="8" transform="rotate(120 256 256)"/>
+  <rect x="224" y="128" width="64" height="40" rx="8" transform="rotate(240 256 256)"/>
+  <!-- the round stock, radius 64 -->
+  <circle cx="256" cy="256" r="64"/>
+  <!-- the A-axis arrow: a ring of centre radius 192 and width 64 (outer edge 224), 285 degrees, with its head -->
+  <path d="M239.3 64.7 A192 192 0 1 1 66.9 222.7" fill="none" stroke-width="64" stroke-linecap="round"/>
+  <polygon points="85.3,118.3 -0.9,214.8 133.4,238.4" stroke-width="10" stroke-linejoin="round"/>
+</g>
+</svg>

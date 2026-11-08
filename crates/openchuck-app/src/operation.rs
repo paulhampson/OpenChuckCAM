@@ -19,7 +19,7 @@ use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
-    CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
+    CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, Notice, ParameterValue,
     PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, Shank, StockModel,
     Strategy, StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following,
     face_flow, generate, generate_in_region, generate_in_zones, pencil, swarf,
@@ -210,7 +210,7 @@ pub struct OperationPath {
     /// not meet a limit the operation sets, such as swarf cutting into the
     /// finished surface deeper than the tolerance (NFR-12; decision record
     /// 0175). Each is in `notes` too.
-    pub warnings: Vec<openchuck_path::PathWarning>,
+    pub warnings: Vec<openchuck_path::Notice>,
     /// The areas of the part the strategy could not reach, with the surface
     /// points in each (OP-20; decision record 0515): what the viewport marks
     /// on the part. They go with the path, so a path from the cache brings
@@ -384,13 +384,11 @@ pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &s
     let tool = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
-    match tool {
-        Some(tool) => format!(
-            "{title} (operation '{}', tool '{}'): {rest}",
-            operation.name, tool.name
-        ),
-        None => format!("{title} (operation '{}'): {rest}", operation.name),
+    let mut context = crate::lead_in::Context::operation(&operation.name);
+    if let Some(tool) = tool {
+        context = context.and_tool(&tool.name);
     }
+    crate::lead_in::in_form(title, &context, rest)
 }
 
 /// [`generate_with_part`] before its error names the operation.
@@ -931,14 +929,19 @@ fn generate_unnamed(
     warnings.extend(
         tab_warnings
             .into_iter()
-            .map(|message| openchuck_path::PathWarning {
-                message,
-                parameter: None,
-                requires_acknowledgement: false,
+            // A tab shorter than the tool is wide: the tool may cut through
+            // it and the part may come loose, a possible collision to
+            // acknowledge before writing (decision record 0538).
+            .map(|text| {
+                openchuck_path::Notice::warning(text)
+                    .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision)
             }),
     );
     // Notes about the values come first, then the notes about moves.
-    let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
+    let mut notes: Vec<String> = warnings
+        .iter()
+        .map(openchuck_path::Notice::sentence)
+        .collect();
     notes.extend(resolved.notes);
     notes.extend(leave_notes);
     // On a STEP part, the surface the tool was dropped on (decision 0209
@@ -970,9 +973,9 @@ fn generate_unnamed(
         ));
     }
     notes.extend(
-        path.notes
+        path.notices
             .iter()
-            .map(|n| format!("move {}: {}", n.segment, n.message)),
+            .map(|n| format!("move {}: {}", n.segment.unwrap_or(0), n.sentence())),
     );
     let facing = facing_setup
         .as_ref()
@@ -993,7 +996,11 @@ fn generate_unnamed(
         tool: profile,
         part_bounds,
         warnings: {
-            warnings.extend(path.warnings);
+            warnings.extend(
+                path.notices
+                    .into_iter()
+                    .filter(openchuck_path::Notice::is_warning),
+            );
             warnings
         },
         unreached: path.unreached.into(),
@@ -1338,7 +1345,7 @@ struct BrepLimits {
     watched: Vec<(String, Protection, BrepSurface)>,
     /// The faces that share an edge with the face set (decision 0532).
     neighbours: Option<BrepSurface>,
-    warnings: Vec<PathWarning>,
+    warnings: Vec<Notice>,
 }
 
 impl BrepLimits {
@@ -1476,15 +1483,11 @@ fn faces_next_to(brep: &BrepModel, faces: &[FaceId]) -> Vec<FaceId> {
 
 /// The warning for a set whose options leave it limiting nothing (decision
 /// 0176): the path is made as if it were not there.
-pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
-    PathWarning {
-        message: format!(
-            "The {set} limits nothing, because {why}. {fix} beside the set in the operation \
-             inspector's Geometry section, or take the set out of the operation."
-        ),
-        parameter: None,
-        requires_acknowledgement: false,
-    }
+pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> Notice {
+    Notice::warning(format!(
+        "The {set} limits nothing, because {why}. {fix} beside the set in the operation \
+         inspector's Geometry section, or take the set out of the operation."
+    ))
 }
 
 /// A boundary, avoid or check set of swarf on a STEP part, with its
@@ -2619,17 +2622,15 @@ mod tests {
         let path = f.run().unwrap();
         assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
         let warning = &path.warnings[0];
-        assert_eq!(warning.parameter.as_deref(), Some(names::TOLERANCE));
+        assert_eq!(warning.setting.as_deref(), Some(names::TOLERANCE));
         assert!(
-            warning
-                .message
-                .contains("cuts into the finished surface by")
-                && warning.message.contains("tolerance of 0.01 mm"),
+            warning.text.contains("cuts into the finished surface by")
+                && warning.text.contains("tolerance of 0.01 mm"),
             "{}",
-            warning.message
+            warning.text
         );
         assert!(
-            path.notes.iter().any(|n| n.contains(&warning.message)),
+            path.notes.iter().any(|n| n.contains(&warning.text)),
             "{:?}",
             path.notes
         );
@@ -2836,13 +2837,13 @@ mod tests {
         let warning = &path.warnings[0];
         assert!(
             warning
-                .message
+                .text
                 .starts_with("The boundary set 'chosen' limits nothing"),
             "{}",
-            warning.message
+            warning.text
         );
-        assert_eq!(warning.parameter, None);
-        assert_eq!(path.notes.first(), Some(&warning.message));
+        assert_eq!(warning.setting, None);
+        assert_eq!(path.notes.first(), Some(&warning.text));
         // Limit A alone stops the pass at the strip as before.
         let mut f = swarf_limits_fixture(&[]);
         f.select_as(
@@ -2906,9 +2907,9 @@ mod tests {
             );
             assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
             assert!(
-                path.warnings[0].message.contains(said),
+                path.warnings[0].text.contains(said),
                 "{}",
-                path.warnings[0].message
+                path.warnings[0].text
             );
         }
         // A wall that is cut and kept clear of is refused, naming it.
@@ -2958,10 +2959,8 @@ mod tests {
             .unwrap();
         assert!((furthest_cut(&off) - 38.0).abs() < 0.02);
         assert!(
-            off.warnings
-                .iter()
-                .any(|w| w.message.contains("into face 1")
-                    && w.parameter.as_deref() == Some(swarf::parameter::KEEP_OFF_END_FACES)),
+            off.warnings.iter().any(|w| w.text.contains("into face 1")
+                && w.setting.as_deref() == Some(swarf::parameter::KEEP_OFF_END_FACES)),
             "{:?}",
             off.warnings
         );

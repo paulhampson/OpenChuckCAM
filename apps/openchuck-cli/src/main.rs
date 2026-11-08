@@ -31,7 +31,7 @@ use openchuck_app::tools::{
     with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, ModelStorage, OutputGrouping, PostSelection, Query,
+    AppError, Application, CheckLevel, Command, ModelStorage, OutputGrouping, PostSelection, Query,
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
@@ -131,6 +131,8 @@ enum Action {
         /// The project folder.
         project: PathBuf,
         /// Folder to write G-code files into (default: print a summary only).
+        /// The export checks run first: when one blocks, such as a file
+        /// that fails its replay check, nothing is written.
         #[arg(long)]
         out: Option<PathBuf>,
         /// The post: a built-in id (`makera-z1`, `linuxcnc`) or a post folder.
@@ -154,6 +156,12 @@ enum Action {
         /// place; the warning says where). It acknowledges this run only.
         #[arg(long)]
         acknowledge_partial_path: bool,
+        /// Write the files of this run even though they hold possible
+        /// collisions of the tool, its shank or its holder (such as stock
+        /// past the flutes or a tab shorter than the tool; the warnings say
+        /// where). It acknowledges this run only; read each warning first.
+        #[arg(long)]
+        acknowledge_collision_warnings: bool,
     },
     /// Regenerate and simulate material removal for every operation, then
     /// compare the stock left with each setup's part (SIM-03, SIM-05 to
@@ -598,6 +606,7 @@ fn run(cli: Cli) -> Result<()> {
             grouping,
             setup_sheet,
             acknowledge_partial_path,
+            acknowledge_collision_warnings,
         } => {
             let mut app = open_project(&project, threads, create)?;
             if setup_sheet && out.is_none() {
@@ -631,6 +640,61 @@ fn run(cli: Cli) -> Result<()> {
                     sources.block_window.as_str()
                 );
             }
+            // The replay and G-code checks of every file, before anything is
+            // written (GC-15; decision record 0540).
+            for report in &result.reports {
+                match &report.comparison {
+                    Ok(c) => println!(
+                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
+                        report.file,
+                        report.moves,
+                        c.max_position_error,
+                        c.max_a_error,
+                        c.gcode_cut_seconds,
+                        c.ir_cut_seconds
+                    ),
+                    Err(why) => println!(
+                        "  {}: replay does not match the toolpath: {why}",
+                        report.file
+                    ),
+                }
+                for finding in &report.findings {
+                    println!("  {}: check: {finding}", report.file);
+                }
+            }
+            // The checks the export dialog makes before it writes, the same
+            // ones, so the two cannot drift (GC-15; decision record 0540):
+            // a blocking check writes nothing; a warning is said and the
+            // files are written. A run that makes no G-code file (no
+            // operation enabled) has nothing they protect, so it is not
+            // checked, as before.
+            let blocking = if post.is_some() && !result.gcode.is_empty() {
+                let checks = app.export_checks(Some(&result), Some(&result), None);
+                if !checks.checks.is_empty() {
+                    eprintln!("checks before writing the G-code:");
+                }
+                for check in &checks.checks {
+                    match check.level {
+                        CheckLevel::Blocking => eprintln!("error: {}", check.text),
+                        CheckLevel::Warning => eprintln!("warning: {}", check.text),
+                    }
+                }
+                checks
+                    .checks
+                    .iter()
+                    .filter(|c| c.level == CheckLevel::Blocking)
+                    .count()
+            } else {
+                0
+            };
+            if blocking > 0 {
+                // NFR-12: always printed when G-code is generated, written
+                // or not.
+                println!("{VERIFY_GCODE_NOTICE}");
+                anyhow::bail!(
+                    "{blocking} check(s) above stop the G-code from being written; nothing was written"
+                );
+            }
             // A partial path is written only when this run is acknowledged
             // (decision record 0239 item 10); nothing is written otherwise.
             let partial = openchuck_app::partial_operations(app.project(), &result);
@@ -649,6 +713,24 @@ fn run(cli: Cli) -> Result<()> {
                         .map(|n| format!("'{n}'"))
                         .collect::<Vec<_>>()
                         .join(", ")
+                );
+            }
+            // Possible collisions are written only when this run is
+            // acknowledged (decision record 0538). A flag asks nothing, so the
+            // command line still runs unattended (GC-16).
+            let collisions = openchuck_app::collision_warnings(app.project(), &result);
+            if out.is_some() && !collisions.is_empty() {
+                if !acknowledge_collision_warnings {
+                    anyhow::bail!(
+                        "{} Pass --acknowledge-collision-warnings to write them.",
+                        openchuck_app::collision_refusal(&collisions)
+                    );
+                }
+                eprintln!(
+                    "warning: writing with {} possible collision{} acknowledged for this run: \
+                     check each before running the program",
+                    collisions.len(),
+                    if collisions.len() == 1 { "" } else { "s" }
                 );
             }
             if let Some(out) = &out {
@@ -671,35 +753,9 @@ fn run(cli: Cli) -> Result<()> {
                 result.toolpath.groups.len(),
                 result.gcode.len()
             );
-            let mut unclean = 0;
-            for report in &result.reports {
-                match &report.comparison {
-                    Ok(c) => println!(
-                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
-                        report.file,
-                        report.moves,
-                        c.max_position_error,
-                        c.max_a_error,
-                        c.gcode_cut_seconds,
-                        c.ir_cut_seconds
-                    ),
-                    Err(why) => println!(
-                        "  {}: replay does not match the toolpath: {why}",
-                        report.file
-                    ),
-                }
-                for finding in &report.findings {
-                    println!("  {}: check: {finding}", report.file);
-                }
-                if !report.is_clean() {
-                    unclean += 1;
-                }
-            }
-            // NFR-12: always printed when G-code is generated.
+            // NFR-12: always printed when G-code is generated. A file whose
+            // checks failed was a blocking check above, so none is written.
             println!("{VERIFY_GCODE_NOTICE}");
-            if unclean > 0 {
-                anyhow::bail!("{unclean} G-code file(s) failed the checks above");
-            }
         }
         Action::Simulate { project, cell } => {
             let mut app = open_project(&project, threads, create)?;
@@ -1083,12 +1139,25 @@ fn run(cli: Cli) -> Result<()> {
                 edited.workholding.tabs.push(parse_tab(text)?);
             }
             let id = edited.id;
-            // Tabs outside the head and tail zones, and tabs shorter along X than a
-            // tool the setup uses, are refused as they are when generating
-            // (OI-159, OI-180; decision 0045 item 4).
+            // The workholding is checked as Apply checks it: a tab outside the
+            // head and tail zones is refused and nothing is stored (OI-180;
+            // decision 0523 item 5); a tab shorter along X than a tool, an
+            // automatic tab with no room and tabs that overlap are warnings,
+            // said and stored (decisions 0523 and 0539).
             let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
                 let found = app.check_setup_workholding(setup)?;
-                anyhow::ensure!(found.is_empty(), "{}", found.join("\n"));
+                // The warnings are said whether or not a refusal follows: a
+                // warning found with a refusal is still a warning (issue
+                // #611).
+                for warning in found.iter().filter(|f| !f.refuses) {
+                    eprintln!("warning: {}", warning.text);
+                }
+                let refused: Vec<&str> = found
+                    .iter()
+                    .filter(|f| f.refuses)
+                    .map(|f| f.text.as_str())
+                    .collect();
+                anyhow::ensure!(refused.is_empty(), "{}", refused.join("\n"));
                 Ok(())
             };
             refuse_findings(&app, &edited)?;

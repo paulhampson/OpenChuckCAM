@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use openchuck_path::{
-    CutPoint, GeneratedPath, LeaveZone, MeshSurface, ParameterSchema, ParameterValue, Parameters,
-    Pass, PathError, PathWarning, RegionConstraint, Result, Strategy, StrategyInput,
-    StrategyOutput, generate, generate_in_region, generate_in_zones,
+    CutPoint, GeneratedPath, LeaveZone, MeshSurface, Notice, ParameterSchema, ParameterValue,
+    Parameters, Pass, PathError, RegionConstraint, Result, Strategy, StrategyInput, StrategyOutput,
+    generate, generate_in_region, generate_in_zones,
 };
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::MoveKind;
@@ -101,8 +101,7 @@ impl Strategy for Plain {
     ) -> Result<StrategyOutput> {
         Ok(StrategyOutput {
             passes: self.passes(i, p, c)?,
-            notes: Vec::new(),
-            warnings: Vec::new(),
+            notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -116,12 +115,10 @@ impl Strategy for Plain {
     ) -> Result<StrategyOutput> {
         Ok(StrategyOutput {
             passes: self.passes(i, p, c)?,
-            notes: vec!["Existing strategy note".into()],
-            warnings: vec![PathWarning {
-                message: "Existing strategy warning".into(),
-                parameter: Some("tolerance".into()),
-                requires_acknowledgement: false,
-            }],
+            notices: vec![
+                Notice::information("Existing strategy note"),
+                Notice::warning("Existing strategy warning").with_setting("tolerance"),
+            ],
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -272,20 +269,16 @@ fn req_op_24_req_op_16_final_validation_runs_after_keepout_assembly_and_diagnost
                 .filter(|s| s.kind == MoveKind::Cutting)
                 .all(|s| s.end.tip.x.abs() >= 1.)
         );
-        assert!(path.notes.iter().any(|n| n.message.contains("held region")));
+        assert!(path.notices.iter().any(|n| n.text.contains("held region")));
         if route < 2 {
             assert_eq!(
-                path.warnings,
-                vec![PathWarning {
-                    message: "Existing strategy warning".into(),
-                    parameter: Some("tolerance".into()),
-                    requires_acknowledgement: false,
-                }]
+                path.warnings(),
+                vec![&Notice::warning("Existing strategy warning").with_setting("tolerance")]
             );
             assert!(
-                path.notes
+                path.notices
                     .iter()
-                    .any(|n| n.message == "Existing strategy note")
+                    .any(|n| n.text == "Existing strategy note")
             );
         }
     }

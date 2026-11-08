@@ -11,6 +11,8 @@
   <meta name="description" content="{{ description }}">
   <meta name="docs-version" content="@@DOCS_VERSION@@">
   <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="{{ path_to_root }}favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="{{ path_to_root }}favicon.png" type="image/png" sizes="32x32">
   <link rel="stylesheet" href="{{ path_to_root }}style.css">
   <script>
     // The reader's theme choice, if any, is kept in localStorage (not a cookie). Without one, the page follows the system.
@@ -23,7 +25,7 @@
   <a class="skip" href="#content">Skip to the content</a>
   {{#unless is_index}}<!--latest-banner--><div class="banner" role="note">This is the documentation for the nightly build, the development version built from main. It may describe features that are not in a release yet. <span data-newest-release></span></div><!--/latest-banner-->{{/unless}}
   <header class="site-header">
-    <a class="site-title" href="{{ path_to_root }}index.html">OpenChuckCAM <span>User guide</span></a>
+    <a class="site-title" href="{{ path_to_root }}index.html"><svg class="site-logo" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" focusable="false"><g transform="translate(256 256) scale(0.94) translate(-256 -256)" fill="currentColor" stroke="currentColor"><rect x="224" y="128" width="64" height="40" rx="8"/><rect x="224" y="128" width="64" height="40" rx="8" transform="rotate(120 256 256)"/><rect x="224" y="128" width="64" height="40" rx="8" transform="rotate(240 256 256)"/><circle cx="256" cy="256" r="64"/><path d="M239.3 64.7 A192 192 0 1 1 66.9 222.7" fill="none" stroke-width="64" stroke-linecap="round"/><polygon points="85.3,118.3 -0.9,214.8 133.4,238.4" stroke-width="10" stroke-linejoin="round"/></g></svg>OpenChuckCAM <span>User guide</span></a>
     <div class="tools">
       <span class="version-switch"><a class="version-link" href="{{ path_to_root }}../versions.html">@@VERSION_LABEL@@</a></span>
       {{#if print_enable}}<a href="{{ path_to_root }}print.html">Print the guide</a>{{/if}}

@@ -70,14 +70,14 @@ fn input_test(test: impl FnOnce(&StrategyInput<'_>)) {
 
 fn bytes(path: &GeneratedPath) -> Vec<u8> {
     let notes = path
-        .notes
+        .notices
         .iter()
-        .map(|n| (n.segment, n.message.as_str()))
+        .map(|n| (n.segment, n.text.as_str()))
         .collect::<Vec<_>>();
     let warnings = path
-        .warnings
-        .iter()
-        .map(|w| (&w.message, &w.parameter))
+        .warnings()
+        .into_iter()
+        .map(|w| (&w.text, &w.setting))
         .collect::<Vec<_>>();
     serde_json::to_vec(&(&path.group, notes, warnings)).unwrap()
 }

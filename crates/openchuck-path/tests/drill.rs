@@ -329,7 +329,7 @@ fn req_op_10_holes_at_several_angles_have_the_right_a_position_and_depth() {
     let rig = Rig::new(&several());
     let tool = drill(DIAMETER);
     let out = rig.output(&tool, &values(&[])).unwrap();
-    assert!(out.notes.is_empty(), "{:?}", out.notes);
+    assert!(out.notes().is_empty(), "{:?}", out.notes());
     assert_eq!(out.passes.len(), SEVEN.len());
     for (b, pass) in passes_by_hole(&rig, &out.passes) {
         // The hole entered from the up-facing end if through; the blind ones
@@ -604,15 +604,15 @@ fn req_op_10_holes_the_tool_cannot_drill_are_left_out_with_a_note() {
     let tool = drill(DIAMETER);
     let out = rig.output(&tool, &values(&[])).unwrap();
     assert_eq!(out.passes.len(), 1);
-    assert_eq!(out.notes.len(), 2, "{:?}", out.notes);
+    assert_eq!(out.notes().len(), 2, "{:?}", out.notes());
     assert!(
-        out.notes
-            .iter()
+        out.notes()
+            .into_iter()
             .any(|n| n.contains("hole 2") && n.contains("diameter"))
     );
     assert!(
-        out.notes
-            .iter()
+        out.notes()
+            .into_iter()
             .any(|n| n.contains("hole 3") && n.contains("radial plane"))
     );
     // A larger tolerance drills the 5 mm hole as a pilot.
@@ -705,10 +705,10 @@ fn req_op_10_req_tl_04_req_nfr_07_a_hole_deeper_than_the_flutes_is_warned() {
     .unwrap();
     // A warning, not a refusal (decision record 0522): the path is made.
     let flute = |path: &GeneratedPath| {
-        path.warnings
-            .iter()
-            .find(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
-            .map(|w| w.message.clone())
+        path.warnings()
+            .into_iter()
+            .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+            .map(|w| w.text.clone())
     };
     let e = flute(&rig.path(&short, &values(&[])).unwrap()).unwrap();
     assert!(e.contains("5.000 mm of flute"), "{e}");
