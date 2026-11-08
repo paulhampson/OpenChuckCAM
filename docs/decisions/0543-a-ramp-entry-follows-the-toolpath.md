@@ -1,6 +1,6 @@
 # 0543: A ramp entry follows the pass's own toolpath, for every strategy that uses the shared entry (OP-11, OP-13, OP-14, OP-15, SET-09, OP-21, OP-02, NFR-07, NFR-12, GC-07, NFR-06; issue #639; lane RAMPENTRY)
 
-- **Status:** proposed (8 Nov 2026) by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers, relayed by the coordinator on 8 Nov 2026 (decision 0049): every recommendation D1 to D10 accepted as a package, with one change: D7 is a setting on the operation, **Allow single-point plunge**, off by default, not an automatic plunge (D7 below). The record itself is accepted only when the owner has read it in full.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), on the condition that the clarification of "ramp to the first cut point" (the ramp reaches the pass's own depth at the first point) is in the record: it is, in section 1 and its worked examples. Proposed the same day by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers (relayed): every recommendation D1 to D10 as a package, with D7 made a setting on the operation, **Allow single-point plunge**, off by default; D10 as its own commit. The three points found while building (section 4, "Found while building") are put to the owner separately and are not agreed until his answer is relayed.
 - **What it would amend or supersede:**
   - accepted [decision 0026](0026-entry-moves.md): item 5 (A does not move during a ramp) and the as-built ramp direction ("the ramp runs back from the first cut point along the first horizontal move of the pass"). Items 1 to 4 and 6 to 8 are unchanged; the helix keeps item 5 (D9).
   - accepted [decision 0242](0242-optional-back-and-forth-ramp.md): items 1 to 3, 5 and 8 (the flag, the fixed-A corridor, its one-diameter minimum and its certificate) are superseded; items 4 (no cut changed to make an entry fit), 6 (bounds, cancellation, no partial operation) and 7 (slotting and the NFR-12 notice) carry over to every ramp.
@@ -38,12 +38,19 @@ With the held region in place, Plunge entered both pass shapes of roughing, and 
 
 ### 1. The rule
 
-**A ramp follows the pass's own toolpath. It starts at the approach distance above the stock, descends at no more than the ramp angle, and arrives at the pass's first cut point at full depth. The pass is then cut unchanged.**
+**A ramp follows the pass's own toolpath. It starts at the approach distance above the stock and descends, at no more than the ramp angle, to the pass's own depth. It arrives at the first point of the pass, at that depth, and the pass is then cut unchanged. It does not stop short of depth, and no part of the descent is left to the pass.**
+
+**What "the first cut point" means.** It is the first point of the pass, at the depth the pass cuts there, where normal cutting begins: the layer depth in roughing, the finished surface plus the stock to leave in finishing. The ramp's earlier positions are the same path of the pass, raised along the tool axis; the raise falls to zero at the first cut point.
+
+**Worked examples** (3 degrees, so the tip falls 0.0524 mm per mm of travel; stock 16.0 mm from the rotary axis; approach distance 1.0 mm):
+
+- *A line pass* whose first cut point is 14.0 mm from the axis. The ramp starts above that point at 17.0 mm (the approach distance above the stock), so it has 3.0 mm to descend, which needs 3.0 / 0.0524 = 57.2 mm of travel. It goes 28.6 mm out along the pass, falling to 15.5 mm, and 28.6 mm back, falling to 14.0 mm, and arrives at the first cut point at the pass's depth (14.0 mm). The pass then cuts from there as generated.
+- *A ring* whose first cut point is 12.0 mm from the axis. The ramp starts at 17.0 mm, 5.0 mm above it, which needs 95.4 mm of travel. At the ring's 12.0 mm radius that is 455.5 degrees of A, about 1.27 turns. The ramp starts 455.5 degrees before the first point, at the ring's own X, and turns A the way the ring turns, falling steadily from 17.0 mm to 12.0 mm, and arrives at the first cut point at the ring's depth (12.0 mm). The ring is then cut whole from there; its last stretch passes again, at depth, under the ramp's last turn, so no wedge of material is left.
 
 1. **Path.** The ramp's positions are the pass's own positions, in machine coordinates (X, Y, A), with the tool raised along its axis (machine Z, the height from the rotary axis) by an offset that falls to zero at the first cut point.
 2. **Start.** The approach distance above the highest stock beneath the ramp's whole path (D5).
 3. **Angle.** The tip descends no more steeply than the ramp angle, measured on its real path relative to the part (D4).
-4. **Finish.** At the pass's first cut point at full depth; the pass is cut exactly as generated (0242 item 4 carries over). The ramp never leaves a wedge of material that the pass does not cut again (section 2).
+4. **Finish.** At the first point of the pass, at the pass's own depth there (the ramp reaches depth; nothing of the descent is left to the pass); the pass is cut exactly as generated (0242 item 4 carries over). The ramp never leaves a wedge of material that the pass does not cut again (section 2).
 5. **Moves.** `LeadIn` at the plunge feed with no contact point (0026 item 4 unchanged). Where A moves, the moves are timed by the shared rules for simultaneous moves (OP-13), the plunge feed taken at the tool tip relative to the part, within the machine's A rate.
 
 ### 2. Closing over the wedge, by the shape of the pass
@@ -86,7 +93,7 @@ No refusal recommends a smaller angle (0242 item 6). Plunge and Helix remain the
 
 A pass that starts above the stock has nothing to ramp down into. It is entered as a plunge entry would enter it, the descent passing through air, as the single-line ramp of decision 0026 did; it is not refused. Refusing it, as 0312 item 3 did for the back-and-forth ramp, would refuse many roughing layers that start partly in air, since every ramp now follows the toolpath.
 
-**Found while building, on the public baluster example (8 Nov 2026; within D3, D4 and D7, reported to the owner with this record).**
+**Found while building, on the public baluster example (8 Nov 2026; within D3, D4 and D7; put to the owner by the coordinator, not agreed until his answer is relayed).**
 
 - *A step shorter than the minimum before a ring (D3).* Roughing in Rings starts some passes with a step along X shorter than the tool radius before its ring. Refusing it would refuse that roughing often. The back-and-forth continues over the pass's own path past the step, into the ring, up to the first rapid; A reverses during the entry only, inside the pass's footprint, and the note counts the reversals.
 - *A ring with its tip on the rotary axis (D7).* A finishing ring at an end face can keep its tip on the axis: it turns A but does not move relative to the part, so it has no path to follow. It takes D7's rule for a single point: refused unless Allow single-point plunge is on.
