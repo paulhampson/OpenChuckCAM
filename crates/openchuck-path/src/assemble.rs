@@ -38,6 +38,9 @@
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
+// Used by the entries of decision records 0543 and 0544 once they are built.
+#[cfg_attr(not(test), allow(dead_code))]
+mod pass_shape;
 mod ramp;
 mod ramp_refusal;
 mod walls;
