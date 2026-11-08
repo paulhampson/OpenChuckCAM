@@ -691,7 +691,11 @@ fn req_op_11_req_nfr_07_a_turning_lead_that_would_cut_the_finished_surface_is_re
 }
 
 #[test]
-fn req_op_11_req_nfr_07_a_turning_pass_with_its_tip_on_the_rotary_axis_is_refused_by_name() {
+fn req_op_11_a_turning_pass_with_its_tip_on_the_rotary_axis_is_plunged_with_a_note_and_no_lead_out()
+{
+    // An end face's ring: a lead has no plane of the cut at the axis, so it
+    // is entered as a single-point pass is (decision 0543 point 2, the
+    // owner's answer, relayed; 0544 item 4).
     let f = cylinder();
     let s = Arc {
         x: 20.0,
@@ -699,7 +703,17 @@ fn req_op_11_req_nfr_07_a_turning_pass_with_its_tip_on_the_rotary_axis_is_refuse
         height: Some(0.0),
         stock: None,
     };
-    let err = make(&f, &s, &lead_values(), &[]).unwrap_err();
-    assert!(err.contains("Lead entry: pass 1"), "{err}");
-    assert!(err.contains("on the rotary axis"), "{err}");
+    let path = make(&f, &s, &lead_values(), &[]).unwrap();
+    let kinds: Vec<MoveKind> = path.group.segments.iter().map(|s| s.kind).collect();
+    assert_eq!(kinds.iter().filter(|k| **k == MoveKind::Plunge).count(), 1);
+    assert!(!kinds.contains(&MoveKind::LeadIn));
+    assert!(!kinds.contains(&MoveKind::LeadOut));
+    assert!(
+        path.notices
+            .iter()
+            .any(|n| n.topic.as_deref() == Some("Lead entry")
+                && n.text.starts_with("pass 1 is a single point")),
+        "{:?}",
+        path.notices
+    );
 }

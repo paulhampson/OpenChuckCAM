@@ -94,14 +94,18 @@ pub(super) struct TurnLead {
     pub moves: Vec<(AxisPosition, Degrees)>,
 }
 
-/// Why a lead on a pass that turns A cannot be planned.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Unplanned {
-    /// The tip is on the rotary axis, so there is no distance around it.
-    OnAxis,
-}
-
 impl Entry {
+    /// Whether the tip at `end` is on the rotary axis, within the path
+    /// tolerance. A lead has no plane of the cut there, so such an end is
+    /// led like a single-point pass: a plunge with a note, and no lead-out
+    /// (decision 0543 point 2, the owner's answer, relayed).
+    fn on_axis(&self, b: &Builder<'_>, end: Option<&CutPoint>) -> bool {
+        end.is_some_and(|p| {
+            let at = b.rotary.to_axis(p.tip, p.a);
+            at.across.hypot(at.height) <= self.tolerance
+        })
+    }
+
     /// Whether this pass's lead-in is the lead of a pass that turns A.
     pub(super) fn turning_lead_in(
         &self,
@@ -113,32 +117,22 @@ impl Entry {
             return None;
         }
         match first_end(b, points, rapids, self.tolerance) {
-            End::Turning { sign, .. } => Some(sign),
-            End::Other => None,
+            End::Turning { sign, .. } if !self.on_axis(b, points.first()) => Some(sign),
+            _ => None,
         }
     }
 
     /// The lead-in arc of a pass that starts by turning A the way `sign`
     /// says: from one lead radius back and one above, round to the first
     /// point, tangent to the cut there (0544 item 1).
-    pub(super) fn arc_in(
-        &self,
-        b: &Builder<'_>,
-        points: &[CutPoint],
-        sign: f64,
-    ) -> std::result::Result<TurnLead, Unplanned> {
+    pub(super) fn arc_in(&self, b: &Builder<'_>, points: &[CutPoint], sign: f64) -> TurnLead {
         self.arc(b, points.iter(), sign, true)
     }
 
     /// The lead-out arc of a pass that ends by turning A the way `sign`
     /// says: from the last point, tangent to the cut, round to one lead
     /// radius on and one above.
-    pub(super) fn arc_out(
-        &self,
-        b: &Builder<'_>,
-        points: &[CutPoint],
-        sign: f64,
-    ) -> std::result::Result<TurnLead, Unplanned> {
+    pub(super) fn arc_out(&self, b: &Builder<'_>, points: &[CutPoint], sign: f64) -> TurnLead {
         self.arc(b, points.iter().rev(), sign, false)
     }
 
@@ -151,15 +145,13 @@ impl Entry {
         mut points: impl Iterator<Item = &'p CutPoint>,
         sign: f64,
         entering: bool,
-    ) -> std::result::Result<TurnLead, Unplanned> {
+    ) -> TurnLead {
         let Some(end) = points.next() else {
-            return Ok(TurnLead { moves: Vec::new() });
+            return TurnLead { moves: Vec::new() };
         };
         let p = b.rotary.to_axis(end.tip, end.a);
-        let rho = p.across.hypot(p.height);
-        if rho <= EPS {
-            return Err(Unplanned::OnAxis);
-        }
+        // Callers leave out an end on the rotary axis (`on_axis`).
+        let rho = p.across.hypot(p.height).max(EPS);
         // The unrolled frame: `s` the distance round the part at radius
         // `rho`, positive the way the pass runs; `h` the height.
         let unrolled = |q: &CutPoint| {
@@ -216,7 +208,7 @@ impl Entry {
         } else {
             (1..=m).map(|j| place(at(j))).collect()
         };
-        Ok(TurnLead { moves })
+        TurnLead { moves }
     }
 
     /// The deepest cut into the finished surface over `moves`, each at its
@@ -341,7 +333,7 @@ impl Entry {
         rapids: &[usize],
     ) -> Option<CutPoint> {
         let sign = self.turning_lead_in(b, points, rapids)?;
-        let (pos, a) = self.arc_in(b, points, sign).ok()?.moves.first().copied()?;
+        let (pos, a) = self.arc_in(b, points, sign).moves.first().copied()?;
         let tip = b.rotary.to_model(pos, a);
         Some(CutPoint {
             tip,
@@ -373,9 +365,7 @@ impl Entry {
             first_end(b, points, rapids, self.tolerance),
             End::Turning { closed: true, .. }
         );
-        let lead = self
-            .arc_in(b, points, sign)
-            .map_err(|_| on_axis(pass, "lead-in"))?;
+        let lead = self.arc_in(b, points, sign);
         self.check_turning(b, input, stock, pass, "lead-in", &lead, closed)?;
         let Some(&(start, a)) = lead.moves.first() else {
             return Ok(());
@@ -422,10 +412,11 @@ impl Entry {
         let End::Turning { sign, closed } = last_end(b, points, rapids, self.tolerance) else {
             return None;
         };
+        if self.on_axis(b, points.last()) {
+            return None;
+        }
         Some((|| {
-            let lead = self
-                .arc_out(b, points, sign)
-                .map_err(|_| on_axis(pass, "lead-out"))?;
+            let lead = self.arc_out(b, points, sign);
             self.check_turning(b, input, stock, pass, "lead-out", &lead, closed)?;
             for (pos, a) in &lead.moves {
                 let tip = b.rotary.to_model(*pos, *a);
@@ -475,12 +466,4 @@ pub(super) fn note_single_point(b: &mut Builder<'_>, pass: usize) {
             .notes
             .push(Notice::information(text).about(topic::LEAD_ENTRY)),
     }
-}
-
-fn on_axis(pass: usize, name: &str) -> PathError {
-    PathError::Strategy(format!(
-        "Lead entry: pass {}: the {name} has no way round the part, because the pass ends with \
-         the tool tip on the rotary axis. Set Entry to Plunge, Ramp or Helix.",
-        pass + 1
-    ))
 }
