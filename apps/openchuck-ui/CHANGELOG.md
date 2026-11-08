@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- MSGREVIEW (issue #611; decision 0539, accepted; UI-25): when Apply of the workholding section is refused, only the finding that refuses (a tab outside the end zones) is shown as an error and marks its tab as failing. A warning found with it (an automatic tab with no room, tabs that overlap, a tab shorter than a tool) stays a warning, in amber with the Warning mark, on its own row. Test `req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level`.
+
 - ICON (OI-2106; decision 0542, accepted): OpenChuckCAM has its own icon, a chuck seen end-on inside an A-axis arrow, white on a near-black tile. The window and the taskbar show it instead of the toolkit's default icon, and the Windows program file carries it, so Explorer shows it too. `cargo xtask icon` makes the files from `assets/icon/icon.svg`.
 
 - STALETAB (issue #558, sev1; decision 0528, accepted; UI-11, NFR-12): an Apply of the workholding section is stored when its check finishes, also when the user has moved on (an operation selected) before it finished; before, the result was taken only while the section was drawn, so the tab was not stored and the operations stayed up to date while the view drew the new tab. The section follows the stored setup while hidden, and Messages warns, on the setup's workholding, while a draft is not applied ("The workholding of '<setup>' has changes that are not applied. ..."). No change to generated output.
