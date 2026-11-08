@@ -1,0 +1,25 @@
+schema = 25
+id = "0c0c0634-0000-4000-8000-000000000101"
+order = "X"
+name = "3.175 mm ball (check 634)"
+
+[tool]
+diameter = 3.175
+flute_length = 12.0
+overall_length = 40.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "ball_end"
+
+[controller]
+number = 3
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.01
+plunge_feed = 200.0
+stepover = 0.5
+stepdown = 1.0

@@ -1,0 +1,25 @@
+schema = 25
+id = "0c0c0536-0000-4000-8000-000000000101"
+order = "V"
+name = "3.175 mm flat (check 0536)"
+
+[tool]
+diameter = 3.175
+flute_length = 25.0
+overall_length = 42.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "flat_end"
+
+[controller]
+number = 104
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.01
+plunge_feed = 200.0
+stepover = 0.5
+stepdown = 1.0

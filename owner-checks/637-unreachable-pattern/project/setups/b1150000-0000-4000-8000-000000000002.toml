@@ -1,0 +1,17 @@
+schema = 27
+id = "b1150000-0000-4000-8000-000000000002"
+order = "V"
+name = "Setup 1"
+part = "b1150000-0000-4000-8000-000000000001"
+material = "oak"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 42.0
+length = 52.0
+x_start = 9.0

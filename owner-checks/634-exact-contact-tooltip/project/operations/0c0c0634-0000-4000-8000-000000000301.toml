@@ -1,0 +1,11 @@
+schema = 25
+id = "0c0c0634-0000-4000-8000-000000000301"
+order = "X"
+name = "Helical, ball"
+setup = "0c0c0351-0000-4000-8000-000000000002"
+strategy = "helical_finishing"
+tool = "0c0c0634-0000-4000-8000-000000000101"
+selections = []
+
+[parameters]
+adaptive_spacing = false

@@ -1,0 +1,10 @@
+schema = 27
+id = "0c0c0442-0000-4000-8000-000000000201"
+order = "V"
+name = "Blade wall"
+model = "b1150000-0000-4000-8000-000000000001"
+model_hash = "blake3:883a66d9e35b50c8b8ff2e5380d698a14566c0e7d14eb92efc8dfb225de1c616"
+descriptors = []
+
+[target]
+faces = [19]
