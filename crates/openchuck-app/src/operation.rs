@@ -940,8 +940,8 @@ fn generate_unnamed(
     // Notes about the values come first, then the notes about moves. They
     // are information: the goal is met (decision 0536 section 1).
     let mut notes: Vec<String> = resolved.notes;
-    // A stock to leave other than the operation's: a warning until the owner
-    // answers (decision 0536 step 2, interim, question Q-G; P76).
+    // A stock to leave other than the operation's is a warning (decision
+    // 0536 step 2, the owner's answer to question Q-G; P76).
     warnings.extend(leave_notes.into_iter().map(openchuck_path::Notice::warning));
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
@@ -955,9 +955,9 @@ fn generate_unnamed(
         )
     {
         // Its variant that says Exact STEP surface contact does not apply is
-        // a warning until the owner answers; the rest describes where the
-        // tool was dropped, information (decision 0536 step 2, interim,
-        // question Q-G; P76).
+        // a warning; the rest describes where the tool was dropped,
+        // information (decision 0536 step 2, the owner's answer to question
+        // Q-G; P76).
         if note.contains("does not apply") {
             warnings.push(openchuck_path::Notice::warning(note));
         } else {
@@ -965,8 +965,8 @@ fn generate_unnamed(
         }
     }
     // A selection that reaches a region never machined leaves it uncut: a
-    // warning until the owner answers (decision 0536 step 2, interim,
-    // question Q-G; P76).
+    // warning (decision 0536 step 2, the owner's answer to question Q-G;
+    // P76).
     warnings.extend(reach_notes.into_iter().map(openchuck_path::Notice::warning));
     // The registry's strategy: a B-rep edge source uses the crease angle and
     // the shortest chain, so the warning that they are not used does not
@@ -3278,7 +3278,7 @@ mod tests {
                     if strategy == roughing::NAME && leave.is_some() {
                         // Roughing leaves the largest amount wherever it cuts
                         // (decision 0058), and warns so (decision 0536 step 2,
-                        // interim, question Q-G).
+                        // question Q-G).
                         assert!(
                             path.warnings
                                 .iter()
@@ -3556,9 +3556,9 @@ mod tests {
 
     /// Exact STEP surface contact asked for but not applied, because a stock
     /// to leave grows a flat end into a shape with no exact drop, is a
-    /// warning until the owner answers; the note on where the tool was
-    /// dropped is otherwise information (decision 0536 step 2, interim,
-    /// question Q-G; P76).
+    /// warning; the note on where the tool was dropped is otherwise
+    /// information (decision 0536 step 2, the owner's answer to question Q-G;
+    /// P76).
     #[test]
     fn req_ui_12_req_op_27_exact_contact_that_does_not_apply_is_a_warning() {
         let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
@@ -3670,7 +3670,7 @@ mod tests {
             let (on, off) = (flat(leave_on_set, true), flat(leave_on_set, false));
             assert_eq!(on.group.segments, off.group.segments, "set: {leave_on_set}");
             // A warning: it says Exact STEP surface contact does not apply
-            // (decision 0536 step 2, interim, question Q-G).
+            // (decision 0536 step 2, question Q-G).
             assert!(
                 on.warnings.iter().any(|w| w.text.contains("tessellation")
                     && w.text.contains("stock to leave")

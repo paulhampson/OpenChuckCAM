@@ -808,7 +808,7 @@ fn program(app: &Application) -> (Vec<ToolpathGroup>, Vec<(String, String)>, Vec
     let r = app.regenerate().unwrap();
     assert!(!r.gcode.is_empty());
     // The operation's warnings: a stock to leave other than the operation's
-    // is one until the owner answers (decision 0536 step 2, interim, Q-G).
+    // is one (decision 0536 step 2, the owner's answer to question Q-G).
     let warnings = r.operation_warnings(app.project());
     (r.toolpath.groups, r.gcode, warnings)
 }
