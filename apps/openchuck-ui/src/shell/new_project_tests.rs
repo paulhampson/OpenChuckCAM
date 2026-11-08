@@ -298,3 +298,67 @@ fn req_nfr_07_a_blank_project_name_is_said_and_makes_nothing() {
         let _ = std::fs::remove_dir_all(&parent);
     }
 }
+
+/// File > Open: a path typed or pasted into the field and OK opens the
+/// project, with no "Unconfirmed changes" question: OK accepts the
+/// dialog's own field, as it does for New project (issue #636).
+#[test]
+fn req_prj_01_req_ui_07_open_ok_opens_a_pasted_path_without_a_warning() {
+    let root = scratch("open-pasted");
+    let project = root.join("Bracket");
+    Application::create(&project, "Bracket", Threads::Exactly(1))
+        .unwrap()
+        .save()
+        .unwrap();
+    let mut rig = blank();
+    rig.shell.dialog = Some(Dialog::Folder {
+        create: false,
+        folder: "here".to_owned(),
+        name: String::new(),
+    });
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let at = rig
+        .visible_text_rects()
+        .into_iter()
+        .find(|(text, _)| text == "here")
+        .expect("the folder field shows its text")
+        .1
+        .center();
+    rig.click(at);
+    rig.press(Key::A, Modifiers::COMMAND);
+    rig.frame(vec![Event::Paste(project.display().to_string())]);
+    assert!(!crate::pending_edits::entries(&rig.ctx).is_empty());
+    click(&mut rig, "OK");
+    assert!(!rig.shows("Unconfirmed changes"));
+    assert!(!matches!(rig.shell.dialog, Some(Dialog::Unsaved(_))));
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().name(), "Bracket");
+    assert!(crate::pending_edits::entries(&rig.ctx).is_empty());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Cancel on File > Open abandons the typed path without a question.
+#[test]
+fn req_ui_07_open_cancel_discards_its_typed_path_without_a_warning() {
+    let mut rig = blank();
+    rig.shell.dialog = Some(Dialog::Folder {
+        create: false,
+        folder: "here".to_owned(),
+        name: String::new(),
+    });
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let at = rig
+        .visible_text_rects()
+        .into_iter()
+        .find(|(text, _)| text == "here")
+        .unwrap()
+        .1
+        .center();
+    rig.click(at);
+    rig.frame(vec![Event::Text("/somewhere".to_owned())]);
+    click(&mut rig, "Cancel");
+    assert!(!rig.shows("Unconfirmed changes"));
+    assert!(rig.shell.dialog.is_none());
+    assert!(crate::pending_edits::entries(&rig.ctx).is_empty());
+}

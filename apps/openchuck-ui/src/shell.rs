@@ -2135,7 +2135,9 @@ impl Shell {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
-        let new_project = matches!(dialog, Dialog::Folder { create: true, .. });
+        // New project and Open: OK accepts the dialog's own fields and
+        // Cancel abandons them, so neither asks about them (#636).
+        let folder_form = matches!(dialog, Dialog::Folder { .. });
         let mut close = false;
         let mut form_submit = false;
         let mut form_browse = false;
@@ -2504,7 +2506,7 @@ impl Shell {
             return;
         }
         if form_submit {
-            if new_project {
+            if folder_form {
                 // OK explicitly accepts this dialog's values; its own
                 // validation has already decided whether OK is enabled.
                 crate::pending_edits::clear(ctx);
@@ -2515,7 +2517,7 @@ impl Shell {
             return;
         }
         if close {
-            if new_project {
+            if folder_form {
                 // Cancel explicitly abandons this dialog's input.
                 crate::pending_edits::clear(ctx);
             }
