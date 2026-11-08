@@ -163,6 +163,9 @@ struct Builder<'a> {
     contact: Point3,
     segments: Vec<Segment>,
     notes: Vec<Notice>,
+    /// Entries that rose above the link's end before moving to their start
+    /// (issue #642; decision 0544 item 6).
+    raised_entries: usize,
 }
 
 impl Builder<'_> {
@@ -485,6 +488,7 @@ pub fn assemble_with_entry(
         contact: start_tip,
         segments: Vec::new(),
         notes: Vec::new(),
+        raised_entries: 0,
     };
 
     let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
@@ -627,6 +631,16 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
+    if b.raised_entries > 0 {
+        b.notes.insert(
+            0,
+            Notice::information(format!(
+                "Entry: {} entries start higher than the link before them ends, so the move to \
+                 the entry's start stays clear of the stock beside the first cut point",
+                b.raised_entries
+            )),
+        );
+    }
     if kept_high > 0 {
         // Said against the first segment, as a strategy's notes are
         // (NFR-07).
@@ -896,6 +910,55 @@ fn footprint_entry(
     nearest
 }
 
+/// Rises first, when needed, so that a move at the tool's height from where
+/// it is to above `to` (at angle `a`) clears `stock` along its whole line
+/// under the tool's footprint, by the approach distance, as a link does
+/// (OP-14; issue #642, decision 0544 item 6). `ceiling` is the retract
+/// height, which is above all the stock; the tool never rises above it.
+fn clear_traverse(
+    b: &mut Builder<'_>,
+    stock: View<'_>,
+    to: AxisPosition,
+    a: Degrees,
+    approach: f64,
+    ceiling: f64,
+) -> Result<()> {
+    let from = b.at();
+    let reach = (to.along - from.along).hypot(to.across - from.across);
+    let step = 0.5 * b.tool_radius;
+    if reach <= EPS || step <= 0.0 {
+        return Ok(());
+    }
+    let probe = ceiling.max(from.height);
+    let steps = ((reach / step).ceil() as usize).clamp(1, MAX_LINK_SAMPLES);
+    let mut top = f64::NEG_INFINITY;
+    for k in 0..=steps {
+        let f = k as f64 / steps as f64;
+        let at = AxisPosition {
+            along: from.along + f * (to.along - from.along),
+            across: from.across + f * (to.across - from.across),
+            height: probe,
+        };
+        if let Some(d) = footprint_entry(b, stock, at, a, probe, 2.0 * probe.abs() + 1.0) {
+            top = top.max(probe - d);
+        }
+    }
+    let needed = top + approach;
+    if needed <= from.height + EPS {
+        return Ok(());
+    }
+    if top >= probe - EPS {
+        return Err(PathError::Strategy(format!(
+            "Entry: the move to an entry's start would pass through stock that reaches \
+             {top:.3} mm from the rotary axis, at or above the retract height of {probe:.3} mm. \
+             Raise the setup's clearance, or set Entry to Plunge."
+        )));
+    }
+    b.retract(needed.min(probe))?;
+    b.raised_entries += 1;
+    Ok(())
+}
+
 /// The most samples one local link is checked at.
 const MAX_LINK_SAMPLES: usize = 2_000;
 
@@ -1090,6 +1153,7 @@ mod tests {
                 contact: from.tip,
                 segments: Vec::new(),
                 notes: Vec::new(),
+                raised_entries: 0,
             };
             let end = b.pose(to.tip, to.a);
             // A contact feed far above the limits, so the axes set the time.
@@ -1157,6 +1221,7 @@ mod tests {
             contact: Point3::ORIGIN,
             segments: Vec::new(),
             notes: Vec::new(),
+            raised_entries: 0,
         };
         let end = b.pose(to.tip, to.a);
         b.push(
@@ -1216,6 +1281,7 @@ mod tests {
             contact: from.tip,
             segments: Vec::new(),
             notes: Vec::new(),
+            raised_entries: 0,
         };
         let end = b.pose(to.tip, to.a);
         // A contact feed far above the limits, so the axes set the time.

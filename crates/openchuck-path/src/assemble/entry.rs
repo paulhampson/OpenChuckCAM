@@ -247,6 +247,16 @@ impl<'a> Entry<'a> {
             let Some(start) = positions.first().copied() else {
                 continue;
             };
+            // The move across at the link's height is checked against
+            // the stock along its whole line first (issue #642).
+            super::clear_traverse(
+                b,
+                stock,
+                start,
+                head.a,
+                common.approach_distance.0,
+                self.probe_height,
+            )?;
             let here = b.at();
             let above = AxisPosition {
                 height: here.height,
@@ -503,7 +513,16 @@ impl<'a> Entry<'a> {
             ));
         }
         // Across at the link height, down to the start of the ramp, then
-        // along it.
+        // along it. The move across is checked against the stock along its
+        // whole line first (issue #642).
+        super::clear_traverse(
+            b,
+            stock,
+            start,
+            head.a,
+            common.approach_distance.0,
+            self.probe_height,
+        )?;
         let here = b.at();
         let over = AxisPosition {
             height: here.height,
