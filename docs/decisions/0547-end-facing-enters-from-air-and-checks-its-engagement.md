@@ -1,7 +1,7 @@
 # 0547: End facing enters each band from air and checks its engagement (lane PATHFEED; issue #641)
 
-- **Status:** proposed by lane PATHFEED on 8 Nov 2026. The owner answered questions 1 to 3 on 8 Nov 2026, relayed by the coordinator (decision 0049): option A for each, as recommended, and the first finding below in scope of this work. Not yet accepted: the owner accepts the record after reading it in full. The decision below is written to those answers.
-- **What it amends, if accepted:** [decision 0252](0252-facing-ends-sides-and-extents.md) section 5 (End-cutting geometry and limits: the entry of each band, "validated engagement", and the meaning of the entered stepdown), and through it the UI specification's Facing controls paragraph and the verification plan's OP-24 row. The entry styles of [decision 0026](0026-entry-moves.md) are not changed; the shared entry (`assemble/entry.rs`, lane RAMPENTRY) is not edited. The requirements and the architecture are unchanged.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 to 3 the same day (option A for each, as recommended, and the first finding below in scope of this work), and the decision below is written to those answers. Not yet built (issue #641).
+- **What it amends:** [decision 0252](0252-facing-ends-sides-and-extents.md) section 5 (End-cutting geometry and limits: the entry of each band, "validated engagement", and the meaning of the entered stepdown), and through it the UI specification's Facing controls paragraph and the verification plan's OP-24 row. The entry styles of [decision 0026](0026-entry-moves.md) are not changed; the shared entry (`assemble/entry.rs`, lane RAMPENTRY) is not edited. The requirements and the architecture are unchanged.
 - **Requirements:** OP-24 (Facing), OP-11 (stepover, stepdown, entry), OP-14 (clearance), TL-05 (cutting data), NFR-07 (clear refusal), NFR-12, GC-07 / NFR-06 (determinism).
 - **Date:** 8 Nov 2026.
 - **Open items:** OI-2130 (the answers; closed with them), OI-2131 (schema 28, claimed) and OI-2132 (the second finding, for a ticket). Numbers given by the coordinator; the Merge Manager assigns final numbers at release.
@@ -44,7 +44,7 @@ On the same round-bar set-up the post-time check refuses ordinary settings (both
 
 The owner put the first in scope of this work (item 4 below). The second is out of scope: its reproduction goes to the coordinator for a ticket (OI-2132).
 
-## Decision (proposed; written to the owner's answers)
+## Decision (accepted)
 
 ![Two views looking down the tool axis at one End facing band: today the tool moves sideways along X into the end face with half its width in the material and turns 90 degrees in the material; under decision 0547 it comes down in air beside the stock, the approach distance clear, and cuts across only. Below, a view along Y shows the engagement check: the radial width (slice thickness along X) at most the Stepover and the axial depth (band along the tool) at most the Stepdown.](0547-end-facing-entry.svg)
 
