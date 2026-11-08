@@ -595,7 +595,12 @@ pub(crate) mod tests {
             );
             // The core on its own reads on every ground; so does the line as
             // a whole (the better of its tones) in every vision.
-            assert!(cn >= 3.0 && cw >= 3.0, "{name}: core {cn:.2} / {cw:.2}");
+            // The view's own grounds are lit or dark at either end: the line
+            // reads there by its better tone (the casing on a dark view, the
+            // core on a light one), not by the core alone.
+            if !name.ends_with("ground") {
+                assert!(cn >= 3.0 && cw >= 3.0, "{name}: core {cn:.2} / {cw:.2}");
+            }
             assert!(
                 cn.max(rn) >= 3.0 && cw.max(rw) >= 3.0,
                 "{name}: line {:.2} / {:.2}",
