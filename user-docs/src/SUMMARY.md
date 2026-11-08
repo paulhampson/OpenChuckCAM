@@ -48,6 +48,7 @@
 - [Tabs and held regions](examples/tabs-and-held-regions.md)
 - [Limit an operation to a region](examples/limit-to-a-region.md)
 - [Rest machining](examples/rest-machining.md)
+- [The flute-length warning](examples/flute-length-warning.md)
 - [Stepover, stock to leave and scallop](examples/stepover-and-scallop.md)
 
 # Safety and verification

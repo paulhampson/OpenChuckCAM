@@ -96,6 +96,6 @@ Stock to leave on the finishing operation
 : The finish cuts to the model plus its own stock to leave. Leave the finish's **Stock to leave** at 0 unless a later operation will cut that material.
 
 Too much stock left for the finish
-: The finish's tool must take what the roughing leaves in one pass. If you leave more, use **Finishing layers** or a semi-finishing operation.
+: The finish's tool must take what the roughing leaves in one pass. If you leave more, use **Finishing layers** ([The flute-length warning](flute-length-warning.md) shows them) or a semi-finishing operation.
 
 Related: [Rest machining](rest-machining.md), [Operations and strategies](../reference/operations.md).
