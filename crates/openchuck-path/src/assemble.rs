@@ -173,6 +173,9 @@ struct Builder<'a> {
     /// Ring and spiral ramps made steeper near the axis, with the angle
     /// used (decision 0543 section 4, point 3).
     steepened_ramps: Vec<(usize, f64)>,
+    /// Face nubs plunged: the stretch along X and the plunges (decision
+    /// 0543 section 4, point 3).
+    nubs: Vec<(f64, f64, usize)>,
     /// Ramps that went back and forth over a short stretch, reversing A,
     /// with the reversals (decision 0543 D3).
     reversed_ramps: Vec<(usize, usize)>,
@@ -514,12 +517,15 @@ pub fn assemble_with_entry(
         steep_ramps: Vec::new(),
         single_point_plunges: Vec::new(),
         steepened_ramps: Vec::new(),
+        nubs: Vec::new(),
         reversed_ramps: Vec::new(),
         on_axis_ramps: Vec::new(),
     };
 
     let entry = entry::Entry::new(input, common, entry)?;
+    let entry_nub_radius = entry.nub_radius();
     let total = placed.len() as u64;
+    let mut cleared: Vec<(f64, f64)> = Vec::new();
     let (mut asked_low, mut kept_high) = (0_usize, 0_usize);
     let mut rotary_reset_after = Vec::new();
     for (i, points) in placed.iter().enumerate() {
@@ -529,6 +535,19 @@ pub fn assemble_with_entry(
             continue;
         };
         let stock = view(&stocks, i, input);
+        // A roughing pass that only rings a nub round the axis is replaced by
+        // a plunge there (decision 0543 section 4, point 3).
+        let carries = stocks.get(i).is_some_and(Option::is_some);
+        if let Some(stretch) = entry.nub(&b, input, carries, points) {
+            if i > 0 {
+                leave(&mut b, view(&stocks, i - 1, input), common, link_height)?;
+            }
+            let made = entry.plunge_nub(&mut b, input, stock, common, stretch, &mut cleared)?;
+            if made > 0 {
+                b.nubs.push((stretch.0, stretch.1, made));
+            }
+            continue;
+        }
         let pass_rapids = rapids.get(i).map_or(&[][..], Vec::as_slice);
         // Where the entry starts, when it is not over the first cut point
         // (a ramp round a ring, decision 0543): the link goes there.
@@ -658,6 +677,19 @@ pub fn assemble_with_entry(
         );
         b.notes
             .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
+    }
+    if !b.nubs.is_empty() {
+        let width = 2.0 * entry_nub_radius;
+        let made: usize = b.nubs.iter().map(|n| n.2).sum();
+        let low = b.nubs.iter().map(|n| n.0).fold(f64::INFINITY, f64::min);
+        let high = b.nubs.iter().map(|n| n.1).fold(f64::NEG_INFINITY, f64::max);
+        let text = format!(
+            "the nub no wider than {width:.3} mm round the rotary axis at X {low:.3} to \
+             {high:.3} mm is removed by {made} {} instead of ring layers",
+            if made == 1 { "plunge" } else { "plunges" }
+        );
+        b.notes
+            .insert(0, Notice::information(text).about(topic::FACE_NUBS));
     }
     if !b.reversed_ramps.is_empty() {
         let passes: Vec<usize> = b.reversed_ramps.iter().map(|r| r.0).collect();
@@ -1331,6 +1363,7 @@ mod tests {
                 steep_ramps: Vec::new(),
                 single_point_plunges: Vec::new(),
                 steepened_ramps: Vec::new(),
+                nubs: Vec::new(),
                 reversed_ramps: Vec::new(),
                 on_axis_ramps: Vec::new(),
             };
@@ -1404,6 +1437,7 @@ mod tests {
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
             steepened_ramps: Vec::new(),
+            nubs: Vec::new(),
             reversed_ramps: Vec::new(),
             on_axis_ramps: Vec::new(),
         };
@@ -1469,6 +1503,7 @@ mod tests {
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
             steepened_ramps: Vec::new(),
+            nubs: Vec::new(),
             reversed_ramps: Vec::new(),
             on_axis_ramps: Vec::new(),
         };

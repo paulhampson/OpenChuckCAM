@@ -56,6 +56,11 @@ pub(super) struct Entry {
     steeper_near_axis: bool,
     /// The tangent of the steepest angle it may use.
     tan_max: f64,
+    /// Roughing rings round the axis no wider than the nub are plunged
+    /// (decision 0543 section 4, point 3): the nub's radius, or `None`.
+    nub_radius: Option<f64>,
+    /// The tool's cutting radius.
+    tool_radius: f64,
     ramp_tan: f64,
     helix_radius: f64,
     lead_radius: f64,
@@ -86,6 +91,15 @@ impl Entry {
             single_point_plunge: e.allow_single_point_plunge,
             steeper_near_axis: e.steeper_near_axis,
             tan_max: e.ramp_angle_max.0.max(e.ramp_angle.0).to_radians().tan(),
+            nub_radius: (e.style == EntryStyle::Ramp && e.plunge_face_nubs).then(|| {
+                let diameter = 2.0 * radius;
+                0.5 * if e.face_nub_diameter.0 > 0.0 {
+                    e.face_nub_diameter.0.min(diameter)
+                } else {
+                    diameter
+                }
+            }),
+            tool_radius: radius,
             ramp_tan: e.ramp_angle.0.to_radians().tan(),
             helix_radius: e.helix_diameter * radius,
             lead_radius: if e.lead_radius.0 > 0.0 {
@@ -680,6 +694,144 @@ impl Entry {
             }
         };
         self.in_a_range(input, pass, plan).map(Some)
+    }
+
+    /// The radius of the nubs plunged, or 0 when that is off.
+    pub(super) fn nub_radius(&self) -> f64 {
+        self.nub_radius.unwrap_or(0.0)
+    }
+
+    /// The stretch along X of a nub pass (decision 0543 section 4, point 3):
+    /// a pass that carries its stock (roughing), every point of it no
+    /// further from the rotary axis than the nub's radius, where the part
+    /// leaves nothing round the axis (the tool dropped onto the axis meets
+    /// nothing). `None` for any other pass.
+    pub(super) fn nub(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        carries_stock: bool,
+        points: &[CutPoint],
+    ) -> Option<(f64, f64)> {
+        let radius = self.nub_radius?;
+        if !carries_stock || points.is_empty() {
+            return None;
+        }
+        let (mut low, mut high) = (f64::INFINITY, f64::NEG_INFINITY);
+        for p in points {
+            let q = b.rotary.to_axis(p.tip, p.a);
+            if q.across.hypot(q.height) > radius + EPS {
+                return None;
+            }
+            low = low.min(q.along);
+            high = high.max(q.along);
+        }
+        let spacing = (0.5 * self.tool_radius).max(1e-3);
+        let count = (((high - low) / spacing).ceil() as usize).min(10_000);
+        for k in 0..=count {
+            let along = if count == 0 {
+                low
+            } else {
+                low + (high - low) * k as f64 / count as f64
+            };
+            let at = AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            };
+            for j in 0..8 {
+                if self.touch_height(b, input, at, Degrees(45.0 * f64::from(j))) > self.tolerance {
+                    return None;
+                }
+            }
+        }
+        Some((low, high))
+    }
+
+    /// Removes the nub of a nub pass from `low` to `high` along X: at most
+    /// a tool diameter apart, the tool plunges to the rotary axis at the
+    /// plunge feed and the part turns a whole turn, then the tool retracts
+    /// (decision 0543 section 4, point 3). A stretch already cleared by an
+    /// earlier plunge is skipped. Gives the plunges made.
+    pub(super) fn plunge_nub(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        (low, high): (f64, f64),
+        cleared: &mut Vec<(f64, f64)>,
+    ) -> Result<usize> {
+        if cleared
+            .iter()
+            .any(|&(a, z)| a <= low + EPS && high <= z + EPS)
+        {
+            return Ok(0);
+        }
+        let diameter = 2.0 * self.tool_radius;
+        let count = (((high - low) / diameter).ceil() as usize + 1).max(1);
+        let places: Vec<f64> = if count == 1 || high - low <= EPS {
+            vec![0.5 * (low + high)]
+        } else {
+            (0..count)
+                .map(|k| low + (high - low) * k as f64 / (count - 1) as f64)
+                .collect()
+        };
+        for &along in &places {
+            b.retract(self.probe_height)?;
+            let a = b.pose.a;
+            let height = b.at().height;
+            let over = b.rotary.to_model(
+                AxisPosition {
+                    along,
+                    across: 0.0,
+                    height,
+                },
+                a,
+            );
+            let pose = b.pose(over, a);
+            b.push(MoveKind::Rapid, pose, None, None)?;
+            let stop = stop_height(b, stock, common, 0.0);
+            rapid_to(b, stop)?;
+            let at = AxisPosition {
+                along,
+                across: 0.0,
+                height: 0.0,
+            };
+            let tip = b.rotary.to_model(at, a);
+            let pose = b.pose(tip, a);
+            b.push(MoveKind::Plunge, pose, None, Some(common.plunge_feed))?;
+            // A whole turn with the tip on the axis, the way the A range
+            // allows.
+            let sign = match input.rotary.range {
+                openchuck_types::machine::ARange::Limited { max, .. }
+                    if a.0 + 360.0 > max.0 + EPS =>
+                {
+                    -1.0
+                }
+                _ => 1.0,
+            };
+            if let openchuck_types::machine::ARange::Limited { min, max } = input.rotary.range
+                && (a.0 + sign * 360.0 < min.0 - EPS || a.0 + sign * 360.0 > max.0 + EPS)
+            {
+                return Err(PathError::Strategy(format!(
+                    "Face nubs: the nub at X {along:.3} mm needs a whole turn of A from {:.3} \
+                     degrees, outside the machine's A range of {:.3} to {:.3} degrees. Widen A \
+                     range in the setup's Machine settings, or turn off Plunge to remove face \
+                     nubs.",
+                    a.0, min.0, max.0
+                )));
+            }
+            for k in 1..=8 {
+                let turned = Degrees(a.0 + sign * 45.0 * f64::from(k));
+                let tip = b.rotary.to_model(at, turned);
+                let pose = b.pose(tip, turned);
+                b.push(MoveKind::Cutting, pose, Some(tip), Some(common.feed))?;
+            }
+            b.retract(self.probe_height)?;
+        }
+        cleared.push((low - self.tool_radius, high + self.tool_radius));
+        Ok(places.len())
     }
 
     /// Plans with the Ramp angle and, when that needs more than 10 turns and

@@ -140,6 +140,8 @@ impl FormSection {
             | "allow_single_point_plunge"
             | "ramp_steeper_near_axis"
             | "ramp_angle_max"
+            | "plunge_face_nubs"
+            | "face_nub_diameter"
             | "ramp_angle"
             | "helix_diameter"
             | "lead_radius"
@@ -325,6 +327,8 @@ pub fn parameter_form(
                             names::ALLOW_SINGLE_POINT_PLUNGE,
                             names::RAMP_STEEPER_NEAR_AXIS,
                             names::RAMP_ANGLE_MAX,
+                            names::PLUNGE_FACE_NUBS,
+                            names::FACE_NUB_DIAMETER,
                         ]
                         .contains(&spec.name.as_str()))
                 {
