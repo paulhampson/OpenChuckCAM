@@ -27,6 +27,7 @@ use openchuck_app::{
     builtin_post_summaries, collision_warnings, partial_operations, post_summary,
 };
 
+use crate::failure::Failure;
 use crate::floating::{WindowEvent, floating_unscrolled};
 use crate::theme::DARK;
 
@@ -130,10 +131,12 @@ struct PendingOutput {
 pub struct Outcome {
     /// A retained result was added, so the shell refreshes Messages.
     pub reported: bool,
-    /// A sentence for the status bar.
-    pub status: Option<String>,
-    /// A problem to show in an error dialog.
-    pub error: Option<String>,
+    /// The tool numbers were changed in the project: the shell warns in
+    /// Messages until the project is saved or the change undone (decision
+    /// record 0536 section 8).
+    pub tool_numbers_changed: bool,
+    /// A command that failed outright, for an error dialog.
+    pub error: Option<Failure>,
 }
 
 /// The export dialog's state.
@@ -711,7 +714,7 @@ impl ExportPanel {
                     let numbering = match self.numbering() {
                         Ok(numbering) => numbering,
                         Err(error) => {
-                            outcome.error = Some(error);
+                            outcome.error = Some(Failure::new("Number tools", error));
                             continue;
                         }
                     };
@@ -719,20 +722,16 @@ impl ExportPanel {
                     match tool_numbering_command(app.project(), &numbering, max) {
                         Ok(Some(command)) => match app.execute(command) {
                             Ok(()) => {
-                                outcome.status = Some(
-                                    "Tool numbers changed. Undo with Ctrl Z; save the project to keep them."
-                                        .to_owned(),
-                                );
+                                outcome.tool_numbers_changed = true;
                                 self.number_choice = NumberChoice::Keep;
                                 self.read_numbers(app);
                             }
-                            Err(e) => outcome.error = Some(e.to_string()),
+                            Err(e) => outcome.error = Some(Failure::new("Number tools", e)),
                         },
                         Ok(None) => {
-                            outcome.status = Some("The tool numbers stay as they are.".to_owned());
                             self.number_choice = NumberChoice::Keep;
                         }
-                        Err(e) => outcome.error = Some(e.to_string()),
+                        Err(e) => outcome.error = Some(Failure::new("Number tools", e)),
                     }
                 }
                 Act::Write => {
@@ -804,8 +803,7 @@ impl ExportPanel {
                 self.show_report(report.clone());
                 Outcome {
                     reported: true,
-                    status: Some(report.summary()),
-                    error: None,
+                    ..Outcome::default()
                 }
             }
         }
@@ -818,8 +816,7 @@ impl ExportPanel {
         self.show_report(report.clone());
         Outcome {
             reported: true,
-            status: Some(report.summary()),
-            error: None,
+            ..Outcome::default()
         }
     }
 
@@ -836,8 +833,11 @@ impl ExportPanel {
                 && let Some(ack) = &self.ack
             {
                 if let Err(e) = ack.acknowledge(app.location()) {
-                    outcome.error = Some(format!(
-                        "The files were written, but the acknowledgement could not be kept on this computer: {e}"
+                    outcome.error = Some(Failure::new(
+                        "Keep the acknowledgement",
+                        format!(
+                            "the files were written, but the acknowledgement could not be kept on this computer, so it is asked again next time: {e}"
+                        ),
                     ));
                 }
                 self.refresh_acknowledgement(app);
@@ -848,15 +848,17 @@ impl ExportPanel {
                 && let Some(ack) = &self.ack
             {
                 if let Err(e) = ack.acknowledge_stock_skipped(app.location()) {
-                    outcome.error = Some(format!(
-                        "The files were written, but the acknowledgement could not be kept on this computer: {e}"
+                    outcome.error = Some(Failure::new(
+                        "Keep the acknowledgement",
+                        format!(
+                            "the files were written, but the acknowledgement could not be kept on this computer, so it is asked again next time: {e}"
+                        ),
                     ));
                 }
                 self.refresh_acknowledgement(app);
             }
         }
         outcome.reported = true;
-        outcome.status = Some(report.summary());
         self.show_report(report);
         outcome
     }
@@ -1816,7 +1818,7 @@ mod tests {
             .unwrap();
         let outcome = panel.write(&app, &posted);
         assert_eq!(outcome.error, None);
-        assert_eq!(outcome.status.as_deref(), Some("Wrote 3 files."));
+        assert_eq!(panel.result.as_ref().unwrap().summary(), "Wrote 3 files.");
         assert_eq!(panel.result.as_ref().unwrap().written.len(), 3);
         assert!(out.join(&posted.gcode[0].0).exists());
         // The setup sheet is written with the G-code (decision 0189).
@@ -1965,7 +1967,7 @@ mod tests {
         assert_eq!(panel.write_blocker(&app, &checks, true), None);
         let outcome = panel.write(&app, &posted);
         assert_eq!(outcome.error, None);
-        let status = outcome.status.unwrap_or_default();
+        let status = panel.result.as_ref().unwrap().summary();
         assert!(
             status.contains("is partial") && status.contains("not complete"),
             "{status}"

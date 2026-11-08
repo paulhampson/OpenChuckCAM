@@ -788,7 +788,10 @@ impl Shell {
                         }
                         Err(e) => {
                             self.recovery.cancel_install(&folder);
-                            self.dialog = Some(super::Dialog::Error(e.to_string()));
+                            self.dialog = Some(super::Dialog::Error(crate::failure::Failure::new(
+                                "Recover checkpoint",
+                                e,
+                            )));
                         }
                     }
                 }

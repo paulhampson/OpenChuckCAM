@@ -375,6 +375,12 @@ pub enum MessageAction {
     EditWorkholding(SetupId),
     /// Generate the stale operations.
     Generate,
+    /// Save the project, for changes that are lost unless saved (a recovered
+    /// checkpoint, changed tool numbers; decision record 0536 section 8).
+    Save,
+    /// Undo the last command, for a change the message warns of (changed
+    /// tool numbers; decision record 0536 section 8).
+    Undo,
     /// Open the item that holds the setting the message names, scroll to the
     /// setting and mark it, so the user can change it (decision records 0175
     /// and 0536 section 4).
@@ -417,6 +423,8 @@ impl MessageAction {
             Self::ReviewSetup(_) => "Review setup",
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
+            Self::Save => "Save",
+            Self::Undo => "Undo",
             Self::ShowSetting(_) => "Show setting",
             Self::OpenRecovery(_) => "Open project",
             Self::LocateRecovery(_) => "Locate folder",
@@ -2848,6 +2856,14 @@ mod tests {
         assert_eq!(short_mm(26.0), "26");
         assert_eq!(short_mm(12.5), "12.5");
         assert_eq!(short_mm(0.1234), "0.123");
+    }
+
+    #[test]
+    fn req_ui_12_save_and_undo_links_name_their_actions_in_plain_words() {
+        // Decision record 0536 section 8: a recovered checkpoint offers
+        // "Save"; changed tool numbers offer "Save" and "Undo".
+        assert_eq!(MessageAction::Save.label(), "Save");
+        assert_eq!(MessageAction::Undo.label(), "Undo");
     }
 
     #[test]

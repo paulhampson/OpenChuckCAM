@@ -38,6 +38,7 @@ use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 use crate::about;
 use crate::bench;
 use crate::export_panel::ExportPanel;
+use crate::failure::Failure;
 use crate::form_panel::FormState;
 use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
@@ -59,6 +60,7 @@ pub(crate) mod marks;
 mod out_of_date;
 mod pending;
 mod pending_pick;
+mod reminders;
 mod tree;
 
 #[cfg(test)]
@@ -71,6 +73,8 @@ mod open_recovery_tests;
 mod pending_edit_tests;
 #[cfg(test)]
 mod recent_tests;
+#[cfg(test)]
+mod reminder_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -152,7 +156,7 @@ enum Dialog {
     Settings,
     /// A command the user gave failed outright; the message says what
     /// (specification section 9: the only pop-up errors).
-    Error(String),
+    Error(Failure),
     /// The opened project has models outside its folder: ask, each time it
     /// is opened, whether to copy them in (decision record 0307 item 5).
     CopyLinked(usize),
@@ -232,7 +236,13 @@ pub struct Shell {
         Option<ModelId>,
     )>,
     setup: Option<SetupId>,
-    status: String,
+    /// The export changed the tool numbers in this session: Messages warns
+    /// until the project is saved or the change undone (decision record
+    /// 0536 section 8).
+    tool_numbers_changed: bool,
+    /// A pick dropped because its geometry changed, shown as an error until
+    /// a pick is made (decision record 0536 section 8).
+    dropped_pick: Option<reminders::DroppedPick>,
     quitting: bool,
     /// A frame-time benchmark run (`--bench`).
     bench: Option<bench::Run>,
@@ -376,7 +386,8 @@ impl Shell {
             scene_job: None,
             copy_job: None,
             setup: None,
-            status: String::new(),
+            tool_numbers_changed: false,
+            dropped_pick: None,
             quitting: false,
             bench: None,
             selected: None,
@@ -512,9 +523,7 @@ impl Shell {
             Ok(app) => self.set_app(app),
             Err(AppError::NoProject(_)) => self.dialog = Some(Dialog::OfferCreate { folder }),
             Err(e) => {
-                self.dialog = Some(Dialog::Error(format!(
-                    "The project could not be opened: {e}"
-                )));
+                self.dialog = Some(Dialog::Error(Failure::new("Open project", e)));
                 // Its valid recovery checkpoints stay reachable for this
                 // request (PRJ-08, NFR-07; decision 0460 item 2).
                 self.recovery.open_failed(&folder);
@@ -552,11 +561,15 @@ impl Shell {
             Ok(copies) => app.finish_copying_models(copies),
             Err(e) => (Vec::new(), vec![e.to_string()]),
         };
-        self.status = match copied.len() {
-            0 => String::new(),
-            1 => "Copied 1 model into the project folder".to_owned(),
-            n => format!("Copied {n} models into the project folder"),
-        };
+        // What the user did is a Jobs entry, not a message (decision record
+        // 0536 section 8).
+        match copied.len() {
+            0 => {}
+            1 => self.jobs.record("Copied 1 model into the project folder"),
+            n => self
+                .jobs
+                .record(&format!("Copied {n} models into the project folder")),
+        }
         match from {
             Some(id) => {
                 if let Some(panel) = self.model_panel.as_mut().filter(|p| p.model() == id) {
@@ -564,7 +577,10 @@ impl Shell {
                 }
             }
             None if !refused.is_empty() => {
-                self.dialog = Some(Dialog::Error(refused.join("\n")));
+                self.dialog = Some(Dialog::Error(Failure::new(
+                    "Copy models into the project",
+                    refused.join("\n"),
+                )));
             }
             None => {}
         }
@@ -579,9 +595,7 @@ impl Shell {
         match Application::create_with(&folder, name, Threads::All, defaults) {
             Ok(app) => self.set_app(app),
             Err(e) => {
-                self.dialog = Some(Dialog::Error(format!(
-                    "The project could not be created: {e}"
-                )));
+                self.dialog = Some(Dialog::Error(Failure::new("Create project", e)));
             }
         }
     }
@@ -595,7 +609,6 @@ impl Shell {
         if let Some(ctx) = &self.edit_context {
             crate::pending_edits::clear(ctx);
         }
-        self.status = format!("Opened {}", app.location().display());
         // Changed or missing model files are messages now (PRJ-02, OI-45;
         // specification section 9), from the project checks.
         self.selection.clear();
@@ -604,6 +617,12 @@ impl Shell {
         self.play.clear();
         self.simulate_camera = None;
         self.jobs.clear();
+        self.tool_numbers_changed = false;
+        self.dropped_pick = None;
+        // What the user did is a Jobs entry, not a message (decision record
+        // 0536 section 8).
+        self.jobs
+            .record(&format!("Opened {}", app.location().display()));
         self.checks = None;
         if let Some(job) = self.checks_job.take() {
             job.cancel();
@@ -777,6 +796,20 @@ impl Shell {
             for message in self.recovery.messages() {
                 overview.push(message);
             }
+            // The status line's texts, at their levels (decision record 0536
+            // section 8).
+            self.tool_numbers_changed &= app.tool_numbers_unsaved();
+            for message in [
+                reminders::recovered(app),
+                reminders::tool_numbers(app, self.tool_numbers_changed),
+                self.dropped_pick
+                    .map(|d| reminders::dropped_pick(app.project(), d)),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                overview.push(message);
+            }
             self.overview = overview;
             self.overview_dirty = false;
             self.highlight = None;
@@ -825,11 +858,15 @@ impl Shell {
         match app.save() {
             Ok(()) => {
                 self.recovery.saved(app.revision());
-                self.status = format!("Saved {}", app.location().display());
+                self.jobs
+                    .record(&format!("Saved {}", app.location().display()));
+                // The warnings of unsaved work clear (decision record 0536
+                // section 8).
+                self.overview_dirty = true;
                 true
             }
             Err(e) => {
-                self.dialog = Some(Dialog::Error(format!("The project was not saved: {e}")));
+                self.dialog = Some(Dialog::Error(Failure::new("Save", e)));
                 false
             }
         }
@@ -906,7 +943,7 @@ impl Shell {
                     self.rebuild_scene(false);
                 }
                 Ok(false) => {}
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+                Err(e) => self.dialog = Some(Dialog::Error(Failure::new("Undo", e))),
             }
         }
     }
@@ -922,7 +959,7 @@ impl Shell {
                     self.rebuild_scene(false);
                 }
                 Ok(false) => {}
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+                Err(e) => self.dialog = Some(Dialog::Error(Failure::new("Redo", e))),
             }
         }
     }
@@ -968,10 +1005,9 @@ impl Shell {
                 if let Some((app, warnings, recovered)) = self.recovery_project.take() {
                     self.set_app(app);
                     self.recovery.finish_install();
-                    if recovered {
-                        self.status =
-                            "Recovered checkpoint. Save explicitly to keep these changes.".into();
-                    }
+                    // A recovered project warns in Messages until it is
+                    // saved (decision record 0536 section 8).
+                    self.overview_dirty |= recovered;
                     if !warnings.is_empty() {
                         self.recovery.problem = Some(warnings.join("\n"));
                         self.overview_dirty = true;
@@ -1049,7 +1085,7 @@ impl Shell {
         }
         let result = openchuck_app::new_setup(app.project()).and_then(|c| app.execute(c));
         if let Err(e) = result {
-            self.dialog = Some(Dialog::Error(format!("The setup was not added: {e}")));
+            self.dialog = Some(Dialog::Error(Failure::new("Add setup", e)));
             return;
         }
         let Some(id) = app.project().setups().first().map(|s| s.id) else {
@@ -1352,9 +1388,9 @@ impl Shell {
     fn enable_adaptive_spacing(&mut self, operation: OperationId, height: f64) {
         let Some(app) = &mut self.app else { return };
         if let Err(e) = app.enable_adaptive_spacing(operation, height) {
-            self.dialog = Some(Dialog::Error(format!(
-                "Adaptive spacing was not turned on: {}",
-                e.user_message()
+            self.dialog = Some(Dialog::Error(Failure::new(
+                "Turn on adaptive spacing",
+                e.user_message(),
             )));
         }
     }
@@ -1362,7 +1398,7 @@ impl Shell {
     /// Renames `item` as one undoable command (the F2 dialog).
     fn rename(&mut self, item: ItemRef, name: &str) {
         if let Err(e) = self.rename_checked(item, name) {
-            self.dialog = Some(Dialog::Error(format!("The name was not changed: {e}")));
+            self.dialog = Some(Dialog::Error(Failure::new("Rename", e)));
         }
     }
 
@@ -1429,6 +1465,10 @@ impl Shell {
                 self.choose_setup(setup, Some(SetupPart::Workholding));
             }
             MessageAction::Generate => self.generate(false),
+            MessageAction::Save => {
+                self.save();
+            }
+            MessageAction::Undo => self.undo(),
             MessageAction::OpenRecovery(_) | MessageAction::LocateRecovery(_) => {
                 self.recovery_action(action);
             }
@@ -1640,8 +1680,7 @@ impl Shell {
                             }
                         }
                         Err(e) => {
-                            self.dialog =
-                                Some(Dialog::Error(format!("The operation was not deleted: {e}")));
+                            self.dialog = Some(Dialog::Error(Failure::new("Delete operation", e)));
                         }
                     }
                 }
@@ -1650,7 +1689,7 @@ impl Shell {
         };
         let Some(app) = &mut self.app else { return };
         if let Err(e) = command.and_then(|c| app.execute(c)) {
-            self.dialog = Some(Dialog::Error(e.to_string()));
+            self.dialog = Some(Dialog::Error(Failure::new("Change the project", e)));
         }
     }
 
@@ -1687,7 +1726,7 @@ impl Shell {
             }
             let (new, problem) = self.run.add_dialog(ctx, app);
             added = new;
-            error = problem;
+            error = problem.map(|p| Failure::new("Add operation", p));
             let outcome = self
                 .export
                 .frame(ctx, app, self.run.last(), self.run.last_error());
@@ -1701,8 +1740,9 @@ impl Shell {
                 self.settings.file_names = names.clone();
                 self.settings_changed = Some(Instant::now());
             }
-            if let Some(status) = outcome.status {
-                self.status = status;
+            if outcome.tool_numbers_changed {
+                self.tool_numbers_changed = true;
+                self.overview_dirty = true;
             }
             error = error.or(outcome.error);
             if self.step == Step::Simulate && !windowed {
@@ -1750,17 +1790,14 @@ impl Shell {
             self.settings.tool_library = self.tool_library.view().clone();
             self.settings_touched();
         }
-        if let Some(status) = library.status {
-            self.status = status;
-        }
+        // The library windows say what they did in their own line
+        // (decision record 0536 section 8).
         // The machine library window also works with or without a project
         // (SET-10; 12.5). A change to the project's copy is an undoable
         // command it executes itself; the machine panel then lists the
         // library again.
         if self.machine_library.is_open() {
-            if let Some(status) = self.machine_library.frame(ctx, self.app.as_mut()) {
-                self.status = status;
-            }
+            self.machine_library.frame(ctx, self.app.as_mut());
             if !self.machine_library.is_open() {
                 self.machine_panel = None;
             }
@@ -1802,10 +1839,10 @@ impl Shell {
             // store it before deriving the shown set, legend and overlay
             // (UI-05, issue 298).
             if let Some(e) = self.selection.poll(app) {
-                self.dialog = Some(Dialog::Error(e));
+                self.dialog = Some(Dialog::Error(Failure::new("Selection set", e)));
             }
             if let Some(e) = self.selection.reset_dialog(ctx, app) {
-                self.dialog = Some(Dialog::Error(e));
+                self.dialog = Some(Dialog::Error(Failure::new("Selection set", e)));
             }
         }
         self.follow_selection_panel();
@@ -1858,6 +1895,11 @@ impl Shell {
     /// coordinate. It shares the same departure guard as tree selection.
     fn pick_intent(&mut self, input: crate::viewport::PickInput, ctx: &egui::Context) {
         if input.click.is_some() || input.edge_click.is_some() || input.solid_click.is_some() {
+            // A pick made clears the error of a dropped one (decision record
+            // 0536 section 8).
+            if self.dropped_pick.take().is_some() {
+                self.overview_dirty = true;
+            }
             let deferred_ctx = ctx.clone();
             let intent = self
                 .app
@@ -1902,7 +1944,7 @@ impl Shell {
             return;
         };
         if let Some(note) = crate::selection_panel::delete_refusal(&summary) {
-            self.dialog = Some(Dialog::Error(note));
+            self.dialog = Some(Dialog::Error(Failure::new("Delete selection set", note)));
             return;
         }
         match app.delete_selection(id) {
@@ -1913,7 +1955,7 @@ impl Shell {
                 }
             }
             Err(e) => {
-                self.dialog = Some(Dialog::Error(format!("The set was not deleted: {e}")));
+                self.dialog = Some(Dialog::Error(Failure::new("Delete selection set", e)));
             }
         }
     }
@@ -1955,7 +1997,7 @@ impl Shell {
                 }
                 self.rebuild_scene(false);
             }
-            Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            Err(e) => self.dialog = Some(Dialog::Error(Failure::new("Apply workholding", e))),
         }
     }
 
@@ -2058,7 +2100,8 @@ impl Shell {
             None => {}
             Some(Ok(prepared)) => match app.add_prepared_model(prepared) {
                 Ok(_) => {
-                    self.status = format!("Added {}", session.path.display());
+                    self.jobs
+                        .record(&format!("Added {}", session.path.display()));
                     self.import = None;
                     self.rebuild_scene(true);
                 }
@@ -2078,7 +2121,10 @@ impl Shell {
             (Some(app), Some(session)) if !session.is_adding() => session.set_path(app, file),
             (Some(_), Some(_)) => {}
             (None, _) => {
-                self.status = "Open or create a project before importing a model.".to_owned()
+                self.dialog = Some(Dialog::Error(Failure::new(
+                    "Import model",
+                    "there is no project open. Open or create a project first",
+                )));
             }
         }
     }
@@ -2412,8 +2458,9 @@ impl Shell {
                     close = true;
                 }
             }
-            Dialog::Error(message) => {
-                ui.label(message);
+            Dialog::Error(failure) => {
+                ui.heading(failure.title());
+                ui.label(&failure.text);
                 if ui.button("OK").clicked() {
                     close = true;
                 }
@@ -2510,7 +2557,7 @@ impl Shell {
                 if create {
                     let found = new_folder::inspect(Path::new(folder.trim()), name.trim());
                     if let Some(problem) = new_folder_problem(&found) {
-                        self.dialog = Some(Dialog::Error(problem));
+                        self.dialog = Some(Dialog::Error(Failure::new("Create project", problem)));
                     } else if found.state == new_folder::FolderState::ExistsUsable {
                         self.dialog = Some(Dialog::FolderExists {
                             parent: folder.trim().to_owned(),
