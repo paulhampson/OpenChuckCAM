@@ -345,6 +345,28 @@ fn req_op_04_rings_are_added_between_rings_until_the_allowed_excess_is_met() {
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
+#[test]
+fn req_op_04_rings_with_blended_steps_are_spaced_as_sharp_rings_are() {
+    // A blended ring starts further round than the start angle (decision
+    // record 0545); adaptive spacing still measures it as a whole turn and
+    // adds rings until the Allowed excess is met.
+    let p = cylinder();
+    let rings = (
+        openchuck_path::helical::parameter::PASS_SHAPE,
+        ParameterValue::Text("rings".to_owned()),
+    );
+    let blended = (
+        openchuck_path::helical::parameter::RING_STEP,
+        ParameterValue::Text(openchuck_path::helical::parameter::BLENDED.to_owned()),
+    );
+    let on = generated(&p, &HelicalFinishing, &[rings, blended]);
+    let after = left(&p, &on, (1.0, 11.0));
+    assert!(after <= 0.012, "on left {after}");
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(has_note(&on, "blended over 45"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
+}
+
 fn axial_pattern() -> (&'static str, ParameterValue) {
     (PATTERN, ParameterValue::Text("axial".to_owned()))
 }
