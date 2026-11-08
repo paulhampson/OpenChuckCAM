@@ -275,8 +275,19 @@ pub fn plan_end(
         ));
     }
     let rotary = RotaryMapping::of_profile(setup.machine);
-    let views = bands
-        .chunk_by(|a, b| a.angle == b.angle)
+    // Where there is air beside a band's end, its sweep starts or ends there
+    // with the whole tool the approach distance clear of the stock, and the
+    // flank enters the face from its edge; where there is none it keeps the
+    // move along X into the face from air beyond it (decision record 0547
+    // item 1).
+    let beside = bands
+        .iter()
+        .map(|band| routing::air_beside(setup, end, cutting_x, band, 0.125 * parameters.tolerance))
+        .collect::<Result<Vec<_>>>()?;
+    let clear = radius + gap;
+    let paired = bands.iter().zip(beside).collect::<Vec<_>>();
+    let views = paired
+        .chunk_by(|a, b| a.0.angle == b.0.angle)
         .collect::<Vec<_>>();
     for (slice, &x) in axial_planes.iter().enumerate() {
         // Reverse VIEW order on alternate slices, keeping top-first bands
@@ -287,39 +298,48 @@ pub fn plan_end(
         } else {
             views.iter().rev().copied().collect::<Vec<_>>()
         };
-        for band in ordered.into_iter().flatten() {
+        for &(band, (low_air, high_air)) in ordered.into_iter().flatten() {
             context.check_cancelled()?;
             let (lo, hi) = band.heights;
             let centre_x = x + sign * radius;
             if !centre_x.is_finite() {
                 return Err(refuse("flank compensation overflowed"));
             }
-            let points = [
-                (air_x, band.across.0),
-                (centre_x, band.across.0),
-                (centre_x, band.across.1),
-                (air_x, band.across.1),
-            ]
-            .map(|(along, across)| CutPoint {
-                tip: rotary.to_model(
-                    AxisPosition {
-                        along,
-                        across,
-                        height: lo,
-                    },
-                    band.angle,
-                ),
-                a: band.angle,
-                contact: rotary.to_model(
-                    AxisPosition {
-                        along: along - sign * radius,
-                        across,
-                        height: lo + 0.5 * (hi - lo),
-                    },
-                    band.angle,
-                ),
-            })
-            .to_vec();
+            let mut route = Vec::with_capacity(4);
+            if low_air {
+                route.push((centre_x, band.across.0 - clear));
+            } else {
+                route.push((air_x, band.across.0));
+                route.push((centre_x, band.across.0));
+            }
+            if high_air {
+                route.push((centre_x, band.across.1 + clear));
+            } else {
+                route.push((centre_x, band.across.1));
+                route.push((air_x, band.across.1));
+            }
+            let points = route
+                .into_iter()
+                .map(|(along, across)| CutPoint {
+                    tip: rotary.to_model(
+                        AxisPosition {
+                            along,
+                            across,
+                            height: lo,
+                        },
+                        band.angle,
+                    ),
+                    a: band.angle,
+                    contact: rotary.to_model(
+                        AxisPosition {
+                            along: along - sign * radius,
+                            across,
+                            height: lo + 0.5 * (hi - lo),
+                        },
+                        band.angle,
+                    ),
+                })
+                .collect::<Vec<_>>();
             passes.push(Pass {
                 helical_pass_start: false,
                 low_link: false,

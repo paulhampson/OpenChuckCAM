@@ -240,6 +240,55 @@ pub(super) fn bands(
     Ok((bands, residual))
 }
 
+/// Whether there is air beside `band`'s two ends across the tool: no stock
+/// past the band's low and high across edges between its two heights, so the
+/// tool can start and end its sweep there, clear of the stock, and enter the
+/// face from its edge (decision record 0547 item 1). The stock is the whole
+/// stock's projected rectangle on the end plane at `target` (for a round bar,
+/// its bounding square), seen from the band's view: a conservative bound.
+/// Above the band's top the flutes meet only what this slice's earlier bands
+/// at the same view have already removed, so only the band's heights count.
+pub(super) fn air_beside(
+    setup: &FacingSetup<'_>,
+    end: FacingEnd,
+    target: f64,
+    band: &EndBand,
+    written: f64,
+) -> Result<(bool, bool)> {
+    let whole = super::super::extents::FacingExtent::WholeStock.planar(
+        super::super::geometry::FacingPlane::end(end),
+        setup.stock,
+        setup.part,
+        setup.tabs,
+        0.,
+    )?;
+    let [y0, z0] = whole.min();
+    let [y1, z1] = whole.max();
+    let rotary = RotaryMapping::of_profile(setup.machine);
+    let polygon = [
+        Point3::new(target, y0, z0),
+        Point3::new(target, y1, z0),
+        Point3::new(target, y1, z1),
+        Point3::new(target, y0, z1),
+    ]
+    .map(|p| {
+        let axis = rotary.to_axis(p, band.angle);
+        [axis.across, axis.height]
+    })
+    .to_vec();
+    let strip = clip(&clip(&polygon, band.heights.0, true), band.heights.1, false);
+    let min = strip.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+    let max = strip.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+    if !min.is_finite() || !max.is_finite() {
+        // No stock between the band's heights at all.
+        return Ok((true, true));
+    }
+    Ok((
+        min >= band.across.0 - written,
+        max <= band.across.1 + written,
+    ))
+}
+
 /// The refusal for an end deeper than the flutes reach (decision 0344 item 7
 /// style: the place, the depth, the flutes and each remedy).
 fn too_deep(
