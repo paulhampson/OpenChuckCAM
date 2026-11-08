@@ -194,13 +194,13 @@ pub(crate) fn free_ends(
         Some((lo, _)) => lo >= e.face - tolerance,
         None => false,
     }) {
-        // A warning until the owner answers: it may hide a stock length set
-        // wrong (decision 0536 step 2, interim, question Q-B; P49).
-        out.warnings.push(Notice::warning(format!(
+        // Information: there is nothing to face (decision 0536 step 2, the
+        // owner's answer to question Q-B; P49).
+        out.notes.push(format!(
             "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
              face. If the real blank is longer, set the stock's length to match it",
             e.face
-        )));
+        ));
     }
     let ends: Vec<&FreeEnd> = ends
         .iter()

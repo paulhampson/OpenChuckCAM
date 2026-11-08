@@ -1753,9 +1753,14 @@ fn req_op_04_a_free_end_flush_with_the_stock_says_there_is_nothing_past_it() {
         &RestMachining,
     ] {
         let path = job.path(strategy, &[("stepdown", 2.0)]);
-        // A warning until the owner answers (decision 0536 step 2, interim;
-        // P49).
-        let text = warnings(&path);
+        // Information, on the owner's answer to Q-B (decision 0536 step 2;
+        // P49): there is nothing to face.
+        assert!(
+            !warnings(&path).contains("the stock ends"),
+            "{}",
+            warnings(&path)
+        );
+        let text = messages(&path);
         assert!(
             text.contains(
                 "the stock ends at the part's end at X 30.000: there is no stock past this \
