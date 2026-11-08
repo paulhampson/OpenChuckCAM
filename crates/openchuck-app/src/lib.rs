@@ -1504,7 +1504,15 @@ impl Application {
                 match &result {
                     Ok(run) => record.succeeded(&document.project, simulate, run),
                     Err(e) if e.is_cancelled() => record.cancelled(),
-                    Err(e) => record.failed(&document.project, e.to_string()),
+                    Err(e) => {
+                        let text = crate::operation::refusal_text(
+                            &document.project,
+                            &strategies,
+                            record.current(),
+                            e,
+                        );
+                        record.failed(&document.project, text);
+                    }
                 }
                 result.and_then(then)
             })

@@ -378,7 +378,7 @@ pub(crate) fn inspect_model(
     let mut inspection = inspect_bytes(&path, &bytes, model.units, &model.transform, context)?;
     if ContentHash::of_bytes(&bytes) != model.hash {
         inspection.notes.push(format!(
-            "'{}' has changed since it was added to the project (PRJ-02)",
+            "'{}' has changed since it was added to the project",
             model.label()
         ));
     }

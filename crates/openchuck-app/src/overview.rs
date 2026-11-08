@@ -1270,6 +1270,11 @@ impl GenerationRecord {
         });
     }
 
+    /// The operation the run in progress is working on, if any.
+    pub(crate) fn current(&self) -> Option<OperationId> {
+        self.with(|s| s.current).flatten()
+    }
+
     /// A pipeline run on `project` failed with `message`, on the operation
     /// it was working on, if any.
     pub(crate) fn failed(&self, project: &Project, message: String) {

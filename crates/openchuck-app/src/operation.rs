@@ -69,6 +69,33 @@ pub(crate) fn stored_values(operation: &Operation) -> BTreeMap<String, Parameter
         .collect()
 }
 
+/// A run's refusal in the user's words (OI-360; decision record 0536 step
+/// 4): a parameter the strategy refuses is named by the label its field has
+/// in the inspector, not by its name in the schema ("Stepover: must be above
+/// 0 mm", not "parameter stepover_mm: ..."). Other refusals read as they are.
+pub(crate) fn refusal_text(
+    project: &Project,
+    registry: &openchuck_path::Registry,
+    operation: Option<OperationId>,
+    error: &AppError,
+) -> String {
+    if let AppError::Path(openchuck_path::PathError::Parameter { name, reason }) = error {
+        let label = operation
+            .and_then(|id| project.operation(id))
+            .and_then(|op| {
+                let strategy = registry.get(&op.strategy).ok()?;
+                effective_schema(op, strategy)
+                    .get(name)
+                    .map(|spec| spec.label.clone())
+            });
+        return match label {
+            Some(label) => format!("{label}: {reason}"),
+            None => error.user_message(),
+        };
+    }
+    error.to_string()
+}
+
 pub(crate) fn effective_schema(
     operation: &Operation,
     strategy: &dyn Strategy,
@@ -4006,6 +4033,42 @@ mod tests {
             !path.notes.iter().any(|n| n.text.contains(said)),
             "{:?}",
             path.notes
+        );
+    }
+
+    #[test]
+    fn req_nfr_15_a_refused_parameter_is_named_by_its_label() {
+        // OI-360: a refused parameter reaches Messages by the label the
+        // inspector shows, never by its name in the schema.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let registry = Registry::builtin();
+        let operation = f.project.operation(f.operation).unwrap();
+        let strategy = registry.get(&operation.strategy).unwrap();
+        let spec = effective_schema(operation, strategy)
+            .parameters
+            .into_iter()
+            .find(|p| p.name == "tolerance")
+            .unwrap();
+        let refused = AppError::from(openchuck_path::PathError::parameter(
+            "tolerance",
+            "must be above 0 mm",
+        ));
+        assert_eq!(
+            refusal_text(&f.project, &registry, Some(f.operation), &refused),
+            format!("{}: must be above 0 mm", spec.label)
+        );
+        assert!(
+            !refusal_text(&f.project, &registry, Some(f.operation), &refused).contains("parameter")
+        );
+        // With no operation to look in, the reason alone.
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &refused),
+            "Must be above 0 mm."
+        );
+        let other = AppError::UnknownOperation("x".into());
+        assert_eq!(
+            refusal_text(&f.project, &registry, None, &other),
+            other.to_string()
         );
     }
 

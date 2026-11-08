@@ -744,7 +744,7 @@ pub fn set_machine_field(
         ROTARY_AXIS => {
             if word(&["x", "y"])? == "y" {
                 return Err(wrong(
-                    "A rotary axis about Y is not supported yet (SET-02); use X.".into(),
+                    "A rotary axis about Y is not supported yet; use X.".into(),
                 ));
             }
             p.rotary_axis = RotaryAxis::X;
@@ -1281,7 +1281,7 @@ mod tests {
                 ROTARY_AXIS,
                 Some(text("y")),
                 "Rotary axis",
-                "A rotary axis about Y is not supported yet (SET-02); use X.",
+                "A rotary axis about Y is not supported yet; use X.",
             ),
             (
                 A_SENSE,

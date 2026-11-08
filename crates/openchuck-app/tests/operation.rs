@@ -2158,7 +2158,7 @@ fn req_op_24_req_gc_07_legacy_default_imported_stock_keeps_the_pre_scope_refusal
     assert!(
         before
             .to_string()
-            .contains("imported stock (SET-04) is not available yet"),
+            .contains("imported stock is not available yet"),
         "{before}"
     );
     set_strategy(&mut app, op, "facing", &parameters);

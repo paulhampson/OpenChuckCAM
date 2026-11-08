@@ -135,7 +135,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | "+" on | Does |
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
-| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
+| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and the inspector's New selection (12.2) |
 | Operations | Opens Operations and the New operation dialog, with its registered-strategy dropdown and information panel (OP-16; decision 0237) |
 

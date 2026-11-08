@@ -35,33 +35,33 @@ use openchuck_app::{
     QueryResult, SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
-/// The setup's clearance rules (decision 0495).
+/// The setup's clearance rules.
 #[derive(clap::Args, Debug)]
 struct ClearanceArgs {
     /// The setup's minimum clearance radius in mm, the smallest safe
     /// cylinder that clears its chuck, jaws, headstock and tailstock, or
-    /// `machine` to use the machine profile's (decision 0495).
+    /// `machine` to use the machine profile's.
     #[arg(long, allow_hyphen_values = true)]
     min_clearance: Option<String>,
     /// Clearance from stock: the margin in mm added to the stock's
     /// radius (the safe cylinder grows to it and to the minimum, and the
-    /// safe Z to at least that radius), or `off` (decision 0495).
+    /// safe Z to at least that radius), or `off`.
     #[arg(long, allow_hyphen_values = true)]
     clearance_from_stock: Option<String>,
 }
 
-/// The workholding options of `setup` (SET-09, OP-21).
+/// The workholding options of `setup`.
 #[derive(Debug, clap::Args)]
 struct HoldingArgs {
     /// The length the workholding grips at the start (lower X end) of
     /// the stock, `LENGTH` or `LENGTH,DIAMETER` in mm, or `none`. The
-    /// held region is never machined (SET-09).
+    /// held region is never machined.
     #[arg(long)]
     held_start: Option<String>,
     /// As --held-start, at the end (higher X end) of the stock.
     #[arg(long)]
     held_end: Option<String>,
-    /// Add a retaining tab (OP-21): `cylinder=X_START,LENGTH,DIAMETER` or
+    /// Add a retaining tab: `cylinder=X_START,LENGTH,DIAMETER` or
     /// `frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER` (the diameters
     /// at X_START and at X_START+LENGTH), on the axis; end with
     /// `@COUNT,START_ANGLE,RADIAL_OFFSET` for COUNT tabs around the axis.
@@ -71,7 +71,7 @@ struct HoldingArgs {
     /// Remove all the setup's tabs first.
     #[arg(long)]
     clear_tabs: bool,
-    /// Add the default tabs, computed from the part (OP-21): one at the
+    /// Add the default tabs, computed from the part: one at the
     /// head and one at the tail, frustums with the small end on the part.
     /// For a setup with a part, stock and no tabs.
     #[arg(long, conflicts_with = "new")]
@@ -139,7 +139,7 @@ enum Action {
         /// Without one only toolpaths are generated.
         #[arg(long)]
         post: Option<String>,
-        /// Tool numbers for the G-code (GC-14): `keep` confirms the numbers
+        /// Tool numbers for the G-code: `keep` confirms the numbers
         /// shown, `auto` renumbers in order of first use. On a terminal the
         /// numbers are shown and you are asked; otherwise this is required.
         #[arg(long, value_enum)]
@@ -164,8 +164,8 @@ enum Action {
         acknowledge_collision_warnings: bool,
     },
     /// Regenerate and simulate material removal for every operation, then
-    /// compare the stock left with each setup's part (SIM-03, SIM-05 to
-    /// SIM-07). Fails when the stock is overcut beyond one cell or a rapid
+    /// compare the stock left with each setup's part. Fails when the stock
+    /// is overcut beyond one cell or a rapid
     /// move removes material.
     Simulate {
         /// The project folder.
@@ -176,7 +176,7 @@ enum Action {
         cell: Option<f64>,
     },
     /// Compare a LinuxCNC simulator report with the replay of the G-code file
-    /// it ran (gate 3): every move must reach its position, LinuxCNC must
+    /// it ran: every move must reach its position, LinuxCNC must
     /// report no fault, and the program must end where the replay says.
     GcodeSim {
         /// Original LinuxCNC file; --source-lines selects a bounded fixture's original range.
@@ -194,7 +194,7 @@ enum Action {
         #[arg(long, value_name = "FIRST:LAST")]
         source_lines: Option<String>,
     },
-    /// Show the tool numbers the program will use, or change them (GC-14).
+    /// Show the tool numbers the program will use, or change them.
     /// The choice is saved in the project.
     ToolNumbers {
         /// The project folder.
@@ -216,7 +216,7 @@ enum Action {
         project: PathBuf,
     },
     /// Print the summary and check report of a model file, or of every
-    /// model in a project folder (IMP-01, IMP-03, IMP-04).
+    /// model in a project folder.
     Inspect {
         /// A model file, or a project folder.
         path: PathBuf,
@@ -225,7 +225,7 @@ enum Action {
         #[arg(long)]
         units: Option<String>,
     },
-    /// Add a model file to a project (IMP-01). A file outside the project
+    /// Add a model file to a project. A file outside the project
     /// folder is copied into its models folder, so the folder can be moved,
     /// zipped or shared; the original file is not changed.
     Import {
@@ -254,16 +254,14 @@ enum Action {
         /// given.
         model: Option<String>,
     },
-    /// List the built-in machine profiles and those in a library folder
-    /// (SET-01).
+    /// List the built-in machine profiles and those in a library folder.
     Machines {
         /// A folder of machine profile files.
         #[arg(long)]
         library: Option<PathBuf>,
     },
     /// Show a project's machine profile, or set it from a built-in profile
-    /// (by key or name) or a profile file. The project keeps its own copy
-    /// (SET-01).
+    /// (by key or name) or a profile file. The project keeps its own copy.
     Machine {
         /// The project folder.
         project: PathBuf,
@@ -278,7 +276,7 @@ enum Action {
         clear: bool,
     },
     /// Add or edit a setup: part, stock, material, part and work offsets and
-    /// clearance (SET-03, SET-05, SET-06), then print its checks. Without
+    /// clearance, then print its checks. Without
     /// options it only prints them.
     Setup {
         /// The project folder.
@@ -303,8 +301,7 @@ enum Action {
         #[arg(long)]
         material: Option<String>,
         /// How far this setup moves the part along the rotary axis from where
-        /// its placement puts it, in mm; the stock, tabs and work zero stay
-        /// (decision record 0201).
+        /// its placement puts it, in mm; the stock, tabs and work zero stay.
         #[arg(long, allow_hyphen_values = true)]
         part_offset: Option<f64>,
         /// The work offset register (G54 to G59).
@@ -324,7 +321,7 @@ enum Action {
         holding: Box<HoldingArgs>,
     },
     /// List a project's tool snapshots with their checks, and compare them
-    /// with a tool library folder (TL-07). The snapshots always win;
+    /// with a tool library folder. The snapshots always win;
     /// differences are only reported.
     Tools {
         /// The project folder.
@@ -334,8 +331,8 @@ enum Action {
         library: Option<PathBuf>,
     },
     /// Show a project's tool; add one from a tool library; update a snapshot
-    /// from the library; set its tool number and offsets; or remove it
-    /// (TL-06, TL-07, TL-11). The project keeps its own copy.
+    /// from the library; set its tool number and offsets; or remove it.
+    /// The project keeps its own copy.
     Tool {
         /// The project folder.
         project: PathBuf,
@@ -369,15 +366,14 @@ enum Action {
         remove: bool,
     },
     /// Work with a tool library: a folder with one file per tool and machine
-    /// tool sets in `tool-sets/`, stored separately from projects (TL-01,
-    /// TL-11).
+    /// tool sets in `tool-sets/`, stored separately from projects.
     Library {
         /// The tool library folder (created when first written).
         library: PathBuf,
         #[command(subcommand)]
         action: LibraryAction,
     },
-    /// Set the unit a project's model is in (IMP-03).
+    /// Set the unit a project's model is in.
     Units {
         /// The project folder.
         project: PathBuf,
@@ -388,7 +384,7 @@ enum Action {
         unit: String,
     },
     /// Add placement steps to a project's model, applied in the order given
-    /// after its existing steps (IMP-05). Steps: `translate=X,Y,Z`,
+    /// after its existing steps. Steps: `translate=X,Y,Z`,
     /// `rotate=AXIS:DEGREES`, `scale=FACTOR`, `mirror=AXIS`, `centre` (onto
     /// the rotary axis) and `orient=DIRECTION`, which turns the part's
     /// DIRECTION (such as +z) onto the rotary axis and centres it.
@@ -422,8 +418,8 @@ enum LibraryAction {
         /// The tools, by ID or name (default: all).
         tools: Vec<String>,
     },
-    /// Give a library tool the custom profile in a profile text file
-    /// (TL-03); its diameter becomes the profile's end radius doubled.
+    /// Give a library tool the custom profile in a profile text file;
+    /// its diameter becomes the profile's end radius doubled.
     Profile {
         /// The tool, by ID or name.
         tool: String,
@@ -439,7 +435,7 @@ enum LibraryAction {
         /// The tool, by ID, name or `T<number>` in the project.
         tool: String,
     },
-    /// Show or edit a machine's default tool set (TL-11): the tool numbers a
+    /// Show or edit a machine's default tool set: the tool numbers a
     /// project for that machine gives library tools.
     ToolSet {
         /// The machine profile's name, for example "Makera Z1".
@@ -576,7 +572,7 @@ fn run(cli: Cli) -> Result<()> {
                     },
                     ModelCheck::Changed { .. } => {
                         problems += 1;
-                        eprintln!("model '{path}' has changed since it was added (PRJ-02)");
+                        eprintln!("model '{path}' has changed since it was added");
                     }
                     ModelCheck::Missing => {
                         problems += 1;
@@ -2384,6 +2380,64 @@ fn confirm_tool_numbers(app: &mut Application, choice: Option<NumberChoice>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The internal terms the help text must not use (decision record 0536
+    /// step 4, the owner's answer (f)): a requirement ID such as "SET-09",
+    /// a decision record, an open item or a verification gate.
+    fn internal_terms(text: &str) -> Vec<String> {
+        let mut found = Vec::new();
+        let words: Vec<&str> = text
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .collect();
+        for (i, word) in words.iter().enumerate() {
+            let id = word.split_once('-').is_some_and(|(letters, digits)| {
+                (2..=4).contains(&letters.len())
+                    && letters.chars().all(|c| c.is_ascii_uppercase())
+                    && digits.len() >= 2
+                    && digits.chars().all(|c| c.is_ascii_digit())
+            });
+            let next = words.get(i + 1).copied().unwrap_or_default();
+            let numbered = !next.is_empty() && next.chars().all(|c| c.is_ascii_digit());
+            if id || (matches!(*word, "decision" | "gate" | "record") && numbered) {
+                found.push(format!("{word} {next}"));
+            }
+        }
+        found
+    }
+
+    /// Every help page: the program's and each subcommand's, at any depth.
+    fn help_pages(command: &mut clap::Command, path: &str, out: &mut Vec<(String, String)>) {
+        out.push((path.to_owned(), command.render_long_help().to_string()));
+        for sub in command.get_subcommands_mut() {
+            let name = format!("{path} {}", sub.get_name());
+            help_pages(sub, &name, out);
+        }
+    }
+
+    #[test]
+    fn req_ui_12_the_help_text_uses_plain_words() {
+        // Decision record 0536 step 4 (the owner's answer (f) of 8 Nov
+        // 2026): the help text uses the same plain words as the messages and
+        // the user guide, with no requirement numbers or internal terms.
+        use clap::CommandFactory;
+        let mut pages = Vec::new();
+        help_pages(&mut Cli::command(), "openchuck-cli", &mut pages);
+        assert!(pages.len() > 10, "{}", pages.len());
+        let found: Vec<String> = pages
+            .iter()
+            .flat_map(|(page, text)| {
+                internal_terms(text)
+                    .into_iter()
+                    .map(move |term| format!("{page}: {term}"))
+            })
+            .collect();
+        assert!(found.is_empty(), "{found:#?}");
+        // The check finds what it looks for.
+        assert_eq!(
+            internal_terms("held (SET-09), see decision 0495 and gate 3"),
+            ["SET-09 ", "decision 0495", "gate 3"]
+        );
+    }
 
     #[test]
     fn req_ui_12_the_command_line_groups_notes_about_consecutive_moves_as_results_does() {
