@@ -777,3 +777,23 @@ fn req_nfr_07_closing_an_empty_footprint_is_nothing() {
     let adj = Adjacency::new(&empty);
     assert!(close_footprint(&empty, &adj, &none, &[Point3::new(0.0, 0.0, 0.0)]).is_empty());
 }
+
+/// NFR-07: a mesh with a triangle of no area, or a marked triangle the mesh
+/// does not have, gives a clear nothing, never a crash.
+#[test]
+fn req_nfr_07_closing_a_footprint_survives_a_degenerate_mesh() {
+    let mut mesh = flat_grid(2);
+    // A sliver of no area, and a triangle that names a missing vertex.
+    mesh.triangles.push([0, 1, 2 * 3]);
+    let a = mesh.vertices[0];
+    mesh.vertices.push(a);
+    mesh.triangles.push([0, 0, 1]);
+    mesh.triangles.push([0, 1, 999]);
+    let adj = Adjacency::new(&mesh);
+    let missing = mesh.triangles.len() as u32 + 5;
+    let marked: TriangleSet = [0, 1, missing].into_iter().collect();
+    let points = [Point3::new(0.5, 0.5, 0.0)];
+    let closed = close_footprint(&mesh, &adj, &marked, &points);
+    assert!(marked.iter().all(|t| closed.contains(t)));
+    assert!(adj.neighbours(missing).next().is_none());
+}
