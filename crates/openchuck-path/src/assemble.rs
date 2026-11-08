@@ -38,11 +38,10 @@
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
-// Used by the entries of decision records 0543 and 0544 once they are built.
-#[cfg_attr(not(test), allow(dead_code))]
 mod pass_shape;
 mod ramp;
 mod ramp_refusal;
+mod ring_ramp;
 mod walls;
 
 use openchuck_types::geometry::Point3;
@@ -500,6 +499,11 @@ pub fn assemble_with_entry(
             continue;
         };
         let stock = view(&stocks, i, input);
+        let pass_rapids = rapids.get(i).map_or(&[][..], Vec::as_slice);
+        // Where the entry starts, when it is not over the first cut point
+        // (a ramp round a ring, decision 0543): the link goes there.
+        let entry_start = entry.start(&b, input, stock, common, i, points, pass_rapids)?;
+        let head = entry_start.as_ref().unwrap_or(head);
         if i > 0 {
             // A pass that tracks its stock may be linked at a height just
             // above that stock, where the whole link is clear of it, instead
@@ -586,7 +590,16 @@ pub fn assemble_with_entry(
             }
             linked?;
         }
-        entry.enter(&mut b, input, stock, common, i, points, context)?;
+        entry.enter(
+            &mut b,
+            input,
+            stock,
+            common,
+            i,
+            points,
+            pass_rapids,
+            context,
+        )?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
         let contacts = match doubling {
             Some(_) => points.iter().map(|p| p.contact).collect(),

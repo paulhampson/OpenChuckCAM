@@ -104,6 +104,8 @@ mod pass_order;
 mod pathing;
 #[path = "program.rs"]
 mod program;
+#[path = "ramp_follows.rs"]
+mod ramp_follows;
 #[path = "region.rs"]
 mod region;
 #[path = "region_offsets.rs"]

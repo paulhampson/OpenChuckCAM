@@ -31,7 +31,9 @@ use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use super::pass_shape::{self, Start};
 use super::ramp_refusal;
+use super::ring_ramp::{self, RingRamp};
 use super::{Builder, EPS, View};
 use crate::cutter::{self, ToolLine};
 use crate::entry_safety::{Blocked, Refused};
@@ -64,6 +66,9 @@ pub(super) struct Entry<'a> {
     chord: f64,
     /// The profile grown by the stock to leave; `None` for a plain plunge.
     grown: Option<RevolvedProfile>,
+    /// A height above all the stock (the retract height), from which the
+    /// stock under a ramp's path is probed.
+    probe_height: f64,
 }
 
 impl<'a> Entry<'a> {
@@ -100,6 +105,10 @@ impl<'a> Entry<'a> {
             tolerance: common.tolerance.get().0,
             chord: CHORD_FACTOR * common.tolerance.get().0,
             grown,
+            probe_height: match common.retract {
+                crate::params::Retract::Clearance => input.clearance.radius.0,
+                crate::params::Retract::SafeZ => input.clearance.safe_z.0,
+            },
         })
     }
 
@@ -113,11 +122,15 @@ impl<'a> Entry<'a> {
         common: &CommonParameters,
         pass: usize,
         points: &[CutPoint],
+        rapids: &[usize],
         context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<()> {
         let Some(head) = points.first() else {
             return Ok(());
         };
+        if let Some(plan) = self.ring_plan(b, input, stock, common, pass, points, rapids)? {
+            return self.ring_ramp(b, input, common, pass, &plan);
+        }
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
             EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
@@ -584,6 +597,150 @@ impl<'a> Entry<'a> {
         }
         let pose = b.pose(head.tip, head.a);
         b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))
+    }
+
+    /// The ramp round the ring the pass starts with, when the entry is a
+    /// ramp and the pass starts as a closed ring (decision 0543 section 2);
+    /// `None` otherwise.
+    #[allow(clippy::too_many_arguments)]
+    fn ring_plan(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        points: &[CutPoint],
+        rapids: &[usize],
+    ) -> Result<Option<RingRamp>> {
+        if self.style != EntryStyle::Ramp {
+            return Ok(None);
+        }
+        let Start::FullRing { end, sign } =
+            pass_shape::start(&b.rotary, points, rapids, self.tolerance)
+        else {
+            return Ok(None);
+        };
+        let plan = match ring_ramp::plan(
+            b,
+            stock,
+            common.approach_distance.0,
+            self.ramp_tan,
+            points,
+            end,
+            sign,
+            self.probe_height,
+        ) {
+            Ok(plan) => plan,
+            Err(ring_ramp::Refusal::NothingToDescend) => return Ok(None),
+            Err(ring_ramp::Refusal::TooManyTurns { radius, turns }) => {
+                return Err(PathError::Strategy(format!(
+                    "Ramp entry: pass {} is a ring whose tip comes within {radius:.3} mm of the \
+                     rotary axis, so a ramp at {:.2} degrees round it would take {turns:.1} turns, \
+                     more than the {:.0} allowed. Raise Ramp angle, or set Entry to Plunge or \
+                     Helix.",
+                    pass + 1,
+                    self.ramp_tan.atan().to_degrees(),
+                    ring_ramp::MAX_TURNS
+                )));
+            }
+        };
+        if let (openchuck_types::machine::ARange::Limited { min, max }, Some((_, a))) =
+            (input.rotary.range, plan.start())
+            && (a.0 < min.0 - EPS || a.0 > max.0 + EPS)
+        {
+            return Err(PathError::Strategy(format!(
+                "Ramp entry: pass {} needs A from {:.3} degrees to ramp round its ring, outside \
+                 the machine's A range of {:.3} to {:.3} degrees. Widen A range in the setup's \
+                 Machine settings, or set Entry to Plunge or Helix.",
+                pass + 1,
+                a.0,
+                min.0,
+                max.0
+            )));
+        }
+        Ok(Some(plan))
+    }
+
+    /// Where the entry of this pass starts, when it is not over the pass's
+    /// first cut point at the pass's first A: the link goes there
+    /// (decision 0543 section 2).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn start(
+        &self,
+        b: &Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        points: &[CutPoint],
+        rapids: &[usize],
+    ) -> Result<Option<CutPoint>> {
+        Ok(self
+            .ring_plan(b, input, stock, common, pass, points, rapids)?
+            .and_then(|plan| plan.start())
+            .map(|(pos, a)| {
+                let tip = b.rotary.to_model(pos, a);
+                CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                }
+            }))
+    }
+
+    /// Emits a planned ring ramp: to the start's angle and position at the
+    /// height the tool is at (or the ramp's start, if higher), down to the
+    /// start, then round the ring to the first cut point.
+    fn ring_ramp(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        plan: &RingRamp,
+    ) -> Result<()> {
+        let Some((start, a)) = plan.start() else {
+            return Ok(());
+        };
+        // Every position is the ring's own, raised: the gouge drop is a
+        // defensive check (decision 0543 section 3).
+        let found = plan
+            .moves
+            .iter()
+            .find_map(|(pos, a)| self.gouge(b, input, *a, std::slice::from_ref(pos)));
+        if let Some(g) = found {
+            return Err(PathError::Strategy(format!(
+                "Ramp entry: pass {} ramps round its own ring, yet the tool would cut {:.3} mm \
+                 into the finished surface at X {:.3} mm. This should not happen: please report \
+                 it as a defect, and set Entry to Plunge or Helix meanwhile.",
+                pass + 1,
+                g.depth,
+                g.x
+            )));
+        }
+        let here = b.at();
+        if start.height > here.height + EPS {
+            b.retract(start.height)?;
+        }
+        let height = b.at().height;
+        let over = b.rotary.to_model(AxisPosition { height, ..start }, a);
+        let pose = b.pose(over, a);
+        b.push(MoveKind::Rapid, pose, None, None)?;
+        rapid_to(b, start.height)?;
+        for (pos, a) in plan.moves.iter().skip(1) {
+            let tip = b.rotary.to_model(*pos, *a);
+            let pose = b.pose(tip, *a);
+            b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))?;
+        }
+        if plan.follows_steep_drop {
+            b.notes.push(crate::notice::Notice::information(format!(
+                "Ramp entry: pass {} drops more steeply than the ramp angle just before its \
+                 first point, so the ramp follows that drop there, as the pass itself does",
+                pass + 1
+            )));
+        }
+        Ok(())
     }
 
     /// Segments in a quarter circle of radius `r`.
