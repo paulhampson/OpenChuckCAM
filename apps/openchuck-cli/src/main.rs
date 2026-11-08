@@ -731,6 +731,9 @@ fn run(cli: Cli) -> Result<()> {
             let partial = openchuck_app::partial_operations(app.project(), &result);
             if out.is_some() && !partial.is_empty() {
                 if !acknowledge_partial_path {
+                    // NFR-12, decision record 0540 item 4: printed even when
+                    // nothing is written (issue #645).
+                    println!("{VERIFY_GCODE_NOTICE}");
                     anyhow::bail!(
                         "{} Pass --acknowledge-partial-path to write them.",
                         openchuck_app::partial_path_refusal(&partial)
@@ -752,6 +755,9 @@ fn run(cli: Cli) -> Result<()> {
             let collisions = openchuck_app::collision_warnings(app.project(), &result);
             if out.is_some() && !collisions.is_empty() {
                 if !acknowledge_collision_warnings {
+                    // NFR-12, decision record 0540 item 4: printed even when
+                    // nothing is written (issue #645).
+                    println!("{VERIFY_GCODE_NOTICE}");
                     anyhow::bail!(
                         "{} Pass --acknowledge-collision-warnings to write them.",
                         openchuck_app::collision_refusal(&collisions)

@@ -1239,6 +1239,13 @@ fn req_op_04_req_nfr_12_the_cli_writes_a_partial_path_only_when_acknowledged() {
         "{}",
         refused.stderr
     );
+    // NFR-12, decision record 0540 item 4: the notice is printed even when
+    // nothing is written (issue #645).
+    assert!(
+        refused.stdout.contains("must be verified by the user"),
+        "{}",
+        refused.stdout
+    );
     assert!(!out.exists(), "nothing is written");
     let written = cli_ok(&args(true));
     assert!(
@@ -1433,6 +1440,13 @@ fn req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged() {
             && refused.stderr.contains("--acknowledge-collision-warnings"),
         "{}",
         refused.stderr
+    );
+    // NFR-12, decision record 0540 item 4: the notice is printed even when
+    // nothing is written (issue #645).
+    assert!(
+        refused.stdout.contains("must be verified by the user"),
+        "{}",
+        refused.stdout
     );
     assert!(!out.exists(), "nothing is written");
     let written = cli_ok(&args(true));
