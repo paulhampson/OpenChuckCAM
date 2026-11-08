@@ -236,9 +236,9 @@ fn req_op_09_rest_rings_turn_at_constant_x_and_step_at_constant_a() {
             assert!(w[1] - w[0] <= 1.0 + 1e-9, "{rotation}: gap {w:?}");
         }
         assert!(
-            p.notes.iter().any(|n| n.message.contains("rings")),
+            p.notices.iter().any(|n| n.text.contains("rings")),
             "{:?}",
-            p.notes
+            p.notices
         );
         assert_eq!(reversals(&a_path(&p), 1e-9), 0, "{rotation}: OP-15");
     }
@@ -288,7 +288,7 @@ fn req_op_09_req_gc_07_rest_spiral_is_unchanged_when_rings_are_not_chosen() {
         format!("{:?}", missing.group),
         format!("{:?}", spiral.group)
     );
-    assert_eq!(missing.notes, spiral.notes);
+    assert_eq!(missing.notices, spiral.notices);
     // The spiral has no rings of its own. Its only whole turns at one X are
     // the turns where the tool's side meets the flank, which holds material
     // under this stock (decision record 0505 items 1 and 2): within a tool
@@ -303,11 +303,11 @@ fn req_op_09_req_gc_07_rest_spiral_is_unchanged_when_rings_are_not_chosen() {
     assert!(
         turns.is_empty()
             || spiral
-                .notes
+                .notices
                 .iter()
-                .any(|n| n.message.contains("where its tool's side meets")),
+                .any(|n| n.text.contains("where its tool's side meets")),
         "{:?}",
-        spiral.notes
+        spiral.notices
     );
 }
 
@@ -442,9 +442,9 @@ fn req_op_03_req_op_11_roughing_rings_turn_at_constant_x_and_step_at_constant_a_
             assert_eq!(reversals(&run, 1e-9), 0);
         }
         assert!(
-            p.notes.iter().any(|n| n.message.contains("rings")),
+            p.notices.iter().any(|n| n.text.contains("rings")),
             "{:?}",
-            p.notes
+            p.notices
         );
     }
 }

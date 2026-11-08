@@ -11,6 +11,7 @@ The source of the guide for people who use OpenChuckCAM, published at <https://p
 | `tools/assemble.py` | Puts the published site together: `latest/` beside every released version. |
 | `tools/check.py` | The style, privacy and safety checks, and whether the tutorial's screenshots are older than the screens. |
 | `tools/capture.py` | Takes the tutorial's screenshots and the home page's hero images from the real application. |
+| `tools/thumbnails.py` | Makes the small copies of the hero images that the README and the front page show; `capture.py` runs it. |
 | `tools/manifest.py` | The SHA-256 manifest of a released version. |
 | `tools/tests/` | Tests of the tools. |
 | `STYLE.md` | How to write the pages, and the review checklist. |

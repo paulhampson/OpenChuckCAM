@@ -24,6 +24,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BOOK = os.path.abspath(os.path.join(HERE, ".."))
 REPO = os.path.abspath(os.path.join(BOOK, ".."))
 FONTS = os.path.join(REPO, "apps", "openchuck-ui", "assets", "fonts")
+# The guide's favicon (decision 0542), written by `cargo xtask icon`. Kept out of theme/, where mdBook
+# would copy it under a hashed name the page template cannot link.
+FAVICON = os.path.join(BOOK, "favicon")
 FONT_FILES = ["IBMPlexSans-Regular.ttf", "IBMPlexSans-SemiBold.ttf", "IBMPlexMono-Regular.ttf", "IBMPlexMono-SemiBold.ttf"]
 
 sys.path.insert(0, HERE)
@@ -130,6 +133,13 @@ def build(out, version=None, tag=None, nightly=None):
         shutil.copyfile(os.path.join(REPO, "LICENSES", name), os.path.join(out, "fonts", name))
     for name in ("style.css", "versions.js"):
         shutil.copyfile(os.path.join(BOOK, "theme", name), os.path.join(out, name))
+    copy_favicons(out)
+
+
+def copy_favicons(out):
+    """Copy the guide's favicon files to the site's root, unchanged, as the page template links them."""
+    for name in ("favicon.svg", "favicon.png"):
+        shutil.copyfile(os.path.join(FAVICON, name), os.path.join(out, name))
 
 
 def main(argv=None):

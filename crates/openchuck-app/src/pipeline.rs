@@ -87,7 +87,7 @@ pub struct GroupInfo {
     /// The operation's warnings: its path was made but does not meet a limit
     /// it sets (decision record 0175). They make the operation's state a
     /// warning and are listed in Messages and the results.
-    pub warnings: Vec<openchuck_path::PathWarning>,
+    pub warnings: Vec<openchuck_path::Notice>,
     /// The areas of the part the operation's strategy could not reach, with
     /// the surface points in each, largest first (OP-20; decision record
     /// 0515). They belong to this generation as its warnings do: a run that

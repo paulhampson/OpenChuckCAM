@@ -45,6 +45,11 @@
 
 - [Create a custom machine](examples/custom-machine.md)
 - [Create a post-processing template](examples/create-a-post.md)
+- [Tabs and held regions](examples/tabs-and-held-regions.md)
+- [Limit an operation to a region](examples/limit-to-a-region.md)
+- [Rest machining](examples/rest-machining.md)
+- [The flute-length warning](examples/flute-length-warning.md)
+- [Stepover, stock to leave and scallop](examples/stepover-and-scallop.md)
 - [Selection sets on a blisk](examples/selection-sets.md)
 - [Face-flow finishing on a blisk floor](examples/faceflow.md)
 - [Swarf on a blisk blade](examples/swarf.md)
@@ -64,10 +69,13 @@
 - [G-code and posts](reference/gcode-and-posts.md)
 - [Writing a post-processor](reference/writing-a-post.md)
 - [Command line](reference/command-line.md)
+- [Messages and item states](reference/messages.md)
 - [Glossary](glossary.md)
 
 # More
 
 - [Troubleshooting](troubleshooting.md)
+- [Reporting a problem or asking for a feature](reporting.md)
 - [Release notes](release-notes.md)
+- [Credits and licences](credits.md)
 - [Contributing to this guide](contributing.md)

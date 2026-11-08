@@ -1211,6 +1211,64 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
         "{}",
         out.stdout
     );
+    // A tab placed by hand over an automatic head tab is a warning, as it is
+    // in the workholding section: stored, and said (decision 0539 item 4).
+    // The command line places tabs by hand, so the head tab is made
+    // automatic in the setup file, as the workholding section stores it.
+    let setups = project.join("setups");
+    let file = std::fs::read_dir(&setups)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|f| f.extension().is_some_and(|e| e == "toml"))
+        .unwrap();
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("[[workholding.tabs]]\n"), "{text}");
+    std::fs::write(
+        &file,
+        text.replacen(
+            "[[workholding.tabs]]\n",
+            "[[workholding.tabs]]\nauto = \"head\"\n",
+            1,
+        ),
+    )
+    .unwrap();
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-20,2,4"]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with("warning:") && l.contains("overlaps")),
+        "{}",
+        out.stderr
+    );
+    assert!(out.stdout.contains("tab 3:"), "{}", out.stdout);
+    // A refusal and a warning together: the tab across the part is refused
+    // and nothing is stored, and the overlap is still said, as a warning,
+    // not left out (issue #611, decision 0539).
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-1,2,4"]));
+    assert_ne!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with("warning:") && l.contains("overlaps")),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with("error:")
+                && l.contains("is not wholly in the head or the tail zone")),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        !out.stderr
+            .lines()
+            .any(|l| l.starts_with("error:") && l.contains("overlaps")),
+        "{}",
+        out.stderr
+    );
 }
 
 /// NFR-16: `--version` prints every build fact in plain text, in the same format the About window

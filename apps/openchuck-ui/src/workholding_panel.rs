@@ -14,6 +14,7 @@
 //! the part and the tools, whose findings go on their tab's row.
 
 use eframe::egui::{self, Color32, RichText, Stroke};
+use openchuck_app::overview::ItemState;
 use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, Setup};
 use openchuck_app::setup::{
@@ -442,6 +443,40 @@ impl WorkholdingPanel {
             .unwrap_or_default()
     }
 
+    /// Whether `finding` stopped the last Apply: it refuses, and the Apply
+    /// was refused. A warning found with a refusal stays a warning (issue
+    /// #611, decision 0539).
+    fn stops_apply(&self, finding: &WorkholdingFinding) -> bool {
+        self.refused && finding.refuses
+    }
+
+    /// The colour of `finding`'s text: an error only when it stopped the
+    /// last Apply (11.7; issue #611).
+    fn finding_colour(&self, finding: &WorkholdingFinding) -> Color32 {
+        if self.stops_apply(finding) {
+            ERROR
+        } else {
+            NOTE
+        }
+    }
+
+    /// The mark on tab `row` (from zero): an error when one of its findings
+    /// stopped the last Apply, a warning when it has findings that did not,
+    /// and none without findings (11.7; issue #611).
+    fn row_state(&self, row: usize) -> Option<ItemState> {
+        let mut found = self
+            .findings
+            .iter()
+            .filter(|f| f.tab == Some(row))
+            .peekable();
+        found.peek()?;
+        Some(if found.any(|f| self.stops_apply(f)) {
+            ItemState::Error
+        } else {
+            ItemState::Warning
+        })
+    }
+
     /// What the view draws for the section (7.5; OI-334 k): the draft while
     /// it has unapplied changes, its failing parts, the defaults offered while
     /// the setup and the draft have no tabs, and the focused row.
@@ -449,9 +484,12 @@ impl WorkholdingPanel {
         let problem = check_draft(self.draft.workholding(), setup.stock.as_ref());
         let mut failing: Vec<HeldItem> = problem.iter().map(|p| field_item(p.field)).collect();
         if self.refused {
+            // Only what refused fails; a warning found with it does not
+            // (issue #611).
             failing.extend(
                 self.findings
                     .iter()
+                    .filter(|f| f.refuses)
                     .filter_map(|f| f.tab)
                     .map(HeldItem::Tab),
             );
@@ -535,8 +573,7 @@ impl WorkholdingPanel {
             ui.label(RichText::new(m).color(ERROR));
         }
         for f in self.findings.iter().filter(|f| f.tab.is_none()) {
-            let colour = if self.refused { ERROR } else { NOTE };
-            ui.label(RichText::new(&f.text).color(colour));
+            ui.label(RichText::new(&f.text).color(self.finding_colour(f)));
         }
         let command = self.buttons(ui, app, setup, problem.as_ref());
         // After the controls, so a draft edited or reverted this frame is
@@ -808,12 +845,15 @@ impl WorkholdingPanel {
         let without_room = draft.auto_tabs_without_room(setup.stock.as_ref(), part.as_ref());
         for (i, tab) in tabs.iter().enumerate() {
             let marked = problem.is_some_and(|p| field_item(p.field) == HeldItem::Tab(i));
-            let mut finding: Vec<String> = self
+            // Each line with its own colour: a warning found with a refusal
+            // stays a warning (issue #611).
+            let mut finding: Vec<(String, Color32)> = self
                 .findings
                 .iter()
                 .filter(|f| f.tab == Some(i))
-                .map(|f| f.text.clone())
+                .map(|f| (f.text.clone(), self.finding_colour(f)))
                 .collect();
+            let stopped = self.row_state(i) == Some(ItemState::Error);
             let zone = match (&setup.stock, self.part_extent()) {
                 (Some(stock), Some(part)) => tab_zone(tab, &setup.workholding, stock, &part),
                 _ => None,
@@ -852,7 +892,7 @@ impl WorkholdingPanel {
             if (focus && i == last)
                 || opened
                 || marked
-                || !finding.is_empty() && self.refused
+                || stopped
                 || crate::pending_edits::needs_section(ui.ctx(), id)
             {
                 state.set_open(true);
@@ -868,25 +908,22 @@ impl WorkholdingPanel {
                 )
             });
             if let Some(line) = &room
-                && !finding.contains(line)
+                && !finding.iter().any(|(text, _)| text == line)
             {
-                finding.push(line.clone());
+                finding.push((line.clone(), NOTE));
             }
             let mut title_response = None;
             let mut header_row = state.show_header(ui, |ui| {
                 if !finding.is_empty() {
-                    let state = if self.refused {
-                        openchuck_app::overview::ItemState::Error
+                    let state = if stopped {
+                        ItemState::Error
                     } else {
-                        openchuck_app::overview::ItemState::Warning
+                        ItemState::Warning
                     };
-                    crate::shell::mark(ui, state, &finding.join(" "));
+                    let causes: Vec<&str> = finding.iter().map(|(text, _)| text.as_str()).collect();
+                    crate::shell::mark(ui, state, &causes.join(" "));
                 }
-                let colour = if marked || (self.refused && !finding.is_empty()) {
-                    ERROR
-                } else {
-                    DARK.text
-                };
+                let colour = if marked || stopped { ERROR } else { DARK.text };
                 let title = ui.add(
                     egui::Label::new(RichText::new(&header).color(colour))
                         .sense(egui::Sense::click()),
@@ -958,12 +995,8 @@ impl WorkholdingPanel {
             header_row.body(|ui| {
                 let ctx = ui.ctx().clone();
                 crate::pending_edits::section(&ctx, id, || {
-                    for text in &finding {
-                        ui.label(RichText::new(text).color(if self.refused {
-                            ERROR
-                        } else {
-                            NOTE
-                        }));
+                    for (text, colour) in &finding {
+                        ui.label(RichText::new(text).color(*colour));
                     }
                     self.tab_editor(
                         ui,
@@ -1874,6 +1907,51 @@ mod tests {
         refuse(&mut panel);
         panel.follow_stored(&Workholding::default());
         assert!(panel.findings.is_empty() && !panel.refused);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A refused Apply marks only what refuses (issue #611, decision 0539):
+    /// a tab outside the end zones is an error, and a warning found with it
+    /// (an automatic tab with no room, a tab shorter than a tool) stays a
+    /// warning, on its own row and for the whole setup.
+    #[test]
+    fn req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level() {
+        let (dir, app, _, setup_id) = cube_project("workholding-mixed");
+        let setup = app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 4.0), tab(4.0, 1.0, 2.0)];
+        panel.refused = true;
+        panel.findings = vec![
+            WorkholdingFinding {
+                tab: Some(0),
+                text: "Tab 1 is shorter than the tool".to_owned(),
+                refuses: false,
+            },
+            WorkholdingFinding {
+                tab: Some(1),
+                text: "Tab 2 is outside the end zones".to_owned(),
+                refuses: true,
+            },
+            WorkholdingFinding {
+                tab: None,
+                text: "A note about the setup".to_owned(),
+                refuses: false,
+            },
+        ];
+        let failing = panel.draft_view(&setup).failing;
+        assert!(failing.contains(&HeldItem::Tab(1)), "{failing:?}");
+        assert!(!failing.contains(&HeldItem::Tab(0)), "{failing:?}");
+        assert_eq!(panel.row_state(0), Some(ItemState::Warning));
+        assert_eq!(panel.row_state(1), Some(ItemState::Error));
+        assert_eq!(panel.row_state(2), None);
+        assert_eq!(panel.finding_colour(&panel.findings[0]), NOTE);
+        assert_eq!(panel.finding_colour(&panel.findings[1]), ERROR);
+        assert_eq!(panel.finding_colour(&panel.findings[2]), NOTE);
+        // Checking without applying refuses nothing: every finding is a
+        // warning then (11.7).
+        panel.refused = false;
+        assert_eq!(panel.row_state(1), Some(ItemState::Warning));
+        assert_eq!(panel.finding_colour(&panel.findings[1]), NOTE);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

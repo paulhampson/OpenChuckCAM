@@ -1,6 +1,6 @@
 # 0538: A possible collision is a warning to acknowledge (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written: 11 checks, one tick per result, a flag on the command line. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536. The owner's answers to questions 8 to 10 (7 Nov 2026, relayed, each option A) settle which rows qualify.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written: 11 checks, one tick per result, a flag on the command line. Built by lane MSGREVIEW in #623, which closes OI-2101. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's clarification of 7 Nov 2026, relayed by the coordinator with the answer to question 1 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md): checks that relate to a potential collision, such as the flute length check, become a warning requiring acknowledgement (the GC-16 level). It changes what the export and the command line do, so it is a record of its own, accepted separately from 0536. The owner's answers to questions 8 to 10 (7 Nov 2026, relayed, each option A) settle which rows qualify.
 - **What it amends, if accepted:**
   - [decision 0175](0175-swarf-overcut-is-a-warning.md) item 2: a path warning needs no tick, unless it is a possible collision;
   - [decision 0522](0522-the-flute-check-warns.md) item 1 and [decision 0523](0523-tab-checks-follow-the-operations-reach.md) item 4: the flute and tab warnings need a tick;
@@ -9,7 +9,7 @@
   The requirements are unchanged. GC-16's own confirmation (that the user will verify the G-code) stays as it is. The export already asks for ticks of this kind, for a partial path (decision 0239) and for a skipped stock simulation (decision 0168). GC-16's rule that the command line asks for no confirmation is kept, because a flag asks nothing.
 - **Date:** 7 Nov 2026.
 - **Depends on:** decision 0536 item 6.1. The library type carries the reason for a tick, so a collision is never called partial.
-- **Open items:** OI-2100 (the owner's acceptance; closed on 7 Nov 2026 with this record) and OI-2101 (the verification plan's GC-16 entry). Both are new, raised with 0536.
+- **Open items:** OI-2100 (the owner's acceptance; closed on 7 Nov 2026 with this record) and OI-2101 (the verification plan's GC-16 entry; closed on 7 Nov 2026 when part b was built). Both are new, raised with 0536.
 
 ## Context
 
@@ -91,3 +91,21 @@ Each test is named after its requirement, written first and watched fail.
 - The library type of 0536 carries the reason for a tick. It is part of 0536's version bump; this record adds no second one.
 - G-code is unchanged (GC-07).
 - Built as its own pull request after 0536's first build step, with the tests of item 4.
+
+## Verification
+
+Built by lane MSGREVIEW in two parts, on top of step 1 of decision 0536: part a on `claude/lane-msgreview-0538` (the path's checks, tabs, rapid cuts), part b on `claude/lane-msgreview-0538b` (the setup-level rows). Run in the session's Linux container with `cargo nextest run`, uninstrumented.
+
+- **The tick at export, part a.** `export_dialog::req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledged`: the checks list the warning under its operation and it is not called partial; `write_output` refuses until `acknowledge_collisions`, then writes; the program files equal a run with no warning, byte for byte (GC-07); a plan made again starts unacknowledged; an ordinary warning asks for no tick. The path's checks carry `Acknowledgement::PossibleCollision`. Their own tests check it: the flute check (`flutes.rs`), swarf next to a face and a touched check set (`swarf.rs`, `region.rs`), and a part cut free at a free end (`helical_faces.rs`). `flute_check::req_tl_04_req_nfr_12_a_finish_past_the_flutes_after_roughing_is_made_with_a_warning` checks the export line on a real flute warning.
+- **The tick at export, part b.** One test per setup-level row, each checking the four things of item 4: `req_gc_16_a_safe_cylinder_that_does_not_enclose_the_stock_needs_acknowledging`, `..._the_part_needs_acknowledging`, `req_gc_16_a_safe_cylinder_inside_the_minimum_clearance_needs_acknowledging` and `req_gc_16_a_tool_too_long_to_clear_the_workholding_needs_acknowledging`. `req_gc_16_a_tool_past_the_top_of_the_z_travel_asks_no_tick` checks that a travel limit asks for none. With the setup check removed from `collision_warnings`, the four fail. They were watched to fail that way after the code was written, not before it.
+- **Command line.** `e2e::req_gc_16_cli_writes_a_possible_collision_only_when_acknowledged` (a flute warning) and `e2e::req_gc_16_cli_writes_a_setup_collision_only_when_acknowledged` (a minimum clearance in the setup file). Each refuses without `--acknowledge-collision-warnings`, names the operation or setup and the flag, writes nothing, and writes with the flag.
+- **Marks and Messages.** `overview::tests::req_gc_16_req_ui_12_a_possible_collision_needs_acknowledging_and_comes_first` (an operation) and the four part b tests (a setup). The mark reads "Needs acknowledging: …", and in Messages the message is marked to acknowledge and comes first among the warnings.
+- **Suites.** Part a: `openchuck-path`, `openchuck-app` and `openchuck-ui` together, 2,372 tests, all passing once the flute test's expected export line was updated; `openchuck-cli`, 77 of 77. `cargo clippy --workspace --all-targets` is clean, and `cargo xtask deps` (with `messages`), `licences`, `records` and `trace` pass. Part b: `openchuck-app` and `openchuck-ui`, 1,530 passing (2 skipped); `openchuck-cli`, 78 of 78; the same checks pass. The path crate is unchanged in part b.
+
+Where the tests differ from item 4:
+
+- **Fewer tests in part a.** Item 4 asks for one `req_gc_16_<check>_needs_acknowledging` test per qualifying row. Part a has one export test for any path warning that carries the reason, plus each check's own test of the reason. The export reads only the reason, not which check set it.
+- **Byte-identical, in part b.** A setup-level row comes from the setup's own values (its clearance, its minimum, the machine), so no run without the warning has the same inputs. Part b checks instead that the written program files are the result's own G-code, byte for byte: the tick changes nothing in them (GC-07).
+- **The safe cylinder inside the stock or part needs Retract = Safe Z.** With Retract = Clearance, generation already refuses a clearance that the stock reaches past (`assemble.rs`, OP-14), so no result carries those two rows. With Retract = Safe Z, the path is made and the warning asks for the tick. The tests use Safe Z.
+
+Not verified here: the export dialog's tick in the running application (the UI unit tests cover `export_panel.rs`), and the rapid cut on a real project that makes one (the export reads it from the simulation report, as the Results tab does).

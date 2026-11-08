@@ -298,11 +298,11 @@ fn req_op_09_rest_reaches_the_inside_corner_of_a_steep_wall_in_rings() {
     let path = assert_rest_cleans(&rig, "rings", (10.0, 13.0));
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("where its tool's side meets")),
+            .any(|n| n.text.contains("where its tool's side meets")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -352,9 +352,9 @@ fn req_op_09_rest_reports_a_groove_too_narrow_for_its_tool() {
         );
     }
     let warning = path
-        .warnings
+        .warnings()
         .iter()
-        .map(|w| w.message.as_str())
+        .map(|w| w.text.as_str())
         .find(|m| m.contains("cannot reach"))
         .expect("a warning says what the tool cannot reach");
     assert!(warning.contains("too narrow"), "{warning}");
@@ -387,9 +387,9 @@ fn req_op_09_req_set_09_rest_reports_a_corner_the_held_region_keeps_the_tool_fro
         "{held:?}"
     );
     let warning = path
-        .warnings
+        .warnings()
         .iter()
-        .map(|w| w.message.as_str())
+        .map(|w| w.text.as_str())
         .find(|m| m.contains("cannot reach"))
         .expect("a warning says what the tool cannot reach");
     assert!(warning.contains("held region"), "{warning}");
@@ -468,9 +468,9 @@ fn req_op_09_req_op_20_rest_reports_material_under_an_overhang_as_blocked() {
         assert!(u.x.0 >= 9.9 && u.x.1 <= 14.1, "{u:?}");
     }
     let warning = path
-        .warnings
+        .warnings()
         .iter()
-        .map(|w| w.message.as_str())
+        .map(|w| w.text.as_str())
         .find(|m| m.contains("cannot reach"))
         .expect("a warning says what the tool cannot reach");
     assert!(warning.contains("blocked"), "{warning}");
@@ -507,17 +507,17 @@ fn req_op_09_rest_with_a_tool_it_cannot_model_says_so() {
         .generate(&RestMachining, &concave, &stock, &rest_values("rings"))
         .unwrap();
     assert!(
-        path.notes.iter().any(|n| n.message.contains("not convex")),
+        path.notices.iter().any(|n| n.text.contains("not convex")),
         "{:?}",
-        path.notes
+        path.notices
     );
     assert!(
         !path
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("where its tool's side meets")),
+            .any(|n| n.text.contains("where its tool's side meets")),
         "{:?}",
-        path.notes
+        path.notices
     );
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
 }
@@ -556,11 +556,11 @@ fn req_op_09_rest_adds_no_wall_ring_where_no_wall_holds_material() {
         .unwrap();
     assert!(
         !path
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("where its tool's side meets")),
+            .any(|n| n.text.contains("where its tool's side meets")),
         "{:?}",
-        path.notes
+        path.notices
     );
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
 }
@@ -573,9 +573,9 @@ fn req_op_09_rest_does_not_claim_its_passes_clean_the_material() {
         .generate(&RestMachining, &flat(), &stock, &rest_values("rings"))
         .unwrap();
     let note = path
-        .notes
+        .notices
         .iter()
-        .map(|n| n.message.as_str())
+        .map(|n| n.text.as_str())
         .find(|m| m.contains("points sampled on the part"))
         .unwrap();
     assert!(!note.contains("clean them"), "{note}");

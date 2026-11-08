@@ -195,16 +195,16 @@ fn req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound() {
     // The X slope is what A cannot follow, and is reported.
     assert!(slope > 10.0, "{slope}");
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("slopes along the rotary axis")),
+            .any(|n| n.text.contains("slopes along the rotary axis")),
         "{:?}",
-        path.notes
+        path.notices
     );
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("against the mesh"))
+            .any(|n| n.text.contains("against the mesh"))
     );
     // Max tilt 10: never more than 10 degrees off.
     let path = simultaneous(&f, &values(1.0, &[(parameter::MAX_TILT, num(10.0))]));
@@ -257,7 +257,7 @@ fn req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal() {
         let path = simultaneous(&f, &values(1.0, &[(parameter::MAX_TILT, num(tilt))]));
         smooth = a_of(&path);
         let r = reversals(&smooth, 0.01);
-        eprintln!("A reversals within {tilt} degrees: {r}; {:?}", path.notes);
+        eprintln!("A reversals within {tilt} degrees: {r}; {:?}", path.notices);
         assert!(r <= previous, "{r} reversals at {tilt} against {previous}");
         previous = r;
     }
@@ -677,7 +677,7 @@ fn req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads() {
     let v = values(1.0, &[]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
-        format!("{:?} {:?}", path.group, path.notes).into_bytes()
+        format!("{:?} {:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -843,11 +843,11 @@ fn req_op_05_exact_faces_drive_the_path_with_their_own_normals() {
     }
     assert!(
         !path
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("against the mesh")),
+            .any(|n| n.text.contains("against the mesh")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 

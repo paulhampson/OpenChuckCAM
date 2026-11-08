@@ -148,6 +148,27 @@ class Assemble(unittest.TestCase):
         with self.assertRaises(assemble.AssemblyError):
             assemble.assemble(built("latest"), None, out)
 
+    def test_the_site_pages_carry_the_guide_favicon(self):
+        """Decision 0542: the root, versions and not-found pages show the guide's favicon, served
+        from the site itself (no request to another site, NFR-19)."""
+        latest = built("latest")
+        write(latest, "favicon.svg", "<svg/>")
+        write(latest, "favicon.png", "png")
+        out = tempfile.mkdtemp()
+        assemble.assemble(latest, None, out, base="/OpenChuckCAM/")
+        self.assertEqual(read(out, "favicon.svg"), "<svg/>")
+        self.assertEqual(read(out, "favicon.png"), "png")
+        for page, prefix in (("index.html", ""), ("versions.html", ""), ("404.html", "/OpenChuckCAM/")):
+            text = read(out, page)
+            self.assertIn(f'<link rel="icon" href="{prefix}favicon.svg" type="image/svg+xml">', text, page)
+            self.assertIn(f'<link rel="icon" href="{prefix}favicon.png" type="image/png" sizes="32x32">', text, page)
+
+    def test_a_guide_without_a_favicon_still_assembles(self):
+        out = tempfile.mkdtemp()
+        assemble.assemble(built("latest"), None, out)
+        self.assertFalse(os.path.exists(os.path.join(out, "favicon.svg")))
+        self.assertNotIn('rel="icon"', read(out, "index.html"))
+
     def test_req_nfr_19_versions_page_lists_every_version_with_links(self):
         out = tempfile.mkdtemp()
         assemble.assemble(built("latest"), self.releases("0.31.0"), out)
