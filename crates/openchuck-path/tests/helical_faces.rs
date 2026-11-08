@@ -1319,8 +1319,16 @@ fn req_nfr_12_a_free_end_on_the_setups_own_stock_is_faced_and_said() {
         .filter(|t| (t - x).abs() < 1e-6)
         .count();
     assert_eq!(turns, 6);
-    // The variant that says the real blank must match the setup's stock is
-    // a warning until the owner answers (decision 0536 step 2, interim; P50).
+    // On the owner's answer to Q-C (decision 0536 step 2; P50): how the end
+    // is faced is information, and that the real blank must match the
+    // setup's own stock is a warning of its own.
+    let note = path
+        .notices
+        .iter()
+        .find(|n| n.text.contains("X 0.000 has nothing beyond it"))
+        .unwrap_or_else(|| panic!("{:?}", path.notices));
+    assert!(!note.is_warning(), "{note:?}");
+    assert!(!note.text.contains("the real blank"), "{}", note.text);
     let text = warnings(&path);
     assert!(
         text.contains("X 0.000")

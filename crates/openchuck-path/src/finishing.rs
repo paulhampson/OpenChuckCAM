@@ -359,26 +359,20 @@ pub(crate) fn free_ends(
             });
         }
         let (from, to) = (end.x - radius, end.x + radius);
-        let source = if stock.left_by_earlier_operations() {
-            String::new()
-        } else {
-            format!(
-                ", from {top:.3} mm, the top of the setup's own stock with no earlier \
-                 operation in this setup: the real blank must match it"
-            )
-        };
-        let text = format!(
+        // How the end is faced is information; that it is faced from the
+        // setup's own stock, which the real blank must match, is a warning of
+        // its own (decision 0536 step 2, the owner's answer to question Q-C;
+        // P50).
+        out.notes.push(format!(
             "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
              in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
-             axis in each{source}"
-        );
-        // Said as the real blank must match the setup's own stock, it is a
-        // warning until the owner answers (decision 0536 step 2, interim,
-        // question Q-C; P50); otherwise information.
-        if source.is_empty() {
-            out.notes.push(text);
-        } else {
-            out.warnings.push(Notice::warning(text));
+             axis in each"
+        ));
+        if !stock.left_by_earlier_operations() {
+            out.warnings.push(Notice::warning(format!(
+                "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
+                 own stock with no earlier operation in this setup: the real blank must match it"
+            )));
         }
         rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
