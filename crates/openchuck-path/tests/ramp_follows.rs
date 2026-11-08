@@ -560,3 +560,156 @@ fn req_op_11_req_nfr_07_steeper_ramp_near_the_axis_fits_ten_turns_up_to_the_maxi
     let err = make(&f, &HelicalFinishing, &v, &[]).unwrap_err();
     assert!(err.contains("Raise Ramp angle"), "{err}");
 }
+
+/// Roughing-like passes that carry their stock: whole rings at X `x`, one
+/// pass each, at the tip radii `radii` (outer first).
+#[derive(Debug)]
+struct NarrowingRings {
+    x: f64,
+    radii: Vec<f64>,
+}
+
+impl Strategy for NarrowingRings {
+    fn name(&self) -> &str {
+        "test_narrowing_rings"
+    }
+    fn label(&self) -> &str {
+        "Narrowing rings (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_path::rotary::AxisPosition;
+        use openchuck_types::units::Degrees;
+        let stock: std::sync::Arc<dyn openchuck_path::StockModel> =
+            std::sync::Arc::new(openchuck_path::AnalyticStock::Cylinder {
+                radius: 16.0,
+                x_start: -1.0,
+                x_end: 47.0,
+            });
+        Ok(self
+            .radii
+            .iter()
+            .map(|&r| {
+                let points = (0..=36)
+                    .map(|k| {
+                        let a = Degrees(10.0 * f64::from(k));
+                        let tip = input.rotary.to_model(
+                            AxisPosition {
+                                along: self.x,
+                                across: 0.0,
+                                height: r,
+                            },
+                            a,
+                        );
+                        openchuck_path::CutPoint {
+                            tip,
+                            a,
+                            contact: tip,
+                        }
+                    })
+                    .collect();
+                openchuck_path::Pass {
+                    helical_pass_start: false,
+                    low_link: false,
+                    points,
+                    stock: Some(openchuck_path::PassStock(stock.clone())),
+                    rapids: Vec::new(),
+                }
+            })
+            .collect())
+    }
+}
+
+/// Plunge to remove face nubs (decision 0543 section 4, point 3, the
+/// owner's decision (iii)): roughing rings round the axis no wider than the
+/// Face nub diameter, where the part leaves nothing inside them, are
+/// replaced by a plunge to the axis while the part turns; where the part is
+/// there, the rings are kept.
+#[test]
+fn req_op_11_req_op_03_face_nubs_are_plunged_where_the_part_leaves_nothing() {
+    let f = cylinder();
+    let mut long = f.input();
+    let stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 47.0,
+    };
+    long.stock = &stock;
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    v.insert(names::RAMP_ANGLE.into(), n(10.0));
+    v.insert(names::PLUNGE_FACE_NUBS.into(), ParameterValue::Flag(true));
+    // Beyond the cylinder's end (X 40): rings at 2.5, 1.5 and 0.6 mm, all
+    // within the 6 mm ball's 6 mm nub.
+    let rings = NarrowingRings {
+        x: 45.0,
+        radii: vec![2.5, 1.5, 0.6],
+    };
+    let path = run(|ctx| generate(&rings, &long, &v, ctx)).unwrap();
+    let segs = &path.group.segments;
+    let plunges: Vec<_> = segs.iter().filter(|s| s.kind == MoveKind::Plunge).collect();
+    assert_eq!(plunges.len(), 1, "one plunge clears the nub");
+    let bottom = f.rotary.to_axis(plunges[0].end.tip, plunges[0].end.a);
+    assert!(bottom.height.abs() < 1e-6 && (bottom.along - 45.0).abs() < 1e-6);
+    // No ring is ramped or cut away from the axis.
+    for s in segs
+        .iter()
+        .filter(|s| matches!(s.kind, MoveKind::Cutting | MoveKind::LeadIn))
+    {
+        let p = f.rotary.to_axis(s.end.tip, s.end.a);
+        assert!(p.across.hypot(p.height) < 1e-6, "{p:?}");
+    }
+    // The part turns a whole turn with the tip on the axis.
+    let turned: f64 = segs
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .zip(std::iter::once(plunges[0]).chain(segs.iter().filter(|s| s.kind == MoveKind::Cutting)))
+        .map(|(s, p)| (s.end.a.0 - p.end.a.0).abs())
+        .sum();
+    assert!((turned - 360.0).abs() < 1e-6, "{turned}");
+    assert!(
+        path.notices
+            .iter()
+            .any(|n| n.text.contains("nub") && n.text.contains("1 plunge")),
+        "{:?}",
+        path.notices
+    );
+    // On the part (X 20, a cylinder of 15 mm), rings no wider than the nub
+    // would cut the part: they are not nub passes, and are ramped as rings.
+    let thin = Fixture::new(
+        MeshSurface::new(
+            &Cylinder {
+                radius: 1.0,
+                length: 40.0,
+            }
+            .mesh(3, 72),
+        )
+        .unwrap(),
+        16.0,
+        &ball(6.0),
+    );
+    let mut on_part = thin.input();
+    on_part.stock = &stock;
+    let rings = NarrowingRings {
+        x: 20.0,
+        radii: vec![2.5],
+    };
+    let path = run(|ctx| generate(&rings, &on_part, &v, ctx)).unwrap();
+    assert!(
+        path.group
+            .segments
+            .iter()
+            .all(|s| s.kind != MoveKind::Plunge),
+        "the part is inside the nub: no plunge"
+    );
+}
