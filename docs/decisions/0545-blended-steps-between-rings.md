@@ -42,6 +42,67 @@ The issue's model script (`engagement.py`, a 2D dexel model of one roughing laye
 
 The peak on the ring itself falls from 2.20 mm (sharp: the ring after a step starts in the step's slot) to 1.41 mm at 45°. The model measures path shapes, not the product's output; the product's output is graded in the tests below by an independent check in the test kit.
 
+### Drawings
+
+The surface of the part unrolled into a plan view: A (the degrees turned from the **Start angle**, not wrapped, so A builds up) runs to the right, and X (along the part) runs down. A ring is a whole turn, 360 degrees at one X. One character is 20 degrees; the gaps between rows are not to scale.
+
+**1. The step between rings, today and blended (items 1 and 2).**
+
+```text
+Sharp (today; Steps between rings = Sharp)
+
+        0                 360               720               1080
+x_k     o=================+
+                          |  step: X moves s_k with A held (a 90-degree corner at each end)
+x_k+1                     +=================+
+                                            |  step
+x_k+2                                       +=================+ (last ring: nothing after it)
+
+Blended (Steps between rings = Blended; drawn at Blend over phi = 40 degrees)
+
+        0                 360                 720+phi             1080+2phi
+x_k     o=================+
+                           \ blend: X moves s_k while A turns phi
+x_k+1                       +=================+  ring k+1 from 360+phi
+                                               \ blend
+x_k+2                                           +=================+  ring k+2 from 720+2phi (last ring: nothing after it)
+```
+
+**2. Where the blend starts and ends (D1).**
+
+```text
+Option A (chosen, D1): the ring is whole, then the blend.
+x_k     o=================+
+                           \ blend: starts where ring k closes (x_k, a_k + 360),
+x_k+1                       +=====   ends where ring k+1 starts (x_k+1, a_k + 360 + phi)
+
+Option B (not chosen): the blend replaces the last phi of each ring.
+x_k     o===============+          ring k is only 360 - phi long, so it is not a whole turn at x_k
+                         \
+x_k+1                     +=====
+```
+
+**3. The blend's angle off the ring (D2, item 6).** In the unrolled surface at radius r, the blend crosses one gap s_k while it goes r · phi round the part. At s_k = 1.27 mm, r = 10 mm and phi = 45 degrees the angle is 9 degrees (the model's 9.2); nearer the axis (smaller r) it is steeper, and a larger phi makes it shallower.
+
+```text
+x_k     ===+ - - - - - - - - - - - - - - - - -+    the ring's direction: r * phi of arc round the part
+            `--..__                           :
+                   `--..__                    :  s_k, the gap to the next ring (along X)
+                          `--..__             :
+x_k+1                            `--..__      :
+                                        `--..+=====  ring k+1
+            \___ the blend; its angle off the ring = atan(s_k / (r * phi))
+```
+
+**4. The gap s_k against the ring spacing.** The ring places are unchanged (`helical::ring_places`, 0390 item 3): the part's length is split into n equal gaps s, each no wider than the stepover, with a ring at each end and one at each face across the axis (0297). Each blend turns the same phi whatever its gap, so a shorter gap gives a shallower blend:
+
+| Rings | Gap s_k to the next ring | Blend after the ring |
+| --- | --- | --- |
+| x_0 (the part's start, or a held region's end, 0161) | s = length / n, at most the stepover | over phi |
+| x_1, x_2, ... | s | over phi |
+| a face's ring (0297), or a rest wall ring (closer than the stepover) | shorter than s on one or both sides | over phi, at a smaller angle off the ring |
+| x_n (the part's end) | none | none: the last ring has no blend |
+
 ## Decision (proposed; the owner's answers D1 to D5 relayed on 8 Nov 2026)
 
 1. **The setting (D3, option 1, the owner's choice, relayed).** Each of the five ring strategies (helical finishing, rest machining, continuous rotary roughing, round Facing, simultaneous finishing's spiral pattern) gains **Steps between rings** (`ring_step`), shown beside **Passes** and only when Passes is Rings, with two choices:
