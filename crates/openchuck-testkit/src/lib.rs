@@ -15,6 +15,8 @@
 //!   the exact value on B-rep faces and tessellations.
 //! - [`region`]: the independent oracle for 2D offsets on an unrolled
 //!   cylinder, and the corpus of awkward regions (OP-04, from spike SP-7).
+//! - [`engagement`]: the independent width-of-cut check (OP-03; decision
+//!   record 0545), radial dexels over the unrolled cylinder.
 //! - [`golden`]: plain-text golden-file comparison (NFR-08).
 //! - [`parts`]: procedurally generated analytic test parts and the
 //!   1M-triangle benchmark model (NFR-08, NFR-03).
@@ -26,6 +28,7 @@
 pub mod brep;
 pub mod contact;
 pub mod determinism;
+pub mod engagement;
 pub mod golden;
 pub mod gouge;
 pub mod oracle;
