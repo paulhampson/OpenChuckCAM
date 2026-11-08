@@ -58,6 +58,8 @@ mod picking;
 mod playback;
 #[path = "posting.rs"]
 mod posting;
+#[path = "ramp_example.rs"]
+mod ramp_example;
 #[path = "reach.rs"]
 mod reach;
 #[path = "reference_jobs.rs"]

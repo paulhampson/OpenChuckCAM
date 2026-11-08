@@ -276,3 +276,105 @@ fn req_op_11_req_set_09_continuous_roughing_spiral_layers_ramp_and_a_single_poin
         );
     }
 }
+
+/// One pass: a short step along X at A 0 (shorter than the tool radius),
+/// then a whole ring, as roughing in Rings gives after a step (found on the
+/// public baluster example).
+#[derive(Debug)]
+struct StepThenRing;
+
+impl Strategy for StepThenRing {
+    fn name(&self) -> &str {
+        "test_step_then_ring"
+    }
+    fn label(&self) -> &str {
+        "Step then ring (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_types::units::{Degrees, Millimetres};
+        let at = |x: f64, a: f64| {
+            let line = input
+                .rotary
+                .tool_line(Millimetres(x), Degrees(a), Millimetres(0.0));
+            input
+                .surface
+                .drop_tool(input.tool, &line)
+                .map(|c| openchuck_path::CutPoint {
+                    tip: c.tip,
+                    a: Degrees(a),
+                    contact: c.contact,
+                })
+        };
+        let points = [(10.0, 0.0), (10.5, 0.0), (11.0, 0.0)]
+            .into_iter()
+            .chain((1..=72).map(|k| (11.0, 5.0 * f64::from(k))))
+            .filter_map(|(x, a)| at(x, a))
+            .collect();
+        Ok(vec![openchuck_path::Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_req_op_15_a_step_shorter_than_the_tool_radius_is_ramped_on_along_the_pass() {
+    // Decision 0543 D3: the back-and-forth continues over the pass's own
+    // path past the short step, A reversing during the entry only, and a
+    // note counts the reversals.
+    let f = cylinder();
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let path = make(&f, &StepThenRing, &v, &[]).unwrap();
+    let all = entries(&path);
+    let (before, moves, head) = &all[0];
+    assert!(moves.len() > 2, "{}", moves.len());
+    assert_eq!(moves.last(), Some(head));
+    // Every move is over the pass's own path: X between 10 and 11 mm, A
+    // within the ring's turn.
+    for m in std::iter::once(before).chain(moves.iter()) {
+        let p = f.rotary.to_axis(m.tip, m.a);
+        assert!((10.0 - 1e-6..=11.0 + 1e-6).contains(&p.along), "{p:?}");
+        assert!((-1e-6..=360.0 + 1e-6).contains(&m.a.0), "{}", m.a.0);
+    }
+    assert!(
+        path.notices.iter().any(|n| n.text.contains("reversing A")),
+        "{:?}",
+        path.notices
+    );
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_ring_too_close_to_the_axis_for_ten_turns_is_refused_by_name() {
+    // A 1 mm cylinder at 0.5 degrees: a 2 mm descent round a ring of about
+    // 1 mm radius needs far more than 10 turns (decision 0543 D4).
+    let cyl = Cylinder {
+        radius: 1.0,
+        length: 20.0,
+    };
+    let f = Fixture::new(MeshSurface::new(&cyl.mesh(3, 72)).unwrap(), 4.0, &ball(1.0));
+    let mut v = finishing("rings");
+    v.insert(names::RAMP_ANGLE.into(), n(0.5));
+    v.insert(names::STEPOVER.into(), n(0.5));
+    let err = make(&f, &HelicalFinishing, &v, &[]).unwrap_err();
+    assert!(
+        err.contains("Ramp entry: pass 1")
+            && err.contains("more than the 10 allowed")
+            && err.contains("Raise Ramp angle"),
+        "{err}"
+    );
+}

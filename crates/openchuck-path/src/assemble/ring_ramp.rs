@@ -10,8 +10,10 @@
 //! depth. It never leaves the ring's machine X and Y, so it cannot reach a
 //! held region, a tab or the next ring that the ring itself does not.
 //!
-//! The descent is limited by the ramp angle on the tip's real path, the arc
-//! length at the smallest tip radius on the ring (decision 0543 D4). Where
+//! The descent is limited by the ramp angle on the tip's real path: the arc
+//! length the tip travels relative to the part, at its own distance from
+//! the rotary axis at each step (decision 0543 D4). A ring that reaches the
+//! axis (an end face) still has length elsewhere on it. Where
 //! the pass itself drops more steeply than that just before its first
 //! point, the ramp follows the pass's own drop there (D4, the owner's
 //! answer pending); everywhere else it stays on or above the angle.
@@ -46,7 +48,8 @@ impl RingRamp {
 /// Why a ring cannot be ramped round.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Refusal {
-    /// More than [`MAX_TURNS`] turns at the ring's smallest tip radius.
+    /// More than [`MAX_TURNS`] turns; `radius` is the tip's mean distance
+    /// from the rotary axis round the ring.
     TooManyTurns { radius: f64, turns: f64 },
     /// The pass starts above the stock: nothing to ramp down into.
     NothingToDescend,
@@ -79,7 +82,9 @@ pub(super) fn plan(
     let mut stock_top = f64::NEG_INFINITY;
     let mut base_top = f64::NEG_INFINITY;
     let mut base_low = f64::INFINITY;
-    let mut radius = f64::INFINITY;
+    // The tip's mean distance from the axis round the ring, by angle.
+    let mut swept = 0.0;
+    let mut turned = 0.0;
     for &(pos, a) in &ring {
         let over = AxisPosition {
             height: probe_height,
@@ -91,13 +96,21 @@ pub(super) fn plan(
         }
         base_top = base_top.max(pos.height);
         base_low = base_low.min(pos.height);
-        radius = radius.min(pos.across.hypot(pos.height));
     }
+    for w in ring.windows(2) {
+        if let [(p, a), (q, b)] = w {
+            let da = (b - a).abs();
+            swept += da * 0.5 * (p.across.hypot(p.height) + q.across.hypot(q.height));
+            turned += da;
+        }
+    }
+    let radius = if turned > 0.0 { swept / turned } else { 0.0 };
     if stock_top <= head.height + EPS {
         return Err(Refusal::NothingToDescend);
     }
     let top = stock_top.max(base_top) + approach;
-    // Arc length needed at the smallest radius, as an angle.
+    // Arc length needed at the mean radius, as an angle; the loop below adds
+    // turns until the ramp, measured on its real path, starts at `top`.
     let run = (top - base_low) / tan;
     let mut delta = (run / radius.max(EPS)).to_degrees();
     let whole = (a_end - a0).abs();
@@ -111,7 +124,7 @@ pub(super) fn plan(
         if !delta.is_finite() || turns > MAX_TURNS {
             return Err(Refusal::TooManyTurns { radius, turns });
         }
-        let planned = round(&ring, &back, whole, head, a0, sign, delta, radius, top, tan);
+        let planned = round(&ring, &back, whole, head, a0, sign, delta, top, tan);
         if planned
             .moves
             .first()
@@ -133,7 +146,6 @@ fn round(
     a0: f64,
     sign: f64,
     delta: f64,
-    radius: f64,
     top: f64,
     tan: f64,
 ) -> RingRamp {
@@ -182,11 +194,7 @@ fn round(
     offsets.sort_by(|x, y| y.total_cmp(x));
     offsets.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
     let base: Vec<AxisPosition> = offsets.iter().map(|&phi| at(phi)).collect();
-    // Travel: arc length at the smallest radius, from the start.
-    let travel: Vec<f64> = offsets
-        .iter()
-        .map(|&phi| (delta - phi).to_radians() * radius)
-        .collect();
+    let travel = real_travel(&offsets, &base);
     let heights: Vec<f64> = base.iter().map(|p| p.height).collect();
     let (h, steep) = super::path_ramp::heights(&travel, &heights, top, tan);
     let mut moves: Vec<(AxisPosition, Degrees)> = base
@@ -225,7 +233,6 @@ pub(super) fn plan_spiral(
     step: f64,
     base: impl Fn(f64) -> f64,
 ) -> Result<RingRamp, Refusal> {
-    let radius = head.across.hypot(head.height);
     // The stock round the axis at this X, probed every `step` degrees of a
     // whole turn (the ramp covers at most whole turns of the same place).
     let count = ((360.0 / step.max(1e-3)).ceil() as usize).clamp(4, 100_000);
@@ -243,6 +250,7 @@ pub(super) fn plan_spiral(
         }
         low = low.min(base(a));
     }
+    let radius = head.across.hypot(head.height);
     if stock_top <= head.height + EPS {
         return Err(Refusal::NothingToDescend);
     }
@@ -257,10 +265,6 @@ pub(super) fn plan_spiral(
         let offsets: Vec<f64> = (0..=n)
             .map(|k| delta * (1.0 - k as f64 / n as f64))
             .collect();
-        let travel: Vec<f64> = offsets
-            .iter()
-            .map(|&phi| (delta - phi).to_radians() * radius)
-            .collect();
         let bases: Vec<f64> = offsets
             .iter()
             .map(|&phi| {
@@ -271,6 +275,11 @@ pub(super) fn plan_spiral(
                 }
             })
             .collect();
+        let positions: Vec<AxisPosition> = bases
+            .iter()
+            .map(|&height| AxisPosition { height, ..head })
+            .collect();
+        let travel = real_travel(&offsets, &positions);
         let (h, steep) = super::path_ramp::heights(&travel, &bases, top, tan);
         if h.first().is_some_and(|&h0| h0 >= top - 1e-9) {
             let mut moves: Vec<(AxisPosition, Degrees)> = offsets
@@ -288,4 +297,25 @@ pub(super) fn plan_spiral(
         }
         delta += 360.0;
     }
+}
+
+/// The tip's travel relative to the part from the first of `offsets`
+/// (degrees back from the first cut point, falling) at each sample, on the
+/// path through `positions`: at each step, the arc at the step's mean
+/// distance from the rotary axis and the change of position across the
+/// machine (decision 0543 D4).
+fn real_travel(offsets: &[f64], positions: &[AxisPosition]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(offsets.len());
+    let mut total = 0.0;
+    let mut previous: Option<(f64, AxisPosition)> = None;
+    for (&phi, &p) in offsets.iter().zip(positions) {
+        if let Some((o, q)) = previous {
+            let r = 0.5 * (p.across.hypot(p.height) + q.across.hypot(q.height));
+            total +=
+                (o - phi).abs().to_radians() * r + (p.along - q.along).hypot(p.across - q.across);
+        }
+        out.push(total);
+        previous = Some((phi, p));
+    }
+    out
 }

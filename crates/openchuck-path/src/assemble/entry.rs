@@ -296,26 +296,64 @@ impl Entry {
         points: &[CutPoint],
         rapids: &[usize],
     ) -> Result<()> {
-        match pass_shape::start(&b.rotary, points, rapids, self.tolerance) {
-            Start::SinglePoint => {
-                // No path to follow (decision 0543 D7, the owner's answer).
-                if !self.single_point_plunge {
-                    return Err(PathError::Strategy(format!(
-                        "Ramp entry: pass {} is a single point, so there is no path for the ramp \
-                         to follow. Turn on Allow single-point plunge, or set Entry to Plunge or \
-                         Helix.",
-                        pass + 1
-                    )));
-                }
-                b.single_point_plunges.push(pass);
-                plunge(b, stock, common, head)
-            }
+        let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);
+        // A pass that turns A with its tip on the rotary axis does not move
+        // relative to the part: like a single point, it has no path to
+        // follow (decision 0543 D7).
+        let on_axis = matches!(shape, Start::FullRing { .. } | Start::Spiral { .. }) && {
+            let at = b.rotary.to_axis(head.tip, head.a);
+            at.across.hypot(at.height) <= self.tolerance
+        };
+        match shape {
+            _ if on_axis => self.single_point(b, stock, common, pass, head),
+            Start::SinglePoint => self.single_point(b, stock, common, pass, head),
             Start::FullRing { .. } | Start::Spiral { .. } => plunge(b, stock, common, head),
-            Start::Line { end } => self.follow(b, input, stock, common, pass, points, end, false),
+            Start::Line { end } => {
+                // A line shorter than the minimum (the step before a ring,
+                // say) is followed on along the pass, up to its first rapid,
+                // so the ramp goes back and forth over the pass's own path
+                // past it, A reversing during the entry only (decision 0543
+                // D3).
+                let path: Vec<(AxisPosition, Degrees)> = points
+                    .iter()
+                    .take(end + 1)
+                    .map(|p| (b.rotary.to_axis(p.tip, p.a), p.a))
+                    .collect();
+                if travel_of(&path) < input.tool.cutting_radius() {
+                    let last = (1..points.len())
+                        .find(|k| rapids.contains(k))
+                        .map_or(points.len().saturating_sub(1), |k| k - 1);
+                    self.follow(b, input, stock, common, pass, points, last.max(end), true)
+                } else {
+                    self.follow(b, input, stock, common, pass, points, end, false)
+                }
+            }
             Start::PartialRing { end, .. } => {
                 self.follow(b, input, stock, common, pass, points, end, true)
             }
         }
+    }
+
+    /// A pass with no path to follow: refused unless Allow single-point
+    /// plunge is on, then plunged and named in a note (decision 0543 D7, the
+    /// owner's answer).
+    fn single_point(
+        &self,
+        b: &mut Builder<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        head: &CutPoint,
+    ) -> Result<()> {
+        if !self.single_point_plunge {
+            return Err(PathError::Strategy(format!(
+                "Ramp entry: pass {} is a single point, so there is no path for the ramp to \
+                 follow. Turn on Allow single-point plunge, or set Entry to Plunge or Helix.",
+                pass + 1
+            )));
+        }
+        b.single_point_plunges.push(pass);
+        plunge(b, stock, common, head)
     }
 
     /// The back-and-forth ramp over the pass's own path up to `end`, from
@@ -346,18 +384,14 @@ impl Entry {
             a: a0,
             contact: b.rotary.to_model(goal, a0),
         };
-        let radius = path
-            .iter()
-            .map(|(p, _)| p.across.hypot(p.height))
-            .fold(f64::INFINITY, f64::min);
         let low = path
             .iter()
             .map(|(p, _)| p.height)
             .fold(f64::INFINITY, f64::min);
-        let total = travel_of(&path, radius);
+        let total = travel_of(&path);
         let approach = common.approach_distance.0;
         // The stock over the first point: none means nothing to descend into.
-        let here = stock_top_along(b, stock, &path, 0.0, radius, self.probe_height);
+        let here = stock_top_along(b, stock, &path, 0.0, self.probe_height);
         if here <= goal.height + EPS {
             return plunge(b, stock, common, &head);
         }
@@ -366,23 +400,16 @@ impl Entry {
         let mut top = here + approach;
         for _ in 0..8 {
             let reach = ((top - low) / self.ramp_tan).min(total);
-            let next =
-                stock_top_along(b, stock, &path, reach, radius, self.probe_height) + approach;
+            let next = stock_top_along(b, stock, &path, reach, self.probe_height) + approach;
             if next <= top + EPS {
                 break;
             }
             top = next;
         }
         let minimum = input.tool.cutting_radius();
-        let (moves, steep) = super::path_ramp::back_and_forth(
-            &path,
-            radius,
-            top,
-            self.ramp_tan,
-            minimum,
-        )
-        .map_err(|refusal| {
-            let what = if arc { "arc" } else { "line" };
+        let (moves, steep) = super::path_ramp::back_and_forth(&path, top, self.ramp_tan, minimum)
+            .map_err(|refusal| {
+            let what = if arc { "stretch" } else { "line" };
             PathError::Strategy(match refusal {
                 super::path_ramp::Refusal::TooShort { length } => format!(
                     "Ramp entry: pass {} starts with a {what} of {length:.3} mm, shorter than the \
@@ -413,9 +440,9 @@ impl Entry {
                 .count();
             if reversals > 0 {
                 b.notes.push(crate::notice::Notice::information(format!(
-                    "Ramp entry: pass {} starts with an arc shorter than a whole turn, so its \
-                     ramp goes back and forth over that arc, reversing A {reversals} times \
-                     during the entry",
+                    "Ramp entry: pass {} starts with too short a stretch to ramp along without \
+                     turning the part, so its ramp goes back and forth over the pass's own path, \
+                     reversing A {reversals} times during the entry",
                     pass + 1
                 )));
             }
@@ -554,6 +581,12 @@ impl Entry {
     ) -> Result<Option<RingRamp>> {
         if self.style != EntryStyle::Ramp {
             return Ok(None);
+        }
+        if let Some(head) = points.first() {
+            let at = b.rotary.to_axis(head.tip, head.a);
+            if at.across.hypot(at.height) <= self.tolerance {
+                return Ok(None);
+            }
         }
         let planned = match pass_shape::start(&b.rotary, points, rapids, self.tolerance) {
             Start::FullRing { end, sign } => ring_ramp::plan(
@@ -868,17 +901,20 @@ fn unit(v: Dir) -> Option<Dir> {
 }
 
 /// The travel along `path`: its length across the machine plus, where A
-/// turns, the arc length at `radius`.
-fn travel_of(path: &[(AxisPosition, Degrees)], radius: f64) -> f64 {
+/// turns, the arc length at the step's mean distance from the rotary axis.
+fn travel_of(path: &[(AxisPosition, Degrees)]) -> f64 {
     path.windows(2)
         .map(|w| match w {
-            [(q, b), (p, a)] => {
-                (p.along - q.along).hypot(p.across - q.across)
-                    + (a.0 - b.0).abs().to_radians() * radius
-            }
+            [(q, b), (p, a)] => step_length(*q, *b, *p, *a),
             _ => 0.0,
         })
         .sum()
+}
+
+/// The travel of one step (see [`travel_of`]).
+fn step_length(q: AxisPosition, b: Degrees, p: AxisPosition, a: Degrees) -> f64 {
+    let radius = 0.5 * (p.across.hypot(p.height) + q.across.hypot(q.height));
+    (p.along - q.along).hypot(p.across - q.across) + (a.0 - b.0).abs().to_radians() * radius
 }
 
 /// The highest stock under the tool's footprint along `path` from its first
@@ -890,7 +926,6 @@ fn stock_top_along(
     stock: View<'_>,
     path: &[(AxisPosition, Degrees)],
     reach: f64,
-    radius: f64,
     probe: f64,
 ) -> f64 {
     let spacing = (0.5 * b.tool_radius).max(1e-3);
@@ -914,8 +949,7 @@ fn stock_top_along(
         if travelled >= reach {
             break;
         }
-        let length = (p.along - q.along).hypot(p.across - q.across)
-            + (a.0 - b0.0).abs().to_radians() * radius;
+        let length = step_length(*q, *b0, *p, *a);
         let n = ((length / spacing).ceil() as usize).clamp(1, 10_000);
         for k in 1..=n {
             let f = k as f64 / n as f64;

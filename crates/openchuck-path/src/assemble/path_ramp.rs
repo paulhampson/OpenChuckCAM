@@ -75,7 +75,7 @@ pub(super) enum Refusal {
 /// from its first point on, at most as far as the ramp may use), from `top`
 /// down to the first point, at no more than `tan` per unit of travel. The
 /// travel of a step is its length across the machine plus, where A turns,
-/// the arc length at `radius` (the smallest tip radius on the stretch).
+/// the arc length at the step's mean distance from the rotary axis.
 /// Legs run out along the path and back, an even number of them, so the
 /// last ends at the first point; each is as long as the path, or shorter
 /// when two legs are enough. Gives the moves, from above the first point at
@@ -83,7 +83,6 @@ pub(super) enum Refusal {
 /// followed (see [`heights`]).
 pub(super) fn back_and_forth(
     path: &[(AxisPosition, Degrees)],
-    radius: f64,
     top: f64,
     tan: f64,
     minimum: f64,
@@ -94,7 +93,7 @@ pub(super) fn back_and_forth(
     let mut previous: Option<(AxisPosition, Degrees)> = None;
     for &(p, a) in path {
         if let Some((q, b)) = previous {
-            total += step(q, b, p, a, radius);
+            total += step(q, b, p, a);
         }
         along.push(total);
         previous = Some((p, a));
@@ -209,7 +208,8 @@ fn legs_over(
 }
 
 /// The travel of a step from `(q, b)` to `(p, a)`.
-fn step(q: AxisPosition, b: Degrees, p: AxisPosition, a: Degrees, radius: f64) -> f64 {
+fn step(q: AxisPosition, b: Degrees, p: AxisPosition, a: Degrees) -> f64 {
+    let radius = 0.5 * (p.across.hypot(p.height) + q.across.hypot(q.height));
     (p.along - q.along).hypot(p.across - q.across) + (a.0 - b.0).abs().to_radians() * radius
 }
 
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn req_op_11_two_legs_when_the_line_is_long_enough() {
         let path = line(100, 0.5, |_| 10.0);
-        let (moves, steep) = back_and_forth(&path, 1.0, 12.0, TAN, 3.0).unwrap();
+        let (moves, steep) = back_and_forth(&path, 12.0, TAN, 3.0).unwrap();
         assert!(!steep);
         check(&moves, &path, 12.0);
         // 2 mm of rise at 0.1 is 20 mm of travel: two legs of 10 mm.
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn req_op_11_more_legs_over_a_short_line() {
         let path = line(4, 0.5, |_| 10.0);
-        let (moves, _) = back_and_forth(&path, 1.0, 12.0, TAN, 1.0).unwrap();
+        let (moves, _) = back_and_forth(&path, 12.0, TAN, 1.0).unwrap();
         check(&moves, &path, 12.0);
         assert!(
             moves
@@ -330,7 +330,7 @@ mod tests {
     fn req_op_11_req_nfr_07_a_line_shorter_than_the_minimum_is_refused() {
         let path = line(2, 0.5, |_| 10.0);
         assert_eq!(
-            back_and_forth(&path, 1.0, 12.0, TAN, 3.0),
+            back_and_forth(&path, 12.0, TAN, 3.0),
             Err(Refusal::TooShort { length: 1.0 })
         );
     }
@@ -339,7 +339,7 @@ mod tests {
     fn req_op_11_req_nfr_07_too_many_legs_are_refused() {
         let path = line(1, 0.01, |_| 10.0);
         assert!(matches!(
-            back_and_forth(&path, 1.0, 1000.0, TAN, 0.001),
+            back_and_forth(&path, 1000.0, TAN, 0.001),
             Err(Refusal::TooManyLegs { .. })
         ));
     }
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn req_op_11_the_ramp_stays_above_a_pass_that_rises_and_falls() {
         let path = line(100, 0.5, |x| 10.0 + (x * 0.5).sin());
-        let (moves, _) = back_and_forth(&path, 1.0, 13.0, TAN, 3.0).unwrap();
+        let (moves, _) = back_and_forth(&path, 13.0, TAN, 3.0).unwrap();
         for (p, _) in &moves {
             let base = 10.0 + (p.along * 0.5).sin();
             assert!(p.height >= base - 1e-6, "{p:?} under {base}");
@@ -369,7 +369,7 @@ mod tests {
         // On a line whose first point is 1 mm below the rest, the last leg
         // comes back over the higher pass and follows it down.
         let path = line(100, 0.5, |x| if x < 0.25 { 10.0 } else { 11.0 });
-        let (moves, steep) = back_and_forth(&path, 1.0, 12.0, TAN, 3.0).unwrap();
+        let (moves, steep) = back_and_forth(&path, 12.0, TAN, 3.0).unwrap();
         assert!(steep);
         assert_eq!(moves.last().unwrap().0, path[0].0);
     }
@@ -388,7 +388,7 @@ mod tests {
                 )
             })
             .collect();
-        let (moves, _) = back_and_forth(&path, 12.0, 14.0, TAN, 3.0).unwrap();
+        let (moves, _) = back_and_forth(&path, 14.0, TAN, 3.0).unwrap();
         assert!(
             moves
                 .iter()
