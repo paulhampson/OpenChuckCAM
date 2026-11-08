@@ -1,6 +1,6 @@
 # 0536: Message levels, the operation reference and links to the setting (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595; steps 2 to 5 follow, test first. Decisions 0539 and 0540 are built (#591, #584); 0538 follows. Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane MSGREVIEW on 7 Nov 2026. Build step 1 (the library type, the message constructor and its checks, library 0.50.0) is built in #595. Build step 2 (path notes take their levels; the Results tab and the command line follow) is built in the step 2 pull request, with some levels interim until the owner answers (see Verification). Steps 3 to 5 follow, test first. Decisions 0538, 0539 and 0540 are built (#623, #591, #584). Section 8 (the lost status lines, with the work-loss reminders as warnings in Messages) is the lane's application of the author's test, not an explicit owner answer: it stands as accepted with the record, and the build pull request for step 5 points it out so the owner can change it.
   - **The owner's answer to question 1** (7 Nov 2026, relayed by the coordinator): the levels and the author's test are accepted in principle, with option B, so information is shown in the Results tab only and Messages keeps errors and warnings. Sections 1, 2 and 5 below follow that answer.
   - **The owner's clarification** (same message): a check whose finding may be a collision becomes a warning to acknowledge. That changes what the export does, so it is [decision 0538](0538-a-possible-collision-is-a-warning-to-acknowledge.md) (proposed), accepted separately.
   - **The owner's answers to questions 2 to 7** (7 Nov 2026, relayed by the coordinator), each the recommended option:
@@ -227,3 +227,46 @@ The author's test of section 2 names 0538.
 | OI-2099 | Outside this record unless the owner says otherwise: the command-line help text, the setup sheet (it shows no warnings; GC-12 does not ask for them), and the log, About and crash texts, which keep the log crate's levels. |
 | OI-2100 | Decision 0538: the owner's acceptance of the rule that a possible collision is a warning to acknowledge, its "?" rows answered on 7 Nov 2026 (questions 8 to 10). Closed on 7 Nov 2026: decision 0538 accepted. |
 | OI-2101 | Decision 0538's tests in the verification plan: the GC-16 entry gains the collision acknowledgements, when 0538 is built. |
+
+## Verification
+
+### Build step 2
+
+Built by lane MSGREVIEW on `claude/lane-msgreview-step2`, from `main` at `77479c85`, with `main` at `3b99ea23` (decision 0538) merged in. Run in the session's Linux container with `cargo nextest run`, uninstrumented.
+
+What changed:
+
+- **Path notes that describe a problem are warnings**, with their wording unchanged: the rows marked for it in the [path inventory](../message-review/path.md) (P41, P46, P47, P52, P53, P59, P61, P63 to P66, P71), and in the application P42 (rest machining with no earlier operation). P53 and P54 to P57 come from `parameter_warnings`.
+- **The run's messages keep their level.** An operation's notes and `Regeneration::notes` are information only. A warning is no longer copied into the notes, so it appears once, in the form of decision 0522, and never as a "move 0" note. The prefix "move N:" is written only when the message has a move (#622). The run's own warnings (a rapid that removes material, enclosed material, short blocks in Report mode) are in `Regeneration::warnings`.
+- **Results tab** (section 5): each line takes its message's level. The feed-limit summary replaces the per-move lines (decision 0430), and the summarising moved to `note_groups::information`, so the interface and the command line share it.
+- **Command line:** `validate`, `regenerate` and `simulate` print each warning as `warning:` and each note as `note:`, with the same feed-limit summary.
+- **Issue #600:** a move that turns A with the contact point at the rotary axis no longer reads "the contact feed is 0.0 mm/min". Its note says the axis's speed limit sets how long the move takes.
+
+Interim levels, waiting for the owner. The coordinator ruled that a "?" row stays a warning until the owner answers (NFR-12: nothing that may be a problem is shown less). Each answer lands as its own one-line change:
+
+- Q-A, P48: indexed finishing's passes run on past the part's ends.
+- Q-B, P49: the stock ends at the part's end, so there is nothing to face.
+- Q-C, P50: the "real blank must match it" tail of the free-end facing note. Only that variant is a warning; the rest is information.
+- Q-D, P54 to P57: edge following says a setting is not used.
+- Q-E, P74: simultaneous finishing's hidden-surface passes, because the tool holder is not checked.
+- Q-F, P75j: swarf's "the shank, the holder and other faces were not checked".
+- Q-G, P76: the application's notes. The stock to leave applied differently and the reach limit are warnings. The contact note is information, except its "Exact STEP surface contact does not apply" variant, which is a warning.
+
+Not done in this step:
+
+- P75c (swarf's tool end reaching past the rulings): it stays a sentence in swarf's per-face description. Whether it should be said at all when the tool is lifted clear is issue #624.
+- P75j (Q-F): stays in the same description until the owner answers.
+
+Tests, each named by requirement:
+
+- **Levels:** `operation::tests::req_ui_12_req_op_09_rest_machining_with_no_earlier_operation_is_a_warning`, `req_ui_12_req_op_04_an_ignored_scallop_height_is_a_warning` and `req_ui_12_req_op_27_exact_contact_that_does_not_apply_is_a_warning`. The swarf tests check that the warning is not also in the notes and that no line starts "move 0:". Each promoted path row's own test reads it from the warnings.
+- **Results tab:** `run_panel::tests::req_ui_12_each_results_line_takes_its_own_level`.
+- **Command line:** `e2e::req_ui_12_cli_prints_each_run_message_at_its_level` uses the cone example. It prints one `note:` feed-limit summary, no per-move feed lines and no `warning:`.
+- **Issue #600:** `req_op_13_req_ui_12_a_turn_at_the_rotary_axis_never_reads_as_a_feed_of_zero`.
+- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The indexed, adaptive and region tests count the warnings other than P48's.
+- **Suites:** before `main` was merged, `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli`, `openchuck-sim` and `xtask` together ran 2,687 tests: 2,678 passed and 9 failed, all of them tests that read a moved message. Those 9 were updated. After merging `main` (decision 0538), the same crates without `openchuck-sim` ran 2,620 tests, all passing (3 skipped). `cargo clippy --workspace --all-targets` is clean, and `cargo xtask records`, `trace`, `deps` (with `messages`) and `licences` pass.
+
+Not verified here:
+
+- The STEP kernel tests (`kernel-tests`) cannot be built in this container. Their reads of the moved messages were checked by hand (the pencil test reads its corner warning from the warnings), and CI's STEP kernel jobs are the check.
+- The Results tab's colours in the running application; the interface unit tests cover the levels.
