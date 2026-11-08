@@ -20,3 +20,5 @@ To take a set out, click it in the row. Editing a set makes every operation that
 The other roles do different things: **Cut on** cuts only those surfaces, **Avoid** never cuts them but lets the tool pass over, and **Check** keeps the tool off them. [Operations and strategies](../reference/operations.md) describes them and their **Cut short**, **Warn only** and **Ignore** choices. Facing, rest machining, pencil clean-up, edge following and radial drilling work on the whole part and are not limited by **Contain within**.
 
 Check the result in the simulation: the window a set spans is a box of X and angle, so it can include more of the part than the faces you picked.
+
+The worked example [Limit an operation to a region](../examples/limit-to-a-region.md) goes through one case step by step on the tutorial's baluster, with **Cut on** and **Avoid**.
