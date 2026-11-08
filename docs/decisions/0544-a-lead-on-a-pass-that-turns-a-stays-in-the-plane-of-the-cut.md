@@ -74,7 +74,7 @@ All recommendations accepted as a package. Items 6 and 7 follow from the same an
 
 ## Verification (planned; filled in when built)
 
-Tests written first, named by requirement, in `crates/openchuck-path/tests/entry.rs`:
+Tests written first, named by requirement, in `crates/openchuck-path/tests/entry.rs` (items 1 to 5 and 7 as built: `tests/lead_follows.rs`, below):
 
 - On rings and the spiral, the lead-in and lead-out stay at the pass's X and are tangent to the cut where they meet it (`req_op_11_*`).
 - A turns only the Rotation way (`req_op_15_*`); the A range refusal is named (`req_nfr_07_*`).
@@ -85,6 +85,48 @@ Tests written first, named by requirement, in `crates/openchuck-path/tests/entry
 - Public stand-ins: the blisk STEP part and the blisk start example with Lead entry on helical finishing in Rings.
 - Issue #642 (`entry_link_stock.rs`, written first and failing on `main`): the rapid to a lead-in's start and to a ramp's start never sweeps the tool through the stock under a low link; the plunge control stays clear; where only the retract height is clear the entry rises and the note counts it; where nothing is clear the refusal names the pass; in roughing a lead arc never passes through uncut stock.
 - A single-point pass under Lead with a tool that cannot plunge is refused naming the tool.
+
+### Items 1 to 5 (lane RAMPLEAD, issue #640)
+
+Built on `claude/lane-rampentry-lead-wip` (stacked on lane RAMPENTRY's branch, after its merge of `main` at library 0.52.0), in `crates/openchuck-path/src/assemble/lead.rs`, a child module of `entry.rs` that shares its surface check and arc spacing; dispatched from `Entry::enter`, `Entry::exit` (which now also takes the pass's stock view and rapids) and `Entry::start`. As built:
+
+- **Geometry (item 1).** In the unrolled frame (the distance round the part at the end point's tip radius, and the height) the arc has the lead radius and turns, on the side away from the part, from straight down to the cut's direction at the first point (lead-in), or from the cut's direction at the last point to straight up (lead-out). On a level cut that is the quarter circle of item 1, one lead radius back (or on) and one up. On a cut that falls or rises round the part it is shorter or longer than a quarter: a quarter circle tangent to a falling cut would start by moving back round the part, turning A against the pass (found by the lobed-part test below and fixed before it was pushed). The tool holds the end point's machine X and Y throughout; A is `a0 + sign * s / rho`.
+- **Which passes (item 2).** Each end of a pass is told apart on its own by the pass shape of decision 0543 section 2 (`pass_shape::start`, and the same read backwards for the end): a full ring, a spiral or a partial ring gets this lead; a line or a single point keeps the line-pass code path unchanged. An end whose tip is within the path tolerance of the rotary axis (an end face's ring) has no plane of the cut and is led as a single-point pass, a plunge with the note and no lead-out (decision 0543 point 2, the owner's answer of 8 Nov 2026, relayed).
+- **Feed and contact (item 3).** `LeadIn` and `LeadOut` at the cutting feed; no contact point on any arc move except the lead-in's last, which meets the surface with the first cut point's contact. Timing is the shared rule for simultaneous moves (OP-13).
+- **No direction (item 4).** A pass that only turns A is a ring and gets the lead. A single-point pass keeps the plunge; one information note with the new topic `notice::topic::LEAD_ENTRY` ("Lead entry") names every such pass. Item 7 is checked in `openchuck-app` by lane RAMPENTRY for Ramp and Lead alike.
+- **A (item 5).** `Entry::start` gives the arc's start, so the link arrives at its A; A turns the pass's way through the arc and the pass. Every arc A is checked against a limited A range and refused naming A range.
+- **Roughing (item 6's lead clause, reading (a)).** In a pass that carries its stock, an arc beside a full ring or a spiral is allowed; beside a partial ring every arc position must lie above the pass's stock, probed under the tool's footprint from the retract height, else the operation is refused naming Entry.
+- **Held regions.** The arc never leaves the pass's X, so it reaches a held region only where the pass does, which generation already refuses; the turning lead's refusal has no held-region form.
+
+**Tests** (`crates/openchuck-path/tests/lead_follows.rs`, a module of the integration binary; uninstrumented times from `cargo nextest run`, all under 4 s). The first eight were written before the code: seven failed on RAMPENTRY's `36b0327` without it; the feed test passed there too, as the old arcs already run at the cutting feed.
+
+- `req_op_11_req_op_15_a_lead_on_rings_and_the_spiral_stays_at_the_pass_x_and_meets_the_cut` (helical finishing, Rings and Spiral, cylinder; X and Y held, A one way, tangent within one segment's angle, start one radius up);
+- `req_op_11_a_pass_that_only_turns_a_gets_a_lead_not_a_silent_plunge` (the rings stub on a round part);
+- `req_op_11_req_op_13_a_turning_lead_is_fed_at_the_cutting_feed_with_a_contact_only_where_it_meets_the_surface`;
+- `req_op_11_req_set_09_a_turning_lead_never_reaches_a_held_region_at_the_starting_end` (held region from 0.5 mm beyond the part's end);
+- `req_op_11_req_op_14_continuous_roughing_of_a_rising_part_with_a_lead_is_no_longer_refused` (the issue's cone, Rings and Spiral);
+- `req_op_11_req_nfr_07_a_turning_lead_outside_the_a_range_is_refused_naming_it`;
+- `req_op_11_req_nfr_06_turning_leads_are_the_same_at_one_two_and_many_threads` (1, 2 and 8 threads);
+- `req_op_11_a_single_point_pass_under_lead_is_plunged_with_a_note_naming_it`;
+- `req_op_11_req_op_15_a_partial_ring_gets_the_lead_in_the_plane_of_the_cut_at_both_ends`;
+- `req_op_11_req_op_14_in_roughing_a_lead_beside_a_partial_ring_through_uncut_stock_is_refused_naming_entry` (and a whole ring in the same stock is allowed);
+- `req_op_11_req_nfr_07_a_turning_lead_that_would_cut_the_finished_surface_is_refused_naming_lead_radius` (a twelve-lobed part, ring starting in a valley; the same ring starting on a crest gets its lead with A one way);
+- `req_op_11_a_turning_pass_with_its_tip_on_the_rotary_axis_is_plunged_with_a_note_and_no_lead_out`;
+- `req_op_11_req_op_15_helical_finishing_of_the_blisk_in_rings_gives_each_end_the_lead_its_shape_asks_for` (`testdata/stl/blisk.stl`, the public stand-in: helical finishing in Rings there is one pass that starts and ends with a short line along X, so both its leads are line leads; the planned blisk stand-in does not exercise the new arc).
+
+One existing test changed: `entry::req_op_11_req_op_14_req_op_15_clear_pass_transitions_without_a_reset_preserve_motion` assumed that a lead-out on its spiral passes ends at the clearance height; only that precondition was relaxed for Lead (the lead-out now rises one lead radius). The whole `openchuck-path` suite passed (846 of 846, 20 min 30 s uninstrumented) at the commit before the last change; after it, the 78 tests of the lead, entry, ramp, #642 and ring files passed. Line coverage of `lead.rs` on its own tests is 97.3% (`cargo llvm-cov`); the lines not reached are three defensive returns for an empty pass and the rise to the arc's start when a low link arrives below it.
+
+**Line-pass leads, byte-identical.** A throwaway probe (not committed) dumped the full segments and notices of 16 line-pass programs with Lead entry (axial finishing, indexed finishing, rotary roughing indexed and along the length; a 15 mm cylinder with a 6 mm ball and the 8 to 12 mm cone with a 6 mm flat; lead radius 0 and 2 mm): 6,364,071 bytes, identical before and after the change (md5 `ad8ed4bdd985127008b5c954c6968422`).
+
+**Issue #640's probe, re-run on the change** (release, not committed; synthetic fixtures; lead radius the tool radius, 3 mm):
+
+| Strategy, passes | Lead-in | Lead-out | Result |
+| --- | --- | --- | --- |
+| Helical finishing, Spiral and Rings (with and without the held region) | X 0 held, A -11.2 to 0 degrees, then the cut | X 40 held, A turning 11.2 degrees on | generated (was: arcs along X from -3 and to 43 mm) |
+| Continuous roughing on the cone, Rings | X held at the ring's X, A turning about 12 to 14 degrees into the ring | the same, out | generated (was refused: the lead-out cut 0.317 mm into the part) |
+| Continuous roughing on the cone, Spiral | the same | the same | generated (was refused); the spiral's four single-point passes at the cone's top are plunged and named in one note |
+
+**Not verified.** No machine trial; the geometry checks say nothing about chip load or tool suitability. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
 
 ## Open items
 
