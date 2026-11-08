@@ -18,12 +18,22 @@ import os
 import re
 import shutil
 import sys
+import tomllib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import manifest  # noqa: E402
 
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+# The front page's title; user-docs/theme/index.hbs gives the guide's own front page the same one.
+FRONT_TITLE = "OpenChuckCAM: free, open source CAM for 4-axis rotary CNC"
+BOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "book.toml")
+
+
+def site_description():
+    """The guide's description, from book.toml: the one source for every page's meta description."""
+    with open(BOOK, "rb") as f:
+        return tomllib.load(f)["book"]["description"]
 NEWEST_PLACEHOLDER = "<span data-newest-release></span>"
 
 
@@ -151,8 +161,9 @@ def assemble(latest, releases, out, base="/"):
     target = f"v{newest}/" if newest else "latest/"
     with open(os.path.join(out, "index.html"), "w", encoding="utf-8") as f:
         f.write(PAGE.format(
-            title="OpenChuckCAM user guide",
-            head=f'<meta http-equiv="refresh" content="0; url={target}">\n' + icons,
+            title=html.escape(FRONT_TITLE),
+            head=f'<meta name="description" content="{html.escape(site_description())}">\n'
+                 f'<meta http-equiv="refresh" content="0; url={target}">\n' + icons,
             body=f'<p>The OpenChuckCAM user guide is at <a href="{target}">{target}</a>. '
                  f'<a href="versions.html">All versions</a>.</p>'))
     with open(os.path.join(out, "404.html"), "w", encoding="utf-8") as f:
