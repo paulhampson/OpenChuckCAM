@@ -1,9 +1,9 @@
 # Check for decision 0536 build step 3: every message has its lead-in, and "Show setting" goes to the field
 
 > [!NOTE]
-> **Draft, to run on the release candidate.** Build step 3 of [decision 0536](../../../docs/decisions/0536-message-levels-operation-reference-and-setting-links.md) (lane MSGREVIEW) is not merged yet (8 Nov 2026). This file gives today's messages, run on `main` at `1f3675d52`, and what step 3 is to do (decision 0536 sections 3 and 4). When it merges, the expected texts are copied from that build, its pull request is named here, and this note is removed. The owner reviews the full list of topic names in step 3's pull request (decision 0536, question (d)); this check looks at the result in the program.
+> **To run on the release candidate.** Build step 3 is merged (pull request #648, `main` at `645256c3`); the texts below are those of `main` at `81bade8a3`. This check stays in `rc/` until the coordinator opens the tracking issue for decision 0536 steps 3 to 5, where it is posted.
 
-**What is to change:** every operation message starts with a topic and its context, `<Topic> (operation '<name>'[, tool '<name>']): ...`, as the flute-length and tab-length messages already do, and ends with what to change, named by the label the Inspector shows. **Show setting** goes to that setting, opens its section, scrolls to it and marks it, for every kind of field: numbers, tick boxes, drop-down lists, and a tool's own fields in the tool library.
+**What changed:** every operation message starts with a topic and its context, `<Topic> (operation '<name>'[, tool '<name>']): ...`, as the flute-length and tab-length messages already do, and ends with what to change, named by the label the Inspector shows. **Show setting** goes to that setting, opens its section, scrolls to it and marks it, for every kind of field: numbers, tick boxes, drop-down lists, and a tool's own fields in the tool library.
 
 **Time:** about 10 minutes.
 
@@ -20,32 +20,34 @@ The project (in the zip, and as files in [`project/`](project/)), written by [`g
 
 ## Steps
 
-Use the release candidate, or a build from `main` that holds step 3 (**Help > About OpenChuckCAM** shows the commit).
+Use the release candidate, or a build from `main` at commit `645256c3` or later (**Help > About OpenChuckCAM** shows the commit).
 
 1. Download [`0536-step3-lead-in-show-setting.zip`](0536-step3-lead-in-show-setting.zip) (or take it from the [raw link](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/0536-step3-lead-in-show-setting/0536-step3-lead-in-show-setting.zip)), unzip it anywhere, and open the folder `0536-step3-lead-in-show-setting/project` with **File > Open project**.
 2. Click **Operations**, then **Generate**.
 3. Read every warning in the **Messages** list. For each, check that it starts with a short topic and the operation in brackets, and ends with what to change.
-4. For each warning that has **Show setting**, click it. Check that the right item opens, the Inspector scrolls to the named setting, and the setting is marked. In particular:
-   - the flute-length warning of **Short flutes**: it should go to the tool's **Flute length** (in the tool library or the tool's own fields);
-   - the free-end warning of **Free ends**: it should go to **Face free ends** (a tick box) on **Free ends**;
-   - any warning naming **Stepdown**: to that number field.
+4. For each warning that has **Show setting**, click it. Check that the right operation opens, the Inspector scrolls to the named setting, and the setting is marked:
+   - the **Flute length** warning of **Short flutes**: it names **Finishing layers** (a tick box on **Short flutes**);
+   - the **Part cut free** warning of **Free ends**: **Face free ends** (a tick box on **Free ends**);
+   - the **Held region** warnings name no setting: they have only the link to their operation.
 5. Read the information lines in the **Results** tab the same way (they need no Show setting unless they name a setting).
 
 ## Expected result
 
-- Every warning in Messages has the form `<Topic> (operation '<name>'...): <what happened>. <what to change>.`, with no internal names, requirement numbers or decision numbers.
-- Each **Show setting** opens the item and marks the named field, whatever its kind.
-- The exact texts will be copied here from the merged build.
+- Every line in Messages and Results starts with a topic and its context. As the command-line tool prints the warnings:
 
-**Today (`main` at `1f3675d52`, before step 3):** the forms differ. As the command-line tool prints them:
+  > Flute length (operation 'Short flutes', tool 'Short-flute ball 3.175x5 (check 0536)'): the stock stands up to 9.335 mm above the tool's tip along its axis (at X 61.000, A 0.0), more than the tool's 5.000 mm of flute, so the shank may meet the stock; the stock is a 24.000 mm diameter cylinder on the rotary axis. The path was made: check it before running it. Use a tool with longer flutes, or rough the part first in this setup, or turn on Finishing layers
 
-> warning: Flute length (operation 'Short flutes', tool 'Short-flute ball 3.175x5 (check 0536)'): the stock stands up to 9.335 mm above the tool's tip along its axis (at X 61.000, A 0.0), more than the tool's 5.000 mm of flute, so the shank may meet the stock; the stock is a 24.000 mm diameter cylinder on the rotary axis. The path was made: check it before running it. Use a tool with longer flutes, or rough the part first in this setup, or turn on Finishing layers
+  > Held region (operation 'Short flutes'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 
-> warning: Operation 'Free ends': the end face at X 0.000 is faced down to the rotary axis: the tool cuts a ring 3.175 mm wide from X -3.176 to -0.001 down to the axis, and nothing in this setup holds the part on the other side of the ring (no held region at its other end, and no tab joining it to one), so the part can be cut free there and thrown while the rotary axis turns. Before running this program, check the stock and the workholding on the machine
+  > Part cut free (operation 'Free ends'): the end face at X 0.000 is faced down to the rotary axis: the tool cuts a ring 3.175 mm wide from X -3.176 to -0.001 down to the axis, and nothing in this setup holds the part on the other side of the ring (no held region at its other end, and no tab joining it to one), so the part can be cut free there and thrown while the rotary axis turns. Before running this program, check the stock and the workholding on the machine
 
-> warning: Operation 'Short flutes': Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+  > Held region (operation 'Free ends'): Nothing within one tool radius of the held region at the start of the stock is cut: ...
 
-The first has the topic and context form; the second and third have no topic ("Operation '...':" in front); the first and second end without a full stop.
+  and the notes: "Feed limit (operation '...'): ...", "Shoulders (operation 'Rough'): ...", "Free ends (operation 'Free ends'): ..." (twice), "Rotary axis (operation 'Free ends'): moves 9888 to 9959 (72 moves): ...", and "Cutting data (operation '...'): stepover 1 set on the operation overrides ...".
+- No line has an internal name, a requirement number or a decision number.
+- Each **Show setting** opens the operation and marks the setting named in step 4, whether it is a number or a tick box.
+
+**Old behaviour (before step 3, `main` at `1f3675d52`):** only the flute-length line had the topic form. The others began "Operation 'Free ends': ..." or "operation 'Rough': ...".
 
 ## Report back
 
@@ -53,4 +55,11 @@ Reply with: **PASS**, or **FAIL and what you saw** (the message as it reads, and
 
 ## What we saw when preparing this
 
-Run with the command-line tool (`openchuck-cli regenerate project`), Linux x86_64, release build of `main` at `1f3675d52`, 8 November 2026: the three warnings above, Rough's note about the steps at X 8.111 and 49.889, and Free ends' notes about the end at X 61.000 and the 72 moves turning at the axis. The interface (Messages, Show setting) cannot be run without a display here. `openchuck-cli validate` reports the project valid.
+Run with the command-line tool (`openchuck-cli regenerate project`), Linux x86_64, release builds, 8 November 2026:
+
+| Build | Result |
+| --- | --- |
+| Before step 3: `1f3675d52` (0.50.0) | "Flute length (operation 'Short flutes', ...)" in the topic form; "Operation 'Free ends': the end face at X 0.000 is faced down ...", "Operation 'Short flutes': Nothing within one tool radius ...", "operation 'Rough': the part has 2 steps ...": no topic. |
+| `main` at `81bade8a3` (0.51.0), after steps 3 and 5 | Every line with its topic, as quoted under "Expected result". |
+
+The settings in step 4 are read from the code at `81bade8a3` (the flute check names Finishing layers; the free-end checks name Face free ends; the held-region note names none). The interface (Messages, Show setting) cannot be run without a display here. `openchuck-cli validate` reports the project valid.

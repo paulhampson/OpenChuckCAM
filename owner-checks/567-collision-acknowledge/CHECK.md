@@ -28,7 +28,7 @@ Use a nightly or release-candidate build made from commit `3b99ea23e` or later (
 
 ## Expected result
 
-- **Step 3**: the mark is the amber Warning; its text starts **"Needs acknowledging: Tab length (operation 'Whole part', tool '6 mm ball (check 567)')"**. In Messages this warning comes first among the warnings. The other warnings ("cannot cut down beside tab 1", the shoulder, nothing cut near the held region) do not need acknowledging.
+- **Step 3**: the mark is the amber Warning; its text starts **"Needs acknowledging: Tab length (operation 'Whole part', tool '6 mm ball (check 567)')"**. In Messages this warning comes first among the warnings. The other warnings ("Tab clearance (operation 'Whole part'): 1 Whole part cannot cut down beside tab 1 ...", and two "Held region (operation 'Whole part'): ..." lines) do not need acknowledging.
 - **Step 4**: the checks list the tab-length warning as a possible collision, under the text "These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program:", and a box labelled:
 
   > I have read the possible collisions listed for this result and will check them before running the program
@@ -52,5 +52,6 @@ The interface cannot be run without a display here, so steps 3 to 6 were not run
 | --- | --- | --- |
 | Before both fixes: `1fccd5847` (0.49.0), the parent of #584 | Exit 0. The file is written. The tab-length line is a plain `warning:`; no "checks before writing" are printed. | (the flag did not exist) |
 | `main` at `1f3675d52` (0.50.0) | Exit 1, nothing written. It prints "checks before writing the G-code:", with `warning: Operation 'Whole part' has a possible collision, which must be acknowledged before the files are written: Tab length (...)`, the operation's three other warnings, "has not been simulated" and the unconfirmed machine values, then `error: This result has 1 possible collision that must be acknowledged before the files are written: Tab length (...). Read them, then acknowledge them to write the files. Pass --acknowledge-collision-warnings to write them.` | Exit 0. The same checks, then `warning: writing with 1 possible collision acknowledged for this run: check each before running the program`; the file is written, and the verify notice is printed. |
+| `main` at `81bade8a3` (0.51.0), after decision 0536 steps 3 and 5 | Exit 1, nothing written, as above. The check now reads `warning: Tab length (operation 'Whole part', tool '6 mm ball (check 567)'): tab 1 (X -5.000 to 0.000 mm) ... Use a smaller tool, or make the tab longer. A possible collision: acknowledge it before the files are written`; the error and the flag are unchanged. The interface's mark, box and greyed-button texts quoted above are the same in the code at this commit. | (as above) |
 
 The program written by `main` with the flag and the one written by the old build differ only in the version comment on line 2 (`0.49.0` against `0.50.0`): the acknowledgement does not change the G-code.

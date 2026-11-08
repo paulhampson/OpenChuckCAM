@@ -24,15 +24,18 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 
 ## Expected result
 
+> [!NOTE]
+> The texts below are those of the release candidate's form: since decision 0536 step 3 (#648, on `main` from `645256c3`) every line starts with a topic and the operation, such as "Feed limit (operation 'Rough'): ...". A build from `1f3675d52` up to that change prints the same sentences without the lead-in ("9536 moves during 'Rough' were limited ...", "operation 'Finish': moves 19077 to 19148 ..."); either form passes.
+
 - **Results** has one line per operation about the feed limits, and none per move. As the command-line tool prints them:
 
-  > 9536 moves during 'Rough' were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 22.0 mm/min to stay within the machine's capabilities.
+  > Feed limit (operation 'Rough'): 9536 moves were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 22.0 mm/min to stay within the machine's capabilities.
 
-  > 7818 moves during 'Finish' were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.7 mm/min to stay within the machine's capabilities.
+  > Feed limit (operation 'Finish'): 7818 moves were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.7 mm/min to stay within the machine's capabilities.
 
 - The rings at the free end have their own note, with no "0.0 mm/min" in it:
 
-  > operation 'Finish': moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
+  > Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
 
 - No line anywhere says "the contact feed is 0.0 mm/min" or "as low as 0 mm/min".
 - These lines are information (no warning mark on **Rough** or **Finish** because of them).
@@ -62,5 +65,6 @@ Run with the command-line tool (`openchuck-cli regenerate project --post makera-
 | --- | --- |
 | Before the fix: `9dae85d30` (0.50.0), the parent of the fix's merge commit `1f3675d52` | 17,438 lines on standard error, 17,426 of them `warning: operation '...': move N: the machine's feed limits slow this move: ...`; 72 read `the contact feed is 0.0 mm/min, not 500.0` (Finish, moves 19077 to 19148). |
 | `main` at `1f3675d52` (0.50.0) | 17 lines on standard error: the two `note:` summary lines and the `note:` for moves 19077 to 19148 quoted above; no per-move line, no "0.0 mm/min". |
+| `main` at `81bade8a3` (0.51.0), after decision 0536 steps 3 and 5 | The same three notes, now with their lead-ins ("Feed limit (operation 'Rough'): ...", "Rotary axis (operation 'Finish'): ..."); no per-move line, no "0.0 mm/min". The program differs from `1f3675d52`'s only in the version comment on line 2. |
 
 Both programs start with the two notice lines of step 6 (the safety notice is in both builds; it came with #570, before either). The two programs are byte-identical (`cmp`), so the fix changed only the messages. The F words in step 5 are those of both programs; a search for `F0` or a negative F finds nothing. The UI's Results tab and Inspector were not run here (they need a display); they read the same summary, so their numbers should match the command line's.

@@ -4,10 +4,12 @@ Build: commit 1f3675d52 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project (the tutorial job).
 2. Operations, Generate. Open the Results tab.
-Expected: one line per operation: "9536 moves during 'Rough' were limited
-by the machine's feed limits ... reduced to 22.0 mm/min ..." and "7818
-moves during 'Finish' ... reduced to 0.7 mm/min ...", and one note
-"operation 'Finish': moves 19077 to 19148 (72 moves): A turns with the
+Expected: one line per operation: "Feed limit (operation 'Rough'): 9536
+moves were limited
+by the machine's feed limits ... reduced to 22.0 mm/min ..." and "Feed limit
+(operation 'Finish'): 7818 moves ... reduced to 0.7 mm/min ...", and one note
+"Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A
+turns with the
 contact point at the rotary axis during these moves, ...". No line says
 "0.0 mm/min" or "as low as 0 mm/min". No per-move lines.
 Optional: in the export preview the last five rings read F551.3, F488.5,

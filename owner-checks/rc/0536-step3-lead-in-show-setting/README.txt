@@ -1,16 +1,17 @@
 Owner check for decision 0536 build step 3: every message has its lead-in,
 and Show setting goes to the field
-DRAFT: to run on the release candidate, once the fix is merged.
+Build: commit 645256c3 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project.
 2. Operations, Generate.
 3. In Messages, every warning should read "<Topic> (operation '<name>'...):
    <what happened>. <what to change>." with no requirement numbers.
-4. Click each Show setting: the item opens and the named field is marked
-   (Flute length of the short-flute tool; Face free ends, a tick box, on
-   "Free ends"; Stepdown).
-Today: only "Flute length (operation 'Short flutes', tool ...)" has that
-form; the others start "Operation 'Free ends': ...".
+4. Click each Show setting: the operation opens and the named field is
+   marked: Finishing layers on "Short flutes" (Flute length warning), Face
+   free ends on "Free ends" (Part cut free warning). Held region warnings
+   have no setting.
+Before step 3: only "Flute length (operation 'Short flutes', tool ...)"
+had that form; the others started "Operation 'Free ends': ...".
 
 Nothing in this check shows that a program is safe to run. Do not run this
 project's G-code on a machine. Generated G-code must be verified by you

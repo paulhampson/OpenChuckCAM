@@ -1,6 +1,6 @@
-Owner check for issue #636: File > Open project with a pasted path opens
-the project, with no Keep/Discard dialog
-DRAFT: to run on the release candidate, once the fix is merged.
+Owner check for issue #636 (fixed in #653): File > Open project with a
+pasted path opens the project, with no Keep/Discard dialog
+Build: commit 81bade8a3 or later (Help > About OpenChuckCAM), or main.
 
 1. With no project open: File > Open project...
 2. Paste the full path of this folder's "project" folder; click OK without
@@ -18,5 +18,5 @@ project's G-code on a machine. Generated G-code must be verified by you
 before it is run on a machine.
 
 Reply on the issue with: PASS, or FAIL and what you saw.
-Full steps and what we saw: CHECK.md in owner-checks/rc/ on the branch
+Full steps and what we saw: CHECK.md in this folder on the branch
 owner-checks/2026.1-alpha.

@@ -6,9 +6,9 @@ dialogs, recovery messages and the NFR-12 wording):
 
 It writes project/ beside this script: a copy of the user guide's tutorial project
 (testdata/examples/baluster/baluster-project) with a Facing operation added before the roughing,
-"Face round": the stock turned down to 23 mm across with the tutorial's 3.175 mm flat end mill,
-in 0.5 mm layers. Its Results line is one of the texts the step rewords ("Facing coverage
-complete (verified path geometry)").
+"Face end": the unheld end of the stock (the far end, X 62) faced with the tutorial's 3.175 mm
+flat end mill, in 0.5 mm layers. Its Results line is one of the texts the step rewords
+("Facing coverage complete (verified path geometry)").
 
 Written for this repository (lane OWNERCHECKS2); AGPL-3.0-or-later, as the rest of the
 repository. Only public material is used.
@@ -34,8 +34,8 @@ def main():
         shutil.rmtree(out)
     shutil.copytree(START, out)
     oc.write(out / f"operations/{OP}.toml",
-             oc.operation_toml(OP, "U", "Face round", SETUP_ID, "facing", FLAT,
-                               {"shape": '"round"', "size": "23.0", "stepdown": "0.5"}))
+             oc.operation_toml(OP, "U", "Face end", SETUP_ID, "facing", FLAT,
+                               {"shape": '"end"', "stepdown": "0.5", "stepover": "1.0"}))
     print(f"wrote {out}")
 
 

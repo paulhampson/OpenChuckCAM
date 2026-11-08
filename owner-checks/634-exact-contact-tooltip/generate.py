@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Writes the owner-check project for issue #634 (the tooltip of "Exact STEP surface contact"):
 
-    python3 owner-checks/rc/634-exact-contact-tooltip/generate.py
+    python3 owner-checks/634-exact-contact-tooltip/generate.py
 
 It writes project/ beside this script: the project of the #351/#257 check (the public STEP
 fixture testdata/step/valid/shouldered_shaft.step, with "Axial, tapered ball" and "Pencil,
@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE.parent.parent / "351-257-exact-step-contact"
+SOURCE = HERE.parent / "351-257-exact-step-contact"
 SETUP_ID = "0c0c0351-0000-4000-8000-000000000002"
 TOOL = "0c0c0634-0000-4000-8000-000000000101"
 OP = "0c0c0634-0000-4000-8000-000000000301"

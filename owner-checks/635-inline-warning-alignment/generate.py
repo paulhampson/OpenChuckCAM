@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Writes the owner-check project for issue #635:
 
-    python3 owner-checks/rc/635-inline-warning-alignment/generate.py
+    python3 owner-checks/635-inline-warning-alignment/generate.py
 
 It writes project/ beside this script with the generator of the #442 check: the starting project
 of the user guide's blisk examples (testdata/examples/blisk-start/blisk-project), the face set
@@ -20,7 +20,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE.parent.parent / "442-swarf-past-blade-end" / "generate.py"
+SOURCE = HERE.parent / "442-swarf-past-blade-end" / "generate.py"
 
 
 def main():

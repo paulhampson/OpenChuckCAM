@@ -21,18 +21,21 @@ Use a nightly or release-candidate build made from commit `1f3675d52` or later (
 
 ## Expected result
 
+> [!NOTE]
+> The texts below are those of the release candidate: since decision 0536 step 3 (#648, on `main` from `645256c3`) every line starts with a topic and the operation. A build from `1f3675d52` up to that change prints them as "operation 'Rough': the part has a step ..." and "Operation 'Finish': the tool does not turn ..."; either form passes, as long as none says "move 0".
+
 - No line in Results or Messages contains "move 0".
 - Results shows these notes about the whole path, at the information level (as the command-line tool prints them):
 
-  > operation 'Rough': the part has a step across the rotary axis (a shoulder facing along X): the tool makes one extra turn round the axis, without moving along it, at X 49.889, so the shoulder keeps only the stock to leave
+  > Shoulders (operation 'Rough'): the part has a step across the rotary axis (a shoulder facing along X): the tool makes one extra turn round the axis, without moving along it, at X 49.889, so the shoulder keeps only the stock to leave
 
-  > operation 'Finish': the end face at X 61.000 has nothing beyond it: the tool goes down beside it in 5 layers of 1 mm to the rotary axis, turning once round the axis in each
+  > Free ends (operation 'Finish'): the end face at X 61.000 has nothing beyond it: the tool goes down beside it in 5 layers of 1 mm to the rotary axis, turning once round the axis in each
 
 - **Finish** has two warnings (Warning mark, and in Messages), each said once:
 
-  > Operation 'Finish': the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
+  > Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
 
-  > Operation 'Finish': Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+  > Held region (operation 'Finish'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 
 - A note about some moves still names them, for example "moves 19077 to 19148 (72 moves): ..." (that is the #600 check).
 
@@ -50,5 +53,6 @@ Run with the command-line tool (`openchuck-cli regenerate project --post makera-
 | --- | --- |
 | Before the fix: `9dae85d30` (0.50.0), the parent of the fix's merge commit `1f3675d52` | Four lines with `move 0:`, all `warning:`: Rough's shoulder at X 49.889, and Finish's shoulder at X 8.589, end face at X 61.000 and held region. |
 | `main` at `1f3675d52` (0.50.0) | No `move 0` anywhere. Rough's shoulder and Finish's end face are `note:`; Finish's shoulder and held-region lines are `warning:`, each once in the generation output and once more under "checks before writing the G-code" as "Operation 'Finish' was made with a warning: ..." (the export's own list, decision 0540). |
+| `main` at `81bade8a3` (0.51.0), after decision 0536 steps 3 and 5 | No `move 0`. The same lines with their topics: "Shoulders (operation 'Rough'): ..." and "Free ends (operation 'Finish'): ..." (`note:`), "Held region (operation 'Finish'): ..." twice (`warning:`). |
 
 The two programs are byte-identical.

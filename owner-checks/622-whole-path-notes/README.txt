@@ -4,11 +4,13 @@ Build: commit 1f3675d52 or later (Help > About OpenChuckCAM), or main.
 
 1. Open the folder "project" with File > Open project (the tutorial job).
 2. Operations, Generate. Read the Results tab and the Messages list.
-Expected: no line contains "move 0". Notes such as "operation 'Rough': the
-part has a step across the rotary axis ... at X 49.889 ..." and "operation
-'Finish': the end face at X 61.000 has nothing beyond it ..." name no move.
-Finish's two warnings (the shoulder at X 8.589, and the held region) are
-said once each, as warnings.
+Expected: no line contains "move 0". Notes such as "Shoulders (operation
+'Rough'): the part has a step across the rotary axis ... at X 49.889 ..."
+and "Free ends (operation 'Finish'): the end face at X 61.000 has nothing
+beyond it ..." name no move. Finish's two warnings ("Held region
+(operation 'Finish'): ...": the shoulder at X 8.589, and the held region)
+are said once each, as warnings. (Builds before 645256c3 print these
+without the topic in front; either form passes.)
 Old behaviour: "operation 'Rough': move 0: the part has a step ...", and
 the same "move 0:" on the three Finish lines.
 
