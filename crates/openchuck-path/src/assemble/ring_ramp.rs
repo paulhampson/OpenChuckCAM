@@ -203,3 +203,89 @@ fn round(
         follows_steep_drop: steep,
     }
 }
+
+/// Plans the ramp of a spiral (decision 0543 D2 (a)): round the rotary axis
+/// at the spiral's start X and Y, before its first point, turning A the way
+/// `sign` says, from the approach distance above the highest stock there to
+/// the first cut point `head` at `a0`. `base` gives the height the ramp may
+/// not go under at an angle: the higher of the first point's height and
+/// where the tool meets the finished surface there. `step` is the largest A
+/// step between positions, degrees. Unlike a ring's, this stretch is not the
+/// pass's own path, so the gouge check on every position stays the proof.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn plan_spiral(
+    b: &Builder<'_>,
+    stock: View<'_>,
+    approach: f64,
+    tan: f64,
+    head: AxisPosition,
+    a0: f64,
+    sign: f64,
+    probe_height: f64,
+    step: f64,
+    base: impl Fn(f64) -> f64,
+) -> Result<RingRamp, Refusal> {
+    let radius = head.across.hypot(head.height);
+    // The stock round the axis at this X, probed every `step` degrees of a
+    // whole turn (the ramp covers at most whole turns of the same place).
+    let count = ((360.0 / step.max(1e-3)).ceil() as usize).clamp(4, 100_000);
+    let mut stock_top = f64::NEG_INFINITY;
+    let mut low = head.height;
+    for k in 0..count {
+        let a = a0 - sign * 360.0 * k as f64 / count as f64;
+        let over = AxisPosition {
+            height: probe_height,
+            ..head
+        };
+        let travel = (probe_height - head.height).max(0.0);
+        if let Some(d) = super::footprint_entry(b, stock, over, Degrees(a), probe_height, travel) {
+            stock_top = stock_top.max(probe_height - d);
+        }
+        low = low.min(base(a));
+    }
+    if stock_top <= head.height + EPS {
+        return Err(Refusal::NothingToDescend);
+    }
+    let top = stock_top + approach;
+    let mut delta = ((top - low) / tan / radius.max(EPS)).to_degrees();
+    loop {
+        let turns = delta / 360.0;
+        if !delta.is_finite() || turns > MAX_TURNS {
+            return Err(Refusal::TooManyTurns { radius, turns });
+        }
+        let n = ((delta / step.max(1e-3)).ceil() as usize).max(1);
+        let offsets: Vec<f64> = (0..=n)
+            .map(|k| delta * (1.0 - k as f64 / n as f64))
+            .collect();
+        let travel: Vec<f64> = offsets
+            .iter()
+            .map(|&phi| (delta - phi).to_radians() * radius)
+            .collect();
+        let bases: Vec<f64> = offsets
+            .iter()
+            .map(|&phi| {
+                if phi <= 0.0 {
+                    head.height
+                } else {
+                    base(a0 - sign * phi).max(head.height)
+                }
+            })
+            .collect();
+        let (h, steep) = super::path_ramp::heights(&travel, &bases, top, tan);
+        if h.first().is_some_and(|&h0| h0 >= top - 1e-9) {
+            let mut moves: Vec<(AxisPosition, Degrees)> = offsets
+                .iter()
+                .zip(h)
+                .map(|(&phi, height)| (AxisPosition { height, ..head }, Degrees(a0 - sign * phi)))
+                .collect();
+            if let Some(last) = moves.last_mut() {
+                *last = (head, Degrees(a0));
+            }
+            return Ok(RingRamp {
+                moves,
+                follows_steep_drop: steep,
+            });
+        }
+        delta += 360.0;
+    }
+}

@@ -220,3 +220,59 @@ fn req_op_11_ring_ramps_are_the_same_at_one_two_and_many_threads() {
     assert_eq!(one, at(2));
     assert_eq!(one, at(8));
 }
+
+/// Checks every ramp of `path` that turns A (a ring or a spiral entry);
+/// counts them and the plunges.
+fn turning_ramps(f: &Fixture, path: &GeneratedPath) -> (usize, usize) {
+    let (mut ramps, mut plunges) = (0, 0);
+    for (before, moves, head) in entries(path) {
+        if moves.len() == 1 {
+            plunges += 1;
+            continue;
+        }
+        ramps += 1;
+        assert_ring_ramp(f, before, &moves, head, pass_sign(path, head));
+    }
+    (ramps, plunges)
+}
+
+#[test]
+fn req_op_11_req_set_09_a_spiral_is_ramped_round_the_axis_at_its_start_x() {
+    // Decision 0543 D2 (a). Refused on main with the held region.
+    let f = cylinder();
+    for keep in [&[][..], &[(-25.0, -4.0)][..]] {
+        let path = make(&f, &HelicalFinishing, &finishing("helix"), keep).unwrap();
+        let (ramps, plunges) = turning_ramps(&f, &path);
+        assert_eq!((ramps, plunges), (1, 0), "{keep:?}");
+    }
+}
+
+#[test]
+fn req_op_11_req_set_09_continuous_roughing_spiral_layers_ramp_and_a_single_point_plunges_when_allowed()
+ {
+    let f = cone();
+    let mut v = roughing_values("helix");
+    // Pass 4 is a single point: refused unless allowed (decision 0543 D7).
+    let err = make(&f, &RotaryRoughing, &v, &[]).unwrap_err();
+    assert!(err.contains("is a single point"), "{err}");
+    assert!(err.contains("Allow single-point plunge"), "{err}");
+    v.insert(
+        names::ALLOW_SINGLE_POINT_PLUNGE.into(),
+        ParameterValue::Flag(true),
+    );
+    for keep in [&[][..], &[(-25.0, -4.0)][..]] {
+        let path = make(&f, &RotaryRoughing, &v, keep).unwrap();
+        let (ramps, plunges) = turning_ramps(&f, &path);
+        assert!(
+            ramps >= 3 && plunges >= 1,
+            "{ramps} ramps, {plunges} plunges"
+        );
+        assert!(
+            path.notices
+                .iter()
+                .any(|n| n.text.contains("single points")),
+            "{:?}",
+            path.notices
+        );
+    }
+}

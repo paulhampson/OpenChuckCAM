@@ -352,39 +352,6 @@ fn req_op_14_every_pass_of_the_operation_is_linkable_low_including_finishing_lay
     }
 }
 
-#[test]
-fn req_op_14_req_nfr_07_links_a_reversing_ramp_keeps_high_are_counted() {
-    // A back-and-forth ramp entry is linked at the retract height (decision
-    // 0341); a request to keep links low is then not honoured, and the note
-    // says so rather than saying nothing.
-    let f = fixture();
-    let machine = support::machine();
-    let safety = openchuck_path::entry_safety::EntrySafety {
-        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-        target: &f.surface,
-        protected: &[],
-        body: &f.tool,
-        machine: &machine,
-    };
-    let mut input = f.input();
-    input.entry_safety = Some(&safety);
-    let path = axial_in(
-        &input,
-        &values(&[
-            low(),
-            ("entry", text("ramp")),
-            ("ramp_back_and_forth", ParameterValue::Flag(true)),
-        ]),
-    );
-    assert!(
-        path.notices
-            .iter()
-            .any(|n| n.text.contains("could not be lowered")),
-        "{:?}",
-        path.notices
-    );
-}
-
 /// Refuses any rapid or linking move that turns A below the retract height,
 /// as a collision check that knows something about the low path would.
 #[derive(Debug)]

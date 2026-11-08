@@ -360,8 +360,12 @@ pub mod names {
     pub const APPROACH_DISTANCE: &str = "approach_distance";
     /// The entry style (decision record 0026).
     pub const ENTRY: &str = "entry";
-    /// Optional repeated descending ramp legs.
+    /// Optional repeated descending ramp legs (decision 0242). Read and
+    /// inactive since every ramp follows the toolpath (decision 0543 D1).
     pub const RAMP_BACK_AND_FORTH: &str = "ramp_back_and_forth";
+    /// A single-point pass under a ramp is entered by a plunge instead of
+    /// refusing the operation (decision 0543 D7).
+    pub const ALLOW_SINGLE_POINT_PLUNGE: &str = "allow_single_point_plunge";
     /// Descent angle for ramp and helix entry.
     pub const RAMP_ANGLE: &str = "ramp_angle";
     /// The helix entry's circle, as a fraction of the tool diameter.
@@ -478,7 +482,13 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
                 default: EntryStyle::Plunge.name().to_owned(),
             },
         },
-        ParameterSpec { name: RAMP_BACK_AND_FORTH.to_owned(), label: "Back-and-forth ramp (ramp entry only)".to_owned(), description: "Only for ramp entry. Repeated descending passes may cut a full-width slot; verify tool suitability and this G-code before machining.".to_owned(), kind: ParameterKind::Flag { default: false } },
+        ParameterSpec { name: RAMP_BACK_AND_FORTH.to_owned(), label: "Back-and-forth ramp (ramp entry only)".to_owned(), description: "No longer has an effect: every ramp now follows the pass's own toolpath, going back and forth over a line where it needs to. Kept so saved operations still open.".to_owned(), kind: ParameterKind::Flag { default: false } },
+        ParameterSpec {
+            name: ALLOW_SINGLE_POINT_PLUNGE.to_owned(),
+            label: "Allow single-point plunge".to_owned(),
+            description: "A pass that is a single point has no path for a ramp to follow. With this on, the tool plunges straight down to that point instead of refusing the operation. The tool must be able to plunge (centre cutting).".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
         ParameterSpec {
             name: RAMP_ANGLE.to_owned(),
             label: "Ramp angle".to_owned(),
@@ -567,8 +577,11 @@ pub struct EntryParameters {
     pub style: EntryStyle,
     /// Descent angle of a ramp or helix.
     pub ramp_angle: Degrees,
-    /// Repeated descending legs; inactive for other entry styles.
+    /// Repeated descending legs; read and inactive (decision 0543 D1).
     pub back_and_forth: bool,
+    /// Enter a single-point pass under a ramp by a plunge instead of
+    /// refusing (decision 0543 D7).
+    pub allow_single_point_plunge: bool,
     /// The helix circle as a fraction of the tool diameter.
     pub helix_diameter: f64,
     /// Radius of the lead arcs, or zero for the tool radius.
@@ -581,6 +594,7 @@ impl EntryParameters {
         style: EntryStyle::Plunge,
         ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
         back_and_forth: false,
+        allow_single_point_plunge: false,
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
     };
@@ -607,6 +621,7 @@ impl EntryParameters {
             style: EntryStyle::parse(p.text(ENTRY)?),
             ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
             back_and_forth: p.flag(RAMP_BACK_AND_FORTH)?,
+            allow_single_point_plunge: p.flag(ALLOW_SINGLE_POINT_PLUNGE)?,
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
         })

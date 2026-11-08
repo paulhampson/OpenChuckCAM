@@ -256,7 +256,7 @@ fn locate(along: &[f64], s: f64) -> (usize, f64) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
 mod tests {
     use super::*;
 

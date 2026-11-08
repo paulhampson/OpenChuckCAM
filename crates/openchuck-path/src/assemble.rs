@@ -40,8 +40,6 @@
 mod entry;
 mod pass_shape;
 mod path_ramp;
-mod ramp;
-mod ramp_refusal;
 mod ring_ramp;
 mod walls;
 
@@ -167,6 +165,11 @@ struct Builder<'a> {
     /// Entries that rose above the link's end before moving to their start
     /// (issue #642; decision 0544 item 6).
     raised_entries: usize,
+    /// Passes whose ramp followed a drop of the pass steeper than the ramp
+    /// angle just before its first point (decision 0543 D4).
+    steep_ramps: Vec<usize>,
+    /// Single-point passes plunged under a ramp (decision 0543 D7).
+    single_point_plunges: Vec<usize>,
 }
 
 impl Builder<'_> {
@@ -490,9 +493,10 @@ pub fn assemble_with_entry(
         segments: Vec::new(),
         notes: Vec::new(),
         raised_entries: 0,
+        steep_ramps: Vec::new(),
+        single_point_plunges: Vec::new(),
     };
 
-    let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
     let (mut asked_low, mut kept_high) = (0_usize, 0_usize);
@@ -514,22 +518,14 @@ pub fn assemble_with_entry(
             // above that stock, where the whole link is clear of it, instead
             // of at the clearance cylinder (OP-14, decision record 0033).
             let local = match stocks.get(i).and_then(Option::as_ref) {
-                Some(_) if !reversing_ramp => {
-                    local_link_height(&b, stock.stock, common, head, link_height)
-                }
+                Some(_) => local_link_height(&b, stock.stock, common, head, link_height),
                 // A pass without its own stock that asks for low links is
                 // linked against the setup's stock, and only where no held
                 // region lies in the way (decision 0496).
                 None if low_links.get(i).copied().unwrap_or(false) => {
                     asked_low += 1;
-                    // A reversing ramp is linked at the retract height; the
-                    // request is still counted, so the note says so.
-                    let low = if reversing_ramp {
-                        None
-                    } else {
-                        local_link_height(&b, input.stock, common, head, link_height)
-                            .filter(|_| !crosses_keep_out(input.keep_out, &b, head))
-                    };
+                    let low = local_link_height(&b, input.stock, common, head, link_height)
+                        .filter(|_| !crosses_keep_out(input.keep_out, &b, head));
                     if low.is_none() {
                         kept_high += 1;
                     }
@@ -595,16 +591,7 @@ pub fn assemble_with_entry(
             }
             linked?;
         }
-        entry.enter(
-            &mut b,
-            input,
-            stock,
-            common,
-            i,
-            points,
-            pass_rapids,
-            context,
-        )?;
+        entry.enter(&mut b, input, stock, common, i, points, pass_rapids)?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
         let contacts = match doubling {
             Some(_) => points.iter().map(|p| p.contact).collect(),
@@ -632,6 +619,29 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
+    let list = |passes: &[usize]| {
+        passes
+            .iter()
+            .map(|p| (p + 1).to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !b.single_point_plunges.is_empty() {
+        let text = format!(
+            "Ramp entry: passes {} are single points, so they are entered by a straight plunge \
+             (Allow single-point plunge is on)",
+            list(&b.single_point_plunges)
+        );
+        b.notes.insert(0, Notice::information(text));
+    }
+    if !b.steep_ramps.is_empty() {
+        let text = format!(
+            "Ramp entry: passes {} drop more steeply than the ramp angle just before their first \
+             point, so their ramps follow that drop there, as the passes themselves do",
+            list(&b.steep_ramps)
+        );
+        b.notes.insert(0, Notice::information(text));
+    }
     if b.raised_entries > 0 {
         b.notes.insert(
             0,
@@ -1155,6 +1165,8 @@ mod tests {
                 segments: Vec::new(),
                 notes: Vec::new(),
                 raised_entries: 0,
+                steep_ramps: Vec::new(),
+                single_point_plunges: Vec::new(),
             };
             let end = b.pose(to.tip, to.a);
             // A contact feed far above the limits, so the axes set the time.
@@ -1223,6 +1235,8 @@ mod tests {
             segments: Vec::new(),
             notes: Vec::new(),
             raised_entries: 0,
+            steep_ramps: Vec::new(),
+            single_point_plunges: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         b.push(
@@ -1283,6 +1297,8 @@ mod tests {
             segments: Vec::new(),
             notes: Vec::new(),
             raised_entries: 0,
+            steep_ramps: Vec::new(),
+            single_point_plunges: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         // A contact feed far above the limits, so the axes set the time.
