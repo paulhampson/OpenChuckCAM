@@ -40,10 +40,8 @@ def run(cap, work):
     cap.click(1855, 1057, GENERATE)
     cap.click(1622, 344, 1)                    # fold TOOL AND FEEDS: its feed-limit note is under review (#600)
     cap.shot("05-finishing-layers")
-    cap.click(1622, 344, 1)                    # open it again, so the positions below hold
-    cap.click(1763, 764, 1.5)                  # untick Face free ends
+    cap.click(1763, 668, 1.5)                  # untick Face free ends (where it is with TOOL AND FEEDS folded)
     cap.click(1855, 1057, GENERATE)
     cap.click(452, 789, 2)                     # Results
     cap.click(813, 831, 1)                     # Information off: warnings only (the feed-limit lines, #600)
-    cap.click(1622, 344, 1)                    # fold TOOL AND FEEDS (#600)
     cap.shot("06-face-free-ends-off")
