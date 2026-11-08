@@ -64,13 +64,13 @@ pub(crate) fn verify_output(
         context.check_cancelled()?;
         if block.block_delete {
             return Err(refuse(
-                "optional block deletion cannot certify complete Facing",
+                "with optional block deletion, the check cannot confirm complete Facing",
             ));
         }
         for w in &block.words {
             if w.letter == 'G' && [20., 28., 43., 53., 91.].contains(&w.value) {
                 return Err(refuse(format!(
-                    "line {}: G{} has no supported complete-motion certificate",
+                    "line {}: G{} has no supported complete-motion check result",
                     w.line, w.text
                 )));
             }
@@ -174,7 +174,7 @@ pub(crate) fn verify_output(
                 || matched.movement.motion != if fed { Motion::Linear } else { Motion::Rapid }
             {
                 return Err(observer_error(
-                    "only matching metric linear/rapid motion is certified",
+                    "only matching metric linear/rapid motion is checked",
                 ));
             }
             Ok(())
@@ -408,7 +408,7 @@ fn verify_replay(
             let machine = &proof.0.machine;
             if job.frame.axis != machine.rotary_axis || job.frame.sense != machine.a_sense {
                 return Err(observer_error(
-                    "post frame differs from the verified machine",
+                    "post frame differs from the checked machine",
                 ));
             }
             let fixed = RotaryFrame::of_profile(machine);
@@ -486,7 +486,7 @@ fn verify_replay(
                 let axial_air = axial_air(proof, from, pose).map_err(observer_error)?;
                 if !fixed_prism && !radial_helix && !axial_air {
                     return Err(observer_error(format!(
-                        "line {}: Facing fed multi-axis interpolation is not yet certified ({:?}, delta {:?}, A {} to {}); use supported fixed-A straight entry/cuts",
+                        "line {}: Facing fed multi-axis interpolation is not checked yet ({:?}, delta {:?}, A {} to {}); use supported fixed-A straight entry/cuts",
                         m.movement.line, source.kind, delta, from.a.0, pose.a.0,
                     )));
                 }

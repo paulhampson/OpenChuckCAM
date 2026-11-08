@@ -276,6 +276,35 @@ fn req_gc_14_the_plan_lists_the_tools_in_order_of_first_use() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Tool numbers the export changed are lost unless the project is saved:
+/// the warning in Messages lasts while they differ from the saved project,
+/// so saving or undoing clears it (decision record 0536 section 8).
+#[test]
+fn req_gc_14_req_ui_12_changed_tool_numbers_read_as_unsaved_until_saved_or_undone() {
+    let (dir, mut app, _) = project("tn-unsaved");
+    two_tools(&mut app, 5, 2);
+    app.save().unwrap();
+    assert!(!app.tool_numbers_unsaved());
+    let renumber = |app: &Application| {
+        tool_numbering_command(
+            app.project(),
+            &ToolNumbering::InOrderOfUse { first: 1 },
+            None,
+        )
+        .unwrap()
+        .unwrap()
+    };
+    app.execute(renumber(&app)).unwrap();
+    assert!(app.tool_numbers_unsaved());
+    assert!(app.undo().unwrap());
+    assert!(!app.tool_numbers_unsaved());
+    assert!(app.redo().unwrap());
+    assert!(app.tool_numbers_unsaved());
+    app.save().unwrap();
+    assert!(!app.tool_numbers_unsaved());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn req_gc_14_confirming_keeps_the_numbers_and_auto_follows_operation_order_in_one_undo_step() {
     let (dir, mut app, _) = project("tn-auto");

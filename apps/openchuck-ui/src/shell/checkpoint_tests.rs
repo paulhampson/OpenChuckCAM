@@ -203,7 +203,7 @@ fn req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writ
     click(&mut rig, "Periodic");
     click(&mut rig, "Recover selected");
     let deadline = Instant::now() + Duration::from_secs(60);
-    while !recovered(&rig) || rig.shell.recovery.problem.is_none() {
+    while !recovered(&rig) || rig.shell.recovery.write_failed.is_none() {
         rig.frame(Vec::new());
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(1));
@@ -212,13 +212,26 @@ fn req_prj_08_read_only_recovery_can_restore_memory_and_reports_unavailable_writ
     assert!(app.is_modified());
     assert_eq!(app.project().name(), "periodic state");
     assert_eq!(file::load(&folder).unwrap().name(), "saved");
+    // A checkpoint that could not be written is an error, because the
+    // action failed; the recovered changes are a warning until saved
+    // (decision record 0536 section 8).
+    rig.frame(Vec::new());
+    let messages = &rig.shell.overview.messages;
     assert!(
-        rig.shell
-            .recovery
-            .problem
-            .as_ref()
-            .unwrap()
-            .contains("Recovery")
+        messages
+            .iter()
+            .any(|m| m.severity == openchuck_app::overview::Severity::Error
+                && m.text.starts_with(
+                    "Recovery checkpoint: the latest checkpoint could not be written"
+                )),
+        "{messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.severity == openchuck_app::overview::Severity::Warning
+                && m.text.starts_with("Recovered checkpoint: ")),
+        "{messages:?}"
     );
 }
 

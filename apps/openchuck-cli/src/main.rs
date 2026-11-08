@@ -1480,7 +1480,7 @@ fn print_simulation(
         }
         match &d.worst_overcut {
             Some(p) => println!("      deepest overcut: {:.4} mm at {}", -p.value, at(p)),
-            None => println!("      no overcut"),
+            None => println!("      no overcut found at the simulation's resolution"),
         }
         if let Some(&leave) = leaves.get(&setup.id) {
             // A roughing operation ends the setup: how near its stock to

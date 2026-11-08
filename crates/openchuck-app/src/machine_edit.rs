@@ -225,7 +225,7 @@ const SPECS: &[Spec] = &[
     spec(
         f::ROTARY_AXIS,
         "Rotary axis",
-        "The machine axis the chuck turns about. Only X is supported (a Y axis is SET-02).",
+        "The machine axis the chuck turns about. Only X is supported.",
         G::RotaryAxis,
         Some(P::RotaryAxis),
     ),
@@ -366,8 +366,8 @@ const SPECS: &[Spec] = &[
         f::ROTARY_IN_FEED,
         "A in the feed word",
         "Separate: the feed word is the XYZ speed alone, and A has its own limit (LinuxCNC). \
-         Makera: the controller counts A with X, Y and Z in the feed word (decision 0007). \
-         The post chosen at export has its own feed rule; keep the two consistent (OI-254).",
+         Makera: the controller counts A with X, Y and Z in the feed word. \
+         The post chosen at export has its own feed rule; keep the two consistent.",
         G::Feeds,
         Some(P::MaxFeeds),
     ),
@@ -392,7 +392,7 @@ const SPECS: &[Spec] = &[
         "Minimum clearance radius",
         "The smallest safe cylinder radius that clears the chuck, the jaws, the headstock and \
          the tailstock; blank when it is not known. A setup whose clearance is inside it is \
-         warned about; nothing is refused. A setup can set its own (decision 0495).",
+         warned about; nothing is refused. A setup can set its own.",
         G::Clearance,
         Some(P::MinClearanceRadius),
     ),
@@ -421,14 +421,14 @@ const SPECS: &[Spec] = &[
         f::MIN_BLOCK_MS,
         "Minimum block time",
         "The shortest average time per block the controller keeps up with. 0 turns the check \
-         off. A larger time trades speed for smoothness (GC-17).",
+         off. A larger time trades speed for smoothness.",
         G::ShortMoves,
         Some(P::MinBlockMs),
     ),
     spec(
         f::BLOCK_WINDOW,
         "Block window",
-        "How many blocks the average is taken over, from 1 to 4096 (GC-17).",
+        "How many blocks the average is taken over, from 1 to 4096.",
         G::ShortMoves,
         Some(P::BlockWindow),
     ),
@@ -436,22 +436,21 @@ const SPECS: &[Spec] = &[
         f::SHORT_BLOCK_MODE,
         "Short moves",
         "Off, Report, or Slow down, which lengthens move times only where needed and keeps \
-         the programmed geometry (GC-17).",
+         the programmed geometry.",
         G::ShortMoves,
         Some(P::ShortBlockMode),
     ),
     spec(
         f::AUTOMATIC_TOOL_LENGTH,
         "Tool length measurement",
-        "On when the controller measures each tool, so a longer tool raises the spindle \
-         (decision 0317).",
+        "On when the controller measures each tool, so a longer tool raises the spindle.",
         G::SpindleHeight,
         Some(P::ToolLengthMeasurement),
     ),
     spec(
         f::SPINDLE_TO_AXIS,
         "Spindle to axis",
-        "The spindle at home down to the rotary axis; blank when it is not known (decision 0318).",
+        "The spindle at home down to the rotary axis; blank when it is not known.",
         G::SpindleHeight,
         Some(P::SpindleToAxis),
     ),
@@ -1009,6 +1008,44 @@ mod tests {
     use super::*;
     use openchuck_project::machines::builtin;
     use proptest::prelude::*;
+
+    /// No machine setting's label or tooltip names a decision record, an
+    /// open item or a requirement (interface specification section 15: no
+    /// internal language; issue #634).
+    #[test]
+    fn req_ui_12_no_machine_setting_text_names_a_decision_or_a_requirement() {
+        let internal = |text: &str| {
+            text.split(|c: char| !(c.is_alphanumeric() || c == '-'))
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| {
+                    w[0].eq_ignore_ascii_case("decision")
+                        && !w[1].is_empty()
+                        && w[1].chars().all(|c| c.is_ascii_digit())
+                })
+                || text
+                    .split(|c: char| !(c.is_alphanumeric() || c == '-'))
+                    .any(|w| {
+                        w.split_once('-').is_some_and(|(head, tail)| {
+                            (2..=4).contains(&head.len())
+                                && head.chars().all(|c| c.is_ascii_uppercase())
+                                && !tail.is_empty()
+                                && tail.chars().all(|c| c.is_ascii_digit())
+                        })
+                    })
+        };
+        assert!(internal("slower (decision 0318)") && internal("as GC-17 says"));
+        assert!(!internal("a G-code program, 0.5 mm"));
+        for field in machine_form(&z1()) {
+            assert!(!internal(field.label), "{}", field.label);
+            assert!(
+                !internal(field.description),
+                "{}: {}",
+                field.label,
+                field.description
+            );
+        }
+    }
 
     fn z1() -> MachineProfile {
         builtin("makera-z1").expect("built in").expect("reads")

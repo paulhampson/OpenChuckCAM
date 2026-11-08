@@ -478,7 +478,12 @@ mod tests {
             .unwrap();
         assert_eq!(coverage.points[0], Point3::new(9.5, -2.5, 2.2));
         assert!(display.labels.iter().any(|l| l.text.contains("0.500")));
-        assert!(display.completion.contains("complete"));
+        // NFR-12: it says what was covered, never that it is verified
+        // (decision record 0536 step 5, OI-2097).
+        assert_eq!(
+            display.completion,
+            "Facing covered the end faces it was asked to."
+        );
         let project = crate::test_project::TestProject::new("facing-pane-agreement");
         let view = crate::scene::SceneView {
             setup: Some(project.setup),
