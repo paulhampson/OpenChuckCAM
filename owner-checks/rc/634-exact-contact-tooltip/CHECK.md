@@ -37,4 +37,4 @@ Reply on issue #634 with: **PASS**, or **FAIL and what you saw** (the tooltip as
 
 ## What we saw when preparing this
 
-The tooltips are read from the code on `main` at `1f3675d52`; the interface cannot be run without a display here.
+The tooltips are read from the code on `main` at `1f3675d52`; the interface cannot be run without a display here. `openchuck-cli validate` reports the project valid on that commit, with the STEP reader built from it.

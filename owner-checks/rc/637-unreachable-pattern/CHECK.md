@@ -38,4 +38,4 @@ Reply on issue #637 with: **PASS**, or **FAIL and what you saw** (what the patte
 
 ## What we saw when preparing this
 
-The view cannot be drawn without a display here, so nothing in this check was run; the old behaviour is from the issue. The project is byte-identical to the #512 check's project (`diff -r`).
+The view cannot be drawn without a display here, so nothing in this check was run; the old behaviour is from the issue. The project is byte-identical to the #512 check's project (`diff -r`). `openchuck-cli validate` reports it valid on `main` at `1f3675d52`, with the STEP reader built from that commit.

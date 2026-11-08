@@ -20,7 +20,7 @@ Use the release candidate, or a build from `main` that holds the fix (**Help > A
 
 1. Download [`635-inline-warning-alignment.zip`](635-inline-warning-alignment.zip) (or take it from the [raw link](https://github.com/paulhampson/OpenChuckCAM/raw/owner-checks/2026.1-alpha/owner-checks/rc/635-inline-warning-alignment/635-inline-warning-alignment.zip)), unzip it anywhere, and open the folder `635-inline-warning-alignment/project` with **File > Open project**.
 2. Click **Operations**, then **Generate**. Click **1 Blade swarf**.
-3. In **Messages**, click **Show setting** on the swarf's overcut warning. The Inspector opens the section and marks the setting it names (**Tolerance**).
+3. In **Messages**, click **Show setting** on the warning that starts "Swarf on face 19 cuts into the finished surface by 0.0158 mm". The Inspector opens the section and marks the setting it is about (**Tolerance**). If another of the operation's warnings also has **Show setting** (the two about faces 1 and 20 name **Tip extension**), look at its line as well.
 4. Look at the warning line under the setting. Make the Inspector wider and narrower by dragging its edge.
 
 ## Expected result
@@ -36,4 +36,10 @@ Reply on issue #635 with: **PASS**, or **FAIL and what you saw** (a screenshot o
 
 ## What we saw when preparing this
 
-The Inspector cannot be drawn without a display here, so nothing in this check was run in the interface. The line's text is `WARNED_SETTING` in `apps/openchuck-ui/src/form_panel.rs` on `main` at `1f3675d52`. The project is byte-identical to the #442 check's project (`diff -r`); for the warnings that check lists for **Blade swarf** at its defaults (the swarf cuts face 1 by about 0.014 mm and face 20 by about 0.023 mm, beyond the 0.01 mm tolerance), see [its CHECK.md](../../442-swarf-past-blade-end/CHECK.md).
+The Inspector cannot be drawn without a display here, so nothing in this check was run in the interface. The line's text is `WARNED_SETTING` in `apps/openchuck-ui/src/form_panel.rs` on `main` at `1f3675d52`. The project is byte-identical to the #442 check's project (`diff -r`), and `openchuck-cli validate` reports it valid on `main` at `1f3675d52` with the STEP reader built from that commit. `openchuck-cli regenerate project` there gives **Blade swarf** three warnings:
+
+> Swarf on face 19 cuts into the finished surface by 0.0158 mm at (50.509, -1.120, 10.440), more than this operation's tolerance of 0.01 mm. The face is ruled but not developable: ...
+
+> Swarf on face 19 cuts 0.014 mm into face 1, which meets it along the ends of its rulings, at (53.820, 1.419, 19.950), more than this operation's tolerance of 0.01 mm. To keep the tool off it, put face 1 in an avoid set on Cut short, which lifts the tool clear of it, or set a negative Tip extension to pull the tool up the face ...
+
+and the same for face 20 (0.023 mm).

@@ -5,7 +5,8 @@ DRAFT: to run on the release candidate, once the fix is merged.
 1. Open the folder "project" with File > Open project (the #442 project:
    the blisk, Blade wall set, Blade swarf at its defaults).
 2. Operations, Generate, click "1 Blade swarf".
-3. In Messages, Show setting on the swarf warning.
+3. In Messages, Show setting on "Swarf on face 19 cuts into the finished
+   surface by 0.0158 mm ..." (Tolerance).
 4. Read the line under the marked setting; drag the Inspector wider and
    narrower.
 Expected: "The last path was made with a warning about this setting (see
