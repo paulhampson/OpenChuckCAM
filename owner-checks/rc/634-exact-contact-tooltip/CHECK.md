@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Draft, to run on the release candidate.** The fix for #634 is not merged yet (8 Nov 2026). This file gives today's tooltips, read from `main` at `1f3675d52`, and what the issue asks for. When the fix merges, the new tooltips are copied here from that build, its pull request is named, and this note is removed.
 
-**What is to be fixed:** the tooltip of **Exact STEP surface contact** carries a measurement, a decision record number and more. The issue asks for everything after "More accurate and much slower." to go. The setting has two tooltips today: one for axial finishing and pencil clean-up, one for helical finishing, rest machining and simultaneous finishing; the project shows both.
+**What is to be fixed:** the tooltip of **Exact STEP surface contact** carries a measurement, a decision record number and more. The issue asks for everything after "More accurate and much slower." to go; the owner chose to keep "No effect on a mesh part." and drop the rest, including "Check the program before running it.". The setting has two tooltips today: one for axial finishing and pencil clean-up, one for helical finishing, rest machining and simultaneous finishing; the project shows both.
 
 **Time:** about 2 minutes.
 
@@ -24,7 +24,10 @@ Use the release candidate, or a build from `main` that holds the fix (**Help > A
 
 ## Expected result
 
-- Each tooltip is short and plain: what the setting does, ending at "More accurate and much slower." (or the helical wording's "More accurate and can be slower."), with no measurement, no decision record number and no test-part figures. The exact texts will be copied here from the merged build.
+- The tooltips read exactly as the owner chose (coordinator, 8 Nov 2026), with nothing after them:
+  - **Axial, tapered ball** and **Pencil, flat**: "On a STEP part, drop the tool (a ball, tapered ball or flat end) on the part's exact surfaces instead of its tessellation. More accurate and much slower. No effect on a mesh part."
+  - **Helical, ball** (also rest machining and simultaneous finishing): "On a STEP part, drop a ball-end tool on the part's exact surfaces instead of its tessellation. More accurate and can be slower. No effect on a mesh part."
+- No measurement, test-part figure or decision number remains. These texts are to be confirmed against the merged build (lane MSGSTEP5).
 
 **Old behaviour (today, `main` at `1f3675d52`, `crates/openchuck-path/src/contact.rs`):**
 
