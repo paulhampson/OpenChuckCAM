@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openchuck_path::extend;
-use openchuck_path::params::{EntryParameters, ParameterKind, names};
+use openchuck_path::params::{EntryParameters, EntryStyle, ParameterKind, names};
 use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
@@ -424,11 +424,6 @@ fn generate_unnamed(
     {
         return Err(missing(operation, &refusal.text));
     }
-    // A back-and-forth ramp that cannot be used on this part or with this
-    // tool: the same check the inspector and the overview read (#291).
-    if let Some(reason) = crate::ramp_entry::refusal(project, operation) {
-        return Err(missing(operation, &reason));
-    }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
     // and the edges below (decision 0056); a mesh part's are triangles, or
@@ -690,43 +685,6 @@ fn generate_unnamed(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
-    // A STEP part, or a shank wider than the cutter, was refused above
-    // (`ramp_entry::refusal`).
-    let entry_geometry = if crate::ramp_entry::wanted(operation) && placed.brep.is_none() {
-        use openchuck_types::tool::profile::{
-            ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
-        };
-        let mut segments = profile
-            .pieces()
-            .iter()
-            .map(|piece| match *piece {
-                ProfilePiece::Line { end, .. } => ProfileSegment::Line { to: end },
-                ProfilePiece::Arc { end, centre, .. } => ProfileSegment::Arc { to: end, centre },
-            })
-            .collect::<Vec<_>>();
-        if snapshot.tool.overall_length.0 > profile.top() {
-            segments.push(ProfileSegment::Line {
-                to: ProfilePoint::new(profile.cutting_radius(), snapshot.tool.overall_length.0),
-            });
-        }
-        let body = ToolProfile { segments }.validate()?;
-        let part = openchuck_geom::part_extent(mesh)
-            .ok_or_else(|| missing(operation, "the whole target has no bounds"))?;
-        let protected =
-            crate::workholding::solids(&setup.workholding, setup.stock.as_ref(), &part)?;
-        Some((MeshSurface::new(mesh)?, body, protected))
-    } else {
-        None
-    };
-    let entry_safety = entry_geometry.as_ref().map(|(target, body, protected)| {
-        openchuck_path::entry_safety::EntrySafety {
-            rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
-            target,
-            body,
-            protected,
-            machine,
-        }
-    });
     let input = StrategyInput {
         surface,
         stock,
@@ -736,7 +694,7 @@ fn generate_unnamed(
         clearance: crate::setup::effective_clearance(machine, setup, Some(&part_bounds)).clearance,
         max_feeds: machine.max_feeds,
         tags: &tags,
-        entry_safety: entry_safety.as_ref(),
+        entry_safety: None,
         facing: facing_setup.as_ref(),
         keep_out: &keep_out,
         shank: shank_of(&profile, &snapshot.tool),
@@ -753,7 +711,8 @@ fn generate_unnamed(
         )?;
     }
     // A straight plunge needs a tool that can cut straight down (OI-117).
-    EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
+    let entry_parameters = EntryParameters::read(&parameters)?;
+    entry_parameters.check_tool(snapshot.tool.can_plunge())?;
     let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
     let mut zones = resolved_region
         .as_ref()
@@ -882,6 +841,34 @@ fn generate_unnamed(
             context,
         )?
     };
+    // A single-point pass under a ramp (with Allow single-point plunge on)
+    // or a lead is entered by a plunge: refused for a tool that cannot cut
+    // straight down (OI-117; decision 0543 D7, decision 0544 item 7). The
+    // path library does not know the tool's centre cutting, so it is
+    // checked here, on the generated path.
+    if !snapshot.tool.can_plunge()
+        && matches!(entry_parameters.style, EntryStyle::Ramp | EntryStyle::Lead)
+        && path
+            .group
+            .segments
+            .iter()
+            .any(|s| s.kind == openchuck_types::ir::MoveKind::Plunge)
+    {
+        return Err(missing(
+            operation,
+            &format!(
+                "{} entry: a pass is a single point, so it is entered by a straight plunge, \
+                 and the tool '{}' cannot cut straight down (it is not centre cutting). Set \
+                 Entry to Helix, or choose a tool that can plunge",
+                if entry_parameters.style == EntryStyle::Ramp {
+                    "Ramp"
+                } else {
+                    "Lead"
+                },
+                snapshot.name
+            ),
+        ));
+    }
     // The tabs a limited operation's path can touch, against its tool
     // (issue #548; decision 0523): a tab it never comes near says nothing;
     // one outside the end zones it does touch is refused, and one shorter

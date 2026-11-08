@@ -718,14 +718,14 @@ mod tests {
     }
 
     #[test]
-    fn req_op_11_req_nfr_07_a_back_and_forth_ramp_problem_shows_under_its_field() {
-        // Issue #291: what the application knows before Generate about the
-        // back-and-forth ramp is a warning line under the field, in the
-        // Entry, links and retract section; none when there is no problem.
-        let problem = "The back-and-forth ramp is not available on a STEP part yet.";
+    fn req_op_11_req_nfr_07_an_entry_setting_problem_shows_under_its_field() {
+        // What the application knows before Generate about an entry setting
+        // is a warning line under the field, in the Entry, links and retract
+        // section; none when there is no problem (#291).
+        let problem = "Allow single-point plunge needs a tool that can plunge.";
         let field = |problem: Option<&str>| Field {
-            name: "ramp_back_and_forth".into(),
-            label: "Back-and-forth ramp (ramp entry only)".into(),
+            name: "allow_single_point_plunge".into(),
+            label: "Allow single-point plunge".into(),
             description: String::new(),
             kind: FieldKind::Flag,
             set: Some(ParameterValue::Flag(true)),

@@ -2280,9 +2280,14 @@ fn req_op_04_req_ui_07_turning_adaptive_spacing_on_from_a_saved_zero_asks_for_th
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-/// Turns on the back-and-forth ramp (Entry Ramp, Back-and-forth ramp on) in
-/// operation `op`, or with `entry` another entry style.
-fn back_and_forth(app: &mut Application, op: OperationId, entry: &str) {
+/// Sets Entry to `entry` in operation `op`, with the inactive Back-and-forth
+/// ramp flag on (a saved operation from before decision 0543), and `extra`.
+fn set_entry(
+    app: &mut Application,
+    op: OperationId,
+    entry: &str,
+    extra: &[(&str, ParameterValue)],
+) {
     let mut operation = app.project().operation(op).unwrap().clone();
     operation
         .parameters
@@ -2291,119 +2296,206 @@ fn back_and_forth(app: &mut Application, op: OperationId, entry: &str) {
         names::RAMP_BACK_AND_FORTH.into(),
         ParameterValue::Flag(true),
     );
+    for (name, value) in extra {
+        operation.parameters.insert((*name).into(), value.clone());
+    }
     app.execute(Command::Replace(Item::Operation(operation)))
         .unwrap();
 }
 
-/// What the inspector shows under the Back-and-forth ramp field.
-fn ramp_problem(app: &Application, op: OperationId) -> Option<String> {
-    app.parameter_form(op)
+/// A pass that only turns the part (one ring) is ramped round itself, A
+/// turning the pass's way, from the application (decision 0543): the
+/// back-and-forth ramp refused it (#291). The old flag is shown inactive and
+/// has no problem under it.
+#[test]
+fn req_op_11_req_op_15_a_ring_is_ramped_round_itself_from_the_application() {
+    let (dir, mut app, op) = project("ramp-ring");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    set_entry(&mut app, op, "ramp", &[]);
+    let form = app.parameter_form(op).unwrap();
+    let flag = form
+        .fields
+        .iter()
+        .find(|f| f.name == names::RAMP_BACK_AND_FORTH)
+        .unwrap();
+    assert!(flag.label.ends_with("(inactive)"), "{}", flag.label);
+    assert_eq!(flag.problem, None);
+    let run = app.start_regenerate().wait().unwrap();
+    let segments: Vec<_> = run
+        .toolpath
+        .groups
+        .iter()
+        .flat_map(|g| &g.segments)
+        .collect();
+    let ramp: Vec<_> = segments
+        .iter()
+        .filter(|s| s.kind == openchuck_types::ir::MoveKind::LeadIn)
+        .collect();
+    assert!(ramp.len() > 1, "{}", ramp.len());
+    // A rises to the first cut point's A (0) only, never back.
+    for w in ramp.windows(2) {
+        assert!(w[1].end.a.0 >= w[0].end.a.0 - 1e-9);
+    }
+    assert!(ramp.last().unwrap().end.a.0.abs() < 1e-9);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A STEP part, or a shank wider than the cutter, no longer refuses a ramp
+/// before generating: the clearance certificate those refusals stood for is
+/// gone (decision 0543 D10), and the ramp follows the pass instead.
+#[test]
+fn req_op_11_req_nfr_07_a_ramp_on_a_step_part_or_with_a_wider_shank_is_not_refused_up_front() {
+    use openchuck_app::overview::{ItemRef, ItemState};
+    use openchuck_app::project::RelativePath;
+    let (dir, mut app, op) = project("ramp-step-part");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let mut tool = app.project().tools()[0].clone();
+    tool.tool.shank_diameter = Millimetres(6.0);
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    // With a wider shank, on the mesh part, it generates.
+    set_entry(&mut app, op, "ramp", &[]);
+    app.start_regenerate().wait().unwrap();
+    // On a STEP part nothing is said against the ramp before generating.
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blisk.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model))).unwrap();
+    let flag = app
+        .parameter_form(op)
         .unwrap()
         .fields
         .into_iter()
         .find(|f| f.name == names::RAMP_BACK_AND_FORTH)
-        .unwrap()
-        .problem
-}
-
-/// Issue #291: on a STEP part the back-and-forth ramp cannot be checked
-/// (decision 0242 item 5), so the operation is in error before it is
-/// generated, with one plain message that names the setting to change: under
-/// the Back-and-forth ramp field, as the operation's state, in Messages, and
-/// when it is generated. Only the part's file name is read.
-#[test]
-fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_step_part_says_what_to_change_before_generating() {
-    use openchuck_app::overview::{ItemRef, ItemState, MessageAction, Severity};
-    use openchuck_app::project::RelativePath;
-    let (dir, mut app, op) = project("ramp-step-part");
-    app.register_strategy(Arc::new(OneRing)).unwrap();
-    let mut model = app.project().models()[0].clone();
-    model.path = RelativePath::new("models/blisk.step").unwrap();
-    app.execute(Command::Replace(Item::Model(model))).unwrap();
-    // Off, or with another entry, nothing is said.
-    assert_eq!(ramp_problem(&app, op), None);
-    back_and_forth(&mut app, op, "helix");
-    assert_eq!(ramp_problem(&app, op), None);
-    back_and_forth(&mut app, op, "ramp");
-    let said = "The back-and-forth ramp is not available on a STEP part yet: its clearance \
-                cannot be checked against the part's exact faces. To generate this operation, \
-                in the operation's Entry, links and retract settings, turn off Back-and-forth \
-                ramp or set Entry to Plunge, Lead or Helix.";
-    assert_eq!(ramp_problem(&app, op).as_deref(), Some(said));
+        .unwrap();
+    assert_eq!(flag.problem, None);
     let overview = app.overview(None, &openchuck_app::JobLog::default());
     let status = &overview.items[&ItemRef::Operation(op)];
-    assert_eq!(status.state, ItemState::Error, "{status:?}");
-    assert!(status.cause.ends_with(said), "{}", status.cause);
-    let message = overview
-        .messages
-        .iter()
-        .find(|m| m.text == said)
-        .expect("the refusal is in Messages");
-    assert_eq!(message.severity, Severity::Error);
-    assert_eq!(
-        message.action,
-        Some(MessageAction::Show(ItemRef::Operation(op)))
+    assert!(
+        status.state != ItemState::Error || !status.cause.contains("ramp"),
+        "{status:?}"
     );
-    // Generating refuses with the same words, before the part is read, and
-    // Messages still says it once.
-    let e = app.start_regenerate().wait().unwrap_err().to_string();
-    assert_eq!(e, format!("operation 'Ring' cannot be generated: {said}"));
-    let overview = app.overview(None, &openchuck_app::JobLog::default());
-    assert_eq!(
+    assert!(
         overview
             .messages
             .iter()
-            .filter(|m| m.text.contains(said))
-            .count(),
-        1,
+            .all(|m| !m.text.contains("back-and-forth")),
         "{:?}",
         overview.messages
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// A shank wider than the cutter has no bound the ramp's clearance check
-/// supports (decision 0242 item 5): said before generating, naming the tool,
-/// both sizes and what to change (#291).
-#[test]
-fn req_op_11_req_nfr_07_back_and_forth_ramp_with_a_wider_shank_says_what_to_change() {
-    use openchuck_app::overview::{ItemRef, ItemState};
-    let (dir, mut app, op) = project("ramp-wide-shank");
-    app.register_strategy(Arc::new(OneRing)).unwrap();
-    let mut tool = app.project().tools()[0].clone();
-    tool.tool.shank_diameter = Millimetres(6.0);
-    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
-    back_and_forth(&mut app, op, "ramp");
-    let said = "The back-and-forth ramp cannot check its clearance with the tool '4 mm ball': \
-                its shank (6.000 mm) is wider than its cutting diameter (4.000 mm). Choose a \
-                tool whose shank is no wider than its cutter, or in the operation's Entry, \
-                links and retract settings, turn off Back-and-forth ramp or set Entry to \
-                Plunge, Lead or Helix.";
-    assert_eq!(ramp_problem(&app, op).as_deref(), Some(said));
-    let overview = app.overview(None, &openchuck_app::JobLog::default());
-    assert_eq!(
-        overview.items[&ItemRef::Operation(op)].state,
-        ItemState::Error
-    );
-    let e = app.start_regenerate().wait().unwrap_err().to_string();
-    assert_eq!(e, format!("operation 'Ring' cannot be generated: {said}"));
-    std::fs::remove_dir_all(&dir).unwrap();
+/// A strategy whose only pass is one cut point, as a roughing layer that just
+/// touches the part's tip (decision 0204 item 4).
+#[derive(Debug)]
+struct OnePoint;
+
+impl Strategy for OnePoint {
+    fn name(&self) -> &str {
+        "one_point"
+    }
+    fn label(&self) -> &str {
+        "One point"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        _: &Parameters,
+        _: &JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        let line = input
+            .rotary
+            .tool_line(Millimetres(0.0), Degrees(0.0), Millimetres(0.0));
+        let c = input.surface.drop_tool(input.tool, &line).into_iter();
+        Ok(vec![Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points: c
+                .map(|c| CutPoint {
+                    tip: c.tip,
+                    a: Degrees(0.0),
+                    contact: c.contact,
+                })
+                .collect(),
+            stock: None,
+            rapids: Vec::new(),
+        }])
+    }
 }
 
-/// On a mesh part the application gives the ramp its clearance inputs: the
-/// ramp is checked, and refuses this pass, which only turns the part, for
-/// that reason, not for missing inputs (#291).
+/// Decision 0543 D7 (the owner's answer) and decision 0544 item 7: a
+/// single-point pass under a ramp is refused, naming the setting, unless
+/// Allow single-point plunge is on; on, it is plunged, with a note; a tool
+/// that cannot plunge is then refused by name, under a ramp or a lead. A
+/// saved operation without the setting reads it as off.
 #[test]
-fn req_op_11_req_nfr_07_back_and_forth_ramp_on_a_mesh_part_is_checked() {
-    let (dir, mut app, op) = project("ramp-mesh-part");
-    app.register_strategy(Arc::new(OneRing)).unwrap();
-    back_and_forth(&mut app, op, "ramp");
-    assert_eq!(ramp_problem(&app, op), None);
+fn req_op_11_req_nfr_07_allow_single_point_plunge_decides_a_single_point_pass() {
+    let (dir, mut app, op) = project("single-point-plunge");
+    app.register_strategy(Arc::new(OnePoint)).unwrap();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "one_point".into();
+    operation
+        .parameters
+        .insert(names::ENTRY.into(), ParameterValue::Text("ramp".into()));
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    assert!(
+        !app.project()
+            .operation(op)
+            .unwrap()
+            .parameters
+            .contains_key(names::ALLOW_SINGLE_POINT_PLUNGE)
+    );
+    let form = app.parameter_form(op).unwrap();
+    let field = form
+        .fields
+        .iter()
+        .find(|f| f.name == names::ALLOW_SINGLE_POINT_PLUNGE)
+        .unwrap();
+    assert_eq!(field.label, "Allow single-point plunge");
+    assert_eq!(field.value, Some(ParameterValue::Flag(false)));
+    assert_eq!(
+        field.section,
+        openchuck_app::form::FormSection::EntryLinksAndRetract
+    );
     let e = app.start_regenerate().wait().unwrap_err().to_string();
     assert!(
-        e.contains("only turns the part about the rotary axis") && !e.contains("were not supplied"),
+        e.contains("is a single point") && e.contains("Turn on Allow single-point plunge"),
         "{e}"
     );
+    app.set_parameter(
+        op,
+        names::ALLOW_SINGLE_POINT_PLUNGE,
+        Some(ParameterValue::Flag(true)),
+    )
+    .unwrap();
+    let run = app.start_regenerate().wait().unwrap();
+    assert!(
+        run.toolpath
+            .groups
+            .iter()
+            .flat_map(|g| &g.segments)
+            .any(|s| s.kind == openchuck_types::ir::MoveKind::Plunge)
+    );
+    // A tool that cannot cut straight down is refused by name, under a ramp
+    // and under a lead.
+    let mut tool = app.project().tools()[0].clone();
+    tool.tool.centre_cutting = Some(false);
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    for entry in ["ramp", "lead"] {
+        app.set_parameter(op, names::ENTRY, Some(ParameterValue::Text(entry.into())))
+            .unwrap();
+        let e = app.start_regenerate().wait().unwrap_err().to_string();
+        assert!(
+            e.contains("'4 mm ball' cannot cut straight down") && e.contains("single point"),
+            "{entry}: {e}"
+        );
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
