@@ -137,7 +137,7 @@ fn req_ui_01_every_dialog_and_window_opens_and_draws() {
         Dialog::Keys,
         Dialog::About,
         Dialog::Settings,
-        Dialog::Error("The setup was not added: smoke".to_owned()),
+        Dialog::Error(crate::failure::Failure::new("Add setup", "smoke")),
         Dialog::Unsaved(Next::Quit),
         Dialog::OfferCreate {
             folder: std::env::temp_dir(),

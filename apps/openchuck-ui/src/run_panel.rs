@@ -234,7 +234,7 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
                             -p.value
                         ),
                     )),
-                    None => out.push(line(Severity::Info, "  No overcut".to_owned())),
+                    None => out.push(line(Severity::Info, "  No overcut found at the simulation's resolution".to_owned())),
                 }
             }
         }

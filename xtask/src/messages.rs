@@ -57,10 +57,15 @@ pub fn product_code(text: &str) -> &str {
     let mut offset = 0;
     let mut lines = text.split_inclusive('\n').peekable();
     while let Some(line) = lines.next() {
+        // A test module written in the file, not one declared from another
+        // file (`mod x_tests;`), which leaves the rest of the file product
+        // code.
         if line.trim() == "#[cfg(test)]"
-            && lines
-                .peek()
-                .is_some_and(|next| next.trim_start().starts_with("mod "))
+            && lines.peek().is_some_and(|next| {
+                // The declaration, without a trailing comment.
+                let next = next.split("//").next().unwrap_or_default().trim();
+                next.starts_with("mod ") && !next.ends_with(';')
+            })
         {
             return &text[..offset];
         }
@@ -298,6 +303,33 @@ mod tests {
                     #[cfg(test)]\n\
                     mod tests {\n    fn f() { Message::new(s, t, None, None); }\n}\n";
         assert_eq!(message_new_count(product_code(code)), 1);
+    }
+
+    /// A test module declared from its own file does not end the product
+    /// code: the file goes on after it (decision record 0536 step 5).
+    #[test]
+    fn req_nfr_12_a_declared_test_module_does_not_hide_the_rest_of_the_file() {
+        let code = "#[cfg(test)]\nmod shell_tests;\n\
+                    fn f() { let a = Message::new(s, \"Verified\", None, None); }\n\
+                    #[cfg(test)]\nmod tests {\n    fn g() { Message::new(s, t, None, None); }\n}\n";
+        assert_eq!(message_new_count(product_code(code)), 1);
+        assert_eq!(claim_count(product_code(code)), 1);
+        // A trailing comment on the declaration changes nothing.
+        let commented = code.replace("mod shell_tests;", "mod shell_tests; // its own file");
+        assert_eq!(message_new_count(product_code(&commented)), 1);
+        assert_eq!(claim_count(product_code(&commented)), 1);
+    }
+
+    /// Every claim word is gone from the product texts (OI-2097, decision
+    /// record 0536 step 5), and the baseline allows none back.
+    #[test]
+    fn req_nfr_12_no_product_text_claims_safety() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let (_, claims) = counts(&root).unwrap();
+        assert!(claims.is_empty(), "{claims:?}");
+        let text = std::fs::read_to_string(root.join(BASELINE)).unwrap();
+        let baseline: toml::Table = toml::from_str(&text).unwrap();
+        assert!(table(&baseline, "claims").unwrap().is_empty());
     }
 
     #[test]
