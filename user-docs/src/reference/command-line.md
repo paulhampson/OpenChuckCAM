@@ -141,6 +141,14 @@ With `--out`, `regenerate` checks before it writes anything, as the export in th
 - an `error:` line for each check that stops the export, such as a program whose replay does not match its toolpath; then `error: 1 check(s) above stop the G-code from being written; nothing was written`, and the command ends with exit code 1. No file is written.
 - a `warning:` line for each check that does not stop it, such as an operation that has not been simulated, or machine values that are not confirmed. The files are written.
 
+A possible collision (see [Operations and strategies](operations.md#possible-collisions-must-be-acknowledged)) is listed as a warning, "Operation '...' has a possible collision, which must be acknowledged before the files are written: ...", and stops the files from being written unless you pass `--acknowledge-collision-warnings`. For example, with a 1 mm tab at the end of the tutorial's part, shorter than its 3.175 mm tools are wide, the run ends:
+
+```text
+error: This result has 2 possible collisions that must be acknowledged before the files are written: Tab length (operation 'Rough', tool 'Z1 O-flute 3.175x25'): tab 1 (X 61.000 to 62.000 mm) is 1.000 mm long along X, shorter than the tool is wide (3.175 mm), ... Read them, then acknowledge them to write the files. Pass --acknowledge-collision-warnings to write them.
+```
+
+With the flag the files are written, and the run says `warning: writing with 2 possible collisions acknowledged for this run: check each before running the program`. The flag holds for that run only.
+
 Then, for each file, it prints the number of moves and whether the replay matches the toolpath, and last the notice, which it prints on every run. A project with no operations writes no G-code file, and so has nothing to check.
 
 For example, with a post whose template writes a move that goes nowhere, nothing is written:
