@@ -83,10 +83,11 @@ def main():
 
     xvfb = subprocess.Popen(["Xvfb", ":99", "-screen", "0", f"{W}x{H}x24"], env=capture.ENV,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    capture.pause(2)
-    ui = subprocess.Popen([args.ui, str(project)], env=capture.ENV,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ui = None
     try:
+        capture.pause(2)
+        ui = subprocess.Popen([args.ui, str(project)], env=capture.ENV,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         capture.pause(12)
         win = capture.run("xdotool", "search", "--onlyvisible", "--name", ".", stdout=subprocess.PIPE,
                           text=True).stdout.split()[0]
@@ -95,8 +96,15 @@ def main():
         capture.pause(3)
         example.run(capture, work)
     finally:
-        ui.terminate()
-        xvfb.terminate()
+        # Stop and reap both, so display :99 is free before the next run.
+        for proc in (ui, xvfb):
+            if proc:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
     if shutil.which("optipng"):
         for png in sorted(out.glob("*.png")):
             subprocess.run(["optipng", "-quiet", "-o2", str(png)], check=False)

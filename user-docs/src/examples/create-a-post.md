@@ -7,7 +7,7 @@ This example makes a small post-processor of your own, loads it, writes a progra
 
 ## What you need
 
-- OpenChuckCAM, and a copy of the repository's `testdata/examples` folder (download the source, or clone it as in [Install and first run](../start/install.md#build-from-source)).
+- OpenChuckCAM, and the example projects: the `-examples.zip` file beside each download on the [`nightly` pre-release](https://github.com/paulhampson/OpenChuckCAM/releases/tag/nightly) and every release, or the repository's `testdata/examples` folder. Both hold `minimal-post` and `baluster`.
 - A text editor.
 
 ## 1. Look at the example post
@@ -51,7 +51,7 @@ a = 3
 f = 1
 ```
 
-Every key is required unless [the reference](../reference/writing-a-post.md) says it is optional, and a key the program does not know is refused. Three choices matter most:
+Every key is required unless [the reference](../reference/writing-a-post.md#options) says it is optional, and a key the program does not know is refused. Three choices matter most:
 
 - `feed_rule` is how the F word is worked out on a move that turns A. Choose the rule of your controller: `linuxcnc` applies F to the X, Y and Z distance, `makera` is the Makera Z1's rule.
 - `comments = true` and `safety_notice = true` write the two lines of the safety notice at the top of every program. The notice needs comments, and a post with the notice on and comments off is refused.

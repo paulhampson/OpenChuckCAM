@@ -9,19 +9,19 @@ You need the tutorial's finished project, [`testdata/examples/baluster/baluster-
 
 ## What a region is
 
-A selection set is a named group of the model's surfaces. On an STL model, such as the baluster, it is a group of triangles; on a STEP model it is a group of faces. Each operation has four places to put sets, under **Geometry** in the Inspector:
+A selection set is a named group of the model's surfaces. On an STL model, such as the baluster, it is a group of triangles; on a STEP model it is a group of faces. Each operation has four places to put sets, under **Geometry** in the Inspector. The program describes each one in its tooltip:
 
 Cut on
-: The operation cuts these surfaces only. With nothing here, it cuts the whole part.
+: "The operation cuts only on these surfaces." With nothing here, it cuts the whole part.
 
 Contain within
-: The path stays inside the boundary of these sets.
+: "The tool may cut only inside the window of X and angle this set spans."
 
 Avoid
-: The tool keeps off these surfaces.
+: "These surfaces are never cut; the tool may pass over them."
 
 Check
-: Surfaces the tool must not cut into, although the operation does not set out to cut them.
+: "The tool must not touch these surfaces."
 
 A set in **Avoid** or **Check** has a choice beside it: **Cut short** (the path stops where the tool would reach the set), **Warn only** (the path is kept and generation warns where it reaches the set) and **Ignore** (the set is not used for this operation). **Warn only** samples the path and can miss a narrow set.
 

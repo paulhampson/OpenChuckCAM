@@ -66,6 +66,7 @@
 - [G-code and posts](reference/gcode-and-posts.md)
 - [Writing a post-processor](reference/writing-a-post.md)
 - [Command line](reference/command-line.md)
+- [Messages and item states](reference/messages.md)
 - [Glossary](glossary.md)
 
 # More
@@ -73,4 +74,5 @@
 - [Troubleshooting](troubleshooting.md)
 - [Reporting a problem or asking for a feature](reporting.md)
 - [Release notes](release-notes.md)
+- [Credits and licences](credits.md)
 - [Contributing to this guide](contributing.md)
