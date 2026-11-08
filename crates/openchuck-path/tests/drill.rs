@@ -707,7 +707,7 @@ fn req_op_10_req_tl_04_req_nfr_07_a_hole_deeper_than_the_flutes_is_warned() {
     let flute = |path: &GeneratedPath| {
         path.warnings()
             .into_iter()
-            .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+            .find(|w| w.topic.as_deref() == Some(openchuck_path::topic::FLUTE_LENGTH))
             .map(|w| w.text.clone())
     };
     let e = flute(&rig.path(&short, &values(&[])).unwrap()).unwrap();

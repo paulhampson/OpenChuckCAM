@@ -47,7 +47,7 @@
 //! warning that must be acknowledged before export says where (decision
 //! record 0239 item 10).
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -616,7 +616,7 @@ impl Outcome {
 
     /// The note: how many passes were added and the smallest spacing used
     /// (decision record 0239 item 12).
-    pub(crate) fn note(&self, settings: &Settings) -> String {
+    pub(crate) fn note(&self, settings: &Settings) -> Notice {
         note(self.added(), self.smallest, self.queries, settings)
     }
 
@@ -661,7 +661,7 @@ impl Tally {
     }
 
     /// The note, as [`Outcome::note`].
-    pub(crate) fn note(&self, settings: &Settings) -> String {
+    pub(crate) fn note(&self, settings: &Settings) -> Notice {
         note(
             usize::try_from(self.added).unwrap_or(usize::MAX),
             self.smallest,
@@ -683,22 +683,23 @@ impl Tally {
 
 /// The note for `added` passes, the closest `smallest` from a neighbour,
 /// after `queries` geometry queries (decision record 0239 item 12).
-fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> String {
-    match (added, smallest) {
+fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> Notice {
+    Notice::information(match (added, smallest) {
         (0, _) | (_, None) => format!(
-            "adaptive spacing: no passes were added; the material measured between the \
+            "no passes were added; the material measured between the \
              passes is within the allowed excess of {:.3} mm",
             settings.height
         ),
         (n, Some(w)) => format!(
-            "adaptive spacing: {n} pass{} added where more than the allowed excess of \
+            "{n} pass{} added where more than the allowed excess of \
              {:.3} mm was left or could not be ruled out, the closest {w:.3} mm from its \
              neighbour; measuring and fitting them made {} geometry queries",
             if n == 1 { "" } else { "es" },
             settings.height,
             queries
         ),
-    }
+    })
+    .about(topic::ADAPTIVE_SPACING)
 }
 
 /// The warning for `places` not confirmed (decision record 0239 item 10).
@@ -709,7 +710,7 @@ fn warning(places: &[Place], settings: &Settings, limits: &Limits, height: &str)
     let count = places.len();
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::PARTIAL_PATH.to_owned()),
         segment: None,
         text: format!(
             "adaptive spacing could not confirm that the material left between the passes \
@@ -1281,7 +1282,12 @@ mod tests {
         let (outcome, cs) = run(&plane, 0.25, SETTINGS, Limits::OWNER);
         assert_eq!(cs.len(), 2);
         assert_eq!(outcome.added(), 0);
-        assert!(outcome.note(&SETTINGS).contains("no passes were added"));
+        assert!(
+            outcome
+                .note(&SETTINGS)
+                .text
+                .contains("no passes were added")
+        );
         assert!(
             outcome
                 .warning(&SETTINGS, &Limits::OWNER, "scallop")

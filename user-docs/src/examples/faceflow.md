@@ -38,13 +38,13 @@ The edge set is optional: without it, each face starts from its longest side. It
 
 The Results list three lines for the operation:
 
-"face 20 is cut from its guide, edge 65 (49.1 mm long), towards the opposite side in 17 passes up to 0.953 mm apart along the face"
+"Face-flow finishing (operation 'Floor finish'): face 20 is cut from its guide, edge 65 (49.1 mm long), towards the opposite side in 17 passes up to 0.953 mm apart along the face"
 : The guide is the floor's longest side, the root of the blade above it. The 17 passes are laid out across the floor, never more than the 1.000 mm **Stepover** apart, measured along the face.
 
-"face-flow finishing cuts 12 passes on 1 face"
+"Face-flow finishing (operation 'Floor finish'): cuts 12 passes on 1 face"
 : The passes that are cut, after the stretches the tool cannot reach are left out. A pass that lies wholly in that area is not cut.
 
-"face-flow finishing cannot reach 1 area of the selected faces, which stay uncut: X 20.000 to 60.000 near A 282 (173.8 mm2), a neighbouring face is in the way of the tool; check them in the simulation before running the program"
+"Unreached areas (operation 'Floor finish'): face-flow finishing cannot reach 1 area of the selected faces, which stay uncut: X 20.000 to 60.000 near A 282 (173.8 mm2), a neighbouring face is in the way of the tool; check them in the simulation before running the program"
 : The floor is a narrow strip between two blade walls, and a 3 mm ball cannot reach into the corners where the floor meets them without touching a wall. That strip, along the whole floor from X 20 to X 60, is not cut and is drawn dotted in the view. "A neighbouring face is in the way" means a blade wall, not the stock. The same line appears under **Messages**, with a link to the operation.
 
 How much is that? When face-flow finishing was built, the five floors of this blisk were measured ([decision 0525](https://github.com/paulhampson/OpenChuckCAM/blob/main/docs/decisions/0525-face-flow-finishing.md)): the same on all five, 171.6 mm2 of the 496.3 mm2 floor (35 %) out of reach of the 3 mm ball, all of it along the blade walls, and 118.4 mm2 (24 %) with a 2 mm ball. This run reports 173.8 mm2 at its own stepover. Whether a smaller tool, a different tool, or leaving the strip suits your part is your call; the program does not choose for you, and it has no strategy yet that finishes the strip with a second tool.
