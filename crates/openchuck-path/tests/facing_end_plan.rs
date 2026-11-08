@@ -108,10 +108,10 @@ fn req_op_24_end_flank_uses_equal_axial_slices_and_top_first_flute_bands() {
     assert_eq!(plan.passes.len(), 15);
     for (slice, passes) in plan.passes.chunks(3).enumerate() {
         for (band, pass) in passes.iter().enumerate() {
-            // One sweep across from air beside the stock to air beside it:
-            // the whole Ø3 tool the 1 mm approach distance past each edge
-            // of the 20 mm wide box (decision 0547 item 1).
-            assert_eq!(pass.points.len(), 2);
+            // In and out along X beside the 20 mm wide box, the whole Ø3
+            // tool the 1 mm approach distance past each edge, so the flank
+            // meets the face at its edge (decision 0547 item 1).
+            assert_eq!(pass.points.len(), 4);
             assert_eq!(pass.points[0].tip.y, -12.5);
             assert_eq!(pass.points.last().unwrap().tip.y, 12.5);
             let cutting = pass
@@ -576,18 +576,14 @@ fn req_op_24_req_op_14_end_slice_starts_and_ends_with_the_complete_tool_outside_
     let token = CancelToken::new();
     let ctx = JobContext::new(&token, &NoProgress);
     let plan = plan_end(&setup, &settings(), &ctx).unwrap();
-    // The shared entry/retract must start/end in genuinely clear air, so no
-    // sparse stock-line query authorises a rapid through the stock's edge.
-    // Each band now starts and ends beside the round stock (decision 0547
-    // item 1): the whole Ø3 tool at least the 1 mm approach distance outside
-    // its 12 mm radius, on the side the tool comes down.
-    let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
+    // The shallow0.3mm axial slice puts most of the Ø3 tool beyond the
+    // end. The shared entry/retract must start/end in genuinely clear air,
+    // so no sparse stock-line query authorises a rapid through its edge.
     for pass in &plan.passes {
         for point in [pass.points.first().unwrap(), pass.points.last().unwrap()] {
-            let across = rotary.to_axis(point.tip, point.a).across;
             assert!(
-                point.tip.x - 1.5 > 50.5 || across.abs() - 1.5 >= 13. - 1e-9,
-                "Full tool reaches stock at entry/exit X{} across {across}",
+                point.tip.x - 1.5 > 50.5,
+                "Full tool reaches stock at entry/exit X{}",
                 point.tip.x
             );
         }
@@ -762,26 +758,12 @@ fn req_op_24_req_op_14_actual_assembled_end_rapids_have_continuous_complete_tool
         )
         .is_err()
     );
-    let rotary = RotaryMapping::of_profile(&machine);
     let mut previous = path.group.start;
     for segment in &path.group.segments {
         if segment.kind == MoveKind::Rapid {
             // Model X is linear even while A moves; these endpoint extrema
-            // bound the full cylindrical tool for the ENTIRE rapid leg. A
-            // rapid either stays beyond the end face, stays above the round
-            // stock (radius 12), or (decision 0547) comes straight down
-            // beside it at one A and one across position, the whole tool
-            // outside the stock's radius.
-            let beyond = previous.tip.x.min(segment.end.tip.x) - 1.5 > 50.5;
-            let (from, to) = (
-                rotary.to_axis(previous.tip, previous.a),
-                rotary.to_axis(segment.end.tip, segment.end.a),
-            );
-            let above = from.height.min(to.height) > 12.;
-            let beside = previous.a == segment.end.a
-                && (from.across - to.across).abs() < 1e-9
-                && from.across.abs() - 1.5 > 12.;
-            assert!(beyond || above || beside, "rapid to {:?}", segment.end);
+            // bound the full cylindrical tool for the ENTIRE rapid leg.
+            assert!(previous.tip.x.min(segment.end.tip.x) - 1.5 > 50.5);
         }
         previous = segment.end;
     }
@@ -825,48 +807,17 @@ fn actual_sweeps(
         axis: rotary.tool_axis(p.a),
     };
     let start = pose(&passes[0].points[0]);
-    // Between passes the tool goes up its axis to a safe height, across and
-    // down again, as assembly links them (a pass may now end beside the
-    // stock, not beyond the end face; decision 0547).
-    const SAFE: f64 = 40.;
-    let cut = |p: &openchuck_path::CutPoint| Segment {
-        kind: MoveKind::Cutting,
-        end: pose(p),
-        contact_feed: Some(FeedRate(600.)),
-        duration: Seconds(1000.),
-        contact_length: Millimetres(0.),
-    };
-    let rapid = |tip: Point3, a: openchuck_types::units::Degrees| Segment {
-        kind: MoveKind::Rapid,
-        end: ToolPose {
-            tip,
-            a,
-            axis: rotary.tool_axis(a),
-        },
-        contact_feed: None,
-        duration: Seconds(1000.),
-        contact_length: Millimetres(0.),
-    };
-    let up = |p: &openchuck_path::CutPoint| {
-        let at = rotary.to_axis(p.tip, p.a);
-        rotary.to_model(
-            openchuck_path::rotary::AxisPosition { height: SAFE, ..at },
-            p.a,
-        )
-    };
-    let mut segments = Vec::new();
-    for (i, pass) in passes.iter().enumerate() {
-        if i > 0 {
-            let (Some(last), Some(first)) = (passes[i - 1].points.last(), pass.points.first())
-            else {
-                continue;
-            };
-            segments.push(rapid(up(last), last.a));
-            segments.push(rapid(up(first), first.a));
-            segments.push(rapid(first.tip, first.a));
-        }
-        segments.extend(pass.points.iter().map(cut));
-    }
+    let segments = passes
+        .iter()
+        .flat_map(|p| &p.points)
+        .map(|p| Segment {
+            kind: MoveKind::Cutting,
+            end: pose(p),
+            contact_feed: Some(FeedRate(600.)),
+            duration: Seconds(1000.),
+            contact_length: Millimetres(0.),
+        })
+        .collect();
     ToolpathGroup {
         rotary_reset_after: Vec::new(),
         start,
@@ -989,17 +940,6 @@ fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_f
     };
     let token = CancelToken::new();
     let ctx = JobContext::new(&token, &NoProgress);
-    // How far the whole Ø3 tool at `point` is from the box stock: beyond its
-    // end face along X, or beside it across the tool (where decision 0547
-    // starts and ends a band with air beside it).
-    let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
-    let clearance = |point: &openchuck_path::CutPoint, outer: f64, sign: f64| {
-        let beyond = sign * (point.tip.x - outer) - 1.5;
-        let (lo, hi) = box_across(&stock, point.a, &rotary);
-        let across = rotary.to_axis(point.tip, point.a).across;
-        let beside = (lo - (across + 1.5)).max((across - 1.5) - hi);
-        beyond.max(beside)
-    };
     for (held, outer, sign) in [
         ([Some((0., 5.)), None], 60., 1.),
         ([None, Some((55., 60.))], 0., -1.),
@@ -1026,10 +966,10 @@ fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_f
             .unwrap();
             for pass in &plan.passes {
                 for point in [pass.points.first().unwrap(), pass.points.last().unwrap()] {
-                    let gap = clearance(point, outer, sign);
+                    let gap = sign * (point.tip.x - outer) - 1.5;
                     assert!(
                         gap >= approach - 1e-9,
-                        "the tool is {gap} mm from the stock, less than the approach distance {approach}"
+                        "the tool is {gap} mm from the end face, less than the approach distance {approach}"
                     );
                 }
             }
@@ -1044,7 +984,8 @@ fn req_op_14_req_nfr_12_end_air_point_keeps_the_approach_distance_from_the_end_f
             &ctx,
         )
         .unwrap();
-        assert!(clearance(&plan.passes[0].points[0], outer, sign) > 0.);
+        let first = plan.passes[0].points[0].tip.x;
+        assert!(sign * (first - outer) - 1.5 > 0.);
     }
 }
 
@@ -1523,9 +1464,8 @@ fn req_op_24_req_op_16_end_labels_name_the_slice_and_the_band() {
     assert_eq!(label("stepdown"), "Stepdown (band along the tool)");
 }
 
-/// The stock's extent across the tool, at view `angle` and between tool
-/// heights `lo` and `hi`, from the box's eight corners (an independent
-/// bound, not the planner's own clipping).
+/// The stock's extent across the tool at view `angle`, from the box's eight
+/// corners (an independent bound, not the planner's own clipping).
 fn box_across(
     stock: &Stock,
     angle: openchuck_types::units::Degrees,
@@ -1546,22 +1486,29 @@ fn box_across(
     range
 }
 
+fn box_setup_parts() -> (TriangleMesh, Tool, MachineProfile, Stock) {
+    (
+        part(),
+        tool(),
+        MachineProfile::example_x_rotary(),
+        Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(0., -10., -12.),
+                max: Point3::new(60., 10., 12.),
+            },
+        },
+    )
+}
+
 /// Decision 0547 item 1: where there is air beside the band (Whole stock),
-/// each band is one straight sweep across at its cutting X and height, and
-/// starts and ends with the whole tool at least the approach distance clear
-/// of the stock: no move along X into the face, no turn in the material.
+/// the tool comes in along X and leaves along X wholly beside the stock, at
+/// least the approach distance clear of it, and sweeps across from there:
+/// no move along X into the face, and no turn in the material. Only the
+/// sweep across meets the face, entering it at its edge.
 #[test]
 fn req_op_24_req_op_11_end_band_enters_from_air_beside_the_stock() {
-    let part = part();
-    let tool = tool();
-    let machine = MachineProfile::example_x_rotary();
+    let (part, tool, machine, stock) = box_setup_parts();
     let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
-    let stock = Stock::Box {
-        bounds: Aabb {
-            min: Point3::new(0., -10., -12.),
-            max: Point3::new(60., 10., 12.),
-        },
-    };
     let setup = FacingSetup {
         part: &part,
         stock: &stock,
@@ -1584,43 +1531,31 @@ fn req_op_24_req_op_11_end_band_enters_from_air_beside_the_stock() {
             .iter()
             .map(|p| rotary.to_axis(p.tip, p.a))
             .collect();
-        assert_eq!(axis.len(), 2, "one sweep across: {axis:?}");
-        let (first, last) = (axis[0], axis[1]);
-        assert!((first.along - last.along).abs() < 1e-9, "no move along X");
-        assert!((first.height - last.height).abs() < 1e-9, "one height");
+        assert_eq!(axis.len(), 4, "{axis:?}");
         let (lo, hi) = box_across(&stock, pass.points[0].a, &rotary);
-        let (start, end) = if first.across < last.across {
-            (first.across, last.across)
-        } else {
-            (last.across, first.across)
-        };
-        assert!(
-            start + radius <= lo - s.approach + 1e-9,
-            "starts {:.4} mm from the stock",
-            lo - (start + radius)
-        );
-        assert!(
-            end - radius >= hi + s.approach - 1e-9,
-            "ends {:.4} mm from the stock",
-            (end - radius) - hi
-        );
+        // Legs 1 and 3 run along X at one across position each.
+        assert!((axis[0].across - axis[1].across).abs() < 1e-9);
+        assert!((axis[2].across - axis[3].across).abs() < 1e-9);
+        for leg in [axis[0].across, axis[3].across] {
+            let beside = (lo - (leg + radius)).max((leg - radius) - hi);
+            assert!(
+                beside >= s.approach - 1e-9,
+                "a leg along X is {beside:.4} mm beside the stock"
+            );
+        }
+        // Leg 2 crosses the stock's whole width at the cutting X.
+        assert!((axis[1].along - axis[2].along).abs() < 1e-9);
+        assert!(axis[1].across.min(axis[2].across) < lo && axis[1].across.max(axis[2].across) > hi);
     }
 }
 
 /// Decision 0547 item 1: where there is no air beside the band (the Part
-/// extent on stock wider than the part), the band keeps its sideways entry
-/// along X from air beyond the face.
+/// extent on stock wider than the part), the band keeps its move along X
+/// into the face at the band's edge.
 #[test]
 fn req_op_24_req_op_11_part_extent_band_keeps_its_side_entry() {
-    let part = part();
-    let tool = tool();
-    let machine = MachineProfile::example_x_rotary();
-    let stock = Stock::Box {
-        bounds: Aabb {
-            min: Point3::new(0., -10., -12.),
-            max: Point3::new(60., 10., 12.),
-        },
-    };
+    let (part, tool, machine, stock) = box_setup_parts();
+    let rotary = openchuck_path::RotaryMapping::of_profile(&machine);
     let setup = FacingSetup {
         part: &part,
         stock: &stock,
@@ -1640,6 +1575,12 @@ fn req_op_24_req_op_11_part_extent_band_keeps_its_side_entry() {
     let plan = plan_end(&setup, &s, &ctx).unwrap();
     assert!(!plan.passes.is_empty());
     for pass in &plan.passes {
-        assert_eq!(pass.points.len(), 4, "side entry kept");
+        assert_eq!(pass.points.len(), 4);
+        let (lo, hi) = box_across(&stock, pass.points[0].a, &rotary);
+        let first = rotary.to_axis(pass.points[0].tip, pass.points[0].a).across;
+        assert!(
+            first > lo && first < hi,
+            "the side entry is at the band's edge, in the stock"
+        );
     }
 }

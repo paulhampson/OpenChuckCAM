@@ -88,32 +88,11 @@ pub fn verify_rapid_clearance(
     let plane = FacingPlane::end(FacingEnd::Far);
     let stock = FacingExtent::WholeStock.planar(plane, setup.stock, setup.part, &[], 0.)?;
     let whole_radius = enclosing_radius(setup, context)?;
-    // The world YZ box of the stock, the whole part (widened by its source
-    // error) and every protected solid: nothing of the setup is outside it.
-    let mut enclosing_yz = (stock.min(), stock.max());
-    for p in &setup.part.vertices {
-        enclosing_yz.0 = [
-            enclosing_yz.0[0].min(p.y - error),
-            enclosing_yz.0[1].min(p.z - error),
-        ];
-        enclosing_yz.1 = [
-            enclosing_yz.1[0].max(p.y + error),
-            enclosing_yz.1[1].max(p.z + error),
-        ];
-    }
     for protected in setup.protected.iter().chain(setup.tabs) {
         context.check_cancelled()?;
         let bounds = protected.bounds();
         lo = lo.min(bounds.min.x);
         hi = hi.max(bounds.max.x);
-        enclosing_yz.0 = [
-            enclosing_yz.0[0].min(bounds.min.y),
-            enclosing_yz.0[1].min(bounds.min.z),
-        ];
-        enclosing_yz.1 = [
-            enclosing_yz.1[0].max(bounds.max.y),
-            enclosing_yz.1[1].max(bounds.max.z),
-        ];
     }
     if !lo.is_finite() || !hi.is_finite() || !whole_radius.is_finite() {
         return Err(refuse("rapid geometry has no finite whole-setup bound"));
@@ -188,13 +167,14 @@ pub fn verify_rapid_clearance(
                     .max(1.);
                 let roundoff = 128. * f64::EPSILON * scale * a.0.abs().to_radians().max(1.);
                 clear = height > support + margin + roundoff;
-                let above_part = height
-                    > fixed_support
-                        .ok_or_else(|| refuse("rapid support is unavailable"))?
-                        .2
-                        + margin
-                        + roundoff;
-                if !clear {
+                if !clear
+                    && height
+                        > fixed_support
+                            .ok_or_else(|| refuse("rapid support is unavailable"))?
+                            .2
+                            + margin
+                            + roundoff
+                {
                     // A local stock corner can be lower than global support.
                     // Separate the entire swept tool bounding rectangle from
                     // the original WORLD YZ stock box. These are two additional
@@ -230,18 +210,10 @@ pub fn verify_rapid_clearance(
                         .iter()
                         .map(|p| p.z)
                         .fold(f64::NEG_INFINITY, f64::max);
-                    // Above the whole part and every protection, only the
-                    // stock can be beside the tool. Below them, a rapid
-                    // beside the stock (an End band's start or end in air,
-                    // decision record 0547) must also be separated from the
-                    // world YZ box of the whole part, widened by its source
-                    // error, and of every protected solid.
-                    let (low, high) = if above_part {
-                        (stock.min(), stock.max())
-                    } else {
-                        enclosing_yz
-                    };
-                    clear = ylo > high[0] || yhi < low[0] || zlo > high[1] || zhi < low[1];
+                    clear = ylo > stock.max()[0]
+                        || yhi < stock.min()[0]
+                        || zlo > stock.max()[1]
+                        || zhi < stock.min()[1];
                 }
             }
             if !clear {
