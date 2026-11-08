@@ -948,7 +948,15 @@ fn generate_unnamed(
             contact_leave,
         )
     {
-        notes.push(note);
+        // Its variant that says Exact STEP surface contact does not apply is
+        // a warning until the owner answers; the rest describes where the
+        // tool was dropped, information (decision 0536 step 2, interim,
+        // question Q-G; P76).
+        if note.contains("does not apply") {
+            warnings.push(openchuck_path::Notice::warning(note));
+        } else {
+            notes.push(note);
+        }
     }
     // A selection that reaches a region never machined leaves it uncut: a
     // warning until the owner answers (decision 0536 step 2, interim,
@@ -3535,6 +3543,46 @@ mod tests {
                 Some(p) => assert_eq!(p.group.segments, path.group.segments, "{count} workers"),
             }
         }
+    }
+
+    /// Exact STEP surface contact asked for but not applied, because a stock
+    /// to leave grows a flat end into a shape with no exact drop, is a
+    /// warning until the owner answers; the note on where the tool was
+    /// dropped is otherwise information (decision 0536 step 2, interim,
+    /// question Q-G; P76).
+    #[test]
+    fn req_ui_12_req_op_27_exact_contact_that_does_not_apply_is_a_warning() {
+        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        f.set(names::STOCK_TO_LEAVE, Value::Number(0.2));
+        let path = f.run().unwrap();
+        let said = "Exact STEP surface contact does not apply";
+        assert!(
+            path.warnings.iter().any(|w| w.text.contains(said)),
+            "warnings {:?} notes {:?}",
+            path.warnings,
+            path.notes
+        );
+        assert!(
+            !path.notes.iter().any(|n| n.contains(said)),
+            "{:?}",
+            path.notes
+        );
+        // Without the stock to leave the note says where the tool was dropped,
+        // as information.
+        let mut f = bar_fixture_with(openchuck_path::axial::NAME, "bar.step", ToolShape::FlatEnd);
+        f.set(exact_contact(true).0, exact_contact(true).1);
+        let path = f.run().unwrap();
+        assert!(
+            path.notes.iter().any(|n| n.contains("exact faces")),
+            "{:?}",
+            path.notes
+        );
+        assert!(
+            !path.warnings.iter().any(|w| w.text.contains("exact faces")),
+            "{:?}",
+            path.warnings
+        );
     }
 
     #[test]
