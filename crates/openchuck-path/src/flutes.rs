@@ -28,7 +28,7 @@
 //! The same bound comes first everywhere: only where it is past the flutes
 //! is the exact answer asked for.
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
@@ -671,6 +671,8 @@ fn warn_past_flutes(
         segment: None,
         text: format!("{WARNING_LEAD}{reason}"),
         setting: parameter.map(str::to_owned),
-        acknowledgement: None,
+        // The shank or holder may meet the stock: a possible collision, to
+        // acknowledge before the program is written (decision record 0538).
+        acknowledgement: Some(Acknowledgement::PossibleCollision),
     })
 }

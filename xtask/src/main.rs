@@ -23,6 +23,8 @@
 //!   comparison and `replay`, all of which must pass (needs LinuxCNC, cargo-deny and the STEP
 //!   kernel's toolchain; not part of `all`).
 //! - `macos-app`: the macOS application bundle `OpenChuckCAM.app` (decision 0541; not part of `all`).
+//! - `examples-zip`: the zip of the example projects for the nightly build and the release (lane
+//!   EXAMPLEZIP; not part of `all`).
 //! - `glibc-floor`: the Linux binaries need no newer glibc or libstdc++ than the stated floor
 //!   (decision 0541; not part of `all`).
 
@@ -31,6 +33,7 @@
 mod conflicts;
 mod coverage;
 mod deps;
+mod examples_zip;
 mod glibc_floor;
 mod golden;
 mod icon;
@@ -179,6 +182,21 @@ enum Check {
         #[arg(required = true)]
         binaries: Vec<PathBuf>,
     },
+    /// Zip the example projects under `testdata/examples/` for the nightly build and the release
+    /// (lane EXAMPLEZIP): sorted, fixed times, stored; fails on anything outside the examples
+    /// folder or a file type not on the allow-list. Not part of `all`.
+    ExamplesZip {
+        /// The folder every entry sits in, also the zip's base name (for example
+        /// `openchuckcam-examples-2026.1.0`).
+        #[arg(long)]
+        name: String,
+        /// Write the zip here.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Only check this finished zip (the same checks as on writing).
+        #[arg(long, conflicts_with = "out")]
+        check: Option<PathBuf>,
+    },
     /// Every check.
     All,
 }
@@ -291,6 +309,10 @@ fn run() -> Result<bool> {
                 },
             )?;
             println!("wrote {}", bundle.display());
+            vec![]
+        }
+        Check::ExamplesZip { name, out, check } => {
+            examples_zip::run(&root, &name, out.as_ref(), check.as_ref())?;
             vec![]
         }
         Check::GlibcFloor { floors, binaries } => {

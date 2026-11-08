@@ -353,7 +353,12 @@ fn warned(result: openchuck_path::Result<openchuck_path::GeneratedPath>) -> open
         path.notices.iter().any(|n| n.text == warning.text),
         "the warning is not a note"
     );
-    assert!(!warning.acknowledgement.is_some());
+    // A possible collision of the shank or holder with the stock: a warning
+    // to acknowledge before the program is written (decision record 0538).
+    assert_eq!(
+        warning.acknowledgement,
+        Some(openchuck_path::Acknowledgement::PossibleCollision)
+    );
     warning
 }
 

@@ -14,7 +14,7 @@
 //! before it is migrated to off (project schema 23), so it machines as
 //! before.
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -460,7 +460,10 @@ pub(crate) fn free_ends(
                      program, check the stock and the workholding on the machine"
                 ),
                 setting: Some(parameter::FACE_FREE_ENDS.to_owned()),
-                acknowledgement: None,
+                // The part cut free can be thrown into the tool: a possible
+                // collision, to acknowledge (decision record 0538, the
+                // owner's answer to question 10).
+                acknowledgement: Some(Acknowledgement::PossibleCollision),
             });
         }
     }

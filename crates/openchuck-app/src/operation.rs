@@ -929,7 +929,13 @@ fn generate_unnamed(
     warnings.extend(
         tab_warnings
             .into_iter()
-            .map(openchuck_path::Notice::warning),
+            // A tab shorter than the tool is wide: the tool may cut through
+            // it and the part may come loose, a possible collision to
+            // acknowledge before writing (decision record 0538).
+            .map(|text| {
+                openchuck_path::Notice::warning(text)
+                    .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision)
+            }),
     );
     // Notes about the values come first, then the notes about moves. They
     // are information: the goal is met (decision 0536 section 1).

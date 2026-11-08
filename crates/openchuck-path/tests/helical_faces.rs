@@ -1581,6 +1581,15 @@ fn req_set_09_rings_at_both_free_ends_leave_the_part_held_by_nothing_and_are_war
         })
         .collect();
     assert_eq!(warnings.len(), 2, "{warnings:?}");
+    // The part cut free can be thrown into the tool: a possible collision,
+    // to acknowledge (decision record 0538, the owner's answer to question
+    // 10).
+    assert!(
+        path.warnings()
+            .into_iter()
+            .filter(|w| w.text.contains("nothing in this setup holds the part"))
+            .all(|w| w.acknowledgement == Some(openchuck_path::Acknowledgement::PossibleCollision))
+    );
     for face in ["the end face at X 0.000", "the end face at X 30.000"] {
         assert!(
             warnings.iter().any(|m| m.contains(face)),

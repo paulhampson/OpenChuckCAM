@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## Unreleased (MSGREVIEW, decision 0538 part a and decision 0536 step 2)
 
+- **Changed (decision 0538, accepted):** the warnings that may be a collision carry `Acknowledgement::PossibleCollision`, so a host asks for a tick before writing: the flute check's warning (every case of `flutes::check_path`), swarf cutting into a face next to it (`FacePath::neighbour_warnings`), a touched check set that only warns (not an avoid set), and a free end faced down to the axis with nothing holding the part on the other side (not the stock ring). The API, the paths and the texts are unchanged.
 - **Changed output (MSGREVIEW step 2; issue #567; decision 0536 step 2, accepted):** the notes that describe a real problem are now warnings, with their wording unchanged: rest machining with a tool whose profile is not convex; a shoulder the tool does not turn at because of a held region; an inside corner a round-ended tool cannot finish; selected faces that lie across the rotary axis (helical and axial finishing); a chain edge following cannot carve; an edge pencil clean-up does not follow; a hole radial drilling leaves out (pointing at Axis tolerance or Diameter tolerance); what is left uncut or undrilled beside a held region; and material simultaneous finishing leaves beyond the tolerance (pointing at Tolerance). No path or program changes.
 - **Changed output (MSGREVIEW step 2; issue #600):** a cutting move that turns A with the contact point at the rotary axis is no longer said as "the contact feed is 0.0 mm/min". Its note says the move turns A with the contact point at the rotary axis, so the rotary axis's speed limit sets how long it takes, and gives the feed set. It is not a feed-limit note, so a host does not summarise it as one. The G-code is unchanged.
 
