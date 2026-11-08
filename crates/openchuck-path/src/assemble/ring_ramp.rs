@@ -99,15 +99,44 @@ pub(super) fn plan(
     let top = stock_top.max(base_top) + approach;
     // Arc length needed at the smallest radius, as an angle.
     let run = (top - base_low) / tan;
-    let delta = (run / radius.max(EPS)).to_degrees();
-    let turns = delta / 360.0;
-    if !delta.is_finite() || turns > MAX_TURNS {
-        return Err(Refusal::TooManyTurns { radius, turns });
-    }
+    let mut delta = (run / radius.max(EPS)).to_degrees();
     let whole = (a_end - a0).abs();
     // Offsets back from the first point (degrees) of each ring point, from
     // 0 at the closing point down the ring to `whole` at the first point.
     let back: Vec<f64> = ring.iter().map(|&(_, a)| (a_end - a).abs()).collect();
+    // Where the pass rises just before its first point the ramp needs more
+    // than `delta` to start at `top`: a turn more each time.
+    loop {
+        let turns = delta / 360.0;
+        if !delta.is_finite() || turns > MAX_TURNS {
+            return Err(Refusal::TooManyTurns { radius, turns });
+        }
+        let planned = round(&ring, &back, whole, head, a0, sign, delta, radius, top, tan);
+        if planned
+            .moves
+            .first()
+            .is_some_and(|(p, _)| p.height >= top - 1e-9)
+        {
+            return Ok(planned);
+        }
+        delta += whole;
+    }
+}
+
+/// The ramp `delta` degrees round the ring.
+#[allow(clippy::too_many_arguments)]
+fn round(
+    ring: &[(AxisPosition, f64)],
+    back: &[f64],
+    whole: f64,
+    head: AxisPosition,
+    a0: f64,
+    sign: f64,
+    delta: f64,
+    radius: f64,
+    top: f64,
+    tan: f64,
+) -> RingRamp {
     // Where the ring is at an offset `phi` back from its first point.
     let at = |phi: f64| -> AxisPosition {
         let phi = phi.rem_euclid(whole);
@@ -115,7 +144,7 @@ pub(super) fn plan(
         let k = back
             .iter()
             .position(|&o| o <= phi + 1e-12)
-            .unwrap_or(back.len() - 1);
+            .unwrap_or(back.len().saturating_sub(1));
         let (Some(&(p1, _)), Some(&o1)) = (ring.get(k), back.get(k)) else {
             return head;
         };
@@ -141,7 +170,7 @@ pub(super) fn plan(
     let mut offsets = vec![delta];
     let mut lap = (delta / whole).floor();
     while lap >= 0.0 {
-        for &o in back.iter() {
+        for &o in back {
             let phi = lap * whole + o;
             if phi < delta - 1e-9 && phi > 1e-12 {
                 offsets.push(phi);
@@ -153,51 +182,24 @@ pub(super) fn plan(
     offsets.sort_by(|x, y| y.total_cmp(x));
     offsets.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
     let base: Vec<AxisPosition> = offsets.iter().map(|&phi| at(phi)).collect();
-    // Heights: no faster a fall than the angle from the start (forward),
-    // and able to reach the first point (backward); the lower of the two.
-    let slope = tan * radius;
-    // The samples: offset back from the first point (degrees) and the
-    // ring's position there.
-    let samples: Vec<(f64, AxisPosition)> = offsets.iter().copied().zip(base).collect();
-    let mut forward = Vec::with_capacity(samples.len());
-    let mut last: Option<(f64, f64)> = None;
-    for &(phi, pos) in &samples {
-        let h = match last {
-            None => top,
-            Some((o, h)) => pos.height.max(h - slope * (o - phi).to_radians()),
-        };
-        forward.push(h);
-        last = Some((phi, h));
-    }
-    let mut backward = Vec::with_capacity(samples.len());
-    let mut last: Option<(f64, f64)> = None;
-    for &(phi, pos) in samples.iter().rev() {
-        let h = match last {
-            None => head.height,
-            Some((o, h)) => pos.height.max(h + slope * (phi - o).to_radians()),
-        };
-        backward.push(h);
-        last = Some((phi, h));
-    }
-    backward.reverse();
-    let mut steep = false;
-    let mut moves = Vec::with_capacity(samples.len());
-    let mut previous: Option<(f64, f64)> = None;
-    for ((&(phi, pos), f), b) in samples.iter().zip(&forward).zip(&backward) {
-        let height = f.min(*b).min(top);
-        if let Some((o, h)) = previous
-            && h - height > slope * (o - phi).to_radians() + 1e-9
-        {
-            steep = true;
-        }
-        previous = Some((phi, height));
-        moves.push((AxisPosition { height, ..pos }, Degrees(a0 - sign * phi)));
-    }
+    // Travel: arc length at the smallest radius, from the start.
+    let travel: Vec<f64> = offsets
+        .iter()
+        .map(|&phi| (delta - phi).to_radians() * radius)
+        .collect();
+    let heights: Vec<f64> = base.iter().map(|p| p.height).collect();
+    let (h, steep) = super::path_ramp::heights(&travel, &heights, top, tan);
+    let mut moves: Vec<(AxisPosition, Degrees)> = base
+        .iter()
+        .zip(&offsets)
+        .zip(h)
+        .map(|((&pos, &phi), height)| (AxisPosition { height, ..pos }, Degrees(a0 - sign * phi)))
+        .collect();
     if let Some(last) = moves.last_mut() {
         *last = (head, Degrees(a0));
     }
-    Ok(RingRamp {
+    RingRamp {
         moves,
         follows_steep_drop: steep,
-    })
+    }
 }

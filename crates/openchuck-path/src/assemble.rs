@@ -39,6 +39,7 @@
 
 mod entry;
 mod pass_shape;
+mod path_ramp;
 mod ramp;
 mod ramp_refusal;
 mod ring_ramp;
