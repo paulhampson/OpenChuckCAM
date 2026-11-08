@@ -368,14 +368,17 @@ fn simultaneous_values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, Par
     )
 }
 
-/// Each ring strategy with a fixture and its values, for the checks every
-/// strategy shares.
-fn every_strategy() -> Vec<(
+/// A strategy's name, the strategy, its fixture and its values.
+type Case = (
     &'static str,
     Box<dyn Strategy>,
     Fixture,
     BTreeMap<String, ParameterValue>,
-)> {
+);
+
+/// Each ring strategy with a fixture and its values, for the checks every
+/// strategy shares.
+fn every_strategy() -> Vec<Case> {
     vec![
         (
             "roughing",
