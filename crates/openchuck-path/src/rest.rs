@@ -539,11 +539,14 @@ impl Strategy for RestMachining {
             let (xs, gap) = crate::helical::ring_places((x0, x1), stepover, &places);
             let (passes, _) =
                 crate::helical::ring_passes(&fit, &xs, step, false, "rest machining", context)?;
-            ring_note = Some(format!(
-                "rest machining cut rings no more than {gap:.4} mm apart, each a whole turn at \
-                 one place along the part, joined by steps along it at A {start}, where material \
-                 is left"
-            ));
+            ring_note = Some(
+                Notice::information(format!(
+                    "rest machining cut rings no more than {gap:.4} mm apart, each a whole turn \
+                     at one place along the part, joined by steps along it at A {start}, where \
+                     material is left"
+                ))
+                .about(topic::RINGS),
+            );
             passes
         } else {
             let passes = fit_region(&fit, seeds, "rest machining", context)?;
@@ -593,14 +596,17 @@ impl Strategy for RestMachining {
                     .to_owned(),
             ));
         }
-        let mut notes = vec![format!(
-            "rest machining: {} of {} points sampled on the part have more than {} mm of \
-             material left; {} passes cut where it is left",
-            map.len(),
-            map.tested(),
-            min_remaining,
-            passes.len()
-        )];
+        let mut notes = vec![
+            Notice::information(format!(
+                "rest machining: {} of {} points sampled on the part have more than {} mm of \
+                 material left; {} passes cut where it is left",
+                map.len(),
+                map.tested(),
+                min_remaining,
+                passes.len()
+            ))
+            .about(topic::REST_MACHINING),
+        ];
         notes.extend(ring_note);
         if let Some(note) = wall_note(&wall_rings, walls.target) {
             notes.push(note);
@@ -657,7 +663,7 @@ impl Strategy for RestMachining {
 const MIN_WALL_SPACING: f64 = 0.01;
 
 /// The note for the rings added at walls; `None` with none.
-fn wall_note(rings: &[f64], target: f64) -> Option<String> {
+fn wall_note(rings: &[f64], target: f64) -> Option<Notice> {
     let closest = rings
         .windows(2)
         .filter_map(|w| match w {
@@ -671,12 +677,15 @@ fn wall_note(rings: &[f64], target: f64) -> Option<String> {
     } else {
         String::new()
     };
-    Some(format!(
-        "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its tool's \
-         side meets a wall with material left, so that a steep wall keeps about {target} mm or \
-         less between them",
-        rings.len()
-    ))
+    Some(
+        Notice::information(format!(
+            "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its \
+             tool's side meets a wall with material left, so that a steep wall keeps about \
+             {target} mm or less between them",
+            rings.len()
+        ))
+        .about(topic::RINGS),
+    )
 }
 
 /// The warning for the material the tool cannot reach (decision record

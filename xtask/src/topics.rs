@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Every warning the path crate makes names its check (decision record 0536
-//! section 3): a `Notice::warning(...)` is followed in its call chain by
-//! `.about(...)`, and a `Notice { level: Level::Warning, ... }` literal sets
-//! `topic: Some(...)`. The application then shows it in the one form,
-//! "<Topic> (operation '<name>'): <text>". Test code is not checked.
+//! Every warning and every piece of information the path crate makes names
+//! its check (decision record 0536 section 3): a `Notice::warning(...)` or
+//! `Notice::information(...)` is followed in its call chain by
+//! `.about(...)`, and a `Notice { level: Level::Warning, ... }` or
+//! `Level::Information` literal sets `topic: Some(...)`. The application
+//! then shows it in the one form, "<Topic> (operation '<name>'): <text>".
+//! Test code is not checked.
 
 use std::path::Path;
 
@@ -11,7 +13,7 @@ use anyhow::Result;
 
 use crate::Findings;
 
-/// The source folder whose warnings must carry a topic.
+/// The source folder whose notices must carry a topic.
 const PATH_SRC: &str = "crates/openchuck-path/src";
 
 /// The text from `open` (an opening bracket) to its matching close, or to
@@ -62,19 +64,27 @@ fn chain_has_about(mut rest: &str) -> bool {
     }
 }
 
-/// The places in `code` where a warning is made without a topic, each as
-/// its line number from 1.
+/// The constructors of a notice whose call chain must name a topic.
+const CONSTRUCTORS: [&str; 2] = ["Notice::warning", "Notice::information"];
+
+/// The fields of a notice literal that must set a topic.
+const LEVELS: [&str; 2] = ["level: Level::Warning", "level: Level::Information"];
+
+/// The places in `code` where a warning or a piece of information is made
+/// without a topic, each as its line number from 1.
 pub fn missing_topics(code: &str) -> Vec<usize> {
     let line_of = |at: usize| code[..at].matches('\n').count() + 1;
     let mut missing = Vec::new();
-    for (at, _) in code.match_indices("Notice::warning(") {
-        let open = at + "Notice::warning".len();
-        let args = balanced(code, open);
-        if !chain_has_about(&code[open + args.len()..]) {
-            missing.push(line_of(at));
+    for constructor in CONSTRUCTORS {
+        for (at, _) in code.match_indices(&format!("{constructor}(")) {
+            let open = at + constructor.len();
+            let args = balanced(code, open);
+            if !chain_has_about(&code[open + args.len()..]) {
+                missing.push(line_of(at));
+            }
         }
     }
-    for (at, _) in code.match_indices("level: Level::Warning") {
+    for (at, _) in LEVELS.iter().flat_map(|level| code.match_indices(level)) {
         // The literal that holds it: its last opening brace before it.
         let Some(open) = code[..at].rfind('{') else {
             continue;
@@ -95,13 +105,13 @@ pub fn check(root: &Path) -> Result<Findings> {
     let mut files = Vec::new();
     collect(&dir, &mut files)?;
     files.sort();
-    // notice.rs defines the type, so its constructor is not a warning.
+    // notice.rs defines the type, so its constructors are not notices.
     for file in files.into_iter().filter(|f| !f.ends_with("notice.rs")) {
         let text = std::fs::read_to_string(&file)?;
         let code = crate::messages::product_code(&text);
         for line in missing_topics(code) {
             findings.push(format!(
-                "{}:{line}: a warning without a topic; give it one from \
+                "{}:{line}: a notice without a topic; give it one from \
                  openchuck_path::topic with .about(...) (decision 0536 section 3)",
                 file.strip_prefix(root).unwrap_or(&file).display()
             ));
@@ -140,6 +150,19 @@ mod tests {
     fn req_ui_12_a_warning_without_a_topic_is_found() {
         let code = "fn f() {\n    let w = Notice::warning(\"x\").with_setting(\"t\");\n}";
         assert_eq!(missing_topics(code), [2]);
+    }
+
+    #[test]
+    fn req_ui_12_information_needs_a_topic_as_a_warning_does() {
+        let with = "notes.push(\n    Notice::information(format!(\"{n} rings\"))\n        \
+                    .about(topic::RINGS),\n);";
+        assert!(missing_topics(with).is_empty());
+        let segment = "Notice::information(text).at_segment(3).about(topic)";
+        assert!(missing_topics(segment).is_empty());
+        let without = "fn f() {\n    let n = Notice::information(\"x\").at_segment(3);\n}";
+        assert_eq!(missing_topics(without), [2]);
+        let literal = "Notice {\n    level: Level::Information,\n    topic: None,\n}";
+        assert_eq!(missing_topics(literal), [2]);
     }
 
     #[test]

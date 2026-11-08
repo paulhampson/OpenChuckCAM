@@ -803,7 +803,10 @@ impl Strategy for PencilFinishing {
         );
         Ok(StrategyOutput {
             passes,
-            notices: crate::strategy::notices(warnings, [note]),
+            notices: crate::strategy::notices(
+                warnings,
+                [Notice::information(note).about(topic::PENCIL)],
+            ),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })

@@ -199,9 +199,12 @@ pub fn parameter_values(
 pub struct OperationPath {
     /// The moves.
     pub group: openchuck_types::ir::ToolpathGroup,
-    /// Notes: where the operation's values override the material's cutting
-    /// data, then moves the machine's feed limits slow down.
-    pub notes: Vec<String>,
+    /// Notes, all information: where the operation's values override the
+    /// material's cutting data, then the path's own, such as the moves the
+    /// machine's feed limits slow down. Each keeps its topic and the move it
+    /// is about, and [`operation_note`] words it with the operation's name
+    /// as it is when shown (decision record 0536 sections 3 and 5).
+    pub notes: Vec<openchuck_path::Notice>,
     /// The tool's revolved profile, as the simulation sweeps it.
     pub tool: openchuck_types::tool::RevolvedProfile,
     /// The bounds of the setup's placed part (for bounding-box stock).
@@ -381,6 +384,27 @@ pub fn operation_notice(
     match &notice.topic {
         Some(topic) => in_operation_form(project, operation, topic, &notice.text),
         None => notice.text.clone(),
+    }
+}
+
+/// A note of `operation`'s path, information, in the one form of decision
+/// record 0536 section 3: "<Topic> (operation '<name>'): <text>", with
+/// "move N: " after the lead-in when the note is about one move (#622).
+/// The operation (and its tool, where the topic is about the tool) is named
+/// as it is now, as [`operation_notice`] names it. A note without a topic
+/// reads "operation '<name>': <text>".
+pub fn operation_note(
+    project: &Project,
+    operation: &Operation,
+    note: &openchuck_path::Notice,
+) -> String {
+    let text = match note.segment {
+        Some(segment) => format!("move {segment}: {}", note.text),
+        None => note.text.clone(),
+    };
+    match &note.topic {
+        Some(topic) => in_operation_form(project, operation, topic, &text),
+        None => format!("operation '{}': {text}", operation.name),
     }
 }
 
@@ -962,7 +986,13 @@ fn generate_unnamed(
     );
     // Notes about the values come first, then the notes about moves. They
     // are information: the goal is met (decision 0536 section 1).
-    let mut notes: Vec<String> = resolved.notes;
+    let mut notes: Vec<openchuck_path::Notice> = resolved
+        .notes
+        .into_iter()
+        .map(|note| {
+            openchuck_path::Notice::information(note).about(crate::lead_in::topic::CUTTING_DATA)
+        })
+        .collect();
     // A stock to leave other than the operation's is a warning (decision
     // 0536 step 2, the owner's answer to question Q-G; P76).
     warnings.extend(leave_notes);
@@ -986,7 +1016,10 @@ fn generate_unnamed(
                 openchuck_path::Notice::warning(note).about(crate::lead_in::topic::EXACT_CONTACT),
             );
         } else {
-            notes.push(note);
+            notes.push(
+                openchuck_path::Notice::information(note)
+                    .about(crate::lead_in::topic::EXACT_CONTACT),
+            );
         }
     }
     // A selection that reaches a region never machined leaves it uncut: a
@@ -1003,7 +1036,9 @@ fn generate_unnamed(
     // P54 to P57).
     let ignored = registry_strategy.parameter_warnings(&profile, &parameters);
     if operation.strategy == edge_following::NAME {
-        notes.extend(ignored);
+        notes.extend(ignored.into_iter().map(|text| {
+            openchuck_path::Notice::information(text).about(crate::lead_in::topic::IGNORED_SETTING)
+        }));
     } else {
         warnings.extend(ignored.into_iter().map(|text| {
             openchuck_path::Notice::warning(text).about(crate::lead_in::topic::IGNORED_SETTING)
@@ -1024,28 +1059,19 @@ fn generate_unnamed(
             .about(crate::lead_in::topic::EARLIER_OPERATIONS),
         );
     }
-    // The path's information; its warnings go with the warnings below. A
-    // note about one move names it; a note about the whole path names none
-    // (#622).
-    notes.extend(
-        path.notices
-            .iter()
-            .filter(|n| !n.is_warning())
-            .map(|n| match n.segment {
-                Some(segment) => format!("move {segment}: {}", n.sentence()),
-                None => n.sentence(),
-            }),
-    );
+    // The path's information, with its topics and moves; its warnings go
+    // with the warnings below.
+    notes.extend(path.notices.iter().filter(|n| !n.is_warning()).cloned());
     let facing = facing_setup
         .as_ref()
         .map(|setup| crate::facing::FacingVerification::capture(setup, &parameters))
         .transpose()?
         .flatten();
     if let Some(proof) = &facing {
-        notes.push("Facing coverage complete (verified path geometry); simulation remains resolution-limited and whole-part deviation is unchanged".into());
+        notes.push(openchuck_path::Notice::information("Facing coverage complete (verified path geometry); simulation remains resolution-limited and whole-part deviation is unchanged"));
         if proof.description()?.extent != openchuck_path::facing::extents::FacingExtent::WholeStock
         {
-            notes.push("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted.".into());
+            notes.push(openchuck_path::Notice::information("Intentionally unfaced: stock outside this operation's selected coverage. Global remaining-stock values and every overcut remain counted."));
         }
     }
     Ok(OperationPath {
@@ -2305,7 +2331,7 @@ mod tests {
             !path
                 .notes
                 .iter()
-                .any(|n| n.contains("not used") && n.contains("crease")),
+                .any(|n| n.text.contains("not used") && n.text.contains("crease")),
             "{:?}",
             path.notes
         );
@@ -2692,12 +2718,12 @@ mod tests {
         // Said once, as a warning: not repeated as a note, and no note
         // claims a move it is not about (decision 0536 section 5; #622).
         assert!(
-            !path.notes.iter().any(|n| n.contains(&warning.text)),
+            !path.notes.iter().any(|n| n.text.contains(&warning.text)),
             "{:?}",
             path.notes
         );
         assert!(
-            !path.notes.iter().any(|n| n.starts_with("move 0:")),
+            !path.notes.iter().any(|n| n.segment == Some(0)),
             "{:?}",
             path.notes
         );
@@ -2751,7 +2777,7 @@ mod tests {
             assert!((tip.z - FOOT).abs() < 0.02, "tip at Z {}", tip.z);
         }
         assert!(
-            path.notes.iter().any(|n| n.contains("face 0")),
+            path.notes.iter().any(|n| n.text.contains("face 0")),
             "{:?}",
             path.notes
         );
@@ -2856,7 +2882,7 @@ mod tests {
                 "touch a check surface"
             };
             assert!(
-                path.notes.iter().any(|n| n.contains(said)),
+                path.notes.iter().any(|n| n.text.contains(said)),
                 "{:?}",
                 path.notes
             );
@@ -2878,7 +2904,7 @@ mod tests {
         assert!(
             path.notes
                 .iter()
-                .any(|n| n.contains("The boundary limits the pass")),
+                .any(|n| n.text.contains("The boundary limits the pass")),
             "{:?}",
             path.notes
         );
@@ -2912,7 +2938,11 @@ mod tests {
         assert_eq!(warning.setting, None);
         // A warning is said once, not repeated as a note (decision 0536
         // section 5).
-        assert!(!path.notes.contains(&warning.text), "{:?}", path.notes);
+        assert!(
+            !path.notes.iter().any(|n| n.text == warning.text),
+            "{:?}",
+            path.notes
+        );
         // Limit A alone stops the pass at the strip as before.
         let mut f = swarf_limits_fixture(&[]);
         f.select_as(
@@ -2928,7 +2958,7 @@ mod tests {
             !path
                 .notes
                 .iter()
-                .any(|n| n.contains("far end of the rulings")),
+                .any(|n| n.text.contains("far end of the rulings")),
             "{:?}",
             path.notes
         );
@@ -3016,10 +3046,9 @@ mod tests {
         assert!((reach - (38.0 - 0.5 * FLAT)).abs() < 0.02, "{reach}");
         assert!(path.warnings.is_empty(), "{:?}", path.warnings);
         assert!(
-            path.notes
-                .iter()
-                .any(|n| n
-                    .contains("The pass stops short of face 1, which meets this face at an end")),
+            path.notes.iter().any(|n| n
+                .text
+                .contains("The pass stops short of face 1, which meets this face at an end")),
             "{:?}",
             path.notes
         );
@@ -3081,9 +3110,9 @@ mod tests {
         let reach = [(swarf::parameter::TIP_EXTENSION, Value::Number(0.5))];
         let plain = swarf_floor_fixture(&reach).run().unwrap();
         assert!(
-            plain.notes.iter().any(
-                |n| n.contains("The tool's end reaches 0.500 mm beyond the end of the rulings")
-            ),
+            plain.notes.iter().any(|n| n
+                .text
+                .contains("The tool's end reaches 0.500 mm beyond the end of the rulings")),
             "{:?}",
             plain.notes
         );
@@ -3100,8 +3129,8 @@ mod tests {
         assert!(
             path.notes
                 .iter()
-                .any(|n| n.contains("The tool is lifted up to 0.50")
-                    && n.contains("to keep clear of the avoid surfaces")),
+                .any(|n| n.text.contains("The tool is lifted up to 0.50")
+                    && n.text.contains("to keep clear of the avoid surfaces")),
             "{:?}",
             path.notes
         );
@@ -3113,7 +3142,7 @@ mod tests {
         assert!(
             up.notes
                 .iter()
-                .any(|n| n.contains("The tip sits 1.000 mm up the rulings")),
+                .any(|n| n.text.contains("The tip sits 1.000 mm up the rulings")),
             "{:?}",
             up.notes
         );
@@ -3386,7 +3415,8 @@ mod tests {
             assert!(
                 path.notes
                     .iter()
-                    .any(|n| n.contains("tessellation") && n.contains("ball-end tools only")),
+                    .any(|n| n.text.contains("tessellation")
+                        && n.text.contains("ball-end tools only")),
                 "{strategy}: {:?}",
                 path.notes
             );
@@ -3429,15 +3459,15 @@ mod tests {
         let note = |path: &OperationPath| {
             path.notes
                 .iter()
-                .find(|n| n.contains("tessellation"))
-                .cloned()
+                .find(|n| n.text.contains("tessellation"))
+                .map(|n| n.text.clone())
         };
         let helical = bar_fixture(openchuck_path::helical::NAME, "bar.step");
         let exact = |path: &OperationPath| {
             path.notes
                 .iter()
-                .find(|n| n.contains("exact faces"))
-                .cloned()
+                .find(|n| n.text.contains("exact faces"))
+                .map(|n| n.text.clone())
         };
         // Helical finishing takes exact contacts (decision 0277): a ball end
         // drops on the exact faces, and the note says so.
@@ -3511,8 +3541,8 @@ mod tests {
         let said = on
             .notes
             .iter()
-            .find(|n| n.contains("exact faces"))
-            .cloned()
+            .find(|n| n.text.contains("exact faces"))
+            .map(|n| n.text.clone())
             .unwrap();
         assert!(
             said.starts_with(
@@ -3535,8 +3565,8 @@ mod tests {
         let said = off
             .notes
             .iter()
-            .find(|n| n.contains("tessellation"))
-            .cloned()
+            .find(|n| n.text.contains("tessellation"))
+            .map(|n| n.text.clone())
             .unwrap();
         assert!(
             said.starts_with(
@@ -3606,7 +3636,7 @@ mod tests {
             path.notes
         );
         assert!(
-            !path.notes.iter().any(|n| n.contains(said)),
+            !path.notes.iter().any(|n| n.text.contains(said)),
             "{:?}",
             path.notes
         );
@@ -3616,7 +3646,7 @@ mod tests {
         f.set(exact_contact(true).0, exact_contact(true).1);
         let path = f.run().unwrap();
         assert!(
-            path.notes.iter().any(|n| n.contains("exact faces")),
+            path.notes.iter().any(|n| n.text.contains("exact faces")),
             "{:?}",
             path.notes
         );
@@ -3641,7 +3671,7 @@ mod tests {
         assert!(
             path.notes
                 .iter()
-                .any(|n| n.contains("tessellation") && n.contains("this tool's shape")),
+                .any(|n| n.text.contains("tessellation") && n.text.contains("this tool's shape")),
             "{:?}",
             path.notes
         );
@@ -3781,8 +3811,8 @@ mod tests {
         let said = path
             .notes
             .iter()
-            .find(|n| n.contains("tessellation"))
-            .cloned()
+            .find(|n| n.text.contains("tessellation"))
+            .map(|n| n.text.clone())
             .unwrap();
         assert!(
             said.starts_with(
@@ -3794,7 +3824,7 @@ mod tests {
         assert!(
             path.notes
                 .iter()
-                .any(|n| n.contains("along the part's edges")),
+                .any(|n| n.text.contains("along the part's edges")),
             "{:?}",
             path.notes
         );
@@ -3948,7 +3978,7 @@ mod tests {
             path.warnings
         );
         assert!(
-            !path.notes.iter().any(|n| n.contains(said)),
+            !path.notes.iter().any(|n| n.text.contains(said)),
             "{:?}",
             path.notes
         );
@@ -3973,7 +4003,7 @@ mod tests {
             path.warnings
         );
         assert!(
-            !path.notes.iter().any(|n| n.contains(said)),
+            !path.notes.iter().any(|n| n.text.contains(said)),
             "{:?}",
             path.notes
         );
@@ -4072,7 +4102,7 @@ mod tests {
         let path = f.run().unwrap();
         let said = "the carve width is used only in carve mode";
         assert!(
-            path.notes.iter().any(|n| n.contains(said)),
+            path.notes.iter().any(|n| n.text.contains(said)),
             "{:?}",
             path.notes
         );
@@ -4080,6 +4110,65 @@ mod tests {
             !path.warnings.iter().any(|w| w.text.contains(said)),
             "{:?}",
             path.warnings
+        );
+    }
+
+    #[test]
+    fn req_ui_12_an_information_note_reads_in_the_one_form() {
+        // Decision record 0536 section 3: a note the pathing library made
+        // carries its topic, and the application shows it first, then the
+        // operation as it is named now, then the library's text; a note
+        // about one move names the move after the lead-in (#622).
+        let f = fixture(edge_following::NAME, &[("depth", Value::Number(0.2))]);
+        let path = f.run().unwrap();
+        let operation = f.project.operation(f.operation).unwrap();
+        let summary = path
+            .notes
+            .iter()
+            .find(|n| n.text.starts_with("edge following: "))
+            .unwrap_or_else(|| panic!("{:?}", path.notes));
+        assert_eq!(
+            summary.topic.as_deref(),
+            Some(openchuck_path::topic::EDGE_FOLLOWING)
+        );
+        let shown = operation_note(&f.project, operation, summary);
+        assert_eq!(
+            shown,
+            format!("Edge following (operation 'Op'): {}", summary.text)
+        );
+        // Every note the library made has a topic, so each reads in the
+        // one form.
+        assert!(
+            path.notes.iter().all(|n| n.topic.is_some()),
+            "{:?}",
+            path.notes
+        );
+        // A note about one move: the move after the lead-in.
+        let slowed = openchuck_path::Notice::information(
+            "the machine's feed limits slow this move: the contact feed is 900.0 mm/min, not \
+             1000.0",
+        )
+        .about(openchuck_path::topic::FEED_LIMIT)
+        .at_segment(4);
+        assert_eq!(
+            operation_note(&f.project, operation, &slowed),
+            "Feed limit (operation 'Op'): move 4: the machine's feed limits slow this move: the \
+             contact feed is 900.0 mm/min, not 1000.0"
+        );
+        // The operation is named as it is now (decision record 0522 item 3).
+        let mut project = f.project.clone();
+        let mut renamed = operation.clone();
+        renamed.name = "Renamed".to_owned();
+        project.replace(Item::Operation(renamed.clone())).unwrap();
+        assert!(
+            operation_note(&project, &renamed, summary)
+                .starts_with("Edge following (operation 'Renamed'): edge following: "),
+        );
+        // A note without a topic keeps the operation's name in front.
+        let plain = openchuck_path::Notice::information("a plain note");
+        assert_eq!(
+            operation_note(&f.project, operation, &plain),
+            "operation 'Op': a plain note"
         );
     }
 
@@ -4286,13 +4375,18 @@ mod tests {
         )
     }
 
+    /// The texts of `notes`, in order.
+    fn texts(notes: &[openchuck_path::Notice]) -> Vec<&str> {
+        notes.iter().map(|n| n.text.as_str()).collect()
+    }
+
     #[test]
     fn req_op_28_face_flow_cuts_the_face_set_from_its_longest_side() {
         let mut f = face_flow_fixture();
         f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
         let path = f.run().unwrap();
         assert!(!path.group.segments.is_empty());
-        let notes = path.notes.join("\n");
+        let notes = texts(&path.notes).join("\n");
         // The longest sides tie at 30 mm: edge 0, the lower ID, is the guide.
         assert!(
             notes.contains("face 0 is cut from its guide, edge 0"),
@@ -4348,7 +4442,7 @@ mod tests {
             )
             .is_empty()
         );
-        let notes = f.run().unwrap().notes.join("\n");
+        let notes = texts(&f.run().unwrap().notes).join("\n");
         assert!(
             notes.contains("face 0 is cut from its guide, edge 2"),
             "{notes}"

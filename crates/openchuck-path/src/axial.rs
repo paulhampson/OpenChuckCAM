@@ -704,7 +704,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<String>, Vec<Notice>)> {
+) -> Result<(Vec<Pass>, Vec<Notice>, Vec<Notice>)> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;

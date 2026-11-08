@@ -3067,7 +3067,7 @@ fn swarf(
                 faces.push(path.number);
             }
         }
-        notes.push(path.note(settings.tolerance, limit));
+        notes.push(Notice::information(path.note(settings.tolerance, limit)).about(topic::SWARF));
         for run in &path.runs {
             passes.push(Pass {
                 helical_pass_start: false,

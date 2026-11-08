@@ -396,9 +396,16 @@ pub(crate) fn regenerate(
         for note in &path.notes {
             regeneration
                 .notes
-                .push(format!("operation '{}': {note}", operation.name));
+                .push(crate::operation::operation_note(project, operation, note));
         }
-        if let Some(limit) = crate::note_groups::feed_limit_of(&path.notes) {
+        // The summary reads the path's feed-limit notes by their topic.
+        let feed_notes: Vec<&str> = path
+            .notes
+            .iter()
+            .filter(|n| n.topic.as_deref() == Some(openchuck_path::topic::FEED_LIMIT))
+            .map(|n| n.text.as_str())
+            .collect();
+        if let Some(limit) = crate::note_groups::feed_limit_of(&feed_notes) {
             regeneration.feed_limits.push((operation.id, limit));
         }
         if stocked {

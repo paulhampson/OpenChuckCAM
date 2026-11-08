@@ -2387,9 +2387,10 @@ mod tests {
         // line per move.
         let turn = |m: usize| {
             format!(
-                "operation 'Finish': move {m}: A turns with the contact point at the rotary \
-                 axis during this move, so the contact point barely moves and the rotary axis's \
-                 speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min"
+                "Rotary axis (operation 'Finish'): move {m}: A turns with the contact point at \
+                 the rotary axis during this move, so the contact point barely moves and the \
+                 rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 \
+                 mm/min"
             )
         };
         let run = openchuck_app::Regeneration {
@@ -2400,8 +2401,9 @@ mod tests {
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(lines[0].starts_with("note: "), "{}", lines[0]);
         assert!(
-            lines[0].contains("moves 10 to 13 (4 moves): A turns")
-                && lines[0].contains("during these moves,"),
+            lines[0].starts_with(
+                "note: Rotary axis (operation 'Finish'): moves 10 to 13 (4 moves): A turns"
+            ) && lines[0].contains("during these moves,"),
             "{}",
             lines[0]
         );

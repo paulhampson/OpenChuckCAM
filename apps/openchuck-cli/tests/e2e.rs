@@ -1367,6 +1367,15 @@ fn req_ui_12_cli_prints_each_run_message_at_its_level() {
     );
     // Information is never printed as a warning.
     assert!(!out.stderr.contains("warning:"), "{}", out.stderr);
+    // Each note reads in the one form, its topic first (decision record
+    // 0536 section 3): none starts with the bare operation name.
+    assert!(
+        !out.stderr
+            .lines()
+            .any(|l| l.starts_with("note: operation '")),
+        "{}",
+        out.stderr
+    );
     std::fs::remove_dir_all(root).ok();
 }
 

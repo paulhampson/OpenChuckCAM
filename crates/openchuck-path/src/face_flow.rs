@@ -1943,7 +1943,7 @@ fn assemble(
 ) -> Result<StrategyOutput> {
     let settings = tooling.settings;
     let mut out_passes: Vec<Pass> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
+    let mut notes: Vec<Notice> = Vec::new();
     let mut stretches: Vec<Stretch> = Vec::new();
     let mut face_notes: Vec<String> = Vec::new();
     for mut cut in cuts {
@@ -2036,13 +2036,20 @@ fn assemble(
             "face-flow finishing cannot reach any of the selected faces: {why}"
         )));
     }
-    notes.push(format!(
-        "face-flow finishing cuts {} passes on {} face{}",
-        out_passes.len(),
-        face_notes.len(),
-        if face_notes.len() == 1 { "" } else { "s" }
-    ));
-    notes.extend(face_notes);
+    notes.push(
+        Notice::information(format!(
+            "face-flow finishing cuts {} passes on {} face{}",
+            out_passes.len(),
+            face_notes.len(),
+            if face_notes.len() == 1 { "" } else { "s" }
+        ))
+        .about(topic::FACE_FLOW),
+    );
+    notes.extend(
+        face_notes
+            .into_iter()
+            .map(|note| Notice::information(note).about(topic::FACE_FLOW)),
+    );
     let mut warnings = Vec::new();
     if !unreached.is_empty() {
         let plural = if unreached.len() == 1 { "" } else { "s" };

@@ -1239,8 +1239,8 @@ mod tests {
         let notes: Vec<String> = (2..=4)
             .map(|m| {
                 format!(
-                    "operation 'Roughing': move {m}: the machine's feed limits slow this move: \
-                     the contact feed is 972.9 mm/min, not 1000.0"
+                    "Feed limit (operation 'Roughing'): move {m}: the machine's feed limits slow \
+                     this move: the contact feed is 972.9 mm/min, not 1000.0"
                 )
             })
             .collect();
@@ -1250,7 +1250,13 @@ mod tests {
         };
         let lines = result_lines(&run, &Project::new("notes"));
         assert_eq!(lines.len(), 1);
-        assert!(lines[0].text.contains("moves 2 to 4 (3 moves)"));
+        assert!(
+            lines[0]
+                .text
+                .starts_with("Feed limit (operation 'Roughing'): moves 2 to 4 (3 moves): "),
+            "{}",
+            lines[0].text
+        );
         assert_eq!(lines[0].moves, notes);
         // A note is information: the goal was met (decision 0536 step 2).
         assert_eq!(lines[0].severity, Severity::Info);
@@ -1269,7 +1275,9 @@ mod tests {
         run.groups[0]
             .warnings
             .push(openchuck_app::path::Notice::warning(said.to_owned()).about("Selection set"));
-        run.notes = vec![format!("operation '{name}': helical finishing cut 3 rings")];
+        run.notes = vec![format!(
+            "Rings (operation '{name}'): helical finishing cut 3 rings"
+        )];
         run.warnings = vec!["Setup 'Setup 1': 1.0% of the part's surface is enclosed".to_owned()];
         let lines = result_lines(&run, app.project());
         let level = |t: &str| {
@@ -1292,8 +1300,8 @@ mod tests {
 
     fn feed_note(operation: &str, effective: f64, target: f64) -> String {
         format!(
-            "operation '{operation}': the machine's feed limits slow this move: the contact \
-             feed is {effective:.1} mm/min, not {target:.1}"
+            "Feed limit (operation '{operation}'): the machine's feed limits slow this move: the \
+             contact feed is {effective:.1} mm/min, not {target:.1}"
         )
     }
 
@@ -1314,7 +1322,7 @@ mod tests {
         let notes: Vec<String> = (0..moves).map(|_| feed_note(name, 999.1, 1000.0)).collect();
         let bare: Vec<String> = notes
             .iter()
-            .map(|n| n.split_once("': ").unwrap().1.to_owned())
+            .map(|n| n.split_once("'): ").unwrap().1.to_owned())
             .collect();
         Regeneration {
             feed_limits: openchuck_app::note_groups::feed_limit_of(&bare)
@@ -1429,7 +1437,7 @@ mod tests {
         let twin_notes: Vec<String> = (0..3).map(|_| feed_note(&name, 500.0, 600.0)).collect();
         let bare: Vec<String> = twin_notes
             .iter()
-            .map(|n| n.split_once("': ").unwrap().1.to_owned())
+            .map(|n| n.split_once("'): ").unwrap().1.to_owned())
             .collect();
         run.feed_limits.push((
             twin_id,

@@ -616,7 +616,7 @@ impl Outcome {
 
     /// The note: how many passes were added and the smallest spacing used
     /// (decision record 0239 item 12).
-    pub(crate) fn note(&self, settings: &Settings) -> String {
+    pub(crate) fn note(&self, settings: &Settings) -> Notice {
         note(self.added(), self.smallest, self.queries, settings)
     }
 
@@ -661,7 +661,7 @@ impl Tally {
     }
 
     /// The note, as [`Outcome::note`].
-    pub(crate) fn note(&self, settings: &Settings) -> String {
+    pub(crate) fn note(&self, settings: &Settings) -> Notice {
         note(
             usize::try_from(self.added).unwrap_or(usize::MAX),
             self.smallest,
@@ -683,8 +683,8 @@ impl Tally {
 
 /// The note for `added` passes, the closest `smallest` from a neighbour,
 /// after `queries` geometry queries (decision record 0239 item 12).
-fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> String {
-    match (added, smallest) {
+fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> Notice {
+    Notice::information(match (added, smallest) {
         (0, _) | (_, None) => format!(
             "adaptive spacing: no passes were added; the material measured between the \
              passes is within the allowed excess of {:.3} mm",
@@ -698,7 +698,8 @@ fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) 
             settings.height,
             queries
         ),
-    }
+    })
+    .about(topic::ADAPTIVE_SPACING)
 }
 
 /// The warning for `places` not confirmed (decision record 0239 item 10).
@@ -1281,7 +1282,12 @@ mod tests {
         let (outcome, cs) = run(&plane, 0.25, SETTINGS, Limits::OWNER);
         assert_eq!(cs.len(), 2);
         assert_eq!(outcome.added(), 0);
-        assert!(outcome.note(&SETTINGS).contains("no passes were added"));
+        assert!(
+            outcome
+                .note(&SETTINGS)
+                .text
+                .contains("no passes were added")
+        );
         assert!(
             outcome
                 .warning(&SETTINGS, &Limits::OWNER, "scallop")

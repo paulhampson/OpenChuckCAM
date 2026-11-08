@@ -153,7 +153,7 @@ const AROUND: usize = 72;
 #[derive(Debug, Default)]
 pub(crate) struct FreeEnds {
     pub(crate) passes: Vec<Pass>,
-    pub(crate) notes: Vec<String>,
+    pub(crate) notes: Vec<Notice>,
     pub(crate) warnings: Vec<Notice>,
 }
 
@@ -196,11 +196,14 @@ pub(crate) fn free_ends(
     }) {
         // Information: there is nothing to face (decision 0536 step 2, the
         // owner's answer to question Q-B; P49).
-        out.notes.push(format!(
-            "the stock ends at the part's end at X {:.3}: there is no stock past this end to \
-             face. If the real blank is longer, set the stock's length to match it",
-            e.face
-        ));
+        out.notes.push(
+            Notice::information(format!(
+                "the stock ends at the part's end at X {:.3}: there is no stock past this end \
+                 to face. If the real blank is longer, set the stock's length to match it",
+                e.face
+            ))
+            .about(topic::FREE_ENDS),
+        );
     }
     let ends: Vec<&FreeEnd> = ends
         .iter()
@@ -362,11 +365,14 @@ pub(crate) fn free_ends(
         // setup's own stock, which the real blank must match, is a warning of
         // its own (decision 0536 step 2, the owner's answer to question Q-C;
         // P50).
-        out.notes.push(format!(
-            "the end face at X {face:.3} has nothing beyond it: the tool goes down beside it \
-             in {layers} layers of {stepdown} mm to the rotary axis, turning once round the \
-             axis in each"
-        ));
+        out.notes.push(
+            Notice::information(format!(
+                "the end face at X {face:.3} has nothing beyond it: the tool goes down beside \
+                 it in {layers} layers of {stepdown} mm to the rotary axis, turning once round \
+                 the axis in each"
+            ))
+            .about(topic::FREE_ENDS),
+        );
         if !stock.left_by_earlier_operations() {
             out.warnings.push(
                 Notice::warning(format!(
@@ -481,7 +487,7 @@ pub(crate) fn layers(
     input: &StrategyInput<'_>,
     passes: Vec<Pass>,
     parameters: &Parameters,
-) -> Result<(Vec<Pass>, Option<String>)> {
+) -> Result<(Vec<Pass>, Option<Notice>)> {
     if !parameters
         .flag(parameter::FINISHING_LAYERS)
         .unwrap_or(false)
@@ -564,12 +570,13 @@ pub(crate) fn layers(
         } else {
             "the setup's own stock, with no earlier operation in this setup"
         };
-        format!(
+        Notice::information(format!(
             "finishing layers: up to {} layers of {stepdown} mm above a finish allowance of \
              {allowance} mm, then the final pass on the surface; the layers start from {from}, \
              so the depth of each cut is not uniform and no engagement is promised",
             heights.len()
-        )
+        ))
+        .about(topic::FINISHING_LAYERS)
     });
     out.extend(passes);
     Ok((out, note))

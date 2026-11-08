@@ -645,16 +645,13 @@ pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
 }
 
 /// A strategy's notices from its warnings and its notes: the warnings first,
-/// then each note as information, in their order (decision record 0536 item
-/// 6.1).
+/// then the notes, each information with its topic, in their order
+/// (decision record 0536 item 6.1 and section 3).
 pub(crate) fn notices(
     warnings: Vec<Notice>,
-    notes: impl IntoIterator<Item = String>,
+    notes: impl IntoIterator<Item = Notice>,
 ) -> Vec<Notice> {
-    warnings
-        .into_iter()
-        .chain(notes.into_iter().map(Notice::information))
-        .collect()
+    warnings.into_iter().chain(notes).collect()
 }
 
 /// The passes with every stretch that reaches into `keep_out` left out

@@ -107,9 +107,10 @@ pub fn lead_in(topic: &str, context: &Context) -> String {
     }
 }
 
-/// The topics of the warnings the application adds to an operation's path,
-/// beside those of the pathing library ([`openchuck_path::topic`]): short
-/// names of the checks, in sentence case (decision record 0536 section 3).
+/// The topics of the warnings and information the application adds to an
+/// operation's path, beside those of the pathing library
+/// ([`openchuck_path::topic`]): short names of the checks, in sentence case
+/// (decision record 0536 section 3).
 pub mod topic {
     /// A tab shorter than the tool is wide (decision 0523).
     pub const TAB_LENGTH: &str = "Tab length";
@@ -120,6 +121,9 @@ pub mod topic {
     pub const STOCK_TO_LEAVE: &str = "Stock to leave";
     /// Exact STEP surface contact asked for that does not apply.
     pub const EXACT_CONTACT: &str = "Exact contact";
+    /// An operation's own value that overrides the tool's cutting data for
+    /// the stock material.
+    pub const CUTTING_DATA: &str = "Cutting data";
     /// A setting the strategy does not use.
     pub const IGNORED_SETTING: &str = "Ignored setting";
     /// A strategy that works on what earlier operations left, with none

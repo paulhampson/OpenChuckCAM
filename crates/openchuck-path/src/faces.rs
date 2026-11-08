@@ -440,7 +440,7 @@ fn find(
 /// The note an operation carries when it turned at faces across the axis:
 /// how many and where, so the user knows the path differs from a plain helix
 /// there (decision record 0297). `None` with no turns.
-pub(crate) fn note(turns: &[f64]) -> Option<String> {
+pub(crate) fn note(turns: &[f64]) -> Option<Notice> {
     let (last, rest) = turns.split_last()?;
     let at = |x: &f64| format!("{x:.3}");
     let xs = if rest.is_empty() {
@@ -462,11 +462,14 @@ pub(crate) fn note(turns: &[f64]) -> Option<String> {
             "each",
         )
     };
-    Some(format!(
-        "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
-         makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
-         {each} shoulder keeps only the stock to leave"
-    ))
+    Some(
+        Notice::information(format!(
+            "the part has {count} across the rotary axis ({shoulders} facing along X): the tool \
+             makes one extra turn round the axis, without moving along it, {at_x} X {xs}, so \
+             {each} shoulder keeps only the stock to leave"
+        ))
+        .about(topic::SHOULDERS),
+    )
 }
 
 /// The warning an operation carries when a held region kept it from turning
@@ -662,13 +665,13 @@ mod tests {
     fn req_op_04_the_note_says_where_the_tool_turns() {
         assert_eq!(note(&[]), None);
         assert_eq!(
-            note(&[8.4115]).unwrap(),
+            note(&[8.4115]).unwrap().text,
             "the part has a step across the rotary axis (a shoulder facing along X): the tool \
              makes one extra turn round the axis, without moving along it, at X 8.412, so the \
              shoulder keeps only the stock to leave"
         );
         assert_eq!(
-            note(&[1.0, 2.0, 3.5]).unwrap(),
+            note(&[1.0, 2.0, 3.5]).unwrap().text,
             "the part has 3 steps across the rotary axis (shoulders facing along X): the tool \
              makes one extra turn round the axis, without moving along it, at each of X 1.000, \
              2.000 and 3.500, so each shoulder keeps only the stock to leave"
