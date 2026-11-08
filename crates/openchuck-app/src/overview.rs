@@ -287,6 +287,16 @@ impl ItemStatus {
             progress: None,
         }
     }
+
+    /// A warning that must be acknowledged before the program is written
+    /// (decision record 0538): its cause starts "Needs acknowledging:".
+    fn needs_acknowledging(cause: &str) -> Self {
+        Self {
+            state: ItemState::Warning,
+            cause: format!("{NEEDS_ACKNOWLEDGING}{}", sentence(cause)),
+            progress: None,
+        }
+    }
 }
 
 /// How serious a message is. Errors sort first.
@@ -1437,7 +1447,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
 /// A setup warning in the user's words: the library's text, with the machine
 /// values it used named as the machine panel names them, not by their names
 /// in the profile file (specification section 15).
-fn setup_warning_text(warning: &SetupWarning) -> String {
+pub(crate) fn setup_warning_text(warning: &SetupWarning) -> String {
     let mut plain = warning.clone();
     plain.unconfirmed.clear();
     let mut text = plain.to_string();
@@ -1455,16 +1465,22 @@ fn setup_warning_text(warning: &SetupWarning) -> String {
     text
 }
 
+/// The start of the cause of a mark whose warning must be acknowledged
+/// before the program is written (decision record 0538).
+const NEEDS_ACKNOWLEDGING: &str = "Needs acknowledging: ";
+
 /// Raises `item`'s state to `status` when it is more serious (error over
-/// warning over the rest).
+/// warning over the rest). Of two warnings, one that needs acknowledging
+/// names itself first (decision record 0538).
 fn raise(items: &mut BTreeMap<ItemRef, ItemStatus>, item: ItemRef, status: ItemStatus) {
-    let rank = |s: ItemState| match s {
-        ItemState::Error => 2,
+    let rank = |s: &ItemStatus| match s.state {
+        ItemState::Error => 4,
+        ItemState::Warning if s.cause.starts_with(NEEDS_ACKNOWLEDGING) => 2,
         ItemState::Warning => 1,
         _ => 0,
     };
     match items.get(&item) {
-        Some(old) if rank(old.state) >= rank(status.state) => {}
+        Some(old) if rank(old) >= rank(&status) => {}
         _ => {
             items.insert(item, status);
         }
@@ -1873,7 +1889,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 Some(c) => ItemStatus {
                     state: ItemState::Warning,
                     cause: format!(
-                        "Needs acknowledging: {}",
+                        "{NEEDS_ACKNOWLEDGING}{}",
                         sentence(&crate::operation::warning_text(project, o, &c.sentence()))
                     ),
                     progress: None,
@@ -2139,24 +2155,35 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             &snapshot.name,
                             &found,
                         );
+                        // A tool that may meet the workholding is a
+                        // possible collision; one past the top of the travel
+                        // is a travel limit (decision record 0538).
+                        let collision = found.below_minimum.is_some();
                         raise(
                             &mut items,
                             at(SetupPart::Machine),
-                            ItemStatus::new(
-                                ItemState::Warning,
-                                if found.below_minimum.is_some() {
-                                    "a tool may be too long to clear the workholding"
-                                } else {
-                                    "a tool may take the spindle above the Z travel"
-                                },
-                            ),
+                            if collision {
+                                ItemStatus::needs_acknowledging(
+                                    "a tool may be too long to clear the workholding",
+                                )
+                            } else {
+                                ItemStatus::new(
+                                    ItemState::Warning,
+                                    "a tool may take the spindle above the Z travel",
+                                )
+                            },
                         );
-                        messages.push(Message::new(
+                        let message = Message::new(
                             Severity::Warning,
                             text.clone(),
                             Some((at(SetupPart::Machine), s.name.clone())),
                             Some(MessageAction::ReviewSetup(s.id)),
-                        ));
+                        );
+                        messages.push(if collision {
+                            message.to_acknowledge()
+                        } else {
+                            message
+                        });
                         setup_checks.push(SetupCheck {
                             setup: s.id,
                             passed: false,
@@ -2204,22 +2231,34 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 let part = part_of(&w.kind);
                 let target = part.map_or(setup, at);
                 let text = sentence(&setup_warning_text(w));
+                // A possible collision must be acknowledged before the
+                // program is written (decision record 0538).
+                let collision = crate::setup::is_possible_collision(&w.kind);
                 raise(
                     &mut items,
                     target,
-                    ItemStatus::new(ItemState::Warning, text.clone()),
+                    if collision {
+                        ItemStatus::needs_acknowledging(&text)
+                    } else {
+                        ItemStatus::new(ItemState::Warning, text.clone())
+                    },
                 );
                 let action = if part == Some(SetupPart::Workholding) {
                     MessageAction::EditWorkholding(s.id)
                 } else {
                     MessageAction::ReviewSetup(s.id)
                 };
-                messages.push(Message::new(
+                let message = Message::new(
                     Severity::Warning,
                     text.clone(),
                     Some((target, s.name.clone())),
                     Some(action),
-                ));
+                );
+                messages.push(if collision {
+                    message.to_acknowledge()
+                } else {
+                    message
+                });
                 setup_checks.push(SetupCheck {
                     setup: s.id,
                     passed: false,
