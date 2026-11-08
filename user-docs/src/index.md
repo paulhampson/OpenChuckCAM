@@ -1,7 +1,7 @@
 <section class="hero" aria-labelledby="hero-title">
 <div class="hero-text">
 <p class="hero-meta">OpenChuckCAM user guide · <a href="../versions.html">@@VERSION_LABEL@@</a></p>
-<h1 id="hero-title">Turn a 3D model into <span class="nowrap">G-code</span> for 4-axis rotary machining</h1>
+<h1 id="hero-title">Free, open source CAM for <span class="nowrap">4-axis</span> rotary CNC</h1>
 <p class="hero-lead"><strong>OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.</strong> Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often out of reach for home and small-workshop users. OpenChuckCAM has been developed with the vision to close that gap.</p>
 <ol class="routes">
 <li><a href="start/install.md"><span class="route-num">1</span><span class="route-title">Start here</span><span class="route-text">Install the program and open it for the first time.</span></a></li>
