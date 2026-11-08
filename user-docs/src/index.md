@@ -7,7 +7,7 @@
 <li><a href="start/install.md"><span class="route-num">1</span><span class="route-title">Start here</span><span class="route-text">Install the program and open it for the first time.</span></a></li>
 <li><a href="tutorial/index.md"><span class="route-num">2</span><span class="route-title">Your first project</span><span class="route-text">Take one part from a model file to G-code, in ten steps.</span></a></li>
 </ol>
-<p class="hero-notice"><strong>Before you cut:</strong> generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for your machine, tool or setup.</p>
+<p class="hero-notice"><strong>Before you cut:</strong> OpenChuckCAM is in early development. Generated G-code <strong>must be verified by you before it is run on a machine</strong> (NFR-12). OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup, and it has not been approved for any machine. See the section below on <a href="#real-world-use">real world use</a> and <a href="start/limitations.md">known limitations</a>.</p>
 </div>
 <figure class="hero-figure">
 <img src="images/hero-1-toolpaths.png" width="1920" height="1080" alt="The OpenChuckCAM window on its Operations step. A turned baluster lies along the rotary axis, wrapped in the orange lines of its finishing toolpath, with dotted rapid moves and the held region at the chuck end.">
