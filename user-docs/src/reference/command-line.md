@@ -134,6 +134,7 @@ The command line does not install the ready-made tools: the program window insta
 | `--grouping` | `setup` | How the program is split into files: `project` (one file; only for a project with one setup), `setup`, `operation`, or `tool`. |
 | `--setup-sheet` | off | Also writes the setup sheet as HTML and PDF. It needs `--out`. |
 | `--acknowledge-partial-path` | off | Writes the files even though an operation's path is partial (see [Operations and strategies](operations.md#a-partial-path-must-be-acknowledged)), for this run only. Without it, nothing is written while a path is partial. |
+| `--acknowledge-collision-warnings` | off | Writes the files even though they hold possible collisions of the tool, its shank or its holder (see [Operations and strategies](operations.md#possible-collisions-must-be-acknowledged)), for this run only. Without it, nothing is written while there is one. Read each warning first. |
 
 With `--out`, `regenerate` checks before it writes anything, as the export in the program window does. It makes each program in memory, reads it back and replays it, and runs the export's checks, then prints them under `checks before writing the G-code:`:
 

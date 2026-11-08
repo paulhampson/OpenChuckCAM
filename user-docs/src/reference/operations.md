@@ -90,7 +90,7 @@ Cut short
 : Where the tool would break the set, the pass stops short of it and starts again after it. In rotary roughing, on a Check set, the tool is instead lifted to stay the stock to leave above the set, and the material over it is still roughed. In swarf, the tool is first lifted up the face it cuts by the least that keeps it off the set, leaving a strip of that width uncut.
 
 Warn only
-: The path is kept where the tool would break the set: the tool is not kept clear of it. A warning says how far along the path it breaks the set. It samples the path and can miss a narrow set, so no warning does not show that the tool is clear.
+: The path is kept where the tool would break the set: the tool is not kept clear of it. A warning says how far along the path it breaks the set. On a **Check** set it is a warning to acknowledge, since a check set often stands for a clamp. It samples the path and can miss a narrow set, so no warning does not show that the tool is clear.
 
 Ignore
 : The set limits nothing, and the operation warns that it limits nothing.
@@ -303,7 +303,7 @@ Some faces make the tool cut into the surface by more than the tolerance. A warn
 | Tip end | `auto` | Which end of the rulings the tip sits at: `auto` chooses the end with less tilt, then the one nearer the axis; `reversed` takes the other. |
 | Most material left | 0 (meaning 0.1 mm) | The most material the flank may leave anywhere on the face. More than the tolerance is reported; more than this refuses the face. |
 
-**Keep off the end faces** checks the faces next to the face against the tool's cutting part only: the shank, the holder and the rest of the part are not checked. The swarf warnings each point at the setting to change:
+**Keep off the end faces** checks the faces next to the face against the tool's cutting part only: the shank, the holder and the rest of the part are not checked. The swarf warnings each point at the setting to change. The three below are about a cut into a face next to the face, and are warnings to acknowledge:
 
 - The tool cuts into a face along the ends of the rulings, such as a floor, by more than the tolerance: put that face in an avoid set on **Cut short**, or set a negative **Tip extension**.
 - With **Keep off the end faces** off, the tool cuts into an end face: turn the setting on, or put the face in an avoid set on **Cut short**.
@@ -337,27 +337,47 @@ Errors
 : The operation cannot be generated, and the message says why. Export is blocked while an operation is in error; turn it off to export the others.
 
 Warnings
-: The path was made, but something needs your attention. Most warnings do not stop the export: the export lists each one ("Operation '...' was made with a warning: ..."). Read them before you run the program.
+: The path was made, but something needs your attention. The export lists each one ("Operation '...' was made with a warning: ..."). Read them before you run the program.
+
+Warnings to acknowledge
+: A warning that may be a collision of the tool, its shank or its holder with the part, the stock, a tab or a held region. The operation's mark reads "Needs acknowledging: ...", Messages lists it first among the warnings, and the export writes nothing until you tick that you have read it (see [Possible collisions must be acknowledged](#possible-collisions-must-be-acknowledged)).
 
 Information
 : Notes about what the operation did, such as how many links stayed low.
 
 ### Flute length
 
-For strategies that do not cut in layers, the program checks the written path against the stock in the tool's reach. Where the stock stands higher above the tool's tip than the tool's flutes are long, the shank may meet the stock. This is a warning, "Flute length (operation '...', tool '...'): ...", and the path is kept. It gives the depth and the place, and suggests a tool with longer flutes, roughing the part first in this setup, or turning on **Finishing layers** where the strategy has it.
+For strategies that do not cut in layers, the program checks the written path against the stock in the tool's reach. Where the stock stands higher above the tool's tip than the tool's flutes are long, the shank may meet the stock. This is a warning to acknowledge, "Flute length (operation '...', tool '...'): ...", and the path is kept. It gives the depth and the place, and suggests a tool with longer flutes, roughing the part first in this setup, or turning on **Finishing layers** where the strategy has it.
 
 Rotary roughing, facing and finishing layers check their own **Stepdown** instead: a stepdown deeper than the flutes is an error.
 
 ### A free end deeper than the flutes
 
-With **Face free ends** on, where the stock beside a free end is deeper than the tool's flutes, that end is not faced. It keeps what earlier operations left, the rest of the path is made, and a "Flute length" warning says so. Use a tool with longer flutes, face the end with a Facing operation, or turn off **Face free ends**.
+With **Face free ends** on, where the stock beside a free end is deeper than the tool's flutes, that end is not faced. It keeps what earlier operations left, the rest of the path is made, and a "Flute length" warning to acknowledge says so. Use a tool with longer flutes, face the end with a Facing operation, or turn off **Face free ends**.
 
 ### Tabs
 
-An operation is checked against the tabs it can reach. A tab shorter than the tool is wide gives a warning, "Tab length (operation '...', tool '...'): ...": the tool may not be able to cut the gap beside it to shape. Use a smaller tool, or make the tab longer. A tab that is not wholly in the head or tail zone, between a held region or the end of the stock and the part, is an error for the operations that can reach it. See [Tabs](../concepts/tabs.md).
+An operation is checked against the tabs it can reach. A tab shorter than the tool is wide gives a warning to acknowledge, "Tab length (operation '...', tool '...'): ...": the tool may not be able to cut the gap beside it to shape, and may cut through it. Use a smaller tool, or make the tab longer. A tab that is not wholly in the head or tail zone, between a held region or the end of the stock and the part, is an error for the operations that can reach it. See [Tabs](../concepts/tabs.md).
 
 ### A partial path must be acknowledged
 
 Where **Adaptive spacing** cannot confirm the material left between passes before it reaches its limits, it keeps the path made so far and warns that it is not complete. Before it writes any G-code, the export asks you to tick "I accept the partial path made for this result: it is not complete, and I will check the surface before running the program". Without the tick it does not write the files.
+
+### Possible collisions must be acknowledged
+
+These warnings may be a collision, so the export asks you to tick "I have read the possible collisions listed for this result and will check them before running the program" before it writes any G-code. The tick is separate from the partial-path tick, and holds for these files only.
+
+| Asks for the tick | Does not |
+| --- | --- |
+| The stock deeper than the tool's flutes, in any of the flute-length warnings | A swarf overcut into the face it cuts |
+| A tab shorter than the tool is wide | A cut into an avoid set |
+| Swarf cutting into a face next to it | The ring of stock left at a faced end |
+| A check set the tool touches (**Warn only**) | A move beyond the machine's travel |
+| A part that can be cut free at a free end and thrown | Areas simultaneous finishing could not reach |
+| A rapid move that removes material, found by the simulation | A shank wider than the cutting part, where the path is broken |
+| A safe cylinder that does not enclose the stock or the part, or is inside the minimum clearance | |
+| A tool that may be too long to clear the workholding at the safe Z | |
+
+On the command line, `openchuck-cli regenerate --out` refuses to write while there are possible collisions, unless you pass `--acknowledge-collision-warnings` (see [Command line](command-line.md#regenerating-and-writing-g-code)).
 
 None of these checks shows that a program is right for your machine. The program does not check the chuck, a tailstock, the tool holder or the machine body against the part; see [Known limitations](../start/limitations.md).
