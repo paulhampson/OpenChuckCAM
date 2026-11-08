@@ -50,6 +50,9 @@
 - [Rest machining](examples/rest-machining.md)
 - [The flute-length warning](examples/flute-length-warning.md)
 - [Stepover, stock to leave and scallop](examples/stepover-and-scallop.md)
+- [Selection sets on a blisk](examples/selection-sets.md)
+- [Face-flow finishing on a blisk floor](examples/faceflow.md)
+- [Swarf on a blisk blade](examples/swarf.md)
 - [Simultaneous finishing](examples/simultaneous-finishing.md)
 
 # Safety and verification

@@ -82,6 +82,10 @@ Removing most of the material quickly, in layers, leaving a little for [finishin
 
 The small ridge a round-ended cutter leaves between neighbouring passes. See [Stepover, stepdown, scallop and stock to leave](concepts/stepover-and-stock-to-leave.md).
 
+## Selection set {#selection-set}
+
+A named group of faces or edges of the part (triangles or edges on a mesh). An operation uses a set in a role: the faces to cut (**Cut on**), a window to stay in, faces to avoid or to keep clear of, or the guide edge of face-flow finishing. See [Selection sets on a blisk](examples/selection-sets.md).
+
 ## Setup sheet {#setup-sheet}
 
 A page the program writes beside the G-code, listing the tools, the operations and a checksum of each program file, for the person at the machine.
@@ -109,6 +113,10 @@ Material an operation leaves on the part on purpose, so that a later operation c
 ## Strategy {#strategy}
 
 The pattern in which an operation moves the cutter, such as helical finishing (a spiral round the part) or axial finishing (passes along the axis).
+
+## Swarf {#swarf}
+
+Cutting a wall with the side of the tool instead of its end, along straight lines that lie on the wall. See [Swarf on a blisk blade](examples/swarf.md).
 
 ## Tab {#tab}
 
