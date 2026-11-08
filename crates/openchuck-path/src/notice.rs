@@ -110,6 +110,9 @@ pub mod topic {
     /// The move to an entry's start, raised to clear the stock beside the
     /// first cut point (decision record 0544 item 6).
     pub const ENTRY: &str = "Entry";
+    /// Nubs of stock round the rotary axis removed by a plunge instead of
+    /// ring layers (decision record 0543 section 4, point 3).
+    pub const FACE_NUBS: &str = "Face nubs";
 }
 
 /// How serious a [`Notice`] is (decision record 0536 section 1).

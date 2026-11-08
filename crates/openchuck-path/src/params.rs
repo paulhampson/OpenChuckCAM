@@ -371,6 +371,11 @@ pub mod names {
     pub const RAMP_STEEPER_NEAR_AXIS: &str = "ramp_steeper_near_axis";
     /// The steepest angle the steeper ramp near the axis may use.
     pub const RAMP_ANGLE_MAX: &str = "ramp_angle_max";
+    /// Roughing rings round the rotary axis no wider than the face nub
+    /// diameter are replaced by a plunge (decision 0543 section 4, point 3).
+    pub const PLUNGE_FACE_NUBS: &str = "plunge_face_nubs";
+    /// The widest nub plunged; zero means the tool's cutting diameter.
+    pub const FACE_NUB_DIAMETER: &str = "face_nub_diameter";
     /// Descent angle for ramp and helix entry.
     pub const RAMP_ANGLE: &str = "ramp_angle";
     /// The helix entry's circle, as a fraction of the tool diameter.
@@ -513,6 +518,22 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
             },
         },
         ParameterSpec {
+            name: PLUNGE_FACE_NUBS.to_owned(),
+            label: "Plunge to remove face nubs".to_owned(),
+            description: "Where roughing in rings has narrowed the stock round the rotary axis to a nub no wider than the Face nub diameter, and the part leaves nothing inside it, the tool plunges at the axis to remove the nub instead of ramping round ever smaller rings. The tool must be able to plunge (centre cutting), and it cuts with its full width.".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
+        number(
+            FACE_NUB_DIAMETER,
+            "Face nub diameter",
+            "The widest nub round the rotary axis that is plunged; 0 uses the tool's cutting \
+             diameter, and a larger value is held to it.",
+            Unit::Millimetres,
+            0.0,
+            false,
+            Some(0.0),
+        ),
+        ParameterSpec {
             name: RAMP_ANGLE.to_owned(),
             label: "Ramp angle".to_owned(),
             description: "Angle of descent to the horizontal for ramp and helix entry.".to_owned(),
@@ -613,6 +634,11 @@ pub struct EntryParameters {
     pub steeper_near_axis: bool,
     /// The steepest angle of the steeper ramp near the axis.
     pub ramp_angle_max: Degrees,
+    /// Roughing rings round the axis no wider than `face_nub_diameter` are
+    /// replaced by a plunge (decision 0543 section 4, point 3).
+    pub plunge_face_nubs: bool,
+    /// The widest nub plunged; zero means the tool's cutting diameter.
+    pub face_nub_diameter: Millimetres,
     /// The helix circle as a fraction of the tool diameter.
     pub helix_diameter: f64,
     /// Radius of the lead arcs, or zero for the tool radius.
@@ -627,6 +653,8 @@ impl EntryParameters {
         allow_single_point_plunge: false,
         steeper_near_axis: false,
         ramp_angle_max: Degrees(DEFAULT_RAMP_ANGLE_MAX),
+        plunge_face_nubs: false,
+        face_nub_diameter: Millimetres(0.0),
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
     };
@@ -655,6 +683,8 @@ impl EntryParameters {
             allow_single_point_plunge: p.flag(ALLOW_SINGLE_POINT_PLUNGE)?,
             steeper_near_axis: p.flag(RAMP_STEEPER_NEAR_AXIS)?,
             ramp_angle_max: Degrees(p.number(RAMP_ANGLE_MAX)?),
+            plunge_face_nubs: p.flag(PLUNGE_FACE_NUBS)?,
+            face_nub_diameter: Millimetres(p.number(FACE_NUB_DIAMETER)?),
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
         })
