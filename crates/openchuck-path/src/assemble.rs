@@ -1143,12 +1143,20 @@ mod tests {
             notes: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
-        b.push(MoveKind::Cutting, end, Some(Point3::ORIGIN), Some(FeedRate(500.0)))
-            .unwrap();
+        b.push(
+            MoveKind::Cutting,
+            end,
+            Some(Point3::ORIGIN),
+            Some(FeedRate(500.0)),
+        )
+        .unwrap();
         assert_eq!(b.notes.len(), 1, "{:?}", b.notes);
         let text = &b.notes[0].text;
         assert!(!text.contains(" 0.0 mm/min"), "{text}");
-        assert!(!text.starts_with("the machine's feed limits slow"), "{text}");
+        assert!(
+            !text.starts_with("the machine's feed limits slow"),
+            "{text}"
+        );
         assert!(
             text.contains("turns A with the contact point at the rotary axis"),
             "{text}"

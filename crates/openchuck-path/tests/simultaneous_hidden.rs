@@ -305,7 +305,15 @@ fn req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in(
     // The corner strips beside the walls the tool finished are rest
     // machining's, not unreachable surfaces: nothing is reported.
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
-    assert!(path.warnings().is_empty(), "{:?}", path.warnings());
+    // The one warning is the material some moves leave beyond the
+    // tolerance, a warning since decision record 0536 step 2.
+    assert!(
+        path.warnings()
+            .iter()
+            .all(|w| w.text.starts_with("some moves leave up to")),
+        "{:?}",
+        path.warnings()
+    );
     assert!(
         path.notices
             .iter()

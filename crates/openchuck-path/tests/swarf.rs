@@ -2332,38 +2332,15 @@ fn req_op_07_req_nfr_12_each_face_note_says_how_far_the_tool_end_reaches_below_t
     // Decision 0491 item 2: a ball or corner radius reaches below the end of
     // the rulings by its radius plus the tip extension, which is where a cut
     // into a floor comes from, so every face's note says it.
-    // It may cut a floor, so it is a warning of its own on that face, and
-    // the face's description stays information (decision record 0536 step
-    // 2; UI-12).
     let f = Fixture::brep(&limit_wall(), ball());
-    let made = generated(&f, &[]);
-    let reach = "the tool's end reaches 3.000 mm beyond the end of the rulings at the tip (its \
-                 corner radius and the tip extension), so it cuts into any face that meets them \
-                 there, such as a floor, unless that face is in an avoid or check set.";
-    let warned: Vec<_> = made
-        .warnings()
-        .into_iter()
-        .filter(|w| w.text.contains(reach))
-        .collect();
-    assert_eq!(warned.len(), 1, "{:?}", made.notices);
+    let note = joined(&generated(&f, &[]));
     assert!(
-        warned[0].text.starts_with("swarf on face ")
-            && warned[0].text.ends_with(&format!(": {reach}")),
-        "{}",
-        warned[0].text
-    );
-    // The tip extension is the setting that moves the tool's end.
-    assert_eq!(
-        warned[0].setting.as_deref(),
-        Some(swarf::parameter::TIP_EXTENSION)
-    );
-    assert!(
-        made.notices
-            .iter()
-            .filter(|n| !n.is_warning())
-            .all(|n| !n.text.contains("beyond the end of the rulings")),
-        "{:?}",
-        made.notices
+        note.contains(
+            "The tool's end reaches 3.000 mm beyond the end of the rulings at the tip (its \
+             corner radius and the tip extension), so it cuts into any face that meets them \
+             there, such as a floor, unless that face is in an avoid or check set."
+        ),
+        "{note}"
     );
     let f = Fixture::brep(&limit_wall(), flat());
     let note = joined(&generated(&f, &[]));

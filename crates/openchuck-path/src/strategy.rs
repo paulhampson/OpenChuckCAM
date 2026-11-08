@@ -661,7 +661,7 @@ pub(crate) fn notices(
 /// (SET-09; decision record 0161): a pass is cut into the runs of points
 /// that, with the moves between them, stay clear, and a run of one point
 /// from a longer pass is dropped. A pass with rapid points (a drilled hole)
-/// is kept whole or dropped whole. A note says what was left out; if nothing
+/// is kept whole or dropped whole. A warning says what was left out; if nothing
 /// is left of passes that cut, the operation is refused.
 fn keep_clear(
     passes: Vec<Pass>,
