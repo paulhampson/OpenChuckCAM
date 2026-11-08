@@ -381,14 +381,36 @@ pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &s
         } else {
             return message.to_owned();
         };
-    let tool = operation
-        .tool
-        .and_then(|id| project.tools().iter().find(|t| t.id == id));
+    in_operation_form(project, operation, title, rest)
+}
+
+/// A notice of `operation`'s path in the one form of decision record 0536
+/// section 3: its topic, then the operation (and its tool, where the tool's
+/// size, flutes or number matter), named as they are now, then its text. A
+/// notice that has no topic yet is read as [`warning_text`] reads it.
+pub fn operation_notice(
+    project: &Project,
+    operation: &Operation,
+    notice: &openchuck_path::Notice,
+) -> String {
+    match &notice.topic {
+        Some(topic) => in_operation_form(project, operation, topic, &notice.text),
+        None => warning_text(project, operation, &notice.text),
+    }
+}
+
+/// `text` under `topic` in the one form, naming `operation`, and its tool
+/// when `topic` is about the tool ([`crate::lead_in::names_the_tool`]).
+fn in_operation_form(project: &Project, operation: &Operation, topic: &str, text: &str) -> String {
     let mut context = crate::lead_in::Context::operation(&operation.name);
-    if let Some(tool) = tool {
+    if crate::lead_in::names_the_tool(topic)
+        && let Some(tool) = operation
+            .tool
+            .and_then(|id| project.tools().iter().find(|t| t.id == id))
+    {
         context = context.and_tool(&tool.name);
     }
-    crate::lead_in::in_form(title, &context, rest)
+    crate::lead_in::in_form(topic, &context, text)
 }
 
 /// [`generate_with_part`] before its error names the operation.
@@ -3943,6 +3965,45 @@ mod tests {
             !path.notes.iter().any(|n| n.contains(said)),
             "{:?}",
             path.notes
+        );
+    }
+
+    #[test]
+    fn req_ui_12_a_notice_with_a_topic_takes_the_one_form() {
+        // Decision record 0536 section 3: the topic, then the operation as it
+        // is named now (and its tool where the tool matters), then the text.
+        let f = bar_fixture_with(openchuck_path::helical::NAME, "bar.stl", ToolShape::FlatEnd);
+        let operation = f.project.operation(f.operation).unwrap();
+        let tool = f
+            .project
+            .tools()
+            .iter()
+            .find(|t| Some(t.id) == operation.tool)
+            .unwrap();
+        let overcut =
+            openchuck_path::Notice::warning("some moves cut 0.013 mm too deep").about("Overcut");
+        assert_eq!(
+            operation_notice(&f.project, operation, &overcut),
+            format!(
+                "Overcut (operation '{}'): some moves cut 0.013 mm too deep",
+                operation.name
+            )
+        );
+        let flutes = openchuck_path::Notice::warning("the stock stands 3.000 mm above the flutes")
+            .about("Flute length");
+        assert_eq!(
+            operation_notice(&f.project, operation, &flutes),
+            format!(
+                "Flute length (operation '{}', tool '{}'): the stock stands 3.000 mm above the \
+                 flutes",
+                operation.name, tool.name
+            )
+        );
+        // No topic yet: the text as it was.
+        let plain = openchuck_path::Notice::warning("a plain warning");
+        assert_eq!(
+            operation_notice(&f.project, operation, &plain),
+            "a plain warning"
         );
     }
 

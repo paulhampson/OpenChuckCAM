@@ -752,6 +752,34 @@ pub fn note_line(ui: &mut egui::Ui, text: &str, colour: egui::Color32) {
     reason_line(ui, text, colour);
 }
 
+/// How "Show setting" marks a row of any kind (decision record 0536 section
+/// 4; decision record 0175): the warning that points at the setting, and
+/// whether to bring the row into view this frame. A text or number row
+/// carries the same two in [`TextRow::warned`] and [`TextRow::scroll_to`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Mark<'a> {
+    /// The warning that points at this setting, in a plain sentence; drawn
+    /// under the row with the warning shape, so the mark does not rest on
+    /// colour alone.
+    pub warned: Option<&'a str>,
+    /// Scroll the row into view this frame.
+    pub scroll_to: bool,
+}
+
+/// Draws a row of any kind (a check box, a choice, a list) with `mark`: the
+/// row is scrolled into view first when asked, and the warning line is
+/// drawn under it. Returns what `draw` returns.
+pub fn marked<R>(ui: &mut egui::Ui, mark: Mark<'_>, draw: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if mark.scroll_to {
+        ui.scroll_to_cursor(Some(egui::Align::Center));
+    }
+    let out = draw(ui);
+    if let Some(text) = mark.warned {
+        warning_line(ui, text);
+    }
+    out
+}
+
 /// Draws a check box row. Returns the new value when it was toggled.
 pub fn flag_row(
     ui: &mut egui::Ui,

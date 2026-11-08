@@ -107,6 +107,15 @@ pub fn lead_in(topic: &str, context: &Context) -> String {
     }
 }
 
+/// The topics whose messages name the tool too, because the tool's size,
+/// flutes or number matter to them (decision record 0536 section 3).
+pub const TOOL_TOPICS: &[&str] = &["Flute length", "Tab length"];
+
+/// Whether a message under `topic` names the operation's tool as well.
+pub fn names_the_tool(topic: &str) -> bool {
+    TOOL_TOPICS.contains(&topic)
+}
+
 /// A whole message in the one form: the lead-in, a colon, then `text`.
 pub fn in_form(topic: &str, context: &Context, text: &str) -> String {
     format!("{}: {text}", lead_in(topic, context))
@@ -128,6 +137,15 @@ mod tests {
             "Flute length (operation '1 Rough', tool 'T2 Flat 6'): the stock stands 3.000 mm \
              above the flutes"
         );
+    }
+
+    #[test]
+    fn req_ui_12_only_a_topic_about_the_tool_names_the_tool() {
+        // Decision record 0536 section 3: `tool '<name>'` when the tool's
+        // size, flutes or number matter.
+        assert!(names_the_tool("Flute length"));
+        assert!(names_the_tool("Tab length"));
+        assert!(!names_the_tool("Overcut"));
     }
 
     #[test]

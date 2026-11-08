@@ -26,7 +26,8 @@ use crate::theme::DARK;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::new_folder;
 use openchuck_app::overview::{
-    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
+    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SettingPlace, SetupPart,
+    Severity, Step,
 };
 use openchuck_app::project::ItemId;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId};
@@ -1392,7 +1393,8 @@ impl Shell {
 
     /// Carries out a message's action link (specification section 9).
     fn message_action(&mut self, action: MessageAction) {
-        if self.defer(move |s| s.message_action(action)) {
+        let deferred = action.clone();
+        if self.defer(move |s| s.message_action(deferred)) {
             return;
         }
         match action {
@@ -1426,14 +1428,19 @@ impl Shell {
             MessageAction::ShowInView { operation, area } => {
                 self.show_area_in_view(operation, usize::from(area));
             }
-            MessageAction::ShowSetting(op) => {
-                self.show_item(ItemRef::Operation(op));
-                self.setting_jump = self
-                    .app
-                    .as_ref()
-                    .and_then(|app| app.operation_warning_settings(op).into_iter().next())
-                    .map(|name| (op, name));
-            }
+            // The setting the message names, by its key (decision record
+            // 0536 section 4).
+            MessageAction::ShowSetting(setting) => match setting.place {
+                SettingPlace::Operation(op) => {
+                    self.show_item(ItemRef::Operation(op));
+                    self.setting_jump = Some((op, setting.key));
+                }
+                SettingPlace::Tool(tool) => self.show_item(ItemRef::Tool(tool)),
+                SettingPlace::Setup(setup) => {
+                    self.message_action(MessageAction::ReviewSetup(setup))
+                }
+                SettingPlace::Post => self.open_export(),
+            },
         }
     }
 

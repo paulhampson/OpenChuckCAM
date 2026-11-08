@@ -201,7 +201,7 @@ fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_gua
     }
     type_unconfirmed(&mut rig, "Stepover", "1.6");
     let action = openchuck_app::overview::MessageAction::ReviewExport(0);
-    rig.shell.message_action(action);
+    rig.shell.message_action(action.clone());
     rig.frame(Vec::new());
     assert!(rig.shows("Unconfirmed changes"));
     assert!(!rig.shows("Export result"));

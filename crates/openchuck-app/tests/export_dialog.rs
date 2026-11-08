@@ -850,6 +850,7 @@ fn req_gc_05_req_gc_12_req_ui_12_write_messages_retain_every_actual_full_path_an
                 .all(|path| message.text.contains(&path.display().to_string()))
                 && message
                     .action
+                    .as_ref()
                     .is_some_and(|action| action.label() == "Show result")),
             "Messages must retain all actual paths and offer the result again"
         );
@@ -935,7 +936,10 @@ fn req_gc_15_req_nfr_07_destination_changes_or_stale_inputs_write_nothing() {
         app.overview(None, &openchuck_app::JobLog::default())
             .messages
             .iter()
-            .filter(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+            .filter(|m| m
+                .action
+                .as_ref()
+                .is_some_and(|a| a.label() == "Show result"))
             .count()
             >= 2
     );
@@ -1053,7 +1057,11 @@ fn req_ui_12_req_gc_05_the_retained_export_message_keeps_every_path_exact() {
     let message = overview
         .messages
         .iter()
-        .find(|m| m.action.is_some_and(|a| a.label() == "Show result"))
+        .find(|m| {
+            m.action
+                .as_ref()
+                .is_some_and(|a| a.label() == "Show result")
+        })
         .unwrap();
     assert_eq!(
         message.text,
