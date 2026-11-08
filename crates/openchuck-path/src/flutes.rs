@@ -28,11 +28,11 @@
 //! The same bound comes first everywhere: only where it is past the flutes
 //! is the exact answer asked for.
 
+use crate::notice::{Acknowledgement, Level, Notice};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
 
-use crate::assemble::PathWarning;
 use crate::error::Result;
 use crate::rotary::AxisPosition;
 use crate::stock::{ReachProfile, StockModel};
@@ -557,7 +557,7 @@ pub fn check(
     input: &StrategyInput<'_>,
     passes: &[Pass],
     parameter: Option<&str>,
-) -> Option<PathWarning> {
+) -> Option<Notice> {
     let flutes = input.tool.top();
     warn_past_flutes(input, deepest(input, passes, flutes), parameter)
 }
@@ -578,7 +578,7 @@ pub fn check_path(
     path: &crate::assemble::GeneratedPath,
     parameter: Option<&str>,
     context: &JobContext<'_>,
-) -> Result<Option<PathWarning>> {
+) -> Result<Option<Notice>> {
     let flutes = input.tool.top();
     let point = |pose: &openchuck_types::ir::ToolPose| CutPoint {
         tip: pose.tip,
@@ -618,7 +618,7 @@ fn warn_past_flutes(
     input: &StrategyInput<'_>,
     worst: Option<Deepest>,
     parameter: Option<&str>,
-) -> Option<PathWarning> {
+) -> Option<Notice> {
     let flutes = input.tool.top();
     let worst = worst?;
     if worst.depth <= flutes + SLACK {
@@ -665,9 +665,14 @@ fn warn_past_flutes(
             stock_words(input.stock),
         )
     };
-    Some(PathWarning {
-        message: format!("{WARNING_LEAD}{reason}"),
-        parameter: parameter.map(str::to_owned),
-        requires_acknowledgement: false,
+    Some(Notice {
+        level: Level::Warning,
+        topic: None,
+        segment: None,
+        text: format!("{WARNING_LEAD}{reason}"),
+        setting: parameter.map(str::to_owned),
+        // The shank or holder may meet the stock: a possible collision, to
+        // acknowledge before the program is written (decision record 0538).
+        acknowledgement: Some(Acknowledgement::PossibleCollision),
     })
 }

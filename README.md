@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/openchuck-ui/assets/icon/mark-white.svg">
+    <img src="apps/openchuck-ui/assets/icon/mark-ink.svg" alt="The OpenChuckCAM logo: a chuck seen end-on, three jaws around round stock, inside an arrow for the A-axis rotation." width="96" height="96">
+  </picture>
+</p>
+
 # OpenChuckCAM
 
 > **Read this first.** OpenChuckCAM is in early development. Generated G-code **must be verified by you before it is run on a machine** (NFR-12). OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup, and it has not been approved for any machine. Very little has been run on a real machine: see the [known limitations](https://paulhampson.github.io/OpenChuckCAM/latest/start/limitations.html).

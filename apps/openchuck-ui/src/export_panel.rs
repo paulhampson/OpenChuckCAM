@@ -21,10 +21,10 @@ use openchuck_app::project::id::ToolId;
 use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_command};
 use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
-    EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
-    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, JobHandle, OutputGrouping, OutputPlan, OutputReport,
-    PlannedFile, PostSelection, PostSummary, Regeneration, builtin_post_summaries,
-    partial_operations, post_summary,
+    EXPORT_COLLISION_LABEL, EXPORT_NOTICE, EXPORT_PARTIAL_PATH_LABEL, EXPORT_RULE,
+    EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, JobHandle, OutputGrouping,
+    OutputPlan, OutputReport, PlannedFile, PostSelection, PostSummary, Regeneration,
+    builtin_post_summaries, collision_warnings, partial_operations, post_summary,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -178,6 +178,9 @@ pub struct ExportPanel {
     /// held, not its address, so a later run at a reused address never
     /// matches it.
     partial_ticked: Option<Arc<Regeneration>>,
+    /// The run whose possible collisions the user acknowledged: for that
+    /// result only, as the partial path (decision record 0538).
+    collision_ticked: Option<Arc<Regeneration>>,
     ticked: bool,
     /// The user's file name templates (issues 308 and 310).
     file_names: openchuck_app::FileNameTemplates,
@@ -238,6 +241,7 @@ impl ExportPanel {
             },
             skip_ticked: false,
             partial_ticked: None,
+            collision_ticked: None,
             ack_lookup: AcknowledgementLookup {
                 acknowledged: false,
                 problem: None,
@@ -281,6 +285,7 @@ impl ExportPanel {
         self.ticked = false;
         self.skip_ticked = false;
         self.partial_ticked = None;
+        self.collision_ticked = None;
         self.refresh_acknowledgement(app);
         self.read_numbers(app);
     }
@@ -341,6 +346,28 @@ impl ExportPanel {
     fn partial_unacknowledged(&self, app: &Application) -> bool {
         self.partial(app)
             .is_some_and(|(_, run)| !self.partial_accepted(&run))
+    }
+
+    /// The possible collisions of the current files, and the files' run
+    /// (decision record 0538).
+    fn collisions(&self, app: &Application) -> Option<(Vec<String>, Arc<Regeneration>)> {
+        let files = self.files_current(app)?;
+        let found = collision_warnings(app.project(), &files.run);
+        (!found.is_empty()).then(|| (found, Arc::clone(&files.run)))
+    }
+
+    /// Whether the user acknowledged the possible collisions of `run`.
+    fn collisions_accepted(&self, run: &Arc<Regeneration>) -> bool {
+        self.collision_ticked
+            .as_ref()
+            .is_some_and(|t| Arc::ptr_eq(t, run))
+    }
+
+    /// Whether writing waits for the acknowledgement of the current files'
+    /// possible collisions.
+    fn collisions_unacknowledged(&self, app: &Application) -> bool {
+        self.collisions(app)
+            .is_some_and(|(_, run)| !self.collisions_accepted(&run))
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -530,6 +557,12 @@ impl ExportPanel {
         if self.partial_unacknowledged(app) {
             return Some(
                 "Tick the box to accept the partial path of these files: it is not complete."
+                    .to_owned(),
+            );
+        }
+        if self.collisions_unacknowledged(app) {
+            return Some(
+                "Tick the box to say you have read the possible collisions of these files."
                     .to_owned(),
             );
         }
@@ -728,6 +761,9 @@ impl ExportPanel {
             if self.partial_accepted(files) {
                 plan.acknowledge_partial_path();
             }
+            if self.collisions_accepted(files) {
+                plan.acknowledge_collisions();
+            }
             plan
         });
         match prepared {
@@ -885,6 +921,7 @@ impl ExportPanel {
             self.notice(ui);
             self.skip_notice(ui, app);
             self.partial_notice(ui, app);
+            self.collision_notice(ui, app);
         });
     }
 
@@ -1364,6 +1401,30 @@ impl ExportPanel {
             ui.label("Acknowledged for this project on this computer.");
         } else {
             ui.checkbox(&mut self.skip_ticked, EXPORT_STOCK_SKIPPED_LABEL);
+        }
+    }
+
+    /// While the files hold possible collisions, each one and the tick box
+    /// that acknowledges them for these files only (decision record 0538).
+    fn collision_notice(&mut self, ui: &mut egui::Ui, app: &Application) {
+        let Some((found, run)) = self.collisions(app) else {
+            return;
+        };
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new(
+                "These files hold possible collisions of the tool, its shank or its holder with \
+                 the part, the stock, a tab or a held region. Read each one, here and in \
+                 Messages, and check it before running the program:",
+            )
+            .color(DARK.warning_box.text),
+        );
+        for line in &found {
+            ui.label(RichText::new(format!("• {line}")).color(DARK.warning_box.text));
+        }
+        let mut ticked = self.collisions_accepted(&run);
+        if ui.checkbox(&mut ticked, EXPORT_COLLISION_LABEL).changed() {
+            self.collision_ticked = ticked.then_some(run);
         }
     }
 

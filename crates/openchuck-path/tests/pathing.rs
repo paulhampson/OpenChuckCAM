@@ -391,11 +391,11 @@ fn req_op_13_machine_feed_limits_lengthen_moves_and_say_so() {
         )
     })
     .unwrap();
-    assert!(!out.notes.is_empty());
+    assert!(!out.notices.is_empty());
     assert!(
-        out.notes[0].message.contains("feed limits"),
+        out.notices[0].text.contains("feed limits"),
         "{:?}",
-        out.notes[0]
+        out.notices[0]
     );
     for s in out
         .group

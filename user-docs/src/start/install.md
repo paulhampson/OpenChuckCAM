@@ -26,6 +26,8 @@ Each archive holds:
 | `openchuck-step-worker` | The reader for STEP files. Keep it in the same folder as the other two. On macOS the application carries its own copy inside `OpenChuckCAM.app`, and this one is for `openchuck-cli`. |
 | Licence and README | The licence texts, the third-party notices, the credits for the Makera Z1 tool data, and notes for the system. |
 
+The same page also offers `openchuckcam-...-examples.zip`, the example projects (such as the tutorial's baluster). It is not needed to run the program. Generated G-code must be verified by you before it is run on a machine.
+
 To install it:
 
 1. Download the archive for your system from the [`nightly` pre-release](https://github.com/paulhampson/OpenChuckCAM/releases/tag/nightly).

@@ -94,6 +94,7 @@ pub mod flutes;
 pub mod helical;
 pub mod holes;
 pub mod indexed;
+pub mod notice;
 pub mod order;
 pub mod parallel;
 pub mod params;
@@ -114,10 +115,7 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{
-    GeneratedPath, MAX_UNREACHED_POINTS, PathNote, PathWarning, ShankBreak, Unreached,
-    UnreachedReason,
-};
+pub use assemble::{GeneratedPath, MAX_UNREACHED_POINTS, ShankBreak, Unreached, UnreachedReason};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, DROP_TOLERANCE, ExactDrop, ExactFace, ball_radius, has_exact_drop};
 pub use brep_edges::BrepEdges;
@@ -132,6 +130,7 @@ pub use field::HeightStock;
 pub use helical::HelicalFinishing;
 pub use holes::{Hole, HoleEnd, find_holes};
 pub use indexed::IndexedFinishing;
+pub use notice::{Acknowledgement, Level, Notice};
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,

@@ -85,7 +85,8 @@ jobs:
             echo "::error::run $RUN_ID has no unexpired openchuckcam-nightly-* archives"
             exit 1
           fi
-          [ "$count" -eq 3 ] || { echo "::error::run $RUN_ID has $count archives, expected 3"; exit 1; }
+          # Three platform archives and the examples zip (lane EXAMPLEZIP); the launch jobs name their archive.
+          [ "$count" -eq 4 ] || { echo "::error::run $RUN_ID has $count files, expected 4 (3 archives and the examples zip)"; exit 1; }
           echo "smoke=true" >> "$GITHUB_OUTPUT"
           echo "Launching the archives of nightly build run $RUN_ID (commit $sha)." >> "$GITHUB_STEP_SUMMARY"
 

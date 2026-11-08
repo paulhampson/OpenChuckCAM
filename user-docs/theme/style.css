@@ -70,6 +70,8 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .site-title { font-weight: 600; color: var(--text); text-decoration: none; letter-spacing: 0.01em; }
 .site-title span { color: var(--muted); font-weight: 400; }
+/* The logo (decision 0542): the one-colour mark, drawn in the text colour so it follows the theme. */
+.site-logo { width: 1.6rem; height: 1.6rem; vertical-align: -0.4em; margin-right: 0.5rem; }
 .site-header .tools { margin-left: auto; display: flex; gap: 1rem; align-items: baseline; font-size: 0.875rem; }
 .site-header .tools a, .site-header .tools button { color: var(--muted); }
 .theme-toggle { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;

@@ -175,7 +175,7 @@ fn left<P: RadialPart>(p: &Part<P>, path: &GeneratedPath, (x0, x1): (f64, f64)) 
 }
 
 fn has_note(path: &GeneratedPath, words: &str) -> bool {
-    path.notes.iter().any(|n| n.message.contains(words))
+    path.notices.iter().any(|n| n.text.contains(words))
 }
 
 #[test]
@@ -192,8 +192,8 @@ fn req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met() 
     // Allowed excess is 0.01 mm, the measure's sampling adds under 0.002.
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn req_op_04_axial_passes_are_added_only_where_needed() {
     );
     let after = left(&p, &on, (2.0, 10.0));
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "added"), "{:?}", on.notes);
+    assert!(has_note(&on, "added"), "{:?}", on.notices);
     let lengths = pass_lengths(&on);
     let longest = lengths.iter().copied().fold(0.0, f64::max);
     assert!(
@@ -273,7 +273,7 @@ fn req_nfr_06_req_gc_07_adaptive_spacing_is_identical_at_1_2_and_n_threads() {
     for s in STRATEGIES {
         let runs = openchuck_testkit::determinism::check(|| {
             let path = generated(&p, s, &[]);
-            format!("{:?}{:?}{:?}", path.group, path.notes, path.warnings).into_bytes()
+            format!("{:?}{:?}{:?}", path.group, path.notices, path.warnings()).into_bytes()
         })
         .unwrap();
         assert_eq!(runs.len(), 4, "{}", s.name());
@@ -316,8 +316,8 @@ fn req_op_04_req_op_05_clean_up_arcs_are_added_between_the_wraps_of_a_helix() {
     let (before, after) = (left(&p, &off, (4.0, 8.0)), left(&p, &on, (4.0, 8.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
 #[test]
@@ -341,8 +341,8 @@ fn req_op_04_rings_are_added_between_rings_until_the_allowed_excess_is_met() {
     let (before, after) = (left(&p, &off, (1.0, 11.0)), left(&p, &on, (1.0, 11.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
 fn axial_pattern() -> (&'static str, ParameterValue) {
@@ -385,9 +385,9 @@ fn req_op_05_req_op_04_simultaneous_axial_passes_are_added_until_the_allowed_exc
     let on = generated(&p, &SimultaneousFinishing, &[axial_pattern()]);
     let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
     assert!(before > 0.3, "off left {before}");
-    assert!(after <= 0.012, "on left {after}: {:?}", on.notes);
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(after <= 0.012, "on left {after}: {:?}", on.notices);
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
 fn positions(count: i64) -> (&'static str, ParameterValue) {
@@ -428,8 +428,8 @@ fn req_op_04_req_op_15_indexed_passes_are_added_beside_the_positions_at_their_ow
     let on = generated(&p, &IndexedFinishing, &[positions(4)]);
     let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
     assert!(before > 0.3, "off left {before}");
-    assert!(after <= 0.012, "on left {after}: {:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(after <= 0.012, "on left {after}: {:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
     let (angles, turns) = cutting_angles(&on);
     assert_eq!(angles, vec![0, 90_000, 180_000, 270_000]);
     assert!(!turns, "no cutting move turns A");
@@ -443,13 +443,13 @@ fn req_op_04_req_nfr_12_what_a_vertical_tool_at_one_a_cannot_reach_is_said() {
     // and the warning says so; the result must be acknowledged.
     let p = cylinder();
     let on = generated(&p, &IndexedFinishing, &[positions(2)]);
-    assert_eq!(on.warnings.len(), 1, "{:?}", on.notes);
-    let warning = &on.warnings[0];
-    assert!(warning.requires_acknowledgement);
+    assert_eq!(on.warnings().len(), 1, "{:?}", on.notices);
+    let warning = &on.warnings()[0];
+    assert!(warning.acknowledgement.is_some());
     assert!(
-        warning.message.contains("cannot reach there"),
+        warning.text.contains("cannot reach there"),
         "{}",
-        warning.message
+        warning.text
     );
     let (angles, turns) = cutting_angles(&on);
     assert_eq!(angles, vec![0, 180_000]);
@@ -524,8 +524,8 @@ fn req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spac
         )
     })
     .unwrap();
-    assert!(has_note(&path, "adaptive spacing:"), "{:?}", path.notes);
-    assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+    assert!(has_note(&path, "adaptive spacing:"), "{:?}", path.notices);
+    assert!(path.warnings().is_empty(), "{:?}", path.warnings());
     // Over the zone with none, at most the Allowed excess is left.
     let bare = left(&p, &path, (1.5, 4.5));
     assert!(bare <= 0.012, "bare zone left {bare}");
@@ -670,8 +670,8 @@ fn req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the
     let after = left(&p, &on, (2.0, 10.0));
     assert!(before > 0.05, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
 #[test]
@@ -684,7 +684,7 @@ fn req_op_04_req_nfr_12_continuous_roughing_with_a_ball_confirms_the_part_end_ed
     // 2 Nov 2026), so they are confirmed and the excess stays within it.
     let p = cylinder_with(&ball(4.0));
     let on = roughed(&p, &continuous_along());
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
     let after = left(&p, &on, (2.0, 10.0));
     assert!(after <= 0.012, "on left {after}");
 }
@@ -704,8 +704,8 @@ fn req_op_04_req_op_03_req_op_15_indexed_roughing_lines_are_added_at_their_own_a
     let after = left(&p, &on, (2.0, 10.0));
     assert!(before > 0.1, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "pass"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "pass"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
     // A is held while the tool cuts (OP-15): every cutting move keeps its A.
     let mut from = on.group.start;
     for s in &on.group.segments {
@@ -732,15 +732,15 @@ fn req_op_04_req_nfr_12_what_a_flat_end_leaves_between_indexed_positions_is_said
     let before = left(&p, &off, (2.0, 10.0));
     assert!(before > 0.1, "off left {before}");
     let reach: Vec<_> = on
-        .warnings
-        .iter()
-        .filter(|w| w.message.contains("cannot reach there"))
+        .warnings()
+        .into_iter()
+        .filter(|w| w.text.contains("cannot reach there"))
         .collect();
-    assert_eq!(reach.len(), 1, "{:?}", on.warnings);
-    assert!(reach.iter().all(|w| w.requires_acknowledgement));
+    assert_eq!(reach.len(), 1, "{:?}", on.warnings());
+    assert!(reach.iter().all(|w| w.acknowledgement.is_some()));
     // Nothing between the lines of one position is too high: the flat end
     // covers its own stepover.
-    assert!(has_note(&on, "no passes were added"), "{:?}", on.notes);
+    assert!(has_note(&on, "no passes were added"), "{:?}", on.notices);
 }
 
 #[test]
@@ -789,7 +789,7 @@ fn req_nfr_06_req_gc_07_roughing_adaptive_spacing_is_identical_at_1_2_and_n_thre
                     ],
                 ),
             );
-            format!("{:?}{:?}{:?}", path.group, path.notes, path.warnings).into_bytes()
+            format!("{:?}{:?}{:?}", path.group, path.notices, path.warnings()).into_bytes()
         })
         .unwrap();
         assert_eq!(runs.len(), 4);
@@ -844,7 +844,7 @@ fn req_op_04_req_op_24_flat_facing_spaces_its_lines_by_the_material_left() {
     assert!(
         has_note(&on, "adaptive spacing: no passes were added"),
         "{:?}",
-        on.notes
+        on.notices
     );
     assert_eq!(on.group.segments, fixed.group.segments);
     // A ball leaves a cusp between lines on the face: lines are added.
@@ -852,6 +852,6 @@ fn req_op_04_req_op_24_flat_facing_spaces_its_lines_by_the_material_left() {
     let on = faced(&ball, &[]);
     let fixed = faced(&ball, &[off()]);
     assert!(cutting(&on) > cutting(&fixed));
-    assert!(has_note(&on, "pass"), "{:?}", on.notes);
-    assert!(on.warnings.is_empty(), "{:?}", on.warnings);
+    assert!(has_note(&on, "pass"), "{:?}", on.notices);
+    assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
