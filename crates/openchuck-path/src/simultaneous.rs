@@ -922,13 +922,6 @@ fn run(
             findings.tilt
         ));
     }
-    if findings.under > 0.0 {
-        notes.push(format!(
-            "some moves leave up to {:.4} mm of material, more than the tolerance, because the \
-             surface changes faster than the path can follow",
-            findings.under
-        ));
-    }
     if findings.mesh {
         notes.push(
             "the tolerance is measured against the mesh, not the design surface it came from"
@@ -950,8 +943,6 @@ fn run(
     }
     notes.extend(ring_note);
     notes.extend(faces::note(&turned));
-    notes.extend(faces::held_note(&held));
-    notes.extend(faces::corner_note(&corners, input.tool.cutting_radius()));
     if let Some((x, a)) = findings.lean_at {
         let shank = if plan.body.is_some() {
             "the shank, wider than the cutting part, is kept clear of the part, as on every pass"
@@ -975,6 +966,9 @@ fn run(
     )
     .into_iter()
     .chain(shank_warning(&shank_breaks))
+    .chain(under_warning(findings.under))
+    .chain(faces::held_warning(&held))
+    .chain(faces::corner_warning(&corners, input.tool.cutting_radius()))
     .collect();
     if let Some((settings, outcome)) = &spaced {
         notes.push(outcome.note(settings));
@@ -988,6 +982,19 @@ fn run(
         notices: crate::strategy::notices(warnings, notes),
         unreached: found.unreached,
         shank_breaks,
+    })
+}
+
+/// The warning for moves that leave up to `under` mm of material beyond the
+/// tolerance (decision record 0536 step 2: material is left, so it is a
+/// warning, pointing at the tolerance). `None` when none is left.
+fn under_warning(under: f64) -> Option<Notice> {
+    (under > 0.0).then(|| {
+        Notice::warning(format!(
+            "some moves leave up to {under:.4} mm of material, more than the tolerance, because \
+             the surface changes faster than the path can follow"
+        ))
+        .with_setting(names::TOLERANCE)
     })
 }
 
@@ -2727,6 +2734,24 @@ mod tests {
         let i = v.partition_point(|p| p.0 < x).clamp(1, v.len() - 1);
         let (a, b) = (v[i - 1], v[i]);
         a.1 + (x - a.0) / (b.0 - a.0) * (b.1 - a.1)
+    }
+
+    #[test]
+    fn req_op_05_req_ui_12_material_left_beyond_the_tolerance_is_a_warning() {
+        // Decision record 0536 step 2: material left beyond the tolerance is
+        // a warning, pointing at the tolerance; none is said when nothing is
+        // left beyond it.
+        assert_eq!(under_warning(0.0), None);
+        assert_eq!(
+            under_warning(0.012_34),
+            Some(
+                Notice::warning(
+                    "some moves leave up to 0.0123 mm of material, more than the tolerance, \
+                     because the surface changes faster than the path can follow"
+                )
+                .with_setting(names::TOLERANCE)
+            )
+        );
     }
 
     #[test]

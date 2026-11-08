@@ -40,7 +40,9 @@ use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::ir::MoveKind;
 use openchuck_types::machine::Clearance;
 use openchuck_types::mesh::TriangleMesh;
-use openchuck_types::tool::{RevolvedProfile, ToolShape};
+use openchuck_types::tool::{
+    ProfilePoint, ProfileSegment, RevolvedProfile, ToolProfile, ToolShape,
+};
 use openchuck_types::units::{Degrees, Millimetres};
 use support::{machine, read_binary_stl, run, tags, tool};
 
@@ -1062,6 +1064,41 @@ fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
 }
 
 #[test]
+fn req_op_09_req_ui_12_rest_machining_with_a_tool_that_is_not_convex_warns_of_the_walls() {
+    // A concave custom profile: rest machining places no rings at walls and
+    // does not check what the tool cannot reach, so uncut areas go
+    // unreported, which the user must see (decision record 0536 step 2).
+    let concave = tool(
+        ToolShape::Custom {
+            profile: ToolProfile {
+                segments: vec![
+                    ProfileSegment::Line {
+                        to: ProfilePoint::new(1.0, 0.0),
+                    },
+                    ProfileSegment::Arc {
+                        to: ProfilePoint::new(1.5875, 0.5875),
+                        centre: ProfilePoint::new(1.5875, 0.0),
+                    },
+                ],
+            },
+        },
+        DIAMETER,
+    );
+    let job = Job {
+        profile: concave.profile().unwrap(),
+        ..Job::shaft(ToolShape::FlatEnd)
+    };
+    let path = job.path(&RestMachining, &[]);
+    let text = "this tool's profile is not convex, so rest machining places no rings at walls \
+                and does not check what the tool cannot reach";
+    assert!(
+        path.warnings().iter().any(|w| w.text == text),
+        "{:?}",
+        path.notices
+    );
+}
+
+#[test]
 fn req_nfr_06_req_gc_07_end_faces_beside_a_short_tab_are_identical_at_1_2_and_n_threads() {
     // Axial and indexed finishing, whose end-face handling is new here; the
     // helix strategies share the face search the test above checks.
@@ -1102,9 +1139,9 @@ fn req_set_09_req_op_04_a_face_the_held_region_keeps_the_tool_from_is_named() {
     let turns = turns_in_place(&path);
     assert!(turns.iter().all(|&x| x < 30.0), "{turns:?}");
     assert!(
-        path.notices
-            .iter()
-            .any(|n| n.text.contains("X 31.589") && n.text.contains("gripped length")),
+        path.notices.iter().any(|n| n.is_warning()
+            && n.text.contains("X 31.589")
+            && n.text.contains("gripped length")),
         "{:?}",
         path.notices
     );
@@ -1654,6 +1691,14 @@ fn req_op_04_a_region_of_faces_across_the_axis_gets_the_facing_note() {
                 && text.contains("use Facing with Shape End"),
             "{}: {text}",
             strategy.name()
+        );
+        // The selection cut in an unexpected way is a warning (decision
+        // record 0536 step 2; UI-12).
+        assert!(
+            path.warnings().iter().any(|w| w.text.contains(note)),
+            "{}: {:?}",
+            strategy.name(),
+            path.warnings()
         );
         let round = MeshSurface::new(&TriangleMesh {
             vertices: bar.vertices.clone(),

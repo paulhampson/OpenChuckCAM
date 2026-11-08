@@ -46,6 +46,7 @@ use openchuck_types::units::Degrees;
 
 use crate::error::{PathError, Result};
 use crate::holes::{Hole, HoleEnd};
+use crate::notice::Notice;
 use crate::params::{
     EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
@@ -321,7 +322,9 @@ fn drill(
     let tool_diameter = 2.0 * input.tool.cutting_radius();
     let diameter_tolerance = parameters.number(parameter::DIAMETER_TOLERANCE)?;
     let axis_tolerance = parameters.number(parameter::AXIS_TOLERANCE)?;
-    let mut notes = Vec::new();
+    // A selected hole left out is a warning, pointing at the tolerance that
+    // would let it in (decision record 0536 step 2).
+    let mut warnings = Vec::new();
     let mut sites = Vec::new();
     for (i, hole) in holes.iter().enumerate() {
         let mut site = Site {
@@ -332,20 +335,26 @@ fn drill(
         let d = hole.direction.get();
         let tilt = d.x.clamp(-1.0, 1.0).abs().asin().to_degrees();
         if tilt > axis_tolerance {
-            notes.push(format!(
-                "{} is left out: its axis is {tilt:.2} degrees from the radial plane, more than \
+            warnings.push(
+                Notice::warning(format!(
+                    "{} is left out: its axis is {tilt:.2} degrees from the radial plane, more than \
                  the axis tolerance of {axis_tolerance} degrees, and a four-axis machine cannot \
                  tilt the tool",
-                describe(&site)
-            ));
+                    describe(&site)
+                ))
+                .with_setting(parameter::AXIS_TOLERANCE),
+            );
             continue;
         }
         if (hole.diameter - tool_diameter).abs() > diameter_tolerance {
-            notes.push(format!(
-                "{} is left out: the tool is {tool_diameter:.3} mm, more than the diameter \
+            warnings.push(
+                Notice::warning(format!(
+                    "{} is left out: the tool is {tool_diameter:.3} mm, more than the diameter \
                  tolerance of {diameter_tolerance} mm from it",
-                describe(&site)
-            ));
+                    describe(&site)
+                ))
+                .with_setting(parameter::DIAMETER_TOLERANCE),
+            );
             continue;
         }
         let Some(a) = input.rotary.a_facing(d) else {
@@ -357,7 +366,11 @@ fn drill(
     if sites.is_empty() {
         return Err(PathError::Strategy(format!(
             "no hole can be drilled with this tool: {}",
-            notes.join("; ")
+            warnings
+                .iter()
+                .map(|w| w.text.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
         )));
     }
     context.check_cancelled()?;
@@ -383,7 +396,7 @@ fn drill(
     }
     Ok(StrategyOutput {
         passes,
-        notices: crate::strategy::notices(Vec::new(), notes),
+        notices: warnings,
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

@@ -793,16 +793,16 @@ fn passes(
         spaced_note = Some(outcome.note(settings));
         warnings.extend(outcome.warning(settings, &adaptive::Limits::OWNER, parameter::SCALLOP));
     }
+    warnings.extend(faces::held_warning(&held));
+    warnings.extend(crate::finishing::across_axis_warning(
+        region,
+        "Axial finishing",
+    ));
     let notes = faces::note(&turns)
         .into_iter()
-        .chain(faces::held_note(&held))
         .chain(spaced_note)
         .chain(layered)
         .chain(free.notes)
-        .chain(crate::finishing::across_axis_note(
-            region,
-            "Axial finishing",
-        ))
         .collect();
     Ok((passes, notes, warnings))
 }

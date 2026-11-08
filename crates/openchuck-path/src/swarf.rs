@@ -694,6 +694,12 @@ pub struct WatchedBreak {
 }
 
 impl Limits {
+    /// Whether the tool's end reaches beyond the end of the rulings at the
+    /// tip, shown to the precision of the notes.
+    fn end_reaches(&self) -> bool {
+        self.end_reach >= 0.0005
+    }
+
     /// The sentences of a face's note that say what each limit did.
     fn describe(&self) -> String {
         let mut out = String::new();
@@ -713,19 +719,14 @@ impl Limits {
                 self.too_short
             ));
         }
-        if self.end_reach >= 0.0005 {
-            out.push_str(&format!(
-                " The tool's end reaches {:.3} mm beyond the end of the rulings at the tip (its \
-                 corner radius and the tip extension), so it cuts into any face that meets them \
-                 there, such as a floor, unless that face is in an avoid or check set.",
-                self.end_reach
-            ));
-        } else if self.end_reach <= -0.0005 {
+        // A reach beyond the end of the rulings is a warning of its own
+        // ([`FacePath::end_reach_warning`]).
+        if self.end_reach <= -0.0005 {
             out.push_str(&format!(
                 " The tool's end stays {:.3} mm short of the end of the rulings at the tip.",
                 -self.end_reach
             ));
-        } else {
+        } else if !self.end_reaches() {
             out.push_str(" The tool's end is level with the end of the rulings at the tip.");
         }
         if let Some((pass, tip)) = self.boundary {
@@ -892,6 +893,24 @@ impl FacePath {
             self.describe_twist(),
             self.describe_tilt(),
         ))
+    }
+
+    /// The warning for a face where the tool's end reaches beyond the end of
+    /// the rulings at the tip (decision record 0491 item 2): it may cut a
+    /// floor, so it is a warning of its own rather than a sentence of the
+    /// face's note (decision record 0536 step 2), pointing at the tip
+    /// extension. `None` where it does not reach beyond them.
+    pub fn end_reach_warning(&self) -> Option<Notice> {
+        self.limits.end_reaches().then(|| {
+            Notice::warning(format!(
+                "swarf on face {}: the tool's end reaches {:.3} mm beyond the end of the rulings \
+                 at the tip (its corner radius and the tip extension), so it cuts into any face \
+                 that meets them there, such as a floor, unless that face is in an avoid or check \
+                 set.",
+                self.number, self.limits.end_reach
+            ))
+            .with_setting(parameter::TIP_EXTENSION)
+        })
     }
 
     /// The warnings for the faces next to this one that the tool cuts into by
@@ -3058,6 +3077,7 @@ fn swarf(
                 });
             }
         }
+        warnings.extend(path.end_reach_warning());
         warnings.extend(path.neighbour_warnings(settings.tolerance, settings.keep_off_end_faces));
         for broken in &path.limits.watched {
             if let Some((length, faces)) = watched.get_mut(broken.index) {

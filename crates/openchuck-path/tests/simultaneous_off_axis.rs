@@ -551,10 +551,13 @@ fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
     let note = |shape: ToolShape| {
         let f = Fixture::new(MeshSurface::new(&crankshaft()).unwrap(), 18.0, &z1(shape));
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
+        // The material left in the corner makes it a warning (decision
+        // record 0536 step 2; UI-12).
         path.notices
             .iter()
+            .filter(|n| n.text.contains("inside corner"))
+            .inspect(|n| assert!(n.is_warning(), "{n:?}"))
             .map(|n| n.text.clone())
-            .filter(|m| m.contains("inside corner"))
             .collect::<Vec<_>>()
     };
     let ball = note(ToolShape::BallEnd);

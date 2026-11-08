@@ -41,6 +41,7 @@ use openchuck_types::units::Degrees;
 use crate::curves::{CurveSource, EdgeChain, MeshFeatureEdges};
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::notice::Notice;
 use crate::parallel;
 use crate::params::{
     EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit,
@@ -916,13 +917,15 @@ pub fn follow_chains(
         if plan.levels.len() == 1 { "" } else { "s" },
         plan.width_at_depth,
     )];
+    // Selected chains left uncut are a warning (decision record 0536 step 2).
+    let mut warnings = Vec::new();
     if sideless > 0 {
-        notes.push(format!(
+        warnings.push(Notice::warning(format!(
             "edge following: {sideless} chain{} run along the tool axis and cannot be carved, so \
              {} not cut",
             if sideless == 1 { "" } else { "s" },
             if sideless == 1 { "it is" } else { "they are" },
-        ));
+        )));
     }
     if plan.carve {
         notes.push(format!(
@@ -934,7 +937,7 @@ pub fn follow_chains(
     }
     Ok(StrategyOutput {
         passes,
-        notices: crate::strategy::notices(Vec::new(), notes),
+        notices: crate::strategy::notices(warnings, notes),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

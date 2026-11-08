@@ -63,6 +63,7 @@ use crate::brep_edges::BrepEdges;
 use crate::curves::CurveSource;
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
+use crate::notice::Notice;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::rest::{self, RemainingMap, parameter};
@@ -631,7 +632,9 @@ impl Strategy for PencilFinishing {
         let angle = parameters.number(pencil_parameter::CREASE_ANGLE)?;
         let max_step = parameters.number(pencil_parameter::MAX_STEP)?;
 
-        let mut notes = Vec::new();
+        // Possible corners left unfollowed are a warning (decision record
+        // 0536 step 2).
+        let mut warnings = Vec::new();
         let creases = match &self.edges {
             Some(edges) => {
                 let edges = (**edges).clone().with_crease(angle);
@@ -642,11 +645,11 @@ impl Strategy for PencilFinishing {
                     } else {
                         ("edges", "are")
                     };
-                    notes.push(format!(
+                    warnings.push(Notice::warning(format!(
                         "pencil clean-up: {left_out} {edges} of the part that may be an inside \
                          corner {are} not followed: each is one along only part of its length, \
                          or which side of it is material could not be told"
-                    ));
+                    )));
                 }
                 edges
                     .chains(input.surface)?
@@ -790,19 +793,16 @@ impl Strategy for PencilFinishing {
         } else {
             ""
         };
-        notes.insert(
-            0,
-            format!(
-                "pencil clean-up: {} concave creases{from}, {} passes; it follows creases \
-                 only and leaves the part's end faces as earlier operations left them: face \
-                 them with helical finishing, rest machining or Facing",
-                creases.len(),
-                passes.len()
-            ),
+        let note = format!(
+            "pencil clean-up: {} concave creases{from}, {} passes; it follows creases only and \
+             leaves the part's end faces as earlier operations left them: face them with helical \
+             finishing, rest machining or Facing",
+            creases.len(),
+            passes.len()
         );
         Ok(StrategyOutput {
             passes,
-            notices: crate::strategy::notices(Vec::new(), notes),
+            notices: crate::strategy::notices(warnings, [note]),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Changed output (MSGREVIEW step 2; issue #567; decision 0536 step 2, accepted):** the notes that describe a real problem are now warnings, with their wording unchanged: rest machining with a tool whose profile is not convex; a shoulder the tool does not turn at because of a held region; an inside corner a round-ended tool cannot finish; selected faces that lie across the rotary axis (helical and axial finishing); a chain edge following cannot carve; an edge pencil clean-up does not follow; a hole radial drilling leaves out (pointing at Axis tolerance or Diameter tolerance); what is left uncut or undrilled beside a held region; and material simultaneous finishing leaves beyond the tolerance (pointing at Tolerance). Swarf's sentence that the tool's end reaches beyond the end of the rulings leaves the face's note and becomes a warning of its own, "swarf on face N: the tool's end reaches ...", pointing at Tip extension; the new `swarf::FacePath::end_reach_warning` gives it. No path or program changes.
+
 ## 0.50.0
 
 - **Breaking (0.50.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 1; issue #567; decision 0536 item 6.1, accepted):** one type, `Notice` (module `notice`, re-exported with `Level` and `Acknowledgement`), replaces `PathNote` and `PathWarning` for everything generation tells the user about a path.

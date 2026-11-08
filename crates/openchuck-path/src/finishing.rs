@@ -588,10 +588,10 @@ fn push_run(out: &mut Vec<Pass>, points: Vec<CutPoint>) {
 /// tool pointing at the axis, so it reaches such a face only with the side
 /// of the tool. "Wholly" is 99% of the region's area on faces whose normal
 /// is within 10 degrees of the axis.
-pub(crate) fn across_axis_note(
+pub(crate) fn across_axis_warning(
     region: Option<&crate::region::RegionConstraint<'_>>,
     strategy: &str,
-) -> Option<String> {
+) -> Option<Notice> {
     let mesh = region?.region?.tessellation();
     let cos = 10.0_f64.to_radians().cos();
     let (mut across, mut total) = (0.0, 0.0);
@@ -615,11 +615,11 @@ pub(crate) fn across_axis_note(
         }
     }
     (total > 0.0 && across >= 0.99 * total).then(|| {
-        format!(
+        Notice::warning(format!(
             "the selected faces lie across the rotary axis. {strategy} cuts with the tool \
              pointing at the axis, so it reaches such a face only with the side of the tool, in \
              one turn where the part lies on both sides of it. To face the end of the part or \
              the stock, use Facing with Shape End"
-        )
+        ))
     })
 }
