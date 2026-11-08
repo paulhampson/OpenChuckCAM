@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260" font-family="sans-serif" font-size="12">
+<title>Roughing rings narrowing to a core that is plunged (decision 0543, point 3, the owner's idea)</title>
+<rect width="520" height="260" fill="#fff"/>
+<text x="130" y="20" text-anchor="middle" font-weight="bold">End view: layers narrowing</text>
+<circle cx="130" cy="140" r="95" fill="#f3e9d8" stroke="#a87" stroke-width="1.5"/>
+<circle cx="130" cy="140" r="70" fill="none" stroke="#a33" stroke-width="1.5" stroke-dasharray="4,3"/>
+<circle cx="130" cy="140" r="45" fill="none" stroke="#a33" stroke-width="1.5" stroke-dasharray="4,3"/>
+<circle cx="130" cy="140" r="20" fill="#cde" stroke="#36c" stroke-width="2"/>
+<circle cx="130" cy="140" r="2.5" fill="#000"/>
+<text x="230" y="70" fill="#a33">ring layers (ramped round)</text>
+<text x="230" y="150" fill="#36c">core no wider than</text>
+<text x="230" y="165" fill="#36c">the threshold</text>
+<text x="230" y="180" fill="#36c">(default: tool diameter)</text>
+<line x1="228" y1="155" x2="152" y2="145" stroke="#36c"/>
+<text x="400" y="20" text-anchor="middle" font-weight="bold">Side view at that X</text>
+<rect x="340" y="170" width="120" height="8" fill="#888"/>
+<text x="400" y="195" text-anchor="middle">rotary axis</text>
+<rect x="375" y="140" width="50" height="38" fill="#cde" stroke="#36c"/>
+<rect x="385" y="40" width="30" height="90" fill="#ddd" stroke="#555"/>
+<line x1="400" y1="40" x2="400" y2="170" stroke="#36c" stroke-width="2" stroke-dasharray="5,3"/>
+<text x="430" y="90" fill="#36c">one plunge</text><text x="430" y="105" fill="#36c">to the axis</text>
+<text x="400" y="230" text-anchor="middle" fill="#333">Only where the part leaves nothing inside the core</text>
+</svg>
