@@ -2,9 +2,13 @@
 """Steps shared by the worked examples on the public blisk (blisk_selection_sets, blisk_faceflow,
 blisk_swarf). Not an example itself: capture_example.py runs the scripts that import it.
 
+The blisk captures also need `xclip` (Debian or Ubuntu: `apt-get install xclip`), which reads the
+Results text after Copy all; `require_xclip` stops a capture before its first step without it.
+
 The positions belong to the layout of the build they were measured with, at 1920 x 1080, with the
 view set by `front_view` (Front, Fit, then zoomed in seven steps). Change them and the pages together.
 """
+import shutil
 import subprocess
 
 PROJECT = "testdata/examples/blisk-start/blisk-project"
@@ -25,6 +29,12 @@ FACE_FLOW_TOP = (751, 717)
 SWARF_BOTTOM = (765, 743)
 # The tool list opens under the Tool field, whose height depends on the strategy's description.
 TOOL_Y = {"face_flow": 580, "swarf": 548, "helical": 516}
+
+
+def require_xclip(cap):
+    """Stop before any step when xclip, which `dump_results` needs, is not on the capture's PATH."""
+    if not shutil.which("xclip", path=cap.ENV.get("PATH")):
+        raise SystemExit("error: the blisk captures need xclip (apt-get install xclip)")
 
 
 def front_view(cap):
@@ -76,7 +86,14 @@ def add_operation(cap, strategy, tool, name):
 
 
 def generate(cap, timeout=900):
-    """Generate the stale operations and wait until the status bar reads as it did before (Ready)."""
+    """Generate the stale operations and wait until the status bar reads as it did before (Ready).
+
+    Limitation: this is a heuristic on the status bar's pixels, sampled every 5 s. It cannot tell a
+    run that never started (for example an operation in error) from one that ended between two
+    samples: after 30 s with no change it prints "nothing ran" and goes on. Check the screens and
+    the Results text the capture prints before committing them. A run still going after `timeout`
+    seconds raises TimeoutError.
+    """
     ref = status(cap)
     cap.click(1854, 1058, 3)                   # Generate stale
     waited, busy = 0, False
@@ -90,6 +107,8 @@ def generate(cap, timeout=900):
         if not busy and waited >= 30:
             print("nothing ran: the operation may be in error", flush=True)
             break
+    else:
+        raise TimeoutError(f"generation did not end within {timeout} s")
     cap.pause(2)
     print("generated in about", waited, "s", flush=True)
 
@@ -106,6 +125,6 @@ def dump_results(cap, work, label, copy_all=(561, 832)):
     here is published."""
     cap.click(*copy_all, 0.8)
     out = subprocess.run(["xclip", "-o", "-selection", "clipboard"], env=cap.ENV,
-                         capture_output=True, text=True, check=False).stdout
+                         capture_output=True, text=True, check=True).stdout
     (work / f"{label}.txt").write_text(out)
     print(f"--- {label}\n{out}", flush=True)

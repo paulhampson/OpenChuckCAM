@@ -3,8 +3,9 @@
 
 Run with `python3 user-docs/tools/capture_example.py blisk_swarf` after building the release
 program and the STEP reader (`cargo build --release -p openchuck-ui` and
-`cargo build --release -p openchuck-import --features kernel --bins`). The click positions belong to
-the layout of the build they were taken with, at 1920 x 1080; change them and the page together.
+`cargo build --release -p openchuck-import --features kernel --bins`), with `xclip` installed.
+The click positions belong to the layout of the build they were taken with, at 1920 x 1080;
+change them and the page together.
 """
 import _blisk as b
 
@@ -12,6 +13,7 @@ PROJECT = b.PROJECT
 
 
 def run(cap, work):
+    b.require_xclip(cap)
     b.front_view(cap)
     b.new_set(cap, "faces", [b.BLADE_WALL])
     b.save_set(cap, "Blade wall")
