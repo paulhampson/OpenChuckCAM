@@ -87,7 +87,7 @@ No refusal recommends a smaller angle (0242 item 6). Plunge and Helix remain the
 
 ## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
 
-All recommendations accepted as a package, with D7 changed as its row says. D10: the owner is asked whether the removal may wait for a follow-up (fields left in place, unused) if the freeze needs it; it is built as (a) in one separate commit that can be dropped.
+All recommendations accepted as a package, with D7 changed as its row says. D10: the owner confirmed (a) on 8 Nov 2026 (relayed): the removal is made, as its own last commit in the series.
 
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
@@ -100,7 +100,7 @@ All recommendations accepted as a package, with D7 changed as its row says. D10:
 | D7 | Single-point passes (no path to follow) | (a) plunge to the point when the tool can plunge, with a path note; (b) refuse, with OI-1271's option to plunge, off by default | **Owner's answer (8 Nov 2026, relayed): (b), as a proper setting.** The operation's Entry, links and retract section gains **Allow single-point plunge** (`allow_single_point_plunge`, a flag, default off; applies to Ramp entry). Off: a single-point pass refuses the operation, naming the setting (section 4). On: the pass is plunged to its point when the tool can plunge (`Tool::can_plunge`; OI-117), and a path note (information, decision 0536) names the passes; when the tool cannot plunge, the operation is refused naming the tool. Saved operations without the setting load with it off. Tooltip: "A pass that is a single point has no path for a ramp to follow. With this on, the tool plunges straight down to that point instead of refusing the operation. The tool must be able to plunge (centre cutting)." This keeps the owner's earlier choice D4 = C on OI-1271 and closes it. Today 0204 item 4 plunges such a pass silently, whether or not the tool can plunge; that ends. Drilling is out of scope (its plunge is the cut). |
 | D8 | Lead entry has the same flaw | — | **Decided by the owner:** issue #640, decision 0544. This record does not change the lead. |
 | D9 | Helix entry (off the path by design) | (a) keep it unchanged as its own style (0026 item 1); (b) retire it for passes that turn A | **(a).** It is chosen explicitly; on rings the ramp now covers what it was used for. |
-| D10 | Clearance certificate and API | (a) remove `EntrySafety`, `StrategyInput::entry_safety` and `EntryParameters::back_and_forth` from the library (decision 0048: workspace minor bump and changelog), and the application's `ramp_entry` check; (b) keep them, unused | **(a).** They exist only for the corridor ramp. The removal touches about 48 files that build a `StrategyInput` (examples and tests); see the delivery note under Consequences. |
+| D10 | Clearance certificate and API | (a) remove `EntrySafety`, `StrategyInput::entry_safety` and `EntryParameters::back_and_forth` from the library (decision 0048: workspace minor bump and changelog), and the application's `ramp_entry` check; (b) keep them, unused | **(a)**, confirmed by the owner (8 Nov 2026, relayed). They exist only for the corridor ramp. The removal touches about 48 files that build a `StrategyInput` (examples and tests), so it is its own last commit. |
 
 ## Alternatives considered
 
