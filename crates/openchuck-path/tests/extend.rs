@@ -581,10 +581,12 @@ fn helical_extended(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, Parame
 const REACH: (f64, f64) = (STOCK.0 - 2.5, STOCK.1 + 2.5);
 
 /// Whether a move lies past the part (X 0 to 20) by more than a tool
-/// radius, where only the run-out cuts.
+/// radius and a millimetre, where only the run-out cuts: the free ends'
+/// passes (decision record 0344) turn A beside the end faces, a radius
+/// past the part.
 fn past_the_part(from: &ToolPose, s: &Segment) -> bool {
     let (a, b) = (from.tip.x, s.end.tip.x);
-    a.max(b) < -2.0 - 1e-9 || a.min(b) > 22.0 + 1e-9
+    a.max(b) < -3.0 || a.min(b) > 23.0
 }
 
 #[test]
