@@ -1149,7 +1149,7 @@ fn hatch_centres(pixels: &[[u8; 4]], y: u32, f: &Frame) -> Vec<f64> {
 }
 
 /// Decision record of the area pattern (issue 637, amending 0515 item 4),
-/// NFR-15: the hatch lines lie where parallel planes 2.5 mm apart cut the
+/// NFR-15: the hatch lines lie where parallel planes 1 mm apart cut the
 /// surface, so along the face their spacing is a length in millimetres,
 /// whatever the zoom; where there is no line, what lies beneath shows.
 #[test]
@@ -1161,7 +1161,7 @@ fn req_nfr_15_a_surface_hatch_is_spaced_in_millimetres_whatever_the_zoom() {
     // Along X on a face the planes cut the surface every sqrt(3) times the
     // spacing.
     let period = 3.0_f64.sqrt() * f64::from(SURFACE_HATCH_SPACING_MM);
-    for zoom in [0.2, 0.3] {
+    for zoom in [0.1, 0.14] {
         let f = front(&fit, zoom);
         assert!(f64::from(f.pixels_per_mm()) * period > 9.0, "zoom {zoom}");
         let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], &f);
@@ -1178,7 +1178,7 @@ fn req_nfr_15_a_surface_hatch_is_spaced_in_millimetres_whatever_the_zoom() {
             );
         }
         let mean = (centres[centres.len() - 1] - centres[0]) / (centres.len() - 1) as f64;
-        assert!((mean - period).abs() < 0.12, "zoom {zoom}: mean {mean}");
+        assert!((mean - period).abs() < 0.1, "zoom {zoom}: mean {mean}");
         let red = share_of(&pixels, RED);
         assert!(red > 0.5, "the part shows between the lines: {red}");
     }
@@ -1195,32 +1195,32 @@ fn req_nfr_15_a_surface_hatch_stays_on_the_surface_when_the_camera_moves() {
     let render_at = |f: &Frame| {
         render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f)
     };
-    let a = panned_front(&fit, 0.2, 0.0);
-    let b = panned_front(&fit, 0.2, 1.9);
+    let a = panned_front(&fit, 0.1, 0.0);
+    let b = panned_front(&fit, 0.1, 0.7);
     let from_a = hatch_centres(&render_at(&a), 32, &a);
     let from_b = hatch_centres(&render_at(&b), 32, &b);
     assert!(from_a.len() >= 3 && from_b.len() >= 3);
     // Each line seen from one camera is seen at the same world X from the
-    // other, within a third of a millimetre.
+    // other, within a fifth of a millimetre.
     for x in &from_a {
         if let Some(near) = from_b
             .iter()
             .map(|y| (x - y).abs())
             .min_by(|p, q| p.total_cmp(q))
-            && x.abs() < 6.0
+            && x.abs() < 3.0
         {
-            assert!(near < 0.35, "{x} from A has no line in {from_b:?}");
+            assert!(near < 0.2, "{x} from A has no line in {from_b:?}");
         }
     }
     // At another zoom, too.
-    let c = panned_front(&fit, 0.3, 0.0);
+    let c = panned_front(&fit, 0.14, 0.0);
     let from_c = hatch_centres(&render_at(&c), 32, &c);
-    for x in from_c.iter().filter(|x| x.abs() < 4.0) {
+    for x in from_c.iter().filter(|x| x.abs() < 3.0) {
         let near = from_a
             .iter()
             .map(|y| (x - y).abs())
             .fold(f64::INFINITY, f64::min);
-        assert!(near < 0.4, "{x} from C has no line in {from_a:?}");
+        assert!(near < 0.25, "{x} from C has no line in {from_a:?}");
     }
     // A pattern fixed to the screen would not move with the pan.
     let screen_a = hatch_pixels(&render_at(&a));
@@ -1259,13 +1259,13 @@ fn req_nfr_15_a_surface_hatch_fades_to_a_flat_tint_at_a_distance() {
         );
         (high - low, pixels)
     };
-    let (near, _) = spread(&front(&fit, 0.2));
+    let (near, _) = spread(&front(&fit, 0.1));
     assert!(near > 120, "lines near: {near}");
     // About a pixel to a line: below what can be told apart.
-    let (far, pixels) = spread(&front(&fit, 3.0));
+    let (far, pixels) = spread(&front(&fit, 1.5));
     assert!(far < 45, "the far view is flat: {far}");
     // It is still marked: the face is no longer the bare part's red.
-    let bare = render_layers(&device, &queue, &part, None, &[], &front(&fit, 3.0));
+    let bare = render_layers(&device, &queue, &part, None, &[], &front(&fit, 1.5));
     assert_ne!(pixels, bare, "a flat tint remains");
 }
 

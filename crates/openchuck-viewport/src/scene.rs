@@ -119,7 +119,7 @@ pub enum HatchKind {
 }
 
 /// The distance in millimetres between two lines of [`HatchKind::Surface`].
-pub const SURFACE_HATCH_SPACING_MM: f32 = 2.5;
+pub const SURFACE_HATCH_SPACING_MM: f32 = 1.0;
 
 /// A hatch drawn over a mesh's fill: in screen space, lines 1 pixel wide,
 /// 6 logical pixels apart whatever the zoom (interface specification 7.4 and
