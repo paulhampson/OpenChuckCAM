@@ -138,6 +138,8 @@ impl FormSection {
             | "entry"
             | "ramp_back_and_forth"
             | "allow_single_point_plunge"
+            | "ramp_steeper_near_axis"
+            | "ramp_angle_max"
             | "ramp_angle"
             | "helix_diameter"
             | "lead_radius"
@@ -318,7 +320,13 @@ pub fn parameter_form(
                 section: FormSection::of(&spec.name),
                 name: spec.name.clone(),
                 label: if spec.name == names::RAMP_BACK_AND_FORTH
-                    || (spec.name == names::ALLOW_SINGLE_POINT_PLUNGE && !ramp)
+                    || (!ramp
+                        && [
+                            names::ALLOW_SINGLE_POINT_PLUNGE,
+                            names::RAMP_STEEPER_NEAR_AXIS,
+                            names::RAMP_ANGLE_MAX,
+                        ]
+                        .contains(&spec.name.as_str()))
                 {
                     format!("{} (inactive)", spec.label)
                 } else {

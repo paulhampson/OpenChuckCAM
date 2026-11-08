@@ -40,6 +40,9 @@ pub(super) struct RingRamp {
     /// section 4, point 2): `Some` when the tip stays on the axis and the
     /// moves are plunges while A turns.
     pub on_axis: Option<f64>,
+    /// The angle used, degrees, when the steeper ramp near the axis made it
+    /// steeper than the Ramp angle (decision 0543 section 4, point 3).
+    pub steepened: Option<f64>,
 }
 
 impl RingRamp {
@@ -214,6 +217,7 @@ fn round(
         moves,
         follows_steep_drop: steep,
         on_axis: None,
+        steepened: None,
     }
 }
 
@@ -299,6 +303,7 @@ pub(super) fn plan_spiral(
                 moves,
                 follows_steep_drop: steep,
                 on_axis: None,
+                steepened: None,
             });
         }
         delta += 360.0;
@@ -386,5 +391,6 @@ pub(super) fn plan_on_axis(
         moves,
         follows_steep_drop: false,
         on_axis: Some(turns),
+        steepened: None,
     })
 }

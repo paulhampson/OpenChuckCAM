@@ -508,3 +508,55 @@ fn req_op_11_req_op_15_a_ring_on_the_axis_descends_there_while_a_turns() {
         );
     }
 }
+
+/// The steeper ramp near the axis (decision 0543 section 4, point 3, the
+/// owner's decision (iii)): a ring that would need more than 10 turns at the
+/// Ramp angle is ramped at the angle that fits 10 turns, never steeper than
+/// the Maximum ramp angle; past it the pass is refused naming that setting.
+#[test]
+fn req_op_11_req_nfr_07_steeper_ramp_near_the_axis_fits_ten_turns_up_to_the_maximum() {
+    let cyl = Cylinder {
+        radius: 1.0,
+        length: 20.0,
+    };
+    let f = Fixture::new(MeshSurface::new(&cyl.mesh(3, 72)).unwrap(), 4.0, &ball(1.0));
+    let mut v = finishing("rings");
+    v.insert(names::RAMP_ANGLE.into(), n(0.5));
+    v.insert(names::STEPOVER.into(), n(0.5));
+    v.insert(
+        names::RAMP_STEEPER_NEAR_AXIS.into(),
+        ParameterValue::Flag(true),
+    );
+    v.insert(names::RAMP_ANGLE_MAX.into(), n(15.0));
+    let path = make(&f, &HelicalFinishing, &v, &[]).unwrap();
+    let (before, moves, head) = &entries(&path)[0];
+    // Within 10 turns, and steeper than 0.5 degrees on its real path.
+    let turned = (head.a.0 - before.a.0).abs();
+    assert!(turned <= 3600.0 + 1e-6, "{turned}");
+    assert!(turned > 1000.0, "{turned}");
+    let drop =
+        f.rotary.to_axis(before.tip, before.a).height - f.rotary.to_axis(head.tip, head.a).height;
+    assert!(drop > 0.0);
+    assert!(moves.len() > 10);
+    assert!(
+        path.notices
+            .iter()
+            .any(|n| n.text.contains("steeper") && n.text.contains("degrees")),
+        "{:?}",
+        path.notices
+    );
+    // A maximum below what 10 turns need is refused naming it.
+    v.insert(names::RAMP_ANGLE_MAX.into(), n(0.6));
+    let err = make(&f, &HelicalFinishing, &v, &[]).unwrap_err();
+    assert!(
+        err.contains("Maximum ramp angle") && err.contains("more than the 10 allowed"),
+        "{err}"
+    );
+    // Off, the Ramp angle is kept and the pass refused as before.
+    v.insert(
+        names::RAMP_STEEPER_NEAR_AXIS.into(),
+        ParameterValue::Flag(false),
+    );
+    let err = make(&f, &HelicalFinishing, &v, &[]).unwrap_err();
+    assert!(err.contains("Raise Ramp angle"), "{err}");
+}
