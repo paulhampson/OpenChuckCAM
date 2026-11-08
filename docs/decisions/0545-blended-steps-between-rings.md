@@ -172,4 +172,16 @@ Results:
 - **Sharp is unchanged** for all five strategies; no golden or reference program uses rings, so none changes.
 - **Suites run locally,** uninstrumented: all of `openchuck-path`, `openchuck-ui` and `openchuck-testkit` (1623 tests, all passed, on the code with `main` `645256c` merged), and the 256 `openchuck-app` tests on the areas this change touches (operations, playback, the form, held regions, Extend, rings, Facing, roughing, helical, rest and simultaneous finishing, messages, notices and topics; all passed). The rest of the `openchuck-app` suite (about 590 tests) was not run locally: it takes hours on the session's 4-core container; CI runs it. `cargo fmt`, `cargo clippy --workspace --all-targets`, and `cargo xtask deps` (with its topics check), `licences`, `records`, `trace` and `messages` pass.
 - **Coverage,** on `openchuck-path`'s ring, Extend and spiral-ring tests only (instrumented, then `cargo llvm-cov clean --workspace`): every new line is covered except defensive ones (the first run found two real gaps, adaptive spacing with blended rings and the simultaneous blend split by zone, and the two tests above were added for them): `helical::ring_blend`'s refusal and its default (the schema refuses a bad blend angle and supplies the default first) and the run-out's empty pass. `openchuck-app`'s one new branch is run by its tests but was not measured instrumented.
-- **Not done:** the simulated time and material left for one roughing and one finishing operation both ways (the "Also" of the list above) is not run in this pull request; nothing was run on a machine. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
+- **Simulated both ways** (the "Also" of the list above), on the public baluster example (`testdata/examples/baluster`) with its Rough (continuous roughing) and Finish (helical finishing) operations both set to Rings, once Sharp and once Blended at 45 degrees, by `openchuck-cli simulate` and the setup sheet's programmed times (raw output in [docs/archive/0545-blended-steps-between-rings/](../archive/0545-blended-steps-between-rings/README.md)):
+
+  | | Sharp | Blended | Change |
+  | --- | --- | --- | --- |
+  | Rough, programmed time | 13:58 | 16:26 | +18 % |
+  | Finish, programmed time | 16:39 | 18:15 | +10 % |
+  | Both | 30:37 | 34:40 | +13 % |
+  | Material left on the part (stock after both) | 14286.6 mm³ | 14283.9 mm³ | about the same |
+  | Most material left on the part | 0.919 mm | 0.919 mm | the same (at the held region's shoulder, X 10, which neither operation may reach) |
+  | Deepest overcut | 0.048 mm | 0.048 mm | the same (under one 0.1 mm cell) |
+
+  The blends make each ring's path longer by about φ/360 (12.5 % at 45°), as the Alternatives table says. Roughing grows more (18 %), because its more numerous XA moves are slowed by the machine's feed limits on the rotary axis more often (9269 limited moves sharp, 10780 blended). The time is the program's; it does not count the Z1's stop at the end of each pure-A block (OI-993), which blending moves from the slot to the ring.
+- **Not done:** nothing was run on a machine. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
