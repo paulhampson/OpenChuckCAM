@@ -1,7 +1,7 @@
 # 0548: A steep descent inside a pass goes down no faster than the plunge feed (lane PATHFEED; issue #643)
 
-- **Status:** proposed by lane PATHFEED on 8 Nov 2026. The owner answered questions 1 and 2 on 8 Nov 2026, relayed by the coordinator (decision 0049): option A for each, as recommended, with finishing revisited after the release (OI-2134). Not yet accepted: the owner accepts the record after reading it in full. The decision below is written to those answers.
-- **What it amends, if accepted:** the shared path assembly's feed for moves inside a pass (`crates/openchuck-path/src/assemble.rs`), alongside [decision 0050](0050-walls-merge-micro-moves.md) (wall moves, which it leaves merged and timed as they are) and [decision 0026](0026-entry-moves.md) (entries, already at the plunge feed). The verification plan's OP-11 row gains the tests below. The requirements and the architecture are unchanged.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 and 2 the same day (option A for each, as recommended, with finishing revisited after the release, OI-2134), and the decision below is written to those answers. Not yet built (issue #643).
+- **What it amends:** the shared path assembly's feed for moves inside a pass (`crates/openchuck-path/src/assemble.rs`), alongside [decision 0050](0050-walls-merge-micro-moves.md) (wall moves, which it leaves merged and timed as they are) and [decision 0026](0026-entry-moves.md) (entries, already at the plunge feed). The verification plan's OP-11 row gains the tests below. The requirements and the architecture are unchanged.
 - **Requirements:** OP-11 (feeds), OP-03 (rotary roughing), GC-07 / NFR-06 (golden programs and determinism), NFR-12.
 - **Date:** 8 Nov 2026.
 - **Open items:** OI-2133 (the answers; closed with them) and OI-2134 (finishing, after the release). Numbers given by the coordinator; the Merge Manager assigns final numbers at release.
@@ -36,7 +36,7 @@ The stored golden programs (LinuxCNC set, counted from the files: descending G1 
 
 No stored golden program is a rotary roughing job. A rule for every strategy changes six of them (twelve files with both posts) and slows finishing where the material ahead is only the stock to leave.
 
-## Decision (proposed; written to the owner's answers)
+## Decision (accepted)
 
 ![A side view of one roughing layer: the tip path runs at the layer level at the cutting feed, climbs over a raised floor, and drops off it into stock this layer has not cut; the drop is slowed so the tip goes down no faster than the plunge feed. An inset shows the rule: a move at feed F and angle theta below the across direction goes down the tool axis at F sin theta, which is kept at or below the plunge feed by lowering F only when needed.](0548-descent-feed.svg)
 
