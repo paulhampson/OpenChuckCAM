@@ -55,7 +55,7 @@ See [Simulation and deviation colours](concepts/simulation.md).
 
 ## The export is greyed out or refuses
 
-**Write G-code** stays greyed out while something blocks it; the line above the button says what, and **Checks before writing** lists each problem marked **Blocks writing**. The usual cause is an operation that is out of date: generate again. See [Export G-code and the setup sheet](how-to/export.md).
+**Write G-code** stays greyed out while something blocks it; the line above the button says what, and **Checks before writing** lists each problem marked **Blocks writing**. The usual cause is an operation that is out of date: generate again. The other common one is a box not yet ticked: the line then starts "Tick the box to say ...", for example "Tick the box to say you have read the possible collisions of these files." Read what the box is about before you tick it. On the command line, a result with possible collisions is written only with `--acknowledge-collision-warnings`. See [Export G-code and the setup sheet](how-to/export.md).
 
 ## The controller rejects a program, or the machine does something unexpected
 
