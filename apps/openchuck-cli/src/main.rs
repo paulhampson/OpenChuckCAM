@@ -460,19 +460,33 @@ enum LibraryAction {
 /// operation in place of the per-move notes (decision record 0430), as the
 /// Results tab shows them.
 fn print_run(project: &openchuck_app::project::Project, run: &openchuck_app::Regeneration) {
-    for warning in run.operation_warnings(project) {
-        eprintln!("warning: {warning}");
+    for line in run_lines(project, run) {
+        eprintln!("{line}");
     }
-    for warning in &run.warnings {
-        eprintln!("warning: {warning}");
-    }
+}
+
+/// The lines [`print_run`] prints: the warnings, then the information as the
+/// Results tab shows it (decision 0536 section 5).
+fn run_lines(
+    project: &openchuck_app::project::Project,
+    run: &openchuck_app::Regeneration,
+) -> Vec<String> {
+    let mut lines: Vec<String> = run
+        .operation_warnings(project)
+        .into_iter()
+        .chain(run.warnings.iter().cloned())
+        .map(|w| format!("warning: {w}"))
+        .collect();
     let information = openchuck_app::note_groups::information(run, project);
-    for summary in &information.summaries {
-        eprintln!("note: {summary}");
-    }
-    for note in &information.notes {
-        eprintln!("note: {note}");
-    }
+    lines.extend(information.summaries.iter().map(|s| format!("note: {s}")));
+    // Notes about consecutive moves with the same wording are one line, as
+    // in the Results tab (issue 255; decision record 0218).
+    lines.extend(
+        openchuck_app::note_groups::group_notes(&information.notes)
+            .into_iter()
+            .map(|g| format!("note: {}", g.text)),
+    );
+    lines
 }
 
 fn main() -> ExitCode {
@@ -2364,6 +2378,34 @@ fn confirm_tool_numbers(app: &mut Application, choice: Option<NumberChoice>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_12_the_command_line_groups_notes_about_consecutive_moves_as_results_does() {
+        // Decision 0536 section 5: the command line prints a run's messages as
+        // the Results tab shows them, so notes about consecutive moves with the
+        // same wording are one line (issue 255; decision record 0218), not one
+        // line per move.
+        let turn = |m: usize| {
+            format!(
+                "operation 'Finish': move {m}: A turns with the contact point at the rotary \
+                 axis during this move, so the contact point barely moves and the rotary axis's \
+                 speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min"
+            )
+        };
+        let run = openchuck_app::Regeneration {
+            notes: (10..=13).map(turn).collect(),
+            ..openchuck_app::Regeneration::default()
+        };
+        let lines = run_lines(&openchuck_app::project::Project::new("p"), &run);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(lines[0].starts_with("note: "), "{}", lines[0]);
+        assert!(
+            lines[0].contains("moves 10 to 13 (4 moves): A turns")
+                && lines[0].contains("during these moves,"),
+            "{}",
+            lines[0]
+        );
+    }
 
     #[test]
     fn req_imp_03_terminal_answers_to_the_unit_question() {

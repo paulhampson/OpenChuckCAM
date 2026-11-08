@@ -283,9 +283,9 @@ impl Builder<'_> {
                     // #600). It is not a feed-limit note to summarise.
                     let text = if contact_feed < 0.05 {
                         format!(
-                            "this move turns A with the contact point at the rotary axis, so \
-                             the contact point barely moves and the rotary axis's speed limit \
-                             sets how long the move takes ({axis_time:.3} s); the feed set is \
+                            "A turns with the contact point at the rotary axis during this \
+                             move, so the contact point barely moves and the rotary axis's speed \
+                             limit sets the time taken ({axis_time:.3} s); the feed set is \
                              {:.1} mm/min",
                             f.0
                         )
@@ -1158,7 +1158,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("turns A with the contact point at the rotary axis"),
+            text.contains("A turns with the contact point at the rotary axis during this move"),
             "{text}"
         );
         assert!(text.contains("500.0 mm/min"), "{text}");
