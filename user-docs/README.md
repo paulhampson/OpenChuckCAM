@@ -42,6 +42,8 @@ python3 user-docs/tools/capture.py
 
 The click positions in the script belong to the layout of one build. When a screen changes, change the positions and the pages that describe it, and capture again. If you check the screens against a newer build without capturing, add `reviewed_at = "<commit>"` to `CAPTURED.toml`. The docs check warns on a pull request when the screens have changed since the capture or review commit, and a release refuses it (decision 0400, section G).
 
+The worked examples' screens are taken the same way, one example at a time, with `tools/capture_example.py NAME` (its opening comment says how). The blisk examples (`tools/examples/blisk_*.py`) also need `xclip` (Debian or Ubuntu: `apt-get install xclip`), which reads the Results text after **Copy all**; they stop before their first step without it.
+
 ## How it is published
 
 A pull request that changes `user-docs/` runs the checks above as the `User guide` job of CI, part of `CI required checks`. Nothing is published on a push to `main`: `latest/` is the nightly build, deployed by `.github/workflows/docs-site.yml` after each Nightly build that publishes the `nightly` pre-release, from that build's commit. Each released version comes from the `docs-releases` branch, which only the release workflow writes. See [`docs/releasing.md`](../docs/releasing.md) for the release steps and the one-time setup.
