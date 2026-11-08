@@ -210,7 +210,7 @@ fn req_op_04_finishing_layers_step_down_to_a_light_final_pass() {
             "{}",
             s.name()
         );
-        let notes: String = path.notes.iter().map(|n| n.message.clone()).collect();
+        let notes: String = path.notices.iter().map(|n| n.text.clone()).collect();
         assert!(
             notes.contains("3 layers of 0.8 mm") && notes.contains("finish allowance of 0.1 mm"),
             "{}: {notes}",
@@ -281,7 +281,7 @@ fn req_nfr_06_req_gc_07_finishing_layers_are_identical_at_1_2_and_n_threads() {
     for s in [&HelicalFinishing as &dyn Strategy, &IndexedFinishing] {
         let runs = openchuck_testkit::determinism::check(|| {
             let path = layered(&f, s, &layers_on(0.8, 0.1)).unwrap();
-            format!("{:?}{:?}", path.group, path.notes).into_bytes()
+            format!("{:?}{:?}", path.group, path.notices).into_bytes()
         })
         .unwrap();
         assert_eq!(runs.len(), 4, "{}", s.name());

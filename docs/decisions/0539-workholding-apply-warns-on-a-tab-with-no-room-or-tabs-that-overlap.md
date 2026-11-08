@@ -1,9 +1,9 @@
 # 0539: Workholding Apply warns on an automatic tab with no room and on tabs that overlap (lane MSGREVIEW; issue #567)
 
-- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's answer to question 5 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what a check does, so it is a record of its own.
+- **Status:** accepted by the project owner on 7 Nov 2026, relayed by the coordinator (decision 0049), as written. Proposed by lane MSGREVIEW on 7 Nov 2026. It records the owner's answer to question 5 of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md) (7 Nov 2026, relayed by the coordinator, option A). It changes what a check does, so it is a record of its own. Built by lane MSGREVIEW in pull request #591, which closes OI-2095.
 - **What it amends, if accepted:** [decision 0523](0523-tab-checks-follow-the-operations-reach.md) item 4, as built. That item names only a tab outside the end zones as refusing at Apply, but the code refuses on two more findings. The requirements and the architecture are unchanged.
 - **Date:** 7 Nov 2026.
-- **Open items:** OI-2095 (raised with 0536) closes when this is built.
+- **Open items:** OI-2095 (raised with 0536), closed by #591. Follow-ups: #610 (the Apply tests store the draft) and #611 (a refusal and a warning together each keep their own level), both carried in decision 0538's pull request.
 
 ## Context
 
@@ -52,3 +52,20 @@ UI-25 is the requirement for adding and editing a setup's held regions and retai
 
 - The fix is a few lines in `findings_of`, with tests, in a pull request of its own.
 - No change to the project file, the cache key or the G-code.
+
+## Verification
+
+Built by lane MSGREVIEW in #591 (merged as `e9e902b3`), with two follow-ups carried in decision 0538's pull request. Run in the session's Linux container with `cargo nextest run`, uninstrumented.
+
+- **Apply warns, and still refuses a tab outside the end zones.** `workholding::tests::req_ui_25_a_new_zone_finding_warns_unless_named` checks that only `TabOutsideEndZones` refuses and that a new kind of zone finding warns. Three tests in `workholding_view.rs` cover Apply:
+  - `req_ui_25_apply_stores_with_an_automatic_tab_that_has_no_room` and `req_ui_25_apply_stores_with_tabs_that_overlap`: the finding does not refuse and is on the automatic tab's row. With the #610 change (CodeRabbit's review of #591), each test also applies the draft as the section does, checks that it is stored, and checks that the stored workholding's finding stays on that row.
+  - `req_ui_25_apply_refuses_a_tab_outside_the_end_zones`: that tab still refuses.
+- **Command line.** `cli::req_set_09_req_op_21_cli_sets_held_regions_and_tabs`:
+  - an automatic head tab with a hand-placed tab over it is stored, and the overlap is printed as `warning:`;
+  - a tab across the part is refused, and nothing is stored.
+  With the #611 change, the overlap warning is also printed when a refusal comes with it, and is not reported as an error.
+- **A refusal and a warning together (#611).** `workholding_panel::tests::req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level`: when Apply is refused, only the refusing finding is an error and marks its tab as failing; a warning found with it keeps the Warning mark and its colour, on its own row and for the whole setup. Before the fix, the panel coloured every finding by the refusal (`self.refused`) and the command line left the warnings out. With the old rule restored, the test fails; the command-line test failed before its fix.
+- **Suites.** At #591: `openchuck-cli` 78 of 78 on the code merged with `main` at `69ec676e`; `cargo xtask records` and `trace` ok. The #610 and #611 commits are checked with decision 0538's pull request.
+
+Not verified here: the colours in the running application. The test reads the colour and the mark the section draws from, not the screen.
+

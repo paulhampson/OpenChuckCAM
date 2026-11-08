@@ -240,10 +240,10 @@ fn tab_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
         .iter()
         .flat_map(|g| g.warnings.iter())
         .filter(|w| {
-            w.message
+            w.text
                 .starts_with(openchuck_app::workholding::TAB_LENGTH_LEAD)
         })
-        .map(|w| w.message.clone())
+        .map(|w| w.text.clone())
         .collect()
 }
 

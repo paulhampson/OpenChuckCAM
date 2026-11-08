@@ -1,6 +1,6 @@
 # Create a custom machine
 
-This example makes a [machine profile](../glossary.md#machine-profile) for a machine that is not built in, saves it in your machine library, and uses it in a project. The machine is a made-up 4-axis router, called "Example router", with round numbers: it is not a real machine, so its values are for the example only. Copy the steps, but put in your own machine's values. [Machine profiles](../reference/machine-profiles.md) describes every field.
+This example makes a [machine profile](../glossary.md#machine-profile) for a machine that is not built in, saves it in your machine library, and uses it in a project. The machine is a made-up 4-axis router, called "Example router", with round numbers: it is not a real machine, so its values are for the example only. Copy the steps, but put in your own machine's values. [Machine profiles](../reference/machine-profiles.md#the-fields) describes every field.
 
 > [!WARNING]
 > A machine profile you make is yours to check. The program checks every program it writes against the profile, so a wrong value, such as the height of the rotary axis or a travel limit, makes those checks wrong too, without any warning. Measure each value on your machine, confirm it, and run an [air cut](../glossary.md#air-cut) before anything else. Generated G-code must be verified by you before it is run on a machine.
@@ -128,7 +128,7 @@ openchuck-cli machines --library ~/.config/OpenChuckCAM/machines
 openchuck-cli machine baluster example-router --library ~/.config/OpenChuckCAM/machines
 ```
 
-The first lists the profiles, with how many values are unconfirmed; the second gives the project a copy of the example router and prints every value with `confirmed` or `UNCONFIRMED`. See [Command line](../reference/command-line.md).
+The first lists the profiles, with how many values are unconfirmed; the second gives the project a copy of the example router and prints every value with `confirmed` or `UNCONFIRMED`. See [Command line](../reference/command-line.md#the-machine).
 
 ## Common mistakes
 

@@ -115,7 +115,7 @@ jobs:
         run: |
           ls -l dist
           count=$(find dist -maxdepth 1 -type f -name 'openchuckcam-nightly-*' | wc -l)
-          [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
+          [ "$count" -eq 4 ] || { echo "expected 4 files (3 archives and the examples zip), found $count"; exit 1; }
           notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
           [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
           {
@@ -125,11 +125,11 @@ jobs:
             echo
             echo "**$notice**"
             echo
-            echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the licence, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
+            echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the licence, the third-party notices and a README. \`openchuckcam-nightly-*-examples.zip\` holds the example projects. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
           } > notes.md
           # Upload everything to a draft first: a draft creates no tag and is
           # not visible to visitors, so the current `nightly` release stays up
-          # until its replacement holds all three archives. A draft left by
+          # until its replacement holds all three archives and the examples zip. A draft left by
           # an earlier failed run is removed first.
           staging="nightly-staging-$RUN_ID"
           gh release list -R "$REPO" --json tagName,isDraft \
@@ -139,7 +139,7 @@ jobs:
             --draft --target "$SHA" --prerelease \
             --title "Nightly build $DATE ($SHORT)" --notes-file notes.md
           assets=$(gh release view "$staging" -R "$REPO" --json assets --jq '.assets | length')
-          [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3"; exit 1; }
+          [ "$assets" -eq 4 ] || { echo "the draft holds $assets files, expected 4"; exit 1; }
           # Swap: remove the old release, then the tag on its own (it can
           # outlive its release, and publishing onto an existing tag would keep
           # the old commit), then publish the draft as `nightly`, which creates

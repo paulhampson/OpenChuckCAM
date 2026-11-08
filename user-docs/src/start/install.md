@@ -26,6 +26,8 @@ Each archive holds:
 | `openchuck-step-worker` | The reader for STEP files. Keep it in the same folder as the other two. On macOS the application carries its own copy inside `OpenChuckCAM.app`, and this one is for `openchuck-cli`. |
 | Licence and README | The licence texts, the third-party notices, the credits for the Makera Z1 tool data, and notes for the system. |
 
+The same page also offers `openchuckcam-...-examples.zip`, the example projects (such as the tutorial's baluster). It is not needed to run the program. Generated G-code must be verified by you before it is run on a machine.
+
 To install it:
 
 1. Download the archive for your system from the [`nightly` pre-release](https://github.com/paulhampson/OpenChuckCAM/releases/tag/nightly).
@@ -39,6 +41,18 @@ xattr -dr com.apple.quarantine OpenChuckCAM.app openchuck-cli openchuck-step-wor
 ```
 
 **Windows, the first time.** If SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**. Or, before unpacking, right-click the zip file, choose **Properties**, tick **Unblock** and click **OK**.
+
+**Linux.** Nothing extra: the archive has no signature to check. If the program does not start, check that your system meets the needs in the table above.
+
+### The command line
+
+`openchuck-cli` does the same work as the window, from a terminal: it creates a project, imports a model, sets up the machine, stock and tools, generates the toolpaths, writes the G-code and simulates. In the unpacked folder, run:
+
+```text
+./openchuck-cli --help
+```
+
+On Windows, run `openchuck-cli.exe --help`. On macOS, run the `openchuck-cli` that sits beside `OpenChuckCAM.app`. [Command line](../reference/command-line.md) describes each command.
 
 ## Build from source
 

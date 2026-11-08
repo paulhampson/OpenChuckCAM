@@ -371,9 +371,8 @@ fn req_op_08_a_v_bit_cuts_the_requested_width_by_going_to_the_depth_that_makes_i
     let r = radius(narrow[0].points[0].tip);
     assert!((r - (RADIUS - wanted / 2.0)).abs() < 0.003, "{r}");
     // The note says what the tool cuts.
-    let notes = run(|ctx| strategy.passes_with_notes(&f.input(), None, &parameters, ctx))
-        .unwrap()
-        .notes;
+    let output = run(|ctx| strategy.passes_with_notes(&f.input(), None, &parameters, ctx)).unwrap();
+    let notes = output.notes();
     assert!(
         notes.iter().any(|n| n.contains("1.000 mm wide")),
         "{notes:?}"
@@ -622,11 +621,11 @@ fn req_op_08_the_generated_path_cuts_at_the_feed_with_no_rapid_cuts() {
         .count();
     assert!(cutting > 300, "{cutting}");
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("2 chains (0 open, 2 closed)")),
+            .any(|n| n.text.contains("2 chains (0 open, 2 closed)")),
         "{:?}",
-        path.notes
+        path.notices
     );
     // A on the whole path stays continuous: no jump of more than a few
     // degrees between neighbouring cutting poses.
@@ -720,7 +719,7 @@ fn req_nfr_06_req_op_08_edge_following_is_identical_at_1_2_and_n_threads() {
     ]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&EdgeFollowing::default(), &f.input(), &v, ctx)).unwrap();
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);

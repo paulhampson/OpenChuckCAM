@@ -70,6 +70,8 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .site-title { font-weight: 600; color: var(--text); text-decoration: none; letter-spacing: 0.01em; }
 .site-title span { color: var(--muted); font-weight: 400; }
+/* The logo (decision 0542): the one-colour mark, drawn in the text colour so it follows the theme. */
+.site-logo { width: 1.6rem; height: 1.6rem; vertical-align: -0.4em; margin-right: 0.5rem; }
 .site-header .tools { margin-left: auto; display: flex; gap: 1rem; align-items: baseline; font-size: 0.875rem; }
 .site-header .tools a, .site-header .tools button { color: var(--muted); }
 .theme-toggle { font: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
@@ -253,6 +255,11 @@ a.term:hover { color: var(--accent); }
 .hero-notice strong { color: var(--warn); }
 .hero-figure { margin: 0.4rem 0 0; }
 .hero-figure img { width: 100%; }
+/* Two small screenshots side by side, each a link to the full image; one column on a phone. */
+.thumbs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 1.2rem 0 1.5rem; }
+.thumbs img { width: 100%; height: auto; display: block; border: 1px solid var(--rule); }
+.thumbs figcaption { grid-column: 1 / -1; font-size: 0.9rem; color: var(--muted); }
+@media (max-width: 600px) { .thumbs { grid-template-columns: 1fr; } }
 /* The hero sits in the content column beside the contents, so the column widens on the home page. */
 .home .content > main { max-width: 74rem; }
 .home .content > main > #mdbook-content > :not(.hero) { max-width: var(--measure); }
