@@ -292,8 +292,9 @@ jobs:
           check aarch64-apple-darwin tar.gz ""
           check x86_64-pc-windows-msvc zip .exe
           count=$(find dist -maxdepth 1 -type f -name "$NAME-*" | wc -l)
-          [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
-          echo "The three archives are complete, with the STEP reader and the OpenCASCADE notice (OCCT $occt)." >> "$GITHUB_STEP_SUMMARY"
+          [ "$count" -eq 4 ] || { echo "expected 4 files (3 archives and the examples zip), found $count"; exit 1; }
+          unzip -tq "dist/$NAME-examples.zip"
+          echo "The three archives and the examples zip are complete, with the STEP reader and the OpenCASCADE notice (OCCT $occt)." >> "$GITHUB_STEP_SUMMARY"
 
   # The application release: a GitHub release (not a pre-release) for the existing app-v tag.
   publish-app:
@@ -338,7 +339,7 @@ jobs:
             echo
             echo "Makera Z1 machine values that have not been confirmed on the machine are labelled unconfirmed in the application. The Z1 air cut is a manual release step, recorded in the project's decision records (decision 0106)."
             echo
-            echo "Each archive holds \`openchuck-cli\`, the desktop application (\`openchuck-ui\`; on macOS \`OpenChuckCAM.app\`), the STEP reader, the licences, the third-party notices, the tool data credits and a README."
+            echo "Each archive holds \`openchuck-cli\`, the desktop application (\`openchuck-ui\`; on macOS \`OpenChuckCAM.app\`), the STEP reader, the licences, the third-party notices, the tool data credits and a README. \`$NAME-examples.zip\` holds the example projects."
             echo
             echo "**The programs are not signed or notarised.** macOS blocks them the first time and Windows SmartScreen may warn; the README in each archive says how to open them. The Linux archive's README names the oldest glibc it needs; the macOS archive is for Apple silicon only."
           } > notes.md
@@ -346,7 +347,7 @@ jobs:
           gh release create "$TAG" dist/"$NAME"-* -R "$REPO" --verify-tag --draft \
             --title "OpenChuckCAM $VERSION" --notes-file notes.md
           assets=$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets | length')
-          [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3; it is left as a draft"; exit 1; }
+          [ "$assets" -eq 4 ] || { echo "the draft holds $assets files, expected 4 (3 archives and the examples zip); it is left as a draft"; exit 1; }
           gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false
           echo "Published the release $TAG." >> "$GITHUB_STEP_SUMMARY"
 

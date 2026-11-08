@@ -383,8 +383,7 @@ fn drill(
     }
     Ok(StrategyOutput {
         passes,
-        notes,
-        warnings: Vec::new(),
+        notices: crate::strategy::notices(Vec::new(), notes),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

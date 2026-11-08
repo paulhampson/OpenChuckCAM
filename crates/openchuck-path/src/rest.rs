@@ -27,6 +27,7 @@
 //! whole part has material left. The application says so
 //! ([`Strategy::needs_earlier_operations`]).
 
+use crate::notice::{Level, Notice};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -606,15 +607,18 @@ impl Strategy for RestMachining {
         }
         let mut warnings = free.warnings;
         if capped {
-            warnings.push(crate::assemble::PathWarning {
-                message: format!(
+            warnings.push(Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "rest machining placed the most rings it may at walls ({}): walls further \
                      along may keep more than {} mm between rings; check them in the simulation",
                     walls::MAX_WALL_RINGS,
                     walls.target
                 ),
-                parameter: Some(parameter::MIN_REMAINING.to_owned()),
-                requires_acknowledgement: false,
+                setting: Some(parameter::MIN_REMAINING.to_owned()),
+                acknowledgement: None,
             });
         }
         let unreached = if walls.modelled() {
@@ -639,8 +643,7 @@ impl Strategy for RestMachining {
         crate::axial::mark_low_links_if_asked(parameters, &mut passes);
         Ok(StrategyOutput {
             passes,
-            notes,
-            warnings,
+            notices: crate::strategy::notices(warnings, notes),
             unreached,
             shank_breaks: Vec::new(),
         })
@@ -676,16 +679,16 @@ fn wall_note(rings: &[f64], target: f64) -> Option<String> {
 
 /// The warning for the material the tool cannot reach (decision record
 /// 0505, in the words of OP-20's report); `None` with none.
-fn unreached_warning(
-    areas: &[crate::assemble::Unreached],
-    diameter: f64,
-) -> Option<crate::assemble::PathWarning> {
+fn unreached_warning(areas: &[crate::assemble::Unreached], diameter: f64) -> Option<Notice> {
     if areas.is_empty() {
         return None;
     }
     let plural = if areas.len() == 1 { "" } else { "s" };
-    Some(crate::assemble::PathWarning {
-        message: format!(
+    Some(Notice {
+        level: Level::Warning,
+        topic: None,
+        segment: None,
+        text: format!(
             "rest machining cannot reach {} area{plural} of the part where material is left, \
              which stay uncut: {}. Check them in the simulation; a smaller tool or another \
              operation may reach them. Generated G-code must be verified by the user before it \
@@ -693,7 +696,7 @@ fn unreached_warning(
             areas.len(),
             crate::simultaneous::unreached_list(areas, diameter, 0.0)
         ),
-        parameter: None,
-        requires_acknowledgement: false,
+        setting: None,
+        acknowledgement: None,
     })
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased (MSGREVIEW, decision 0538 part a; no API change)
+
+- **Changed (decision 0538, accepted):** the warnings that may be a collision carry `Acknowledgement::PossibleCollision`, so a host asks for a tick before writing: the flute check's warning (every case of `flutes::check_path`), swarf cutting into a face next to it (`FacePath::neighbour_warnings`), a touched check set that only warns (not an avoid set), and a free end faced down to the axis with nothing holding the part on the other side (not the stock ring). The API, the paths and the texts are unchanged.
+
+## 0.50.0
+
+- **Breaking (0.50.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 1; issue #567; decision 0536 item 6.1, accepted):** one type, `Notice` (module `notice`, re-exported with `Level` and `Acknowledgement`), replaces `PathNote` and `PathWarning` for everything generation tells the user about a path.
+  - **API.**
+    - `Notice` has `level` (`Level::Warning` or `Level::Information`), `topic`, `text`, `setting` (was `PathWarning::parameter`), `acknowledgement` (was `requires_acknowledgement`; now the reason: `Acknowledgement::PartialPath` or `PossibleCollision`) and `segment` (an `Option`; `None` for the whole path).
+    - `GeneratedPath::notes` and `GeneratedPath::warnings` become one list, `GeneratedPath::notices`, warnings first; `GeneratedPath::warnings()` gives the warnings.
+    - `StrategyOutput::notes` and `StrategyOutput::warnings` become `StrategyOutput::notices`; `warnings()` and `notes()` give each part.
+    - A warning is no longer repeated as a note: a host that showed every note shows every notice. A host adapts by reading `notices` and each notice's `level`, `text` (or `sentence()`), `setting` and `acknowledgement`; `is_partial_path()` replaces `requires_acknowledgement`.
+  - **Output.** No path, program or golden file changes. Every notice of this release has the level the old type gave it (a strategy's notes are information, its warnings warnings) and no topic yet; decision 0536's later steps set them.
+
 ## 0.49.0
 
 - **Family release (0.49.0, SAFETYNOTICE; OI-2000; decision 0533, accepted):** `openchuck-post`'s `PostOptions` gains the public field `safety_notice`, a breaking change; no change to this crate.

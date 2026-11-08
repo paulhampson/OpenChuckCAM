@@ -10,6 +10,7 @@
 //! close the circle exactly. Each pass is fitted by the same bisection as
 //! helical finishing ([`crate::wrap_fit`]).
 
+use crate::notice::Notice;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -21,7 +22,6 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
 use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
-use crate::assemble::PathWarning;
 use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
@@ -266,8 +266,7 @@ impl Strategy for AxialFinishing {
         let (passes, notes, warnings) = passes(input, region, zones, parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes,
-            warnings,
+            notices: crate::strategy::notices(warnings, notes),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -302,8 +301,7 @@ impl Strategy for AxialFinishing {
         let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes,
-            warnings,
+            notices: crate::strategy::notices(warnings, notes),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -706,7 +704,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<Notice>)> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;

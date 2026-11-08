@@ -72,6 +72,14 @@ def text_problems(name, text):
     for term in UNSAFE:
         if _words(term).search(prose):
             errors.append(f"{name}: '{term}' suggests generated output is safe or checked (NFR-12)")
+    if "/examples/" in "/" + name.replace("\\", "/"):
+        # A worked example's screenshots are 1920 x 1080 shown about 700 px wide, so each figure
+        # links to its full-size image (the owner's choice of 7 Nov 2026; user-docs/STYLE.md).
+        for m in re.finditer(r'<img\s+src="([^"]+)"', text):
+            before = text[:m.start()].rstrip()
+            if not before.endswith(f'<a href="{m.group(1)}">'):
+                errors.append(f"{name}: image {m.group(1)} is not a link to its full-size image; "
+                              f'wrap it in <a href="{m.group(1)}"> (user-docs/STYLE.md)')
     dashes = prose.count("—")
     if dashes > EM_DASH_LIMIT:
         warnings.append(f"{name}: {dashes} em dashes (more than {EM_DASH_LIMIT}); prefer a full stop, comma or colon")

@@ -524,8 +524,8 @@ fn main() {
                 }
             };
             let elapsed = t.elapsed().as_secs_f64();
-            for w in &generated.warnings {
-                eprintln!("  warning at tolerance {tol}: {}", w.message);
+            for w in generated.warnings() {
+                eprintln!("  warning at tolerance {tol}: {}", w.text);
             }
             let mut poses = vec![generated.group.start];
             let mut cuts: Vec<(ToolPose, ToolPose)> = Vec::new();
@@ -581,9 +581,9 @@ fn main() {
                     (none, none)
                 };
                 let warned = generated
-                    .warnings
+                    .warnings()
                     .iter()
-                    .any(|w| w.message.contains(&format!("face {} cuts", f.number)));
+                    .any(|w| w.text.contains(&format!("face {} cuts", f.number)));
                 println!(
                     "| {with_avoid} | {tol} | {} | {} | {} | {:.4} at ({:.3}, {:.3}, {:.3}) | {:.4} | ({:.3}, {:.3}, {:.3}) | {:.4} | {warned} |",
                     f.number,

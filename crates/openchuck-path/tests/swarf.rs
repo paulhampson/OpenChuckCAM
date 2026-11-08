@@ -195,29 +195,29 @@ fn generated(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> openchuck_p
 /// The one warning of `path`, which must be swarf's overcut warning: it
 /// points at the operation's tolerance (decision 0175).
 fn overcut_warning(path: &openchuck_path::GeneratedPath) -> String {
-    assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
-    let warning = &path.warnings[0];
-    assert_eq!(warning.parameter.as_deref(), Some(names::TOLERANCE));
-    warning.message.clone()
+    assert_eq!(path.warnings().len(), 1, "{:?}", path.warnings());
+    let warning = &path.warnings()[0];
+    assert_eq!(warning.setting.as_deref(), Some(names::TOLERANCE));
+    warning.text.clone()
 }
 
 /// The flute check's warning on swarf's path, which is made (decision
 /// record 0522: a warning, not a refusal).
 fn flute_warned(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
     let path = generated(fixture, extra);
-    path.warnings
-        .iter()
-        .find(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
-        .map(|w| w.message.clone())
-        .unwrap_or_else(|| panic!("no flute warning: {:?}", path.warnings))
+    path.warnings()
+        .into_iter()
+        .find(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .map(|w| w.text.clone())
+        .unwrap_or_else(|| panic!("no flute warning: {:?}", path.warnings()))
 }
 
 /// True when swarf's path has no flute warning.
 fn flute_clear(path: &openchuck_path::GeneratedPath) -> bool {
     !path
-        .warnings
-        .iter()
-        .any(|w| w.message.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .warnings()
+        .into_iter()
+        .any(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
 }
 
 fn refused(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
@@ -648,11 +648,11 @@ fn req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_t
     assert!(gouge <= TOL, "gouge {gouge}");
     assert!(left <= TOL, "left {left}");
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("rulings along v")),
+            .any(|n| n.text.contains("rulings along v")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -824,13 +824,17 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
     assert!(gouge <= TOL, "gouge {gouge}");
     assert!(
         generated
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("the normal twists") && n.message.contains("degrees")),
+            .any(|n| n.text.contains("the normal twists") && n.text.contains("degrees")),
         "{:?}",
-        generated.notes
+        generated.notices
     );
-    assert!(generated.warnings.is_empty(), "{:?}", generated.warnings);
+    assert!(
+        generated.warnings().is_empty(),
+        "{:?}",
+        generated.warnings()
+    );
     // Pitch 3: the twist is over ten degrees and the flank gouges either
     // side of the ruling. The path is made with a warning that names the
     // twist (decision 0175, issue #226).
@@ -1109,14 +1113,14 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
     let rough = generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))]);
     assert!(
         !rough
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("leaves up to"))
+            .any(|n| n.text.contains("leaves up to"))
     );
     let f = Fixture::brep(&pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat());
     assert_eq!(
         generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))])
-            .notes
+            .notices
             .len(),
         1
     );
@@ -1163,9 +1167,9 @@ fn req_op_07_req_op_12_a_pocket_wall_is_cut_from_inside_and_a_limit_below_its_ch
     let generated = generated(&f, &[]);
     assert!(
         !generated
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("leaves up to"))
+            .any(|n| n.text.contains("leaves up to"))
     );
     let poses = cutting_poses(&generated.group);
     let (gouge, left) = verdict(
@@ -1358,7 +1362,7 @@ fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
     let f = Fixture::brep(&model, tapered(6.0));
     let runs = openchuck_testkit::determinism::check(|| {
         let path = generated(&f, &[]);
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -1366,7 +1370,7 @@ fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
     let f = Fixture::with_surface(Box::new(faces), flat());
     let runs = openchuck_testkit::determinism::check(|| {
         let path = generated(&f, &[]);
-        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+        format!("{:?}{:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -1380,7 +1384,7 @@ fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
         let why = refused(&f, &[(swarf::parameter::MAX_MATERIAL_LEFT, num(1e-4))]);
         format!(
             "{:?}{:?}{:?}{:?}{why}",
-            path.group, path.notes, rough.group, rough.notes
+            path.group, path.notices, rough.group, rough.notices
         )
         .into_bytes()
     })
@@ -1400,9 +1404,9 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
     let f = Fixture::brep(&model, flat());
     let path = generated(&f, &[]);
     assert_eq!(
-        path.notes
+        path.notices
             .iter()
-            .filter(|n| n.message.starts_with("swarf on face"))
+            .filter(|n| n.text.starts_with("swarf on face"))
             .count(),
         2
     );
@@ -1466,9 +1470,9 @@ fn req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_ho
     }
     // The warning is also a note, so a host that shows only notes says it.
     assert!(
-        made.notes.iter().any(|n| n.message == message),
+        made.notices.iter().any(|n| n.text == message),
         "{:?}",
-        made.notes
+        made.notices
     );
     // The default tolerance is not loosened (decision 0175 item 4).
     let schema = Swarf.schema();
@@ -1480,7 +1484,7 @@ fn req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_ho
     // Raising the tolerance past the depth accepts it: no warning.
     let raised = path.gouge * 1.5;
     let made = generated(&f, &[(names::TOLERANCE, num(raised))]);
-    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    assert!(made.warnings().is_empty(), "{:?}", made.warnings());
 }
 
 #[test]
@@ -1695,10 +1699,10 @@ fn req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning
         run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
     let without = generated(&f, &[]);
     assert_eq!(with.group, without.group);
-    assert_eq!(with.warnings.len(), 1, "{:?}", with.warnings);
-    assert_eq!(with.warnings[0].parameter, None);
-    assert!(with.warnings[0].message.contains("limits nothing"));
-    assert!(without.warnings.is_empty());
+    assert_eq!(with.warnings().len(), 1, "{:?}", with.warnings());
+    assert_eq!(with.warnings()[0].setting, None);
+    assert!(with.warnings()[0].text.contains("limits nothing"));
+    assert!(without.warnings().is_empty());
 }
 
 #[test]
@@ -1829,11 +1833,11 @@ fn req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_pat
         let made =
             run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
         assert_eq!(made.group, generated(&f, &[]).group);
-        assert_eq!(made.warnings.len(), 1, "{:?}", made.warnings);
-        let warning = &made.warnings[0];
-        assert!(warning.message.contains(says), "{}", warning.message);
-        assert!(warning.message.contains("of face 0"), "{}", warning.message);
-        assert_eq!(warning.parameter, None);
+        assert_eq!(made.warnings().len(), 1, "{:?}", made.warnings());
+        let warning = &made.warnings()[0];
+        assert!(warning.text.contains(says), "{}", warning.text);
+        assert!(warning.text.contains("of face 0"), "{}", warning.text);
+        assert_eq!(warning.setting, None);
     }
     // A watched surface the tool keeps clear of: no break, no warning.
     let far = BrepSurface::new(&cross_plane(60.0, 8.0, 20.0, Z0, Z1)).unwrap();
@@ -1848,7 +1852,7 @@ fn req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_pat
     };
     let made =
         run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
-    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    assert!(made.warnings().is_empty(), "{:?}", made.warnings());
     // Two watched surfaces of the same name are told apart by their place:
     // only the second is broken.
     let watch = [
@@ -1872,7 +1876,7 @@ fn req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_pat
     assert_eq!(path.limits.watched[0].index, 1);
     let made =
         run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
-    assert_eq!(made.warnings.len(), 1, "{:?}", made.warnings);
+    assert_eq!(made.warnings().len(), 1, "{:?}", made.warnings());
 }
 
 #[test]
@@ -1961,9 +1965,9 @@ fn cut_into(tool: &RevolvedProfile, path: &swarf::FacePath, floor: &BrepModel) -
 
 /// Every note of a generated path, in one string.
 fn joined(path: &openchuck_path::GeneratedPath) -> String {
-    path.notes
+    path.notices
         .iter()
-        .map(|n| n.message.as_str())
+        .map(|n| n.text.as_str())
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -2021,11 +2025,11 @@ fn req_op_02_req_op_07_req_op_12_a_floor_in_an_avoid_set_lifts_a_ball_tool_inste
     // The same through the strategy, with no warning.
     let made =
         run(|ctx| generate_in_region(&Swarf, &f.input(), &avoid, &values(&[]), ctx)).unwrap();
-    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    assert!(made.warnings().is_empty(), "{:?}", made.warnings());
     assert!(
-        made.notes
+        made.notices
             .iter()
-            .any(|n| n.message.contains("The tool is lifted up to"))
+            .any(|n| n.text.contains("The tool is lifted up to"))
     );
 }
 
@@ -2358,7 +2362,7 @@ fn req_nfr_06_req_op_07_a_lifted_swarf_path_is_identical_at_1_2_and_n_threads() 
     let runs = openchuck_testkit::determinism::check(|| {
         let made =
             run(|ctx| generate_in_region(&Swarf, &f.input(), &avoid, &values(&[]), ctx)).unwrap();
-        format!("{:?}{:?}", made.group, made.notes).into_bytes()
+        format!("{:?}{:?}", made.group, made.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -2478,7 +2482,7 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
         );
         if measured > tolerance + resolution {
             assert_eq!(
-                made.warnings.len(),
+                made.warnings().len(),
                 1,
                 "tolerance {tolerance}: the path cuts {measured:.4} mm and is not warned of"
             );
@@ -2503,7 +2507,11 @@ fn req_op_12_req_op_07_req_nfr_12_the_reported_cut_is_the_cut_of_the_written_pat
     );
     let x = advised(&message);
     let again = generated(&f, &[(names::TOLERANCE, num(x))]);
-    assert!(again.warnings.is_empty(), "at {x}: {:?}", again.warnings);
+    assert!(
+        again.warnings().is_empty(),
+        "at {x}: {:?}",
+        again.warnings()
+    );
     let measured = measured_cut(&outline, &cutting_poses(&again.group), &points, 0.01);
     assert!(
         measured <= x + resolution,
@@ -2619,7 +2627,7 @@ fn req_op_07_req_tl_04_req_nfr_07_a_flank_too_short_for_the_stock_above_the_wall
     let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 13.0));
     let path = generated(&f, &[]);
     assert!(path.group.segments.len() > 10);
-    assert!(flute_clear(&path), "{:?}", path.warnings);
+    assert!(flute_clear(&path), "{:?}", path.warnings());
 }
 
 #[test]
@@ -2635,7 +2643,7 @@ fn req_op_07_req_tl_04_swarf_from_below_the_axis_counts_the_far_half_of_the_stoc
     let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 40.1));
     let path = generated(&f, &reversed);
     assert!(path.group.segments.len() > 10);
-    assert!(flute_clear(&path), "{:?}", path.warnings);
+    assert!(flute_clear(&path), "{:?}", path.warnings());
 }
 
 // ---- the faces next to the cut face (issue #442; decision record 0532) ----
@@ -2864,7 +2872,7 @@ fn req_op_07_req_op_12_req_nfr_12_with_keep_off_end_faces_off_the_cut_into_the_e
     ));
     let made =
         run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
-    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    assert!(made.warnings().is_empty(), "{:?}", made.warnings());
     let off = [(
         swarf::parameter::KEEP_OFF_END_FACES,
         ParameterValue::Flag(false),
@@ -2884,26 +2892,26 @@ fn req_op_07_req_op_12_req_nfr_12_with_keep_off_end_faces_off_the_cut_into_the_e
     assert!(cut[0].end);
     assert!((cut[0].depth - TOOL_RADIUS).abs() < 0.05, "{cut:?}");
     let warning = made
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("face 1"))
-        .unwrap_or_else(|| panic!("{:?}", made.warnings));
+        .warnings()
+        .into_iter()
+        .find(|w| w.text.contains("face 1"))
+        .unwrap_or_else(|| panic!("{:?}", made.warnings()));
     assert_eq!(
-        warning.parameter.as_deref(),
+        warning.setting.as_deref(),
         Some(swarf::parameter::KEEP_OFF_END_FACES)
     );
     assert!(
-        warning.message.starts_with(&format!(
+        warning.text.starts_with(&format!(
             "Swarf on face 0 cuts {:.3} mm into face 1, which meets it at an end of the pass,",
             cut[0].depth
         )) && warning
-            .message
+            .text
             .contains("Keep off the end faces is off for this operation")
             && warning
-                .message
+                .text
                 .contains("check the program and the simulation before running it"),
         "{}",
-        warning.message
+        warning.text
     );
 }
 
@@ -2939,23 +2947,29 @@ fn req_op_07_req_op_12_req_nfr_12_a_floor_a_ball_cuts_into_is_measured_and_warne
     let made =
         run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
     let warning = made
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("into face 1"))
-        .unwrap_or_else(|| panic!("{:?}", made.warnings));
+        .warnings()
+        .into_iter()
+        .find(|w| w.text.contains("into face 1"))
+        .unwrap_or_else(|| panic!("{:?}", made.warnings()));
     assert_eq!(
-        warning.parameter.as_deref(),
+        warning.setting.as_deref(),
         Some(swarf::parameter::TIP_EXTENSION)
     );
+    // The side of the tool meets another face of the part: a possible
+    // collision, to acknowledge before writing (decision record 0538).
+    assert_eq!(
+        warning.acknowledgement,
+        Some(openchuck_path::Acknowledgement::PossibleCollision)
+    );
     assert!(
-        warning.message.starts_with(&format!(
+        warning.text.starts_with(&format!(
             "Swarf on face 0 cuts {:.3} mm into face 1, which meets it along the ends of its \
              rulings,",
             cut[0].depth
-        )) && warning.message.contains("put face 1 in an avoid set")
-            && warning.message.contains("negative Tip extension"),
+        )) && warning.text.contains("put face 1 in an avoid set")
+            && warning.text.contains("negative Tip extension"),
         "{}",
-        warning.message
+        warning.text
     );
     // With the floor in an avoid set the tool is lifted clear of it
     // (decision record 0491), and it is not measured again here.
@@ -3023,7 +3037,7 @@ fn req_nfr_06_req_op_07_a_pass_stopped_short_of_an_end_wall_is_identical_at_1_2_
     let runs = openchuck_testkit::determinism::check(|| {
         let made =
             run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
-        format!("{:?}{:?}{:?}", made.group, made.notes, made.warnings).into_bytes()
+        format!("{:?}{:?}{:?}", made.group, made.notices, made.warnings()).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);

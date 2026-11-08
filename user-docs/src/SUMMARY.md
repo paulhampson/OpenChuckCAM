@@ -41,6 +41,11 @@
 - [Machine setup: short moves](how-to/short-block-settings.md)
 - [Export G-code and the setup sheet](how-to/export.md)
 
+# Worked examples
+
+- [Create a custom machine](examples/custom-machine.md)
+- [Create a post-processing template](examples/create-a-post.md)
+
 # Safety and verification
 
 - [Checking G-code before you run it](safety/checking-gcode.md)
@@ -62,5 +67,7 @@
 # More
 
 - [Troubleshooting](troubleshooting.md)
+- [Reporting a problem or asking for a feature](reporting.md)
 - [Release notes](release-notes.md)
+- [Credits and licences](credits.md)
 - [Contributing to this guide](contributing.md)

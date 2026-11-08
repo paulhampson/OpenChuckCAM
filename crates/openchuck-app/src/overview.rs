@@ -287,6 +287,16 @@ impl ItemStatus {
             progress: None,
         }
     }
+
+    /// A warning that must be acknowledged before the program is written
+    /// (decision record 0538): its cause starts "Needs acknowledging:".
+    fn needs_acknowledging(cause: &str) -> Self {
+        Self {
+            state: ItemState::Warning,
+            cause: format!("{NEEDS_ACKNOWLEDGING}{}", sentence(cause)),
+            progress: None,
+        }
+    }
 }
 
 /// How serious a message is. Errors sort first.
@@ -398,6 +408,10 @@ pub struct Message {
     /// Further links beside `action`: one "Show in view N" for each area a
     /// warning of unreachable areas lists (decision record 0515 item 5).
     pub views: Vec<MessageAction>,
+    /// Whether it is a warning that must be acknowledged before the program
+    /// is written, such as a possible collision: such warnings come first
+    /// among the warnings (decision record 0538).
+    pub to_acknowledge: bool,
 }
 
 impl Message {
@@ -419,7 +433,41 @@ impl Message {
             source_name,
             action,
             views: Vec::new(),
+            to_acknowledge: false,
         }
+    }
+
+    /// A message in the one form `<Topic> (<context>): <text>` (decision
+    /// record 0536 section 3): every new message is made with this, so it
+    /// names its check and its items the same way wherever it is shown.
+    pub fn about(
+        severity: Severity,
+        topic: &str,
+        context: &crate::lead_in::Context,
+        text: &str,
+        source: Option<(ItemRef, String)>,
+        action: Option<MessageAction>,
+    ) -> Self {
+        Self::new(
+            severity,
+            crate::lead_in::in_form(topic, context, text),
+            source,
+            action,
+        )
+    }
+
+    /// Where it sorts: by severity, and among warnings those to acknowledge
+    /// first (decision record 0538).
+    fn order(&self) -> (Severity, bool) {
+        (self.severity, !self.to_acknowledge)
+    }
+
+    /// This message, marked as a warning that must be acknowledged before
+    /// the program is written (decision record 0538).
+    #[must_use]
+    pub fn to_acknowledge(mut self) -> Self {
+        self.to_acknowledge = true;
+        self
     }
 
     /// This message with the links `views`.
@@ -678,7 +726,7 @@ impl Overview {
         let at = self
             .messages
             .iter()
-            .position(|m| m.severity > message.severity)
+            .position(|m| m.order() > message.order())
             .unwrap_or(self.messages.len());
         self.messages.insert(at, message);
     }
@@ -980,7 +1028,7 @@ struct Made {
     key: StatusKey,
     before: Vec<(OperationId, Key)>,
     /// The path's warnings when it was made (decision record 0175).
-    warnings: Vec<openchuck_path::PathWarning>,
+    warnings: Vec<openchuck_path::Notice>,
     /// How many areas its strategy could not reach (decision record 0515).
     unreached: usize,
 }
@@ -1399,7 +1447,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
 /// A setup warning in the user's words: the library's text, with the machine
 /// values it used named as the machine panel names them, not by their names
 /// in the profile file (specification section 15).
-fn setup_warning_text(warning: &SetupWarning) -> String {
+pub(crate) fn setup_warning_text(warning: &SetupWarning) -> String {
     let mut plain = warning.clone();
     plain.unconfirmed.clear();
     let mut text = plain.to_string();
@@ -1417,16 +1465,34 @@ fn setup_warning_text(warning: &SetupWarning) -> String {
     text
 }
 
-/// Raises `item`'s state to `status` when it is more serious (error over
-/// warning over the rest).
-fn raise(items: &mut BTreeMap<ItemRef, ItemStatus>, item: ItemRef, status: ItemStatus) {
-    let rank = |s: ItemState| match s {
-        ItemState::Error => 2,
+/// How serious `status` is, for choosing the mark to show: an error, then
+/// a warning that needs acknowledging (decision record 0538), then any other
+/// warning, then the rest.
+fn status_rank(status: &ItemStatus) -> u8 {
+    match status.state {
+        ItemState::Error => 3,
+        ItemState::Warning if status.cause.starts_with(NEEDS_ACKNOWLEDGING) => 2,
         ItemState::Warning => 1,
         _ => 0,
-    };
+    }
+}
+
+/// The most serious of `rows` by [`status_rank`], the last of equals, as
+/// the setup row chose before: what a row that stands for them shows.
+fn worst_of(rows: impl IntoIterator<Item = ItemStatus>) -> Option<ItemStatus> {
+    rows.into_iter().max_by_key(status_rank)
+}
+
+/// The start of the cause of a mark whose warning must be acknowledged
+/// before the program is written (decision record 0538).
+const NEEDS_ACKNOWLEDGING: &str = "Needs acknowledging: ";
+
+/// Raises `item`'s state to `status` when it is more serious (error over
+/// warning over the rest). Of two warnings, one that needs acknowledging
+/// names itself first (decision record 0538).
+fn raise(items: &mut BTreeMap<ItemRef, ItemStatus>, item: ItemRef, status: ItemStatus) {
     match items.get(&item) {
-        Some(old) if rank(old.state) >= rank(status.state) => {}
+        Some(old) if status_rank(old) >= status_rank(&status) => {}
         _ => {
             items.insert(item, status);
         }
@@ -1652,7 +1718,7 @@ impl Application {
                     return Vec::new();
                 }
                 let mut names: Vec<String> = Vec::new();
-                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                for name in made.warnings.iter().filter_map(|w| w.setting.as_ref()) {
                     if !names.contains(name) {
                         names.push(name.clone());
                     }
@@ -1825,14 +1891,34 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             && let Some(made) = made
             && let Some(first) = made.warnings.first()
         {
-            status = ItemStatus::new(
-                ItemState::Warning,
-                sentence(&crate::operation::warning_text(project, o, &first.message)),
-            );
+            // A possible collision names itself first: it must be
+            // acknowledged before the program is written (decision record
+            // 0538).
+            let collision = |w: &&openchuck_path::Notice| {
+                w.acknowledgement == Some(openchuck_path::Acknowledgement::PossibleCollision)
+            };
+            status = match made.warnings.iter().find(collision) {
+                Some(c) => ItemStatus {
+                    state: ItemState::Warning,
+                    cause: format!(
+                        "{NEEDS_ACKNOWLEDGING}{}",
+                        sentence(&crate::operation::warning_text(project, o, &c.sentence()))
+                    ),
+                    progress: None,
+                },
+                None => ItemStatus::new(
+                    ItemState::Warning,
+                    sentence(&crate::operation::warning_text(
+                        project,
+                        o,
+                        &first.sentence(),
+                    )),
+                ),
+            };
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
-                let views = if crate::unreached::lists_areas(&warning.message) {
+                let views = if crate::unreached::lists_areas(&warning.sentence()) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())
                         .map(|area| MessageAction::ShowInView {
@@ -1843,19 +1929,22 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 } else {
                     Vec::new()
                 };
-                messages.push(
-                    Message::new(
-                        Severity::Warning,
-                        crate::operation::warning_text(project, o, &warning.message),
-                        Some((item, label.clone())),
-                        Some(if warning.parameter.is_some() {
-                            MessageAction::ShowSetting(o.id)
-                        } else {
-                            MessageAction::Show(item)
-                        }),
-                    )
-                    .with_views(views),
-                );
+                let message = Message::new(
+                    Severity::Warning,
+                    crate::operation::warning_text(project, o, &warning.sentence()),
+                    Some((item, label.clone())),
+                    Some(if warning.setting.is_some() {
+                        MessageAction::ShowSetting(o.id)
+                    } else {
+                        MessageAction::Show(item)
+                    }),
+                )
+                .with_views(views);
+                messages.push(if warning.acknowledgement.is_some() {
+                    message.to_acknowledge()
+                } else {
+                    message
+                });
             }
         }
         // A strategy that needs a STEP part on a mesh part: said at once,
@@ -2078,24 +2167,35 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             &snapshot.name,
                             &found,
                         );
+                        // A tool that may meet the workholding is a
+                        // possible collision; one past the top of the travel
+                        // is a travel limit (decision record 0538).
+                        let collision = found.below_minimum.is_some();
                         raise(
                             &mut items,
                             at(SetupPart::Machine),
-                            ItemStatus::new(
-                                ItemState::Warning,
-                                if found.below_minimum.is_some() {
-                                    "a tool may be too long to clear the workholding"
-                                } else {
-                                    "a tool may take the spindle above the Z travel"
-                                },
-                            ),
+                            if collision {
+                                ItemStatus::needs_acknowledging(
+                                    "a tool may be too long to clear the workholding",
+                                )
+                            } else {
+                                ItemStatus::new(
+                                    ItemState::Warning,
+                                    "a tool may take the spindle above the Z travel",
+                                )
+                            },
                         );
-                        messages.push(Message::new(
+                        let message = Message::new(
                             Severity::Warning,
                             text.clone(),
                             Some((at(SetupPart::Machine), s.name.clone())),
                             Some(MessageAction::ReviewSetup(s.id)),
-                        ));
+                        );
+                        messages.push(if collision {
+                            message.to_acknowledge()
+                        } else {
+                            message
+                        });
                         setup_checks.push(SetupCheck {
                             setup: s.id,
                             passed: false,
@@ -2143,22 +2243,34 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 let part = part_of(&w.kind);
                 let target = part.map_or(setup, at);
                 let text = sentence(&setup_warning_text(w));
+                // A possible collision must be acknowledged before the
+                // program is written (decision record 0538).
+                let collision = crate::setup::is_possible_collision(&w.kind);
                 raise(
                     &mut items,
                     target,
-                    ItemStatus::new(ItemState::Warning, text.clone()),
+                    if collision {
+                        ItemStatus::needs_acknowledging(&text)
+                    } else {
+                        ItemStatus::new(ItemState::Warning, text.clone())
+                    },
                 );
                 let action = if part == Some(SetupPart::Workholding) {
                     MessageAction::EditWorkholding(s.id)
                 } else {
                     MessageAction::ReviewSetup(s.id)
                 };
-                messages.push(Message::new(
+                let message = Message::new(
                     Severity::Warning,
                     text.clone(),
                     Some((target, s.name.clone())),
                     Some(action),
-                ));
+                );
+                messages.push(if collision {
+                    message.to_acknowledge()
+                } else {
+                    message
+                });
                 setup_checks.push(SetupCheck {
                     setup: s.id,
                     passed: false,
@@ -2213,14 +2325,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         }
         // The setup row shows the worst of its rows (problems go up the
         // tree).
-        let worst = SetupPart::ALL
-            .into_iter()
-            .filter_map(|p| items.get(&at(p)).cloned())
-            .max_by_key(|status| match status.state {
-                ItemState::Error => 2,
-                ItemState::Warning => 1,
-                _ => 0,
-            });
+        // (problems go up the tree), the mark that needs acknowledging
+        // over an ordinary warning (decision record 0538).
+        let worst = worst_of(
+            SetupPart::ALL
+                .into_iter()
+                .filter_map(|p| items.get(&at(p)).cloned()),
+        );
         if let Some(worst) = worst {
             raise(&mut items, setup, worst);
         }
@@ -2365,7 +2476,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
 
     // Order: errors, warnings, information; the sort is stable, so each
     // keeps the order above.
-    messages.sort_by_key(|m| m.severity);
+    messages.sort_by_key(Message::order);
 
     // Steps (specification section 4).
     let has_model = !project.models().is_empty();
@@ -2806,6 +2917,25 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_a_message_about_a_check_leads_with_its_topic_and_items() {
+        let context = crate::lead_in::Context::operation("1 Rough").and_tool("T2 Flat 6");
+        let m = Message::about(
+            Severity::Warning,
+            "Flute length",
+            &context,
+            "the stock stands 3.000 mm above the flutes",
+            None,
+            None,
+        );
+        assert_eq!(
+            m.text,
+            "Flute length (operation '1 Rough', tool 'T2 Flat 6'): the stock stands 3.000 mm \
+             above the flutes."
+        );
+        assert_eq!(m.severity, Severity::Warning);
+    }
+
+    #[test]
     fn req_ui_12_a_pushed_message_keeps_the_severity_order() {
         let mut o = Overview::no_project();
         o.push(Message::new(Severity::Info, "a note", None, None));
@@ -2966,6 +3096,134 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// An application whose one operation, "Walls", has an up-to-date path
+    /// made with `warnings`.
+    fn warned_app(
+        name: &str,
+        warnings: Vec<openchuck_path::Notice>,
+    ) -> (std::path::PathBuf, Application, OperationId) {
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                spindle_speed: None,
+                material: None,
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                unreached: std::sync::Arc::from([]),
+                facing: None,
+                operation: op,
+                setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings,
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        (dir, app, op)
+    }
+
+    /// The setup row shows the worst of its rows, and of two warnings the
+    /// one that needs acknowledging, wherever it is in the setup (decision
+    /// record 0538; CodeRabbit on #623).
+    #[test]
+    fn req_gc_16_the_setup_row_keeps_the_mark_that_needs_acknowledging() {
+        let acknowledge = ItemStatus::needs_acknowledging("a tool may be too long");
+        let ordinary = ItemStatus::new(ItemState::Warning, "a tab is short");
+        for rows in [
+            vec![acknowledge.clone(), ordinary.clone()],
+            vec![ordinary.clone(), acknowledge.clone()],
+        ] {
+            assert_eq!(worst_of(rows), Some(acknowledge.clone()));
+        }
+        let error = ItemStatus::new(ItemState::Error, "no stock");
+        assert_eq!(
+            worst_of(vec![acknowledge.clone(), error.clone(), ordinary]),
+            Some(error)
+        );
+        assert_eq!(worst_of(Vec::new()), None);
+    }
+
+    #[test]
+    fn req_gc_16_req_ui_12_a_possible_collision_needs_acknowledging_and_comes_first() {
+        // Decision 0538: the operation's mark says the warning needs
+        // acknowledging, and Messages lists it first among the warnings,
+        // whatever order the path gave them in.
+        let collision = "Flute length: the stock stands up to 3.000 mm above the tool's tip.";
+        let (dir, app, op) = warned_app(
+            "collision-mark",
+            vec![
+                openchuck_path::Notice::warning("an ordinary warning."),
+                openchuck_path::Notice::warning(collision)
+                    .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
+            ],
+        );
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(
+            status
+                .cause
+                .starts_with("Needs acknowledging: Flute length (operation 'Walls'"),
+            "{}",
+            status.cause
+        );
+        let warnings: Vec<&Message> = overview
+            .messages
+            .iter()
+            .filter(|m| m.severity == Severity::Warning)
+            .collect();
+        assert!(warnings[0].to_acknowledge, "{warnings:?}");
+        assert!(warnings[0].text.starts_with("Flute length"), "{warnings:?}");
+        assert!(
+            warnings
+                .iter()
+                .any(|m| m.text == "An ordinary warning." && !m.to_acknowledge)
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn req_op_07_req_nfr_12_a_path_made_with_a_warning_keeps_the_operation_in_warning() {
         // Decision 0175 (issue #226): an operation whose up-to-date path was
@@ -3030,11 +3288,10 @@ mod tests {
                     min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
-                warnings: vec![openchuck_path::PathWarning {
-                    message: message.to_owned(),
-                    parameter: Some("tolerance".to_owned()),
-                    requires_acknowledgement: false,
-                }],
+                warnings: vec![
+                    openchuck_path::Notice::warning(message.to_owned())
+                        .with_setting("tolerance".to_owned()),
+                ],
             }],
             ..crate::Regeneration::default()
         };
