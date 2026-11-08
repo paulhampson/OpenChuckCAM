@@ -309,7 +309,9 @@ impl Extension {
                 if before.is_none() && after.is_none() {
                     return pass;
                 }
-                for (piece, end, at) in [(&before, &mut turns.0, first), (&after, &mut turns.1, last)] {
+                for (piece, end, at) in
+                    [(&before, &mut turns.0, first), (&after, &mut turns.1, last)]
+                {
                     if let Some((points, t)) = piece {
                         *end = end.max(*t);
                         let mut previous = at.tip;

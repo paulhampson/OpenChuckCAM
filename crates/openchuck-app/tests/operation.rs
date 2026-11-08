@@ -1720,9 +1720,7 @@ fn req_op_11_a_new_ring_operation_blends_its_steps() {
             .get(RING_STEP)
             .cloned()
     };
-    let blended = Some(openchuck_app::project::ParameterValue::Text(
-        BLENDED.into(),
-    ));
+    let blended = Some(openchuck_app::project::ParameterValue::Text(BLENDED.into()));
     for strategy in [
         "helical_finishing",
         "rest_machining",
@@ -1763,7 +1761,11 @@ fn req_gc_07_a_saved_ring_operation_keeps_sharp_steps() {
         drop(app);
         let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
         assert_eq!(
-            app.project().operation(op).unwrap().parameters.get(RING_STEP),
+            app.project()
+                .operation(op)
+                .unwrap()
+                .parameters
+                .get(RING_STEP),
             None,
             "{strategy}"
         );

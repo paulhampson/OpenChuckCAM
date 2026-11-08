@@ -617,7 +617,10 @@ fn req_op_24_a_spiral_run_out_continues_the_helix_at_its_pitch() {
         }
         assert!(moves > 0, "{rotation}: no run-out");
         let (lo, hi) = cut_x(&p);
-        assert!((lo - REACH.0).abs() < 1e-6 && (hi - REACH.1).abs() < 1e-6, "{lo} {hi}");
+        assert!(
+            (lo - REACH.0).abs() < 1e-6 && (hi - REACH.1).abs() < 1e-6,
+            "{lo} {hi}"
+        );
         assert!(
             p.notices.iter().any(|n| n.text.contains("past the part")),
             "{:?}",
