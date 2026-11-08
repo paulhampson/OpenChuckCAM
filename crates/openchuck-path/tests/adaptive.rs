@@ -178,6 +178,13 @@ fn has_note(path: &GeneratedPath, words: &str) -> bool {
     path.notices.iter().any(|n| n.text.contains(words))
 }
 
+/// Whether `path` has a notice under `topic` (decision record 0536 section 3).
+fn has_topic(path: &GeneratedPath, topic: &str) -> bool {
+    path.notices
+        .iter()
+        .any(|n| n.topic.as_deref() == Some(topic))
+}
+
 #[test]
 fn req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met() {
     let p = cylinder();
@@ -192,7 +199,11 @@ fn req_op_04_req_op_05_axial_passes_are_added_until_the_allowed_excess_is_met() 
     // Allowed excess is 0.01 mm, the measure's sampling adds under 0.002.
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(
+        has_topic(&on, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        on.notices
+    );
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
@@ -316,7 +327,11 @@ fn req_op_04_req_op_05_clean_up_arcs_are_added_between_the_wraps_of_a_helix() {
     let (before, after) = (left(&p, &off, (4.0, 8.0)), left(&p, &on, (4.0, 8.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(
+        has_topic(&on, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        on.notices
+    );
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
@@ -341,7 +356,11 @@ fn req_op_04_rings_are_added_between_rings_until_the_allowed_excess_is_met() {
     let (before, after) = (left(&p, &off, (1.0, 11.0)), left(&p, &on, (1.0, 11.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(
+        has_topic(&on, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        on.notices
+    );
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
@@ -386,7 +405,11 @@ fn req_op_05_req_op_04_simultaneous_axial_passes_are_added_until_the_allowed_exc
     let (before, after) = (left(&p, &off, (2.0, 10.0)), left(&p, &on, (2.0, 10.0)));
     assert!(before > 0.3, "off left {before}");
     assert!(after <= 0.012, "on left {after}: {:?}", on.notices);
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(
+        has_topic(&on, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        on.notices
+    );
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
@@ -524,7 +547,11 @@ fn req_op_04_req_op_11_each_zone_keeps_its_own_stock_to_leave_with_adaptive_spac
         )
     })
     .unwrap();
-    assert!(has_note(&path, "adaptive spacing:"), "{:?}", path.notices);
+    assert!(
+        has_topic(&path, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        path.notices
+    );
     assert!(path.warnings().is_empty(), "{:?}", path.warnings());
     // Over the zone with none, at most the Allowed excess is left.
     let bare = left(&p, &path, (1.5, 4.5));
@@ -670,7 +697,11 @@ fn req_op_04_req_op_03_continuous_roughing_along_the_length_adds_lines_until_the
     let after = left(&p, &on, (2.0, 10.0));
     assert!(before > 0.05, "off left {before}");
     assert!(after <= 0.012, "on left {after}");
-    assert!(has_note(&on, "adaptive spacing:"), "{:?}", on.notices);
+    assert!(
+        has_topic(&on, openchuck_path::topic::ADAPTIVE_SPACING),
+        "{:?}",
+        on.notices
+    );
     assert!(on.warnings().is_empty(), "{:?}", on.warnings());
 }
 
@@ -841,11 +872,7 @@ fn req_op_04_req_op_24_flat_facing_spaces_its_lines_by_the_material_left() {
     let flat = support::tool(ToolShape::FlatEnd, 4.0);
     let on = faced(&flat, &[]);
     let fixed = faced(&flat, &[off()]);
-    assert!(
-        has_note(&on, "adaptive spacing: no passes were added"),
-        "{:?}",
-        on.notices
-    );
+    assert!(has_note(&on, "no passes were added"), "{:?}", on.notices);
     assert_eq!(on.group.segments, fixed.group.segments);
     // A ball leaves a cusp between lines on the face: lines are added.
     let ball = ball(4.0);

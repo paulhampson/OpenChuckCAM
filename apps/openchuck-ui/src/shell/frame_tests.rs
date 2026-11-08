@@ -1276,6 +1276,24 @@ fn req_ui_11_req_nfr_12_a_draft_left_without_apply_is_said_to_be_not_applied() {
             setup
         ))
     );
+    // In the one form (decision record 0536 section 3): its topic, then the
+    // setup as it is named now.
+    let name = &rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .project()
+        .setup(setup)
+        .unwrap()
+        .name;
+    assert!(
+        message
+            .text
+            .starts_with(&format!("Workholding (setup '{name}'): it has changes")),
+        "{}",
+        message.text
+    );
 }
 
 /// Sequence 3 of #558: Ctrl+Enter in the section applies as the button
