@@ -1,10 +1,10 @@
 # 0548: A steep descent inside a pass goes down no faster than the plunge feed (lane PATHFEED; issue #643)
 
-- **Status:** proposed by lane PATHFEED on 8 Nov 2026. Not accepted: questions 1 and 2 below are the owner's, put through the coordinator (decision 0049). Nothing in this record is built until they are answered.
+- **Status:** proposed by lane PATHFEED on 8 Nov 2026. The owner answered questions 1 and 2 on 8 Nov 2026, relayed by the coordinator (decision 0049): option A for each, as recommended, with finishing revisited after the release (OI-2134). Not yet accepted: the owner accepts the record after reading it in full. The decision below is written to those answers.
 - **What it amends, if accepted:** the shared path assembly's feed for moves inside a pass (`crates/openchuck-path/src/assemble.rs`), alongside [decision 0050](0050-walls-merge-micro-moves.md) (wall moves, which it leaves merged and timed as they are) and [decision 0026](0026-entry-moves.md) (entries, already at the plunge feed). The verification plan's OP-11 row gains the tests below. The requirements and the architecture are unchanged.
 - **Requirements:** OP-11 (feeds), OP-03 (rotary roughing), GC-07 / NFR-06 (golden programs and determinism), NFR-12.
 - **Date:** 8 Nov 2026.
-- **Open items:** OI-2133 and OI-2134, proposed below (provisional numbers from the coordinator; the Merge Manager assigns final numbers at release).
+- **Open items:** OI-2133 (the answers; closed with them) and OI-2134 (finishing, after the release). Numbers given by the coordinator; the Merge Manager assigns final numbers at release.
 
 ## Context
 
@@ -36,13 +36,15 @@ The stored golden programs (LinuxCNC set, counted from the files: descending G1 
 
 No stored golden program is a rotary roughing job. A rule for every strategy changes six of them (twelve files with both posts) and slows finishing where the material ahead is only the stock to leave.
 
-## Decision (proposed)
+## Decision (proposed; written to the owner's answers)
 
-1. **Where.** In the shared assembly, on the moves inside a pass (after the wall merge of 0050 and the contact smoothing), for the strategies question 1 selects. Entries, exits, links and a pass with rapid points (drilling, 0050 item 1) are unchanged.
+1. **Where.** In the shared assembly, on the moves inside a pass (after the wall merge of 0050 and the contact smoothing), for roughing only: rotary roughing and Facing's Flat and Round modes turn it on through a provided method of the `Strategy` trait that is off by default; every other strategy, finishing included, is unchanged until OI-2134 is decided. Entries, exits, links and a pass with rapid points (drilling, 0050 item 1) are unchanged.
 2. **The rule (question 2).** A cutting move that goes down along the tool axis is fed so that its tip's speed along the axis is no more than the operation's plunge feed: its time is at least its descent divided by the plunge feed. A move already that slow (most drops on the Baluster, timed by their contacts) is unchanged; a move that is not would be written with a lower F word. It stays a `Cutting` move with its contact, so the simulation, the contact smoothing and 0050's wall merge are unchanged. Only ever slower, never faster.
-3. **Golden programs.** Each program that has such a move is re-blessed in the same pull request, with the count of changed moves per program stated there (GC-07: the same project and version still give byte-identical G-code; the version changes).
+3. **Golden programs.** No stored golden program is a roughing job, so none is expected to change; any that does is re-blessed in the same pull request with the count of changed moves stated there (GC-07: the same project and version still give byte-identical G-code).
 
 ## Questions for the owner
+
+*Each question was answered A (8 Nov 2026, relayed by the coordinator); the options are kept as they were put.*
 
 ### Question 1: which strategies
 
@@ -62,7 +64,7 @@ No stored golden program is a rotary roughing job. A rule for every strategy cha
 
 - `req_op_11_req_op_03_roughing_drop_off_a_raised_floor_goes_down_no_faster_than_the_plunge_feed`: a synthetic cylinder with a raised band, rotary roughing: every descending cutting move's axial tip speed is at most the plunge feed (checked from the IR's times and positions, not from the assembler's helper).
 - `req_op_11_shallow_descent_and_level_moves_keep_the_cutting_feed`: moves below the limit are byte-identical to before.
-- `req_op_11_finishing_descent_is_unchanged` (question 1 A or C): the same surface finished keeps its feeds.
+- `req_op_11_finishing_descent_is_unchanged`: the same surface finished keeps its feeds.
 - `req_op_13_req_op_14_wall_moves_still_merge_and_pass_gates_1_and_2`: the 0050 wall tests still pass, with both posts (the F word never exceeds a limit after the change).
 - `req_gc_07_req_nfr_06_descent_feed_is_deterministic_at_1_2_n_threads`: both posts.
 - The blisk roughing count above as an application test (`crates/openchuck-app/tests/`), if it runs in well under a minute uninstrumented (it generated in 2.7 s in release).
@@ -75,14 +77,14 @@ No stored golden program is a rotary roughing job. A rule for every strategy cha
 
 ## Consequences
 
-- `crates/openchuck-path/src/assemble.rs` (the per-pass loop and a helper), `strategy.rs` (with question 1 A or C, a provided method, default off: an addition, not a breaking change), the roughing strategy's implementation of it; golden programs as question 1 decides; `docs/verification-plan.md` (OP-11 row); `docs/decisions/README.md`; `docs/open-items.md`; the changelog.
+- `crates/openchuck-path/src/assemble.rs` (the per-pass loop and a helper), `strategy.rs` (a provided method, default off: an addition, not a breaking change), the rotary roughing and Facing implementations of it; `docs/verification-plan.md` (OP-11 row); `docs/decisions/README.md`; `docs/open-items.md`; the changelog.
 - Coordinated with lanes RAMPENTRY (owns `assemble/entry.rs`, not edited here) and RINGSTEP (owns ring steps in `roughing.rs`, `helical.rs`, `simultaneous.rs`, `extend.rs`, not edited here; a ring step that goes down steeply inside a roughing pass falls under the rule).
 - Generated G-code remains the user's to verify before running it on a machine (NFR-12). Nothing here was run on a machine.
 
 ## Open items
 
-- **OI-2133:** the owner's answers to questions 1 and 2.
-- **OI-2134:** with question 1 C, whether finishing descents get the rule after the release.
+- **OI-2133:** the owner's answers to questions 1 and 2. Closed: A for each (8 Nov 2026, relayed).
+- **OI-2134:** whether finishing descents get the same rule, revisited after the release (the owner's answer to question 1).
 
 ## Verification
 
