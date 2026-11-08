@@ -186,9 +186,9 @@ GitHub creates `github-pages` when Pages is switched on (step 6). In **Settings,
 
 ### 6. Switch on GitHub Pages
 
-**Settings**, then **Pages** (under "Code, planning, and automation"). Under **Build and deployment**, **Source**, choose **GitHub Actions**. No custom domain.
+**Settings**, then **Pages** (under "Code, planning, and automation"). Under **Build and deployment**, **Source**, choose **GitHub Actions**. The guide is served at the custom domain `openchuck.cam`: it is set under **Settings, Pages, Custom domain**, and the domain's DNS points to GitHub Pages. No `CNAME` file is needed, because the site is deployed by Actions; the build places the site at the root of the domain (`--base /` in `.github/actions/user-docs/action.yml`).
 
-The guide appears after the next Nightly build that publishes the `nightly` pre-release, or at once if you run the **Docs site** workflow by hand (**Actions, Docs site, Run workflow**, on `main`). Its address is `https://paulhampson.github.io/OpenChuckCAM/`.
+The guide appears after the next Nightly build that publishes the `nightly` pre-release, or at once if you run the **Docs site** workflow by hand (**Actions, Docs site, Run workflow**, on `main`). Its address is `https://openchuck.cam/`.
 
 ### 7. Check it
 

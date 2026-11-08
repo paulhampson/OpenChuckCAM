@@ -1,6 +1,6 @@
 # The OpenChuckCAM user guide
 
-The source of the guide for people who use OpenChuckCAM, published at <https://paulhampson.github.io/OpenChuckCAM/>. It is not the project's engineering documentation: that is [`docs/`](../docs/README.md), which stays the source of truth. [Decision 0400](../docs/decisions/0400-user-documentation-site.md) sets out how the guide is built, versioned and published.
+The source of the guide for people who use OpenChuckCAM, published at <https://openchuck.cam/>. It is not the project's engineering documentation: that is [`docs/`](../docs/README.md), which stays the source of truth. [Decision 0400](../docs/decisions/0400-user-documentation-site.md) sets out how the guide is built, versioned and published.
 
 | Path | Contents |
 | --- | --- |
@@ -23,13 +23,13 @@ You need Python 3.11 or later, Git, and the tools pinned in `.github/actions/use
 ```text
 python3 -m unittest discover -s user-docs/tools/tests
 python3 user-docs/tools/build.py --out /tmp/guide/latest-build
-python3 user-docs/tools/assemble.py site --latest /tmp/guide/latest-build --out /tmp/guide/root/OpenChuckCAM --base /OpenChuckCAM/
-python3 user-docs/tools/check.py --site /tmp/guide/root/OpenChuckCAM
-lychee --offline --include-fragments --root-dir /tmp/guide/root /tmp/guide/root/OpenChuckCAM
-java -jar vnu.jar --skip-non-html --errors-only /tmp/guide/root/OpenChuckCAM/latest
+python3 user-docs/tools/assemble.py site --latest /tmp/guide/latest-build --out /tmp/guide/site --base /
+python3 user-docs/tools/check.py --site /tmp/guide/site
+lychee --offline --include-fragments --root-dir /tmp/guide/site /tmp/guide/site
+java -jar vnu.jar --skip-non-html --errors-only /tmp/guide/site/latest
 ```
 
-To read it, serve the folder (`python3 -m http.server -d /tmp/guide/root`) and open <http://localhost:8000/OpenChuckCAM/>. The version list needs a server; the pages themselves also open from disk.
+To read it, serve the folder (`python3 -m http.server -d /tmp/guide/site`) and open <http://localhost:8000/>. The version list needs a server; the pages themselves also open from disk.
 
 ## Taking the screenshots
 

@@ -183,7 +183,7 @@ def main(argv=None):
     s.add_argument("--latest", required=True)
     s.add_argument("--releases")
     s.add_argument("--out", required=True)
-    s.add_argument("--base", default="/", help="the site's path on the server, for the 404 page (for example /OpenChuckCAM/)")
+    s.add_argument("--base", default="/", help="the site's path on the server, for the 404 page: / for the site at https://openchuck.cam/")
     r = sub.add_parser("add-release")
     r.add_argument("--built", required=True)
     r.add_argument("--branch", required=True)
