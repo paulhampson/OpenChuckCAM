@@ -34,7 +34,7 @@ Blocks writing
 : Nothing can be written until it is fixed: no operation is enabled, an operation is out of date or failed, or a file failed its read-back check. Generate again, or fix the operation the line names.
 
 Warning
-: The files can be written, but read it first: an operation not simulated, an operation made with a warning, a partial path, or machine values not confirmed on the machine.
+: The files can be written, but read it first: an operation not simulated, an operation made with a warning, a partial path or a possible collision (each of which also needs its tick, below), or machine values not confirmed on the machine.
 
 Disabled operations are not written, and the list says so.
 
@@ -49,6 +49,7 @@ Under the files, the program's notice asks you to verify the program. Depending 
 - **I will verify this G-code before running it on a machine**: once for each project on each computer;
 - **I know the cut has not been simulated for this project**: when the project skips the stock simulation;
 - **I accept the partial path made for this result: it is not complete, and I will check the surface before running the program**: when an operation's path is partial, for these files only.
+- **I have read the possible collisions listed for this result and will check them before running the program**: when the files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. The dialog lists each one above the box, and Messages lists them first among the warnings. For these files only.
 
 Then press **Write G-code**. If it is greyed out, the line above it says why. If a file already exists, the program lists them and asks whether to **Replace files**; **Cancel** writes nothing.
 

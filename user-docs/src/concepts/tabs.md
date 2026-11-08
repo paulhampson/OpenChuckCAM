@@ -24,7 +24,7 @@ Diameter
 Placement
 : **On the axis**, one tab on the rotary axis; or **Around the axis**, several tabs evenly spaced round it, set by **Count**, **Start angle** and **Offset from axis**.
 
-A tab must be at least as long along X as the tools that cut beside it are wide; otherwise the tool cannot cut the gap beside it to shape. The program warns when a tab is shorter, with "Tab length (operation ..., tool ...): ...", but makes the path.
+A tab must be at least as long along X as the tools that cut beside it are wide; otherwise the tool cannot cut the gap beside it to shape. The program warns when a tab is shorter, with "Tab length (operation ..., tool ...): ...", but makes the path. The tool may cut through such a tab and let the part come loose, so this is a possible collision: the export asks you to acknowledge it before it writes the G-code.
 
 ## Adding tabs
 
