@@ -22,12 +22,10 @@ struct Uniforms {
     hatch: vec4<f32>,
     // x: logical pixels per millimetre at the camera's target, which the
     // dash pattern is measured in; y: the hatch, 0 none, 1 one direction,
-    // 2 both directions, 3 dots.
+    // 2 both directions, 3 painted on the surface; z: the distance between
+    // the lines of that one, in millimetres.
     scale: vec4<f32>,
-    // Dots, in logical pixels: x: the distance between two dots and between
-    // two rows; y: the radius of the core; z: the radius with its ring.
-    dots: vec4<f32>,
-    // The colour of a dot's ring.
+    // The colour of the casing of a surface hatch's lines.
     ring: vec4<f32>,
 };
 
@@ -65,7 +63,7 @@ fn fs_mesh(in: MeshOut) -> @location(0) vec4<f32> {
 fn fs_hatch(in: MeshOut) -> @location(0) vec4<f32> {
     // Whole logical pixels along each diagonal, so the bands are exact.
     let p = in.clip.xy / max(u.line.w, 1e-3);
-    if u.scale.y > 3.5 {
+    if u.scale.y > 2.5 {
         // Hatching painted on the surface: stripes where parallel planes
         // (spacing in millimetres, u.scale.z) cut the mesh, anchored in the
         // model frame, so they move, scale and foreshorten with it. A dark
@@ -77,38 +75,18 @@ fn fs_hatch(in: MeshOut) -> @location(0) vec4<f32> {
         let w = max(fwidth(f), 1e-5);
         let v = abs(fract(f) - 0.5);
         let from_line = 0.5 - v;
-        let core_half = max(0.07, 0.8 * w);
-        let ring_half = max(0.16, 1.9 * w);
-        let aa = w;
+        let core_half = max(0.045, 0.35 * w);
+        let ring_half = max(0.10, 0.8 * w);
+        let aa = 0.5 * w;
         let core = 1.0 - smoothstep(core_half - aa, core_half + aa, from_line);
         let casing = 1.0 - smoothstep(ring_half - aa, ring_half + aa, from_line);
-        let fade = smoothstep(0.12, 0.35, w);
+        let fade = smoothstep(0.3, 0.7, w);
         let cov = max(casing, core) * (1.0 - fade);
         let tint_a = 0.30 * fade;
         let alpha = 1.0 - (1.0 - cov) * (1.0 - tint_a);
         let line_rgb = mix(u.ring.rgb, u.hatch.rgb, core);
         let rgb = (line_rgb * cov + u.hatch.rgb * tint_a * (1.0 - cov)) / max(alpha, 1e-4);
         return vec4<f32>(rgb, alpha);
-    }
-    if u.scale.y > 2.5 {
-        // Dots in rows, every other row shifted by half a spacing. A pixel
-        // is the core, the ring or the fill beneath, by its distance from
-        // the nearest dot's centre.
-        let s = u.dots.x;
-        let row = floor(p.y / s);
-        let shift = select(0.0, 0.5 * s, (i32(row) & 1) == 1);
-        let centre = vec2<f32>(
-            (floor((p.x + shift) / s) + 0.5) * s - shift,
-            (row + 0.5) * s,
-        );
-        let d = length(p - centre);
-        if d <= u.dots.y {
-            return u.hatch;
-        }
-        if d <= u.dots.z {
-            return u.ring;
-        }
-        return shade(in);
     }
     var on = i32(floor(p.x + p.y)) % 6 == 0;
     if u.scale.y > 1.5 {

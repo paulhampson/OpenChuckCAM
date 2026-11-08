@@ -150,15 +150,16 @@ fn legend_rows(viewport: &Viewport) -> f32 {
 }
 
 /// A legend swatch for the surfaces the tool could not reach: the part's
-/// grey with one dot, a core in a ring, as the view draws them (decision
-/// 0515 item 4).
-pub fn dot_swatch(painter: &egui::Painter, r: Rect) {
+/// grey with two diagonal lines, a core in a casing, as the view draws them
+/// (decision 0515 item 4 as amended for issue 637).
+pub fn hatch_swatch(painter: &egui::Painter, r: Rect) {
     painter.rect_filled(r, 0.0, to_color32(roles::PART));
     let clipped = painter.with_clip_rect(r);
     for x in [r.left() + r.width() * 0.3, r.left() + r.width() * 0.7] {
-        let at = pos2(x, r.center().y);
-        clipped.circle_filled(at, 3.5, to_color32(roles::AREA_DOT_RING));
-        clipped.circle_filled(at, 2.0, to_color32(roles::AREA_DOT_CORE));
+        let from = pos2(x - r.height() / 2.0, r.bottom());
+        let to = pos2(x + r.height() / 2.0, r.top());
+        clipped.line_segment([from, to], Stroke::new(3.0, to_color32(roles::AREA_HATCH_CASING)));
+        clipped.line_segment([from, to], Stroke::new(1.2, to_color32(roles::AREA_HATCH_CORE)));
     }
 }
 
@@ -763,7 +764,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         for (i, name) in viewport.unreached_legend().iter().enumerate() {
             let y = r.top() + 6.0 + ROW * (first + i) as f32;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
-            dot_swatch(&painter, swatch);
+            hatch_swatch(&painter, swatch);
             fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }
@@ -825,7 +826,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         for (i, name) in viewport.unreached_legend().iter().enumerate() {
             let y = r.top() + held_top + ROW * (first + i) as f32;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(18.0, 12.0));
-            dot_swatch(&painter, swatch);
+            hatch_swatch(&painter, swatch);
             fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }

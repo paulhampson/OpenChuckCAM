@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The surfaces simultaneous finishing could not reach, in the view (OP-20,
-//! UI-11, UI-12, NFR-15; decision record 0515; issue #416): a two-tone dot
+//! UI-11, UI-12, NFR-15; decision record 0515; issue #416): a two-tone hatch
 //! pattern on the triangles of each area, a numbered marker for each, the
 //! legend's rows, and the move of the camera to look at one. What is shown,
 //! and when, is decided by [`crate::unreached_view`]; this draws it.
@@ -107,8 +107,8 @@ pub(crate) fn blend(from: &Camera, to: &Camera, t: f64) -> Camera {
 
 impl Viewport {
     /// Sets the areas to draw: the triangles of the part of `model` that
-    /// each lies on, with its marker. An empty list draws nothing. The dots
-    /// are in the layer of their own; the Show menu's "Unreachable areas"
+    /// each lies on, with its marker. An empty list draws nothing. The hatch
+    /// is in the layer of its own; the Show menu's "Unreachable areas"
     /// hides them without dropping them.
     pub fn set_unreached(&mut self, model: Option<ModelId>, shown: Vec<ShownOperation>) {
         if self.areas.model == model && self.areas.shown == shown {
@@ -119,7 +119,7 @@ impl Viewport {
         self.rebuild_areas();
     }
 
-    /// Builds the layer of dots from the areas and the part the scene holds.
+    /// Builds the layer of hatching from the areas and the part the scene holds.
     pub(super) fn rebuild_areas(&mut self) {
         let mut scene = Scene::default();
         let part = self.areas.model.and_then(|model| {
@@ -134,48 +134,17 @@ impl Viewport {
                     continue;
                 }
                 let mesh = triangles_mesh(&part.mesh, &area.triangles);
-                // Review build only (decision 0515 amendment, issue 637):
-                // OPENCHUCK_AREA_PATTERN = dots | a | b | c.
-                let pattern = std::env::var("OPENCHUCK_AREA_PATTERN").unwrap_or_default();
-                let tint = [0.047, 0.055, 0.071, 0.40];
-                let (fill, hatch, outline) = match pattern.as_str() {
-                    "a" => (
-                        [0.0; 4],
-                        Some(HatchKind::Surface {
-                            ring: roles::AREA_DOT_RING,
-                        }),
-                        false,
-                    ),
-                    "b" => ([tint[0], tint[1], tint[2], tint[3]], None, true),
-                    "c" => (
-                        [0.0; 4],
-                        Some(HatchKind::Surface {
-                            ring: roles::AREA_DOT_RING,
-                        }),
-                        true,
-                    ),
-                    _ => (
-                        [0.0; 4],
-                        Some(HatchKind::Dots {
-                            ring: roles::AREA_DOT_RING,
-                        }),
-                        false,
-                    ),
-                };
-                scene.add_mesh(&mesh, &[], fill, roles::FEATURE_EDGES);
+                // Transparent fill: only the hatch lines are drawn, over
+                // whatever lies beneath.
+                scene.add_mesh(&mesh, &[], [0.0; 4], roles::FEATURE_EDGES);
                 if let Some(added) = scene.meshes.last_mut() {
                     added.slot = Slot::Part;
-                                        added.hatch = hatch.map(|kind| Hatch {
-                        colour: roles::AREA_DOT_CORE,
-                        kind,
+                    added.hatch = Some(Hatch {
+                        colour: roles::AREA_HATCH_CORE,
+                        kind: HatchKind::Surface {
+                            ring: roles::AREA_HATCH_CASING,
+                        },
                     });
-                    if outline {
-                        added.outline = Some(openchuck_viewport::Outline {
-                            colour: roles::AREA_DOT_RING,
-                            width: 1.5,
-                            style: openchuck_viewport::LineStyle::Solid,
-                        });
-                    }
                 }
             }
         }
@@ -334,7 +303,7 @@ impl Viewport {
     }
 
     /// Draws the numbered markers of the areas (NFR-15: text of 13 points on
-    /// a dark badge with a white ring, the dot's own two tones).
+    /// a dark badge with a white ring, the hatch's own two tones).
     pub(super) fn draw_area_markers(&self, ui: &egui::Ui, rect: Rect, now: f64) {
         if !self.visibility().unreachable || self.areas.shown.is_empty() {
             return;
