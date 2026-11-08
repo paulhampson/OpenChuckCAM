@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased (MSGREVIEW, decision 0539; no library change)
+## 0.50.0
 
-- **Changed (decision 0539, accepted; OI-2095):** workholding Apply stores the workholding with an automatic tab that has no room, or with an automatic tab over a tab placed by hand, and keeps the finding on that tab's row as a warning, as generation does; only a tab outside the head and tail zones still refuses. `workholding::findings_of` refuses only the kinds it names, so a new kind warns. `Application::check_setup_workholding` returns the findings (`WorkholdingFinding`, with `refuses`) instead of their texts, and the command line's `setup` refuses only those that refuse and prints the others as warnings (a tab shorter than a tool was refused there too, and is now a warning, as decision 0523 says).
+- **Changed (0.50.0, or the next free version; MSGREVIEW step 1; issue #567; decision 0536, accepted):** the application reads the pathing library's new `Notice` type; what the user sees is unchanged. New `lead_in` module (`Context`, `lead_in`, `in_form`) writes the one form every message takes, `<Topic> (<context>): <text>`, and `Message::about` builds a message in it; the flute and tab warnings use it. `cargo xtask messages` (also run by `cargo xtask deps`) counts the messages built with `Message::new` and the words that claim safety against `xtask/messages.toml`, which may only fall.
+- **Changed (0.50.0; decision 0539, accepted; OI-2095):** workholding Apply stores the workholding with an automatic tab that has no room, or with an automatic tab over a tab placed by hand, and keeps the finding on that tab's row as a warning, as generation does; only a tab outside the head and tail zones still refuses. `workholding::findings_of` refuses only the kinds it names, so a new kind warns. `Application::check_setup_workholding` returns the findings (`WorkholdingFinding`, with `refuses`) instead of their texts, and the command line's `setup` refuses only those that refuse and prints the others as warnings (a tab shorter than a tool was refused there too, and is now a warning, as decision 0523 says).
 
 ## 0.48.0
 

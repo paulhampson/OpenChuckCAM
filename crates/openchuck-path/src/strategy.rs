@@ -20,10 +20,9 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{
-    GeneratedPath, PathNote, PathWarning, ShankBreak, Unreached, assemble_with_entry,
-};
+use crate::assemble::{GeneratedPath, ShankBreak, Unreached, assemble_with_entry};
 use crate::error::{PathError, Result};
+use crate::notice::Notice;
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
 };
@@ -94,17 +93,16 @@ pub struct Pass {
 }
 
 /// A strategy's passes with what it found worth telling the user, as
-/// sentences (decision record 0036 item 9). The notes are added to the
-/// generated path's notes, against its first segment.
+/// notices (decision record 0036 item 9; decision record 0536 item 6.1). The
+/// notices are added to the generated path's, warnings first.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StrategyOutput {
     /// The passes, as [`Strategy::passes`] gives them.
     pub passes: Vec<Pass>,
-    /// Notes about the whole toolpath.
-    pub notes: Vec<String>,
-    /// Warnings about the whole toolpath: the path is made, but the user
-    /// must see these before using it (decision record 0175).
-    pub warnings: Vec<PathWarning>,
+    /// What the user should know about the whole toolpath, each with its
+    /// level: a warning when the path is made but the user must see it
+    /// before using it (decision record 0175), information otherwise.
+    pub notices: Vec<Notice>,
     /// Surfaces the strategy found it could not reach with the tool, for a
     /// host to show (OP-20; decision record 0368). Each is also said in a
     /// warning.
@@ -112,6 +110,22 @@ pub struct StrategyOutput {
     /// Places where the strategy broke a pass because the tool's shank would
     /// meet the part (decision record 0368). Each is also said in a warning.
     pub shank_breaks: Vec<ShankBreak>,
+}
+
+impl StrategyOutput {
+    /// Its warnings, in order.
+    pub fn warnings(&self) -> Vec<&Notice> {
+        self.notices.iter().filter(|n| n.is_warning()).collect()
+    }
+
+    /// The text of each of its notices that is information, in order.
+    pub fn notes(&self) -> Vec<&str> {
+        self.notices
+            .iter()
+            .filter(|n| !n.is_warning())
+            .map(|n| n.text.as_str())
+            .collect()
+    }
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -358,8 +372,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         };
         Ok(StrategyOutput {
             passes,
-            notes: Vec::new(),
-            warnings: Vec::new(),
+            notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -508,11 +521,14 @@ fn generate_with(
     };
     let StrategyOutput {
         passes,
-        notes,
-        mut warnings,
+        notices,
         unreached,
         shank_breaks,
     } = output;
+    // Warnings first, then information, each in the order given, as the
+    // host has always read them (decision record 0175).
+    let (mut warnings, notes): (Vec<Notice>, Vec<Notice>) =
+        notices.into_iter().partition(Notice::is_warning);
     context.check_cancelled()?;
     warnings.extend(crate::region::watched_warnings(
         &passes,
@@ -546,27 +562,14 @@ fn generate_with(
         }
     }
     check_clear(&path, input.keep_out, mid)?;
-    // Each warning is a note too, first, so a host that shows only notes
-    // still says it (decision record 0175).
-    let notes: Vec<String> = warnings
-        .iter()
-        .map(|w| w.message.clone())
-        .chain(notes)
-        .collect();
-    path.warnings = warnings;
+    // The warnings, then the strategy's information, then what assembly
+    // said, each said once (decision record 0536 item 6.1).
+    let mut notices = warnings;
+    notices.extend(notes);
+    notices.append(&mut path.notices);
+    path.notices = notices;
     path.unreached = unreached;
     path.shank_breaks = shank_breaks;
-    if !notes.is_empty() {
-        let mut notes: Vec<PathNote> = notes
-            .into_iter()
-            .map(|message| PathNote {
-                segment: 0,
-                message,
-            })
-            .collect();
-        notes.append(&mut path.notes);
-        path.notes = notes;
-    }
     context.check_cancelled()?;
     strategy.validate_path(input, &parameters, &path, context)?;
     context.check_cancelled()?;
@@ -641,6 +644,19 @@ pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
         .any(|&(a, b)| hi > a + KEEP_OUT_SLACK && lo < b - KEEP_OUT_SLACK)
 }
 
+/// A strategy's notices from its warnings and its notes: the warnings first,
+/// then each note as information, in their order (decision record 0536 item
+/// 6.1).
+pub(crate) fn notices(
+    warnings: Vec<Notice>,
+    notes: impl IntoIterator<Item = String>,
+) -> Vec<Notice> {
+    warnings
+        .into_iter()
+        .chain(notes.into_iter().map(Notice::information))
+        .collect()
+}
+
 /// The passes with every stretch that reaches into `keep_out` left out
 /// (SET-09; decision record 0161): a pass is cut into the runs of points
 /// that, with the moves between them, stay clear, and a run of one point
@@ -649,10 +665,10 @@ pub(crate) fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
 /// is left of passes that cut, the operation is refused.
 fn keep_clear(
     passes: Vec<Pass>,
-    mut notes: Vec<String>,
+    mut notes: Vec<Notice>,
     keep_out: &[(f64, f64)],
     mid: f64,
-) -> Result<(Vec<Pass>, Vec<String>)> {
+) -> Result<(Vec<Pass>, Vec<Notice>)> {
     if keep_out.is_empty() || passes.is_empty() {
         return Ok((passes, notes));
     }
@@ -740,16 +756,16 @@ fn keep_clear(
         )));
     }
     if cut_short {
-        notes.push(format!(
+        notes.push(Notice::information(format!(
             "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
              over the gripped length of the stock."
-        ));
+        )));
     }
     if holes > 0 {
-        notes.push(format!(
+        notes.push(Notice::information(format!(
             "{holes} {} not drilled: the tool would reach over {names}.",
             if holes == 1 { "hole is" } else { "holes are" }
-        ));
+        )));
     }
     Ok((kept, notes))
 }
@@ -920,7 +936,7 @@ mod tests {
                 pass(&[0.0, 10.0]),
                 pass(&[-11.0, -7.0, -2.0]),
             ],
-            vec!["first".to_owned()],
+            vec![Notice::information("first")],
             &KEEP_OUT,
             MID,
         )
@@ -935,9 +951,9 @@ mod tests {
             ]
         );
         assert_eq!(notes.len(), 2);
-        assert_eq!(notes[0], "first");
+        assert_eq!(notes[0].text, "first");
         assert_eq!(
-            notes[1],
+            notes[1].text,
             "Nothing within one tool radius of the held region at the start of the stock is \
              cut: no part of the tool reaches over the gripped length of the stock."
         );
@@ -981,10 +997,10 @@ mod tests {
         assert_eq!(passes, vec![clear]);
         assert_eq!(
             notes,
-            vec![
+            vec![Notice::information(
                 "1 hole is not drilled: the tool would reach over the held region at the start \
                  of the stock."
-            ]
+            )]
         );
     }
 
@@ -1022,11 +1038,11 @@ mod tests {
         )
         .unwrap();
         assert!(
-            notes[0].starts_with(
+            notes[0].text.starts_with(
                 "Nothing within one tool radius of the held regions at both ends of the stock"
             ),
             "{}",
-            notes[0]
+            notes[0].text
         );
         let error = check_clear(&path(&[(MoveKind::LeadIn, 38.0)]), &both, MID).unwrap_err();
         assert_eq!(
@@ -1069,8 +1085,7 @@ mod tests {
                     })
                     .collect(),
             },
-            notes: Vec::new(),
-            warnings: Vec::new(),
+            notices: Vec::new(),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         }

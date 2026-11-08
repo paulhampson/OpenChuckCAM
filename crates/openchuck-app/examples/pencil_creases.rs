@@ -231,10 +231,11 @@ fn main() {
                     .filter(|s| s.kind.is_fed())
                     .count();
                 let passes = path
-                    .notes
+                    .notices
                     .iter()
-                    .find(|n| n.message.starts_with("pencil clean-up:"))
-                    .map_or_else(String::new, |n| n.message.clone());
+                    .filter(|n| !n.is_warning())
+                    .find(|n| n.text.starts_with("pencil clean-up:"))
+                    .map_or_else(String::new, |n| n.text.clone());
                 println!(
                     "| {form} | {passes} | {fed} | {} | {:.4} | ({:.2}, {:.2}, {:.2}) | {over} | {seconds:.1} |",
                     stations.len(),

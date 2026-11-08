@@ -41,7 +41,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use openchuck_geom::edges::EdgeMap;
 use openchuck_geom::select;
 use openchuck_path::{
-    BrepSurface, LeaveZone, MeshSurface, PathWarning, Protection, RegionConstraint, SurfaceSource,
+    BrepSurface, LeaveZone, MeshSurface, Notice, Protection, RegionConstraint, SurfaceSource,
     WatchedSurface, Window,
 };
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId};
@@ -1131,7 +1131,7 @@ pub(crate) struct ResolvedRegion {
     /// record 0229 item 1).
     watched: Vec<(String, Protection, Box<dyn SurfaceSource>)>,
     /// A warning for each set that limits nothing (set to Ignore).
-    pub(crate) warnings: Vec<PathWarning>,
+    pub(crate) warnings: Vec<Notice>,
     /// The selected triangles that have a stock to leave of their own,
     /// grouped by amount; where sets overlap the largest amount applies
     /// (OP-11, decision record 0034 item 4).

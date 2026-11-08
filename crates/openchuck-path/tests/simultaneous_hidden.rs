@@ -239,7 +239,7 @@ fn generate_on(f: &Fixture, input: &StrategyInput<'_>, extra: &[(&str, f64)]) ->
         "generated {} moves in {:.2} s; notes {:?}; unreached {:?}",
         path.group.segments.len(),
         start.elapsed().as_secs_f64(),
-        path.notes.iter().map(|n| &n.message).collect::<Vec<_>>(),
+        path.notices.iter().map(|n| &n.text).collect::<Vec<_>>(),
         path.unreached
     );
     let _ = f;
@@ -305,13 +305,13 @@ fn req_op_20_req_op_12_the_walls_of_a_keyway_are_finished_and_nothing_is_cut_in(
     // The corner strips beside the walls the tool finished are rest
     // machining's, not unreachable surfaces: nothing is reported.
     assert!(path.unreached.is_empty(), "{:?}", path.unreached);
-    assert!(path.warnings.is_empty(), "{:?}", path.warnings);
+    assert!(path.warnings().is_empty(), "{:?}", path.warnings());
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("hidden from the drive")),
+            .any(|n| n.text.contains("hidden from the drive")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -338,21 +338,17 @@ fn req_op_20_a_slot_narrower_than_the_tool_is_reported_and_not_cut_into() {
         assert!(mid.abs() < 90.0, "{u:?}");
     }
     let warning = path
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("cannot reach"))
+        .warnings()
+        .into_iter()
+        .find(|w| w.text.contains("cannot reach"))
         .unwrap();
-    assert!(
-        warning.message.contains("too narrow"),
-        "{}",
-        warning.message
-    );
+    assert!(warning.text.contains("too narrow"), "{}", warning.text);
     assert!(
         warning
-            .message
+            .text
             .contains("check them in the simulation before running the program"),
         "{}",
-        warning.message
+        warning.text
     );
     let outline = Outline::new(&f.tool);
     let poses = poses_along(&path, &f.rotary, 4);
@@ -397,9 +393,11 @@ fn req_op_20_under_the_lips_of_a_dovetail_groove_is_blocked_and_reported() {
         );
     }
     assert!(
-        path.warnings.iter().any(|w| w.message.contains("blocked")),
+        path.warnings()
+            .into_iter()
+            .any(|w| w.text.contains("blocked")),
         "{:?}",
-        path.warnings
+        path.warnings()
     );
     // Nothing is cut into the groove, its lips or the shaft.
     let outline = Outline::new(&f.tool);
@@ -643,18 +641,15 @@ fn req_op_20_a_wall_needing_more_lean_than_the_limit_is_reported_with_its_parame
         assert!(*degrees > 30.0 && *degrees <= 90.0 + 1e-9, "{u:?}");
     }
     let warning = path
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("cannot reach"))
+        .warnings()
+        .into_iter()
+        .find(|w| w.text.contains("cannot reach"))
         .unwrap();
-    assert_eq!(
-        warning.parameter.as_deref(),
-        Some(parameter::MAX_HIDDEN_LEAN)
-    );
+    assert_eq!(warning.setting.as_deref(), Some(parameter::MAX_HIDDEN_LEAN));
     assert!(
-        warning.message.contains("more than the largest lean"),
+        warning.text.contains("more than the largest lean"),
         "{}",
-        warning.message
+        warning.text
     );
     // The walls stay uncut.
     let outline = Outline::new(&f.tool);
@@ -760,16 +755,16 @@ fn req_op_20_req_op_12_a_shank_wider_than_the_cutter_never_meets_the_part() {
         assert!(b.x >= -0.5 && b.x <= 20.5, "{b:?}");
     }
     let warning = path
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("shank"))
+        .warnings()
+        .into_iter()
+        .find(|w| w.text.contains("shank"))
         .unwrap();
     assert!(
         warning
-            .message
+            .text
             .contains("check them in the simulation before running the program"),
         "{}",
-        warning.message
+        warning.text
     );
 }
 
@@ -806,7 +801,7 @@ fn req_op_12_req_op_20_a_wider_shank_that_never_touches_changes_nothing() {
     })
     .unwrap();
     assert!(a.shank_breaks.is_empty());
-    assert!(a.warnings.is_empty(), "{:?}", a.warnings);
+    assert!(a.warnings().is_empty(), "{:?}", a.warnings());
     assert_eq!(a.group, b.group);
 }
 
@@ -892,7 +887,10 @@ fn req_op_20_req_nfr_06_hidden_surfaces_are_identical_at_1_2_and_n_threads() {
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
         format!(
             "{:?} {:?} {:?} {:?}",
-            path.group, path.notes, path.warnings, path.unreached
+            path.group,
+            path.notices,
+            path.warnings(),
+            path.unreached
         )
         .into_bytes()
     })
@@ -908,14 +906,14 @@ fn req_op_20_a_part_with_nothing_hidden_gets_no_hidden_passes_or_reports() {
     let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 14.0, &ball(DIAMETER));
     let path = generate_on(&f, &f.input(), &[(names::STEPOVER, 1.0)]);
     assert!(path.unreached.is_empty());
-    assert!(path.warnings.is_empty());
+    assert!(path.warnings().is_empty());
     assert!(
         !path
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("hidden from the drive")),
+            .any(|n| n.text.contains("hidden from the drive")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 

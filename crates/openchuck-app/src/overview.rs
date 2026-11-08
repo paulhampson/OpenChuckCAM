@@ -422,6 +422,25 @@ impl Message {
         }
     }
 
+    /// A message in the one form `<Topic> (<context>): <text>` (decision
+    /// record 0536 section 3): every new message is made with this, so it
+    /// names its check and its items the same way wherever it is shown.
+    pub fn about(
+        severity: Severity,
+        topic: &str,
+        context: &crate::lead_in::Context,
+        text: &str,
+        source: Option<(ItemRef, String)>,
+        action: Option<MessageAction>,
+    ) -> Self {
+        Self::new(
+            severity,
+            crate::lead_in::in_form(topic, context, text),
+            source,
+            action,
+        )
+    }
+
     /// This message with the links `views`.
     #[must_use]
     pub fn with_views(mut self, views: Vec<MessageAction>) -> Self {
@@ -980,7 +999,7 @@ struct Made {
     key: StatusKey,
     before: Vec<(OperationId, Key)>,
     /// The path's warnings when it was made (decision record 0175).
-    warnings: Vec<openchuck_path::PathWarning>,
+    warnings: Vec<openchuck_path::Notice>,
     /// How many areas its strategy could not reach (decision record 0515).
     unreached: usize,
 }
@@ -1652,7 +1671,7 @@ impl Application {
                     return Vec::new();
                 }
                 let mut names: Vec<String> = Vec::new();
-                for name in made.warnings.iter().filter_map(|w| w.parameter.as_ref()) {
+                for name in made.warnings.iter().filter_map(|w| w.setting.as_ref()) {
                     if !names.contains(name) {
                         names.push(name.clone());
                     }
@@ -1827,12 +1846,16 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         {
             status = ItemStatus::new(
                 ItemState::Warning,
-                sentence(&crate::operation::warning_text(project, o, &first.message)),
+                sentence(&crate::operation::warning_text(
+                    project,
+                    o,
+                    &first.sentence(),
+                )),
             );
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
-                let views = if crate::unreached::lists_areas(&warning.message) {
+                let views = if crate::unreached::lists_areas(&warning.sentence()) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())
                         .map(|area| MessageAction::ShowInView {
@@ -1846,9 +1869,9 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 messages.push(
                     Message::new(
                         Severity::Warning,
-                        crate::operation::warning_text(project, o, &warning.message),
+                        crate::operation::warning_text(project, o, &warning.sentence()),
                         Some((item, label.clone())),
-                        Some(if warning.parameter.is_some() {
+                        Some(if warning.setting.is_some() {
                             MessageAction::ShowSetting(o.id)
                         } else {
                             MessageAction::Show(item)
@@ -2806,6 +2829,25 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_12_a_message_about_a_check_leads_with_its_topic_and_items() {
+        let context = crate::lead_in::Context::operation("1 Rough").and_tool("T2 Flat 6");
+        let m = Message::about(
+            Severity::Warning,
+            "Flute length",
+            &context,
+            "the stock stands 3.000 mm above the flutes",
+            None,
+            None,
+        );
+        assert_eq!(
+            m.text,
+            "Flute length (operation '1 Rough', tool 'T2 Flat 6'): the stock stands 3.000 mm \
+             above the flutes."
+        );
+        assert_eq!(m.severity, Severity::Warning);
+    }
+
+    #[test]
     fn req_ui_12_a_pushed_message_keeps_the_severity_order() {
         let mut o = Overview::no_project();
         o.push(Message::new(Severity::Info, "a note", None, None));
@@ -3030,11 +3072,10 @@ mod tests {
                     min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
                     max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
                 },
-                warnings: vec![openchuck_path::PathWarning {
-                    message: message.to_owned(),
-                    parameter: Some("tolerance".to_owned()),
-                    requires_acknowledgement: false,
-                }],
+                warnings: vec![
+                    openchuck_path::Notice::warning(message.to_owned())
+                        .with_setting("tolerance".to_owned()),
+                ],
             }],
             ..crate::Regeneration::default()
         };

@@ -36,6 +36,7 @@
 //! Where a pass can reach the selected region is found through the region's
 //! offset ([`crate::candidates`], slice 12).
 
+use crate::notice::{Level, Notice};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
@@ -338,7 +339,7 @@ pub(crate) fn watched_warnings(
     leave: f64,
     slack: f64,
     context: &JobContext<'_>,
-) -> Result<Vec<crate::assemble::PathWarning>> {
+) -> Result<Vec<Notice>> {
     if watch.is_empty() {
         return Ok(Vec::new());
     }
@@ -450,15 +451,18 @@ pub(crate) fn watched_warnings(
                 }
                 Protection::Check => "touches the check set",
             };
-            crate::assemble::PathWarning {
-                message: format!(
+            Notice {
+                level: Level::Warning,
+                topic: None,
+                segment: None,
+                text: format!(
                     "The tool {breaks} '{}' along about {length:.3} mm of the toolpath. The set \
                      only warns, so the path is kept: set it to cut the pass short, or check the \
                      cut in the simulation before using the path.",
                     w.name
                 ),
-                parameter: None,
-                requires_acknowledgement: false,
+                setting: None,
+                acknowledgement: None,
             }
         })
         .collect())

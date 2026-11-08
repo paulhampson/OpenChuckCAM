@@ -429,13 +429,10 @@ fn req_op_20_the_markers_follow_the_warning_order() {
     let warning = run.groups[0]
         .warnings
         .iter()
-        .find(|w| {
-            w.message
-                .starts_with(openchuck_app::unreached::WARNING_START)
-        })
+        .find(|w| w.text.starts_with(openchuck_app::unreached::WARNING_START))
         .expect("the run warns of the areas");
     // The warning lists the largest five first, as "X a to b near A c".
-    let listed: Vec<&str> = warning.message.split("; ").collect();
+    let listed: Vec<&str> = warning.text.split("; ").collect();
     let first = format!("X {:.3} to {:.3}", areas[0].x.0, areas[0].x.1);
     assert!(listed[0].contains(&first), "{} / {first}", listed[0]);
     for pair in areas.windows(2) {

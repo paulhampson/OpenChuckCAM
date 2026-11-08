@@ -29,6 +29,7 @@
 //! surface does not reach under it) the pass is split there and the shared
 //! services link the pieces.
 
+use crate::notice::Notice;
 use openchuck_types::geometry::Point3;
 use std::collections::BTreeMap;
 
@@ -37,7 +38,6 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
 use crate::adaptive::{self, Counting, Family, Interval, Pose, Track};
-use crate::assemble::PathWarning;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::extend::Extension;
@@ -231,8 +231,7 @@ impl Strategy for HelicalFinishing {
         let (passes, notes, warnings) = passes(input, region, zones, parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes,
-            warnings,
+            notices: crate::strategy::notices(warnings, notes),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -267,8 +266,7 @@ impl Strategy for HelicalFinishing {
         let (passes, notes, warnings) = passes(input, region, &[], parameters, context)?;
         Ok(StrategyOutput {
             passes,
-            notes,
-            warnings,
+            notices: crate::strategy::notices(warnings, notes),
             unreached: Vec::new(),
             shank_breaks: Vec::new(),
         })
@@ -326,7 +324,7 @@ fn passes(
     zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
-) -> Result<(Vec<Pass>, Vec<String>, Vec<PathWarning>)> {
+) -> Result<(Vec<Pass>, Vec<String>, Vec<Notice>)> {
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;

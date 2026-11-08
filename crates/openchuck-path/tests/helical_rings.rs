@@ -225,7 +225,7 @@ fn req_op_04_spiral_is_unchanged_when_rings_are_not_chosen() {
         format!("{:?}", missing.group),
         format!("{:?}", spiral.group)
     );
-    assert_eq!(missing.notes, spiral.notes);
+    assert_eq!(missing.notices, spiral.notices);
     // And the spiral is not rings: X moves on every cut.
     assert!(ring_xs(&spiral).is_empty());
 }

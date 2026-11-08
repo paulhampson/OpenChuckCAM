@@ -48,6 +48,7 @@
 //! cut one after another, each with its own guide, starting from the face
 //! with the longest guide and then along the faces' shared edges (D2).
 
+use crate::notice::{Level, Notice};
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::TAU;
 use std::sync::Arc;
@@ -58,7 +59,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{MAX_UNREACHED_POINTS, PathWarning, Unreached, UnreachedReason};
+use crate::assemble::{MAX_UNREACHED_POINTS, Unreached, UnreachedReason};
 use crate::brep::{BrepSurface, ExactFace};
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
@@ -2045,21 +2046,23 @@ fn assemble(
     let mut warnings = Vec::new();
     if !unreached.is_empty() {
         let plural = if unreached.len() == 1 { "" } else { "s" };
-        warnings.push(PathWarning {
-            message: format!(
+        warnings.push(Notice {
+            level: Level::Warning,
+            topic: None,
+            segment: None,
+            text: format!(
                 "face-flow finishing cannot reach {} area{plural} of the selected faces, which \
                  stay uncut: {}; check them in the simulation before running the program",
                 unreached.len(),
                 unreached_list(&unreached, diameter)
             ),
-            parameter: None,
-            requires_acknowledgement: false,
+            setting: None,
+            acknowledgement: None,
         });
     }
     Ok(StrategyOutput {
         passes: out_passes,
-        notes,
-        warnings,
+        notices: crate::strategy::notices(warnings, notes),
         unreached,
         shank_breaks: Vec::new(),
     })
