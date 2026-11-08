@@ -67,6 +67,8 @@ Choices are shown as the program stores them, for example `clearance` and `safe_
 | Helix diameter | 0.75 | The diameter of the helix entry, as a fraction of the tool's diameter. |
 | Lead radius | 0 mm | The radius of the lead arcs; 0 uses the tool's radius. |
 
+**A flat free end.** Where the part ends in a flat face square to the rotary axis with stock beyond it, a Facing operation in End mode before roughing removes the stock past the end across Y, so roughing leaves no nub round the axis there.
+
 The entry defaults are starting values that have not been checked on a machine. A tool that is not centre-cutting cannot plunge: choose ramp or helix entry, or say on the tool that it can plunge.
 
 **How a ramp follows the pass.** A ramp starts the approach distance above the highest stock under the stretch of the pass it uses, and descends at no more than the ramp angle to the pass's first cut point, where the pass is cut unchanged. On a pass that starts along a line it goes back and forth over the start of the line, ending at the first cut point. On a ring it goes round the ring before its first point, the part turning the same way as the pass; on a spiral it goes round the part at the spiral's starting X. Because it stays over the pass's own path, it keeps clear of a held region, tabs and the next ring as the pass does. It enters the first line or ring with the full width of the tool, as the pass cuts it. Near the rotary axis a ring ramp can take several turns; more than 10 is refused, and Plunge or Helix is then the way in. Check the program before running it on a machine.
