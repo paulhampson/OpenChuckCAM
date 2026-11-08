@@ -47,7 +47,7 @@ On a pass that starts or ends by turning A, the lead-in and lead-out are tangent
 
 ## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
 
-All recommendations accepted as a package. Items 6 and 7 follow from the same answers and from decision 0543 D7; the coordinator treats them as part of this decision.
+All recommendations accepted as a package. Items 6 and 7 follow from the same answers and from decision 0543 D7; the coordinator treats them as part of this decision. Item 6's behaviour was confirmed by the owner on 8 Nov 2026 (relayed): rise first to the checked height, with an information note counting such entries, and refuse by name only when even the retract height is not clear.
 
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
