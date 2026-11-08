@@ -51,6 +51,11 @@ pub(super) struct Entry {
     style: EntryStyle,
     /// A single-point pass under a ramp is plunged (decision 0543 D7).
     single_point_plunge: bool,
+    /// A ring or spiral ramp past 10 turns uses a steeper angle (decision
+    /// 0543 section 4, point 3).
+    steeper_near_axis: bool,
+    /// The tangent of the steepest angle it may use.
+    tan_max: f64,
     ramp_tan: f64,
     helix_radius: f64,
     lead_radius: f64,
@@ -79,6 +84,8 @@ impl Entry {
         Ok(Self {
             style: e.style,
             single_point_plunge: e.allow_single_point_plunge,
+            steeper_near_axis: e.steeper_near_axis,
+            tan_max: e.ramp_angle_max.0.max(e.ramp_angle.0).to_radians().tan(),
             ramp_tan: e.ramp_angle.0.to_radians().tan(),
             helix_radius: e.helix_diameter * radius,
             lead_radius: if e.lead_radius.0 > 0.0 {
@@ -597,65 +604,71 @@ impl Entry {
                 // An end-face ring: the tip descends on the axis while A
                 // turns (decision 0543 section 4, point 2, option (b)).
                 let radius = input.tool.cutting_radius();
-                let planned = ring_ramp::plan_on_axis(
-                    b,
-                    stock,
-                    common.approach_distance.0,
-                    self.ramp_tan,
-                    at,
-                    head.a.0,
-                    sign,
-                    self.probe_height,
-                    radius,
-                    self.angle_step(radius).to_degrees(),
-                );
+                let (planned, tan, at_max) = self.steepen(|tan| {
+                    ring_ramp::plan_on_axis(
+                        b,
+                        stock,
+                        common.approach_distance.0,
+                        tan,
+                        at,
+                        head.a.0,
+                        sign,
+                        self.probe_height,
+                        radius,
+                        self.angle_step(radius).to_degrees(),
+                    )
+                });
                 return match planned {
                     Ok(plan) => self.in_a_range(input, pass, plan).map(Some),
                     Err(ring_ramp::Refusal::NothingToDescend) => Ok(None),
                     Err(ring_ramp::Refusal::TooManyTurns { turns, .. }) => {
                         Err(PathError::Strategy(format!(
                             "Ramp entry: pass {} starts on the rotary axis, where the tool \
-                             descends while the part turns; at {:.2} degrees, measured at the \
-                             tool's radius of {radius:.3} mm, that takes {turns:.1} turns, more \
-                             than the {:.0} allowed. Raise Ramp angle, or set Entry to Plunge or \
-                             Helix.",
+                             descends while the part turns; {}, measured at the tool's radius \
+                             of {radius:.3} mm, that takes {turns:.1} turns, more than the {:.0} \
+                             allowed. {}",
                             pass + 1,
-                            self.ramp_tan.atan().to_degrees(),
-                            ring_ramp::MAX_TURNS
+                            angle_words(tan, at_max),
+                            ring_ramp::MAX_TURNS,
+                            fix_words(at_max)
                         )))
                     }
                 };
             }
         }
-        let planned = match shape {
-            Start::FullRing { end, sign } => ring_ramp::plan(
-                b,
-                stock,
-                common.approach_distance.0,
-                self.ramp_tan,
-                points,
-                end,
-                sign,
-                self.probe_height,
-            ),
+        let (planned, tan, at_max) = match shape {
+            Start::FullRing { end, sign } => self.steepen(|tan| {
+                ring_ramp::plan(
+                    b,
+                    stock,
+                    common.approach_distance.0,
+                    tan,
+                    points,
+                    end,
+                    sign,
+                    self.probe_height,
+                )
+            }),
             Start::Spiral { sign } => {
                 let Some(head) = points.first() else {
                     return Ok(None);
                 };
                 let at = b.rotary.to_axis(head.tip, head.a);
                 let step = self.angle_step(at.across.hypot(at.height)).to_degrees();
-                ring_ramp::plan_spiral(
-                    b,
-                    stock,
-                    common.approach_distance.0,
-                    self.ramp_tan,
-                    at,
-                    head.a.0,
-                    sign,
-                    self.probe_height,
-                    step,
-                    |a| self.touch_height(b, input, at, Degrees(a)),
-                )
+                self.steepen(|tan| {
+                    ring_ramp::plan_spiral(
+                        b,
+                        stock,
+                        common.approach_distance.0,
+                        tan,
+                        at,
+                        head.a.0,
+                        sign,
+                        self.probe_height,
+                        step,
+                        |a| self.touch_height(b, input, at, Degrees(a)),
+                    )
+                })
             }
             _ => return Ok(None),
         };
@@ -665,16 +678,53 @@ impl Entry {
             Err(ring_ramp::Refusal::TooManyTurns { radius, turns }) => {
                 return Err(PathError::Strategy(format!(
                     "Ramp entry: pass {} turns round the part with its tip {radius:.3} mm from \
-                     the rotary axis, so a ramp at {:.2} degrees round it would take {turns:.1} turns, \
-                     more than the {:.0} allowed. Raise Ramp angle, or set Entry to Plunge or \
-                     Helix.",
+                     the rotary axis, so {} a ramp round it would take {turns:.1} turns, more \
+                     than the {:.0} allowed. {}",
                     pass + 1,
-                    self.ramp_tan.atan().to_degrees(),
-                    ring_ramp::MAX_TURNS
+                    angle_words(tan, at_max),
+                    ring_ramp::MAX_TURNS,
+                    fix_words(at_max)
                 )));
             }
         };
         self.in_a_range(input, pass, plan).map(Some)
+    }
+
+    /// Plans with the Ramp angle and, when that needs more than 10 turns and
+    /// the steeper ramp near the axis is on, again at the angle that fits
+    /// 10 turns, never steeper than the maximum (decision 0543 section 4,
+    /// point 3). Gives the plan or refusal, the tangent of the angle used
+    /// last, and whether that was the maximum.
+    fn steepen(
+        &self,
+        mut attempt: impl FnMut(f64) -> std::result::Result<RingRamp, ring_ramp::Refusal>,
+    ) -> (std::result::Result<RingRamp, ring_ramp::Refusal>, f64, bool) {
+        let first = attempt(self.ramp_tan);
+        let Err(ring_ramp::Refusal::TooManyTurns { mut turns, .. }) = first else {
+            return (first, self.ramp_tan, false);
+        };
+        if !self.steeper_near_axis || self.tan_max <= self.ramp_tan {
+            return (first, self.ramp_tan, false);
+        }
+        // Turns fall as the tangent rises: scale it to fit 10 turns, a few
+        // times, as a steep fall of the pass may add a turn.
+        let mut tan = self.ramp_tan;
+        for _ in 0..4 {
+            tan = (tan * turns / ring_ramp::MAX_TURNS * (1.0 + 1e-6)).min(self.tan_max);
+            match attempt(tan) {
+                Ok(mut plan) => {
+                    plan.steepened = Some(tan.atan().to_degrees());
+                    return (Ok(plan), tan, false);
+                }
+                Err(ring_ramp::Refusal::TooManyTurns { turns: t, .. }) => turns = t,
+                other => return (other, tan, false),
+            }
+            if tan >= self.tan_max {
+                break;
+            }
+        }
+        let at_max = tan >= self.tan_max;
+        (attempt(tan), tan, at_max)
     }
 
     /// Refuses `plan` when its start is outside a limited A range (decision
@@ -746,6 +796,9 @@ impl Entry {
         self.emit(b, input, common, pass, &plan.moves, kind)?;
         if plan.follows_steep_drop {
             b.steep_ramps.push(pass);
+        }
+        if let Some(angle) = plan.steepened {
+            b.steepened_ramps.push((pass, angle));
         }
         if let Some(turns) = plan.on_axis {
             b.notes.push(
@@ -1033,4 +1086,24 @@ fn stock_top_along(
         travelled += length;
     }
     top
+}
+
+/// The angle of a refusal of too many turns: the Ramp angle, or the
+/// Maximum ramp angle when the steeper ramp near the axis reached it.
+fn angle_words(tan: f64, at_max: bool) -> String {
+    let degrees = tan.atan().to_degrees();
+    if at_max {
+        format!("even at the Maximum ramp angle of {degrees:.2} degrees")
+    } else {
+        format!("at {degrees:.2} degrees")
+    }
+}
+
+/// What to change after a refusal of too many turns.
+fn fix_words(at_max: bool) -> &'static str {
+    if at_max {
+        "Raise Maximum ramp angle, or set Entry to Plunge or Helix."
+    } else {
+        "Raise Ramp angle, or turn on Steeper ramp near the axis, or set Entry to Plunge or Helix."
+    }
 }

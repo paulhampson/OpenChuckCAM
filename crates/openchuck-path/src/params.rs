@@ -366,6 +366,11 @@ pub mod names {
     /// A single-point pass under a ramp is entered by a plunge instead of
     /// refusing the operation (decision 0543 D7).
     pub const ALLOW_SINGLE_POINT_PLUNGE: &str = "allow_single_point_plunge";
+    /// A ring or spiral ramp that would need more than 10 turns at the ramp
+    /// angle uses a steeper angle (decision 0543 section 4, point 3).
+    pub const RAMP_STEEPER_NEAR_AXIS: &str = "ramp_steeper_near_axis";
+    /// The steepest angle the steeper ramp near the axis may use.
+    pub const RAMP_ANGLE_MAX: &str = "ramp_angle_max";
     /// Descent angle for ramp and helix entry.
     pub const RAMP_ANGLE: &str = "ramp_angle";
     /// The helix entry's circle, as a fraction of the tool diameter.
@@ -490,6 +495,24 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
             kind: ParameterKind::Flag { default: false },
         },
         ParameterSpec {
+            name: RAMP_STEEPER_NEAR_AXIS.to_owned(),
+            label: "Steeper ramp near the axis".to_owned(),
+            description: "Near the rotary axis a ramp round a ring needs many turns. With this on, a ring or spiral ramp that would need more than 10 turns at the Ramp angle uses a steeper angle, just enough to fit in 10 turns, never steeper than the Maximum ramp angle. Lines are not affected. Check that the tool can enter at the steeper angle.".to_owned(),
+            kind: ParameterKind::Flag { default: false },
+        },
+        ParameterSpec {
+            name: RAMP_ANGLE_MAX.to_owned(),
+            label: "Maximum ramp angle".to_owned(),
+            description: "The steepest angle the steeper ramp near the axis may use. A value below the Ramp angle uses the Ramp angle.".to_owned(),
+            kind: ParameterKind::Number {
+                unit: Unit::Degrees,
+                min: Some(0.0),
+                min_exclusive: true,
+                max: Some(45.0),
+                default: Some(DEFAULT_RAMP_ANGLE_MAX),
+            },
+        },
+        ParameterSpec {
             name: RAMP_ANGLE.to_owned(),
             label: "Ramp angle".to_owned(),
             description: "Angle of descent to the horizontal for ramp and helix entry.".to_owned(),
@@ -526,6 +549,10 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
 /// The default ramp and helix descent angle, in degrees (decision record
 /// 0026 item 6: a starting value, not verified on a machine).
 pub const DEFAULT_RAMP_ANGLE: f64 = 3.0;
+
+/// The default steepest angle of the steeper ramp near the axis, degrees
+/// (decision 0543 section 4, point 3).
+pub const DEFAULT_RAMP_ANGLE_MAX: f64 = 15.0;
 
 /// The default helix circle, as a fraction of the tool diameter (decision
 /// record 0026 item 6: a starting value, not verified on a machine).
@@ -580,6 +607,12 @@ pub struct EntryParameters {
     /// Enter a single-point pass under a ramp by a plunge instead of
     /// refusing (decision 0543 D7).
     pub allow_single_point_plunge: bool,
+    /// A ring or spiral ramp that would need more than 10 turns uses a
+    /// steeper angle, up to `ramp_angle_max` (decision 0543 section 4,
+    /// point 3).
+    pub steeper_near_axis: bool,
+    /// The steepest angle of the steeper ramp near the axis.
+    pub ramp_angle_max: Degrees,
     /// The helix circle as a fraction of the tool diameter.
     pub helix_diameter: f64,
     /// Radius of the lead arcs, or zero for the tool radius.
@@ -592,6 +625,8 @@ impl EntryParameters {
         style: EntryStyle::Plunge,
         ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
         allow_single_point_plunge: false,
+        steeper_near_axis: false,
+        ramp_angle_max: Degrees(DEFAULT_RAMP_ANGLE_MAX),
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
     };
@@ -618,6 +653,8 @@ impl EntryParameters {
             style: EntryStyle::parse(p.text(ENTRY)?),
             ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
             allow_single_point_plunge: p.flag(ALLOW_SINGLE_POINT_PLUNGE)?,
+            steeper_near_axis: p.flag(RAMP_STEEPER_NEAR_AXIS)?,
+            ramp_angle_max: Degrees(p.number(RAMP_ANGLE_MAX)?),
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
         })

@@ -60,6 +60,8 @@ Choices are shown as the program stores them, for example `clearance` and `safe_
 | Approach distance | 1 mm | A rapid approach stops this far above the stock; the rest is a plunge at the plunge feed. |
 | Entry | `plunge` | How the tool enters the cut: a straight `plunge`, a tangent arc (`lead`), a `ramp` that follows the pass's own path down to its first cut point, or a descending `helix`. With `lead`, a matching arc also leaves the cut at the end of the pass. |
 | Allow single-point plunge | off | A pass that is a single point (a roughing layer that only touches the part's tip, for example) has no path for a ramp to follow. With this on, the tool plunges straight down to that point instead of refusing the operation. The tool must be able to plunge (centre cutting). Only for ramp entry. |
+| Steeper ramp near the axis | off | Near the rotary axis a ramp round a ring needs many turns. With this on, a ring or spiral ramp that would need more than 10 turns at the Ramp angle uses a steeper angle, just enough to fit in 10 turns, never steeper than the Maximum ramp angle. Lines are not affected. Only for ramp entry. |
+| Maximum ramp angle | 15° | The steepest angle the steeper ramp near the axis may use, at most 45°. |
 | Back-and-forth ramp | off | No longer has an effect: shown only where an operation saved by an earlier version has it on. Every ramp now follows the pass's own path. |
 | Ramp angle | 3° | The angle of descent for a ramp or helix entry, above 0 and at most 89°. |
 | Helix diameter | 0.75 | The diameter of the helix entry, as a fraction of the tool's diameter. |

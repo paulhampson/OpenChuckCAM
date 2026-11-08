@@ -170,6 +170,9 @@ struct Builder<'a> {
     steep_ramps: Vec<usize>,
     /// Single-point passes plunged under a ramp (decision 0543 D7).
     single_point_plunges: Vec<usize>,
+    /// Ring and spiral ramps made steeper near the axis, with the angle
+    /// used (decision 0543 section 4, point 3).
+    steepened_ramps: Vec<(usize, f64)>,
 }
 
 impl Builder<'_> {
@@ -504,6 +507,7 @@ pub fn assemble_with_entry(
         raised_entries: 0,
         steep_ramps: Vec::new(),
         single_point_plunges: Vec::new(),
+        steepened_ramps: Vec::new(),
     };
 
     let entry = entry::Entry::new(input, common, entry)?;
@@ -648,6 +652,32 @@ pub fn assemble_with_entry(
                 "it is"
             } else {
                 "they are"
+            }
+        );
+        b.notes
+            .insert(0, Notice::information(text).about(topic::RAMP_ENTRY));
+    }
+    if !b.steepened_ramps.is_empty() {
+        let passes: Vec<usize> = b.steepened_ramps.iter().map(|(p, _)| *p).collect();
+        let steepest = b
+            .steepened_ramps
+            .iter()
+            .map(|(_, a)| *a)
+            .fold(0.0, f64::max);
+        let text = format!(
+            "{} {} round the part near the rotary axis, where a ramp at the Ramp angle would \
+             take more than 10 turns, so {} steeper, up to {steepest:.2} degrees, as Steeper ramp \
+             near the axis asks",
+            if passes.len() == 1 { "pass" } else { "passes" },
+            if passes.len() == 1 {
+                format!("{} turns", list(&passes))
+            } else {
+                format!("{} turn", list(&passes))
+            },
+            if passes.len() == 1 {
+                "its ramp is"
+            } else {
+                "their ramps are"
             }
         );
         b.notes
@@ -1189,6 +1219,7 @@ mod tests {
                 raised_entries: 0,
                 steep_ramps: Vec::new(),
                 single_point_plunges: Vec::new(),
+                steepened_ramps: Vec::new(),
             };
             let end = b.pose(to.tip, to.a);
             // A contact feed far above the limits, so the axes set the time.
@@ -1259,6 +1290,7 @@ mod tests {
             raised_entries: 0,
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
+            steepened_ramps: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         b.push(
@@ -1321,6 +1353,7 @@ mod tests {
             raised_entries: 0,
             steep_ramps: Vec::new(),
             single_point_plunges: Vec::new(),
+            steepened_ramps: Vec::new(),
         };
         let end = b.pose(to.tip, to.a);
         // A contact feed far above the limits, so the axes set the time.
