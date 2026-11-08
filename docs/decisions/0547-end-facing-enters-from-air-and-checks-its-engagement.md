@@ -1,10 +1,10 @@
 # 0547: End facing enters each band from air and checks its engagement (lane PATHFEED; issue #641)
 
-- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 to 3 the same day (option A for each, as recommended, and the first finding below in scope of this work), and the decision below is written to those answers. Not yet built (issue #641).
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full. Proposed by lane PATHFEED on 8 Nov 2026; the owner answered questions 1 to 3 the same day (option A for each, as recommended, and the first finding below in scope of this work), and the decision below is written to those answers. Amended the same day by the owner's answer to question 4 (option A, relayed by the coordinator; section "Question 4" below), found while building it. Built in lane PATHFEED's #641 pull request (section "As built").
 - **What it amends:** [decision 0252](0252-facing-ends-sides-and-extents.md) section 5 (End-cutting geometry and limits: the entry of each band, "validated engagement", and the meaning of the entered stepdown), and through it the UI specification's Facing controls paragraph and the verification plan's OP-24 row. The entry styles of [decision 0026](0026-entry-moves.md) are not changed; the shared entry (`assemble/entry.rs`, lane RAMPENTRY) is not edited. The requirements and the architecture are unchanged.
 - **Requirements:** OP-24 (Facing), OP-11 (stepover, stepdown, entry), OP-14 (clearance), TL-05 (cutting data), NFR-07 (clear refusal), NFR-12, GC-07 / NFR-06 (determinism).
 - **Date:** 8 Nov 2026.
-- **Open items:** OI-2130 (the answers; closed with them), OI-2131 (schema 28, claimed) and OI-2132 (the second finding, for a ticket). Numbers given by the coordinator; the Merge Manager assigns final numbers at release.
+- **Open items:** OI-2130 (the answers; closed with them), OI-2131 (schema 28; closed when built), OI-2132 (the second finding, issue #650) and OI-2135 (question 4; closed with the owner's answer). Numbers given by the coordinator; the Merge Manager assigns final numbers at release.
 
 ## Context
 
@@ -76,6 +76,16 @@ The owner put the first in scope of this work (item 4 below). The second is out 
 - **B. Exchange them without a migration, with a changelog entry.** Cheaper (no schema change), but a saved End operation with its own values changes its path on load, silently apart from the changelog (GC-07 holds only for unchanged inputs).
 - **C. Keep 0252's meaning.** No change; the preset keeps filling the radial width with an axial depth.
 
+## Question 4 (found while building; the owner's answer, 8 Nov 2026, relayed: option A)
+
+![Three views looking along X at the end face with the stock 3.0 mm above the requested area and a Stepdown of 1.3 mm: today (and option C) the first band's flutes cut 4.3 mm deep, unflagged under C; option A adds passes of 1.3, 1.3 and 0.4 mm from the stock's top down to the area, across the area's width only; option B refuses. Below, why Whole stock is unaffected and why this is the usual case for a Part extent.](0547-question-4.svg)
+
+Item 2 measures, on the assembled path, how deep each sweep cuts along the tool: from the stock's top at its view, or the bottom of the band above it, down to the tip. With a Part (or Part plus tabs) extent on stock taller than the requested area, the flutes of a slice's first band also cut the stock above the area (they always have), so that band cut (stock top - area top) + band spacing deep: always more than the Stepdown. Item 2 as first written would have refused End facing with a Part extent whenever the stock rises above the area, which is the usual case.
+
+The owner chose **option A**: where the stock rises above the requested area at a view, the planner adds bands from the stock's top down to the area's top, each no deeper than the Stepdown, swept across the area's width only. The same material is removed as before, in steps the Stepdown allows. The user sees an information note in the 0536 form (topic "Stock above the area") saying how many passes were added and about how long they take at the cutting feed. Whole stock is unaffected: its requested area is the stock's outline, so nothing is above it.
+
+The options put were: **A** as above (recommended); **B** refuse as item 2 read, so the user faces the stock down first; **C** measure the depth only within the area's heights, keeping today's cut unflagged. Before choosing, the owner asked whether End facing needs to be rotary at all: it is not (A stays fixed while cutting; on an XYZA machine with a vertical spindle the end face can only be cut with the flank), so the question stood.
+
 ## Test plan (written first, each watched failing)
 
 `openchuck-path` (`tests/facing_end_plan.rs`) and `openchuck-app` (`tests/facing_approach.rs`, modules of each crate's `tests/integration.rs`):
@@ -107,6 +117,14 @@ Every test is timed uninstrumented; none is expected to approach a minute.
 - **OI-2130:** the owner's answers to questions 1 to 3. Closed: A for each (8 Nov 2026, relayed).
 - **OI-2131:** project schema 28 for the End migration, claimed in the work breakdown; open until built.
 - **OI-2132:** the second post-time refusal found on the round bar (larger slices refused as leaving an unfinished region): the reproduction goes to the coordinator for a ticket. The first is item 4.
+
+## As built (lane PATHFEED, #641)
+
+- **Item 1, the entry.** Where there is air beside a band's edge (the whole stock's projected rectangle at the band's heights does not reach past it), the band still comes down in air *beyond the end face*, as before, then moves in along X *beside the stock* with the whole tool the approach distance clear of it, sweeps across, and leaves along X the same way. Only the sweep across meets the face, entering it at its edge; the turns are in air. The record first drew the tool coming down beside the stock; the first build did that, but it put rapids, low links (decision 0501) and A changes beside the stock below the part's top, which the Facing rapid proof cannot certify. Keeping them beyond the end face keeps every existing link and rapid proof unchanged. The diagram above shows the path as built.
+- **Item 1, no air beside the band.** The move along X into the face is kept and goes at the plunge feed as an entry move (`MoveKind::LeadIn`), and so does the move back out along X, which cuts the stock outside the area the same way. `strategy::Pass` gains `plunge_fed`, the indices of points reached so; assembly leaves such a pass unmerged at walls (decision 0050) so the indices keep their points. This is a breaking change to the library: workspace 0.51.0 to 0.52.0 (provisional; the Merge Manager sequences versions).
+- **Item 2.** `facing/validation/end_layers.rs` checks each across sweep's depth along the tool against the Stepdown, allowing the written-motion share of the tolerance, and refuses a deeper one naming the Stepdown. With question 4's answer, `facing/end/routing.rs` adds the bands above the area and `EndPassPlan::passes_above_area` lists their passes for the note.
+- **Item 3.** `EndFacingParameters::read` takes the slice from Stepover and the band from Stepdown; the field names `axial_stepdown` and `flute_step` are kept (no public rename). The 27 to 28 step in `openchuck-project` exchanges a saved End operation's stored values.
+- **Item 4.** The slice check allows the written-motion share of the tolerance (an eighth), so the Baluster set-up with exactly 3 mm to remove at a 1 mm slice posts with both posts.
 
 ## Verification
 
