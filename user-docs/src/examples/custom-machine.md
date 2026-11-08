@@ -115,7 +115,7 @@ When you have measured a value on the machine, click **Mark confirmed...** next 
 The setup checks now say:
 
 - "Safe Z cannot be checked against the Z travel: the machine's axis height is not confirmed on the machine." Confirm the axis height, and this check can be made.
-- "Tool 104 (Z1 O-flute 3.175x25) may take the spindle above the top of the Z travel at the safe Z ...", and the same for tool 204. The profile still has the Z1's **Spindle to axis** of 73.1 mm, and a safe Z of 60 mm leaves too little room above it for these tools. Measure the router's spindle-to-axis distance and set it; then lower the safe Z or use shorter tools if the warning remains.
+- "Tool 104 (Z1 O-flute 3.175x25) may take the spindle above the top of the Z travel at the safe Z ...", and the same for tool 204. The profile still has the Z1's **Spindle to axis** of 73.1 mm, and a safe Z of 60 mm leaves too little room above it for these tools. Measure the router's spindle-to-axis distance and set it; then lower the safe Z or use shorter tools if the warning remains. A tool that may take the spindle past the top of its travel is a possible collision, so if the warning is still there when you export, the export asks you to acknowledge it before it writes anything.
 
 The status bar counts the unconfirmed values: "8 machine values unconfirmed". Every operation is now out of date, because the machine changed; generate them again before you post.
 
