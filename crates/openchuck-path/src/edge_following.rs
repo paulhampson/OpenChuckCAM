@@ -907,7 +907,7 @@ pub fn follow_chains(
     let full = plan.levels.last().copied().unwrap_or(0.0);
     let mut notes = vec![
         Notice::information(format!(
-            "edge following: {} chains ({} open, {} closed), {} passes, {} mm deep in {} \
+            "{} chains ({} open, {} closed), {} passes, {} mm deep in {} \
              level{}; the tool cuts a line {:.3} mm wide at that depth",
             cuts.len(),
             cuts.len() - closed,
@@ -933,7 +933,7 @@ pub fn follow_chains(
     if plan.carve {
         notes.push(
             Notice::information(format!(
-                "edge following: carving {} lines across each chain, the outer ones {:.3} mm \
+                "carving {} lines across each chain, the outer ones {:.3} mm \
                  either side of it",
                 plan.offsets.len(),
                 plan.offsets.last().copied().unwrap_or(0.0)

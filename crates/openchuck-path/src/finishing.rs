@@ -571,7 +571,7 @@ pub(crate) fn layers(
             "the setup's own stock, with no earlier operation in this setup"
         };
         Notice::information(format!(
-            "finishing layers: up to {} layers of {stepdown} mm above a finish allowance of \
+            "up to {} layers of {stepdown} mm above a finish allowance of \
              {allowance} mm, then the final pass on the surface; the layers start from {from}, \
              so the depth of each cut is not uniform and no engagement is promised",
             heights.len()

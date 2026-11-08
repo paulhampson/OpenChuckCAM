@@ -4125,7 +4125,7 @@ mod tests {
         let summary = path
             .notes
             .iter()
-            .find(|n| n.text.starts_with("edge following: "))
+            .find(|n| n.text.contains(" chains ("))
             .unwrap_or_else(|| panic!("{:?}", path.notes));
         assert_eq!(
             summary.topic.as_deref(),
@@ -4162,7 +4162,7 @@ mod tests {
         project.replace(Item::Operation(renamed.clone())).unwrap();
         assert!(
             operation_note(&project, &renamed, summary)
-                .starts_with("Edge following (operation 'Renamed'): edge following: "),
+                .starts_with("Edge following (operation 'Renamed'): "),
         );
         // A note without a topic keeps the operation's name in front.
         let plain = openchuck_path::Notice::information("a plain note");

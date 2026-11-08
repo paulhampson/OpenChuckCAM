@@ -2038,7 +2038,7 @@ fn assemble(
     }
     notes.push(
         Notice::information(format!(
-            "face-flow finishing cuts {} passes on {} face{}",
+            "cuts {} passes on {} face{}",
             out_passes.len(),
             face_notes.len(),
             if face_notes.len() == 1 { "" } else { "s" }

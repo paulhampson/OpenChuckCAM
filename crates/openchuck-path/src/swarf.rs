@@ -1006,7 +1006,7 @@ impl FacePath {
             String::new()
         };
         format!(
-            "swarf on face {}: rulings along {} (the straight-line fit misses by {:.4} mm, limit \
+            "face {}: rulings along {} (the straight-line fit misses by {:.4} mm, limit \
              {tolerance} mm), the normal twists {:.2} degrees along a ruling, {} poses, the tool \
              cuts at most {:.4} mm beyond the stock to leave.{}{left}{}",
             self.number,

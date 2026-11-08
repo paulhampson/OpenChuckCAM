@@ -598,7 +598,7 @@ impl Strategy for RestMachining {
         }
         let mut notes = vec![
             Notice::information(format!(
-                "rest machining: {} of {} points sampled on the part have more than {} mm of \
+                "{} of {} points sampled on the part have more than {} mm of \
                  material left; {} passes cut where it is left",
                 map.len(),
                 map.tested(),

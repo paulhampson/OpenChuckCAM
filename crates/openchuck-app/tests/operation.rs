@@ -1014,7 +1014,7 @@ fn req_op_09_req_sim_06_rest_machining_after_an_operation_is_generated_on_its_st
         first
             .notes
             .iter()
-            .any(|n| n.contains("rest machining:") && n.contains("material left")),
+            .any(|n| n.starts_with("Rest machining (operation ") && n.contains("material left")),
         "{:?}",
         first.notes
     );

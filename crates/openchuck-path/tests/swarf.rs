@@ -1406,7 +1406,7 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
     assert_eq!(
         path.notices
             .iter()
-            .filter(|n| n.text.starts_with("swarf on face"))
+            .filter(|n| n.topic.as_deref() == Some(openchuck_path::topic::SWARF))
             .count(),
         2
     );

@@ -686,12 +686,12 @@ impl Tally {
 fn note(added: usize, smallest: Option<f64>, queries: u64, settings: &Settings) -> Notice {
     Notice::information(match (added, smallest) {
         (0, _) | (_, None) => format!(
-            "adaptive spacing: no passes were added; the material measured between the \
+            "no passes were added; the material measured between the \
              passes is within the allowed excess of {:.3} mm",
             settings.height
         ),
         (n, Some(w)) => format!(
-            "adaptive spacing: {n} pass{} added where more than the allowed excess of \
+            "{n} pass{} added where more than the allowed excess of \
              {:.3} mm was left or could not be ruled out, the closest {w:.3} mm from its \
              neighbour; measuring and fitting them made {} geometry queries",
             if n == 1 { "" } else { "es" },
