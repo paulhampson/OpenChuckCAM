@@ -125,6 +125,10 @@ pub mod topic {
     /// A strategy that works on what earlier operations left, with none
     /// before it in the setup.
     pub const EARLIER_OPERATIONS: &str = "Earlier operations";
+    /// A setup's workholding: its draft is not applied.
+    pub const WORKHOLDING: &str = "Workholding";
+    /// What the 3D view cannot draw yet.
+    pub const VIEW: &str = "View";
 }
 
 /// The topics whose messages name the tool too, because the tool's size,

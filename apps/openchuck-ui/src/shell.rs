@@ -753,7 +753,14 @@ impl Shell {
         if self.overview_dirty || geometry_changed {
             let mut overview = app.overview(self.checks.as_deref(), &self.jobs);
             for note in &self.viewport.view().notes {
-                overview.push(Message::new(Severity::Info, note.clone(), None, None));
+                overview.push(Message::about(
+                    Severity::Info,
+                    openchuck_app::lead_in::topic::VIEW,
+                    &openchuck_app::lead_in::Context::default(),
+                    note,
+                    None,
+                    None,
+                ));
             }
             if let Some(problem) = &self.settings_problem {
                 overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
@@ -2829,14 +2836,13 @@ fn unapplied_workholding_message(
     id: SetupId,
 ) -> Option<Message> {
     let setup = project.setup(id)?;
-    Some(Message::new(
+    Some(Message::about(
         Severity::Warning,
-        format!(
-            "The workholding of '{}' has changes that are not applied. The view shows them, but \
-             the toolpaths, the simulation and the G-code use the held regions and tabs stored \
-             in the setup: apply or revert the changes in its workholding section",
-            setup.name
-        ),
+        openchuck_app::lead_in::topic::WORKHOLDING,
+        &openchuck_app::lead_in::Context::setup(&setup.name),
+        "it has changes that are not applied. The view shows them, but the toolpaths, the \
+         simulation and the G-code use the held regions and tabs stored in the setup: apply or \
+         revert the changes in its workholding section",
         Some((
             ItemRef::SetupPart(id, SetupPart::Workholding),
             setup.name.clone(),
