@@ -23,8 +23,8 @@ use openchuck_app::setup::{Millimetres, Stock, builtin};
 use openchuck_app::unreached::{
     Adjacency, FOOTPRINT_REACH, MATCH_TOLERANCE, close_footprint, map_areas, triangles_on,
 };
-use openchuck_geom::select::TriangleSet;
 use openchuck_app::{Application, Command, Threads};
+use openchuck_geom::select::TriangleSet;
 use openchuck_path::{Unreached, UnreachedReason};
 use openchuck_testkit::parts::revolve;
 use openchuck_types::geometry::Point3;
@@ -593,8 +593,10 @@ fn flat_grid(n: u32) -> TriangleMesh {
     let at = |i: u32, j: u32| j * (n + 1) + i;
     for j in 0..n {
         for i in 0..n {
-            mesh.triangles.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
-            mesh.triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+            mesh.triangles
+                .push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+            mesh.triangles
+                .push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
         }
     }
     mesh
@@ -664,8 +666,15 @@ fn req_op_20_a_marked_area_has_no_holes() {
     };
     assert!(holes(&raw) > 5, "the sparse samples leave holes to close");
     let closed = close_footprint(&mesh, &adj, &raw, &points);
-    assert_eq!(holes(&closed), 0, "no unmarked triangle is held by two marked");
-    assert!(raw.iter().all(|t| closed.contains(t)), "nothing is unmarked");
+    assert_eq!(
+        holes(&closed),
+        0,
+        "no unmarked triangle is held by two marked"
+    );
+    assert!(
+        raw.iter().all(|t| closed.contains(t)),
+        "nothing is unmarked"
+    );
     // The area's edge is no longer than before: closing smooths it.
     assert!(boundary_edges(&adj, &closed) <= boundary_edges(&adj, &raw));
     // Deterministic (GC-07).
@@ -709,7 +718,10 @@ fn req_op_20_a_closed_area_stays_within_reach_of_its_samples() {
         .collect::<Vec<_>>();
     assert!(!centre.is_empty());
     for t in centre {
-        assert!(!closed.contains(&t), "triangle {t} is far from every sample");
+        assert!(
+            !closed.contains(&t),
+            "triangle {t} is far from every sample"
+        );
     }
 }
 
@@ -740,12 +752,18 @@ fn req_op_20_closing_a_footprint_never_marks_across_a_lip() {
     let closed = close_footprint(&mesh, &adj, &raw, &points);
     assert!(closed.len() >= raw.len());
     for t in &closed {
-        assert!(!on_lip_outside(&mesh, *t), "triangle {t} is a lip's outside");
+        assert!(
+            !on_lip_outside(&mesh, *t),
+            "triangle {t} is a lip's outside"
+        );
     }
     let floor: Vec<u32> = (0..mesh.triangles.len() as u32)
         .filter(|t| on_floor(&mesh, *t))
         .collect();
-    assert!(floor.iter().all(|t| closed.contains(t)), "the floor is whole");
+    assert!(
+        floor.iter().all(|t| closed.contains(t)),
+        "the floor is whole"
+    );
 }
 
 /// NFR-07: nothing to close, or a mesh with nothing, is not a failure.

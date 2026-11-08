@@ -13,8 +13,8 @@ use crate::camera::{
     Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
 };
 use crate::scene::{
-    Colour, DisplayMode, Hatch, HatchKind, SURFACE_HATCH_SPACING_MM, Scene, Slot,
-    batch_lines, outline_floats, wireframe_indices,
+    Colour, DisplayMode, Hatch, HatchKind, SURFACE_HATCH_SPACING_MM, Scene, Slot, batch_lines,
+    outline_floats, wireframe_indices,
 };
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:

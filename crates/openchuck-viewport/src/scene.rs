@@ -132,7 +132,6 @@ pub struct Hatch {
     pub kind: HatchKind,
 }
 
-
 /// The outline drawn round a mesh: its silhouette as seen from the eye, its
 /// creases (edges where the faces meet at more than 30 degrees) and its
 /// open boundary, as a wide line of the given width (interface

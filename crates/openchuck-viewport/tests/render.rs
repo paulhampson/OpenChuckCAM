@@ -1192,9 +1192,8 @@ fn req_nfr_15_a_surface_hatch_stays_on_the_surface_when_the_camera_moves() {
         return;
     };
     let (fit, part, marked) = hatched_face();
-    let render_at = |f: &Frame| {
-        render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f)
-    };
+    let render_at =
+        |f: &Frame| render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f);
     let a = panned_front(&fit, 0.1, 0.0);
     let b = panned_front(&fit, 0.1, 0.7);
     let from_a = hatch_centres(&render_at(&a), 32, &a);
@@ -1247,8 +1246,7 @@ fn req_nfr_15_a_surface_hatch_fades_to_a_flat_tint_at_a_distance() {
     };
     let (fit, part, marked) = hatched_face();
     let spread = |f: &Frame| {
-        let pixels =
-            render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f);
+        let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Areas, &marked)], f);
         // The red channel along a row of the face, away from its edges.
         let row: Vec<i32> = (26..38)
             .map(|x| i32::from(pixels[(32 * SIZE + x) as usize][0]))

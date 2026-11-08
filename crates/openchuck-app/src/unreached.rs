@@ -159,6 +159,7 @@ const CLOSING_PASSES: usize = 6;
 /// lie on the same surface (their normals within 25 degrees), ordered, so
 /// closing a footprint never crosses a crease (decision 0515 item 2) and
 /// gives the same result every time (GC-07).
+#[derive(Debug, Clone)]
 pub struct Adjacency {
     neighbours: Vec<Vec<u32>>,
 }
@@ -170,24 +171,25 @@ impl Adjacency {
     pub fn new(mesh: &TriangleMesh) -> Self {
         let normals = openchuck_geom::select::triangle_normals(mesh);
         let mut edges: BTreeMap<(u32, u32), Vec<u32>> = BTreeMap::new();
-        for (t, corners) in mesh.triangles.iter().enumerate() {
-            if normals.get(t).copied().flatten().is_none() {
+        for (t, corners) in (0_u32..).zip(&mesh.triangles) {
+            if normals.get(t as usize).copied().flatten().is_none() {
                 continue;
             }
-            for k in 0..3 {
-                let (p, q) = (corners[k], corners[(k + 1) % 3]);
-                edges.entry((p.min(q), p.max(q))).or_default().push(t as u32);
+            let [c0, c1, c2] = *corners;
+            for (p, q) in [(c0, c1), (c1, c2), (c2, c0)] {
+                edges.entry((p.min(q), p.max(q))).or_default().push(t);
             }
         }
-        let mut neighbours = vec![Vec::new(); mesh.triangles.len()];
+        let normal = |t: u32| normals.get(t as usize).copied().flatten();
+        let mut neighbours: Vec<Vec<u32>> = vec![Vec::new(); mesh.triangles.len()];
         for sharing in edges.values() {
             for &a in sharing {
                 for &b in sharing {
-                    let (na, nb) = (normals[a as usize], normals[b as usize]);
-                    if let (true, Some(na), Some(nb)) = (a != b, na, nb)
+                    if let (true, Some(na), Some(nb), Some(list)) =
+                        (a != b, normal(a), normal(b), neighbours.get_mut(a as usize))
                         && na.dot(nb) >= SAME_SURFACE_COS
                     {
-                        neighbours[a as usize].push(b);
+                        list.push(b);
                     }
                 }
             }

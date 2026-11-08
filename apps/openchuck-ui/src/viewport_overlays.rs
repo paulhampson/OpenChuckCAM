@@ -158,8 +158,14 @@ pub fn hatch_swatch(painter: &egui::Painter, r: Rect) {
     for x in [r.left() + r.width() * 0.3, r.left() + r.width() * 0.7] {
         let from = pos2(x - r.height() / 2.0, r.bottom());
         let to = pos2(x + r.height() / 2.0, r.top());
-        clipped.line_segment([from, to], Stroke::new(3.0, to_color32(roles::AREA_HATCH_CASING)));
-        clipped.line_segment([from, to], Stroke::new(1.2, to_color32(roles::AREA_HATCH_CORE)));
+        clipped.line_segment(
+            [from, to],
+            Stroke::new(3.0, to_color32(roles::AREA_HATCH_CASING)),
+        );
+        clipped.line_segment(
+            [from, to],
+            Stroke::new(1.2, to_color32(roles::AREA_HATCH_CORE)),
+        );
     }
 }
 
