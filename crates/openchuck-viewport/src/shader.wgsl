@@ -65,6 +65,33 @@ fn fs_mesh(in: MeshOut) -> @location(0) vec4<f32> {
 fn fs_hatch(in: MeshOut) -> @location(0) vec4<f32> {
     // Whole logical pixels along each diagonal, so the bands are exact.
     let p = in.clip.xy / max(u.line.w, 1e-3);
+    if u.scale.y > 3.5 {
+        // Hatching painted on the surface: stripes where parallel planes
+        // (spacing in millimetres, u.scale.z) cut the mesh, anchored in the
+        // model frame, so they move, scale and foreshorten with it. A dark
+        // core inside a light casing keeps it legible on any ground. The
+        // lines fade to a flat tint as they near the pixel size, so a far
+        // view shows no moire or shimmer.
+        let d = vec3<f32>(0.57735027, 0.57735027, 0.57735027);
+        let f = dot(in.world, d) / max(u.scale.z, 1e-3);
+        let w = max(fwidth(f), 1e-5);
+        let v = abs(fract(f) - 0.5);
+        let from_line = 0.5 - v;
+        let core_half = max(0.07, 0.8 * w);
+        let ring_half = max(0.16, 1.9 * w);
+        let aa = w;
+        let core = 1.0 - smoothstep(core_half - aa, core_half + aa, from_line);
+        let casing = 1.0 - smoothstep(ring_half - aa, ring_half + aa, from_line);
+        let fade = smoothstep(0.12, 0.35, w);
+        let base = shade(in);
+        var c = mix(base.rgb, u.ring.rgb, casing);
+        c = mix(c, u.hatch.rgb, core);
+        let cover = max(casing, core) * (1.0 - fade);
+        let flat_tint = 0.30 * fade;
+        let rgb = mix(base.rgb, c, cover);
+        let tinted = mix(rgb, u.hatch.rgb, flat_tint);
+        return vec4<f32>(tinted, base.a);
+    }
     if u.scale.y > 2.5 {
         // Dots in rows, every other row shifted by half a spacing. A pixel
         // is the core, the ring or the fill beneath, by its distance from

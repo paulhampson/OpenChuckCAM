@@ -113,7 +113,19 @@ pub enum HatchKind {
         /// The colour round the core.
         ring: Colour,
     },
+    /// Hatching painted on the surface: lines where planes
+    /// [`SURFACE_HATCH_SPACING_MM`] apart cut the mesh, in the model frame,
+    /// so the pattern moves, scales and foreshortens with the surface. A core
+    /// in [`Hatch::colour`] inside a casing of `ring`; it fades to a flat tint
+    /// as the lines near the pixel size.
+    Surface {
+        /// The colour of the casing.
+        ring: Colour,
+    },
 }
+
+/// The distance in millimetres between two lines of [`HatchKind::Surface`].
+pub const SURFACE_HATCH_SPACING_MM: f32 = 2.5;
 
 /// A hatch drawn over a mesh's fill in screen space: lines 1 pixel wide,
 /// 6 logical pixels apart whatever the zoom (interface specification 7.4 and

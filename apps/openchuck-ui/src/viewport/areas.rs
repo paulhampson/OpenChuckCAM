@@ -134,17 +134,49 @@ impl Viewport {
                     continue;
                 }
                 let mesh = triangles_mesh(&part.mesh, &area.triangles);
-                // Transparent fill: only the dots are drawn, over whatever
-                // lies beneath.
-                scene.add_mesh(&mesh, &[], [0.0; 4], roles::FEATURE_EDGES);
+                // Review build only (decision 0515 amendment, issue 637):
+                // OPENCHUCK_AREA_PATTERN = dots | a | b | c.
+                let pattern = std::env::var("OPENCHUCK_AREA_PATTERN").unwrap_or_default();
+                let tint = [0.047, 0.055, 0.071, 0.40];
+                let (fill, hatch, outline) = match pattern.as_str() {
+                    "a" => (
+                        [0.0; 4],
+                        Some(HatchKind::Surface {
+                            ring: roles::AREA_DOT_RING,
+                        }),
+                        false,
+                    ),
+                    "b" => ([tint[0], tint[1], tint[2], tint[3]], None, true),
+                    "c" => (
+                        [0.0; 4],
+                        Some(HatchKind::Surface {
+                            ring: roles::AREA_DOT_RING,
+                        }),
+                        true,
+                    ),
+                    _ => (
+                        [0.0; 4],
+                        Some(HatchKind::Dots {
+                            ring: roles::AREA_DOT_RING,
+                        }),
+                        false,
+                    ),
+                };
+                scene.add_mesh(&mesh, &[], fill, roles::FEATURE_EDGES);
                 if let Some(added) = scene.meshes.last_mut() {
                     added.slot = Slot::Part;
-                    added.hatch = Some(Hatch {
+                    added.translucent = pattern == "b";
+                    added.hatch = hatch.map(|kind| Hatch {
                         colour: roles::AREA_DOT_CORE,
-                        kind: HatchKind::Dots {
-                            ring: roles::AREA_DOT_RING,
-                        },
+                        kind,
                     });
+                    if outline {
+                        added.outline = Some(openchuck_viewport::Outline {
+                            colour: roles::AREA_DOT_RING,
+                            width: 2.0,
+                            style: openchuck_viewport::LineStyle::Solid,
+                        });
+                    }
                 }
             }
         }

@@ -616,6 +616,7 @@ impl Renderer {
                     HatchKind::Single => (h.colour, [0.0; 4], 1.0),
                     HatchKind::Cross => (h.colour, [0.0; 4], 2.0),
                     HatchKind::Dots { ring } => (h.colour, ring, 3.0),
+                    HatchKind::Surface { ring } => (h.colour, ring, 4.0),
                 },
                 None => ([0.0; 4], [0.0; 4], 0.0),
             };
@@ -632,7 +633,7 @@ impl Renderer {
             ]);
             floats.extend(u.pattern);
             floats.extend(hatch);
-            floats.extend([per_mm, kind, 0.0, 0.0]);
+            floats.extend([per_mm, kind, crate::scene::SURFACE_HATCH_SPACING_MM, 0.0]);
             floats.extend([DOT_SPACING, DOT_CORE_RADIUS, DOT_RADIUS, 0.0]);
             floats.extend(ring);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
