@@ -462,3 +462,13 @@ With [decision 0390](decisions/0390-helical-finishing-in-rings.md), accepted 31 
 - **Determinism.** The same path at 1, 2 and N threads.
 - **Refusals.** An unknown pass shape is refused by name.
 - **Schema.** Passes for the spiral pattern only, Spiral by default.
+
+**Steps between rings** ([decision 0545](decisions/0545-blended-steps-between-rings.md), accepted 8 Nov 2026, relayed). OP-03, OP-04, OP-05, OP-09, OP-11, OP-12, OP-15, OP-24, GC-07, NFR-06, NFR-07. In `crates/openchuck-path/tests/ring_steps.rs` unless named:
+
+- **The setting.** Each of the five ring strategies offers **Steps between rings** (Sharp by default for a saved operation) and **Blend over** (45°, more than 0 and at most 180), shown only with Rings and Blended; not for roughing's other forms or Facing's other shapes. A new operation is written Blended, and an operation saved without the setting keeps sharp steps and the same toolpath as Sharp (`crates/openchuck-app/tests/operation.rs`).
+- **Shape.** With Blended, for roughing, round Facing, helical finishing and rest machining at 45° and 90°: no sharp step; each blend between two whole rings turns the blend angle, with X linear in A; A never reverses, also with negative rotation; each ring after a blend starts a whole number of blend angles from the start angle. Simultaneous finishing at a lead of 0, 5 and −5 degrees: no sharp step, blends along X while A turns, no reversal.
+- **The load,** graded by the test kit's independent width-of-cut check (`openchuck_testkit::engagement`, radial dexels over the unrolled cylinder), on one roughing layer as in the #638 model (3.175 mm flat end, 1.27 mm stepover, 10 mm radius): the sharp step is a slot (over 2.6 mm peak), the blends no wider than 1.25 times the stepover, away from the stock's ends.
+- **The material left** on a cone, helical and simultaneous finishing, by the test kit's gouge and coverage checks: no gouge, and no more left than with sharp steps. Rest machining cuts only where material is left; round Facing reaches the same diameter and ends as with sharp steps.
+- **Sharp is as before.** Sharp, and no setting, give byte-identical paths for every strategy, and the blend angle does nothing with sharp steps; no golden program changes.
+- **Determinism.** Blended paths are identical at 1, 2 and N threads.
+- **Refusals.** A blend angle of 0, −1, 180.0001, NaN or infinity, and an unknown step value, are refused by name; roughing counts the blends against its node limit.

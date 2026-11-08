@@ -1231,8 +1231,8 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     );
     assert_eq!(app.strategy_label("not_registered"), "not_registered");
     // Adding: at the end, enabled, with the strategy's defaults and the
-    // pass order and the low links a new operation is given (decision
-    // records 0520 and 0521).
+    // pass order, the low links and the blended ring steps a new operation
+    // is given (decision records 0520, 0521 and 0545).
     let before = app.project().operations().len();
     let second = app
         .add_operation("  Second pass ", "helical_finishing", setup, Some(tool))
@@ -1254,6 +1254,12 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
                 &openchuck_path::order::PARAMETER.to_owned(),
                 &openchuck_app::project::ParameterValue::Text(
                     openchuck_path::order::BY_REGION.into()
+                )
+            ),
+            (
+                &openchuck_path::helical::parameter::RING_STEP.to_owned(),
+                &openchuck_app::project::ParameterValue::Text(
+                    openchuck_path::helical::parameter::BLENDED.into()
                 )
             )
         ]

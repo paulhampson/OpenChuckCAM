@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.52.0 (RINGSTEP; issue #638; decision 0545, accepted)
+
+- **Added, changed output for new operations (0.52.0, or the next free version, as the Merge Manager sequences it; decision 0048):** every strategy that cuts rings (helical finishing, rest machining, continuous rotary roughing, round Facing, simultaneous finishing's spiral pattern) gains **Steps between rings** (`helical::parameter::RING_STEP`, `ring_step`: `SHARP`, the default, or `BLENDED`) and **Blend over** (`RING_BLEND_ANGLE`, `ring_blend_angle`, degrees, default `DEFAULT_RING_BLEND_ANGLE` 45, more than 0 and at most 180), shown only with Rings. Blended: after each whole ring, a helix piece to the next ring over the blend angle, instead of a step along X with A held; ring `k` starts `k` blend angles further round. Sharp, and an operation without the setting, are made by exactly the code before, so their paths and every golden program are byte-identical. The rings note names the blend.
+
 ## 0.51.0 (MSGREVIEW, decision 0538 part a and decision 0536 steps 2 and 3)
 
 - **Breaking (0.51.0, or the next free version, as the Merge Manager sequences it; MSGREVIEW step 3; issue #567; decision 0536 section 3, accepted):** every notice names its check. The new module `topic` (re-exported as `openchuck_path::topic`) holds one constant per topic, and every warning and every piece of information the crate makes sets `Notice::topic` from it, so a host shows it as "<Topic> (<context>): <text>". `flutes::WARNING_LEAD` is removed: the flute check's warning carries the topic `topic::FLUTE_LENGTH`, and its text no longer starts with "Flute length: ". Nine descriptions no longer repeat their topic at the start (adaptive spacing, rest machining, finishing layers, edge following, pencil clean-up, face-flow finishing, swarf's per-face description). No path or program changes.

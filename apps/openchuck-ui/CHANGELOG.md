@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
+
+- **Added:** **Steps between rings** reads Sharp or Blended in the inspector.
+
 ## Unreleased
 
 - MSGREVIEW (issue #635; UI-12): a warning or a refusal under a field spans the inspector's width as one block under the field, the warning shape just before its first line, for every kind of field; it no longer sits alone at the label column with its text on the line below.

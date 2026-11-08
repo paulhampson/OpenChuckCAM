@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
+
+- **Changed output for new operations:** `Application::add_operation_on` writes `ring_step = blended` into a new operation of every strategy that has **Steps between rings** (helical finishing, rest machining, rotary roughing, Facing and simultaneous finishing), so a new ring operation blends its steps; an operation saved without it keeps sharp steps and its G-code (decision 0545 item 1, the owner's choice D3).
+
 ## Unreleased (MSGREVIEW, decision 0538 and decision 0536 steps 2 and 3)
 
 - **Changed (decision 0536 step 3, accepted; issue #567):** every message of an operation reads in one form, "<Topic> (operation '<name>'[, tool '<name>']): <text>", in Messages, the Results tab, the export checks and on the command line, the operation and tool named as they are now. `operation::operation_notice` writes a warning and `operation::operation_note` a note; `warning_text` and its prefix matching are gone. `OperationPath::notes` keeps the path's notices (`Vec<Notice>`), so a renamed operation is named as it is now. The feed-limit summary reads the Feed limit topic, not the text. `lead_in::topic` holds the application's own topics, and `lead_in::TOOL_TOPICS` the topics that name the tool. `overview::MessageAction::ShowSetting` carries a `SettingRef` (the place and the setting's key), so `MessageAction` is `Clone`, not `Copy`.
