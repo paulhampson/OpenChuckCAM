@@ -26,7 +26,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::machine::ARange;
 use openchuck_types::tool::ToolShape;
 use openchuck_types::units::{Degrees, Millimetres};
-use support::{Fixture, Rings, ball, generate, ring_values, run, tool};
+use support::{Fixture, Rings, ball, blisk, generate, ring_values, run, tool};
 
 const FEED: f64 = 300.0;
 
@@ -409,6 +409,25 @@ fn req_op_11_req_nfr_06_turning_leads_are_the_same_at_one_two_and_many_threads()
     let one = at(1);
     assert_eq!(one, at(2));
     assert_eq!(one, at(8));
+}
+
+#[test]
+fn req_op_11_req_op_15_helical_finishing_of_the_blisk_in_rings_leads_in_the_plane_of_the_cut() {
+    // The repository's public stand-in, `testdata/stl/blisk.stl`: a real
+    // part whose rings are not round.
+    let f = Fixture::new(MeshSurface::new(&blisk()).unwrap(), 21.0, &ball(3.0));
+    let mut v = finishing("rings");
+    v.insert(names::STEPOVER.into(), n(5.0));
+    let path = make(&f, &HelicalFinishing, &v, &[]).unwrap();
+    let ins = lead_ins(&path);
+    let outs = lead_outs(&path);
+    assert!(ins.len() >= 5, "{} lead-ins", ins.len());
+    for lead in ins.iter().filter(|l| l.moves.iter().any(|s| s.kind == MoveKind::LeadIn)) {
+        assert_turning_lead_in(&f, lead);
+    }
+    for lead in &outs {
+        assert_turning_lead_out(&f, lead);
+    }
 }
 
 /// One pass of one point over the top of the part. Not a product strategy.
