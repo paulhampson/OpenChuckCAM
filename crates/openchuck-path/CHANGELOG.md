@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (PATHFEED, issue #641; decision 0547, accepted; no public API change)
+
+- **Changed output (End facing):**
+  - End reads the operation's Stepover as the slice along X and its Stepdown as the band along the tool, as a tool's cutting data defines them (`EndFacingParameters::read`); the schema labels them "Stepover (slice thickness along X)" and "Stepdown (band along the tool)". `openchuck-project` schema 28 migrates saved End operations.
+  - Where there is air beside a band's edge, the band comes in and goes out along X beside the stock, the whole tool the approach distance clear, so only the sweep across meets the face, at its edge. Where there is none (a Part extent narrower than the stock), the move along X into the face at the band's edge is kept.
+  - Final validation checks the depth each End sweep cuts along the tool, from the stock's top at its view or the band above it, against the Stepdown, and refuses a deeper cut naming it.
+  - The slice check allows the written-motion share of the tolerance, so a depth that divides exactly into full-size slices posts.
+
 ## Unreleased (MSGREVIEW, decision 0538 part a and decision 0536 step 2)
 
 - **Changed (decision 0538, accepted):** the warnings that may be a collision carry `Acknowledgement::PossibleCollision`, so a host asks for a tick before writing: the flute check's warning (every case of `flutes::check_path`), swarf cutting into a face next to it (`FacePath::neighbour_warnings`), a touched check set that only warns (not an avoid set), and a free end faced down to the axis with nothing holding the part on the other side (not the stock ring). The API, the paths and the texts are unchanged.
