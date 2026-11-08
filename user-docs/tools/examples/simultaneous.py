@@ -9,7 +9,7 @@ of the build they were taken with, at 1920 x 1080; change them and the page toge
 """
 
 PROJECT = "testdata/examples/crankshaft-simultaneous/crankshaft-project"
-GENERATE = 160  # seconds; both operations take about 90 s here
+GENERATE = 160  # seconds; both operations take about 100 s here
 
 
 def add_operation(cap, name, tool_row, strategy_row=None):

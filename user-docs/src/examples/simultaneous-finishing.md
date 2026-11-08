@@ -44,7 +44,7 @@ The project already has the setup (a 38 mm hardwood bar, gripped for 6 mm) and t
 ## 3. Generate and read the notes
 
 1. Click the eye beside **1 Rough** to hide its path, so the view shows the finish only.
-2. Click **Generate**. On the build these screens were taken with, both operations took about 90 seconds.
+2. Click **Generate**. On the build these screens were taken with, both operations took about 100 seconds.
 3. Click **Iso** above the view, then **Results** under it.
 
 <figure>
