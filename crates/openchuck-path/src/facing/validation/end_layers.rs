@@ -74,6 +74,11 @@ pub(super) fn verify(
     let mut slice_ceiling = f64::NEG_INFINITY;
     let mut previous_bands = Bands::new();
     let mut current_bands = Bands::new();
+    // The lowest tip height swept across so far in this slice, per view: the
+    // material above it at that view is already removed (decision record
+    // 0547 item 2).
+    let mut bottoms = BTreeMap::<u64, f64>::new();
+    let mut tops = BTreeMap::<u64, f64>::new();
     let mut budget = 20_000_000usize;
     let mut from = group.start;
     for segment in &group.segments {
@@ -111,6 +116,7 @@ pub(super) fn verify(
                 previous_ceiling = slice_ceiling;
                 slice_ceiling = f64::NEG_INFINITY;
                 previous_bands = std::mem::take(&mut current_bands);
+                bottoms.clear();
                 level += 1;
             }
             let plane = *levels
@@ -142,6 +148,40 @@ pub(super) fn verify(
                         };
                         let angle = from.a.0.rem_euclid(360.);
                         let key = if angle == 0. { 0 } else { angle.to_bits() };
+                        // The depth this sweep cuts along the tool: from the
+                        // bottom of the band above it at this view, or from
+                        // the stock's top at this view for the first, down
+                        // to the tip (decision record 0547 item 2). With a
+                        // restricted extent the flutes also meet the stock
+                        // above the requested area, so that counts too.
+                        let top = match tops.get(&key) {
+                            Some(top) => *top,
+                            None => {
+                                let plane =
+                                    super::super::geometry::FacingPlane::side(rotary, from.a)?;
+                                let top = FacingExtent::WholeStock.support(
+                                    plane,
+                                    setup.stock,
+                                    setup.part,
+                                    &[],
+                                )?;
+                                tops.insert(key, top);
+                                top
+                            }
+                        };
+                        let tip = a.height.min(b.height);
+                        let above = bottoms.get(&key).copied().unwrap_or(top).min(top);
+                        let depth = above - tip;
+                        if depth > p.flute_step + arithmetic + 0.125 * p.tolerance {
+                            return Err(refuse(&format!(
+                                "an End band cuts {depth:.3} mm deep along the tool at A {:.3}, \
+                                 more than the Stepdown (band along the tool) of {:.3} mm, so the \
+                                 flutes would be overloaded. Lower the Stepdown, or face the \
+                                 stock above the requested area first",
+                                from.a.0, p.flute_step
+                            )));
+                        }
+                        bottoms.insert(key, bottoms.get(&key).map_or(tip, |b| b.min(tip)));
                         if level > 0 {
                             let mut covered = false;
                             if let Some(prior) = previous_bands.get(&key) {

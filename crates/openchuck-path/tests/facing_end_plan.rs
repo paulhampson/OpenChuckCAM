@@ -1584,3 +1584,95 @@ fn req_op_24_req_op_11_part_extent_band_keeps_its_side_entry() {
         );
     }
 }
+
+/// End facing generated through the Facing strategy on the 24 mm round bar
+/// (60 mm long) with `values`, validated as a host does.
+fn generate_on_round_bar(
+    values: &[(&str, openchuck_path::ParameterValue)],
+) -> openchuck_path::Result<openchuck_path::GeneratedPath> {
+    use openchuck_path::rotary::RotaryMapping;
+    use openchuck_path::{AcceptAll, AnalyticStock, Facing, MeshSurface, StrategyInput};
+    use openchuck_types::ir::PathTags;
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Cylinder {
+        diameter: Millimetres(24.),
+        length: Millimetres(60.),
+        x_start: Millimetres(0.),
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let surface = MeshSurface::new(&part).unwrap();
+    let profile = tool.profile().unwrap();
+    let original = AnalyticStock::Cylinder {
+        radius: 12.,
+        x_start: 0.,
+        x_end: 60.,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &original,
+        collision: &AcceptAll,
+        tool: &profile,
+        rotary: RotaryMapping::of_profile(&machine),
+        clearance: machine.clearance,
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        entry_safety: None,
+        facing: Some(&setup),
+        keep_out: &[],
+        shank: None,
+    };
+    let values = values
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    openchuck_path::generate(&Facing, &input, &values, &ctx)
+}
+
+/// Decision 0547 item 2: the depth each sweep cuts along the tool is checked
+/// on the assembled path against the Stepdown (band along the tool), from
+/// the stock's top at that view or the bottom of the band above it. With the
+/// Part extent the flutes also meet the stock above the part's top, so the
+/// first band cuts deeper than the band spacing: refused, naming the
+/// Stepdown. The Whole stock extent with the same settings is accepted.
+#[test]
+fn req_op_24_req_nfr_07_end_engagement_over_the_stepdown_refuses_naming_it() {
+    use openchuck_path::ParameterValue;
+    let values = |extent: &str| {
+        vec![
+            ("shape", ParameterValue::Text("end".into())),
+            ("extent", ParameterValue::Text(extent.into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(2.)),
+            ("stepdown", ParameterValue::Number(4.)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ]
+    };
+    generate_on_round_bar(&values("whole_stock")).unwrap();
+    let error = generate_on_round_bar(&values("part"))
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "accepted".to_owned());
+    assert!(
+        error.contains("Stepdown (band along the tool)") && error.contains("deep along the tool"),
+        "{error}"
+    );
+}
