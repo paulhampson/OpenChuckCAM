@@ -332,6 +332,14 @@ fn req_op_02_a_set_that_only_warns_keeps_the_path_and_names_the_set() {
         );
         // Said first in the notes too, so a host that shows only notes says it.
         assert_eq!(&path.notices[0].text, message);
+        // A check set often stands for a clamp: touching it is a possible
+        // collision, to acknowledge; cutting into an avoid set is a gouge
+        // (decision record 0538, the owner's answer to question 9).
+        let wanted = match protection {
+            Protection::Check => Some(openchuck_path::Acknowledgement::PossibleCollision),
+            Protection::Avoid => None,
+        };
+        assert_eq!(path.warnings()[0].acknowledgement, wanted, "{protection:?}");
     }
 }
 

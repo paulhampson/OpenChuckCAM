@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use openchuck_post::{ADirection, FeedMode, UnwindMode, builtin_ids};
-use openchuck_project::Project;
 use openchuck_project::id::OperationId;
+use openchuck_project::{Operation, Project};
 
 use crate::cache::{ModelFiles, operation_key};
 use crate::error::AppError;
@@ -139,6 +139,147 @@ pub fn partial_operations(project: &Project, run: &Regeneration) -> Vec<String> 
         })
         .map(|o| o.name.clone())
         .collect()
+}
+
+/// The tick box that acknowledges, before writing, the possible collisions
+/// of the result being written (decision record 0538). It names nothing as
+/// safe (NFR-12).
+pub const EXPORT_COLLISION_LABEL: &str = "I have read the possible collisions listed for this result and will check them before running the program";
+
+/// The possible collisions of the enabled operations of `project` in `run`,
+/// one sentence each naming its operation, in order (decision record 0538):
+/// each warning that may be a collision of the tool, its shank or its holder
+/// with the part, the stock, a tab or a held region, then each rapid move
+/// the run's stock simulation found removing material. Writing waits for
+/// their acknowledgement; a partial path is acknowledged on its own.
+pub fn collision_warnings(project: &Project, run: &Regeneration) -> Vec<String> {
+    let mut out = Vec::new();
+    for operation in project.operations().iter().filter(|o| o.enabled) {
+        for group in run.groups.iter().filter(|g| g.operation == operation.id) {
+            for warning in group.warnings.iter().filter(|w| {
+                w.acknowledgement == Some(openchuck_path::Acknowledgement::PossibleCollision)
+            }) {
+                out.push(named(project, operation, &warning.sentence()));
+            }
+        }
+        out.extend(rapid_cuts(run, operation));
+    }
+    out.extend(
+        setup_collisions(run)
+            .into_iter()
+            .map(|(setup, text)| format!("Setup '{setup}': {text}")),
+    );
+    out
+}
+
+/// The possible collisions of the run's setups (decision record 0538), as
+/// (setup name, the check's text): a safe cylinder that does not enclose the
+/// stock or the part, or is inside the minimum clearance, and a tool that may
+/// be too long to clear the workholding. Read from the project the run was
+/// made from and the part bounds it measured, so they are this result's.
+fn setup_collisions(run: &Regeneration) -> Vec<(String, String)> {
+    let project = &run.project;
+    let Some(machine) = project.machine() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for setup in project.setups() {
+        let Some(group) = run.groups.iter().find(|g| g.setup == setup.id) else {
+            continue;
+        };
+        let part = crate::setup::part_extent(&group.part_bounds);
+        let found = openchuck_types::setup::check_setup(&openchuck_types::setup::SetupCheck {
+            profile: machine,
+            frame: &setup.frame,
+            stock: setup.stock.as_ref(),
+            clearance: setup.clearance.as_ref(),
+            rules: &setup.clearance_rules,
+            part: Some(&part),
+        });
+        out.extend(
+            found
+                .iter()
+                .filter(|w| crate::setup::is_possible_collision(&w.kind))
+                .map(|w| (setup.name.clone(), crate::overview::setup_warning_text(w))),
+        );
+        // The tools of the setup's operations in this run, in the tool
+        // list's order, as the setup check names them.
+        let effective = crate::setup::effective_clearance(machine, setup, Some(&group.part_bounds));
+        let minimum = effective.minimum.map(|(r, _)| r.0);
+        for snapshot in project.tools().iter().filter(|t| {
+            run.groups.iter().any(|g| {
+                g.setup == setup.id
+                    && project.operation(g.operation).and_then(|o| o.tool) == Some(t.id)
+            })
+        }) {
+            if let Some(height) = crate::setup::spindle_height(
+                machine,
+                effective.clearance.safe_z.0,
+                minimum,
+                &snapshot.tool,
+            )
+            .filter(|h| h.below_minimum.is_some())
+            {
+                out.push((
+                    setup.name.clone(),
+                    crate::setup::spindle_height_text(
+                        snapshot.controller.number,
+                        &snapshot.name,
+                        &height,
+                    ),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Each rapid move of `operation` that the run's stock simulation found
+/// removing material, as a sentence naming the operation (decision record
+/// 0538): a crash, not a cut.
+fn rapid_cuts(run: &Regeneration, operation: &Operation) -> Vec<String> {
+    // The simulation names an operation as it was called when the run was
+    // made (issue 209).
+    let made_as = run
+        .project
+        .operation(operation.id)
+        .map_or(operation.name.as_str(), |o| o.name.as_str());
+    run.simulation
+        .iter()
+        .flat_map(|s| s.setups.iter())
+        .flat_map(|s| s.operations.iter())
+        .filter(|o| o.operation == made_as)
+        .flat_map(|o| o.rapid_cuts.iter())
+        .map(|cut| {
+            format!(
+                "Operation '{}': move {} is a rapid that removes {:.3} mm³ of material",
+                operation.name, cut.segment, cut.volume
+            )
+        })
+        .collect()
+}
+
+/// A warning's sentence naming `operation`: in the form of decision record
+/// 0522 where it has one, else after "Operation '<name>': ".
+fn named(project: &Project, operation: &Operation, sentence: &str) -> String {
+    let text = crate::operation::warning_text(project, operation, sentence);
+    if text == sentence {
+        format!("Operation '{}': {text}", operation.name)
+    } else {
+        text
+    }
+}
+
+/// Why writing is refused while the possible collisions `found` are not
+/// acknowledged (decision record 0538).
+pub fn collision_refusal(found: &[String]) -> String {
+    format!(
+        "This result has {} possible collision{} that must be acknowledged before the files are \
+         written: {}. Read them, then acknowledge them to write the files.",
+        found.len(),
+        if found.len() == 1 { "" } else { "s" },
+        found.join("; ")
+    )
 }
 
 /// Why writing is refused while `partial` operations are not acknowledged.
@@ -467,7 +608,20 @@ pub(crate) fn export_checks_with(
                     for warning in &group.warnings {
                         // A partial path is written only once this result
                         // is acknowledged (decision record 0239 item 10).
-                        let text = if warning.is_partial_path() {
+                        let collision = warning.acknowledgement
+                            == Some(openchuck_path::Acknowledgement::PossibleCollision);
+                        let text = if collision {
+                            format!(
+                                "Operation '{}' has a possible collision, which must be \
+                                 acknowledged before the files are written: {}",
+                                operation.name,
+                                crate::operation::warning_text(
+                                    project,
+                                    operation,
+                                    &warning.sentence()
+                                )
+                            )
+                        } else if warning.is_partial_path() {
                             format!(
                                 "Operation '{}' has a partial path, which must be acknowledged \
                                  before the files are written: {}",
@@ -488,6 +642,24 @@ pub(crate) fn export_checks_with(
                         push(CheckLevel::Warning, text);
                     }
                 }
+                for cut in rapid_cuts(run, operation) {
+                    push(
+                        CheckLevel::Warning,
+                        format!(
+                            "{cut}: a possible collision, which must be acknowledged before \
+                             the files are written"
+                        ),
+                    );
+                }
+            }
+            for (setup, text) in setup_collisions(run) {
+                push(
+                    CheckLevel::Warning,
+                    format!(
+                        "Setup '{setup}' has a possible collision, which must be acknowledged \
+                         before the files are written: {text}"
+                    ),
+                );
             }
             let diagnostics = posted.unwrap_or(run);
             for report in &diagnostics.short_blocks {

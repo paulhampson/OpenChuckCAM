@@ -96,22 +96,44 @@ pub fn effective_clearance(
     setup: &openchuck_project::Setup,
     part_bounds: Option<&Aabb>,
 ) -> EffectiveClearance {
-    let part = part_bounds.map(|b| PartExtent {
-        bounds: *b,
-        radius: Millimetres(
-            b.min
-                .y
-                .abs()
-                .max(b.max.y.abs())
-                .hypot(b.min.z.abs().max(b.max.z.abs())),
-        ),
-    });
+    let part = part_bounds.map(part_extent);
     openchuck_types::setup::effective_clearance(
         machine,
         setup.clearance.as_ref(),
         &setup.clearance_rules,
         setup.stock.as_ref(),
         part.as_ref(),
+    )
+}
+
+/// The extent of a part whose bounds, in the setup's frame, are `bounds`:
+/// the bounds and the radius they reach from the rotary axis.
+pub fn part_extent(bounds: &Aabb) -> PartExtent {
+    PartExtent {
+        bounds: *bounds,
+        radius: Millimetres(
+            bounds
+                .min
+                .y
+                .abs()
+                .max(bounds.max.y.abs())
+                .hypot(bounds.min.z.abs().max(bounds.max.z.abs())),
+        ),
+    }
+}
+
+/// Whether a setup check's finding is a possible collision, which must be
+/// acknowledged before the program is written (decision record 0538): a safe
+/// cylinder that does not enclose the stock or the part, or is inside the
+/// minimum clearance, so links at the clearance may pass through material or
+/// the workholding. A travel limit is not one: the controller stops at it.
+pub fn is_possible_collision(kind: &openchuck_types::setup::SetupWarningKind) -> bool {
+    use openchuck_types::setup::SetupWarningKind as K;
+    matches!(
+        kind,
+        K::ClearanceInsideStock { .. }
+            | K::ClearanceInsidePart { .. }
+            | K::ClearanceBelowMinimum { .. }
     )
 }
 

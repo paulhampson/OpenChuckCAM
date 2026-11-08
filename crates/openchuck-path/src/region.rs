@@ -36,7 +36,7 @@
 //! Where a pass can reach the selected region is found through the region's
 //! offset ([`crate::candidates`], slice 12).
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
@@ -462,7 +462,11 @@ pub(crate) fn watched_warnings(
                     w.name
                 ),
                 setting: None,
-                acknowledgement: None,
+                // A check set often stands for a clamp: touching it is a
+                // possible collision; cutting into an avoid set is a gouge
+                // (decision record 0538, the owner's answer to question 9).
+                acknowledgement: (w.protection == Protection::Check)
+                    .then_some(Acknowledgement::PossibleCollision),
             }
         })
         .collect())

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (MSGREVIEW, decision 0538)
+
+- **Changed (decision 0538, accepted):** a possible collision is a warning to acknowledge. `collision_warnings` lists a result's possible collisions (the path's, a tab shorter than the tool, and each rapid the stock simulation found removing material), `collision_refusal` says why writing waits, and `EXPORT_COLLISION_LABEL` is the tick box's label. `OutputPlan` gains `collisions`, `acknowledge_collisions` and `collisions_acknowledged`, and `write_output` refuses until the tick. The export checks list each one ("has a possible collision, which must be acknowledged..."), with the rapid cuts the simulation found. The operation's mark reads "Needs acknowledging: ...", and `Message::to_acknowledge` puts such warnings first among the warnings in Messages. The files written are unchanged.
+- **Changed (decision 0538 part b):** the setup-level possible collisions need the same tick: a safe cylinder that does not enclose the stock or the part, a safe cylinder inside the minimum clearance, and a tool that may be too long to clear the workholding. `collision_warnings` and the export checks list them under their setup, read from the project and part bounds of the result; the setup's mark reads "Needs acknowledging: ..." and its message comes first. New `setup::is_possible_collision` and `setup::part_extent`. A travel limit asks for no tick.
+
 ## 0.50.0
 
 - **Changed (0.50.0, or the next free version; MSGREVIEW step 1; issue #567; decision 0536, accepted):** the application reads the pathing library's new `Notice` type; what the user sees is unchanged. New `lead_in` module (`Context`, `lead_in`, `in_form`) writes the one form every message takes, `<Topic> (<context>): <text>`, and `Message::about` builds a message in it; the flute and tab warnings use it. `cargo xtask messages` (also run by `cargo xtask deps`) counts the messages built with `Message::new` and the words that claim safety against `xtask/messages.toml`, which may only fall.

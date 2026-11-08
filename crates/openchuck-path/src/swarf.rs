@@ -65,7 +65,7 @@
 //! Everything here is deterministic (NFR-06): the only parallel work is the
 //! gate's sampling, through [`crate::parallel`].
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice};
 use std::collections::BTreeMap;
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -952,7 +952,9 @@ impl FacePath {
                         self.number, cut.depth, cut.face, cut.at.x, cut.at.y, cut.at.z
                     ),
                     setting: parameter.map(str::to_owned),
-                    acknowledgement: None,
+                    // The side of the tool meets another face of the part
+                    // (decision record 0538).
+                    acknowledgement: Some(Acknowledgement::PossibleCollision),
                 }
             })
             .collect()
@@ -3101,7 +3103,11 @@ fn swarf(
                 faces.join(", ")
             ),
             setting: None,
-            acknowledgement: None,
+            // A check set often stands for a clamp: touching it is a
+            // possible collision; cutting into an avoid set is a gouge
+            // (decision record 0538, the owner's answer to question 9).
+            acknowledgement: (w.protection == Protection::Check)
+                .then_some(Acknowledgement::PossibleCollision),
         });
     }
     context.report("swarf", total, Some(total));
