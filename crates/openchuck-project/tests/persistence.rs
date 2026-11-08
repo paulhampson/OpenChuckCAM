@@ -2215,3 +2215,64 @@ fn req_op_27_req_prj_04_req_gc_07_older_operations_keep_their_surface_contact() 
         "{err}"
     );
 }
+
+#[test]
+fn req_op_24_req_prj_04_req_gc_07_older_end_facing_operations_keep_their_slice_and_band() {
+    // Schema 28 (decision record 0547 item 3): End facing reads the Stepover
+    // as the slice along X and the Stepdown as the band along the tool, the
+    // other way round from before. An older End facing operation has its
+    // stored `stepover` and `stepdown` exchanged, so it machines as it did;
+    // a value it did not store stays unstored (its tool's preset fills it,
+    // in the new meaning). Other shapes and strategies are unchanged.
+    let mut p = sample();
+    let number = |x: f64| ParameterValue::Number(x);
+    let cases: [(u128, &str, Option<&str>, Option<f64>, Option<f64>); 5] = [
+        (201, "facing", Some("end"), Some(2.2225), Some(2.0)),
+        (202, "facing", Some("end"), None, Some(1.5)),
+        (203, "facing", Some("end"), Some(3.0), None),
+        (204, "facing", Some("flat"), Some(2.2225), Some(2.0)),
+        (205, "rotary_roughing", None, Some(2.2225), Some(2.0)),
+    ];
+    for (n, strategy, shape, stepover, stepdown) in cases {
+        let mut op = p.operation(op_id(101)).unwrap().clone();
+        op.id = op_id(n);
+        op.strategy = strategy.into();
+        op.parameters.clear();
+        if let Some(shape) = shape {
+            op.parameters
+                .insert("shape".into(), ParameterValue::Text(shape.into()));
+        }
+        if let Some(x) = stepover {
+            op.parameters.insert("stepover".into(), number(x));
+        }
+        if let Some(x) = stepdown {
+            op.parameters.insert("stepdown".into(), number(x));
+        }
+        p.insert(Item::Operation(op), Placement::End).unwrap();
+    }
+    let dir = temp_dir_saved(&p, "end-slice-current");
+    let at_27 = copy_tree_with(&read_tree(&dir), "end-slice-27", |_, text| {
+        text.replacen(&current(), "schema = 27\n", 1)
+    });
+    let opened = file::load(&at_27).unwrap();
+    for (n, strategy, shape, stepover, stepdown) in cases {
+        let parameters = &opened.operation(op_id(n)).unwrap().parameters;
+        let (want_over, want_down) = if shape == Some("end") {
+            (stepdown, stepover)
+        } else {
+            (stepover, stepdown)
+        };
+        assert_eq!(
+            parameters.get("stepover").cloned(),
+            want_over.map(number),
+            "{strategy} {shape:?}: stepover"
+        );
+        assert_eq!(
+            parameters.get("stepdown").cloned(),
+            want_down.map(number),
+            "{strategy} {shape:?}: stepdown"
+        );
+    }
+    // A current file keeps what it holds.
+    assert_eq!(file::load(&dir).unwrap(), p);
+}

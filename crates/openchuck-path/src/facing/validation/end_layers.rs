@@ -117,9 +117,15 @@ pub(super) fn verify(
                 .get(level)
                 .ok_or_else(|| refuse("End cut goes behind the finished target"))?;
             if near <= plane + 0.25 * p.tolerance {
-                if previous_ceiling - near > p.axial_stepdown + arithmetic {
+                // The written motion read back rounds the tool centre to the
+                // written decimals, so a slice exactly the Stepover can read
+                // back a little deeper: the written-motion share of the
+                // tolerance (an eighth, as the band edges take; decision
+                // record 0501) is allowed (decision record 0547 item 4).
+                if previous_ceiling - near > p.axial_stepdown + arithmetic + 0.125 * p.tolerance {
                     return Err(refuse(
-                        "an actual End cut exceeds the selected maximum axial stepdown",
+                        "an actual End cut is deeper along X than the Stepover (slice thickness \
+                         along X)",
                     ));
                 }
                 // Across-going flute sweeps clear translated copies of their
