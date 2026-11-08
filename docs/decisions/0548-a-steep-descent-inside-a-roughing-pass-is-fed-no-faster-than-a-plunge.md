@@ -4,7 +4,7 @@
 - **What it amends, if accepted:** the shared path assembly's feed for moves inside a pass (`crates/openchuck-path/src/assemble.rs`), alongside [decision 0050](0050-walls-merge-micro-moves.md) (wall moves, which it leaves merged and timed as they are) and [decision 0026](0026-entry-moves.md) (entries, already at the plunge feed). The verification plan's OP-11 row gains the tests below. The requirements and the architecture are unchanged.
 - **Requirements:** OP-11 (feeds), OP-03 (rotary roughing), GC-07 / NFR-06 (golden programs and determinism), NFR-12.
 - **Date:** 8 Nov 2026.
-- **Open items:** OI-2117 and OI-2118, proposed below (numbers to be confirmed by the coordinator).
+- **Open items:** OI-2133 and OI-2134, proposed below (provisional numbers from the coordinator; the Merge Manager assigns final numbers at release).
 
 ## Context
 
@@ -81,8 +81,8 @@ No stored golden program is a rotary roughing job. A rule for every strategy cha
 
 ## Open items
 
-- **OI-2117:** the owner's answers to questions 1 and 2.
-- **OI-2118:** with question 1 C, whether finishing descents get the rule after the release.
+- **OI-2133:** the owner's answers to questions 1 and 2.
+- **OI-2134:** with question 1 C, whether finishing descents get the rule after the release.
 
 ## Verification
 

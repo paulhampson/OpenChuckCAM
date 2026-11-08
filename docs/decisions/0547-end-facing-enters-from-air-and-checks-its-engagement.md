@@ -4,7 +4,7 @@
 - **What it amends, if accepted:** [decision 0252](0252-facing-ends-sides-and-extents.md) section 5 (End-cutting geometry and limits: the entry of each band, "validated engagement", and the meaning of the entered stepdown), and through it the UI specification's Facing controls paragraph and the verification plan's OP-24 row. The entry styles of [decision 0026](0026-entry-moves.md) are not changed; the shared entry (`assemble/entry.rs`, lane RAMPENTRY) is not edited. The requirements and the architecture are unchanged.
 - **Requirements:** OP-24 (Facing), OP-11 (stepover, stepdown, entry), OP-14 (clearance), TL-05 (cutting data), NFR-07 (clear refusal), NFR-12, GC-07 / NFR-06 (determinism).
 - **Date:** 8 Nov 2026.
-- **Open items:** OI-2114 to OI-2116, proposed below (numbers to be confirmed by the coordinator).
+- **Open items:** OI-2130 to OI-2132, proposed below (provisional numbers from the coordinator; the Merge Manager assigns final numbers at release).
 
 ## Context
 
@@ -42,7 +42,7 @@ On the same round-bar set-up the post-time check refuses ordinary settings (both
 - **When the stock depth divides exactly into full-size slices** (Stepdown 1 or 1.5 with 3 mm to remove: "Facing written-motion verification: Facing final validation: an actual End cut exceeds the selected maximum axial stepdown"). The written X of the tool centre is rounded to 0.001 mm, and the radius 1.5875 has four decimals, so the read-back slice is 1.0005 mm against a 1 mm maximum (`facing/validation/end_layers.rs:120-123` allows only floating-point arithmetic). 65.5 mm or 66.3 mm of stock posts; 66.0 mm does not.
 - **With a larger slice on a round bar** (Stepdown 2.2225 / Stepover 1, and Stepdown 3.1-3.17 / Stepover 10-25, 66.3 mm stock): "Facing completion: the actual end sweeps leave an unfinished required region in an axial layer". Not investigated further.
 
-Both are reported to the coordinator as candidate issues (OI-2116); this record fixes the first only if the owner puts it in scope (question 2, consequence).
+Both are reported to the coordinator as candidate issues (OI-2132); this record fixes the first only if the owner puts it in scope (question 2, consequence).
 
 ## Decision (proposed)
 
@@ -98,9 +98,9 @@ Every test is timed uninstrumented; none is expected to approach a minute.
 
 ## Open items
 
-- **OI-2114:** the owner's answers to questions 1 to 3.
-- **OI-2115:** with question 3 A, the project schema number for the End migration (claimed in the work breakdown before use).
-- **OI-2116:** the two post-time refusals found on the round bar (exact multiple of the slice; unfinished region with a larger slice): candidate issues for the coordinator.
+- **OI-2130:** the owner's answers to questions 1 to 3.
+- **OI-2131:** with question 3 A, the project schema number for the End migration (claimed in the work breakdown before use).
+- **OI-2132:** the two post-time refusals found on the round bar (exact multiple of the slice; unfinished region with a larger slice): candidate issues for the coordinator.
 
 ## Verification
 
