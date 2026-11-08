@@ -594,3 +594,57 @@ fn req_nfr_12_req_gc_07_notice_output_is_byte_identical_on_1_2_and_n_threads() {
         }
     }
 }
+
+/// GC-03 and NFR-12: the example post of the user guide's how-to "Create a post-processing
+/// template" (`testdata/examples/minimal-post`) loads from its folder, writes the safety notice,
+/// writes every axis word on each move and leaves out a move that would repeat the last
+/// position, so the guide's example cannot drift from what the program accepts.
+#[test]
+fn req_gc_03_the_user_guide_example_post_loads_and_writes_a_program() {
+    let folder = repo("testdata/examples/minimal-post");
+    let post = TemplatePost::new(PostDefinition::load_dir(&folder).unwrap());
+    let text = post.post(&small_part(), &job()).unwrap().text;
+    let lines: Vec<&str> = text.lines().collect();
+    let notice: Vec<String> = openchuck_post::SAFETY_NOTICE
+        .iter()
+        .map(|n| format!("({n})"))
+        .collect();
+    assert_eq!(lines[0], "(Small part)", "{text}");
+    assert_eq!(lines[1], "(OpenChuckCAM 0.10.0)", "{text}");
+    assert_eq!(&lines[2..4], notice.as_slice(), "{text}");
+    assert_eq!(&lines[4..6], ["G90 G21 G17", "G54"], "{text}");
+    assert_eq!(&lines[lines.len() - 2..], ["M5", "M30"], "{text}");
+    assert!(
+        lines.contains(&"T1 M6") && lines.contains(&"S10000 M3"),
+        "{text}"
+    );
+    let moves: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|l| l.starts_with("G0 ") || l.starts_with("G1 "))
+        .collect();
+    assert!(moves.len() > 20, "{text}");
+    for m in &moves {
+        for word in [" X", " Y", " Z", " A"] {
+            assert!(m.contains(word), "every move has every axis word: {m}");
+        }
+        assert_eq!(
+            m.starts_with("G1 "),
+            m.contains(" F"),
+            "only feed moves have F: {m}"
+        );
+    }
+    let at = |m: &str| m.split(" F").next().unwrap()[3..].to_string();
+    for pair in moves.windows(2) {
+        assert_ne!(
+            at(pair[0]),
+            at(pair[1]),
+            "no move repeats the last position"
+        );
+    }
+    assert_eq!(
+        text,
+        post.post(&small_part(), &job()).unwrap().text,
+        "GC-07"
+    );
+}

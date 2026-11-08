@@ -19,7 +19,9 @@ use anyhow::{Context, Result, bail, ensure};
 /// The examples folder, relative to the workspace root. Nothing outside it is read.
 pub const EXAMPLES_DIR: &str = "testdata/examples";
 /// File types an example may hold. No G-code: examples store none (`testdata/README.md`).
-pub const ALLOWED_EXTENSIONS: &[&str] = &["stl", "step", "stp", "toml", "md", "txt", "py"];
+/// `post` is a post-processor template, plain text (the user guide's example post,
+/// `testdata/examples/minimal-post/`).
+pub const ALLOWED_EXTENSIONS: &[&str] = &["stl", "step", "stp", "toml", "md", "txt", "py", "post"];
 /// The index written into the zip.
 pub const INDEX_NAME: &str = "EXAMPLES-README.txt";
 const NOTICE_FILE: &str = "crates/openchuck-types/src/notice.rs";

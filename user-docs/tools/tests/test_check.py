@@ -291,5 +291,27 @@ class Screens(unittest.TestCase):
         self.assertEqual(check.stale_screens(d, os.path.join(d, "user-docs/src/tutorial/images")), None)
 
 
+class ExampleFigures(unittest.TestCase):
+    """A worked example's figures link to their full-size image (user-docs/STYLE.md)."""
+
+    IMG = '<img src="images/x/01.png" width="1920" height="1080" alt="A view.">'
+
+    def test_a_linked_figure_passes(self):
+        errors, _ = check.text_problems("examples/x.md", f'<figure>\n<a href="images/x/01.png">{self.IMG}</a>\n</figure>')
+        self.assertEqual(errors, [])
+
+    def test_an_unlinked_figure_fails(self):
+        errors, _ = check.text_problems("examples/x.md", f"<figure>\n{self.IMG}\n</figure>")
+        self.assertTrue(any("not a link to its full-size image" in e for e in errors), errors)
+
+    def test_a_link_to_another_file_fails(self):
+        errors, _ = check.text_problems("examples/x.md", f'<a href="images/x/02.png">{self.IMG}</a>')
+        self.assertTrue(errors)
+
+    def test_other_pages_are_not_checked(self):
+        errors, _ = check.text_problems("tutorial/x.md", f"<figure>\n{self.IMG}\n</figure>")
+        self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()
