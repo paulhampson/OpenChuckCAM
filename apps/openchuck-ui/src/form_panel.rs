@@ -441,6 +441,8 @@ fn choice_label<'a>(name: &str, value: &'a str) -> &'a str {
         ("pass_shape", "rings") => "Rings",
         ("link_height", "retract") => "Retract to the clearance",
         ("link_height", "low") => "Stay low where clear",
+        ("ring_step", "sharp") => "Sharp",
+        ("ring_step", "blended") => "Blended",
         _ => value,
     }
 }
@@ -463,6 +465,13 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_op_11_ring_steps_are_shown_in_plain_words() {
+        // Decision record 0545: the choice reads Sharp or Blended.
+        assert_eq!(choice_label("ring_step", "sharp"), "Sharp");
+        assert_eq!(choice_label("ring_step", "blended"), "Blended");
+    }
 
     #[test]
     fn req_op_04_helical_pass_shapes_are_shown_in_plain_words() {

@@ -115,7 +115,8 @@ impl UnrolledStock {
     /// cutting path, in order, sampled every `step` mm of path, removing
     /// what it meets, and gives the width of cut at each sample. A cell
     /// counts as cut where it stood more than `min_depth` above the tip.
-    /// Points with no length between them add no samples.
+    /// The samples are every `step` mm of path from the start; a move
+    /// shorter than that may hold none.
     ///
     /// # Panics
     ///
@@ -146,8 +147,11 @@ impl UnrolledStock {
             };
             polar.push((p.x, angle, radius));
         }
+        // Positions every `step` mm along the whole path, so a very short
+        // move does not stand for a whole sample of its own.
         let mut out = Vec::new();
-        let mut along = 0.0;
+        let mut walked = 0.0;
+        let mut next = step;
         let mut disc: Option<(f64, Vec<(isize, isize)>)> = None;
         for (segment, (&(xa, ta, ra), &(xb, tb, rb))) in
             polar.iter().zip(polar.iter().skip(1)).enumerate()
@@ -157,10 +161,8 @@ impl UnrolledStock {
             if length < 1e-12 {
                 continue;
             }
-            let n = (length / step).ceil().max(1.0) as usize;
-            let ds = length / n as f64;
-            for k in 1..=n {
-                let u = k as f64 / n as f64;
+            while next <= walked + length {
+                let u = (next - walked) / length;
                 let (x, t, r) = (xa + (xb - xa) * u, ta + (tb - ta) * u, ra + (rb - ra) * u);
                 if disc.as_ref().is_none_or(|(at, _)| (*at - r).abs() >= 1e-9) {
                     disc = Some((r, self.disc(tool_radius, r)));
@@ -168,16 +170,17 @@ impl UnrolledStock {
                 let removed = disc
                     .as_ref()
                     .map_or(0, |(_, offsets)| self.cut(x, t, r, offsets, min_depth));
-                along += ds;
                 // A cell is `cell` mm along X and, at the tip's radius,
                 // `cell * r / reference` mm round.
                 let area = self.cell * self.cell * r / self.reference;
                 out.push(WidthSample {
                     segment,
-                    along,
-                    width: removed as f64 * area / ds,
+                    along: next,
+                    width: removed as f64 * area / step,
                 });
+                next += step;
             }
+            walked += length;
         }
         out
     }
@@ -384,7 +387,7 @@ mod tests {
     fn req_op_03_a_cut_lowers_the_stock_to_the_tip() {
         let mut stock = UnrolledStock::new((0.0, 5.0), 0.05, RADIUS, RADIUS + 1.0);
         let samples = stock.sweep(R, &[at(2.0, 0.0), at(2.0, 0.0), at(2.0, 30.0)], 0.05, 1e-9);
-        // The repeated point adds no samples; every sample is on move 1.
+        // The repeated point holds no samples; every sample is on move 1.
         assert!(samples.iter().all(|s| s.segment == 1));
         // A slot: the first samples after the plunge cut the full diameter.
         let (peak, median) = peak_and_median(samples.iter().map(|s| s.width)).expect("samples");

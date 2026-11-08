@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, proposed)
+
+- **Added:** **Steps between rings** reads Sharp or Blended in the inspector.
+
 ## Unreleased
 
 - MSGREVIEW (decision 0536 step 2; issue #567; UI-12): each line of the Results tab takes its message's level. An operation's warning is one Warning line in the form of decision 0522, not also a "move 0" note; the run's own warnings are Warning lines; the notes are Information. A rapid that removes material is listed once.

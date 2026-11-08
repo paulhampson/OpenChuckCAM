@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, proposed)
+
+- **Changed output for new operations:** `Application::add_operation_on` writes `ring_step = blended` into a new operation of every strategy that has **Steps between rings** (helical finishing, rest machining, rotary roughing, Facing and simultaneous finishing), so a new ring operation blends its steps; an operation saved without it keeps sharp steps and its G-code (decision 0545 item 1, the owner's choice D3).
+
 ## Unreleased (MSGREVIEW, decision 0538 and decision 0536 step 2)
 
 - **Changed (decision 0538, accepted):** a possible collision is a warning to acknowledge. `collision_warnings` lists a result's possible collisions (the path's, a tab shorter than the tool, and each rapid the stock simulation found removing material), `collision_refusal` says why writing waits, and `EXPORT_COLLISION_LABEL` is the tick box's label. `OutputPlan` gains `collisions`, `acknowledge_collisions` and `collisions_acknowledged`, and `write_output` refuses until the tick. The export checks list each one ("has a possible collision, which must be acknowledged..."), with the rapid cuts the simulation found. The operation's mark reads "Needs acknowledging: ...", and `Message::to_acknowledge` puts such warnings first among the warnings in Messages. The files written are unchanged.

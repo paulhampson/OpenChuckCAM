@@ -83,6 +83,20 @@ pub mod parameter {
     /// One whole turn at a time at a fixed X, joined by steps along the part
     /// at the start angle.
     pub const RINGS: &str = "rings";
+    /// How the tool moves from one ring to the next: [`SHARP`] or
+    /// [`BLENDED`] (decision record 0545). Shown only with [`RINGS`].
+    pub const RING_STEP: &str = "ring_step";
+    /// A step along X with A held: the shape before decision record 0545,
+    /// and the value of an operation saved without the setting.
+    pub const SHARP: &str = "sharp";
+    /// After each whole ring, a helix piece to the next ring over
+    /// [`RING_BLEND_ANGLE`] degrees.
+    pub const BLENDED: &str = "blended";
+    /// How far A turns over a blended step, degrees: more than 0, at most
+    /// 180 (decision record 0545 item 3).
+    pub const RING_BLEND_ANGLE: &str = "ring_blend_angle";
+    /// The default of [`RING_BLEND_ANGLE`], degrees.
+    pub const DEFAULT_RING_BLEND_ANGLE: f64 = 45.0;
 }
 
 impl Strategy for HelicalFinishing {
@@ -174,6 +188,7 @@ impl Strategy for HelicalFinishing {
                 ),
             ]
             .into_iter()
+            .chain(ring_step_specs())
             .chain(crate::extend::specs(false))
             .chain(crate::finishing::specs(true, true))
             .chain(adaptive::specs())
@@ -188,10 +203,13 @@ impl Strategy for HelicalFinishing {
         &self,
         values: &BTreeMap<String, crate::params::ParameterValue>,
     ) -> ParameterSchema {
-        adaptive::schema_for(
-            crate::finishing::schema_for(self.schema(), values),
+        ring_step_schema_for(
+            adaptive::schema_for(
+                crate::finishing::schema_for(self.schema(), values),
+                values,
+                parameter::SCALLOP,
+            ),
             values,
-            parameter::SCALLOP,
         )
     }
 
@@ -410,6 +428,7 @@ fn passes(
         };
 
         let rings = in_rings(parameters);
+        let blend = ring_blend(parameters)?;
         // The faces across the axis, where the tool's side touches them
         // (decision record 0297).
         let found = faces::turns_to_the_ends(input, &grown, (x0, x1), tolerance, context)?;
@@ -423,6 +442,7 @@ fn passes(
             step,
             tolerance,
             leave,
+            blended: blend.is_some(),
         };
         let (passes, spaced, ring_note) = if rings {
             // Rings evenly spaced from end to end, no wider apart than the
@@ -432,6 +452,7 @@ fn passes(
                 &fit,
                 &xs,
                 step,
+                blend,
                 adaptive.is_some(),
                 "helical finishing",
                 context,
@@ -448,11 +469,19 @@ fn passes(
                 )?),
                 None => None,
             };
-            let note = format!(
-                "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a whole \
-                 turn at one place along the part, joined by steps along it at A {start}",
-                xs.len()
-            );
+            let note = match blend {
+                None => format!(
+                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                     whole turn at one place along the part, joined by steps along it at A {start}",
+                    xs.len()
+                ),
+                Some(_) => format!(
+                    "helical finishing cut {} rings, no more than {spacing:.4} mm apart, each a \
+                     whole turn at one place along the part{}",
+                    xs.len(),
+                    blend_words(blend, spacing, radius)
+                ),
+            };
             (passes, spaced, Some(note))
         } else {
             let passes = fit_region(&fit, seeds, "helical finishing", context)?;
@@ -472,8 +501,25 @@ fn passes(
             };
             (passes, spaced, None)
         };
+        // Past the stock, the pass carries on in its own motion (decision
+        // record 0546): the spiral at its pitch, rings at their spacing.
+        let mut extend_note = None;
         let mut passes = match extension {
-            Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
+            Some(e) => {
+                let turning = if rings {
+                    crate::extend::Turning::Rings {
+                        spacing: ring_places((x0, x1), pitch, &turns).1,
+                        sign,
+                        blend,
+                    }
+                } else {
+                    crate::extend::Turning::Helix { pitch, sign }
+                };
+                let (passes, note) =
+                    e.run_out_turning(passes, input, (&grown, leave), (x0, x1), turning, step);
+                extend_note = note;
+                passes
+            }
             None => passes,
         };
         let mut spaced_note = None;
@@ -529,6 +575,7 @@ fn passes(
         passes.extend(free.passes);
         let notes = ring_note
             .into_iter()
+            .chain(extend_note)
             .chain(faces::note(&turns))
             .chain(order_note)
             .chain(spaced_note)
@@ -560,6 +607,109 @@ pub(crate) fn pass_shape_spec(description: &str) -> ParameterSpec {
             options: vec![parameter::HELIX.to_owned(), parameter::RINGS.to_owned()],
             default: parameter::HELIX.to_owned(),
         },
+    }
+}
+
+/// The **Steps between rings** and **Blend over** settings (decision record
+/// 0545), the same wherever **Passes** is offered. A saved operation
+/// without them has sharp steps; the application writes `blended` into a
+/// new one.
+pub(crate) fn ring_step_specs() -> [ParameterSpec; 2] {
+    [
+        ParameterSpec {
+            name: parameter::RING_STEP.to_owned(),
+            label: "Steps between rings".to_owned(),
+            description: "Rings only. Sharp: step along the part with A held still, a square \
+                          corner at each end of the step. Blended: after each whole ring, move \
+                          to the next ring while A turns on by the Blend over angle, so the tool \
+                          eases across instead of turning into the uncut wall; this keeps the \
+                          load nearer the stepover."
+                .to_owned(),
+            kind: ParameterKind::Choice {
+                options: vec![parameter::SHARP.to_owned(), parameter::BLENDED.to_owned()],
+                default: parameter::SHARP.to_owned(),
+            },
+        },
+        ParameterSpec {
+            name: parameter::RING_BLEND_ANGLE.to_owned(),
+            label: "Blend over".to_owned(),
+            description: "Blended steps only. How far A turns while the tool moves from one \
+                          ring to the next. A larger angle is a gentler step and a longer path."
+                .to_owned(),
+            kind: ParameterKind::Number {
+                unit: crate::params::Unit::Degrees,
+                min: Some(0.0),
+                min_exclusive: true,
+                max: Some(180.0),
+                default: Some(parameter::DEFAULT_RING_BLEND_ANGLE),
+            },
+        },
+    ]
+}
+
+/// Keeps **Steps between rings** only where `schema` still offers
+/// **Passes** and `values` choose rings, and **Blend over** only where the
+/// steps are blended (decision record 0545 item 1).
+pub(crate) fn ring_step_schema_for(
+    mut schema: ParameterSchema,
+    values: &BTreeMap<String, crate::params::ParameterValue>,
+) -> ParameterSchema {
+    use crate::params::ParameterValue;
+    let offered = schema.get(parameter::PASS_SHAPE).is_some()
+        && matches!(values.get(parameter::PASS_SHAPE), Some(ParameterValue::Text(t)) if t == parameter::RINGS);
+    let blended = offered
+        && matches!(values.get(parameter::RING_STEP), Some(ParameterValue::Text(t)) if t == parameter::BLENDED);
+    schema.parameters.retain(|p| {
+        (p.name != parameter::RING_STEP || offered)
+            && (p.name != parameter::RING_BLEND_ANGLE || blended)
+    });
+    schema
+}
+
+/// The blend angle when `parameters` choose rings with blended steps, in
+/// degrees, or `None` for sharp steps (and for the spiral). The value was
+/// checked against the schema's limits when the parameters were resolved;
+/// it is checked again here, so a value that is not a number in range is
+/// refused by name (NFR-07).
+pub(crate) fn ring_blend(parameters: &Parameters) -> Result<Option<f64>> {
+    let blended = in_rings(parameters)
+        && matches!(
+            parameters.get(parameter::RING_STEP),
+            Some(crate::params::ParameterValue::Text(t)) if t == parameter::BLENDED
+        );
+    if !blended {
+        return Ok(None);
+    }
+    let phi = match parameters.get(parameter::RING_BLEND_ANGLE) {
+        Some(crate::params::ParameterValue::Number(n)) => *n,
+        None => parameter::DEFAULT_RING_BLEND_ANGLE,
+        Some(_) => f64::NAN,
+    };
+    if !(phi > 0.0 && phi <= 180.0) {
+        return Err(PathError::Parameter {
+            name: parameter::RING_BLEND_ANGLE.to_owned(),
+            reason: format!("{phi} degrees is not more than 0 and at most 180"),
+        });
+    }
+    Ok(Some(phi))
+}
+
+/// The words the ring notes add for the steps (decision record 0545 item
+/// 6): with blended steps, the blend and the angle it makes with the ring,
+/// `atan(s / (r·φ))` for a gap `s` at radius `r`, which is steeper nearer
+/// the axis.
+pub(crate) fn blend_words(blend: Option<f64>, gap: f64, radius: f64) -> String {
+    match blend {
+        Some(phi) => {
+            let off = (gap / (radius.max(1e-9) * phi.to_radians()))
+                .atan()
+                .to_degrees();
+            format!(
+                "; steps between rings blended over {phi}°, {off:.0}° off the ring at a radius \
+                 of {radius:.1} mm (steeper nearer the axis)"
+            )
+        }
+        None => String::new(),
     }
 }
 
@@ -600,15 +750,17 @@ pub(crate) fn ring_places((x0, x1): (f64, f64), pitch: f64, turns: &[f64]) -> (V
 }
 
 /// The rings of helical finishing at each X of `xs`, in order, each a whole
-/// turn from the start angle the way `fit` turns, joined by steps along the
-/// part at the start angle (decision record 0390). `fit` is the helix's fit:
-/// the same tool, stock to leave, zones and region. Gives the joined passes
-/// and, when `keep_each` (adaptive spacing is on), each ring's own passes,
-/// by X, for adaptive spacing.
+/// turn the way `fit` turns, joined by steps along the part at the start
+/// angle (decision record 0390), or, with `blend` (decision record 0545),
+/// by helix pieces over `blend` degrees, ring `i` starting `i·blend` further
+/// round. `fit` is the helix's fit: the same tool, stock to leave, zones
+/// and region. Gives the joined passes and, when `keep_each` (adaptive
+/// spacing is on), each ring's own passes, by X, for adaptive spacing.
 pub(crate) fn ring_passes(
     fit: &Fit<'_>,
     xs: &[f64],
     step: f64,
+    blend: Option<f64>,
     keep_each: bool,
     label: &str,
     context: &JobContext<'_>,
@@ -618,9 +770,15 @@ pub(crate) fn ring_passes(
     let mut each = Vec::with_capacity(xs.len());
     for (i, &x) in xs.iter().enumerate() {
         context.check_cancelled()?;
+        // Sharp: every ring from the start angle, as before.
+        let start = match blend {
+            Some(phi) => fit.start + fit.sign * phi * i as f64,
+            None => fit.start,
+        };
         let ring = Fit {
             x0: x,
             length: 0.0,
+            start,
             total_angle: 360.0,
             max_dt: 1.0 / around as f64,
             ..*fit
@@ -635,14 +793,34 @@ pub(crate) fn ring_passes(
         if let Some(&next) = xs.get(i + 1) {
             let length = next - x;
             let seeds = (length / CONSTRAINED_SPACING).ceil().max(1.0) as usize;
-            let along = Fit {
-                x0: x,
-                length,
-                total_angle: 0.0,
-                max_dt: 1.0 / seeds as f64,
-                ..*fit
+            let along = match blend {
+                // A helix piece from the ring's end (its start, a whole turn
+                // on) to the next ring's start: as many seeds as the step's,
+                // and no fewer than the angle step needs.
+                Some(phi) => {
+                    let seeds = seeds.max((phi / step).ceil().max(1.0) as usize);
+                    let piece = Fit {
+                        x0: x,
+                        length,
+                        start,
+                        total_angle: phi,
+                        max_dt: 1.0 / seeds as f64,
+                        ..*fit
+                    };
+                    (piece, seeds)
+                }
+                None => (
+                    Fit {
+                        x0: x,
+                        length,
+                        total_angle: 0.0,
+                        max_dt: 1.0 / seeds as f64,
+                        ..*fit
+                    },
+                    seeds,
+                ),
             };
-            join(&mut joined, fit_region(&along, seeds, label, context)?);
+            join(&mut joined, fit_region(&along.0, along.1, label, context)?);
         }
     }
     Ok((joined, each))
@@ -698,6 +876,9 @@ struct Helix {
     step: f64,
     tolerance: f64,
     leave: f64,
+    /// Rings with blended steps (decision record 0545): each ring starts
+    /// further round than the start angle.
+    blended: bool,
 }
 
 /// Helical finishing's passes as a family for adaptive spacing: across it,
@@ -735,8 +916,11 @@ impl Family for Wraps<'_> {
         if self.rings {
             // A ring closes on itself, so the poses near its start are seen
             // again a turn on, and those near its end a turn back.
+            // A blended ring starts further round than the start angle, so
+            // its degrees are taken round one turn from the start angle.
             let poses = adaptive::machine_poses(&self.rotary, pass, self.pose_step, |_, a| {
-                h.sign * (a.0 - h.start)
+                let s = h.sign * (a.0 - h.start);
+                if h.blended { s.rem_euclid(360.0) } else { s }
             });
             let w = self.window;
             let again: Vec<Pose> = poses

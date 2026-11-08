@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (RINGSTEP; issue #638; decision 0545, proposed)
+
+- **Added, changed output for new operations (a minor version, as the Merge Manager sequences it; decision 0048):** every strategy that cuts rings (helical finishing, rest machining, continuous rotary roughing, round Facing, simultaneous finishing's spiral pattern) gains **Steps between rings** (`helical::parameter::RING_STEP`, `ring_step`: `SHARP`, the default, or `BLENDED`) and **Blend over** (`RING_BLEND_ANGLE`, `ring_blend_angle`, degrees, default `DEFAULT_RING_BLEND_ANGLE` 45, more than 0 and at most 180), shown only with Rings. Blended: after each whole ring, a helix piece to the next ring over the blend angle, instead of a step along X with A held; ring `k` starts `k` blend angles further round. Sharp, and an operation without the setting, are made by exactly the code before, so their paths and every golden program are byte-identical. The rings note names the blend.
+
 ## Unreleased (MSGREVIEW, decision 0538 part a and decision 0536 step 2)
 
 - **Changed (decision 0538, accepted):** the warnings that may be a collision carry `Acknowledgement::PossibleCollision`, so a host asks for a tick before writing: the flute check's warning (every case of `flutes::check_path`), swarf cutting into a face next to it (`FacePath::neighbour_warnings`), a touched check set that only warns (not an avoid set), and a free end faced down to the axis with nothing holding the part on the other side (not the stock ring). The API, the paths and the texts are unchanged.

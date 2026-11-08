@@ -147,6 +147,7 @@ impl Strategy for Facing {
              stock as it turns. Rings cuts each layer one full turn at a time at a fixed place \
              along the stock, with a short step along it between turns.",
         ));
+        parameters.extend(crate::helical::ring_step_specs());
         // End and Box passes carry no stock of their own, so they link at
         // the retract height unless asked to stay low (decision 0496's
         // choice; issue #499, the owner's decision D1: retract by default).
@@ -236,7 +237,9 @@ impl Strategy for Facing {
         }
         // Adaptive spacing for the flat shape's lines along the axis only
         // (decision record 0239 item 2; OI-1453).
-        crate::adaptive::schema_for_lines(schema, values, shape == parameter::FLAT)
+        let schema = crate::adaptive::schema_for_lines(schema, values, shape == parameter::FLAT);
+        // Steps between rings only with Rings (decision record 0545).
+        crate::helical::ring_step_schema_for(schema, values)
     }
 
     fn passes(

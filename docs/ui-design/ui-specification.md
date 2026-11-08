@@ -535,6 +535,12 @@ The note saying the rings were cut and how far apart shows in Messages and on th
 
 **Simultaneous finishing ([decision 0497](../decisions/0497-rings-for-the-simultaneous-spiral.md), accepted 1 Nov 2026, relayed).** The same **Passes** control is in Pattern and tolerance for simultaneous finishing when the pattern is the spiral, Spiral for a new operation and for one saved before it; it is not shown for the axial pattern. Its tooltip: "Spiral pattern. Spiral: one continuous spiral that moves along the part as it turns. Rings: one full turn at a time at a fixed place along the part, with a short step along the part between turns, A held still while it steps." The rings note shows as the others do.
 
+**Steps between rings ([decision 0545](../decisions/0545-blended-steps-between-rings.md), proposed; the owner's answers relayed 8 Nov 2026).** Beside **Passes**, wherever it is shown and only when it is Rings:
+
+- **Steps between rings**: a segmented control, Sharp or Blended; Blended for a new operation, Sharp for one saved before it. Its tooltip is the parameter's description: "Rings only. Sharp: step along the part with A held still, a square corner at each end of the step. Blended: after each whole ring, move to the next ring while A turns on by the Blend over angle, so the tool eases across instead of turning into the uncut wall; this keeps the load nearer the stepover."
+- **Blend over**: degrees, 45 by default, more than 0 and at most 180, shown only when the steps are Blended. Its tooltip: "Blended steps only. How far A turns while the tool moves from one ring to the next. A larger angle is a gentler step and a longer path."
+- The rings note then ends "steps between rings blended over 45°, n° off the ring at a radius of r mm (steeper nearer the axis)".
+
 ### 11.5 Simulate
 
 **Facing completion (0252, accepted).** A separately labelled operation result checks its requested face; outside-extent stock reads Intentionally unfaced, never Within tolerance. Whole-part comparison, worst values and other operations’ misses remain available and counted. Always show overcut, including outside the facing extent and into tabs/held solids. Legacy composite-target protrusions are distinguished from the nominal flat/cylindrical setting. Show cell resolution and unmeasured regions; this result does not imply toolpath certification from simulation alone.

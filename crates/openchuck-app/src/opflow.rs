@@ -274,6 +274,21 @@ impl Application {
                 ),
             );
         }
+        // A strategy that offers rings starts with blended steps between
+        // them, written into the operation; one saved without it keeps sharp
+        // steps (the owner's choice D3, decision record 0545 item 1).
+        if self.strategies.get(strategy).is_ok_and(|s| {
+            s.schema()
+                .get(openchuck_path::helical::parameter::RING_STEP)
+                .is_some()
+        }) {
+            parameters.insert(
+                openchuck_path::helical::parameter::RING_STEP.to_owned(),
+                openchuck_project::ParameterValue::Text(
+                    openchuck_path::helical::parameter::BLENDED.to_owned(),
+                ),
+            );
+        }
         let id = OperationId::new();
         self.execute(Command::Add {
             item: Item::Operation(Operation {

@@ -45,7 +45,7 @@ Select an operation to show its settings in the Inspector, from the top:
 
 Each setting's label has a tooltip that says what it does. An empty field shows the value that applies and where it comes from: "default", "from the tool's cutting data", or "required". The ↺ button returns a field to that value. A value outside the setting's range is refused with a message such as "Ramp angle: above 0, at most 89. Not applied." A setting that the last path warned about is marked; change it to remove the warning.
 
-Choices are shown as the program stores them, for example `clearance` and `safe_z` for **Retract**. A few have names: **Shape**, **Coverage extent**, **Layer distribution**, **Passes** and **Links between passes**.
+Choices are shown as the program stores them, for example `clearance` and `safe_z` for **Retract**. A few have names: **Shape**, **Coverage extent**, **Layer distribution**, **Passes**, **Steps between rings** and **Links between passes**.
 
 ## Settings every operation has
 
@@ -103,6 +103,9 @@ The Geometry section also warns when a set cannot be used by this strategy on th
 
 Extend past the stock
 : `no`, `both ends`, `start end` or `far end`. Carries the passes past the chosen ends of the stock, so the tool leaves the stock completely and leaves no thin skin at its edge. The start end is the low X end. An end held by the chuck cannot be extended past. Rotary roughing, facing, and helical, axial and indexed finishing.
+
+Steps between rings
+: With **Passes** set to **Rings**: **Sharp** steps along the part with A held still, a square corner at each end of the step; **Blended**, the default for new operations, moves to the next ring while A turns on by **Blend over** (default 45°, more than 0 and at most 180), so the tool eases across instead of turning into the uncut wall. Blended keeps the load nearer the stepover and makes each ring's path a little longer (about an eighth at 45°). An operation saved before this setting keeps sharp steps. Rotary roughing (continuous, around the part), round facing, helical finishing, rest machining and simultaneous finishing (spiral pattern).
 
 Distance past the stock
 : How far past the edge of the stock the near side of the tool goes, from 0 up to the tool's diameter. It starts at a tenth of the tool's diameter, rounded to 0.05 mm, at least 0.1 mm. A distance that takes the path beyond the machine's travel is refused.

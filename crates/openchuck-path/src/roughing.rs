@@ -350,6 +350,7 @@ impl Strategy for RotaryRoughing {
             ),
         ]
         .into_iter()
+        .chain(crate::helical::ring_step_specs())
         .chain(crate::extend::specs(false))
         .chain(crate::adaptive::specs())
         .chain(std::iter::once(crate::adaptive::allowed_excess_spec()))
@@ -372,7 +373,7 @@ impl Strategy for RotaryRoughing {
                 .parameters
                 .retain(|p| p.name != parameter::PASS_SHAPE);
         }
-        schema
+        crate::helical::ring_step_schema_for(schema, values)
     }
 
     fn honours_region(&self) -> bool {
@@ -1113,7 +1114,8 @@ impl<'a> Job<'a> {
         let step = p.number(parameter::MAX_ANGLE_STEP)?;
         let per_turn = (360.0 / step).ceil().max(4.0);
         if crate::helical::in_rings(p) {
-            return self.continuous_rings((x0, x1), face_turns, per_turn, context);
+            let blend = crate::helical::ring_blend(p)?;
+            return self.continuous_rings((x0, x1), face_turns, per_turn, blend, context);
         }
         let all_turns = turns + rings + face_turns.len() as f64;
         let nodes = all_turns * per_turn;
@@ -1219,10 +1221,20 @@ impl<'a> Job<'a> {
         (x0, x1): (f64, f64),
         face_turns: &[faces::Turn],
         per_turn: f64,
+        blend: Option<f64>,
         context: &JobContext<'_>,
     ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
         let face_xs: Vec<f64> = face_turns.iter().map(|t| t.x).collect();
         let along = self.line_spacing();
+        // The nodes of a blend over `phi` degrees (decision record 0545
+        // item 4): no further apart in A than a ring's, nor along X than a
+        // step's.
+        let blend_nodes = |phi: f64, gap: f64| -> f64 {
+            (phi * per_turn / 360.0)
+                .ceil()
+                .max((gap / along).ceil())
+                .max(1.0)
+        };
         // The nodes a layer needs, estimated before any ring is placed, so
         // that a stepover too fine to cut is refused by name rather than
         // counted out (NFR-07): a whole turn a ring, the rings at each gap,
@@ -1230,33 +1242,56 @@ impl<'a> Job<'a> {
         let length = x1 - x0;
         let gaps = (length / self.stepover).ceil().max(1.0);
         let rings = gaps + 1.0 + face_xs.len() as f64;
-        let estimate = rings * per_turn + gaps * ((length / gaps) / along).ceil().max(1.0);
+        let per_gap = match blend {
+            Some(phi) => blend_nodes(phi, length / gaps),
+            None => ((length / gaps) / along).ceil().max(1.0),
+        };
+        let estimate = rings * per_turn + gaps * per_gap;
         if !estimate.is_finite() || estimate > MAX_NODES {
             return Err(too_many_rings(length, self.stepover, estimate));
         }
         let (xs, gap) = crate::helical::ring_places((x0, x1), self.stepover, &face_xs);
         // Each piece of path, in coarse nodes from its first: a ring, then a
-        // step to the next ring.
+        // step (or, blended, a helix piece over `phi`) to the next ring.
         let around = per_turn as usize;
         let mut pieces: Vec<(usize, Piece<'_>)> = Vec::with_capacity(2 * xs.len());
         let mut coarse = 0_usize;
         for (k, &x) in xs.iter().enumerate() {
-            let a = self.start + 360.0 * k as f64;
+            // Sharp: a whole number of turns from the start angle, as
+            // before; blended: each blend turns `phi` further on.
+            let behind = blend.map_or(0.0, |phi| phi * k as f64);
+            let a = self.start + 360.0 * k as f64 + behind;
             let face = face_turns.iter().find(|t| (t.x - x).abs() < 1e-9);
             pieces.push((coarse, Piece::Ring { x, a, face }));
             coarse += around;
             if let Some(&next) = xs.get(k + 1) {
-                let nodes = ((next - x) / along).ceil().max(1.0) as usize;
-                pieces.push((
-                    coarse,
-                    Piece::Step {
-                        x0: x,
-                        x1: next,
-                        a: a + 360.0,
-                        nodes,
-                    },
-                ));
-                coarse += nodes;
+                let piece = match blend {
+                    Some(phi) => {
+                        let nodes = blend_nodes(phi, next - x) as usize;
+                        let piece = Piece::Blend {
+                            x0: x,
+                            x1: next,
+                            a0: a + 360.0,
+                            phi,
+                            nodes,
+                        };
+                        (nodes, piece)
+                    }
+                    None => {
+                        let nodes = ((next - x) / along).ceil().max(1.0) as usize;
+                        (
+                            nodes,
+                            Piece::Step {
+                                x0: x,
+                                x1: next,
+                                a: a + 360.0,
+                                nodes,
+                            },
+                        )
+                    }
+                };
+                pieces.push((coarse, piece.1));
+                coarse += piece.0;
             }
         }
         if coarse as f64 > MAX_NODES {
@@ -1295,13 +1330,31 @@ impl<'a> Job<'a> {
                     },
                     None,
                 ),
+                Piece::Blend {
+                    x0,
+                    x1,
+                    a0,
+                    phi,
+                    nodes,
+                } => {
+                    let t = (u / nodes as f64).min(1.0);
+                    (
+                        Site {
+                            x: x0 + (x1 - x0) * t,
+                            a: a0 + phi * t,
+                            across: 0.0,
+                        },
+                        None,
+                    )
+                }
             }
         };
         let passes = self.layers(&place, coarse, context)?;
         let note = format!(
             "each layer is cut in {} rings no more than {gap:.4} mm apart, each a whole turn at \
-             one place along the part, joined by steps along it",
-            xs.len()
+             one place along the part, joined by steps along it{}",
+            xs.len(),
+            crate::helical::blend_words(blend, gap, self.r_top)
         );
         Ok((passes, face_xs, Some(note)))
     }
@@ -1769,8 +1822,9 @@ fn too_many_rings(length: f64, stepover: f64, nodes: f64) -> PathError {
 }
 
 /// A piece of the continuous form's path in rings: a whole turn from A `a`
-/// at `x`, at a face across the axis when `face` is set, or a step along X
-/// at A `a` over `nodes` coarse nodes.
+/// at `x`, at a face across the axis when `face` is set, a step along X at
+/// A `a` over `nodes` coarse nodes, or a blend from `x0` at A `a0` to `x1`
+/// at A `a0 + phi`, X and A both linear in the node (decision record 0545).
 #[derive(Debug, Clone, Copy)]
 enum Piece<'t> {
     Ring {
@@ -1782,6 +1836,13 @@ enum Piece<'t> {
         x0: f64,
         x1: f64,
         a: f64,
+        nodes: usize,
+    },
+    Blend {
+        x0: f64,
+        x1: f64,
+        a0: f64,
+        phi: f64,
         nodes: usize,
     },
 }

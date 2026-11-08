@@ -1702,6 +1702,81 @@ fn req_op_14_req_gc_07_a_saved_finishing_operation_keeps_retracting() {
     }
 }
 
+#[test]
+fn req_op_11_a_new_ring_operation_blends_its_steps() {
+    // Decision 0545 item 1 (the owner's choice D3, relayed): a new operation
+    // of every strategy with Steps between rings is written with "blended";
+    // an operation saved without it keeps "sharp" (the default), and other
+    // strategies get nothing.
+    use openchuck_path::helical::parameter::{BLENDED, RING_STEP};
+    let (dir, mut app, op) = project("ring-step-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let step = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get(RING_STEP)
+            .cloned()
+    };
+    let blended = Some(openchuck_app::project::ParameterValue::Text(
+        BLENDED.into(),
+    ));
+    for strategy in [
+        "helical_finishing",
+        "rest_machining",
+        "rotary_roughing",
+        "facing",
+        "simultaneous_finishing",
+    ] {
+        let added = app.add_operation(strategy, strategy, setup, tool).unwrap();
+        assert_eq!(step(&app, added), blended, "{strategy}");
+    }
+    for strategy in ["axial_finishing", "indexed_finishing", "pencil_finishing"] {
+        if let Ok(added) = app.add_operation(strategy, strategy, setup, tool) {
+            assert_eq!(step(&app, added), None, "{strategy}");
+        }
+    }
+    assert_eq!(step(&app, op), None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_a_saved_ring_operation_keeps_sharp_steps() {
+    // Decision 0545 item 1: a ring operation saved before the setting has
+    // no `ring_step`, so when its project is opened again its steps are
+    // sharp and its toolpath, and so its G-code, is what it was: the same
+    // as with Sharp chosen.
+    use openchuck_path::helical::parameter::{PASS_SHAPE, RING_STEP, RINGS, SHARP};
+    for strategy in ["helical_finishing", "rotary_roughing"] {
+        let (dir, mut app, op) = project(&format!("saved-rings-{strategy}"));
+        let rings = ParameterValue::Text(RINGS.into());
+        let free_ends = ParameterValue::Flag(false);
+        let values: Vec<(&str, ParameterValue)> = if strategy == "helical_finishing" {
+            vec![(PASS_SHAPE, rings), ("face_free_ends", free_ends)]
+        } else {
+            vec![(PASS_SHAPE, rings)]
+        };
+        set_strategy(&mut app, op, strategy, &values);
+        app.save().unwrap();
+        drop(app);
+        let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+        assert_eq!(
+            app.project().operation(op).unwrap().parameters.get(RING_STEP),
+            None,
+            "{strategy}"
+        );
+        let saved = app.regenerate().unwrap();
+        app.set_parameter(op, RING_STEP, Some(ParameterValue::Text(SHARP.into())))
+            .unwrap();
+        let sharp = app.regenerate().unwrap();
+        assert!(!saved.toolpath.groups.is_empty(), "{strategy}");
+        assert_eq!(saved.toolpath, sharp.toolpath, "{strategy}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 /// `op` turned into `strategy` with the given values.
 fn set_strategy(
     app: &mut Application,
