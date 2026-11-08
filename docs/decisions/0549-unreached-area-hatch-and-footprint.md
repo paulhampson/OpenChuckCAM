@@ -1,6 +1,6 @@
 # 0549: Unreachable areas are hatched on the surface, and their footprint is closed (OP-20, UI-11, NFR-15; issue #637; lane VIEWHATCH)
 
-- **Status:** proposed by lane VIEWHATCH on 8 Nov 2026. The owner chose pattern A (hatching painted on the surface) from the review screenshots and asked for the area's edge to be cleaned up as part of the lane (8 Nov 2026, relayed by the coordinator). The record is not accepted until the owner accepts it (decision 0049); the code is on `claude/viewhatch-work` and goes into a draft pull request when its checks are green.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), after the owner read it in full, with its figure. Proposed by lane VIEWHATCH on 8 Nov 2026. The owner chose pattern A (hatching painted on the surface) from the review screenshots and asked for the area's edge to be cleaned up as part of the lane (8 Nov 2026, relayed by the coordinator). The code is on `claude/viewhatch-work` (pull request #652, a draft until released).
 - **Date:** 8 Nov 2026.
 - **Issue:** #637 (the dots are uncomfortable to look at and "not painted onto the surface").
 - **Requirements:** OP-20, UI-11, NFR-15. No requirement changes.
