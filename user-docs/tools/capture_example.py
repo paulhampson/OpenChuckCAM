@@ -100,7 +100,11 @@ def main():
         for proc in (ui, xvfb):
             if proc:
                 proc.terminate()
-                proc.wait()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
     if shutil.which("optipng"):
         for png in sorted(out.glob("*.png")):
             subprocess.run(["optipng", "-quiet", "-o2", str(png)], check=False)
