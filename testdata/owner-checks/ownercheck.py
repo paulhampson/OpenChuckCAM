@@ -108,7 +108,7 @@ stepdown = 1.0
 
 
 def operation_toml(op_id, order, name, setup_id, strategy, tool_id, parameters,
-                   selections=(), avoid=()):
+                   selections=(), avoid=(), check=()):
     """One operation. `parameters` maps a parameter name to its TOML value text."""
     sel = ", ".join(f'"{s}"' for s in selections)
     text = f"""schema = {SCHEMA}
@@ -122,6 +122,8 @@ selections = [{sel}]
 """
     if avoid:
         text += "avoid = [" + ", ".join(f'"{s}"' for s in avoid) + "]\n"
+    if check:
+        text += "check = [" + ", ".join(f'"{s}"' for s in check) + "]\n"
     text += "\n[parameters]\n"
     for key in sorted(parameters):
         text += f"{key} = {parameters[key]}\n"

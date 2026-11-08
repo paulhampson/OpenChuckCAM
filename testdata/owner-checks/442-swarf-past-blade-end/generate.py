@@ -20,6 +20,7 @@ import shutil
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ownercheck as oc  # noqa: E402
 

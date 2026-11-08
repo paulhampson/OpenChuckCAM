@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True  # keep the repository free of __pycache__ folders
 sys.path.insert(0, str(HERE.parent))
 import ownercheck as oc  # noqa: E402
 
