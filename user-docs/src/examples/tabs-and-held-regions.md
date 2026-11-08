@@ -89,6 +89,15 @@ The operation's warning reads, in full:
 
 and the setup's own line reads "Tab 2 is 2.000 mm long along X, shorter than the tool T104 Z1 O-flute 3.175x25 (3.175 mm) of 1 Rough. Make the tab longer or use a smaller tool."
 
+Because the tool may cut through a tab that is too short, and the part may then come loose, the program treats this warning as a possible collision. Hold the mouse over the warning mark beside **1 Rough** or **2 Finish**:
+
+<figure>
+<a href="images/tabs_held/04a-needs-acknowledging.png"><img src="images/tabs_held/04a-needs-acknowledging.png" width="1920" height="1080" alt="The project panel with the mouse on the amber warning mark of 1 Rough; its tooltip reads Needs acknowledging: Tab length (operation 'Rough', tool 'Z1 O-flute 3.175x25'): tab 2 (X 61.000 to 63.000 mm) is 2.000 mm long along X, shorter than the tool is wide (3.175 mm), so the tool may be unable to cut the gap beside it to shape."></a>
+<figcaption><b>Figure 5.</b> The mark starts "Needs acknowledging": the warning must be acknowledged before the G-code is written.</figcaption>
+</figure>
+
+In **Post and export...**, **Write G-code** then waits for the tick "I have read the possible collisions listed for this result and will check them before running the program", and the command line needs `--acknowledge-collision-warnings`. [The flute-length warning](flute-length-warning.md) shows that dialog. The tick lets you write the files; it does not change the path, so fix the tab first if you can.
+
 What it means: a tool cannot cut a gap narrower than itself. Beside a tab shorter than the tool, the tool cannot reach down to the part on both sides of the tab, so material may be left there, or the path may not come as close to the part as you expect. Look at that end in the simulation before you go on.
 
 What to change, in order of preference:
@@ -111,7 +120,7 @@ The held region now runs from X = -13 to 0, up to the part, and Tab 1 has nowher
 
 <figure>
 <a href="images/tabs_held/05-no-room.png"><img src="images/tabs_held/05-no-room.png" width="1920" height="1080" alt="The Inspector with Grip length 13.000 and Held span X -13.000 to 0.000 mm; the row of Tab 1, Head, Automatic, carries an amber triangle and the text No room at the head: the held region reaches the part. It keeps its last position: move the part or shorten the held region, or untick Place automatically and place it by hand."></a>
-<figcaption><b>Figure 5.</b> The automatic head tab has no room once the grip reaches the part.</figcaption>
+<figcaption><b>Figure 6.</b> The automatic head tab has no room once the grip reaches the part.</figcaption>
 </figure>
 
 2. Press **Apply**.
@@ -120,7 +129,7 @@ Apply stores the workholding with the 13 mm grip and keeps a warning for the tab
 
 <figure>
 <a href="images/tabs_held/06-apply-warns.png"><img src="images/tabs_held/06-apply-warns.png" width="1920" height="1080" alt="After Apply, the Inspector shows Held span X -13.000 to 0.000 mm and Head zone: no room for a tab; Tab 1's row has an amber triangle and the text Tab 1 is placed automatically at the head of the part, but there is no room there; the Messages list shows Warnings 3: that line and the two lines about Tab 2 being shorter than the tools; the Generate button reads Generate stale (2)."></a>
-<figcaption><b>Figure 6.</b> Apply stores the workholding and warns about the tab with no room. Nothing is refused.</figcaption>
+<figcaption><b>Figure 7.</b> Apply stores the workholding and warns about the tab with no room. Nothing is refused.</figcaption>
 </figure>
 
 The warning in the Messages list reads:
