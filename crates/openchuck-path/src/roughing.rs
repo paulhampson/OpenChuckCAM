@@ -53,7 +53,7 @@
 //! between them is allowed as well; otherwise the nodes are cut as separate
 //! passes and the shared services link them.
 
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -499,7 +499,7 @@ fn rough(
 }
 
 /// Adaptive spacing's note and warning.
-type Report = (Vec<String>, Vec<Notice>);
+type Report = (Vec<Notice>, Vec<Notice>);
 
 /// The note and the warning for what adaptive spacing did, when it ran
 /// (decision record 0239 items 10 and 12).
@@ -1081,7 +1081,7 @@ impl<'a> Job<'a> {
         &self,
         p: &Parameters,
         context: &JobContext<'_>,
-    ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
+    ) -> Result<(Vec<Pass>, Vec<f64>, Option<Notice>)> {
         // Where a held region cuts the range short, the helix turns once at
         // that end without advancing, so the stock beside the keep-out is
         // cleared all round, as it is beyond the part's ends where the
@@ -1223,7 +1223,7 @@ impl<'a> Job<'a> {
         per_turn: f64,
         blend: Option<f64>,
         context: &JobContext<'_>,
-    ) -> Result<(Vec<Pass>, Vec<f64>, Option<String>)> {
+    ) -> Result<(Vec<Pass>, Vec<f64>, Option<Notice>)> {
         let face_xs: Vec<f64> = face_turns.iter().map(|t| t.x).collect();
         let along = self.line_spacing();
         // The nodes of a blend over `phi` degrees (decision record 0545
@@ -1350,12 +1350,13 @@ impl<'a> Job<'a> {
             }
         };
         let passes = self.layers(&place, coarse, context)?;
-        let note = format!(
+        let note = Notice::information(format!(
             "each layer is cut in {} rings no more than {gap:.4} mm apart, each a whole turn at \
              one place along the part, joined by steps along it{}",
             xs.len(),
             crate::helical::blend_words(blend, gap, self.r_top)
-        );
+        ))
+        .about(topic::RINGS);
         Ok((passes, face_xs, Some(note)))
     }
 

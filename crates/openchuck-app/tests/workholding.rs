@@ -602,10 +602,7 @@ fn req_op_21_a_tab_outside_the_end_zones_is_refused_and_one_shorter_than_the_too
         .groups
         .iter()
         .flat_map(|g| g.warnings.iter())
-        .find(|w| {
-            w.text
-                .starts_with(openchuck_app::workholding::TAB_LENGTH_LEAD)
-        })
+        .find(|w| w.topic.as_deref() == Some(openchuck_app::lead_in::topic::TAB_LENGTH))
         .unwrap_or_else(|| panic!("no tab warning"));
     assert!(
         warning.text.contains("shorter than the tool is wide"),

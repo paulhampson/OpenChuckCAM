@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased (RINGSTEP; issue #638; decision 0545, proposed)
+## Unreleased (RINGSTEP; issue #638; decision 0545, accepted)
 
 - **Added:** **Steps between rings** reads Sharp or Blended in the inspector.
 
 ## Unreleased
 
+- MSGREVIEW (issue #635; UI-12): a warning or a refusal under a field spans the inspector's width as one block under the field, the warning shape just before its first line, for every kind of field; it no longer sits alone at the label column with its text on the line below.
+- MSGREVIEW (decision 0536 step 3; issue #567; UI-12): every message reads "<Topic> (<context>): <text>". "Show setting" opens the operation at the very setting its message names, and marks a tick box, a choice or the face rows as it marks a number (`field_row::Mark`, `field_row::marked`). The view's notes read under "View", and a workholding draft that is not applied under "Workholding (setup '<name>')".
 - MSGREVIEW (decision 0536 step 2; issue #567; UI-12): each line of the Results tab takes its message's level. An operation's warning is one Warning line in the form of decision 0522, not also a "move 0" note; the run's own warnings are Warning lines; the notes are Information. A rapid that removes material is listed once.
 - MSGREVIEW (issue #611; decision 0539, accepted; UI-25): when Apply of the workholding section is refused, only the finding that refuses (a tab outside the end zones) is shown as an error and marks its tab as failing. A warning found with it (an automatic tab with no room, tabs that overlap, a tab shorter than a tool) stays a warning, in amber with the Warning mark, on its own row. Test `req_ui_25_a_refused_apply_keeps_each_finding_at_its_own_level`.
 

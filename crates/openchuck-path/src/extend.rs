@@ -341,7 +341,7 @@ impl Extension {
                 Turning::Rings { .. } => "rings at the ring spacing",
             };
             format!(
-                "extend past the stock: the passes carry on past the part in their own motion \
+                "the passes carry on past the part in their own motion \
                  ({what}) to the extended ends, {:.1} turns at the start end and {:.1} at the \
                  far end, {length:.0} mm of path in all",
                 turns.0, turns.1

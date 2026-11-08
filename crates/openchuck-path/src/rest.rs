@@ -27,7 +27,7 @@
 //! whole part has material left. The application says so
 //! ([`Strategy::needs_earlier_operations`]).
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Level, Notice, topic};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -556,7 +556,7 @@ impl Strategy for RestMachining {
                 "rest machining",
                 context,
             )?;
-            ring_note = Some(match blend {
+            let text = match blend {
                 None => format!(
                     "rest machining cut rings no more than {gap:.4} mm apart, each a whole turn \
                      at one place along the part, joined by steps along it at A {start}, where \
@@ -573,7 +573,8 @@ impl Strategy for RestMachining {
                         crate::helical::blend_words(blend, gap, radius)
                     )
                 }
-            });
+            };
+            ring_note = Some(Notice::information(text).about(topic::RINGS));
             passes
         } else {
             let passes = fit_region(&fit, seeds, "rest machining", context)?;
@@ -623,14 +624,17 @@ impl Strategy for RestMachining {
                     .to_owned(),
             ));
         }
-        let mut notes = vec![format!(
-            "rest machining: {} of {} points sampled on the part have more than {} mm of \
-             material left; {} passes cut where it is left",
-            map.len(),
-            map.tested(),
-            min_remaining,
-            passes.len()
-        )];
+        let mut notes = vec![
+            Notice::information(format!(
+                "{} of {} points sampled on the part have more than {} mm of \
+                 material left; {} passes cut where it is left",
+                map.len(),
+                map.tested(),
+                min_remaining,
+                passes.len()
+            ))
+            .about(topic::REST_MACHINING),
+        ];
         notes.extend(ring_note);
         if let Some(note) = wall_note(&wall_rings, walls.target) {
             notes.push(note);
@@ -639,7 +643,7 @@ impl Strategy for RestMachining {
         if capped {
             warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::MATERIAL_LEFT.to_owned()),
                 segment: None,
                 text: format!(
                     "rest machining placed the most rings it may at walls ({}): walls further \
@@ -651,17 +655,18 @@ impl Strategy for RestMachining {
                 acknowledgement: None,
             });
         }
-        let unreached = if walls.modelled() {
-            walls.unreached(input, &samples, map.spacing(), context)?
-        } else {
-            // Uncut areas go unreported, so the user must see it (decision
-            // record 0536 step 2).
-            warnings.push(Notice::warning(
+        let unreached =
+            if walls.modelled() {
+                walls.unreached(input, &samples, map.spacing(), context)?
+            } else {
+                // Uncut areas go unreported, so the user must see it (decision
+                // record 0536 step 2).
+                warnings.push(Notice::warning(
                 "this tool's profile is not convex, so rest machining places no rings at walls \
                  and does not check what the tool cannot reach",
-            ));
-            Vec::new()
-        };
+            ).about(topic::UNREACHED_AREAS));
+                Vec::new()
+            };
         warnings.extend(unreached_warning(
             &unreached,
             2.0 * input.tool.cutting_radius(),
@@ -686,7 +691,7 @@ impl Strategy for RestMachining {
 const MIN_WALL_SPACING: f64 = 0.01;
 
 /// The note for the rings added at walls; `None` with none.
-fn wall_note(rings: &[f64], target: f64) -> Option<String> {
+fn wall_note(rings: &[f64], target: f64) -> Option<Notice> {
     let closest = rings
         .windows(2)
         .filter_map(|w| match w {
@@ -700,12 +705,15 @@ fn wall_note(rings: &[f64], target: f64) -> Option<String> {
     } else {
         String::new()
     };
-    Some(format!(
-        "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its tool's \
-         side meets a wall with material left, so that a steep wall keeps about {target} mm or \
-         less between them",
-        rings.len()
-    ))
+    Some(
+        Notice::information(format!(
+            "rest machining added {} rings between X {first:.3} and {last:.3}{apart} where its \
+             tool's side meets a wall with material left, so that a steep wall keeps about \
+             {target} mm or less between them",
+            rings.len()
+        ))
+        .about(topic::RINGS),
+    )
 }
 
 /// The warning for the material the tool cannot reach (decision record
@@ -717,7 +725,7 @@ fn unreached_warning(areas: &[crate::assemble::Unreached], diameter: f64) -> Opt
     let plural = if areas.len() == 1 { "" } else { "s" };
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::UNREACHED_AREAS.to_owned()),
         segment: None,
         text: format!(
             "rest machining cannot reach {} area{plural} of the part where material is left, \

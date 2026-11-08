@@ -340,7 +340,7 @@ Errors
 : The operation cannot be generated, and the message says why. Export is blocked while an operation is in error; turn it off to export the others.
 
 Warnings
-: The path was made, but something needs your attention. The export lists each one ("Operation '...' was made with a warning: ..."). Read them before you run the program.
+: The path was made, but something needs your attention. The export lists each one in the same words as Messages (for example "Held region (operation 'Finish'): ..."). Read them before you run the program.
 
 Warnings to acknowledge
 : A warning that may be a collision of the tool, its shank or its holder with the part, the stock, a tab or a held region. The operation's mark reads "Needs acknowledging: ...", Messages lists it first among the warnings, and the export writes nothing until you tick that you have read it (see [Possible collisions must be acknowledged](#possible-collisions-must-be-acknowledged)).

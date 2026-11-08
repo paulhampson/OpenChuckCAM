@@ -294,11 +294,22 @@ fn row(
     preflight: Option<crate::pending_edits::Preflight>,
 ) -> Option<Edit> {
     let name = || field.name.clone();
+    // A tick box or a choice is marked and brought into view as a text row
+    // is (decision record 0536 section 4: every kind of field).
+    let mark = field_row::Mark {
+        warned,
+        scroll_to: scroll,
+    };
     match &field.kind {
-        FieldKind::IndexedFaces => crate::facing_rows::show(ui, field, state),
+        FieldKind::IndexedFaces => {
+            field_row::marked(ui, mark, |ui| crate::facing_rows::show(ui, field, state))
+        }
         FieldKind::Flag => {
             let on = matches!(field.value, Some(ParameterValue::Flag(true)));
-            field_row::flag_row(ui, &field.label, &field.description, on, true).map(|on| Edit {
+            field_row::marked(ui, mark, |ui| {
+                field_row::flag_row(ui, &field.label, &field.description, on, true)
+            })
+            .map(|on| Edit {
                 name: name(),
                 value: Some(ParameterValue::Flag(on)),
                 reset_to_default: false,
@@ -313,15 +324,17 @@ fn row(
                 .iter()
                 .map(|value| choice_label(&field.name, value))
                 .collect();
-            field_row::choice_row(
-                ui,
-                &field.name,
-                &field.label,
-                &field.description,
-                &labels,
-                current,
-                true,
-            )
+            field_row::marked(ui, mark, |ui| {
+                field_row::choice_row(
+                    ui,
+                    &field.name,
+                    &field.label,
+                    &field.description,
+                    &labels,
+                    current,
+                    true,
+                )
+            })
             .and_then(|i| options.get(i))
             .map(|o| Edit {
                 name: name(),
@@ -724,6 +737,191 @@ mod tests {
         let shown = run(&mut settings, &Marks::default());
         assert!(!shown.iter().any(|t| t == WARNED_SETTING), "{shown:?}");
         assert!(shown.iter().any(|t| t == "Tolerance"), "{shown:?}");
+    }
+
+    #[test]
+    fn req_ui_12_every_kind_of_field_takes_the_mark_show_setting_gives() {
+        // Decision record 0536 section 4: "Show setting" marks the setting
+        // its message names for every kind of field, not only numbers: a
+        // tick box and a drop-down list show the same warning line.
+        let field = |name: &str, kind: FieldKind, value: ParameterValue| Field {
+            name: name.into(),
+            label: name.into(),
+            description: String::new(),
+            kind,
+            set: None,
+            value: Some(value),
+            source: Source::Default,
+            section: FormSection::PatternAndTolerance,
+            problem: None,
+        };
+        let form = ParameterForm {
+            operation: openchuck_app::project::id::OperationId::new(),
+            strategy: "swarf".into(),
+            fields: vec![
+                field("flag", FieldKind::Flag, ParameterValue::Flag(true)),
+                field(
+                    "choice",
+                    FieldKind::Choice {
+                        options: vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()],
+                    },
+                    ParameterValue::Text("a".into()),
+                ),
+            ],
+            notes: Vec::new(),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "pattern", true, &DEFAULT_OPEN);
+        let marks_for = |name: &str| Marks {
+            warned: vec![name.into()],
+            jump: Some(name.into()),
+            ..Marks::default()
+        };
+        for name in ["flag", "choice"] {
+            let mut state = FormState::default();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 400.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                show(
+                    ui,
+                    &form,
+                    &mut state,
+                    &mut settings,
+                    &[],
+                    None,
+                    &marks_for(name),
+                );
+            });
+            output.textures_delta.clear();
+            let shown = texts(&output.shapes);
+            assert_eq!(
+                shown.iter().filter(|t| *t == WARNED_SETTING).count(),
+                1,
+                "{name}: {shown:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn req_ui_12_an_inline_warning_spans_the_inspector_under_its_field() {
+        // Issue #635: the warning under a field uses the whole width of the
+        // inspector, one block whose lines all start at the same place, for
+        // every kind of field, not a first line pushed past the label column
+        // and the rest flush left.
+        let field = |name: &str, kind: FieldKind, value: ParameterValue| Field {
+            name: name.into(),
+            label: name.into(),
+            description: String::new(),
+            kind,
+            set: None,
+            value: Some(value),
+            source: Source::Default,
+            section: FormSection::PatternAndTolerance,
+            problem: None,
+        };
+        let number = FieldKind::Number {
+            unit: "mm",
+            min: Some(0.0),
+            min_exclusive: true,
+            max: None,
+        };
+        let form = ParameterForm {
+            operation: openchuck_app::project::id::OperationId::new(),
+            strategy: "swarf".into(),
+            fields: vec![
+                field("tolerance", number, ParameterValue::Number(0.01)),
+                field("flag", FieldKind::Flag, ParameterValue::Flag(true)),
+            ],
+            notes: Vec::new(),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "pattern", true, &DEFAULT_OPEN);
+        let width = 434.0;
+        for name in ["tolerance", "flag"] {
+            let marks = Marks {
+                warned: vec![name.into()],
+                ..Marks::default()
+            };
+            let mut state = FormState::default();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(width, 600.0),
+                )),
+                ..Default::default()
+            };
+            let mut content = egui::Rect::NOTHING;
+            let mut label_column = 0.0;
+            let mut output = ctx.run_ui(input, |ui| {
+                content = ui.max_rect();
+                label_column = field_row::label_column(ui);
+                show(ui, &form, &mut state, &mut settings, &[], None, &marks);
+            });
+            output.textures_delta.clear();
+            let galleys: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == WARNED_SETTING => Some(t.clone()),
+                    _ => None,
+                })
+                .collect();
+            // One block of text, wrapped as a whole.
+            assert_eq!(galleys.len(), 1, "{name}: the warning is split");
+            let rect = galleys[0].visual_bounding_rect();
+            assert!(
+                galleys[0].galley.rows.len() > 1,
+                "{name}: it should wrap at this width"
+            );
+            // The warning shape sits just before the text, on its first line,
+            // not alone further along the line above it.
+            let at = output
+                .shapes
+                .iter()
+                .position(|c| {
+                    matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == WARNED_SETTING)
+                })
+                .unwrap();
+            let shape = output.shapes[at - 1].shape.visual_bounding_rect();
+            let text = galleys[0].pos;
+            assert!(
+                shape.max.x <= text.x + 0.5 && shape.min.y < text.y + 15.0 && shape.max.y > text.y,
+                "{name}: the shape is at {shape:?}, the text at {text:?}"
+            );
+            // Every line starts at the same place: the first is not pushed
+            // in further than the rest.
+            let starts: Vec<f32> = galleys[0]
+                .galley
+                .rows
+                .iter()
+                .map(|r| galleys[0].pos.x + r.rect().min.x)
+                .collect();
+            assert!(
+                starts.iter().all(|x| (x - starts[0]).abs() < 1.0),
+                "{name}: the lines start at {starts:?}"
+            );
+            // It starts left of where the field's box starts, near the
+            // inspector's edge, and runs to its right edge.
+            assert!(
+                rect.min.x < content.min.x + label_column,
+                "{name}: starts at {} (label column ends at {})",
+                rect.min.x,
+                content.min.x + label_column
+            );
+            assert!(
+                rect.max.x > content.max.x - 0.25 * content.width(),
+                "{name}: ends at {} of {}",
+                rect.max.x,
+                content.max.x
+            );
+        }
     }
 
     #[test]

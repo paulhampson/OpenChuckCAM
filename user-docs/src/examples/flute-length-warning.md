@@ -68,7 +68,7 @@ Click **Continue to simulate**, then **Post and export...**, and scroll the dial
 <figcaption><b>Figure 4.</b> <b>Write G-code</b> waits for a second tick: "I have read the possible collisions listed for this result and will check them before running the program".</figcaption>
 </figure>
 
-The checks say "Operation 'Finish' has a possible collision, which must be acknowledged before the files are written", and list it under "These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program". The tick says that you have read them and will check them; it does not make the path any different. On the command line, `openchuck-cli regenerate` writes the files only with `--acknowledge-collision-warnings`.
+The checks give the warning in the same words as Messages, "Flute length (operation 'Finish', tool '…'): …", ending "A possible collision: acknowledge it before the files are written", and list it under "These files hold possible collisions of the tool, its shank or its holder with the part, the stock, a tab or a held region. Read each one, here and in Messages, and check it before running the program". The tick says that you have read them and will check them; it does not make the path any different. On the command line, `openchuck-cli regenerate` writes the files only with `--acknowledge-collision-warnings`.
 
 Close the dialog with the **×** at its top right: here, you fix the cause instead.
 
@@ -93,7 +93,7 @@ This is the first thing to try. Set **Flute length** back to `22`, or choose the
 <figcaption><b>Figure 5.</b> With finishing layers of 2 mm, the warning about the passes is gone. The warning about the end face remains.</figcaption>
 </figure>
 
-The Results tab now says: "finishing layers: up to 3 layers of 2 mm above a finish allowance of 0.1 mm, then the final pass on the surface; the layers start from the stock the earlier operations left, known to a simulation cell, so the depth of each cut is not uniform and no engagement is promised".
+The Results tab now says: "Finishing layers (operation 'Finish'): up to 3 layers of 2 mm above a finish allowance of 0.1 mm, then the final pass on the surface; the layers start from the stock the earlier operations left, known to a simulation cell, so the depth of each cut is not uniform and no engagement is promised".
 
 Setting **Stepdown** also sets **Material preset** to "No preset", and the Results tab says "stepdown 2 set on the operation overrides 1 from the cutting data of 'Short-flute ball 3.175x3' for 'Hardwood'". The operation now keeps its own feeds and speeds, each with a button to go back to the tool's value.
 

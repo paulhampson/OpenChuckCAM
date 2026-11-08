@@ -141,7 +141,7 @@ With `--out`, `regenerate` checks before it writes anything, as the export in th
 - an `error:` line for each check that stops the export, such as a program whose replay does not match its toolpath; then `error: 1 check(s) above stop the G-code from being written; nothing was written`, and the command ends with exit code 1. No file is written.
 - a `warning:` line for each check that does not stop it, such as an operation that has not been simulated, or machine values that are not confirmed. The files are written.
 
-A possible collision (see [Operations and strategies](operations.md#possible-collisions-must-be-acknowledged)) is listed as a warning, "Operation '...' has a possible collision, which must be acknowledged before the files are written: ...", and stops the files from being written unless you pass `--acknowledge-collision-warnings`. For example, with a 1 mm tab at the end of the tutorial's part, shorter than its 3.175 mm tools are wide, the run ends:
+A possible collision (see [Operations and strategies](operations.md#possible-collisions-must-be-acknowledged)) is listed as a warning in the same words as Messages, for example "Flute length (operation 'Finish', tool '...'): ...", ending "A possible collision: acknowledge it before the files are written", and stops the files from being written unless you pass `--acknowledge-collision-warnings`. For example, with a 1 mm tab at the end of the tutorial's part, shorter than its 3.175 mm tools are wide, the run ends:
 
 ```text
 error: This result has 2 possible collisions that must be acknowledged before the files are written: Tab length (operation 'Rough', tool 'Z1 O-flute 3.175x25'): tab 1 (X 61.000 to 62.000 mm) is 1.000 mm long along X, shorter than the tool is wide (3.175 mm), ... Read them, then acknowledge them to write the files. Pass --acknowledge-collision-warnings to write them.
@@ -193,23 +193,23 @@ Generated G-code must be verified by the user before it is run on a machine. Ope
 Before that, on standard error, it prints what the run found, each at its level, then the checks that did not stop the export:
 
 ```text
-warning: Operation 'Finish': the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
-warning: Operation 'Finish': Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
-note: 9536 moves during 'Rough' were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 22.0 mm/min to stay within the machine's capabilities.
-note: 7818 moves during 'Finish' were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.7 mm/min to stay within the machine's capabilities.
-note: operation 'Rough': the part has a step across the rotary axis (a shoulder facing along X): the tool makes one extra turn round the axis, without moving along it, at X 49.889, so the shoulder keeps only the stock to leave
-note: operation 'Finish': the end face at X 61.000 has nothing beyond it: the tool goes down beside it in 5 layers of 1 mm to the rotary axis, turning once round the axis in each
-note: operation 'Finish': moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
+warning: Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
+warning: Held region (operation 'Finish'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+note: Feed limit (operation 'Rough'): 9536 moves were limited by the machine's feed limits. In the worst case the target was 1000.0 mm/min, but the move was reduced to 22.0 mm/min to stay within the machine's capabilities.
+note: Feed limit (operation 'Finish'): 7818 moves were limited by the machine's feed limits. In the worst case the target was 500.0 mm/min, but the move was reduced to 0.7 mm/min to stay within the machine's capabilities.
+note: Shoulders (operation 'Rough'): the part has a step across the rotary axis (a shoulder facing along X): the tool makes one extra turn round the axis, without moving along it, at X 49.889, so the shoulder keeps only the stock to leave
+note: Free ends (operation 'Finish'): the end face at X 61.000 has nothing beyond it: the tool goes down beside it in 5 layers of 1 mm to the rotary axis, turning once round the axis in each
+note: Rotary axis (operation 'Finish'): moves 19077 to 19148 (72 moves): A turns with the contact point at the rotary axis during these moves, so the contact point barely moves and the rotary axis's speed limit sets the time taken (0.083 s); the feed set is 500.0 mm/min
 short-block settings: Report (machine profile), 7.000 ms (machine profile), 32 blocks (machine profile)
 checks before writing the G-code:
-warning: Operation 'Finish' was made with a warning: the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
-warning: Operation 'Finish' was made with a warning: Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
+warning: Held region (operation 'Finish'): the tool does not turn at a step across the rotary axis (a shoulder facing along X) at X 8.589: there it would reach over the gripped length of the stock, so that shoulder keeps what earlier operations left
+warning: Held region (operation 'Finish'): Nothing within one tool radius of the held region at the start of the stock is cut: no part of the tool reaches over the gripped length of the stock.
 warning: Operation 'Rough' has not been simulated. Run the simulation to see what it removes.
 warning: Operation 'Finish' has not been simulated. Run the simulation to see what it removes.
 warning: These machine values are not confirmed on the machine: travel, clearance, block window, spindle speed range, spindle-to-axis distance, recommended minimum safe Z. Check them against the controller.
 ```
 
-`validate`, `regenerate` and `simulate` print each message of the run as the program's **Results** tab shows it: a `warning:` line for something that may be a problem when you machine, and a `note:` line for information, where the goal was met with a compromise. The moves the machine's feed limits slowed are one `note:` line for each operation, and notes about consecutive moves that say the same thing are one line, with the moves' numbers ("moves 19077 to 19148 (72 moves)").
+`validate`, `regenerate` and `simulate` print each message of the run as the program's **Results** tab shows it: a `warning:` line for something that may be a problem when you machine, and a `note:` line for information, where the goal was met with a compromise. Each line starts with what it is about, as in Messages: "Held region (operation 'Finish'): …". The moves the machine's feed limits slowed are one `note:` line for each operation, and notes about consecutive moves that say the same thing are one line, with the moves' numbers ("moves 19077 to 19148 (72 moves)").
 
 Each command runs on its own, so the `simulate` run before does not count as a simulation for `regenerate`: read its result yourself. Measure the unconfirmed machine values on your machine (see [Confirm machine profile values](../how-to/confirm-machine-values.md)).
 

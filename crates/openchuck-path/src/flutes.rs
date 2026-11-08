@@ -28,7 +28,7 @@
 //! The same bound comes first everywhere: only where it is past the flutes
 //! is the exact answer asked for.
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use openchuck_types::geometry::Point3;
 use openchuck_types::job::{CancelToken, JobContext};
 use openchuck_types::units::Degrees;
@@ -542,10 +542,6 @@ pub(crate) fn stock_words(stock: &dyn StockModel) -> String {
     }
 }
 
-/// The words every warning of this check starts with, so a host can tell it
-/// apart and name the operation and the tool in it (decision record 0522).
-pub const WARNING_LEAD: &str = "Flute length: ";
-
 /// A warning when the stock stands above the tool's tip in `passes`, along
 /// the tool axis, further than the tool's flutes reach (decision records
 /// 0509 and 0522): past the flutes the shank may meet the stock. `None`
@@ -667,9 +663,9 @@ fn warn_past_flutes(
     };
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::FLUTE_LENGTH.to_owned()),
         segment: None,
-        text: format!("{WARNING_LEAD}{reason}"),
+        text: reason,
         setting: parameter.map(str::to_owned),
         // The shank or holder may meet the stock: a possible collision, to
         // acknowledge before the program is written (decision record 0538).
