@@ -44,7 +44,13 @@ pub fn crc32(data: &[u8]) -> u32 {
 
 /// Whether `path` (relative, `/`-separated) may be packaged: plain names, an allowed extension.
 fn check_name(path: &str) -> Result<()> {
-    ensure!(path.is_ascii(), "{path}: the name is not plain ASCII");
+    // Letters, digits, `.`, `-`, `_` and the `/` separator only: a backslash, a colon (an NTFS
+    // stream) or a control character can make some Windows extractors write outside the folder.
+    ensure!(
+        path.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'.' | b'-' | b'_')),
+        "{path}: the name has a character outside letters, digits, '.', '-' and '_'"
+    );
     for part in path.split('/') {
         ensure!(
             !part.is_empty() && part != ".." && part != "." && !part.starts_with('.'),
@@ -324,16 +330,30 @@ pub fn run(
 mod tests {
     use super::*;
 
-    fn scratch(name: &str) -> PathBuf {
+    /// A scratch folder that is removed again when the test ends.
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    fn scratch(name: &str) -> Scratch {
         let dir =
             std::env::temp_dir().join(format!("xtask-examples-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        dir
+        Scratch(dir)
     }
 
     /// A fake workspace root holding the given files under testdata/examples/.
-    fn tree(name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+    fn tree(name: &str, files: &[(&str, &[u8])]) -> Scratch {
         let root = scratch(name);
         let real = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let notice = root.join(NOTICE_FILE);
@@ -408,6 +428,19 @@ mod tests {
             let err = build(&tree("bad", &files), "ex").unwrap_err().to_string();
             assert!(err.contains(bad), "{err}");
         }
+    }
+
+    #[test]
+    fn examples_zip_refuses_names_a_windows_extractor_could_misread() {
+        for bad in [
+            "alpha/x\\..\\evil.txt",
+            "alpha/a:b.txt",
+            "alpha/a\nb.txt",
+            "alpha/a b.txt",
+        ] {
+            assert!(check_name(bad).is_err(), "{bad:?}");
+        }
+        assert!(check_name("alpha/baluster-project/c0de0001-0000.toml").is_ok());
     }
 
     #[cfg(unix)]
