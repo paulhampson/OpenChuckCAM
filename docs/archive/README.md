@@ -14,3 +14,4 @@ A task's verification and validation notes live in its decision record's Verific
 | [0256-toolpath-mesh/](0256-toolpath-mesh/) | [0256](../decisions/0256-no-fixed-toolpath-mesh-qualifies.md) | Toolpath-mesh candidate evidence |
 | [0260-exact-face-queries/](0260-exact-face-queries/) | [0260](../decisions/0260-exact-face-and-trim-queries.md) | Benchmark evidence |
 | [0248-rampbudget/](0248-rampbudget/) | [0248](../decisions/0248-ramp-clearance-budget.md) | Baseline, red/green, coverage and released-integration logs |
+| [0543-smooth-ring-steps/](0543-smooth-ring-steps/) | [0543](../decisions/0543-smooth-steps-between-rings.md) | Width-of-cut model of sharp and blended ring steps, script and output |
