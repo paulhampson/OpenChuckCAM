@@ -1543,6 +1543,8 @@ fn req_op_24_req_op_11_end_band_enters_from_air_beside_the_stock() {
                 "a leg along X is {beside:.4} mm beside the stock"
             );
         }
+        // In air beside the stock the legs keep the cutting feed.
+        assert!(pass.plunge_fed.is_empty(), "{:?}", pass.plunge_fed);
         // Leg 2 crosses the stock's whole width at the cutting X.
         assert!((axis[1].along - axis[2].along).abs() < 1e-9);
         assert!(axis[1].across.min(axis[2].across) < lo && axis[1].across.max(axis[2].across) > hi);
@@ -1582,6 +1584,8 @@ fn req_op_24_req_op_11_part_extent_band_keeps_its_side_entry() {
             first > lo && first < hi,
             "the side entry is at the band's edge, in the stock"
         );
+        // The legs along X into the face and out of it go at the plunge feed.
+        assert_eq!(pass.plunge_fed, vec![1, 3]);
     }
 }
 
@@ -1789,4 +1793,42 @@ fn req_op_24_req_nfr_07_part_extent_adds_bands_above_the_area() {
     for pair in heights.windows(2) {
         assert!(pair[0] - pair[1] <= 4. + 1e-9, "{heights:?}");
     }
+}
+
+/// Decision 0547 item 1: where there is no air beside a band, its move along
+/// X into the face, and back out of it, is written as an entry move at the
+/// plunge feed; the sweep across keeps the cutting feed.
+#[test]
+fn req_op_24_req_op_11_part_extent_side_entry_goes_at_the_plunge_feed() {
+    use openchuck_path::ParameterValue;
+    use openchuck_types::ir::MoveKind;
+    let values = vec![
+        ("shape", ParameterValue::Text("end".into())),
+        ("extent", ParameterValue::Text("part".into())),
+        ("feed", ParameterValue::Number(600.)),
+        ("plunge_feed", ParameterValue::Number(200.)),
+        ("stepover", ParameterValue::Number(2.)),
+        ("stepdown", ParameterValue::Number(4.)),
+        ("stock_to_leave", ParameterValue::Number(0.2)),
+    ];
+    let path = generate_on_round_bar(&values).unwrap_or_else(|e| panic!("{e}"));
+    let mut previous = path.group.start;
+    let (mut along_x, mut across) = (0, 0);
+    for segment in &path.group.segments {
+        let moved_x = (segment.end.tip.x - previous.tip.x).abs() > 1e-9;
+        let moved_y = (segment.end.tip.y - previous.tip.y).abs() > 1e-9;
+        if segment.kind.is_fed() && segment.kind != MoveKind::Plunge {
+            if moved_x && !moved_y {
+                along_x += 1;
+                assert_eq!(segment.kind, MoveKind::LeadIn, "{segment:?}");
+                assert_eq!(segment.contact_feed.unwrap().0, 200.);
+            } else if moved_y && !moved_x {
+                across += 1;
+                assert_eq!(segment.kind, MoveKind::Cutting, "{segment:?}");
+                assert_eq!(segment.contact_feed.unwrap().0, 600.);
+            }
+        }
+        previous = segment.end;
+    }
+    assert!(along_x > 0 && across > 0);
 }

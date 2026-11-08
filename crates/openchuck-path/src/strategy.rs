@@ -90,6 +90,13 @@ pub struct Pass {
     /// keeps its contact points as given instead of smoothing them (the path
     /// doubles back on itself).
     pub rapids: Vec<usize>,
+    /// Indices into `points` of the points reached at the plunge feed, as an
+    /// entry move (`LeadIn`), instead of at the cutting feed: an End facing
+    /// band's move along X into the face where there is no air beside it
+    /// (decision record 0547 item 1). An index of 0 has no move. Path
+    /// fitting's merge at walls leaves a pass with such points as it is, so
+    /// the indices keep their points.
+    pub plunge_fed: Vec<usize>,
 }
 
 /// A strategy's passes with what it found worth telling the user, as
@@ -740,6 +747,7 @@ fn keep_clear(
                 points,
                 stock: pass.stock.clone(),
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             });
             helical_start_pending = false;
         }
@@ -917,6 +925,7 @@ mod tests {
             points: xs.iter().map(|&x| point(x)).collect(),
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
         }
     }
 

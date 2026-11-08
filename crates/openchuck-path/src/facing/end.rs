@@ -365,6 +365,13 @@ pub fn plan_end(
                 points,
                 stock: None,
                 rapids: vec![],
+                // A leg along X into the face (or back out of it) with no
+                // air beside it goes at the plunge feed, as an entry move
+                // (decision record 0547 item 1).
+                plunge_fed: [(!low_air).then_some(1), (!high_air).then_some(3)]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
             });
         }
     }

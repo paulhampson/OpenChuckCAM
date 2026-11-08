@@ -779,6 +779,7 @@ impl Strategy for PencilFinishing {
                 points,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             }));
         }
         if passes.is_empty() {

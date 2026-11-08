@@ -249,6 +249,7 @@ fn req_op_15_shared_retract_retains_both_turn_directions_and_limited_position() 
                 points,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             }],
             &fixture.input(),
             &common,

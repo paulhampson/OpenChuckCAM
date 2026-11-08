@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased (PATHFEED, issue #641; decision 0547, accepted; no public API change)
+## 0.52.0 (PATHFEED, issue #641; decision 0547, accepted)
 
+- **Breaking (0.52.0, or the next free version, as the Merge Manager sequences it):** `Pass` gains the public field `plunge_fed`, the indices of points reached at the plunge feed as an entry move (`MoveKind::LeadIn`); assembly writes them so, and leaves such a pass unmerged at walls (decision 0050) so the indices keep their points. `facing::end::EndPassPlan` gains `passes_above_area`. `topic::STOCK_ABOVE_THE_AREA` is added. A host that builds `Pass` by literal adds `plunge_fed: Vec::new()`.
 - **Changed output (End facing):**
   - End reads the operation's Stepover as the slice along X and its Stepdown as the band along the tool, as a tool's cutting data defines them (`EndFacingParameters::read`); the schema labels them "Stepover (slice thickness along X)" and "Stepdown (band along the tool)". `openchuck-project` schema 28 migrates saved End operations.
-  - Where there is air beside a band's edge, the band comes in and goes out along X beside the stock, the whole tool the approach distance clear, so only the sweep across meets the face, at its edge. Where there is none (a Part extent narrower than the stock), the move along X into the face at the band's edge is kept.
+  - Where there is air beside a band's edge, the band comes in and goes out along X beside the stock, the whole tool the approach distance clear, so only the sweep across meets the face, at its edge. Where there is none (a Part extent narrower than the stock), the move along X into the face at the band's edge, and back out, is kept and goes at the plunge feed as an entry move.
+  - Where the stock rises above the requested area (Part or Part plus tabs), bands from the stock's top down to the area are added, each no deeper than the Stepdown, with an information note (topic "Stock above the area") counting the passes and their time at the cutting feed (the owner's answer to question 4).
   - Final validation checks the depth each End sweep cuts along the tool, from the stock's top at its view or the band above it, against the Stepdown, and refuses a deeper cut naming it.
   - The slice check allows the written-motion share of the tolerance, so a depth that divides exactly into full-size slices posts.
 

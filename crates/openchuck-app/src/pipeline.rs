@@ -710,6 +710,7 @@ mod tests {
                 points,
                 stock: None,
                 rapids: Vec::new(),
+                plunge_fed: Vec::new(),
             }])
         }
     }

@@ -76,6 +76,7 @@ impl Strategy for Ring {
             points,
             stock: None,
             rapids: Vec::new(),
+            plunge_fed: Vec::new(),
             low_link: false,
         }])
     }
