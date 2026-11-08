@@ -165,15 +165,14 @@ impl Viewport {
                 scene.add_mesh(&mesh, &[], fill, roles::FEATURE_EDGES);
                 if let Some(added) = scene.meshes.last_mut() {
                     added.slot = Slot::Part;
-                    added.translucent = pattern == "b";
-                    added.hatch = hatch.map(|kind| Hatch {
+                                        added.hatch = hatch.map(|kind| Hatch {
                         colour: roles::AREA_DOT_CORE,
                         kind,
                     });
                     if outline {
                         added.outline = Some(openchuck_viewport::Outline {
                             colour: roles::AREA_DOT_RING,
-                            width: 2.0,
+                            width: 1.5,
                             style: openchuck_viewport::LineStyle::Solid,
                         });
                     }

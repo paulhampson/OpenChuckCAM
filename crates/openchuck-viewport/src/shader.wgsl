@@ -83,14 +83,12 @@ fn fs_hatch(in: MeshOut) -> @location(0) vec4<f32> {
         let core = 1.0 - smoothstep(core_half - aa, core_half + aa, from_line);
         let casing = 1.0 - smoothstep(ring_half - aa, ring_half + aa, from_line);
         let fade = smoothstep(0.12, 0.35, w);
-        let base = shade(in);
-        var c = mix(base.rgb, u.ring.rgb, casing);
-        c = mix(c, u.hatch.rgb, core);
-        let cover = max(casing, core) * (1.0 - fade);
-        let flat_tint = 0.30 * fade;
-        let rgb = mix(base.rgb, c, cover);
-        let tinted = mix(rgb, u.hatch.rgb, flat_tint);
-        return vec4<f32>(tinted, base.a);
+        let cov = max(casing, core) * (1.0 - fade);
+        let tint_a = 0.30 * fade;
+        let alpha = 1.0 - (1.0 - cov) * (1.0 - tint_a);
+        let line_rgb = mix(u.ring.rgb, u.hatch.rgb, core);
+        let rgb = (line_rgb * cov + u.hatch.rgb * tint_a * (1.0 - cov)) / max(alpha, 1e-4);
+        return vec4<f32>(rgb, alpha);
     }
     if u.scale.y > 2.5 {
         // Dots in rows, every other row shifted by half a spacing. A pixel
