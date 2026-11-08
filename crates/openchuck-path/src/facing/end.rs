@@ -90,6 +90,11 @@ pub struct EndPassPlan {
     /// Upper bound on the nominal radial remainder at a supported cylinder
     /// tab, separate from source/written-motion error; None without tab routing.
     pub tab_residual_bound: Option<f64>,
+    /// The indices of the passes that take the stock above the requested
+    /// area, from the stock's top at their view down to the area's top, so
+    /// that no band cuts deeper than the Stepdown (decision record 0547,
+    /// question 4). Empty for the Whole stock extent.
+    pub passes_above_area: Vec<usize>,
     /// Candidate straight, fixed-A passes, axial slice then ordered view/band.
     pub passes: Vec<Pass>,
 }
@@ -243,7 +248,7 @@ pub fn plan_end(
     if axial_planes.is_empty() && flush {
         return Err(nothing_past());
     }
-    let (bands, tab_residual_bound) =
+    let (bands, tab_residual_bound, above_area) =
         routing::bands(setup, parameters, coverage, end, cutting_x, context)?;
     let count = axial_planes
         .len()
@@ -282,7 +287,13 @@ pub fn plan_end(
         .map(|band| routing::air_beside(setup, end, cutting_x, band, 0.125 * parameters.tolerance))
         .collect::<Result<Vec<_>>>()?;
     let clear = radius + gap;
-    let paired = bands.iter().zip(beside).collect::<Vec<_>>();
+    let paired = bands
+        .iter()
+        .zip(beside)
+        .zip(above_area)
+        .map(|((band, air), above)| (band, air, above))
+        .collect::<Vec<_>>();
+    let mut passes_above_area = Vec::new();
     let views = paired
         .chunk_by(|a, b| a.0.angle == b.0.angle)
         .collect::<Vec<_>>();
@@ -295,7 +306,10 @@ pub fn plan_end(
         } else {
             views.iter().rev().copied().collect::<Vec<_>>()
         };
-        for &(band, (low_air, high_air)) in ordered.into_iter().flatten() {
+        for &(band, (low_air, high_air), above) in ordered.into_iter().flatten() {
+            if above {
+                passes_above_area.push(passes.len());
+            }
             context.check_cancelled()?;
             let (lo, hi) = band.heights;
             let centre_x = x + sign * radius;
@@ -361,6 +375,7 @@ pub fn plan_end(
         axial_planes,
         bands,
         tab_residual_bound,
+        passes_above_area,
         passes,
     })
 }

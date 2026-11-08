@@ -26,7 +26,7 @@ pub(super) fn bands(
     end: FacingEnd,
     target: f64,
     context: &JobContext<'_>,
-) -> Result<(Vec<EndBand>, Option<f64>)> {
+) -> Result<(Vec<EndBand>, Option<f64>, Vec<bool>)> {
     let [y0, z0] = coverage.min();
     let [y1, z1] = coverage.max();
     let corners = [
@@ -67,7 +67,7 @@ pub(super) fn bands(
                 .iter()
                 .all(|p| (p.y - centre.y).hypot(p.z - centre.z) <= radius)
             {
-                return Ok((vec![], None));
+                return Ok((vec![], None, vec![]));
             }
             if (tab.base_radius() - tab.top_radius()).abs() > 0. {
                 return Err(refuse(
@@ -138,6 +138,7 @@ pub(super) fn bands(
         (views, None)
     };
     let mut bands = vec![];
+    let mut above = Vec::new();
     let reach = corners.iter().map(|p| p.y.hypot(p.z)).fold(0., f64::max)
         + setup.tool.overall_length.0
         + setup.tool.diameter.0;
@@ -218,6 +219,35 @@ pub(super) fn bands(
                 "the flutes are too short to overlap the bands by the written-motion allowance",
             ));
         }
+        // Where the stock rises above the requested area at this view (a
+        // Part or Part plus tabs extent), the flutes of the area's first band
+        // would cut it all at once. Bands from the stock's top down to the
+        // area's top, each no deeper than the Stepdown and swept across the
+        // area's width only, take it in steps (the owner's answer to question
+        // 4 of decision record 0547, option A). The same material is removed.
+        if top > high {
+            let across = (
+                polygon.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+                polygon
+                    .iter()
+                    .map(|p| p[0])
+                    .fold(f64::NEG_INFINITY, f64::max),
+            );
+            let mut upper = top;
+            for lower in LayerDistribution::Full.levels(top, high, step)? {
+                context.check_cancelled()?;
+                bands.push(EndBand {
+                    angle,
+                    heights: (lower, upper),
+                    across,
+                });
+                above.push(true);
+                if bands.len() > 100_000 {
+                    return Err(refuse("end flute-band budget exceeded"));
+                }
+                upper = lower;
+            }
+        }
         let mut upper = high;
         for lower in LayerDistribution::Full.levels(high, low, step)? {
             context.check_cancelled()?;
@@ -230,6 +260,7 @@ pub(super) fn bands(
                     heights: (lower, upper),
                     across: (min, max),
                 });
+                above.push(false);
                 if bands.len() > 100_000 {
                     return Err(refuse("end flute-band budget exceeded"));
                 }
@@ -237,7 +268,7 @@ pub(super) fn bands(
             upper = lower;
         }
     }
-    Ok((bands, residual))
+    Ok((bands, residual, above))
 }
 
 /// Whether there is air beside `band`'s two ends across the tool: no stock

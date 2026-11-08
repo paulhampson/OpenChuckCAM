@@ -304,8 +304,14 @@ impl Facing {
             {
                 return Err(crate::error::PathError::Strategy("Stock-edge extension for this new Facing construction is not yet supported; no distance was reinterpreted. Disable extension or use legacy Flat/Round.".into()));
             }
+            let mut notices = Vec::new();
             let mut passes = if parameters.text(parameter::SHAPE)? == parameter::END {
-                end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?.passes
+                let plan =
+                    end::plan_end(setup, &end::EndFacingParameters::read(parameters)?, context)?;
+                if let Some(note) = above_area_note(&plan, parameters)? {
+                    notices.push(note);
+                }
+                plan.passes
             } else {
                 plan::plan_box_sides(
                     setup,
@@ -321,7 +327,7 @@ impl Facing {
             }
             return Ok(StrategyOutput {
                 passes,
-                notices: Vec::new(),
+                notices,
                 unreached: Vec::new(),
                 shank_breaks: Vec::new(),
             });
@@ -387,6 +393,46 @@ impl Facing {
 
 /// End and Box links between passes stay low where they can (decision 0496;
 /// issue #499). A saved operation without the choice retracts, as before.
+/// The information note for the bands End facing adds above the requested
+/// area (decision record 0547, question 4): how many passes, and about how
+/// long they take at the cutting feed, from their own lengths. None when
+/// there are none.
+fn above_area_note(
+    plan: &end::EndPassPlan,
+    parameters: &Parameters,
+) -> Result<Option<crate::Notice>> {
+    if plan.passes_above_area.is_empty() {
+        return Ok(None);
+    }
+    let feed = parameters.number(crate::params::names::FEED)?;
+    let length: f64 = plan
+        .passes_above_area
+        .iter()
+        .filter_map(|i| plan.passes.get(*i))
+        .map(|pass| {
+            pass.points
+                .windows(2)
+                .map(|w| match w {
+                    [a, b] => a.tip.distance(b.tip),
+                    _ => 0.,
+                })
+                .sum::<f64>()
+        })
+        .sum();
+    let minutes = if feed > 0. { length / feed } else { 0. };
+    let count = plan.passes_above_area.len();
+    Ok(Some(
+        crate::Notice::information(format!(
+            "the stock rises above the requested area, so {count} pass{} from the stock's top \
+             down to the area are added, each no deeper than the Stepdown (band along the \
+             tool); they take about {:.0} s more at the cutting feed",
+            if count == 1 { " is" } else { "es are" },
+            60. * minutes
+        ))
+        .about(crate::notice::topic::STOCK_ABOVE_THE_AREA),
+    ))
+}
+
 fn low_links(parameters: &Parameters) -> Result<bool> {
     use crate::axial::parameter::{LINK_HEIGHT, LOW};
     Ok(parameters.get(LINK_HEIGHT).is_some() && parameters.text(LINK_HEIGHT)? == LOW)

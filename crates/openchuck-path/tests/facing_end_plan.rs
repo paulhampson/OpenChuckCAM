@@ -1648,12 +1648,104 @@ fn generate_on_round_bar(
 
 /// Decision 0547 item 2: the depth each sweep cuts along the tool is checked
 /// on the assembled path against the Stepdown (band along the tool), from
-/// the stock's top at that view or the bottom of the band above it. With the
-/// Part extent the flutes also meet the stock above the part's top, so the
-/// first band cuts deeper than the band spacing: refused, naming the
-/// Stepdown. The Whole stock extent with the same settings is accepted.
+/// the stock's top at that view or the bottom of the band above it. A path
+/// planned with a 4 mm Stepdown, checked against 2 mm, is refused naming
+/// the Stepdown.
 #[test]
 fn req_op_24_req_nfr_07_end_engagement_over_the_stepdown_refuses_naming_it() {
+    use openchuck_path::rotary::RotaryMapping;
+    use openchuck_path::{
+        AcceptAll, AnalyticStock, Facing, MeshSurface, ParameterValue, Strategy, StrategyInput,
+    };
+    use openchuck_types::ir::PathTags;
+    let values = |stepdown: f64| -> std::collections::BTreeMap<String, ParameterValue> {
+        [
+            ("shape", ParameterValue::Text("end".into())),
+            ("feed", ParameterValue::Number(600.)),
+            ("plunge_feed", ParameterValue::Number(200.)),
+            ("stepover", ParameterValue::Number(2.)),
+            ("stepdown", ParameterValue::Number(stepdown)),
+            ("stock_to_leave", ParameterValue::Number(0.2)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect()
+    };
+    let path = generate_on_round_bar(
+        &values(4.)
+            .into_iter()
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let part = part();
+    let tool = tool();
+    let machine = MachineProfile::example_x_rotary();
+    let stock = Stock::Cylinder {
+        diameter: Millimetres(24.),
+        length: Millimetres(60.),
+        x_start: Millimetres(0.),
+    };
+    let setup = FacingSetup {
+        part: &part,
+        stock: &stock,
+        tool: &tool,
+        machine: &machine,
+        tabs: &[],
+        protected: &[],
+        held: [Some((0., 5.)), None],
+        projection_error: Some(0.),
+    };
+    let surface = MeshSurface::new(&part).unwrap();
+    let profile = tool.profile().unwrap();
+    let original = AnalyticStock::Cylinder {
+        radius: 12.,
+        x_start: 0.,
+        x_end: 60.,
+    };
+    let tags = PathTags {
+        operation: "op".into(),
+        setup: "setup".into(),
+        tool: "tool".into(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &original,
+        collision: &AcceptAll,
+        tool: &profile,
+        rotary: RotaryMapping::of_profile(&machine),
+        clearance: machine.clearance,
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+        entry_safety: None,
+        facing: Some(&setup),
+        keep_out: &[],
+        shank: None,
+    };
+    let token = CancelToken::new();
+    let ctx = JobContext::new(&token, &NoProgress);
+    let stricter = Facing.resolve_parameters(&values(2.)).unwrap();
+    let error = Facing
+        .validate_path(&input, &stricter, &path, &ctx)
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "accepted".to_owned());
+    assert!(
+        error.contains("Stepdown (band along the tool)") && error.contains("deep along the tool"),
+        "{error}"
+    );
+}
+
+/// Decision 0547 item 2 as the owner answered question 4 (option A, 8 Nov
+/// 2026): with the Part extent the stock rises above the requested area, so
+/// the planner adds bands from the stock's top at the view down to the
+/// area's top, each no deeper than the Stepdown, and says how many passes it
+/// added. Every band then passes the depth check. The Whole stock extent
+/// needs none and says nothing.
+#[test]
+fn req_op_24_req_nfr_07_part_extent_adds_bands_above_the_area() {
     use openchuck_path::ParameterValue;
     let values = |extent: &str| {
         vec![
@@ -1666,13 +1758,35 @@ fn req_op_24_req_nfr_07_end_engagement_over_the_stepdown_refuses_naming_it() {
             ("stock_to_leave", ParameterValue::Number(0.2)),
         ]
     };
-    generate_on_round_bar(&values("whole_stock")).unwrap();
-    let error = generate_on_round_bar(&values("part"))
-        .err()
-        .map(|e| e.to_string())
-        .unwrap_or_else(|| "accepted".to_owned());
+    let whole = generate_on_round_bar(&values("whole_stock")).unwrap();
     assert!(
-        error.contains("Stepdown (band along the tool)") && error.contains("deep along the tool"),
-        "{error}"
+        !whole
+            .notices
+            .iter()
+            .any(|n| n.topic.as_deref() == Some("Stock above the area")),
+        "{:?}",
+        whole.notices
     );
+    let part = generate_on_round_bar(&values("part")).unwrap_or_else(|e| panic!("{e}"));
+    let note = part
+        .notices
+        .iter()
+        .find(|n| n.topic.as_deref() == Some("Stock above the area"))
+        .unwrap_or_else(|| panic!("{:?}", part.notices));
+    assert!(note.text.contains("passes"), "{}", note.text);
+    // The part's top is 7 mm and the stock's 12 mm: the band tips step down
+    // from the stock's top no more than 4 mm at a time.
+    let mut heights: Vec<f64> = part
+        .group
+        .segments
+        .iter()
+        .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+        .map(|s| s.end.tip.z)
+        .collect();
+    heights.sort_by(|a, b| b.total_cmp(a));
+    heights.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+    assert!(heights[0] >= 12. - 4. - 1e-9, "{heights:?}");
+    for pair in heights.windows(2) {
+        assert!(pair[0] - pair[1] <= 4. + 1e-9, "{heights:?}");
+    }
 }
