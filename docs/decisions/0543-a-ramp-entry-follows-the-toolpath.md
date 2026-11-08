@@ -1,6 +1,6 @@
 # 0543: A ramp entry follows the pass's own toolpath, for every strategy that uses the shared entry (OP-11, OP-13, OP-14, OP-15, SET-09, OP-21, OP-02, NFR-07, NFR-12, GC-07, NFR-06; issue #639; lane RAMPENTRY)
 
-- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), on the condition that the clarification of "ramp to the first cut point" (the ramp reaches the pass's own depth at the first point) is in the record: it is, in section 1 and its worked examples. Proposed the same day by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers (relayed): every recommendation D1 to D10 as a package, with D7 made a setting on the operation, **Allow single-point plunge**, off by default; D10 as its own commit. Of the three points found while building (section 4, "Found while building"), the owner accepted the first as built (8 Nov 2026, relayed); the second awaits his decision and the third is a proposed option, not built until he accepts it.
+- **Status:** accepted by the project owner on 8 Nov 2026, relayed by the coordinator (decision 0049), on the condition that the clarification of "ramp to the first cut point" (the ramp reaches the pass's own depth at the first point) is in the record: it is, in section 1 and its worked examples. Proposed the same day by lane RAMPENTRY from the owner's proposal in issue #639. The owner's answers (relayed): every recommendation D1 to D10 as a package, with D7 made a setting on the operation, **Allow single-point plunge**, off by default; D10 as its own commit. Of the three points found while building (section 4, "Found while building"), the owner accepted the first as built (8 Nov 2026, relayed); the second he decided as option (b), the tip descending on the axis while A turns; the third is a proposed option, not built until he accepts it.
 - **What it would amend or supersede:**
   - accepted [decision 0026](0026-entry-moves.md): item 5 (A does not move during a ramp) and the as-built ramp direction ("the ramp runs back from the first cut point along the first horizontal move of the pass"). Items 1 to 4 and 6 to 8 are unchanged; the helix keeps item 5 (D9).
   - accepted [decision 0242](0242-optional-back-and-forth-ramp.md): items 1 to 3, 5 and 8 (the flag, the fixed-A corridor, its one-diameter minimum and its certificate) are superseded; items 4 (no cut changed to make an entry fit), 6 (bounds, cancellation, no partial operation) and 7 (slotting and the NFR-12 notice) carry over to every ramp.
@@ -97,25 +97,28 @@ A pass that starts above the stock has nothing to ramp down into. It is entered 
 
 **1. A step shorter than the minimum before a ring (D3): accepted as built (owner, 8 Nov 2026, relayed).** Roughing in Rings starts some passes with a step along X shorter than the tool radius before its ring. Refusing it would refuse that roughing often. The back-and-forth continues over the pass's own path past the step, into the ring, up to the first rapid; A reverses during the entry only, inside the pass's footprint, and the note counts the reversals.
 
-**2. A ring with its tip on the rotary axis (D7): not yet decided; built as below until the owner decides.**
+**2. A ring with its tip on the rotary axis: decided, option (b) (owner, 8 Nov 2026, relayed).**
 
-![A ring away from the axis and a ring on the axis](0543-ring-on-the-axis.svg)
+![A ring away from the axis, and the descent on the axis while A turns](0543-ring-on-the-axis.svg)
 
-*What it is.* Most rings keep the tool tip some distance from the rotary axis: as A turns, the part turns under the tip and the tip sweeps a circle on the part (left). At an end face the finishing pass can come down to the axis itself: the tip then sits on the axis (right). Turning A still turns the part, but the point under the tip does not move: relative to the part the tool stands still. Such a "ring" has no length.
+*What it is.* Most rings keep the tool tip some distance from the rotary axis: as A turns, the part turns under the tip and the tip sweeps a circle on the part (left of the drawing). At an end face the finishing pass can come down to the axis itself: the tip then sits on the axis (right). Turning A still turns the part, but the point under the tip does not move. Such a ring has no length, so no ramp can follow it.
 
-*Why a ramp cannot follow it.* A ramp that follows the toolpath descends over the path the pass makes (section 1). A ring on the axis has no path: however far A turns, the tool comes down on one spot. So it is, for the user, a single point, the same as a roughing layer that only touches the part's tip (decision 0204 item 4).
+*The owner's decision: option (b), the tip descends while A turns.* His reasons: it is what a user expects here; the single-point refusal would be hard to understand in this case; and treating it as a single-point plunge (refused or allowed) could open single-point plunging elsewhere.
 
-*What happens as built.* It takes D7's rule for a single point:
-- Allow single-point plunge **off** (the default): the operation is refused with "Ramp entry (operation '<name>'): pass N is a single point, so there is no path for the ramp to follow. Turn on Allow single-point plunge, or set Entry to Plunge or Helix."
-- Allow single-point plunge **on**: the tool plunges straight down to that point at the plunge feed, and an information note names the pass ("pass N is a single point, with no path for a ramp to follow, so it is entered by a straight plunge, as Allow single-point plunge asks"). A tool that cannot cut straight down is then refused, naming the tool.
+*Scope.* Only a pass that starts as a ring or a spiral with its tip on the rotary axis (within the path tolerance of it) at its first point: an end-face ring. Allow single-point plunge (D7) does not apply to it and is not widened by it: that setting stays for genuine single-point passes elsewhere, with its behaviour unchanged.
 
-*Alternatives.*
-- (a) **As built: a single point** (above). It treats the same situation the same way wherever it arises, and the user decides once, with one setting.
-- (b) **Descend while A turns anyway.** The tool would come down on the spot while the part turns under it. Relative to the part this is a plunge with the part spinning, not a ramp: the angle limit means nothing at a point, and calling it a ramp would hide a plunge from a user who chose Ramp to avoid one.
-- (c) **Always refuse.** The baluster's end-face finishing would never take a ramp entry, even when the user would accept a plunge there.
-- (d) **Always plunge.** A plunge the user did not ask for; refused for a tool that cannot plunge only after generation.
+*The rule.* There is no path length at the axis, so the ramp angle cannot be measured on the tip's path. It is measured at the edge of the tool instead:
+- **Start.** Above the first point, the approach distance above the highest stock under the tool's footprint there, as for every ramp (D5).
+- **Descent.** The tip moves straight down along the tool axis, from the start to the ring's depth at its first point (the rise h), while A turns the Rotation way, the way the ring turns.
+- **Turns.** As many as a ramp at the Ramp angle would take round a ring at the tool's cutting radius R: T = h / (tan(Ramp angle) · 2π R). So the cutting edge descends relative to the turning part at the Ramp angle. Example: a 3 mm tool (R = 1.5 mm), h = 2.0 mm, 3 degrees: T = 4.05 turns.
+- **Bounds.** The 10-turn bound applies, with the same refusal as other rings (it names the tool's radius instead of the tip's distance from the axis). The extra A counts against a limited A range, refused naming the A range when it does not fit (D6). The link arrives at the A where the descent starts.
+- **Feed and moves.** The descent is written as plunge moves at the plunge feed, A turning with them: relative to the part the tip moves only down the tool axis, so it is a plunge, and the feed applies to that travel (the shared timing rules of OP-13 still hold the A axis within its speed limit). Writing it as a plunge keeps the centre-cutting check: a tool that cannot cut straight down is refused by the application, naming the tool, as for any plunge in a Ramp or Lead operation.
+- **Note.** An information note (topic "Ramp entry"): "pass N starts on the rotary axis, where a ramp has no path to follow, so the tool descends there while the part turns T turns".
+- **Option of point 3.** If the steeper-ramp option of point 3 is accepted and on, it applies here with r taken as the tool's cutting radius R.
 
-*Recommendation: (a), as built.* It never hides a plunge (unlike b and d), it leaves the choice with the user through the setting the owner already chose for single points (D7), and it does not block the operation outright (unlike c).
+*Lead entry on such a ring (decision 0544).* A lead arc has no plane of the cut at the axis. A Lead entry on an end-face ring is entered as a single-point pass is under Lead (0544 L4: a plunge with a path note, and no lead-out at the axis), refused for a tool that cannot plunge (0544 item 7). Lane RAMPLEAD builds it.
+
+*Alternatives, kept for the record.* (a) Treat it as a single point under D7 (built first, replaced by this decision): refused unless Allow single-point plunge is on. (c) Always refuse. (d) Always plunge, without A turning.
 
 **3. A steeper ramp near the axis (D4): change requested; proposed below, not built until the owner accepts the proposed behaviour.**
 
@@ -184,6 +187,7 @@ Tests written first, named by requirement (`req_op_11_*`, with `req_op_13_*`, `r
 - **Lines:** the ramp never leaves the pass's footprint; the tip descends within the angle on its real path; the leg count is even and the last leg ends at the first cut point; the span stops at a rapid and where the pass starts to turn A; a pass shorter than the tool radius is refused by name.
 - **Rings:** the ramp holds the ring's X and Y; A turns only the Rotation way, from `A0 - Δ`; the angle holds at the smallest radius; the ring is cut unchanged after it; several turns near the axis; the turn bound refused by name; the A range refusal; feed and duration of the combined A and Z moves (OP-13).
 - **Spiral (D2), partial rings (D3, A reversals counted in a note).**
+- **A ring with its tip on the axis (section 4, point 2, option (b)):** the tip descends straight down at the first point while A turns the ring's way, the turns given by the Ramp angle at the tool's radius, written as plunge moves at the plunge feed, with the note; Allow single-point plunge on or off gives the same output; a tool that cannot plunge is refused naming the tool; the 10-turn and A-range refusals name what to change.
 - **Single-point passes (D7):** refused with Allow single-point plunge off, naming the setting; plunged with a note naming the passes when on; refused when on and the tool cannot plunge; a saved operation without the setting loads with it off (app round trip).
 - **The checks still fire** on a seeded obstacle where dominance does not apply (the spiral ramp).
 - **Regressions:** every probe case above, with a held region at the start end, generates; a STEP part (`testdata/step/valid/blisk.step`) generates with a ramp; public stand-ins for the owner's cases (the blisk start example `testdata/examples/blisk-start`, the baluster and `crankshaft.step`); plunge, lead and helix output byte-identical to `main`; the output the same at 1, 2 and N threads (GC-07, NFR-06); simultaneous finishing in Rings (0497) keeps its smoothed A and lead.
