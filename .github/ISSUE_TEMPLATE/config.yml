@@ -6,8 +6,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: User guide - reporting a problem or asking for a feature
-    url: https://paulhampson.github.io/OpenChuckCAM/latest/reporting.html
+    url: https://openchuck.cam/latest/reporting.html
     about: What to include in a report, what the log file holds, and how to attach it safely.
   - name: User guide - troubleshooting and known limitations
-    url: https://paulhampson.github.io/OpenChuckCAM/latest/troubleshooting.html
+    url: https://openchuck.cam/latest/troubleshooting.html
     about: Check here first.

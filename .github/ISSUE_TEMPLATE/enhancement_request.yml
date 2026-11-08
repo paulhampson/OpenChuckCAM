@@ -12,7 +12,7 @@ body:
       value: |
         The maintainer triages requests. A request may be accepted, changed, or recorded for a later phase; opening one does not promise a date. Describing the problem you are trying to solve helps most.
 
-        Issues on GitHub are public. See [Reporting a problem or asking for a feature](https://paulhampson.github.io/OpenChuckCAM/latest/reporting.html) in the user guide.
+        Issues on GitHub are public. See [Reporting a problem or asking for a feature](https://openchuck.cam/latest/reporting.html) in the user guide.
   - type: textarea
     id: problem
     attributes:

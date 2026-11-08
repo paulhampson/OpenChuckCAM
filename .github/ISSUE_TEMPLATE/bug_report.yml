@@ -12,7 +12,7 @@ body:
       value: |
         **Generated G-code is yours to verify before you run it on a machine (NFR-12).** OpenChuckCAM does not guarantee that a program is safe or correct. If you ran a program on a machine, say so below.
 
-        Issues on GitHub are public. The program sends nothing to the project (there is no telemetry); only what you post here is shared. See [Reporting a problem or asking for a feature](https://paulhampson.github.io/OpenChuckCAM/latest/reporting.html) in the user guide.
+        Issues on GitHub are public. The program sends nothing to the project (there is no telemetry); only what you post here is shared. See [Reporting a problem or asking for a feature](https://openchuck.cam/latest/reporting.html) in the user guide.
   - type: textarea
     id: what-happened
     attributes:

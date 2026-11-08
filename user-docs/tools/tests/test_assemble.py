@@ -3,10 +3,12 @@
 
 Run with `python3 -m unittest discover -s user-docs/tools/tests`.
 """
+import html
 import json
 import os
 import sys
 import tempfile
+import tomllib
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -162,6 +164,23 @@ class Assemble(unittest.TestCase):
             text = read(out, page)
             self.assertIn(f'<link rel="icon" href="{prefix}favicon.svg" type="image/svg+xml">', text, page)
             self.assertIn(f'<link rel="icon" href="{prefix}favicon.png" type="image/png" sizes="32x32">', text, page)
+
+    def test_the_root_page_has_the_front_page_title_and_the_guide_description(self):
+        """The domain root, https://openchuck.cam/, is the address people share: its redirect page has
+        the guide's front-page title, the same as the theme gives the front page, and the
+        description of book.toml, and still sends the reader to the guide."""
+        out = tempfile.mkdtemp()
+        assemble.assemble(built("latest"), None, out)
+        text = read(out, "index.html")
+        self.assertIn("<title>OpenChuckCAM: free, open source CAM for 4-axis rotary CNC</title>", text)
+        self.assertIn(f'<meta name="description" content="{html.escape(assemble.site_description())}">', text)
+        self.assertIn('url=latest/', text)
+        self.assertIn('<a href="latest/">latest/</a>', text)
+        tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(tools, "..", "theme", "index.hbs"), encoding="utf-8") as f:
+            self.assertIn(assemble.FRONT_TITLE, f.read(), "the theme and assemble.py must give the same front-page title")
+        with open(os.path.join(tools, "..", "book.toml"), "rb") as f:
+            self.assertEqual(assemble.site_description(), tomllib.load(f)["book"]["description"])
 
     def test_a_guide_without_a_favicon_still_assembles(self):
         out = tempfile.mkdtemp()

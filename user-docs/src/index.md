@@ -1,13 +1,13 @@
 <section class="hero" aria-labelledby="hero-title">
 <div class="hero-text">
 <p class="hero-meta">OpenChuckCAM user guide · <a href="../versions.html">@@VERSION_LABEL@@</a></p>
-<h1 id="hero-title">Turn a 3D model into <span class="nowrap">G-code</span> for 4-axis rotary machining</h1>
-<p class="hero-lead">OpenChuckCAM is free, open-source CAM software for machines that hold the work in a chuck and turn it while the cutter works around it, such as the Makera Z1. This guide is for anyone making parts with it, including people new to CAM.</p>
+<h1 id="hero-title">Free, open source CAM for <span class="nowrap">4-axis</span> rotary CNC</h1>
+<p class="hero-lead"><strong>OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.</strong> Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often out of reach for home and small-workshop users. OpenChuckCAM has been developed with the vision to close that gap.</p>
 <ol class="routes">
 <li><a href="start/install.md"><span class="route-num">1</span><span class="route-title">Start here</span><span class="route-text">Install the program and open it for the first time.</span></a></li>
 <li><a href="tutorial/index.md"><span class="route-num">2</span><span class="route-title">Your first project</span><span class="route-text">Take one part from a model file to G-code, in ten steps.</span></a></li>
 </ol>
-<p class="hero-notice"><strong>Before you cut:</strong> generated G-code must be checked by you before it is run on a machine. OpenChuckCAM does not guarantee that a program is safe or correct for your machine, tool or setup.</p>
+<p class="hero-notice"><strong>Before you cut:</strong> OpenChuckCAM is in early development. Generated G-code <strong>must be verified by you before it is run on a machine</strong> (NFR-12). OpenChuckCAM does not guarantee that a program is safe or correct for any machine, tool or setup, and it has not been approved for any machine. See the section below on <a href="#real-world-use">real world use</a> and <a href="start/limitations.md">known limitations</a>.</p>
 </div>
 <figure class="hero-figure">
 <img src="images/hero-1-toolpaths.png" width="1920" height="1080" alt="The OpenChuckCAM window on its Operations step. A turned baluster lies along the rotary axis, wrapped in the orange lines of its finishing toolpath, with dotted rapid moves and the held region at the chuck end.">
@@ -16,8 +16,6 @@
 </section>
 
 ## About OpenChuckCAM
-
-**OpenChuckCAM is an open source CAM utility that targets 4-axis rotary CNC machine programming for makers and hobbyists.** Tools that comprehensively support 4-axis rotary CNC machining carry heavy licensing fees, which means that they are often out of reach for home and small-workshop users. OpenChuckCAM has been developed with the vision to close that gap.
 
 <figure class="thumbs">
 <a href="images/hero-1-toolpaths.png"><img src="images/hero-1-toolpaths-thumb.png" width="400" height="225" alt="The OpenChuckCAM window on its Operations step: the finishing toolpath of the tutorial's baluster drawn in orange around the part on the rotary axis."></a>
