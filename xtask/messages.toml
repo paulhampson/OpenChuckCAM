@@ -15,7 +15,7 @@
 
 [message_new]
 "apps/openchuck-ui/src/shell/checkpoints.rs" = 1
-"crates/openchuck-app/src/overview.rs" = 25
+"crates/openchuck-app/src/overview.rs" = 24
 
 [claims]
 "apps/openchuck-ui/src/results_panel.rs" = 1
@@ -23,7 +23,6 @@
 "crates/openchuck-app/src/facing/written.rs" = 4
 "crates/openchuck-app/src/operation.rs" = 1
 "crates/openchuck-app/src/overview.rs" = 1
-"crates/openchuck-app/src/posting.rs" = 1
 "crates/openchuck-path/src/facing/validation.rs" = 1
 "crates/openchuck-path/src/facing/validation/end_layers.rs" = 1
 "crates/openchuck-path/src/facing/validation/legacy.rs" = 1
