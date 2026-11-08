@@ -1,6 +1,6 @@
 # Rest machining
 
-This example adds a rest machining operation with a 2 mm ball end mill after the tutorial's two operations, which both use 3.175 mm tools. You see what the smaller tool cuts, what it says it cannot reach, and the note it gives when there is no earlier operation to follow.
+This example adds a rest machining operation with a 2 mm ball end mill after the tutorial's two operations, which both use 3.175 mm tools. You see what the smaller tool cuts, what it says it cannot reach, and the warning it gives when there is no earlier operation to follow.
 
 > [!WARNING]
 > Rest machining works out what is left from the stock simulation, not from your real part. If an earlier operation was changed, skipped or run differently on the machine, the material the rest operation meets is not what it planned for, and a small tool can be overloaded or broken. Check the path in the simulation and run an [air cut](../glossary.md#air-cut) first. Generated G-code must be verified by you before it is run on a machine.

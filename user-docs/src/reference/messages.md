@@ -36,7 +36,7 @@ Each message has up to two links:
 | **Generate** | Generates the out-of-date operations. |
 | **Show result** | Opens a kept export result again. |
 
-The **Results** tab holds the full text of the last run, grouped by operation, with the same three level chips. **Copy all** copies every line, with the build information, for a bug report.
+The **Results** tab holds the full text of the last run, grouped by operation, with the same three level chips. Each line takes its message's level, and a warning appears once. The moves the machine's feed limits slowed are one line for each operation, and notes about consecutive moves that say the same thing are one line. **Copy all** copies every line, with the build information, for a bug report.
 
 On the Setup step, the **Setup checks** tab lists the checks of the selected setup.
 
@@ -64,4 +64,4 @@ The status bar at the bottom also shows how many machine values are not confirme
 
 ## On the command line
 
-`openchuck-cli` prints errors as `error: ...` and warnings as `warning: ...` on standard error, and ends with exit code 1 on an error. See [Command line](command-line.md).
+`openchuck-cli` prints errors as `error: ...`, warnings as `warning: ...` and information as `note: ...` on standard error, and ends with exit code 1 on an error. The notes are those of the **Results** tab: one line for each operation the machine's feed limits slowed, and one line for notes about consecutive moves that say the same thing. See [Command line](command-line.md).
