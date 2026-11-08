@@ -8,6 +8,14 @@ the layout of the build they were taken with, at 1920 x 1080; change them and th
 GENERATE = 90  # seconds: both operations of the baluster generate in well under a minute
 
 
+def hover_shot(cap, x, y, name):
+    """A shot with the mouse left on (x, y), so its tooltip shows (shot() parks the mouse)."""
+    cap.move(x, y)
+    cap.pause(2.0)
+    cap.grab(cap.OUT / f"{name}.png")
+    print("captured", f"{name}.png", flush=True)
+
+
 def run(cap, work):
     cap.click(165, 54, 2)                      # 2 Setup
     cap.click(125, 342, 2)                     # Setup 1 > Stock
@@ -31,6 +39,7 @@ def run(cap, work):
     cap.click(1878, 1016, 6)                   # Apply: stored, with the warning on the tab's row
     cap.click(1855, 1057, GENERATE)            # Generate
     cap.shot("04-tab-length-warnings")
+    hover_shot(cap, 114, 550, "04a-needs-acknowledging")  # the warning mark on 1 Rough (decision 0538)
     cap.fill(1810, 151, "13")                  # Grip length: the held region now reaches the part
     cap.pause(2)
     cap.shot("05-no-room")
