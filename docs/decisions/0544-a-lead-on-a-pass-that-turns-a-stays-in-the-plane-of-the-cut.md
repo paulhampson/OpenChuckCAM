@@ -1,9 +1,10 @@
-# 0544: A lead on a pass that turns A stays in the plane of the cut (OP-11, OP-13, OP-14, OP-15, SET-09, NFR-07, NFR-12, GC-07, NFR-06; issue #640; lane RAMPENTRY)
+# 0544: A lead on a pass that turns A stays in the plane of the cut, and the move to an entry's start is checked against the stock (OP-11, OP-13, OP-14, OP-15, SET-09, NFR-07, NFR-12, GC-07, NFR-06; issues #640 and #642; lane RAMPENTRY)
 
-- **Status:** proposed (8 Nov 2026) by lane RAMPENTRY from issue #640 (a defect, sev3: Plunge or Helix is the workaround). It applies the principle of [decision 0543](0543-a-ramp-entry-follows-the-toolpath.md) (an entry or exit follows the toolpath) to the lead, as the owner decided for #639's D8. The options L1 to L5 are put to the owner by the coordinator (decision 0049); none is answered yet, and nothing is built before its answer.
+- **Status:** proposed (8 Nov 2026) by lane RAMPENTRY from issue #640 (a defect, sev3: Plunge or Helix is the workaround). It applies the principle of [decision 0543](0543-a-ramp-entry-follows-the-toolpath.md) (an entry or exit follows the toolpath) to the lead, as the owner decided for #639's D8. The owner's answers, relayed by the coordinator on 8 Nov 2026 (decision 0049): every recommendation L1 to L5 accepted as a package. Item 6 (issue #642, the move to an entry's start) was added to this record by the coordinator as part of the same decision, accepted by default unless the owner says otherwise. The record itself is accepted only when the owner has read it in full.
 - **What it would amend:**
   - accepted [decision 0026](0026-entry-moves.md) items 4 and 5 for the lead on passes that start or end by turning A: the arcs lie in the plane of the cut at the pass's X (L1), A moves through them (L5), and only the move that meets the surface carries a contact point (L3). Line-pass leads are unchanged (L2).
   - accepted [decision 0204](0204-new-operation-strategy-list-and-inspector-heading.md) item 4 for the lead: a pass that only turns A gets a lead, and a single-point pass keeps its plunge with a path note (L4).
+  - accepted [decisions 0496](0496-low-links-between-finishing-passes.md) and [0521](0521-low-links-for-helical-rest-and-simultaneous-finishing.md) ("entries and leaves are not changed") and [0033](0033-slice-14-rotary-roughing.md) item 6 (roughing's local links): the move from the end of a link to an entry's start is now checked as the link is (item 6).
 - **Decisions it uses:** [0390](0390-helical-finishing-in-rings.md), [0420](0420-rings-for-rest-roughing-and-round-facing.md) and [0497](0497-rings-for-the-simultaneous-spiral.md) (rings); [0161](0161-tools-keep-clear-of-the-gripped-length.md); [0241](0241-continuous-rotary-operation-boundaries.md); [0536](0536-message-levels-operation-reference-and-setting-links.md) (message form, proposed: guidance for new wording).
 - **Date:** 8 Nov 2026.
 - **Open items:** none new.
@@ -26,6 +27,10 @@ The issue's throwaway probe was re-run in release mode on `main` `1f3675d` on 8 
 
 On the cone the lead-out continues along +X, where the part rises. On finishing the arcs reach 3 mm beyond each end of the part; a held region there would be reached (not measured: the probe's keep-out began 1 mm beyond the arc).
 
+## Context, issue #642
+
+Read on `main` `1f3675d` and reproduced by this lane (`crates/openchuck-path/tests/entry_link_stock.rs`, synthetic fixtures): a link ends above the pass's first cut point at a height checked against the stock under the tool's footprint along the link. The lead-in (`Entry::lead_in`) and the ramp (`Entry::ramp`) then move sideways at that height to their own start, which is not over the first cut point, and nothing checks that move. Under a low link (0496, 0521) or roughing's local link that height is only the approach distance above the stock along the link. With a block of stock 19.5 mm from the axis beside the first cut point (outside the one-tool-radius footprint of the link's check), two line passes, the second linked low: the lead-in's sideways rapid at 17.0 mm enters the block at X 19.16 mm, and a 10 degree ramp's at X 18.81 mm; the plunge on the same stock stays clear. In roughing a lead arc's side is chosen only against the finished surface, so it can swing through uncut stock at full depth (issue #642 item 3; not yet reproduced).
+
 ## Decision (proposed)
 
 On a pass that starts or ends by turning A, the lead-in and lead-out are tangent to the cut, as on a line pass, and stay in the plane of the cut at the pass's X:
@@ -35,10 +40,14 @@ On a pass that starts or ends by turning A, the lead-in and lead-out are tangent
 3. **Feed and contact (L3 a).** The cutting feed, with a contact point only on the move that meets the surface, timed by the shared rules for simultaneous moves (OP-13); the moves above the surface carry none.
 4. **Passes with no direction (L4 a).** A pass that only turns A gets the lead of item 1. A single-point pass stays a plunge (0204 item 4) and gets no lead-out, and a path note (information, decision 0536) names the passes.
 5. **A at the start (L5 a).** The link arrives at the A where the arc starts, and A turns the Rotation way through the arc and the ring, never reversing (OP-15). The extra A counts against the A range (0241); where it does not fit, generation is refused naming the A range (Setup step, Machine).
+6. **The move to an entry's start (issue #642).** For every entry style, every move at the link height from where the link ends to the entry's start is checked against the stock along its whole line under the tool's footprint, as the link itself is (0496 item 3); the pass's own stock is used where it carries one (roughing), else the setup's. Where it is not clear, the tool rises first to the height the check gives (never above the retract height) and an information note counts such entries; where even the retract height is not clear, the operation is refused naming the pass and the entry (NFR-07, decision 0536 form). In a pass that carries its stock (roughing), a lead arc is placed only where the stock along it is already cleared (the arc's positions lie above the stock the pass carries, by the approach distance at the arc's start and at no depth below the cleared stock along it); otherwise the other side is tried, and then the operation is refused naming Entry ("set Entry to Plunge, Ramp or Helix"). With decision 0543 the ramp starts over its own path, so the ramp's part of #642 goes away; the check still covers the rapid to the ramp's start.
+7. **A single-point pass with a lead.** It keeps 0204 item 4's plunge (L4), but only when the tool can plunge (`Tool::can_plunge`); otherwise the operation is refused naming the tool. This closes for the lead the gap decision 0543 D7 closes for the ramp (today the plunge is made whether or not the tool can plunge).
 
 **Why it is safe.** On a full ring, the stretch before the first point and after the last is the ring's own path, so the lead lies over cut the ring makes anyway, raised along the tool axis: the dominance argument of decision 0543 section 3. On a spiral and a partial ring it lies just off the cut at the same X; the gouge drop on every arc position, the keep-out check and the collision oracle stay, and a lead that would cut the finished surface or reach a held region is refused in the form of decision 0536, naming the Lead radius and the entry styles that remain.
 
-## Owner decisions needed (the coordinator puts them; one answer each)
+## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
+
+All recommendations accepted as a package. Items 6 and 7 follow from the same answers and from decision 0543 D7; the coordinator treats them as part of this decision.
 
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
@@ -55,7 +64,7 @@ On a pass that starts or ends by turning A, the lead-in and lead-out are tangent
 
 ## Consequences
 
-- **Code.** `openchuck-path` `assemble/entry.rs` (`lead_in`, `exit`, using the pass shape and the `A0 - Δ` link of decision 0543), `assemble.rs` (the link and `fit_range` with the arc's A). No API change beyond decision 0543's.
+- **Code.** `openchuck-path` `assemble/lead.rs` (new: the lead on passes that turn A), `assemble/entry.rs` (dispatch; the checked move to an entry's start, item 6), `assemble.rs` (the link and `fit_range` with the arc's A). No API change beyond decision 0543's.
 - **Output.** Saved operations with Lead entry on passes that turn A give a different program at the next version; golden files are regenerated with a changelog entry and a release-notes line. Line-pass leads are byte-identical.
 - **Documents (proposed, not edited until the owner agrees):** verification plan row OP-11 (the lead on a pass that turns A); UI specification Entry row ("With `lead`, a matching arc also leaves the cut", gains "on a ring or spiral the arcs turn with the part, in the plane of the cut"); user guide Entry row. No change to `docs/requirements.md` or `docs/architecture.md`.
 - **Not proved.** The geometry checks say nothing about chip load or tool suitability; no machine trial is claimed. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
@@ -71,6 +80,8 @@ Tests written first, named by requirement, in `crates/openchuck-path/tests/entry
 - A held region at the starting end, and the cone that rises along X, are no longer refused (`req_set_09_*`).
 - Line-pass leads byte-identical to `main`; output the same at 1, 2 and N threads (GC-07, NFR-06).
 - Public stand-ins: the blisk STEP part and the blisk start example with Lead entry on helical finishing in Rings.
+- Issue #642 (`entry_link_stock.rs`, written first and failing on `main`): the rapid to a lead-in's start and to a ramp's start never sweeps the tool through the stock under a low link; the plunge control stays clear; where only the retract height is clear the entry rises and the note counts it; where nothing is clear the refusal names the pass; in roughing a lead arc never passes through uncut stock.
+- A single-point pass under Lead with a tool that cannot plunge is refused naming the tool.
 
 ## Open items
 
