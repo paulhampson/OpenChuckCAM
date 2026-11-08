@@ -534,9 +534,9 @@ fn req_op_02_avoid_and_check_sets_of_other_strategies_take_their_choices() {
             let warnings = &run.groups[0].warnings;
             assert_eq!(warnings.len(), 1, "{name} {choice:?}: {warnings:?}");
             assert!(
-                warnings[0].message.starts_with(&said),
+                warnings[0].text.starts_with(&said),
                 "{name} {choice:?}: {}",
-                warnings[0].message
+                warnings[0].text
             );
         }
         app.set_operation_selection(op, role, roof, false).unwrap();

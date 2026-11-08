@@ -1007,7 +1007,7 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
     let took = started.elapsed().as_secs_f64();
 
     // The guide is the longer blade root, the opposite side the other.
-    let notes = out.notes.join("\n");
+    let notes = out.notes().join("\n");
     assert!(
         notes.contains("face 8 is cut from its guide, edge 39"),
         "{notes}"
@@ -1094,9 +1094,9 @@ fn req_op_28_face_flow_on_the_blisk_floor_runs_between_the_blade_roots_without_g
     assert!(!out.unreached.is_empty());
     let area: f64 = out.unreached.iter().map(|u| u.area).sum();
     assert!(
-        out.warnings
+        out.warnings()
             .iter()
-            .any(|w| w.message.contains("cannot reach"))
+            .any(|w| w.text.contains("cannot reach"))
     );
     println!(
         "face-flow on the blisk floor: {} runs, {} points, {took:.2} s; {poses} poses checked, \

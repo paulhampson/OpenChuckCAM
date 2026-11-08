@@ -65,6 +65,7 @@
 //! Everything here is deterministic (NFR-06): the only parallel work is the
 //! gate's sampling, through [`crate::parallel`].
 
+use crate::notice::{Acknowledgement, Level, Notice};
 use std::collections::BTreeMap;
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -73,7 +74,6 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 use openchuck_types::units::Degrees;
 
-use crate::assemble::PathWarning;
 use crate::cutter::{bound_at, clearance_at};
 use crate::error::{PathError, Result};
 use crate::parallel;
@@ -899,7 +899,7 @@ impl FacePath {
     /// names the face, the depth and the place, and what to change, and
     /// points at the setting that changes it. `keep_off_end_faces` is the
     /// operation's setting.
-    pub fn neighbour_warnings(&self, tolerance: f64, keep_off_end_faces: bool) -> Vec<PathWarning> {
+    pub fn neighbour_warnings(&self, tolerance: f64, keep_off_end_faces: bool) -> Vec<Notice> {
         self.limits
             .neighbour_cuts
             .iter()
@@ -940,16 +940,21 @@ impl FacePath {
                         Some(parameter::KEEP_OFF_END_FACES),
                     )
                 };
-                PathWarning {
-                    message: format!(
+                Notice {
+                    level: Level::Warning,
+                    topic: None,
+                    segment: None,
+                    text: format!(
                         "Swarf on face {} cuts {:.3} mm into face {}, which meets it {meets}, at \
                          ({:.3}, {:.3}, {:.3}), more than this operation's tolerance of \
                          {tolerance} mm.{change} The program is made with this cut in it: check \
                          the program and the simulation before running it.",
                         self.number, cut.depth, cut.face, cut.at.x, cut.at.y, cut.at.z
                     ),
-                    parameter: parameter.map(str::to_owned),
-                    requires_acknowledgement: false,
+                    setting: parameter.map(str::to_owned),
+                    // The side of the tool meets another face of the part
+                    // (decision record 0538).
+                    acknowledgement: Some(Acknowledgement::PossibleCollision),
                 }
             })
             .collect()
@@ -3011,13 +3016,16 @@ fn swarf(
                 tip: false,
             })
     {
-        warnings.push(PathWarning {
-            message: "The boundary of this swarf operation limits nothing, because both its \
+        warnings.push(Notice {
+            level: Level::Warning,
+            topic: None,
+            segment: None,
+            text: "The boundary of this swarf operation limits nothing, because both its \
                       limits, the pass and the tip, are off: the faces are cut as if there were \
                       no boundary."
                 .to_owned(),
-            parameter: None,
-            requires_acknowledgement: false,
+            setting: None,
+            acknowledgement: None,
         });
     }
     // Each watched surface the tool breaks, over every face, in the
@@ -3042,10 +3050,13 @@ fn swarf(
                 context,
             )?;
             if let Some(message) = path.overcut_warning(settings.tolerance, clearing) {
-                warnings.push(PathWarning {
-                    message,
-                    parameter: Some(names::TOLERANCE.to_owned()),
-                    requires_acknowledgement: false,
+                warnings.push(Notice {
+                    level: Level::Warning,
+                    topic: None,
+                    segment: None,
+                    text: message,
+                    setting: Some(names::TOLERANCE.to_owned()),
+                    acknowledgement: None,
                 });
             }
         }
@@ -3079,8 +3090,11 @@ fn swarf(
             continue;
         }
         let faces: Vec<String> = faces.iter().map(u32::to_string).collect();
-        warnings.push(PathWarning {
-            message: format!(
+        warnings.push(Notice {
+            level: Level::Warning,
+            topic: None,
+            segment: None,
+            text: format!(
                 "The tool {} '{}' along about {length:.3} mm of face {}. The set only warns, \
                  so the path is kept: set it to cut the pass short, or check the cut in the \
                  simulation before using the path.",
@@ -3088,15 +3102,18 @@ fn swarf(
                 w.name,
                 faces.join(", ")
             ),
-            parameter: None,
-            requires_acknowledgement: false,
+            setting: None,
+            // A check set often stands for a clamp: touching it is a
+            // possible collision; cutting into an avoid set is a gouge
+            // (decision record 0538, the owner's answer to question 9).
+            acknowledgement: (w.protection == Protection::Check)
+                .then_some(Acknowledgement::PossibleCollision),
         });
     }
     context.report("swarf", total, Some(total));
     Ok(StrategyOutput {
         passes,
-        notes,
-        warnings,
+        notices: crate::strategy::notices(warnings, notes),
         unreached: Vec::new(),
         shank_breaks: Vec::new(),
     })

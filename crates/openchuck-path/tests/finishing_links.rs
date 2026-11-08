@@ -128,8 +128,8 @@ fn req_op_14_links_default_to_retract_and_are_unchanged() {
         let plain = path(strategy, &f.input(), None);
         let explicit = path(strategy, &f.input(), Some(parameter::RETRACT));
         assert_eq!(
-            format!("{:?} {:?}", plain.group, plain.notes),
-            format!("{:?} {:?}", explicit.group, explicit.notes),
+            format!("{:?} {:?}", plain.group, plain.notices),
+            format!("{:?} {:?}", explicit.group, explicit.notices),
             "{}",
             strategy.name()
         );
@@ -201,7 +201,7 @@ fn req_gc_07_req_nfr_06_low_links_are_identical_at_1_2_and_n_threads() {
     let v = values(Some(parameter::LOW));
     let runs = openchuck_testkit::determinism::check(|| {
         let p = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
-        format!("{:?} {:?}", p.group, p.notes).into_bytes()
+        format!("{:?} {:?}", p.group, p.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);

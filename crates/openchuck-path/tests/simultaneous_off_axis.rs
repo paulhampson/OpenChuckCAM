@@ -303,11 +303,11 @@ fn req_op_26_req_op_06_an_off_axis_cylinder_is_driven_round_its_own_centre() {
     assert!(most <= 0.03 + TOLERANCE, "{most}");
     assert!(deepest >= -TOLERANCE, "{deepest}");
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("does not surround the rotary axis")),
+            .any(|n| n.text.contains("does not surround the rotary axis")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -382,7 +382,7 @@ fn req_op_26_req_nfr_06_off_axis_sections_are_identical_at_1_2_and_n_threads() {
     let v = values(&[(names::STEPOVER, 1.5)]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
-        format!("{:?} {:?}", path.group, path.notes).into_bytes()
+        format!("{:?} {:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -551,9 +551,9 @@ fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
     let note = |shape: ToolShape| {
         let f = Fixture::new(MeshSurface::new(&crankshaft()).unwrap(), 18.0, &z1(shape));
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
-        path.notes
+        path.notices
             .iter()
-            .map(|n| n.message.clone())
+            .map(|n| n.text.clone())
             .filter(|m| m.contains("inside corner"))
             .collect::<Vec<_>>()
     };
@@ -580,9 +580,9 @@ fn req_op_26_a_ball_end_notes_the_corner_it_cannot_finish() {
     );
     let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &rings, ctx)).unwrap();
     let in_rings: Vec<String> = path
-        .notes
+        .notices
         .iter()
-        .map(|n| n.message.clone())
+        .map(|n| n.text.clone())
         .filter(|m| m.contains("inside corner"))
         .collect();
     assert_eq!(in_rings, ball);
@@ -604,10 +604,10 @@ fn req_op_26_no_corner_note_where_every_section_surrounds_the_axis() {
     let v = values(&[(names::STEPOVER, 1.0)]);
     let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .all(|n| !n.message.contains("inside corner")),
+            .all(|n| !n.text.contains("inside corner")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }

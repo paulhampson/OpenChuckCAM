@@ -197,19 +197,19 @@ fn req_op_14_req_nfr_07_links_that_cannot_be_lowered_retract_and_are_said() {
     );
     assert!(
         lowered
-            .notes
+            .notices
             .iter()
-            .any(|n| n.message.contains("could not be lowered")),
+            .any(|n| n.text.contains("could not be lowered")),
         "{:?}",
-        lowered.notes
+        lowered.notices
     );
-    assert!(!normal.notes.iter().any(|n| n.message.contains("lowered")));
+    assert!(!normal.notices.iter().any(|n| n.text.contains("lowered")));
     // A job that can lower every link says nothing.
     let all = axial(&fixture(), &values(&[low()]));
     assert!(
-        !all.notes
+        !all.notices
             .iter()
-            .any(|n| n.message.contains("could not be lowered"))
+            .any(|n| n.text.contains("could not be lowered"))
     );
 }
 
@@ -268,11 +268,11 @@ fn req_set_09_low_links_do_not_cross_a_held_region() {
         "no other link was lowered: {elsewhere:?}"
     );
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("could not be lowered")),
+            .any(|n| n.text.contains("could not be lowered")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -377,11 +377,11 @@ fn req_op_14_req_nfr_07_links_a_reversing_ramp_keeps_high_are_counted() {
         ]),
     );
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("could not be lowered")),
+            .any(|n| n.text.contains("could not be lowered")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }
 
@@ -421,10 +421,10 @@ fn req_op_14_req_nfr_12_a_low_link_the_oracle_rejects_retracts_instead_of_failin
     let top = |p: &GeneratedPath| link_radii(p).into_iter().fold(0.0_f64, f64::max);
     assert!((top(&path) - (PART + 6.0)).abs() < 1e-6);
     assert!(
-        path.notes
+        path.notices
             .iter()
-            .any(|n| n.message.contains("could not be lowered")),
+            .any(|n| n.text.contains("could not be lowered")),
         "{:?}",
-        path.notes
+        path.notices
     );
 }

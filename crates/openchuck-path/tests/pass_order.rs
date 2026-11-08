@@ -144,7 +144,7 @@ fn req_gc_07_req_nfr_06_by_region_is_identical_at_1_2_and_n_threads() {
     let v = values(order::BY_REGION);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&SimultaneousFinishing, &f.input(), &v, ctx)).unwrap();
-        format!("{:?} {:?}", path.group, path.notes).into_bytes()
+        format!("{:?} {:?}", path.group, path.notices).into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
@@ -184,11 +184,11 @@ fn req_op_14_req_sim_08_the_crankshaft_extra_passes_are_cut_beside_their_region(
         assert!(t1 <= 1.01 * t0, "{t0} {t1}");
         // The user is told, and the old order says nothing new.
         let told = |p: &GeneratedPath| {
-            p.notes
+            p.notices
                 .iter()
-                .any(|n| n.message.contains("pass order by region"))
+                .any(|n| n.text.contains("pass order by region"))
         };
-        assert!(told(&by_region), "{:?}", by_region.notes);
+        assert!(told(&by_region), "{:?}", by_region.notices);
         assert!(!told(&after));
     }
 }

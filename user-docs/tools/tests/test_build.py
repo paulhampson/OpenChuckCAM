@@ -106,6 +106,26 @@ class Stamp(unittest.TestCase):
         with self.assertRaises(ValueError):
             build.fill(TEMPLATE, version="0.31.0", tag="app-v0.32.0", commit="abc1234", date="2026-11-02", notice=NOTICE)
 
+class Favicon(unittest.TestCase):
+    """Decision 0542: the guide's favicon files reach the site unchanged, under the names the page
+    template links (mdBook would rename theme favicons with a content hash)."""
+
+    def test_the_favicons_are_copied_to_the_site_root(self):
+        import tempfile
+        out = tempfile.mkdtemp()
+        build.copy_favicons(out)
+        for name in ("favicon.svg", "favicon.png"):
+            with open(os.path.join(build.FAVICON, name), "rb") as a, open(os.path.join(out, name), "rb") as b:
+                self.assertEqual(a.read(), b.read(), name)
+
+    def test_the_template_links_the_copied_favicons(self):
+        with open(os.path.join(build.BOOK, "theme", "index.hbs"), encoding="utf-8") as f:
+            template = f.read()
+        self.assertIn('href="{{ path_to_root }}favicon.svg"', template)
+        self.assertIn('href="{{ path_to_root }}favicon.png"', template)
+        self.assertFalse(os.path.exists(os.path.join(build.BOOK, "theme", "favicon.svg")))
+        self.assertFalse(os.path.exists(os.path.join(build.BOOK, "theme", "favicon.png")))
+
 
 if __name__ == "__main__":
     unittest.main()

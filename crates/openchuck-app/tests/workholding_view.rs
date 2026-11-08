@@ -1055,6 +1055,26 @@ fn findings(
     (dir, found)
 }
 
+/// Applies `draft` as the workholding section does (it stores the draft
+/// unless a finding refuses), then checks that it is stored and that the
+/// stored workholding's check still gives `found`, on the same tab's row
+/// (decision record 0539 item 1).
+fn apply_stores(
+    name: &str,
+    draft: &Workholding,
+    found: &[openchuck_app::workholding::WorkholdingFinding],
+) {
+    let (dir, mut app, _) = selection_project(name, Workholding::default());
+    let setup = app.project().setups()[0].id;
+    assert!(found.iter().all(|f| !f.refuses), "{found:?}");
+    store(&mut app, setup, draft.clone());
+    let stored = app.project().setup(setup).unwrap().workholding.clone();
+    assert_eq!(&stored, draft, "the draft is stored");
+    let again = app.start_check_workholding(setup, &stored).wait().unwrap();
+    assert_eq!(again, found, "the warning stays on its row once stored");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// An automatic tab with no room at its end is a warning at Apply, as it is
 /// at generation: the workholding is stored and the finding stays on the
 /// tab's row (decision record 0539 item 1).
@@ -1068,11 +1088,14 @@ fn req_ui_25_apply_stores_with_an_automatic_tab_that_has_no_room() {
         tabs: vec![head],
         ..Workholding::default()
     };
-    let (dir, found) = findings("no-room", draft);
+    let (dir, found) = findings("no-room", draft.clone());
     assert_eq!(found.len(), 1, "{found:?}");
+    // On the automatic tab's row, the first.
+    assert_eq!(found[0].tab, Some(0), "{found:?}");
     assert!(found[0].text.contains("no room"), "{}", found[0].text);
     assert!(!found[0].refuses, "a warning, not a refusal");
     std::fs::remove_dir_all(dir).unwrap();
+    apply_stores("no-room-stored", &draft, &found);
 }
 
 /// An automatic tab over a tab placed by hand is a warning at Apply: the
@@ -1086,11 +1109,14 @@ fn req_ui_25_apply_stores_with_tabs_that_overlap() {
         tabs: vec![head, cylinder_tab(-1.5, 1.0, 4.0)],
         ..Workholding::default()
     };
-    let (dir, found) = findings("overlap", draft);
+    let (dir, found) = findings("overlap", draft.clone());
     assert_eq!(found.len(), 1, "{found:?}");
+    // On the automatic tab's row, the first.
+    assert_eq!(found[0].tab, Some(0), "{found:?}");
     assert!(found[0].text.contains("overlaps"), "{}", found[0].text);
     assert!(!found[0].refuses, "a warning, not a refusal");
     std::fs::remove_dir_all(dir).unwrap();
+    apply_stores("overlap-stored", &draft, &found);
 }
 
 /// A tab outside the head and tail zones is still refused at Apply

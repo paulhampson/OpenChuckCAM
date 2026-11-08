@@ -4,6 +4,4 @@ This page is not written yet. It will cover common problems and what to do about
 
 ## Reporting a problem
 
-Open an issue in the project's [GitHub issues](https://github.com/paulhampson/OpenChuckCAM/issues). Say which build you used (the commit is in the archive's README, and in **Help > About**), what you did, and what you expected.
-
-The program's log file can help. [Install and first run](start/install.md#where-the-program-keeps-its-log) says where it is. It never leaves your computer; attach it to an issue only if you choose to.
+[Reporting a problem or asking for a feature](reporting.md) says how to open an issue, what to include, and what the program's log file holds.
