@@ -502,8 +502,25 @@ fn passes(
             };
             (passes, spaced, None)
         };
+        // Past the stock, the pass carries on in its own motion (decision
+        // record 0546): the spiral at its pitch, rings at their spacing.
+        let mut extend_note = None;
         let mut passes = match extension {
-            Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
+            Some(e) => {
+                let turning = if rings {
+                    crate::extend::Turning::Rings {
+                        spacing: ring_places((x0, x1), pitch, &turns).1,
+                        sign,
+                        blend,
+                    }
+                } else {
+                    crate::extend::Turning::Helix { pitch, sign }
+                };
+                let (passes, note) =
+                    e.run_out_turning(passes, input, (&grown, leave), (x0, x1), turning, step);
+                extend_note = note.map(|t| Notice::information(t).about(topic::PAST_THE_ENDS));
+                passes
+            }
             None => passes,
         };
         let mut spaced_note = None;
@@ -559,6 +576,7 @@ fn passes(
         passes.extend(free.passes);
         let notes = ring_note
             .into_iter()
+            .chain(extend_note)
             .chain(faces::note(&turns))
             .chain(order_note)
             .chain(spaced_note)

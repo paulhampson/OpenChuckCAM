@@ -81,3 +81,17 @@ The option not chosen: keep today's line for an operation saved without a new ma
 - `req_set_09_a_run_out_towards_a_held_end_is_still_refused`
 
 Each timed uninstrumented; the local coverage check of `openchuck-path`; `cargo xtask deps`, `licences`, `records`, `trace` and `messages`.
+
+### As built (lane RINGSTEP, the build pull request for #638 and #644, 8 Nov 2026)
+
+Built on the owner's answers Q1 and Q2 (relayed); the record was accepted the same day. `extend::Extension::run_out_turning` and `extend::Turning` (`Helix { pitch, sign }`, `Rings { spacing, sign, blend }`) make the run-out; `helical.rs` calls it for the spiral and the rings, and axial and indexed finishing keep `run_out` along X. The run-out's points are no further apart in A than the largest angle step, and a step or blend between added rings is cut as `helical::ring_passes` cuts them. A note, information under the topic Past the ends (decision 0536), gives the turns added at each end and the length of path: "the passes carry on past the part in their own motion (rings at the ring spacing) to the extended ends, n turns at the start end and m at the far end, L mm of path in all".
+
+Tests in `crates/openchuck-path/tests/extend.rs`, each written before its code and run uninstrumented (each under 9 s): `req_op_24_a_spiral_run_out_continues_the_helix_at_its_pitch` (both rotations; no move along X with A held past the part; the note), `req_op_24_a_ring_run_out_adds_rings_out_to_the_extended_end` (Sharp and Blended; rings no further apart than the spacing, the last at each extended end exactly), `req_op_24_ring_and_spiral_run_outs_leave_no_skin_past_the_part` (the test kit's independent dexel stock: the stock past the part beyond the end ring's reach is cut to the part's radius all round; the line along X before this change leaves it at every other angle), `req_op_15_run_outs_turn_one_way`, `req_op_24_axial_and_indexed_run_outs_stay_along_x`, `req_gc_07_req_nfr_06_run_outs_are_identical_at_1_2_and_n_threads` and `req_op_24_req_op_21_a_ring_run_out_rises_over_a_tab`. The existing Extend tests pass unchanged: each strategy still reaches the extended ends exactly, the held end is still refused, and the spiral rises over a tab.
+
+**Item 3, the height.** An added ring is at the pass's end point's height all round, not at the end ring's height at each A: past the part's end there is no surface to follow, and the drop on the target still raises the tool over anything there, including the part's own end within the tool's reach.
+
+The moves just past the part's ends within the tool's radius also hold the free ends' passes (decision 0344), which turn A there; the tests look at the run-out beyond them.
+
+Suites and checks as in decision 0545's As built (one pull request for both). Coverage: the run-out's new lines are covered except the empty pass and a pass that reaches neither end, both defensive.
+
+Not done: nothing was run on a machine. Generated G-code remains the user's to verify before running it on a machine (NFR-12).
