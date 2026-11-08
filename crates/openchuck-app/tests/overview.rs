@@ -944,6 +944,17 @@ fn req_ui_12_every_message_of_a_setup_and_a_model_leads_with_its_topic_and_item(
         clearance.source,
         Some(ItemRef::SetupPart(f.setup, SetupPart::WorkOffset))
     );
+    // Show setting opens the setup at its clearance (decision record 0536
+    // section 4).
+    assert_eq!(
+        clearance.action,
+        Some(MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::setup(
+                f.setup,
+                openchuck_app::setup_form::SetupField::SafeRadius
+            )
+        ))
+    );
 
     // With no machine, the setup says so in the same form.
     f.app.execute(Command::SetMachine(None)).unwrap();
@@ -2277,12 +2288,25 @@ fn req_set_06_req_nfr_12_a_tool_too_long_for_the_safe_z_warns_on_the_z1() {
             .filter(|c| !c.passed && c.text.contains("top of the Z travel at the safe Z"))
             .map(|c| c.text.clone())
             .collect();
-        let messages = o
+        let messages: Vec<_> = o
             .messages
             .iter()
             .filter(|m| m.text.contains("top of the Z travel at the safe Z"))
-            .count();
-        assert_eq!(messages, found.len(), "one message per check");
+            .collect();
+        assert_eq!(messages.len(), found.len(), "one message per check");
+        // Show setting opens the setup at its safe Z, the value the text
+        // says to lower (decision record 0536 section 4).
+        for m in messages {
+            assert_eq!(
+                m.action,
+                Some(MessageAction::ShowSetting(
+                    openchuck_app::overview::SettingRef::setup(
+                        f.setup,
+                        openchuck_app::setup_form::SetupField::SafeZ
+                    )
+                ))
+            );
+        }
         found.sort();
         found
     };

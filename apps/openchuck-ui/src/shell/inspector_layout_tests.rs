@@ -178,3 +178,53 @@ fn req_ui_07_widening_the_pane_gives_the_labels_room_before_the_boxes() {
     assert!(first(&wide) >= first(&narrow));
     assert!(first(&wide) <= 220.0 + 60.0, "{}", first(&wide));
 }
+
+/// Decision record 0536 section 4: "Show setting" on a message about a
+/// setup's field opens the Setup step at that setup, with the field's
+/// section open and the field marked; on a message about a tool, the tool
+/// library at that tool's field.
+#[test]
+fn req_ui_12_show_setting_opens_a_setup_or_a_tool_at_its_field() {
+    use openchuck_app::overview::{MessageAction, SettingRef};
+    use openchuck_app::setup_form::SetupField;
+    let mut rig = Rig::cube("show-setting-places", None);
+    rig.size = egui::vec2(1920.0, 1080.0);
+    for _ in 0..4 {
+        rig.frame(Vec::new());
+    }
+    let project = rig.shell.app.as_ref().unwrap().project();
+    let setup = project.setups()[0].id;
+    let tool = project.tools()[0].id;
+    rig.shell
+        .message_action(MessageAction::ShowSetting(SettingRef::setup(
+            setup,
+            SetupField::SafeZ,
+        )));
+    for _ in 0..6 {
+        rig.frame(Vec::new());
+    }
+    assert_eq!(rig.shell.step, Step::Setup);
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(setup)));
+    assert!(rig.shows("Safe Z"), "the work offset section is open");
+    assert!(
+        rig.shell
+            .form
+            .is_shown(&inspector::setup_field_key(SetupField::SafeZ))
+    );
+
+    rig.shell
+        .message_action(MessageAction::ShowSetting(SettingRef::tool(
+            tool,
+            openchuck_app::tool_edit::fields::FLUTE_LENGTH,
+        )));
+    for _ in 0..6 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shell.tool_library.is_open());
+    assert!(rig.shows("Flute length"));
+    assert!(
+        rig.shell
+            .tool_library
+            .is_shown(openchuck_app::tool_edit::fields::FLUTE_LENGTH)
+    );
+}

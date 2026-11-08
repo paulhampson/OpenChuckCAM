@@ -359,6 +359,31 @@ impl SettingRef {
             key: key.into(),
         }
     }
+
+    /// The field `field` of setup `setup`.
+    pub fn setup(setup: SetupId, field: crate::setup_form::SetupField) -> Self {
+        Self {
+            place: SettingPlace::Setup(setup),
+            key: field.key().unwrap_or_default().to_owned(),
+        }
+    }
+
+    /// The field `key` of tool `tool`, in the tool library (a name of
+    /// [`crate::tool_edit::fields`]).
+    pub fn tool(tool: ToolId, key: impl Into<String>) -> Self {
+        Self {
+            place: SettingPlace::Tool(tool),
+            key: key.into(),
+        }
+    }
+
+    /// The post's setting `key`, in the export dialog.
+    pub fn post(key: impl Into<String>) -> Self {
+        Self {
+            place: SettingPlace::Post,
+            key: key.into(),
+        }
+    }
 }
 
 /// What a message's action link does. The front end carries it out.
@@ -2309,11 +2334,20 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                                 )
                             },
                         );
+                        // Show setting opens what the text says to change:
+                        // the tool, whose flute length sets how far it
+                        // sticks out, or the setup's safe Z (decision record
+                        // 0536 section 4).
+                        let action = MessageAction::ShowSetting(if collision {
+                            SettingRef::tool(snapshot.id, crate::tool_edit::fields::FLUTE_LENGTH)
+                        } else {
+                            SettingRef::setup(s.id, crate::setup_form::SetupField::SafeZ)
+                        });
                         let message = Message::formed(
                             Severity::Warning,
                             text.clone(),
                             Some((at(SetupPart::Machine), s.name.clone())),
-                            Some(MessageAction::ReviewSetup(s.id)),
+                            Some(action.clone()),
                         );
                         messages.push(if collision {
                             message.to_acknowledge()
@@ -2324,7 +2358,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                             setup: s.id,
                             passed: false,
                             text,
-                            action: Some(MessageAction::ReviewSetup(s.id)),
+                            action: Some(action),
                         });
                     }
                 }
@@ -2385,6 +2419,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 );
                 let action = if part == Some(SetupPart::Workholding) {
                     MessageAction::EditWorkholding(s.id)
+                } else if setup_topic(&w.kind) == topic::CLEARANCE {
+                    // The clearance radius the text says to raise (decision
+                    // record 0536 section 4).
+                    MessageAction::ShowSetting(SettingRef::setup(
+                        s.id,
+                        crate::setup_form::SetupField::SafeRadius,
+                    ))
                 } else {
                     MessageAction::ReviewSetup(s.id)
                 };

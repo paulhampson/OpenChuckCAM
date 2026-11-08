@@ -1625,7 +1625,26 @@ fn geometry(
 
 /// The key of a setup row in the form state.
 fn setup_key(row: &SetupRow) -> String {
-    format!("\u{0}setup {:?}", row.field)
+    setup_field_key(row.field)
+}
+
+/// The form key of a setup row editing `field`.
+pub(super) fn setup_field_key(field: openchuck_app::setup_form::SetupField) -> String {
+    format!("\u{0}setup {field:?}")
+}
+
+/// The section of the setup inspector that holds `field`.
+pub(super) fn setup_field_section(field: openchuck_app::setup_form::SetupField) -> SetupPart {
+    use openchuck_app::setup_form::SetupField;
+    match field {
+        SetupField::PartOffset => SetupPart::PartPosition,
+        SetupField::WorkZeroX
+        | SetupField::SafeRadius
+        | SetupField::SafeZ
+        | SetupField::MinClearance
+        | SetupField::StockMargin => SetupPart::WorkOffset,
+        _ => SetupPart::Stock,
+    }
 }
 
 /// Draws setup rows. Returns the edited setup and the key of the row it came

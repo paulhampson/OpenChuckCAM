@@ -32,6 +32,10 @@ pub struct FieldState {
     /// (UI-26); their label, by key. They are a kind of refusal, kept apart
     /// so the step bar can mark them.
     unreadable: BTreeMap<String, String>,
+    /// The field a "Show setting" link opened (decision record 0536 section
+    /// 4): its key, the message's text to mark it with, and whether it is
+    /// still to be brought into view.
+    shown: Option<(String, String, bool)>,
 }
 
 impl FieldState {
@@ -40,6 +44,34 @@ impl FieldState {
         self.text.clear();
         self.errors.clear();
         self.unreadable.clear();
+        self.shown = None;
+    }
+
+    /// Marks the field `key` with the warning `text` and brings it into view
+    /// the next time it is drawn ("Show setting", decision record 0536
+    /// section 4). The mark stays until another field is shown, the field
+    /// is committed, or the form is cleared for another item.
+    pub fn show_setting(&mut self, key: impl Into<String>, text: impl Into<String>) {
+        self.shown = Some((key.into(), text.into(), true));
+    }
+
+    /// Whether "Show setting" has marked the field `key`.
+    #[cfg(test)]
+    pub fn is_shown(&self, key: &str) -> bool {
+        self.shown
+            .as_ref()
+            .is_some_and(|(shown, _, _)| shown == key)
+    }
+
+    /// The mark "Show setting" left on `key`, and whether to bring it into
+    /// view now (once).
+    fn shown(&mut self, key: &str) -> Option<(String, bool)> {
+        match &mut self.shown {
+            Some((shown, text, scroll)) if shown == key => {
+                Some((text.clone(), std::mem::take(scroll)))
+            }
+            _ => None,
+        }
     }
 
     /// Forgets child buffers after an explicitly guarded structural edit.
@@ -393,8 +425,16 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     let error = state.error(row.key).map(str::to_owned);
     let marked = error.is_some() || row.problem.is_some();
     let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
-    let warned = row.warned.is_some() && !marked;
-    if row.scroll_to {
+    // A field "Show setting" opened is marked as a warned one is.
+    let shown = state.shown(row.key);
+    let warned_text = row.warned.map(str::to_owned).or_else(|| {
+        shown
+            .as_ref()
+            .map(|(text, _)| text.clone())
+            .filter(|text| !text.is_empty())
+    });
+    let warned = warned_text.is_some() && !marked;
+    if row.scroll_to || shown.as_ref().is_some_and(|(_, scroll)| *scroll) {
         ui.scroll_to_cursor(Some(egui::Align::Center));
     }
     form_row(ui, |ui| {
@@ -597,8 +637,12 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         reason_line(ui, reason, DARK.error);
     } else if let (true, Some(text)) = (needed, row.needs) {
         warning_line(ui, text);
-    } else if let Some(text) = row.warned {
+    } else if let Some(text) = warned_text.as_deref() {
         warning_line(ui, text);
+    }
+    // A value committed to the field "Show setting" opened answers it.
+    if shown.is_some() && matches!(outcome, Outcome::Commit(_)) {
+        state.shown = None;
     }
     outcome
 }
@@ -1118,6 +1162,34 @@ mod tests {
         assert_eq!(outcome, Outcome::Commit("0.25".to_owned()));
         state.result("stepover", Ok(()));
         assert_eq!(state.typed("stepover"), None);
+    }
+
+    #[test]
+    fn req_ui_12_show_setting_marks_the_field_until_a_value_is_committed() {
+        // Decision record 0536 section 4: "Show setting" brings the field
+        // into view once and marks it with the message, for any form.
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        state.show_setting("stepover", "Clearance (setup 'Setup 1'): raise it");
+        assert_eq!(
+            state.shown("stepover"),
+            Some(("Clearance (setup 'Setup 1'): raise it".to_owned(), true))
+        );
+        // Brought into view once; the mark stays.
+        assert_eq!(
+            state.shown("stepover"),
+            Some(("Clearance (setup 'Setup 1'): raise it".to_owned(), false))
+        );
+        assert_eq!(state.shown("tolerance"), None, "only the field shown");
+        // A committed value answers it.
+        type_text(&ctx, &mut state, "0.25");
+        let outcome = frame(&ctx, &mut state, &stepover(false), vec![key(Key::Enter)]);
+        assert_eq!(outcome, Outcome::Commit("0.25".to_owned()));
+        assert_eq!(state.shown("stepover"), None);
+        // Another item's form forgets it.
+        state.show_setting("stepover", "text");
+        state.clear();
+        assert_eq!(state.shown("stepover"), None);
     }
 
     #[test]

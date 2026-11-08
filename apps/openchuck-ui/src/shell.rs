@@ -1437,17 +1437,38 @@ impl Shell {
             }
             // The setting the message names, by its key (decision record
             // 0536 section 4).
-            MessageAction::ShowSetting(setting) => match setting.place {
-                SettingPlace::Operation(op) => {
-                    self.show_item(ItemRef::Operation(op));
-                    self.setting_jump = Some((op, setting.key));
+            MessageAction::ShowSetting(setting) => {
+                // The field is marked with the message that links to it.
+                let text = self
+                    .overview
+                    .messages
+                    .iter()
+                    .find(|m| {
+                        m.action.as_ref() == Some(&MessageAction::ShowSetting(setting.clone()))
+                    })
+                    .map(|m| m.text.clone())
+                    .unwrap_or_default();
+                match setting.place {
+                    SettingPlace::Operation(op) => {
+                        self.show_item(ItemRef::Operation(op));
+                        self.setting_jump = Some((op, setting.key));
+                    }
+                    SettingPlace::Tool(tool) => {
+                        self.show_item(ItemRef::Tool(tool));
+                        self.tool_library.show_setting(&setting.key, &text);
+                    }
+                    SettingPlace::Setup(setup) => {
+                        let field = openchuck_app::setup_form::SetupField::from_key(&setting.key);
+                        self.open_step(Step::Setup);
+                        self.choose_setup(setup, field.map(inspector::setup_field_section));
+                        if let Some(field) = field {
+                            self.form
+                                .show_setting(inspector::setup_field_key(field), text);
+                        }
+                    }
+                    SettingPlace::Post => self.open_export(),
                 }
-                SettingPlace::Tool(tool) => self.show_item(ItemRef::Tool(tool)),
-                SettingPlace::Setup(setup) => {
-                    self.message_action(MessageAction::ReviewSetup(setup))
-                }
-                SettingPlace::Post => self.open_export(),
-            },
+            }
         }
     }
 

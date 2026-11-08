@@ -1812,6 +1812,28 @@ fn req_gc_16_a_tool_too_long_to_clear_the_workholding_needs_acknowledging() {
         });
         s.clearance_rules.min_radius = Some(Millimetres(12.0));
     });
+    // Show setting opens the tool at its flute length, which sets how far
+    // it sticks out (decision record 0536 section 4).
+    let checks = app.start_checks(None).wait().unwrap();
+    let overview = app.overview(Some(&checks), &openchuck_app::JobLog::default());
+    let tool = app.project().tools()[0].id;
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| {
+            m.text
+                .contains("tool 1 may be too long to clear the workholding")
+        })
+        .unwrap_or_else(|| panic!("{:?}", overview.messages));
+    assert_eq!(
+        message.action,
+        Some(openchuck_app::overview::MessageAction::ShowSetting(
+            openchuck_app::overview::SettingRef::tool(
+                tool,
+                openchuck_app::tool_edit::fields::FLUTE_LENGTH
+            )
+        ))
+    );
     setup_collision_needs_acknowledging(&mut app, "too long");
     std::fs::remove_dir_all(dir).unwrap();
 }
