@@ -305,7 +305,9 @@ impl Entry {
             at.across.hypot(at.height) <= self.tolerance
         };
         match shape {
-            _ if on_axis => self.single_point(b, stock, common, pass, head),
+            // Reached only when there is nothing to descend into
+            // (`ring_plan` plans the descent on the axis otherwise).
+            _ if on_axis => plunge(b, stock, common, head),
             Start::SinglePoint => self.single_point(b, stock, common, pass, head),
             Start::FullRing { .. } | Start::Spiral { .. } => plunge(b, stock, common, head),
             Start::Line { end } => {
@@ -426,7 +428,7 @@ impl Entry {
                 ),
             })
         })?;
-        self.emit(b, input, common, pass, &moves)?;
+        self.emit(b, input, common, pass, &moves, MoveKind::LeadIn)?;
         if steep {
             b.steep_ramps.push(pass);
         }
@@ -465,6 +467,7 @@ impl Entry {
         common: &CommonParameters,
         pass: usize,
         moves: &[(AxisPosition, Degrees)],
+        kind: MoveKind,
     ) -> Result<()> {
         let Some(&(start, a)) = moves.first() else {
             return Ok(());
@@ -493,7 +496,7 @@ impl Entry {
         for (pos, a) in moves.iter().skip(1) {
             let tip = b.rotary.to_model(*pos, *a);
             let pose = b.pose(tip, *a);
-            b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))?;
+            b.push(kind, pose, None, Some(common.plunge_feed))?;
         }
         Ok(())
     }
@@ -585,13 +588,46 @@ impl Entry {
         if self.style != EntryStyle::Ramp {
             return Ok(None);
         }
-        if let Some(head) = points.first() {
+        let shape = pass_shape::start(&b.rotary, points, rapids, self.tolerance);
+        if let (Some(head), Start::FullRing { sign, .. } | Start::Spiral { sign }) =
+            (points.first(), shape)
+        {
             let at = b.rotary.to_axis(head.tip, head.a);
             if at.across.hypot(at.height) <= self.tolerance {
-                return Ok(None);
+                // An end-face ring: the tip descends on the axis while A
+                // turns (decision 0543 section 4, point 2, option (b)).
+                let radius = input.tool.cutting_radius();
+                let planned = ring_ramp::plan_on_axis(
+                    b,
+                    stock,
+                    common.approach_distance.0,
+                    self.ramp_tan,
+                    at,
+                    head.a.0,
+                    sign,
+                    self.probe_height,
+                    radius,
+                    self.angle_step(radius).to_degrees(),
+                );
+                return match planned {
+                    Ok(plan) => self.in_a_range(input, pass, plan).map(Some),
+                    Err(ring_ramp::Refusal::NothingToDescend) => Ok(None),
+                    Err(ring_ramp::Refusal::TooManyTurns { turns, .. }) => {
+                        Err(PathError::Strategy(format!(
+                            "Ramp entry: pass {} starts on the rotary axis, where the tool \
+                             descends while the part turns; at {:.2} degrees, measured at the \
+                             tool's radius of {radius:.3} mm, that takes {turns:.1} turns, more \
+                             than the {:.0} allowed. Raise Ramp angle, or set Entry to Plunge or \
+                             Helix.",
+                            pass + 1,
+                            self.ramp_tan.atan().to_degrees(),
+                            ring_ramp::MAX_TURNS
+                        )))
+                    }
+                };
             }
         }
-        let planned = match pass_shape::start(&b.rotary, points, rapids, self.tolerance) {
+        let planned = match shape {
             Start::FullRing { end, sign } => ring_ramp::plan(
                 b,
                 stock,
@@ -638,6 +674,17 @@ impl Entry {
                 )));
             }
         };
+        self.in_a_range(input, pass, plan).map(Some)
+    }
+
+    /// Refuses `plan` when its start is outside a limited A range (decision
+    /// 0543 D6).
+    fn in_a_range(
+        &self,
+        input: &StrategyInput<'_>,
+        pass: usize,
+        plan: RingRamp,
+    ) -> Result<RingRamp> {
         if let (openchuck_types::machine::ARange::Limited { min, max }, Some((_, a))) =
             (input.rotary.range, plan.start())
             && (a.0 < min.0 - EPS || a.0 > max.0 + EPS)
@@ -652,7 +699,7 @@ impl Entry {
                 max.0
             )));
         }
-        Ok(Some(plan))
+        Ok(plan)
     }
 
     /// Where the entry of this pass starts, when it is not over the pass's
@@ -691,9 +738,24 @@ impl Entry {
         pass: usize,
         plan: &RingRamp,
     ) -> Result<()> {
-        self.emit(b, input, common, pass, &plan.moves)?;
+        let kind = if plan.on_axis.is_some() {
+            MoveKind::Plunge
+        } else {
+            MoveKind::LeadIn
+        };
+        self.emit(b, input, common, pass, &plan.moves, kind)?;
         if plan.follows_steep_drop {
             b.steep_ramps.push(pass);
+        }
+        if let Some(turns) = plan.on_axis {
+            b.notes.push(
+                crate::notice::Notice::information(format!(
+                    "pass {} starts on the rotary axis, where a ramp has no path to follow, so \
+                     the tool descends there while the part turns {turns:.2} turns",
+                    pass + 1
+                ))
+                .about(crate::notice::topic::RAMP_ENTRY),
+            );
         }
         Ok(())
     }

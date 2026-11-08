@@ -36,6 +36,10 @@ pub(super) struct RingRamp {
     /// True when, just before the first point, the ramp follows a drop of
     /// the pass steeper than the ramp angle.
     pub follows_steep_drop: bool,
+    /// The turns of A of a descent on the rotary axis (decision 0543
+    /// section 4, point 2): `Some` when the tip stays on the axis and the
+    /// moves are plunges while A turns.
+    pub on_axis: Option<f64>,
 }
 
 impl RingRamp {
@@ -209,6 +213,7 @@ fn round(
     RingRamp {
         moves,
         follows_steep_drop: steep,
+        on_axis: None,
     }
 }
 
@@ -293,6 +298,7 @@ pub(super) fn plan_spiral(
             return Ok(RingRamp {
                 moves,
                 follows_steep_drop: steep,
+                on_axis: None,
             });
         }
         delta += 360.0;
@@ -318,4 +324,67 @@ fn real_travel(offsets: &[f64], positions: &[AxisPosition]) -> Vec<f64> {
         previous = Some((phi, p));
     }
     out
+}
+
+/// Plans the descent of a pass that starts on the rotary axis (an end-face
+/// ring; decision 0543 section 4, point 2, the owner's option (b)): the tip
+/// moves straight down from the approach distance above the stock to the
+/// first cut point `head`, at `a0`, while A turns the way `sign` says, as
+/// many turns as a ramp at `tan` would take round a ring at the tool's
+/// cutting radius `tool_radius`. `step` is the largest A step, degrees.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn plan_on_axis(
+    b: &Builder<'_>,
+    stock: View<'_>,
+    approach: f64,
+    tan: f64,
+    head: AxisPosition,
+    a0: f64,
+    sign: f64,
+    probe_height: f64,
+    tool_radius: f64,
+    step: f64,
+) -> Result<RingRamp, Refusal> {
+    let over = AxisPosition {
+        height: probe_height,
+        ..head
+    };
+    let travel = (probe_height - head.height).max(0.0);
+    let mut stock_top = f64::NEG_INFINITY;
+    for k in 0..36 {
+        let a = Degrees(a0 - sign * 10.0 * f64::from(k));
+        if let Some(d) = super::footprint_entry(b, stock, over, a, probe_height, travel) {
+            stock_top = stock_top.max(probe_height - d);
+        }
+    }
+    if stock_top <= head.height + EPS {
+        return Err(Refusal::NothingToDescend);
+    }
+    let rise = stock_top + approach - head.height;
+    let turns = rise / (tan * std::f64::consts::TAU * tool_radius.max(EPS));
+    if !turns.is_finite() || turns > MAX_TURNS {
+        return Err(Refusal::TooManyTurns {
+            radius: tool_radius,
+            turns,
+        });
+    }
+    let delta = 360.0 * turns;
+    let n = ((delta / step.max(1e-3)).ceil() as usize).max(1);
+    let moves = (0..=n)
+        .map(|k| {
+            let f = k as f64 / n as f64;
+            (
+                AxisPosition {
+                    height: head.height + rise * (1.0 - f),
+                    ..head
+                },
+                Degrees(a0 - sign * delta * (1.0 - f)),
+            )
+        })
+        .collect();
+    Ok(RingRamp {
+        moves,
+        follows_steep_drop: false,
+        on_axis: Some(turns),
+    })
 }

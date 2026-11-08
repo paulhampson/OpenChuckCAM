@@ -378,3 +378,133 @@ fn req_op_11_req_nfr_07_a_ring_too_close_to_the_axis_for_ten_turns_is_refused_by
         "{err}"
     );
 }
+
+/// One pass: a whole ring with the tool tip on the rotary axis (an end
+/// face), as helical finishing makes at a free end.
+#[derive(Debug)]
+struct RingOnAxis;
+
+impl Strategy for RingOnAxis {
+    fn name(&self) -> &str {
+        "test_ring_on_axis"
+    }
+    fn label(&self) -> &str {
+        "Ring on the axis (test)"
+    }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+    fn schema(&self) -> openchuck_path::ParameterSchema {
+        openchuck_path::ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &openchuck_path::StrategyInput<'_>,
+        _: &openchuck_path::Parameters,
+        _: &openchuck_types::job::JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<openchuck_path::Pass>> {
+        use openchuck_path::rotary::AxisPosition;
+        use openchuck_types::units::Degrees;
+        // At X 45 mm, beyond the cylinder's end, on the axis.
+        let points = (0..=36)
+            .map(|k| {
+                let a = Degrees(10.0 * f64::from(k));
+                let tip = input.rotary.to_model(
+                    AxisPosition {
+                        along: 45.0,
+                        across: 0.0,
+                        height: 0.0,
+                    },
+                    a,
+                );
+                openchuck_path::CutPoint {
+                    tip,
+                    a,
+                    contact: tip,
+                }
+            })
+            .collect();
+        Ok(vec![openchuck_path::Pass {
+            helical_pass_start: false,
+            low_link: false,
+            points,
+            stock: None,
+            rapids: Vec::new(),
+        }])
+    }
+}
+
+#[test]
+fn req_op_11_req_op_15_a_ring_on_the_axis_descends_there_while_a_turns() {
+    // Decision 0543 section 4, point 2, the owner's option (b). The stock
+    // (radius 16 mm) reaches X 46 mm here, so the tip has 16 + 1 mm to
+    // descend: at 3 degrees at the 3 mm radius of the 6 mm ball that is
+    // 17 / (tan 3 deg * 2 pi * 3) = 17.2 turns, more than 10 (refused); at
+    // 10 degrees, 5.1 turns.
+    let f = Fixture::new(
+        MeshSurface::new(
+            &Cylinder {
+                radius: 15.0,
+                length: 40.0,
+            }
+            .mesh(3, 72),
+        )
+        .unwrap(),
+        16.0,
+        &ball(6.0),
+    );
+    let mut stock_long = f.input();
+    let long = openchuck_path::AnalyticStock::Cylinder {
+        radius: 16.0,
+        x_start: -1.0,
+        x_end: 46.0,
+    };
+    stock_long.stock = &long;
+    let mut v = finishing("rings");
+    v.remove("pass_shape");
+    let err = run(|ctx| generate(&RingOnAxis, &stock_long, &v, ctx))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("starts on the rotary axis") && err.contains("more than the 10 allowed"),
+        "{err}"
+    );
+    v.insert(names::RAMP_ANGLE.into(), n(10.0));
+    for allow in [false, true] {
+        v.insert(
+            names::ALLOW_SINGLE_POINT_PLUNGE.into(),
+            ParameterValue::Flag(allow),
+        );
+        let path = run(|ctx| generate(&RingOnAxis, &stock_long, &v, ctx)).unwrap();
+        let segs = &path.group.segments;
+        let first_cut = segs
+            .iter()
+            .position(|s| s.kind == MoveKind::Cutting)
+            .unwrap();
+        let descent: Vec<_> = segs[..first_cut]
+            .iter()
+            .filter(|s| s.kind == MoveKind::Plunge)
+            .collect();
+        assert!(descent.len() > 10, "{}", descent.len());
+        // On the axis all the way down, A rising to 0, the height falling.
+        let mut previous: Option<(f64, f64)> = None;
+        for s in &descent {
+            let p = f.rotary.to_axis(s.end.tip, s.end.a);
+            assert!(p.across.hypot(p.height) < 17.0 + 1e-6);
+            assert!((p.along - 45.0).abs() < 1e-6 && p.across.abs() < 1e-6);
+            if let Some((a, h)) = previous {
+                assert!(s.end.a.0 > a && p.height < h + 1e-9);
+            }
+            previous = Some((s.end.a.0, p.height));
+        }
+        let turned = descent.last().unwrap().end.a.0 - descent.first().unwrap().end.a.0;
+        assert!((turned / 360.0 - 5.1).abs() < 0.3, "{turned}");
+        assert!(
+            path.notices
+                .iter()
+                .any(|n| n.text.contains("starts on the rotary axis")),
+            "{:?}",
+            path.notices
+        );
+    }
+}

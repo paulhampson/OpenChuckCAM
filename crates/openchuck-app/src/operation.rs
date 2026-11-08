@@ -896,9 +896,10 @@ fn generate_unnamed(
         return Err(missing(
             operation,
             &format!(
-                "{} entry: a pass is a single point, so it is entered by a straight plunge, \
-                 and the tool '{}' cannot cut straight down (it is not centre cutting). Set \
-                 Entry to Helix, or choose a tool that can plunge",
+                "{} entry: a pass is entered by a straight plunge (a single point, or a ring \
+                 on the rotary axis, where the tool descends while the part turns), and the \
+                 tool '{}' cannot cut straight down (it is not centre cutting). Set Entry to \
+                 Helix, or choose a tool that can plunge",
                 if entry_parameters.style == EntryStyle::Ramp {
                     "Ramp"
                 } else {
