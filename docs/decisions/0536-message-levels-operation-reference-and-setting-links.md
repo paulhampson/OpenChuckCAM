@@ -244,7 +244,7 @@ What changed:
 
 Interim levels, waiting for the owner. The coordinator ruled that a "?" row stays a warning until the owner answers (NFR-12: nothing that may be a problem is shown less). Each answer lands as its own one-line change:
 
-- Q-A, P48: indexed finishing's passes run on past the part's ends.
+- Q-A, P48: indexed finishing's passes run on past the part's ends. **Answered on 8 Nov 2026** (relayed by the coordinator): information, so it stays a note.
 - Q-B, P49: the stock ends at the part's end, so there is nothing to face.
 - Q-C, P50: the "real blank must match it" tail of the free-end facing note. Only that variant is a warning; the rest is information.
 - Q-D, P54 to P57: edge following says a setting is not used.
@@ -263,7 +263,7 @@ Tests, each named by requirement:
 - **Results tab:** `run_panel::tests::req_ui_12_each_results_line_takes_its_own_level`.
 - **Command line:** `e2e::req_ui_12_cli_prints_each_run_message_at_its_level` uses the cone example. It prints one `note:` feed-limit summary, no per-move feed lines and no `warning:`.
 - **Issue #600:** `req_op_13_req_ui_12_a_turn_at_the_rotary_axis_never_reads_as_a_feed_of_zero`.
-- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The indexed, adaptive and region tests count the warnings other than P48's.
+- **Tests that read a moved message**, now reading it from the warnings: rest machining, Report-mode short blocks, enclosed material, the selection's stock to leave, the held region beside a tab, and exact contact on a flat end with stock to leave. The indexed finishing test checks that P48 is a note, on the owner's answer to Q-A.
 - **Suites:** before `main` was merged, `openchuck-path`, `openchuck-app`, `openchuck-ui`, `openchuck-cli`, `openchuck-sim` and `xtask` together ran 2,687 tests: 2,678 passed and 9 failed, all of them tests that read a moved message. Those 9 were updated. After merging `main` (decision 0538), the same crates without `openchuck-sim` ran 2,620 tests, all passing (3 skipped). `cargo clippy --workspace --all-targets` is clean, and `cargo xtask records`, `trace`, `deps` (with `messages`) and `licences` pass.
 
 Not verified here:

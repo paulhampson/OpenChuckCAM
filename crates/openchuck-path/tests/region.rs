@@ -695,27 +695,12 @@ fn req_op_02_axial_indexed_and_simultaneous_finishing_take_sets_that_only_warn()
         .unwrap();
         let name = strategy.label();
         assert_eq!(path.group, whole.group, "{name}: the path changed");
-        assert_eq!(
-            other_warnings(&path).len(),
-            1,
-            "{name}: {:?}",
-            path.warnings()
-        );
-        let message = &other_warnings(&path)[0].text;
+        assert_eq!(path.warnings().len(), 1, "{name}: {:?}", path.warnings());
+        let message = &path.warnings()[0].text;
         assert!(
             message.starts_with("The tool cuts into the avoid set 'Strip' along about "),
             "{name}: {message}"
         );
         assert!(warned_length(message) > 0.0, "{name}: {message}");
     }
-}
-
-/// The warnings other than indexed finishing's note that its passes run on
-/// past the part's ends, a warning until the owner answers (decision 0536
-/// step 2, interim, question Q-A; P48).
-fn other_warnings(path: &openchuck_path::GeneratedPath) -> Vec<&openchuck_path::Notice> {
-    path.warnings()
-        .into_iter()
-        .filter(|w| !w.text.contains("run on past both ends"))
-        .collect()
 }

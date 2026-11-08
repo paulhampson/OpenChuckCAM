@@ -1053,12 +1053,12 @@ fn req_op_04_req_op_21_indexed_finishing_faces_the_ends_beside_a_short_tab() {
     }
     let cut = deepest(&job.left(&path, &[tab_surfaces(0.1)], 3.0)[0]);
     assert!(cut >= -TOLERANCE, "a tab is cut into by {cut:.4} mm");
-    // A warning says the passes ran on past both ends of the part: until
-    // the owner answers, a warning (decision 0536 step 2, interim; P48).
+    // A note says the passes ran on past both ends of the part. It is
+    // information, on the owner's answer (decision 0536 step 2, Q-A; P48).
     assert!(
-        path.warnings()
+        path.notices
             .iter()
-            .any(|n| n.text.contains("past both ends")),
+            .any(|n| !n.is_warning() && n.text.contains("past both ends")),
         "{:?}",
         path.notices
     );
