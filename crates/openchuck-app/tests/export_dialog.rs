@@ -290,7 +290,9 @@ fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_n
     let mut run = post(&mut app, OutputGrouping::Setup);
     let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm.";
     run.groups[0].warnings.push(
-        openchuck_path::Notice::warning(message.to_owned()).with_setting("tolerance".to_owned()),
+        openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::OVERCUT)
+            .with_setting("tolerance".to_owned()),
     );
     let name = app
         .project()
@@ -1477,6 +1479,7 @@ fn req_op_04_req_nfr_12_a_partial_path_is_written_only_once_this_result_is_ackno
                    passes is within the allowed excess of 0.010 mm at 1 place";
     run.groups[0].warnings.push(
         openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::PARTIAL_PATH)
             .with_setting("scallop".to_owned())
             .to_acknowledge(openchuck_path::Acknowledgement::PartialPath),
     );
@@ -1546,9 +1549,10 @@ fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledg
     let (dir, mut app) = project("collision", false);
     let plain = std::sync::Arc::new(post(&mut app, OutputGrouping::Setup));
     let mut run = post(&mut app, OutputGrouping::Setup);
-    let message = "Flute length: the stock stands up to 3.000 mm above the tool's tip";
+    let message = "the stock stands up to 3.000 mm above the tool's tip";
     run.groups[0].warnings.push(
         openchuck_path::Notice::warning(message.to_owned())
+            .about(openchuck_path::topic::FLUTE_LENGTH)
             .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
     );
     let name = app
@@ -1571,8 +1575,9 @@ fn req_gc_16_a_possible_collision_is_written_only_once_this_result_is_acknowledg
     assert!(openchuck_app::partial_operations(app.project(), &run).is_empty());
     let found = openchuck_app::collision_warnings(app.project(), &run);
     assert_eq!(found.len(), 1, "{found:?}");
+    // In the one form (decision record 0536 section 3).
     assert!(
-        found[0].contains(&format!("operation '{name}'")),
+        found[0].starts_with(&format!("Flute length (operation '{name}', tool '")),
         "{found:?}"
     );
     // Writing waits for the tick.

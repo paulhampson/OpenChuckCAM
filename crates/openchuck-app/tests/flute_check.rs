@@ -134,7 +134,7 @@ fn flute_warnings(run: &openchuck_app::Regeneration) -> Vec<String> {
     run.groups
         .iter()
         .flat_map(|g| g.warnings.iter())
-        .filter(|w| w.text.starts_with(openchuck_path::flutes::WARNING_LEAD))
+        .filter(|w| w.topic.as_deref() == Some(openchuck_path::topic::FLUTE_LENGTH))
         .map(|w| w.text.clone())
         .collect()
 }

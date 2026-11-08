@@ -22,7 +22,7 @@ use openchuck_types::units::Degrees;
 
 use crate::assemble::{GeneratedPath, ShankBreak, Unreached, assemble_with_entry};
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
 };
@@ -758,16 +758,22 @@ fn keep_clear(
     if cut_short {
         // What is left uncut beside the grip is a warning (decision record
         // 0536 step 2), and so is a hole not drilled.
-        notes.push(Notice::warning(format!(
-            "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
+        notes.push(
+            Notice::warning(format!(
+                "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
              over the gripped length of the stock."
-        )));
+            ))
+            .about(topic::HELD_REGION),
+        );
     }
     if holes > 0 {
-        notes.push(Notice::warning(format!(
-            "{holes} {} not drilled: the tool would reach over {names}.",
-            if holes == 1 { "hole is" } else { "holes are" }
-        )));
+        notes.push(
+            Notice::warning(format!(
+                "{holes} {} not drilled: the tool would reach over {names}.",
+                if holes == 1 { "hole is" } else { "holes are" }
+            ))
+            .about(topic::HELD_REGION),
+        );
     }
     Ok((kept, notes))
 }
@@ -963,6 +969,7 @@ mod tests {
                      stock is cut: no part of the tool reaches over the gripped length of the \
                      stock."
                 )
+                .about(topic::HELD_REGION)
             ]
         );
         // A move that jumps over the whole keep-out is not kept either.
@@ -1007,10 +1014,13 @@ mod tests {
         // UI-12).
         assert_eq!(
             notes,
-            vec![Notice::warning(
-                "1 hole is not drilled: the tool would reach over the held region at the start \
+            vec![
+                Notice::warning(
+                    "1 hole is not drilled: the tool would reach over the held region at the start \
                  of the stock."
-            )]
+                )
+                .about(topic::HELD_REGION)
+            ]
         );
     }
 

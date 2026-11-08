@@ -48,7 +48,7 @@
 //! cut one after another, each with its own guide, starting from the face
 //! with the longest guide and then along the faces' shared edges (D2).
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Level, Notice, topic};
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::TAU;
 use std::sync::Arc;
@@ -2048,7 +2048,7 @@ fn assemble(
         let plural = if unreached.len() == 1 { "" } else { "s" };
         warnings.push(Notice {
             level: Level::Warning,
-            topic: None,
+            topic: Some(topic::UNREACHED_AREAS.to_owned()),
             segment: None,
             text: format!(
                 "face-flow finishing cannot reach {} area{plural} of the selected faces, which \

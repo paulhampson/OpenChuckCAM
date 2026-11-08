@@ -1257,8 +1257,8 @@ mod tests {
     }
 
     /// Each Results line takes its message's own level (decision 0536
-    /// section 5): an operation's warning is one Warning line in the form of
-    /// decision 0522, said once and not repeated as a "move 0" note; the
+    /// section 5): an operation's warning is one Warning line in the one
+    /// form of decision 0536 section 3, said once and not repeated as a "move 0" note; the
     /// run's own warnings are Warning lines; the notes are Information.
     #[test]
     fn req_ui_12_each_results_line_takes_its_own_level() {
@@ -1268,7 +1268,7 @@ mod tests {
         let said = "the boundary limits nothing";
         run.groups[0]
             .warnings
-            .push(openchuck_app::path::Notice::warning(said.to_owned()));
+            .push(openchuck_app::path::Notice::warning(said.to_owned()).about("Selection set"));
         run.notes = vec![format!("operation '{name}': helical finishing cut 3 rings")];
         run.warnings = vec!["Setup 'Setup 1': 1.0% of the part's surface is enclosed".to_owned()];
         let lines = result_lines(&run, app.project());
@@ -1281,7 +1281,7 @@ mod tests {
         assert!(
             lines
                 .iter()
-                .any(|l| l.text == format!("Operation '{name}': {said}")),
+                .any(|l| l.text == format!("Selection set (operation '{name}'): {said}")),
             "{lines:?}"
         );
         assert_eq!(level("cut 3 rings"), Severity::Info);

@@ -365,29 +365,14 @@ fn named(operation: &Operation, error: AppError) -> AppError {
     }
 }
 
-/// A warning of `operation`'s path as the user reads it: the flute check's
-/// warning names the operation and its tool (decision record 0522; issue
-/// #547), and so does a tab shorter than the tool (decision 0523; #548). Named when shown, not when made, so a renamed operation or tool,
-/// which does not make the path stale (issue 209), is named as it is now.
-/// Any other warning is unchanged.
-pub(crate) fn warning_text(project: &Project, operation: &Operation, message: &str) -> String {
-    // The flute check's warning (decision 0522) and a tab shorter than the
-    // tool (decision 0523).
-    let (title, rest) =
-        if let Some(rest) = message.strip_prefix(openchuck_path::flutes::WARNING_LEAD) {
-            ("Flute length", rest)
-        } else if let Some(rest) = message.strip_prefix(crate::workholding::TAB_LENGTH_LEAD) {
-            ("Tab length", rest)
-        } else {
-            return message.to_owned();
-        };
-    in_operation_form(project, operation, title, rest)
-}
-
 /// A notice of `operation`'s path in the one form of decision record 0536
 /// section 3: its topic, then the operation (and its tool, where the tool's
-/// size, flutes or number matter), named as they are now, then its text. A
-/// notice that has no topic yet is read as [`warning_text`] reads it.
+/// size, flutes or number matter), named as they are now, then its text
+/// ("Flute length (operation '1 Rough', tool 'T2 Flat 6'): ..."). Named when
+/// shown, not when made, so a renamed operation or tool, which does not make
+/// the path stale (issue 209), is named as it is now (decision record 0522
+/// item 3). A notice that has no topic is its text alone: every warning of a
+/// path has one, so only information reads so.
 pub fn operation_notice(
     project: &Project,
     operation: &Operation,
@@ -395,7 +380,7 @@ pub fn operation_notice(
 ) -> String {
     match &notice.topic {
         Some(topic) => in_operation_form(project, operation, topic, &notice.text),
-        None => warning_text(project, operation, &notice.text),
+        None => notice.text.clone(),
     }
 }
 
@@ -803,12 +788,15 @@ fn generate_unnamed(
                 names::STOCK_TO_LEAVE.to_owned(),
                 ParameterValue::Number(leave),
             );
-            leave_notes.push(format!(
-                "stock to leave: roughing leaves {leave} mm wherever it cuts, the amount of \
-                 the selection set '{set}' (the largest of its selections), in place of the \
-                 operation's {operation_leave} mm; roughing leaves one amount everywhere it \
-                 cuts, and a finishing operation cuts each selection to its own"
-            ));
+            leave_notes.push(
+                openchuck_path::Notice::warning(format!(
+                    "stock to leave: roughing leaves {leave} mm wherever it cuts, the amount of \
+                     the selection set '{set}' (the largest of its selections), in place of the \
+                     operation's {operation_leave} mm; roughing leaves one amount everywhere it \
+                     cuts, and a finishing operation cuts each selection to its own"
+                ))
+                .about(crate::lead_in::topic::STOCK_TO_LEAVE),
+            );
         }
     }
     // A whole-part operation whose tool cannot cut down beside a tab between
@@ -825,18 +813,24 @@ fn generate_unnamed(
             _ => operation_leave,
         };
         let label = crate::workholding::operation_label(project, operation);
-        leave_notes.extend(crate::workholding::uncleared_tab_notes(
-            &setup.workholding,
-            setup_stock,
-            &part,
-            &crate::workholding::ClearingTool {
-                cutting_radius: profile.cutting_radius(),
-                reach: tool_reach(&profile, &snapshot.tool),
-                leave,
-                tool: &snapshot.name,
-                operation: &label,
-            },
-        ));
+        leave_notes.extend(
+            crate::workholding::uncleared_tab_notes(
+                &setup.workholding,
+                setup_stock,
+                &part,
+                &crate::workholding::ClearingTool {
+                    cutting_radius: profile.cutting_radius(),
+                    reach: tool_reach(&profile, &snapshot.tool),
+                    leave,
+                    tool: &snapshot.name,
+                    operation: &label,
+                },
+            )
+            .into_iter()
+            .map(|note| {
+                openchuck_path::Notice::warning(note).about(crate::lead_in::topic::TAB_CLEARANCE)
+            }),
+        );
     }
     // Edge following on a STEP part follows the B-rep's own edges, with the
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
@@ -955,7 +949,14 @@ fn generate_unnamed(
             // it and the part may come loose, a possible collision to
             // acknowledge before writing (decision record 0538).
             .map(|text| {
+                // The check's words lead the text; the topic says them
+                // instead (decision record 0536 section 3).
+                let text = match text.strip_prefix(crate::workholding::TAB_LENGTH_LEAD) {
+                    Some(rest) => rest.to_owned(),
+                    None => text,
+                };
                 openchuck_path::Notice::warning(text)
+                    .about(crate::lead_in::topic::TAB_LENGTH)
                     .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision)
             }),
     );
@@ -964,7 +965,7 @@ fn generate_unnamed(
     let mut notes: Vec<String> = resolved.notes;
     // A stock to leave other than the operation's is a warning (decision
     // 0536 step 2, the owner's answer to question Q-G; P76).
-    warnings.extend(leave_notes.into_iter().map(openchuck_path::Notice::warning));
+    warnings.extend(leave_notes);
     // On a STEP part, the surface the tool was dropped on (decision 0209
     // item 4.4, OI-830; NFR-12).
     if placed.brep.is_some()
@@ -981,7 +982,9 @@ fn generate_unnamed(
         // information (decision 0536 step 2, the owner's answer to question
         // Q-G; P76).
         if note.contains("does not apply") {
-            warnings.push(openchuck_path::Notice::warning(note));
+            warnings.push(
+                openchuck_path::Notice::warning(note).about(crate::lead_in::topic::EXACT_CONTACT),
+            );
         } else {
             notes.push(note);
         }
@@ -989,7 +992,9 @@ fn generate_unnamed(
     // A selection that reaches a region never machined leaves it uncut: a
     // warning (decision 0536 step 2, the owner's answer to question Q-G;
     // P76).
-    warnings.extend(reach_notes.into_iter().map(openchuck_path::Notice::warning));
+    warnings.extend(reach_notes.into_iter().map(|note| {
+        openchuck_path::Notice::warning(note).about(openchuck_path::topic::HELD_REGION)
+    }));
     // The registry's strategy: a B-rep edge source uses the crease angle and
     // the shortest chain, so the warning that they are not used does not
     // apply. A setting the operation ignores is a warning (P53), except edge
@@ -1000,19 +1005,24 @@ fn generate_unnamed(
     if operation.strategy == edge_following::NAME {
         notes.extend(ignored);
     } else {
-        warnings.extend(ignored.into_iter().map(openchuck_path::Notice::warning));
+        warnings.extend(ignored.into_iter().map(|text| {
+            openchuck_path::Notice::warning(text).about(crate::lead_in::topic::IGNORED_SETTING)
+        }));
     }
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
     // material left, which is rarely what was meant: a warning (decision
     // 0536 step 2, path inventory P42).
     if carried.is_none() && strategy.needs_earlier_operations() {
-        warnings.push(openchuck_path::Notice::warning(format!(
-            "{} cleans up material that earlier operations left, and no earlier operation of \
-             this setup has cut: the setup's own stock is taken, so all of the part counts as \
-             having material left",
-            strategy.label()
-        )));
+        warnings.push(
+            openchuck_path::Notice::warning(format!(
+                "{} cleans up material that earlier operations left, and no earlier operation \
+                 of this setup has cut: the setup's own stock is taken, so all of the part \
+                 counts as having material left",
+                strategy.label()
+            ))
+            .about(crate::lead_in::topic::EARLIER_OPERATIONS),
+        );
     }
     // The path's information; its warnings go with the warnings below. A
     // note about one move names it; a note about the whole path names none
@@ -1537,6 +1547,7 @@ pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> Notice {
         "The {set} limits nothing, because {why}. {fix} beside the set in the operation \
          inspector's Geometry section, or take the set out of the operation."
     ))
+    .about(openchuck_path::topic::SELECTION_SET)
 }
 
 /// A boundary, avoid or check set of swarf on a STEP part, with its
@@ -3999,11 +4010,50 @@ mod tests {
                 operation.name, tool.name
             )
         );
-        // No topic yet: the text as it was.
-        let plain = openchuck_path::Notice::warning("a plain warning");
+        // No topic (information): the text alone.
+        let plain = openchuck_path::Notice::information("a plain note");
         assert_eq!(
             operation_notice(&f.project, operation, &plain),
-            "a plain warning"
+            "a plain note"
+        );
+    }
+
+    #[test]
+    fn req_ui_12_a_path_warning_reads_in_the_one_form() {
+        // Decision record 0536 section 3: a warning the pathing library made
+        // carries its topic, and the application shows it first, then the
+        // operation as it is named now, then the library's text. Swarf with
+        // Keep off the end faces off cuts into the end wall that meets the
+        // face (decision 0532): an overcut.
+        let mut f =
+            swarf_limits_fixture(&[(swarf::parameter::KEEP_OFF_END_FACES, Value::Flag(false))]);
+        f.join_faces(FaceId(0), FaceId(1));
+        let path = f.run().unwrap();
+        let operation = f.project.operation(f.operation).unwrap();
+        let warning = path
+            .warnings
+            .iter()
+            .find(|w| w.text.contains("into face 1"))
+            .unwrap_or_else(|| panic!("{:?}", path.warnings));
+        assert_eq!(
+            warning.topic.as_deref(),
+            Some(openchuck_path::topic::OVERCUT)
+        );
+        let shown = operation_notice(&f.project, operation, warning);
+        assert_eq!(
+            shown,
+            format!("Overcut (operation '{}'): {}", operation.name, warning.text)
+        );
+        assert!(
+            shown.starts_with("Overcut (operation 'Op'): Swarf on face 0 cuts "),
+            "{shown}"
+        );
+        // Every warning of the path has a topic, so none is shown without
+        // its check named first.
+        assert!(
+            path.warnings.iter().all(|w| w.topic.is_some()),
+            "{:?}",
+            path.warnings
         );
     }
 

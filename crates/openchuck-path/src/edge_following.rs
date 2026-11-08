@@ -41,7 +41,7 @@ use openchuck_types::units::Degrees;
 use crate::curves::{CurveSource, EdgeChain, MeshFeatureEdges};
 use crate::cutter;
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::parallel;
 use crate::params::{
     EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit,
@@ -925,7 +925,7 @@ pub fn follow_chains(
              {} not cut",
             if sideless == 1 { "" } else { "s" },
             if sideless == 1 { "it is" } else { "they are" },
-        )));
+        )).about(topic::CHAINS_LEFT_OUT));
     }
     if plan.carve {
         notes.push(format!(

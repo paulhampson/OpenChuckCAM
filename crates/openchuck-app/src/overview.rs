@@ -1939,23 +1939,19 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                     state: ItemState::Warning,
                     cause: format!(
                         "{NEEDS_ACKNOWLEDGING}{}",
-                        sentence(&crate::operation::warning_text(project, o, &c.sentence()))
+                        sentence(&crate::operation::operation_notice(project, o, c))
                     ),
                     progress: None,
                 },
                 None => ItemStatus::new(
                     ItemState::Warning,
-                    sentence(&crate::operation::warning_text(
-                        project,
-                        o,
-                        &first.sentence(),
-                    )),
+                    sentence(&crate::operation::operation_notice(project, o, first)),
                 ),
             };
             for warning in &made.warnings {
                 // The warning of unreachable areas offers a link for each
                 // area it lists (decision record 0515 item 5).
-                let views = if crate::unreached::lists_areas(&warning.sentence()) {
+                let views = if crate::unreached::lists_areas(&warning.text) {
                     (1..=made.unreached.min(crate::unreached::LISTED_AREAS))
                         .filter_map(|n| u8::try_from(n).ok())
                         .map(|area| MessageAction::ShowInView {
@@ -1968,7 +1964,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 };
                 let message = Message::new(
                     Severity::Warning,
-                    crate::operation::warning_text(project, o, &warning.sentence()),
+                    crate::operation::operation_notice(project, o, warning),
                     Some((item, label.clone())),
                     Some(match &warning.setting {
                         Some(key) => MessageAction::ShowSetting(SettingRef::operation(o.id, key)),
@@ -3226,12 +3222,14 @@ mod tests {
         // Decision 0538: the operation's mark says the warning needs
         // acknowledging, and Messages lists it first among the warnings,
         // whatever order the path gave them in.
-        let collision = "Flute length: the stock stands up to 3.000 mm above the tool's tip.";
+        let collision = "the stock stands up to 3.000 mm above the tool's tip.";
         let (dir, app, op) = warned_app(
             "collision-mark",
             vec![
-                openchuck_path::Notice::warning("an ordinary warning."),
+                openchuck_path::Notice::warning("an ordinary warning.")
+                    .about(openchuck_path::topic::OVERCUT),
                 openchuck_path::Notice::warning(collision)
+                    .about(openchuck_path::topic::FLUTE_LENGTH)
                     .to_acknowledge(openchuck_path::Acknowledgement::PossibleCollision),
             ],
         );
@@ -3252,11 +3250,9 @@ mod tests {
             .collect();
         assert!(warnings[0].to_acknowledge, "{warnings:?}");
         assert!(warnings[0].text.starts_with("Flute length"), "{warnings:?}");
-        assert!(
-            warnings
-                .iter()
-                .any(|m| m.text == "An ordinary warning." && !m.to_acknowledge)
-        );
+        assert!(warnings.iter().any(|m| m.text
+            == "Overcut (operation 'Walls'): an ordinary warning."
+            && !m.to_acknowledge));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -3326,6 +3322,7 @@ mod tests {
                 },
                 warnings: vec![
                     openchuck_path::Notice::warning(message.to_owned())
+                        .about(openchuck_path::topic::OVERCUT)
                         .with_setting("tolerance".to_owned()),
                 ],
             }],
@@ -3339,7 +3336,10 @@ mod tests {
         let warning = overview
             .messages
             .iter()
-            .find(|m| m.severity == Severity::Warning && m.text == message)
+            .find(|m| {
+                m.severity == Severity::Warning
+                    && m.text == format!("Overcut (operation 'Walls'): {message}")
+            })
             .unwrap_or_else(|| panic!("{:?}", overview.messages));
         assert_eq!(
             warning.action,

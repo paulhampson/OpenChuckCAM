@@ -14,7 +14,7 @@
 //! before it is migrated to off (project schema 23), so it machines as
 //! before.
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use std::collections::BTreeMap;
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -222,7 +222,7 @@ pub(crate) fn free_ends(
         if stepdown.is_nan() || stepdown <= 0.0 {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FREE_ENDS.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: it \
@@ -242,7 +242,7 @@ pub(crate) fn free_ends(
         if stock.max_radius().is_none() {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FREE_ENDS.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} has nothing beyond it and is not faced: the \
@@ -303,16 +303,15 @@ pub(crate) fn free_ends(
             };
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::FLUTE_LENGTH.to_owned()),
                 segment: None,
                 text: format!(
-                    "{}the end face at X {face:.3} has nothing beyond it and is not faced: the \
+                    "the end face at X {face:.3} has nothing beyond it and is not faced: the \
                      stock beside it is {up_to}{:.3} mm deep{bound}, more than the tool's \
                      {:.3} mm of flute, so no turn is cut there and the end keeps what earlier \
                      operations left; {}. Use a tool with longer flutes, or face it with a \
                      Facing operation, or turn off Face free ends for this operation. Check \
                      the path before you run it",
-                    crate::flutes::WARNING_LEAD,
                     top.max(deepest),
                     input.tool.top(),
                     crate::flutes::stock_words(stock),
@@ -369,10 +368,13 @@ pub(crate) fn free_ends(
              axis in each"
         ));
         if !stock.left_by_earlier_operations() {
-            out.warnings.push(Notice::warning(format!(
-                "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
+            out.warnings.push(
+                Notice::warning(format!(
+                    "the end face at X {face:.3} is faced from {top:.3} mm, the top of the setup's \
                  own stock with no earlier operation in this setup: the real blank must match it"
-            )));
+                ))
+                .about(topic::FREE_ENDS),
+            );
         }
         rings.push((end.x, face, end.far, from.min(to), from.max(to)));
         // Stock past the ring that no held region past it grips: a cheap test
@@ -402,7 +404,7 @@ pub(crate) fn free_ends(
             if found {
                 out.warnings.push(Notice {
                     level: Level::Warning,
-                    topic: None,
+                    topic: Some(topic::PART_CUT_FREE.to_owned()),
                     segment: None,
                     text: format!(
                         "the end face at X {face:.3} is faced down to the rotary axis: the tool \
@@ -443,7 +445,7 @@ pub(crate) fn free_ends(
         if !held {
             out.warnings.push(Notice {
                 level: Level::Warning,
-                topic: None,
+                topic: Some(topic::PART_CUT_FREE.to_owned()),
                 segment: None,
                 text: format!(
                     "the end face at X {face:.3} is faced down to the rotary axis: the tool cuts \
@@ -628,5 +630,6 @@ pub(crate) fn across_axis_warning(
              one turn where the part lies on both sides of it. To face the end of the part or \
              the stock, use Facing with Shape End"
         ))
+        .about(topic::FACES_ACROSS_THE_AXIS)
     })
 }

@@ -47,7 +47,7 @@
 //! warning that must be acknowledged before export says where (decision
 //! record 0239 item 10).
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -709,7 +709,7 @@ fn warning(places: &[Place], settings: &Settings, limits: &Limits, height: &str)
     let count = places.len();
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::PARTIAL_PATH.to_owned()),
         segment: None,
         text: format!(
             "adaptive spacing could not confirm that the material left between the passes \

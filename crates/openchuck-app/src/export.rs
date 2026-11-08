@@ -159,7 +159,7 @@ pub fn collision_warnings(project: &Project, run: &Regeneration) -> Vec<String> 
             for warning in group.warnings.iter().filter(|w| {
                 w.acknowledgement == Some(openchuck_path::Acknowledgement::PossibleCollision)
             }) {
-                out.push(named(project, operation, &warning.sentence()));
+                out.push(named(project, operation, warning));
             }
         }
         out.extend(rapid_cuts(run, operation));
@@ -259,14 +259,17 @@ fn rapid_cuts(run: &Regeneration, operation: &Operation) -> Vec<String> {
         .collect()
 }
 
-/// A warning's sentence naming `operation`: in the form of decision record
-/// 0522 where it has one, else after "Operation '<name>': ".
-fn named(project: &Project, operation: &Operation, sentence: &str) -> String {
-    let text = crate::operation::warning_text(project, operation, sentence);
-    if text == sentence {
-        format!("Operation '{}': {text}", operation.name)
-    } else {
-        text
+/// A warning of `operation`'s path naming the operation: in the one form of
+/// decision record 0536 section 3 where it has a topic (every warning of a
+/// path has one), else after "Operation '<name>': ".
+pub(crate) fn named(
+    project: &Project,
+    operation: &Operation,
+    warning: &openchuck_path::Notice,
+) -> String {
+    match warning.topic {
+        Some(_) => crate::operation::operation_notice(project, operation, warning),
+        None => format!("Operation '{}': {}", operation.name, warning.text),
     }
 }
 
@@ -615,28 +618,20 @@ pub(crate) fn export_checks_with(
                                 "Operation '{}' has a possible collision, which must be \
                                  acknowledged before the files are written: {}",
                                 operation.name,
-                                crate::operation::warning_text(
-                                    project,
-                                    operation,
-                                    &warning.sentence()
-                                )
+                                crate::operation::operation_notice(project, operation, warning)
                             )
                         } else if warning.is_partial_path() {
                             format!(
                                 "Operation '{}' has a partial path, which must be acknowledged \
                                  before the files are written: {}",
                                 operation.name,
-                                warning.sentence()
+                                crate::operation::operation_notice(project, operation, warning)
                             )
                         } else {
                             format!(
                                 "Operation '{}' was made with a warning: {}",
                                 operation.name,
-                                crate::operation::warning_text(
-                                    project,
-                                    operation,
-                                    &warning.sentence()
-                                )
+                                crate::operation::operation_notice(project, operation, warning)
                             )
                         };
                         push(CheckLevel::Warning, text);

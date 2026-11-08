@@ -65,7 +65,7 @@
 //! Everything here is deterministic (NFR-06): the only parallel work is the
 //! gate's sampling, through [`crate::parallel`].
 
-use crate::notice::{Acknowledgement, Level, Notice};
+use crate::notice::{Acknowledgement, Level, Notice, topic};
 use std::collections::BTreeMap;
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -942,7 +942,7 @@ impl FacePath {
                 };
                 Notice {
                     level: Level::Warning,
-                    topic: None,
+                    topic: Some(topic::OVERCUT.to_owned()),
                     segment: None,
                     text: format!(
                         "Swarf on face {} cuts {:.3} mm into face {}, which meets it {meets}, at \
@@ -3018,7 +3018,7 @@ fn swarf(
     {
         warnings.push(Notice {
             level: Level::Warning,
-            topic: None,
+            topic: Some(topic::SELECTION_SET.to_owned()),
             segment: None,
             text: "The boundary of this swarf operation limits nothing, because both its \
                       limits, the pass and the tip, are off: the faces are cut as if there were \
@@ -3052,7 +3052,7 @@ fn swarf(
             if let Some(message) = path.overcut_warning(settings.tolerance, clearing) {
                 warnings.push(Notice {
                     level: Level::Warning,
-                    topic: None,
+                    topic: Some(topic::OVERCUT.to_owned()),
                     segment: None,
                     text: message,
                     setting: Some(names::TOLERANCE.to_owned()),
@@ -3092,7 +3092,7 @@ fn swarf(
         let faces: Vec<String> = faces.iter().map(u32::to_string).collect();
         warnings.push(Notice {
             level: Level::Warning,
-            topic: None,
+            topic: Some(crate::region::set_topic(w.protection).to_owned()),
             segment: None,
             text: format!(
                 "The tool {} '{}' along about {length:.3} mm of face {}. The set only warns, \

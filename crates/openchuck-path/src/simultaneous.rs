@@ -50,7 +50,7 @@
 //! split. A move that still cuts in by more than the tolerance at its middle
 //! after [`MAX_DEPTH`] halvings is refused with a message naming it.
 
-use crate::notice::{Level, Notice};
+use crate::notice::{Level, Notice, topic};
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
@@ -962,11 +962,14 @@ fn run(
              A {a:.3}); {shank}",
             hidden_x.0, hidden_x.1, findings.lean
         ));
-        hidden_warning = Some(Notice::warning(format!(
-            "the tool holder is not checked on the passes that finish the surfaces hidden from \
+        hidden_warning = Some(
+            Notice::warning(format!(
+                "the tool holder is not checked on the passes that finish the surfaces hidden from \
              the drive between X {:.3} and {:.3}, where the tool leans up to {:.1} degrees",
-            hidden_x.0, hidden_x.1, findings.lean
-        )));
+                hidden_x.0, hidden_x.1, findings.lean
+            ))
+            .about(topic::TOOL_HOLDER),
+        );
     }
     let shank_breaks = places(std::mem::take(&mut findings.shank_breaks));
     let mut warnings: Vec<Notice> = unreached_warning(
@@ -1005,6 +1008,7 @@ fn under_warning(under: f64) -> Option<Notice> {
             "some moves leave up to {under:.4} mm of material, more than the tolerance, because \
              the surface changes faster than the path can follow"
         ))
+        .about(topic::MATERIAL_LEFT)
         .with_setting(names::TOLERANCE)
     })
 }
@@ -1059,7 +1063,7 @@ fn shank_warning(breaks: &[crate::assemble::ShankBreak]) -> Option<Notice> {
     let plural = if breaks.len() == 1 { "" } else { "s" };
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::SHANK_CLEARANCE.to_owned()),
         segment: None,
         text: format!(
             "simultaneous finishing breaks the path at {} place{plural} and links round them, \
@@ -1092,7 +1096,7 @@ fn unreached_warning(
         .any(|u| matches!(u.reason, UnreachedReason::NeedsLean { .. }));
     Some(Notice {
         level: Level::Warning,
-        topic: None,
+        topic: Some(topic::UNREACHED_AREAS.to_owned()),
         segment: None,
         text: format!(
             "simultaneous finishing cannot reach {} hidden area{plural} of the part, which stay \
@@ -2760,6 +2764,7 @@ mod tests {
                     "some moves leave up to 0.0123 mm of material, more than the tolerance, \
                      because the surface changes faster than the path can follow"
                 )
+                .about(topic::MATERIAL_LEFT)
                 .with_setting(names::TOLERANCE)
             )
         );

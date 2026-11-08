@@ -107,9 +107,29 @@ pub fn lead_in(topic: &str, context: &Context) -> String {
     }
 }
 
+/// The topics of the warnings the application adds to an operation's path,
+/// beside those of the pathing library ([`openchuck_path::topic`]): short
+/// names of the checks, in sentence case (decision record 0536 section 3).
+pub mod topic {
+    /// A tab shorter than the tool is wide (decision 0523).
+    pub const TAB_LENGTH: &str = "Tab length";
+    /// A tool that cannot cut down beside a tab between a held region and
+    /// the part (decision 0503).
+    pub const TAB_CLEARANCE: &str = "Tab clearance";
+    /// A stock to leave other than the operation's.
+    pub const STOCK_TO_LEAVE: &str = "Stock to leave";
+    /// Exact STEP surface contact asked for that does not apply.
+    pub const EXACT_CONTACT: &str = "Exact contact";
+    /// A setting the strategy does not use.
+    pub const IGNORED_SETTING: &str = "Ignored setting";
+    /// A strategy that works on what earlier operations left, with none
+    /// before it in the setup.
+    pub const EARLIER_OPERATIONS: &str = "Earlier operations";
+}
+
 /// The topics whose messages name the tool too, because the tool's size,
 /// flutes or number matter to them (decision record 0536 section 3).
-pub const TOOL_TOPICS: &[&str] = &["Flute length", "Tab length"];
+pub const TOOL_TOPICS: &[&str] = &[openchuck_path::topic::FLUTE_LENGTH, topic::TAB_LENGTH];
 
 /// Whether a message under `topic` names the operation's tool as well.
 pub fn names_the_tool(topic: &str) -> bool {

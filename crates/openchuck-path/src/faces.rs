@@ -46,7 +46,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
 
 use crate::error::{PathError, Result};
-use crate::notice::Notice;
+use crate::notice::{Notice, topic};
 use crate::parallel;
 use crate::strategy::StrategyInput;
 
@@ -496,10 +496,13 @@ pub(crate) fn held_warning(held: &[f64]) -> Option<Notice> {
             "those shoulders keep",
         )
     };
-    Some(Notice::warning(format!(
-        "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
+    Some(
+        Notice::warning(format!(
+            "the tool does not turn at {faces} at X {xs}: there it would reach over the gripped \
          length of the stock, so {keeps} what earlier operations left"
-    )))
+        ))
+        .about(topic::HELD_REGION),
+    )
 }
 
 /// The X of the face a turn at `x` stands beside: `radius` (the dropped
@@ -539,7 +542,7 @@ pub(crate) fn corner_warning(faces: &[f64], radius: f64) -> Option<Notice> {
          end (radius {radius:.3} mm) leaves up to about {:.2} mm across it; a flat end can finish \
          {it}",
         radius * (std::f64::consts::SQRT_2 - 1.0)
-    )))
+    )).about(topic::INSIDE_CORNERS))
 }
 
 /// A face found on one line of A: the X of its low side, where the side of
@@ -679,6 +682,7 @@ mod tests {
         assert_eq!(held_warning(&[]), None);
         let one = held_warning(&[31.5886]).unwrap();
         assert!(one.is_warning(), "{one:?}");
+        assert_eq!(one.topic.as_deref(), Some(topic::HELD_REGION));
         assert_eq!(
             one.text,
             "the tool does not turn at a step across the rotary axis (a shoulder facing along \
@@ -760,6 +764,7 @@ mod tests {
         );
         let one = corner_warning(&[15.0], 3.0).unwrap();
         assert!(one.is_warning(), "{one:?}");
+        assert_eq!(one.topic.as_deref(), Some(topic::INSIDE_CORNERS));
         let one = one.text;
         assert!(
             one.starts_with("at X 15.000 a face across the rotary axis meets a section"),

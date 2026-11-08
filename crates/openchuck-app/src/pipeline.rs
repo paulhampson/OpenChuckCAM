@@ -177,8 +177,9 @@ pub struct Regeneration {
 
 impl Regeneration {
     /// Each operation's warnings in this run, in machining order, each said
-    /// once: in the form of decision 0522 (`<Topic> (operation '<name>',
-    /// tool '<tool>'): ...`) where the warning has one, else after
+    /// once: in the one form of decision 0536 section 3 (`<Topic>
+    /// (operation '<name>'[, tool '<tool>']): ...`) where the warning has a
+    /// topic, as every warning of a path has, else after
     /// `Operation '<name>': ` (decision 0536 section 5). The operation is
     /// named as it is in `project`, or as it was in the run if it has since
     /// been removed.
@@ -192,13 +193,7 @@ impl Regeneration {
                 continue;
             };
             for warning in &group.warnings {
-                let sentence = warning.sentence();
-                let text = crate::operation::warning_text(project, operation, &sentence);
-                out.push(if text == sentence {
-                    format!("Operation '{}': {sentence}", operation.name)
-                } else {
-                    text
-                });
+                out.push(crate::export::named(project, operation, warning));
             }
         }
         out
