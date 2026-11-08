@@ -5,7 +5,7 @@
   - accepted [decision 0026](0026-entry-moves.md): item 5 (A does not move during a ramp) and the as-built ramp direction ("the ramp runs back from the first cut point along the first horizontal move of the pass"). Items 1 to 4 and 6 to 8 are unchanged; the helix keeps item 5 (D9).
   - accepted [decision 0242](0242-optional-back-and-forth-ramp.md): items 1 to 3, 5 and 8 (the flag, the fixed-A corridor, its one-diameter minimum and its certificate) are superseded; items 4 (no cut changed to make an entry fit), 6 (bounds, cancellation, no partial operation) and 7 (slotting and the NFR-12 notice) carry over to every ramp.
   - accepted [decision 0248](0248-ramp-clearance-budget.md): superseded whole (it schedules the certificate that D10 removes).
-  - accepted [decision 0312](0312-plain-back-and-forth-ramp-refusals.md): items 1 and 2 (the STEP refusal and the corridor refusal) are superseded; item 3 (a pass that starts above the stock) and item 4's form carry over in the form of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md); the follow-up D4 = C (OI-1271) is replaced by D7 if the owner chooses it.
+  - accepted [decision 0312](0312-plain-back-and-forth-ramp-refusals.md): items 1 to 3 are superseded (the STEP refusal, the corridor refusal, and the refusal of a pass that starts above the stock: such a pass is now entered as a plunge would be, section 4); item 4's form carries over in the form of [decision 0536](0536-message-levels-operation-reference-and-setting-links.md); the follow-up D4 = C (OI-1271) is built as D7's setting.
   - accepted [decision 0204](0204-new-operation-strategy-list-and-inspector-heading.md) item 4 for the ramp only (a single-point pass), by D7; for the lead, decision 0544 L4.
 - **Decisions it uses:** [0390](0390-helical-finishing-in-rings.md), [0420](0420-rings-for-rest-roughing-and-round-facing.md) and [0497](0497-rings-for-the-simultaneous-spiral.md) (rings); [0161](0161-tools-keep-clear-of-the-gripped-length.md) (held region); [0241](0241-continuous-rotary-operation-boundaries.md) (A between operations); [0033](0033-slice-14-rotary-roughing.md) (the stock each pass carries; `Tool::can_plunge`); [0048](0048-pre-1-0-api-changes.md) (API changes before 1.0); [0536](0536-message-levels-operation-reference-and-setting-links.md) (the message form, proposed: relied on as guidance for the wording of new refusals, and followed as built on `main` when this is built).
 - **Date:** 8 Nov 2026.
@@ -80,10 +80,13 @@ In the form of decision 0536 as built on `main` when this is built (`Ramp entry 
 - an A range that cannot take the extra Δ (D6), naming the A range field (Setup step, Machine);
 - a single-point pass with Allow single-point plunge off (D7): "Ramp entry (operation '<name>'): pass <n> is a single point, so there is no path for the ramp to follow. Turn on Allow single-point plunge, or set Entry to Plunge or Helix.";
 - a single-point pass with the setting on, for a tool that cannot plunge (D7), naming the tool and its Centre cutting field;
-- a pass that starts above the stock (0312 item 3, reworded to this form);
 - a defensive gouge, keep-out or collision hit, with a request for a defect report.
 
 No refusal recommends a smaller angle (0242 item 6). Plunge and Helix remain the ways out where the ramp does not fit.
+
+A pass that starts above the stock has nothing to ramp down into. It is entered as a plunge entry would enter it, the descent passing through air, as the single-line ramp of decision 0026 did; it is not refused. Refusing it, as 0312 item 3 did for the back-and-forth ramp, would refuse many roughing layers that start partly in air, since every ramp now follows the toolpath.
+
+**Where the tool's ability to plunge is checked (D7).** The path library does not know whether the tool is centre cutting. The application checks after generation: a Ramp or Lead operation whose path holds a plunge (a single-point pass) is refused, naming the tool, when the tool cannot plunge. This also covers decision 0544 item 7.
 
 ## Owner decisions (answered 8 Nov 2026, relayed by the coordinator)
 
