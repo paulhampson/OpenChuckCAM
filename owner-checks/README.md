@@ -1,6 +1,6 @@
 # Owner checks
 
-Projects and step-by-step checks for the project owner, one folder per issue whose fix is merged on `main` and waits for the owner to confirm it (label `awaiting-fix-feedback`, milestone 2026.1-alpha). Written by lane OWNERCHECKS from public material only: the user guide's baluster ([`testdata/examples/baluster`](../testdata/examples/baluster/)), the blisk starting project ([`testdata/examples/blisk-start`](../testdata/examples/blisk-start/)) and the public STEP files of [`testdata/step/valid`](../testdata/step/valid/). Nothing here comes from a private project.
+Projects and step-by-step checks for the project owner, one folder per issue whose fix is merged on `main` and waits for the owner to confirm it (label `awaiting-fix-feedback`, milestone 2026.1-alpha). Written by lanes OWNERCHECKS and OWNERCHECKS2 from public material only: the user guide's baluster ([`testdata/examples/baluster`](../testdata/examples/baluster/)), the blisk starting project ([`testdata/examples/blisk-start`](../testdata/examples/blisk-start/)) and the public STEP files of [`testdata/step/valid`](../testdata/step/valid/). Nothing here comes from a private project.
 
 This folder lives only on the branch `owner-checks/2026.1-alpha`, which is never merged. Each check folder has:
 
@@ -23,6 +23,19 @@ This folder lives only on the branch `owner-checks/2026.1-alpha`, which is never
 | #442 | Swarf stops short of the faces at the ends of the blade (Keep off the end faces), and warns when the setting is off | 10 min | [`442-swarf-past-blade-end`](442-swarf-past-blade-end/CHECK.md) | [`442-swarf-past-blade-end.zip`](442-swarf-past-blade-end/442-swarf-past-blade-end.zip) (69 KB) |
 | #512 | Face-flow finishing on the blisk's hub floor, with a guide edge | 15 min | [`512-face-flow-finishing`](512-face-flow-finishing/CHECK.md) | [`512-face-flow-finishing.zip`](512-face-flow-finishing/512-face-flow-finishing.zip) (70 KB) |
 | #351, #257 | Exact STEP surface contact, on and off, for axial finishing with a tapered ball and pencil clean-up with a flat end | 15 min | [`351-257-exact-step-contact`](351-257-exact-step-contact/CHECK.md) | [`351-257-exact-step-contact.zip`](351-257-exact-step-contact/351-257-exact-step-contact.zip) (10 KB) |
+
+### Second set (lane OWNERCHECKS2, 8 Nov 2026)
+
+Fixes merged on `main` after the first set was checked: the message work of [decision 0536](../docs/decisions/0536-message-levels-operation-reference-and-setting-links.md) step 2 (#625) and decisions [0538](../docs/decisions/0538-a-possible-collision-is-a-warning-to-acknowledge.md), [0539](../docs/decisions/0539-workholding-apply-warns-on-a-tab-with-no-room-or-tabs-that-overlap.md) and [0540](../docs/decisions/0540-the-command-line-checks-before-it-writes.md) (#623, #591, #584). Each was run with the command-line tool on the build before the fix and on `main` at `1f3675d52`; the interface steps could not be run without a display, so they are given as click sequences.
+
+| Issue | What to check | Time | Steps | Project zip |
+| --- | --- | --- | --- | --- |
+| #611 (and decision 0539) | A refused workholding Apply marks only the refusing tab red; a warning found with it stays amber; Apply stores an automatic tab with no room, with a warning | 5 min | [`611-refusal-and-warning-levels`](611-refusal-and-warning-levels/CHECK.md) | [`611-refusal-and-warning-levels.zip`](611-refusal-and-warning-levels/611-refusal-and-warning-levels.zip) (62 KB) |
+| #567 (decisions 0538 and 0540) | A possible collision (a tab shorter than the tool) reads "Needs acknowledging" and the export waits for its own tick; the command line checks before it writes and needs `--acknowledge-collision-warnings` | 10 min | [`567-collision-acknowledge`](567-collision-acknowledge/CHECK.md) | [`567-collision-acknowledge.zip`](567-collision-acknowledge/567-collision-acknowledge.zip) (62 KB) |
+| #600 | One feed-limit line per operation instead of one per move; no "0.0 mm/min" for a turn of A at the rotary axis; F words unchanged | 5 min | [`600-feed-limit-summary`](600-feed-limit-summary/CHECK.md) | [`600-feed-limit-summary.zip`](600-feed-limit-summary/600-feed-limit-summary.zip) (63 KB) |
+| #622 | A note about the whole path no longer reads "move 0:" | 3 min | [`622-whole-path-notes`](622-whole-path-notes/CHECK.md) | [`622-whole-path-notes.zip`](622-whole-path-notes/622-whole-path-notes.zip) (63 KB) |
+
+The #600 and #622 projects are unchanged copies of the tutorial project [`testdata/examples/baluster/baluster-project`](../testdata/examples/baluster/baluster-project/). Each zipped project of the second set was checked with `openchuck-cli validate` on `main` at `1f3675d52` (all valid).
 
 Shared helpers: [`ownercheck.py`](ownercheck.py) (writes the project files), [`make_zips.py`](make_zips.py) (writes the zips: sorted entries, fixed times, so the same projects give the same bytes), [`gcode_extent.py`](gcode_extent.py) (reads where a program's fed moves go) and [`blake3_pure.py`](blake3_pure.py) (the model hash, when the `blake3` package is not installed).
 
